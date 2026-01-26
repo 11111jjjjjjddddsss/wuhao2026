@@ -12,8 +12,9 @@ android {
         versionCode = 1
         versionName = "1.0"
         
-        // 从 gradle.properties 读取 API_KEY
-        val apiKey = project.findProperty("API_KEY") as String? ?: ""
+        // 优先从环境变量 BAILIAN_API_KEY 读取，否则从 gradle.properties 读取 API_KEY
+        val apiKey = System.getenv("BAILIAN_API_KEY") 
+            ?: (project.findProperty("API_KEY") as String? ?: "")
         buildConfigField("String", "API_KEY", "\"$apiKey\"")
     }
     buildTypes {
