@@ -36,4 +36,12 @@ class MessageAdapter(private val messages: MutableList<Message>) :
         messages.add(message)
         notifyItemInserted(messages.size - 1)
     }
+    
+    fun updateLastMessage(newText: String) {
+        if (messages.isNotEmpty()) {
+            val lastIndex = messages.size - 1
+            messages[lastIndex] = messages[lastIndex].copy(text = newText)
+            notifyItemChanged(lastIndex)
+        }
+    }
 }

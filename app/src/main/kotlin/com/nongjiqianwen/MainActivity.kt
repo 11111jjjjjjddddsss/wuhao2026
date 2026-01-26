@@ -34,15 +34,19 @@ class MainActivity : AppCompatActivity() {
                     binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
                 }
                 
-                // 立即返回固定假回复
+                // 流式返回固定假回复
                 binding.chatList.postDelayed({
+                    // 先创建一条空消息
+                    adapter.addMessage(Message("", false))
                     var replyText = ""
                     ModelService.getReply(inputText) { chunk ->
                         replyText += chunk
-                    }
-                    adapter.addMessage(Message(replyText, false))
-                    binding.chatList.post {
-                        binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
+                        // 更新最后一条消息
+                        adapter.updateLastMessage(replyText)
+                        // 自动滚动到底部
+                        binding.chatList.post {
+                            binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
+                        }
                     }
                 }, 300)
             }
