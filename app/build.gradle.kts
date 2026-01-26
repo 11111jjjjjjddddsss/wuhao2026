@@ -11,6 +11,10 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        
+        // 从 gradle.properties 读取 API_KEY
+        val apiKey = project.findProperty("API_KEY") as String? ?: ""
+        buildConfigField("String", "API_KEY", "\"$apiKey\"")
     }
     buildTypes {
         release {
@@ -26,7 +30,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { viewBinding = true }
+    buildFeatures { 
+        viewBinding = true
+        buildConfig = true
+    }
 }
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")

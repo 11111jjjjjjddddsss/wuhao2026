@@ -17,7 +17,7 @@ object ModelService {
     private val handler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient()
     private val gson = Gson()
-    private val apiKey = "sk-e6865ea00577486eacfdd7b98bb1ed03"
+    private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     
     /**
