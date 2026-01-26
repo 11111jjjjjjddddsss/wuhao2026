@@ -16,17 +16,7 @@ object ModelService {
      * @param onChunk 流式输出回调，每次接收到数据块时调用
      */
     fun getReply(userMessage: String, onChunk: (String) -> Unit) {
-        // 在后台线程执行网络请求
-        Thread {
-            val content = QwenClient.callApi(userMessage)
-            // 在主线程回调返回结果
-            handler.post {
-                if (content != null) {
-                    onChunk(content)
-                } else {
-                    onChunk("模型暂不可用")
-                }
-            }
-        }.start()
+        // 直接调用 QwenClient，它内部会处理流式返回
+        QwenClient.callApi(userMessage, onChunk)
     }
 }
