@@ -36,7 +36,8 @@ class MainActivity : AppCompatActivity() {
                 
                 // 立即返回固定假回复
                 binding.chatList.postDelayed({
-                    adapter.addMessage(Message("已收到，后续接模型", false))
+                    val reply = FakeModelService.getReply(inputText)
+                    adapter.addMessage(Message(reply, false))
                     binding.chatList.post {
                         binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
                     }
