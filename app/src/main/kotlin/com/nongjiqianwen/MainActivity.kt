@@ -23,10 +23,12 @@ class MainActivity : AppCompatActivity() {
         binding.chatList.adapter = adapter
         
         binding.send.setOnClickListener {
-            val inputText = binding.input.text.toString().trim()
-            if (inputText.isNotEmpty()) {
+            val rawInput = binding.input.text.toString()
+            val normalizedInput = InputNormalizer.normalize(rawInput)
+            
+            if (normalizedInput != null) {
                 // 添加用户消息
-                adapter.addMessage(Message(inputText, true))
+                adapter.addMessage(Message(normalizedInput, true))
                 binding.input.text.clear()
                 
                 // 自动滚动到底部
@@ -39,7 +41,7 @@ class MainActivity : AppCompatActivity() {
                     // 先创建一条空消息
                     adapter.addMessage(Message("", false))
                     var replyText = ""
-                    ModelService.getReply(inputText) { chunk ->
+                    ModelService.getReply(normalizedInput) { chunk ->
                         replyText += chunk
                         // 更新最后一条消息
                         adapter.updateLastMessage(replyText)
