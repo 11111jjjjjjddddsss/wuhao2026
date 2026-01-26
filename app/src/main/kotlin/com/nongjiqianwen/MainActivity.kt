@@ -8,6 +8,8 @@ import com.nongjiqianwen.databinding.ActivityMainBinding
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+    private lateinit var adapter: MessageAdapter
+    private val messages = mutableListOf<Message>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -15,6 +17,31 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
         supportActionBar?.title = getString(R.string.app_name)
+        
+        adapter = MessageAdapter(messages)
         binding.chatList.layoutManager = LinearLayoutManager(this)
+        binding.chatList.adapter = adapter
+        
+        binding.send.setOnClickListener {
+            val inputText = binding.input.text.toString().trim()
+            if (inputText.isNotEmpty()) {
+                // 添加用户消息
+                adapter.addMessage(Message(inputText, true))
+                binding.input.text.clear()
+                
+                // 自动滚动到底部
+                binding.chatList.post {
+                    binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
+                }
+                
+                // 立即返回固定假回复
+                binding.chatList.postDelayed({
+                    adapter.addMessage(Message("已收到，后续接模型", false))
+                    binding.chatList.post {
+                        binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
+                    }
+                }, 300)
+            }
+        }
     }
 }
