@@ -1,95 +1,99 @@
 package com.nongjiqianwen
 
+import android.annotation.SuppressLint
 import android.os.Bundle
+import android.webkit.JavascriptInterface
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
-import com.nongjiqianwen.databinding.ActivityMainBinding
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var adapter: MessageAdapter
-    private val messages = mutableListOf<Message>()
+    private lateinit var webView: WebView
     private var isRequesting = false
-    
-    // 用于延迟重置状态的 Runnable
-    private val resetStateRunnable = Runnable {
-        resetRequestState()
-    }
 
+    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.title = getString(R.string.app_name)
         
-        adapter = MessageAdapter(messages)
-        binding.chatList.layoutManager = LinearLayoutManager(this)
-        binding.chatList.adapter = adapter
+        // 创建WebView
+        webView = WebView(this)
+        setContentView(webView)
         
-        binding.send.setOnClickListener {
-            val rawInput = binding.input.text.toString()
-            val normalizedInput = InputNormalizer.normalize(rawInput)
-            
-            if (normalizedInput != null && !isRequesting) {
-                // 设置请求状态，防止重复请求
-                isRequesting = true
-                binding.send.isEnabled = false
+        // 配置WebView
+        webView.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            allowFileAccess = true
+            allowContentAccess = true
+        }
+        
+        // 注入JavaScript接口
+        webView.addJavascriptInterface(AndroidJSInterface(), "AndroidInterface")
+        
+        // 设置WebViewClient
+        webView.webViewClient = WebViewClient()
+        
+        // 加载HTML文件
+        webView.loadUrl("file:///android_asset/gpt-demo.html")
+    }
+    
+    /**
+     * JavaScript接口，用于WebView与Android通信
+     */
+    inner class AndroidJSInterface {
+        @JavascriptInterface
+        fun sendMessage(text: String, imageBase64ListJson: String) {
+            runOnUiThread {
+                if (isRequesting) return@runOnUiThread
                 
-                try {
-                    // 添加用户消息
-                    adapter.addMessage(Message(normalizedInput, true))
-                    binding.input.text.clear()
-                    
-                    // 自动滚动到底部
-                    binding.chatList.post {
-                        binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
-                    }
-                    
-                    // 流式返回固定假回复
-                    binding.chatList.postDelayed({
-                        // 先创建一条空消息
-                        adapter.addMessage(Message("", false))
-                        var replyText = ""
-                        
-                        ModelService.getReply(normalizedInput, 
-                            onChunk = { chunk ->
-                                replyText += chunk
-                                
-                                // 更新最后一条消息
-                                adapter.updateLastMessage(replyText)
-                                // 自动滚动到底部
-                                binding.chatList.post {
-                                    binding.chatList.smoothScrollToPosition(adapter.itemCount - 1)
-                                }
-                            },
-                            onComplete = {
-                                // 请求完成，重置状态
-                                resetRequestState()
-                            }
-                        )
-                        
-                        // 备用超时：如果 60 秒内没有完成回调，强制重置状态
-                        binding.chatList.postDelayed(resetStateRunnable, 60000)
-                    }, 300)
+                // 解析图片Base64列表
+                val imageBase64List = try {
+                    val jsonArray = com.google.gson.JsonParser().parse(imageBase64ListJson).asJsonArray
+                    jsonArray.map { it.asString }
                 } catch (e: Exception) {
-                    // 确保在异常情况下也重置状态
-                    resetRequestState()
-                } finally {
-                    // 确保无论成功失败都重置状态（作为最后保障）
-                    // 注意：由于异步请求，这里可能过早重置，主要依赖超时机制
+                    emptyList()
                 }
+                
+                // 检查是否有输入
+                val hasInput = text.isNotBlank() || imageBase64List.isNotEmpty()
+                if (!hasInput) return@runOnUiThread
+                
+                // 设置请求状态
+                isRequesting = true
+                
+                // 发送请求
+                ModelService.getReply(
+                    userMessage = text,
+                    imageBase64List = imageBase64List,
+                    onChunk = { chunk ->
+                        runOnUiThread {
+                            // 调用JavaScript函数，传递chunk（转义特殊字符）
+                            val escapedChunk = chunk
+                                .replace("\\", "\\\\")
+                                .replace("'", "\\'")
+                                .replace("\n", "\\n")
+                                .replace("\r", "\\r")
+                            webView.evaluateJavascript("window.onChunkReceived('$escapedChunk');", null)
+                        }
+                    },
+                    onComplete = {
+                        runOnUiThread {
+                            isRequesting = false
+                            // 调用JavaScript函数，通知完成
+                            webView.evaluateJavascript("window.onCompleteReceived();", null)
+                        }
+                    }
+                )
             }
         }
     }
     
-    /**
-     * 重置请求状态（在 finally 中调用，确保无论成功失败都重置）
-     */
-    private fun resetRequestState() {
-        isRequesting = false
-        binding.send.isEnabled = true
-    }
+    override fun onBackPressed() {
+        if (webView.canGoBack()) {
+            webView.goBack()
+        } else {
+            super.onBackPressed()
+        }
     }
 }

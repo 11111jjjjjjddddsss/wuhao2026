@@ -1,0 +1,18 @@
+R_DEF: Internal format may change without notice
+local
+color primary
+color primary_dark
+drawable ic_launcher
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+id chat_list
+id input
+id message_text
+id send
+id toolbar
+layout activity_main
+layout item_message
+string app_name
+string input_hint
+string send
+style Theme.NongjiQianwen

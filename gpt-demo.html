@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>GPT Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ececf1;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+
+        .phone-frame {
+            width: 375px;
+            height: 812px;
+            background-color: #000;
+            border-radius: 20px;
+            padding: 8px;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .phone-screen {
+            flex: 1;
+            background-color: #ffffff;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .message {
+            margin-bottom: 24px;
+        }
+
+        .message:last-child {
+            margin-bottom: 0;
+        }
+
+        .message-content {
+            line-height: 1.6;
+            font-size: 15px;
+            font-weight: 400;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-width: 100%;
+            color: #111;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+
+        .message-image {
+            max-width: 100%;
+            margin: 12px 0;
+            display: block;
+            border-radius: 4px;
+        }
+
+        .input-container {
+            position: sticky;
+            bottom: 0;
+            background-color: #ffffff;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 10px 12px;
+            padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+        }
+
+        .input-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .add-button {
+            background: none;
+            border: none;
+            color: #111;
+            font-size: 24px;
+            font-weight: 300;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            cursor: pointer;
+            padding: 8px;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+        }
+
+        .add-button:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+            border-radius: 4px;
+        }
+
+        .text-input {
+            flex: 1;
+            background: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.12);
+            border-radius: 20px;
+            padding: 10px 14px;
+            color: #111;
+            font-size: 15px;
+            font-weight: 400;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            resize: none;
+            min-height: 36px;
+            max-height: 120px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            text-rendering: optimizeLegibility;
+            outline: none;
+            box-shadow: none;
+        }
+
+        .text-input:focus {
+            border-color: rgba(0, 0, 0, 0.2);
+        }
+
+        .text-input::placeholder {
+            color: #999;
+        }
+
+        .text-input::-webkit-resizer {
+            display: none;
+        }
+
+        .send-button {
+            width: 32px;
+            height: 32px;
+            background-color: #000;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: background-color 0.15s ease, opacity 0.15s ease;
+        }
+
+        .send-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .send-button:not(:disabled):hover {
+            background-color: #1a1a1a;
+        }
+
+        .send-button svg {
+            width: 16px;
+            height: 16px;
+            fill: white;
+        }
+
+        .typing-indicator {
+            display: inline-block;
+            color: #666;
+        }
+
+        .messages-container::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .messages-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .messages-container::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-frame">
+        <div class="phone-screen">
+            <div class="messages-container" id="messagesContainer">
+                <!-- 消息将动态添加到这里 -->
+            </div>
+
+            <div class="input-container">
+                <div class="input-wrapper">
+                    <input type="file" id="fileInput" class="file-input" accept="image/*" multiple>
+                    <button class="add-button" id="addButton" title="上传图片">+</button>
+                    <textarea 
+                        id="textInput" 
+                        class="text-input" 
+                        placeholder="消息"
+                        rows="1"
+                    ></textarea>
+                    <button class="send-button" id="sendButton" title="发送">
+                        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M8 0L6.59 1.41L12.17 7H0V9H12.17L6.59 14.59L8 16L16 8L8 0Z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const messagesContainer = document.getElementById('messagesContainer');
+        const textInput = document.getElementById('textInput');
+        const sendButton = document.getElementById('sendButton');
+        const fileInput = document.getElementById('fileInput');
+        const addButton = document.getElementById('addButton');
+
+        let isGenerating = false;
+
+        // 自动调整文本域高度
+        textInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            updateSendButton();
+        });
+
+        // 更新发送按钮状态
+        function updateSendButton() {
+            const hasText = textInput.value.trim().length > 0;
+            const hasFiles = fileInput.files.length > 0;
+            sendButton.disabled = !(hasText || hasFiles);
+        }
+
+        // 文件选择
+        addButton.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            updateSendButton();
+        });
+
+        // 发送消息
+        function sendMessage() {
+            if (sendButton.disabled) return;
+            if (isGenerating) return;
+
+            const text = textInput.value.trim();
+            const files = fileInput.files;
+
+            if (!text && files.length === 0) return;
+
+            // 添加用户消息
+            const userMessage = createMessage('user', text, files);
+            messagesContainer.appendChild(userMessage);
+            scrollToBottom();
+
+            // 清空输入
+            textInput.value = '';
+            textInput.style.height = 'auto';
+            fileInput.value = '';
+            updateSendButton();
+
+            // 模拟 AI 回复（流式生成）
+            isGenerating = true;
+            
+            const assistantMessage = createMessage('assistant', '', []);
+            messagesContainer.appendChild(assistantMessage);
+            scrollToBottom();
+
+            // 模拟流式生成
+            const mockResponse = generateMockResponse(text);
+            streamText(assistantMessage.querySelector('.message-content'), mockResponse);
+        }
+
+        // 创建消息元素
+        function createMessage(role, text, files) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            // 添加图片
+            if (files && files.length > 0) {
+                for (let file of files) {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            const img = document.createElement('img');
+                            img.src = e.target.result;
+                            img.className = 'message-image';
+                            contentDiv.appendChild(img);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                }
+            }
+
+            // 添加文本
+            if (text) {
+                const textNode = document.createTextNode(text);
+                contentDiv.appendChild(textNode);
+            }
+
+            messageDiv.appendChild(contentDiv);
+            return messageDiv;
+        }
+
+        // 生成模拟回复
+        function generateMockResponse(userText) {
+            const responses = [
+                "我理解您的问题。让我为您详细解释一下...\n\n首先，这个问题涉及到多个方面。我们需要从基础开始分析。",
+                "根据您提供的信息，我可以给出以下建议：\n\n1. 这是一个重要的考虑因素\n2. 您需要注意以下几点\n3. 最后，建议您采取以下行动",
+                "关于这个问题，我认为可以从以下几个角度来思考：\n\n• 第一个角度是...\n• 第二个角度是...\n• 第三个角度是...\n\n希望这些信息对您有帮助。",
+                "这是一个很好的问题。让我为您分析一下：\n\n从技术层面来看，我们需要考虑...\n从实际应用来看，您可能会遇到...\n\n总的来说，我的建议是..."
+            ];
+            return responses[Math.floor(Math.random() * responses.length)];
+        }
+
+        // 流式显示文本
+        function streamText(element, text) {
+            let index = 0;
+            const typingIndicator = document.createElement('span');
+            typingIndicator.className = 'typing-indicator';
+            typingIndicator.textContent = '▋';
+            element.appendChild(typingIndicator);
+
+            const interval = setInterval(() => {
+                if (index < text.length) {
+                    typingIndicator.remove();
+                    element.textContent = text.substring(0, index + 1);
+                    element.appendChild(typingIndicator);
+                    index++;
+                    scrollToBottom();
+                } else {
+                    typingIndicator.remove();
+                    element.textContent = text;
+                    isGenerating = false;
+                    updateSendButton();
+                    clearInterval(interval);
+                    scrollToBottom();
+                }
+            }, 30);
+        }
+
+        // 滚动到底部
+        function scrollToBottom() {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        // 初始化发送按钮状态
+        updateSendButton();
+
+        // 发送按钮点击
+        sendButton.addEventListener('click', sendMessage);
+
+        // Enter 发送（Shift+Enter 换行）
+        textInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>

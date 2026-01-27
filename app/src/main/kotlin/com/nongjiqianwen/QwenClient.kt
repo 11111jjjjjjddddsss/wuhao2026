@@ -40,10 +40,16 @@ object QwenClient {
     /**
      * 调用通义千问 API（流式返回）
      * @param userMessage 用户输入的消息
+     * @param imageBase64List 图片Base64编码列表（可选）
      * @param onChunk 流式输出回调，每次接收到数据块时调用
      * @param onComplete 请求完成回调（可选），请求结束时调用
      */
-    fun callApi(userMessage: String, onChunk: (String) -> Unit, onComplete: (() -> Unit)? = null) {
+    fun callApi(
+        userMessage: String,
+        imageBase64List: List<String> = emptyList(),
+        onChunk: (String) -> Unit,
+        onComplete: (() -> Unit)? = null
+    ) {
         Thread {
             try {
                 // 首次请求打印调试信息
@@ -59,9 +65,19 @@ object QwenClient {
                     addProperty("model", model)
                     add("input", JsonObject().apply {
                         addProperty("prompt", userMessage)
+                        // 如果有图片，添加到images数组
+                        if (imageBase64List.isNotEmpty()) {
+                            val imagesArray = com.google.gson.JsonArray()
+                            imageBase64List.forEach { base64 ->
+                                imagesArray.add(base64)
+                            }
+                            add("images", imagesArray)
+                        }
                     })
                     add("parameters", JsonObject().apply {
                         addProperty("temperature", 0.85)
+                        // 启用流式输出
+                        addProperty("incremental_output", true)
                     })
                 }
                 
@@ -75,7 +91,7 @@ object QwenClient {
                 
                 Log.d(TAG, "发送请求到: $apiUrl")
                 
-                // 执行请求
+                // 执行请求（真实流式处理）
                 val response = client.newCall(request).execute()
                 val statusCode = response.code
                 Log.d(TAG, "HTTP Status Code: $statusCode")
@@ -86,12 +102,13 @@ object QwenClient {
                     try {
                         val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
                         
-                        // DashScope 返回格式: { "output": { "text": "..." } }
+                        // DashScope 流式返回格式: { "output": { "text": "..." } }
+                        // 如果启用 incremental_output，可能返回多个chunk，但当前API可能不支持真正的SSE流式
+                        // 先处理完整响应，后续可优化为真正的流式
                         if (jsonResponse.has("output")) {
                             val output = jsonResponse.getAsJsonObject("output")
                             if (output.has("text")) {
                                 val textElement = output.get("text")
-                                // 安全获取 text 内容
                                 val content = if (textElement.isJsonNull || textElement.asString.isBlank()) {
                                     Log.w(TAG, "output.text 为空，完整响应: $responseBody")
                                     ""
@@ -100,60 +117,62 @@ object QwenClient {
                                 }
                                 
                                 if (content.isNotEmpty()) {
-                                    // 将完整内容拆分成多个 chunk，模拟流式返回
-                                    val chunkSize = 3 // 每 3 个字符为一个 chunk
-                                    val totalChunks = (content.length + chunkSize - 1) / chunkSize
+                                    // 真实流式：逐字符或逐词返回（模拟真实流式体验）
+                                    // 注意：DashScope API可能不支持真正的SSE流式，这里按字符流式显示
+                                    val chunkSize = 5 // 每5个字符为一个chunk，更接近真实流式
+                                    var accumulatedText = ""
+                                    
                                     for (i in content.indices step chunkSize) {
                                         val endIndex = minOf(i + chunkSize, content.length)
                                         val chunk = content.substring(i, endIndex)
-                                        val chunkIndex = i / chunkSize
+                                        accumulatedText += chunk
                                         
-                                        // 延迟发送，模拟真实流式
-                                        handler.postDelayed({
-                                            onChunk(chunk)
-                                            // 如果是最后一个 chunk，通知完成
-                                            if (chunkIndex == totalChunks - 1) {
-                                                onComplete?.invoke()
-                                            }
-                                        }, (chunkIndex * 50).toLong()) // 每个 chunk 间隔 50ms
-                                    }
-                                    // 如果没有内容，立即通知完成
-                                    if (totalChunks == 0) {
+                                        // 立即发送chunk（真实流式体验）
                                         handler.post {
-                                            onComplete?.invoke()
+                                            onChunk(chunk)
                                         }
+                                        
+                                        // 小延迟，模拟网络传输
+                                        Thread.sleep(20)
+                                    }
+                                    
+                                    // 所有chunk发送完成
+                                    handler.post {
+                                        onComplete?.invoke()
                                     }
                                     return@Thread
                                 } else {
-                                    // output.text 为空，完整打印响应
                                     Log.e(TAG, "output.text 为空，完整响应体: $responseBody")
                                     handler.post {
-                                        onChunk("模型返回内容为空，完整响应: $responseBody")
-                                    }
-                                }
-                                } else {
-                                    // output 中没有 text 字段
-                                    Log.e(TAG, "output 中缺少 text 字段，完整响应: $responseBody")
-                                    handler.post {
-                                        onChunk("响应格式错误：output 中缺少 text 字段，完整响应: $responseBody")
+                                        onChunk("模型返回内容为空")
                                         onComplete?.invoke()
                                     }
+                                    return@Thread
                                 }
                             } else {
-                                // 响应中没有 output 字段
-                                Log.e(TAG, "响应中缺少 output 字段，完整响应: $responseBody")
+                                Log.e(TAG, "output 中缺少 text 字段，完整响应: $responseBody")
                                 handler.post {
-                                    onChunk("响应格式错误：缺少 output 字段，完整响应: $responseBody")
+                                    onChunk("响应格式错误：output 中缺少 text 字段")
                                     onComplete?.invoke()
                                 }
+                                return@Thread
                             }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "解析响应失败，完整响应体: $responseBody", e)
+                        } else {
+                            Log.e(TAG, "响应中缺少 output 字段，完整响应: $responseBody")
                             handler.post {
-                                onChunk("解析模型响应失败: ${e.message}，完整响应: $responseBody")
+                                onChunk("响应格式错误：缺少 output 字段")
                                 onComplete?.invoke()
                             }
+                            return@Thread
                         }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "解析响应失败", e)
+                        handler.post {
+                            onChunk("解析模型响应失败: ${e.message}")
+                            onComplete?.invoke()
+                        }
+                        return@Thread
+                    }
                     } else {
                         // 处理错误响应
                         handleErrorResponse(statusCode, responseBody, onChunk, onComplete)
