@@ -382,15 +382,18 @@
         // 接收Android返回的完整文本（由Android调用）
         // 后端返回完整文本后，前端实现打字机效果
         window.onChunkReceived = function(fullText) {
+            // 前端第一入口确认
+            console.log("UI_RAW_TEXT:", JSON.stringify(fullText), fullText ? fullText.length : 0);
+            
             // 中断上一轮打字机渲染（如果有）
             if (typewriterTimer !== null) {
                 clearInterval(typewriterTimer);
                 typewriterTimer = null;
             }
             
-            // 重置打字机状态
-            currentTypewriterText = fullText || '';
+            // 状态初始化顺序：先清空定时器，再重置状态，最后启动打字机
             currentTypewriterIndex = 0;
+            currentTypewriterText = fullText || '';
             
             const lastMessage = messagesContainer.lastElementChild;
             if (lastMessage && lastMessage.classList.contains('message')) {
@@ -399,29 +402,22 @@
                     // 清空内容，准备打字机渲染
                     contentDiv.textContent = '';
                     
-                    // 如果文本为空，直接显示
-                    if (currentTypewriterText.length === 0) {
-                        contentDiv.textContent = '模型返回内容为空';
-                        scrollToBottom();
-                        return;
+                    // 只要 fullText.length > 0，必须进入打字机
+                    if (currentTypewriterText.length > 0) {
+                        // 开始打字机效果：按字符逐步显示
+                        typewriterTimer = setInterval(function() {
+                            if (currentTypewriterIndex < currentTypewriterText.length) {
+                                // 追加下一个字符
+                                contentDiv.textContent = currentTypewriterText.substring(0, currentTypewriterIndex + 1);
+                                currentTypewriterIndex++;
+                                scrollToBottom();
+                            } else {
+                                // 打字机完成
+                                clearInterval(typewriterTimer);
+                                typewriterTimer = null;
+                            }
+                        }, 30); // 每 30ms 显示一个字符（可调整速度）
                     }
-                    
-                    // 开始打字机效果：按字符逐步显示
-                    typewriterTimer = setInterval(function() {
-                        if (currentTypewriterIndex < currentTypewriterText.length) {
-                            // 追加下一个字符
-                            contentDiv.textContent = currentTypewriterText.substring(0, currentTypewriterIndex + 1);
-                            currentTypewriterIndex++;
-                            scrollToBottom();
-                        } else {
-                            // 打字机完成
-                            clearInterval(typewriterTimer);
-                            typewriterTimer = null;
-                            
-                            // 可选：打字机结束后，对完整文本做一次 Markdown 渲染（整体替换）
-                            // 这里暂时不做 Markdown 渲染，保持纯文本显示
-                        }
-                    }, 30); // 每 30ms 显示一个字符（可调整速度）
                 }
             }
         };

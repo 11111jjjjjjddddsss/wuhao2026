@@ -211,18 +211,13 @@ object QwenClient {
                                             }
                                         }
                                         
+                                        // 完整解析完成后立刻打印
+                                        Log.d("FINAL_TEXT", "len=${fullText.length}, text=${fullText}")
+                                        
                                         // 返回完整文本字符串（后端不负责流式、不负责渲染）
-                                        if (fullText.isNotEmpty()) {
-                                            handler.post {
-                                                onChunk(fullText)
-                                                onComplete?.invoke()
-                                            }
-                                        } else {
-                                            Log.w(TAG, "content 中未找到 text 字段或 text 为空，完整响应: $responseBody")
-                                            handler.post {
-                                                onChunk("模型返回内容为空")
-                                                onComplete?.invoke()
-                                            }
+                                        handler.post {
+                                            onChunk(fullText)
+                                            onComplete?.invoke()
                                         }
                                         return@Thread
                                     } else {
