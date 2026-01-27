@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
                 
                 // 解析图片Base64列表
                 // 无图时传递 null，确保 images 字段不存在
+                // 严格校验：每一项必须非空且长度合理
                 val imageBase64List = try {
                     if (imageBase64ListJson == "null" || imageBase64ListJson.isBlank()) {
                         emptyList()
@@ -58,10 +59,23 @@ class MainActivity : AppCompatActivity() {
                             emptyList()
                         } else {
                             val jsonArray = jsonElement.asJsonArray
-                            jsonArray.map { it.asString }.filter { it.isNotBlank() }
+                            // 严格过滤：只保留非空且长度合理的 base64 字符串
+                            jsonArray.mapNotNull { element ->
+                                val base64 = element.asString
+                                // 校验：非空、长度合理（至少 10 字符）、不包含非法字符
+                                if (base64.isNotBlank() && 
+                                    base64.length >= 10 && 
+                                    !base64.contains("content://") && 
+                                    !base64.contains("file://")) {
+                                    base64
+                                } else {
+                                    null
+                                }
+                            }
                         }
                     }
                 } catch (e: Exception) {
+                    android.util.Log.e("MainActivity", "解析图片列表失败", e)
                     emptyList()
                 }
                 

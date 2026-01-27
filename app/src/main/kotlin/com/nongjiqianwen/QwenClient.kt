@@ -62,23 +62,46 @@ object QwenClient {
                 
                 // 构建 DashScope 格式的请求体
                 // 关键：无图时 images 字段必须完全不存在，不能是 []、null 或 ""
+                // image 结构必须符合 DashScope：{ image: { url: "data:image/xxx;base64,..." } }
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
                     val inputObject = JsonObject().apply {
                         addProperty("prompt", userMessage)
-                        // 只有在有有效图片时才添加 images 字段
+                        
+                        // 严格校验：只有在有有效图片时才添加 images 字段
                         // DashScope 只要检测到 images 字段，就会按 URL 解析，空数组也会报错
+                        val validImages = mutableListOf<com.google.gson.JsonObject>()
                         if (imageBase64List.isNotEmpty()) {
-                            val imagesArray = com.google.gson.JsonArray()
                             imageBase64List.forEach { base64 ->
-                                if (base64.isNotBlank()) {
-                                    imagesArray.add(base64)
+                                // 严格校验：每一项必须非空且是有效的 base64
+                                if (base64.isNotBlank() && base64.length > 10) {
+                                    // 确保 base64 包含 data:image 前缀（如果前端没有提供）
+                                    val imageUrl = if (base64.startsWith("data:image/")) {
+                                        base64
+                                    } else {
+                                        // 默认使用 jpeg 格式
+                                        "data:image/jpeg;base64,$base64"
+                                    }
+                                    
+                                    // 构造符合 DashScope 格式的 image 对象
+                                    val imageObject = JsonObject().apply {
+                                        val imageContent = JsonObject().apply {
+                                            addProperty("url", imageUrl)
+                                        }
+                                        add("image", imageContent)
+                                    }
+                                    validImages.add(imageObject)
                                 }
                             }
-                            // 只有在数组非空时才添加 images 字段
-                            if (imagesArray.size() > 0) {
-                                add("images", imagesArray)
+                        }
+                        
+                        // 只有在有有效图片时才添加 images 字段
+                        if (validImages.isNotEmpty()) {
+                            val imagesArray = com.google.gson.JsonArray()
+                            validImages.forEach { imageObj ->
+                                imagesArray.add(imageObj)
                             }
+                            add("images", imagesArray)
                         }
                         // 无图时：input 对象中完全没有 images 字段
                     }
@@ -90,12 +113,30 @@ object QwenClient {
                     })
                 }
                 
+                // 纯文本请求验证：输出最终 JSON，确认无 image 相关字段
+                val requestJson = requestBody.toString()
+                Log.d(TAG, "=== 最终请求 JSON ===")
+                Log.d(TAG, requestJson)
+                
+                // 验证纯文本请求：确认没有 images、没有 type=image、没有任何 url 字段
+                if (imageBase64List.isEmpty()) {
+                    val jsonLower = requestJson.lowercase()
+                    if (jsonLower.contains("\"images\"") || 
+                        jsonLower.contains("\"type\":\"image\"") || 
+                        (jsonLower.contains("\"url\"") && !jsonLower.contains("dashscope"))) {
+                        Log.e(TAG, "⚠️ 纯文本请求中发现非法 image/url 字段！")
+                    } else {
+                        Log.d(TAG, "✅ 纯文本请求验证通过：无 images、无 type=image、无 url 字段")
+                    }
+                }
+                
                 // 创建请求
+                val requestJsonString = requestBody.toString()
                 val request = Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
-                    .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+                    .post(requestJsonString.toRequestBody("application/json".toMediaType()))
                     .build()
                 
                 Log.d(TAG, "发送请求到: $apiUrl")
