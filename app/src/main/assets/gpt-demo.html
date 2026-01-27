@@ -233,10 +233,33 @@
         });
 
         // 更新发送按钮状态
+        // 规则：图片必须带文字
+        // - 有文字无图片：启用
+        // - 有文字有图片：启用
+        // - 无文字有图片：禁用（图片必须带文字）
+        // - 无文字无图片：禁用
         function updateSendButton() {
             const hasText = textInput.value.trim().length > 0;
             const hasFiles = fileInput.files.length > 0;
-            sendButton.disabled = !(hasText || hasFiles);
+            
+            // 检查是否有有效图片
+            let hasValidImage = false;
+            if (hasFiles) {
+                for (let i = 0; i < fileInput.files.length; i++) {
+                    if (fileInput.files[i].type.startsWith('image/')) {
+                        hasValidImage = true;
+                        break;
+                    }
+                }
+            }
+            
+            // 如果有图片但无文字，禁用按钮
+            if (hasValidImage && !hasText) {
+                sendButton.disabled = true;
+            } else {
+                // 其他情况：有文字即可启用（无论是否有图片）
+                sendButton.disabled = !hasText;
+            }
         }
 
         // 文件选择
@@ -256,7 +279,27 @@
             const text = textInput.value.trim();
             const files = fileInput.files;
 
+            // 验证规则：图片必须带文字
+            // 1. 无文字无图片：不允许发送
+            // 2. 有图片无文字：不允许发送（图片必须带文字）
+            // 3. 有文字无图片：允许发送
+            // 4. 有文字有图片：允许发送
             if (!text && files.length === 0) return;
+            if (files.length > 0 && !text) {
+                // 检查是否有有效图片
+                let hasValidImage = false;
+                for (let i = 0; i < files.length; i++) {
+                    if (files[i].type.startsWith('image/')) {
+                        hasValidImage = true;
+                        break;
+                    }
+                }
+                if (hasValidImage) {
+                    // 有图片但无文字，不允许发送
+                    alert('图片必须带文字说明，请输入文字后再发送');
+                    return;
+                }
+            }
 
             // 添加用户消息
             const userMessage = createMessage('user', text, files);
