@@ -175,57 +175,94 @@ object QwenClient {
                     try {
                         val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
                         
-                        // DashScope 流式返回格式: { "output": { "text": "..." } }
-                        // 如果启用 incremental_output，可能返回多个chunk，但当前API可能不支持真正的SSE流式
-                        // 先处理完整响应，后续可优化为真正的流式
+                        // 多模态接口响应格式: { "output": { "choices": [{ "message": { "content": [...] } }] } }
+                        // content 数组包含 { "type": "text", "text": "..." } 和 { "type": "image_url", "image_url": {...} }
                         if (jsonResponse.has("output")) {
                             val output = jsonResponse.getAsJsonObject("output")
-                            if (output.has("text")) {
-                                val textElement = output.get("text")
-                                val content = if (textElement.isJsonNull || textElement.asString.isBlank()) {
-                                    Log.w(TAG, "output.text 为空，完整响应: $responseBody")
-                                    ""
-                                } else {
-                                    textElement.asString
-                                }
+                            
+                            // 按照 VL 标准响应结构解析
+                            if (output.has("choices") && output.getAsJsonArray("choices").size() > 0) {
+                                val choices = output.getAsJsonArray("choices")
+                                val firstChoice = choices[0].asJsonObject
                                 
-                                if (content.isNotEmpty()) {
-                                    // 真实流式：逐字符或逐词返回（模拟真实流式体验）
-                                    // 注意：DashScope API可能不支持真正的SSE流式，这里按字符流式显示
-                                    val chunkSize = 5 // 每5个字符为一个chunk，更接近真实流式
-                                    var accumulatedText = ""
+                                if (firstChoice.has("message")) {
+                                    val message = firstChoice.getAsJsonObject("message")
                                     
-                                    for (i in content.indices step chunkSize) {
-                                        val endIndex = minOf(i + chunkSize, content.length)
-                                        val chunk = content.substring(i, endIndex)
-                                        accumulatedText += chunk
+                                    if (message.has("content")) {
+                                        val content = message.get("content")
                                         
-                                        // 立即发送chunk（真实流式体验）
-                                        handler.post {
-                                            onChunk(chunk)
+                                        // content 可能是字符串（纯文本）或数组（多模态）
+                                        val text = when {
+                                            content.isJsonPrimitive && content.asJsonPrimitive.isString -> {
+                                                // 纯文本格式：content 是字符串
+                                                content.asString
+                                            }
+                                            content.isJsonArray -> {
+                                                // 多模态格式：content 是数组，需要找到 type=text 的项
+                                                val contentArray = content.asJsonArray
+                                                contentArray.firstOrNull { item ->
+                                                    item.isJsonObject && 
+                                                    item.asJsonObject.has("type") && 
+                                                    item.asJsonObject.get("type").asString == "text"
+                                                }?.asJsonObject?.get("text")?.asString ?: ""
+                                            }
+                                            else -> {
+                                                Log.w(TAG, "未知的 content 格式，完整响应: $responseBody")
+                                                ""
+                                            }
                                         }
                                         
-                                        // 小延迟，模拟网络传输
-                                        Thread.sleep(20)
+                                        if (text.isNotEmpty()) {
+                                            // 真实流式：逐字符或逐词返回（模拟真实流式体验）
+                                            val chunkSize = 5 // 每5个字符为一个chunk，更接近真实流式
+                                            
+                                            for (i in text.indices step chunkSize) {
+                                                val endIndex = minOf(i + chunkSize, text.length)
+                                                val chunk = text.substring(i, endIndex)
+                                                
+                                                // 立即发送chunk（真实流式体验）
+                                                handler.post {
+                                                    onChunk(chunk)
+                                                }
+                                                
+                                                // 小延迟，模拟网络传输
+                                                Thread.sleep(20)
+                                            }
+                                            
+                                            // 所有chunk发送完成
+                                            handler.post {
+                                                onComplete?.invoke()
+                                            }
+                                            return@Thread
+                                        } else {
+                                            // text 为空（可能是只有 image_url，但前端已禁止只传图片）
+                                            Log.w(TAG, "content 中未找到 text 字段或 text 为空，完整响应: $responseBody")
+                                            handler.post {
+                                                onChunk("模型返回内容为空")
+                                                onComplete?.invoke()
+                                            }
+                                            return@Thread
+                                        }
+                                    } else {
+                                        Log.e(TAG, "message 中缺少 content 字段，完整响应: $responseBody")
+                                        handler.post {
+                                            onChunk("响应格式错误：message 中缺少 content 字段")
+                                            onComplete?.invoke()
+                                        }
+                                        return@Thread
                                     }
-                                    
-                                    // 所有chunk发送完成
-                                    handler.post {
-                                        onComplete?.invoke()
-                                    }
-                                    return@Thread
                                 } else {
-                                    Log.e(TAG, "output.text 为空，完整响应体: $responseBody")
+                                    Log.e(TAG, "choice 中缺少 message 字段，完整响应: $responseBody")
                                     handler.post {
-                                        onChunk("模型返回内容为空")
+                                        onChunk("响应格式错误：choice 中缺少 message 字段")
                                         onComplete?.invoke()
                                     }
                                     return@Thread
                                 }
                             } else {
-                                Log.e(TAG, "output 中缺少 text 字段，完整响应: $responseBody")
+                                Log.e(TAG, "output 中缺少 choices 字段或 choices 为空，完整响应: $responseBody")
                                 handler.post {
-                                    onChunk("响应格式错误：output 中缺少 text 字段")
+                                    onChunk("响应格式错误：output 中缺少 choices 字段")
                                     onComplete?.invoke()
                                 }
                                 return@Thread
