@@ -23,7 +23,7 @@ object QwenClient {
         .build()
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
-    private val apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
+    private val apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
     private val model = "qwen3-vl-flash"
     private val handler = Handler(Looper.getMainLooper())
     private var isFirstRequest = true
@@ -60,127 +60,101 @@ object QwenClient {
                     Log.d(TAG, "当前使用的 model: $model")
                 }
                 
-                // 构建 VL 模型协议格式的请求体
-                // VL 模型（qwen3-vl-flash）必须使用 messages 格式，content 必须是数组
-                // 即使只有文本，也必须使用：{ "role": "user", "content": [{ "type": "text", "text": "..." }] }
-                // 严禁使用 text-only 结构（如 "prompt": "..."）
+                // 构建多模态接口请求体
+                // qwen3-vl-flash 是多模态模型，必须使用 multimodal-generation 接口
+                // 支持两种 content 格式：
+                // 1. 纯文本：content 可以是字符串 "你好" 或数组 [{ "type": "text", "text": "你好" }]
+                // 2. 图文：content 必须是数组，包含 text 和 image_url 项
                 
                 // 第一步：严格验证输入参数
-                Log.d(TAG, "=== 请求参数验证（VL Messages 协议）===")
+                Log.d(TAG, "=== 请求参数验证（多模态接口）===")
                 Log.d(TAG, "userMessage: ${userMessage.take(50)}...")
                 Log.d(TAG, "imageBase64List.size: ${imageBase64List.size}")
                 if (imageBase64List.isNotEmpty()) {
                     Log.d(TAG, "imageBase64List 第一项预览: ${imageBase64List[0].take(50)}...")
                 }
                 
-                // 构建 VL messages 格式的 content 数组
-                val contentArray = com.google.gson.JsonArray()
-                
-                // 1. 添加文本项（必须存在）
-                if (userMessage.isNotBlank()) {
-                    val textItem = JsonObject().apply {
-                        addProperty("type", "text")
-                        addProperty("text", userMessage)
-                    }
-                    contentArray.add(textItem)
-                    Log.d(TAG, "✅ 添加 text content item")
-                }
-                
-                // 2. 处理图片项（如果有）
-                val validImageUrls = mutableListOf<String>()
-                if (imageBase64List.isNotEmpty()) {
-                    Log.d(TAG, "开始处理 ${imageBase64List.size} 个图片项")
-                    imageBase64List.forEachIndexed { index, base64 ->
-                        // 严格校验：每一项必须非空且是有效的 base64
-                        if (base64.isNotBlank() && base64.length > 10) {
-                            // 确保 base64 包含 data:image 前缀（如果前端没有提供）
-                            val imageUrl = if (base64.startsWith("data:image/")) {
-                                base64
-                            } else {
-                                // 默认使用 jpeg 格式
-                                "data:image/jpeg;base64,$base64"
-                            }
-                            
-                            // 验证 URL 格式：必须是 data:image/ 开头，且包含 base64,
-                            if (imageUrl.startsWith("data:image/") && imageUrl.contains(";base64,")) {
-                                validImageUrls.add(imageUrl)
-                                Log.d(TAG, "图片项 $index 验证通过")
-                            } else {
-                                Log.w(TAG, "跳过无效的图片 URL 格式 (索引 $index): ${imageUrl.take(50)}...")
-                            }
-                        } else {
-                            Log.w(TAG, "跳过无效的 base64 (索引 $index): 长度=${base64.length}")
-                        }
-                    }
-                    Log.d(TAG, "有效图片数量: ${validImageUrls.size}")
-                    
-                    // 添加图片项到 content 数组
-                    validImageUrls.forEach { imageUrl ->
-                        val imageItem = JsonObject().apply {
-                            addProperty("type", "image")
-                            addProperty("image", imageUrl)
-                        }
-                        contentArray.add(imageItem)
-                        Log.d(TAG, "✅ 添加 image content item")
-                    }
-                } else {
-                    Log.d(TAG, "无图片，content 数组只包含 text item")
-                }
-                
-                // 构建完整的 VL messages 格式请求体
+                // 构建请求体
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
                     val inputObject = JsonObject().apply {
-                        // VL 协议：使用 messages 数组，而不是 prompt
                         val messagesArray = com.google.gson.JsonArray()
                         val userMessageObj = JsonObject().apply {
                             addProperty("role", "user")
-                            add("content", contentArray)  // content 必须是数组
+                            
+                            // 判断是否有图片
+                            if (imageBase64List.isNotEmpty()) {
+                                // 有图片：content 必须是数组，包含 text 和 image_url
+                                val contentArray = com.google.gson.JsonArray()
+                                
+                                // 1. 添加文本项
+                                if (userMessage.isNotBlank()) {
+                                    val textItem = JsonObject().apply {
+                                        addProperty("type", "text")
+                                        addProperty("text", userMessage)
+                                    }
+                                    contentArray.add(textItem)
+                                    Log.d(TAG, "✅ 添加 text content item")
+                                }
+                                
+                                // 2. 处理图片项（多模态接口要求使用 image_url 格式）
+                                val validImageUrls = mutableListOf<String>()
+                                imageBase64List.forEachIndexed { index, base64 ->
+                                    if (base64.isNotBlank() && base64.length > 10) {
+                                        val imageUrl = if (base64.startsWith("data:image/")) {
+                                            base64
+                                        } else {
+                                            "data:image/jpeg;base64,$base64"
+                                        }
+                                        
+                                        if (imageUrl.startsWith("data:image/") && imageUrl.contains(";base64,")) {
+                                            validImageUrls.add(imageUrl)
+                                            Log.d(TAG, "图片项 $index 验证通过")
+                                        } else {
+                                            Log.w(TAG, "跳过无效的图片 URL 格式 (索引 $index): ${imageUrl.take(50)}...")
+                                        }
+                                    } else {
+                                        Log.w(TAG, "跳过无效的 base64 (索引 $index): 长度=${base64.length}")
+                                    }
+                                }
+                                
+                                // 添加图片项（使用 image_url 格式）
+                                validImageUrls.forEach { imageUrl ->
+                                    val imageItem = JsonObject().apply {
+                                        addProperty("type", "image_url")
+                                        val imageUrlObj = JsonObject().apply {
+                                            addProperty("url", imageUrl)
+                                        }
+                                        add("image_url", imageUrlObj)
+                                    }
+                                    contentArray.add(imageItem)
+                                    Log.d(TAG, "✅ 添加 image_url content item")
+                                }
+                                
+                                add("content", contentArray)
+                                Log.d(TAG, "✅ 图文请求：使用 content 数组格式")
+                            } else {
+                                // 无图片：content 可以是字符串或数组（两种格式都支持）
+                                // 使用字符串格式（更简洁）
+                                addProperty("content", userMessage)
+                                Log.d(TAG, "✅ 纯文本请求：使用 content 字符串格式")
+                            }
                         }
                         messagesArray.add(userMessageObj)
                         add("messages", messagesArray)
-                        Log.d(TAG, "✅ 使用 VL messages 协议格式")
                     }
                     add("input", inputObject)
                     add("parameters", JsonObject().apply {
                         addProperty("temperature", 0.85)
-                        // 启用流式输出
                         addProperty("incremental_output", true)
                     })
                 }
                 
-                // 输出最终 JSON 用于验证
-                val requestJson = requestBody.toString()
-                Log.d(TAG, "=== 最终请求 JSON（VL Messages 协议）===")
-                Log.d(TAG, requestJson)
-                
-                // 验证 VL messages 协议格式
-                val jsonLower = requestJson.lowercase()
-                val hasMessages = jsonLower.contains("\"messages\"")
-                val hasContentArray = jsonLower.contains("\"content\"")
-                val hasTextType = jsonLower.contains("\"type\":\"text\"")
-                val hasImageType = jsonLower.contains("\"type\":\"image\"")
-                
-                if (!hasMessages || !hasContentArray || !hasTextType) {
-                    Log.e(TAG, "⚠️ VL messages 协议格式验证失败！")
-                    Log.e(TAG, "  - messages: $hasMessages")
-                    Log.e(TAG, "  - content: $hasContentArray")
-                    Log.e(TAG, "  - type:text: $hasTextType")
-                    Log.e(TAG, "完整 JSON: $requestJson")
-                } else {
-                    if (imageBase64List.isEmpty()) {
-                        Log.d(TAG, "✅ 纯文本请求验证通过：使用 VL messages 协议，content 数组只包含 text item")
-                    } else {
-                        if (hasImageType) {
-                            Log.d(TAG, "✅ 图文请求验证通过：使用 VL messages 协议，content 数组包含 text 和 image items")
-                        } else {
-                            Log.w(TAG, "⚠️ 有图片但 content 中未找到 image item")
-                        }
-                    }
-                }
-                
-                // 创建请求
+                // 输出最终 JSON 用于验证（完整打印）
                 val requestJsonString = requestBody.toString()
+                Log.d(TAG, "=== 最终发送给 DashScope 的 HTTP Request Body JSON（完整原文字符串）===")
+                Log.d(TAG, requestJsonString)
+                Log.d(TAG, "=== 最终 JSON 打印结束 ===")
                 val request = Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
