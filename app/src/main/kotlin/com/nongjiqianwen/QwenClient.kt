@@ -70,7 +70,8 @@ object QwenClient {
                         
                         // 严格校验：只有在有有效图片时才添加 images 字段
                         // DashScope 只要检测到 images 字段，就会按 URL 解析，空数组也会报错
-                        val validImages = mutableListOf<com.google.gson.JsonObject>()
+                        // DashScope API 格式：images 是字符串数组，每个字符串是 data:image/xxx;base64,... 格式
+                        val validImageUrls = mutableListOf<String>()
                         if (imageBase64List.isNotEmpty()) {
                             imageBase64List.forEach { base64 ->
                                 // 严格校验：每一项必须非空且是有效的 base64
@@ -83,23 +84,21 @@ object QwenClient {
                                         "data:image/jpeg;base64,$base64"
                                     }
                                     
-                                    // 构造符合 DashScope 格式的 image 对象
-                                    val imageObject = JsonObject().apply {
-                                        val imageContent = JsonObject().apply {
-                                            addProperty("url", imageUrl)
-                                        }
-                                        add("image", imageContent)
+                                    // 验证 URL 格式：必须是 data:image/ 开头，且包含 base64,
+                                    if (imageUrl.startsWith("data:image/") && imageUrl.contains(";base64,")) {
+                                        validImageUrls.add(imageUrl)
+                                    } else {
+                                        Log.w(TAG, "跳过无效的图片 URL 格式: ${imageUrl.take(50)}...")
                                     }
-                                    validImages.add(imageObject)
                                 }
                             }
                         }
                         
                         // 只有在有有效图片时才添加 images 字段
-                        if (validImages.isNotEmpty()) {
+                        if (validImageUrls.isNotEmpty()) {
                             val imagesArray = com.google.gson.JsonArray()
-                            validImages.forEach { imageObj ->
-                                imagesArray.add(imageObj)
+                            validImageUrls.forEach { imageUrl ->
+                                imagesArray.add(imageUrl)
                             }
                             add("images", imagesArray)
                         }
@@ -121,10 +120,19 @@ object QwenClient {
                 // 验证纯文本请求：确认没有 images、没有 type=image、没有任何 url 字段
                 if (imageBase64List.isEmpty()) {
                     val jsonLower = requestJson.lowercase()
-                    if (jsonLower.contains("\"images\"") || 
-                        jsonLower.contains("\"type\":\"image\"") || 
-                        (jsonLower.contains("\"url\"") && !jsonLower.contains("dashscope"))) {
-                        Log.e(TAG, "⚠️ 纯文本请求中发现非法 image/url 字段！")
+                    val hasImages = jsonLower.contains("\"images\"")
+                    val hasTypeImage = jsonLower.contains("\"type\":\"image\"")
+                    // 检查是否有非 API URL 的 url 字段（排除 apiUrl 中的 dashscope）
+                    val hasUrl = jsonLower.contains("\"url\"") && 
+                                 !jsonLower.contains("dashscope") && 
+                                 !jsonLower.contains("https://")
+                    
+                    if (hasImages || hasTypeImage || hasUrl) {
+                        Log.e(TAG, "⚠️ 纯文本请求中发现非法字段！")
+                        Log.e(TAG, "  - images: $hasImages")
+                        Log.e(TAG, "  - type=image: $hasTypeImage")
+                        Log.e(TAG, "  - url: $hasUrl")
+                        Log.e(TAG, "完整 JSON: $requestJson")
                     } else {
                         Log.d(TAG, "✅ 纯文本请求验证通过：无 images、无 type=image、无 url 字段")
                     }
