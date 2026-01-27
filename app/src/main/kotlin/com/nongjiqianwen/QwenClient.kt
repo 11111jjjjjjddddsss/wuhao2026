@@ -8,6 +8,7 @@ import com.google.gson.JsonObject
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSource
 import java.io.IOException
 
 /**
@@ -169,112 +170,160 @@ object QwenClient {
                 val statusCode = response.code
                 Log.d(TAG, "HTTP Status Code: $statusCode")
                 
-                val responseBody = response.body?.string() ?: ""
-                
                 if (response.isSuccessful) {
                     try {
-                        val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-                        
-                        // 多模态接口响应格式: { "output": { "choices": [{ "message": { "content": [...] } }] } }
-                        // content 数组包含 { "type": "text", "text": "..." } 和 { "type": "image_url", "image_url": {...} }
-                        if (jsonResponse.has("output")) {
-                            val output = jsonResponse.getAsJsonObject("output")
-                            
-                            // 按照 VL 标准响应结构解析
-                            if (output.has("choices") && output.getAsJsonArray("choices").size() > 0) {
-                                val choices = output.getAsJsonArray("choices")
-                                val firstChoice = choices[0].asJsonObject
-                                
-                                if (firstChoice.has("message")) {
-                                    val message = firstChoice.getAsJsonObject("message")
-                                    
-                                    if (message.has("content")) {
-                                        val content = message.get("content")
-                                        
-                                        // content 可能是字符串（纯文本）或数组（多模态）
-                                        val text = when {
-                                            content.isJsonPrimitive && content.asJsonPrimitive.isString -> {
-                                                // 纯文本格式：content 是字符串
-                                                content.asString
-                                            }
-                                            content.isJsonArray -> {
-                                                // 多模态格式：content 是数组，需要找到 type=text 的项
-                                                val contentArray = content.asJsonArray
-                                                contentArray.firstOrNull { item ->
-                                                    item.isJsonObject && 
-                                                    item.asJsonObject.has("type") && 
-                                                    item.asJsonObject.get("type").asString == "text"
-                                                }?.asJsonObject?.get("text")?.asString ?: ""
-                                            }
-                                            else -> {
-                                                Log.w(TAG, "未知的 content 格式，完整响应: $responseBody")
-                                                ""
-                                            }
-                                        }
-                                        
-                                        if (text.isNotEmpty()) {
-                                            // 真实流式：逐字符或逐词返回（模拟真实流式体验）
-                                            val chunkSize = 5 // 每5个字符为一个chunk，更接近真实流式
-                                            
-                                            for (i in text.indices step chunkSize) {
-                                                val endIndex = minOf(i + chunkSize, text.length)
-                                                val chunk = text.substring(i, endIndex)
-                                                
-                                                // 立即发送chunk（真实流式体验）
-                                                handler.post {
-                                                    onChunk(chunk)
-                                                }
-                                                
-                                                // 小延迟，模拟网络传输
-                                                Thread.sleep(20)
-                                            }
-                                            
-                                            // 所有chunk发送完成
-                                            handler.post {
-                                                onComplete?.invoke()
-                                            }
-                                            return@Thread
-                                        } else {
-                                            // text 为空（可能是只有 image_url，但前端已禁止只传图片）
-                                            Log.w(TAG, "content 中未找到 text 字段或 text 为空，完整响应: $responseBody")
-                                            handler.post {
-                                                onChunk("模型返回内容为空")
-                                                onComplete?.invoke()
-                                            }
-                                            return@Thread
-                                        }
-                                    } else {
-                                        Log.e(TAG, "message 中缺少 content 字段，完整响应: $responseBody")
-                                        handler.post {
-                                            onChunk("响应格式错误：message 中缺少 content 字段")
-                                            onComplete?.invoke()
-                                        }
-                                        return@Thread
-                                    }
-                                } else {
-                                    Log.e(TAG, "choice 中缺少 message 字段，完整响应: $responseBody")
-                                    handler.post {
-                                        onChunk("响应格式错误：choice 中缺少 message 字段")
-                                        onComplete?.invoke()
-                                    }
-                                    return@Thread
-                                }
-                            } else {
-                                Log.e(TAG, "output 中缺少 choices 字段或 choices 为空，完整响应: $responseBody")
-                                handler.post {
-                                    onChunk("响应格式错误：output 中缺少 choices 字段")
-                                    onComplete?.invoke()
-                                }
-                                return@Thread
-                            }
-                        } else {
-                            Log.e(TAG, "响应中缺少 output 字段，完整响应: $responseBody")
+                        val responseBody = response.body
+                        if (responseBody == null) {
+                            Log.e(TAG, "响应体为空")
                             handler.post {
-                                onChunk("响应格式错误：缺少 output 字段")
+                                onChunk("响应体为空")
                                 onComplete?.invoke()
                             }
                             return@Thread
                         }
+                        
+                        // 流式解析：逐行读取响应
+                        val source: BufferedSource = responseBody.source()
+                        val accumulatedText = StringBuilder()
+                        var isFinished = false
+                        var hasReceivedAnyText = false
+                        
+                        try {
+                            while (!source.exhausted() && !isFinished) {
+                                // 读取一行（SSE 格式）或整个响应体
+                                val line = source.readUtf8Line()
+                                if (line == null) break
+                                
+                                val trimmedLine = line.trim()
+                                if (trimmedLine.isEmpty()) continue
+                                
+                                Log.d(TAG, "收到响应行: ${trimmedLine.take(200)}...")
+                                
+                                try {
+                                    val jsonResponse = gson.fromJson(trimmedLine, JsonObject::class.java)
+                                    
+                                    // 检查是否有 output 字段
+                                    if (!jsonResponse.has("output")) {
+                                        Log.w(TAG, "响应行中缺少 output 字段，跳过: ${trimmedLine.take(100)}...")
+                                        continue
+                                    }
+                                    
+                                    val output = jsonResponse.getAsJsonObject("output")
+                                    
+                                    // 检查是否有 choices 字段
+                                    if (!output.has("choices") || output.getAsJsonArray("choices").size() == 0) {
+                                        Log.w(TAG, "output 中缺少 choices 或 choices 为空，跳过")
+                                        continue
+                                    }
+                                    
+                                    val choices = output.getAsJsonArray("choices")
+                                    val firstChoice = choices[0].asJsonObject
+                                    
+                                    // 流式模式：优先读取 delta.content[]，否则读取 message.content[]
+                                    val contentElement = when {
+                                        firstChoice.has("delta") -> {
+                                            // 流式模式：delta.content[]
+                                            val delta = firstChoice.getAsJsonObject("delta")
+                                            if (delta.has("content")) {
+                                                delta.get("content")
+                                            } else {
+                                                null
+                                            }
+                                        }
+                                        firstChoice.has("message") -> {
+                                            // 最终完整响应：message.content[]
+                                            val message = firstChoice.getAsJsonObject("message")
+                                            if (message.has("content")) {
+                                                message.get("content")
+                                            } else {
+                                                null
+                                            }
+                                        }
+                                        else -> null
+                                    }
+                                    
+                                    if (contentElement == null) {
+                                        Log.w(TAG, "choice 中缺少 delta 或 message 字段，跳过")
+                                        continue
+                                    }
+                                    
+                                    // 解析 content 中的 text
+                                    val chunkText = when {
+                                        contentElement.isJsonPrimitive && contentElement.asJsonPrimitive.isString -> {
+                                            // 纯文本格式：content 是字符串
+                                            contentElement.asString
+                                        }
+                                        contentElement.isJsonArray -> {
+                                            // 多模态格式：content 是数组，需要找到 type=text 的项
+                                            val contentArray = contentElement.asJsonArray
+                                            contentArray.firstOrNull { item ->
+                                                item.isJsonObject && 
+                                                item.asJsonObject.has("type") && 
+                                                item.asJsonObject.get("type").asString == "text"
+                                            }?.asJsonObject?.get("text")?.asString ?: ""
+                                        }
+                                        else -> {
+                                            Log.w(TAG, "未知的 content 格式，跳过")
+                                            ""
+                                        }
+                                    }
+                                    
+                                    // 累加 text chunk
+                                    if (chunkText.isNotEmpty()) {
+                                        hasReceivedAnyText = true
+                                        accumulatedText.append(chunkText)
+                                        
+                                        // 立即发送这个 chunk
+                                        handler.post {
+                                            onChunk(chunkText)
+                                        }
+                                        Log.d(TAG, "发送 chunk: ${chunkText.take(50)}...")
+                                    }
+                                    
+                                    // 检查是否结束：finish_reason 或 done 字段
+                                    val finishReason = firstChoice.get("finish_reason")?.asString
+                                    val done = firstChoice.get("done")?.asBoolean ?: false
+                                    
+                                    if (finishReason != null && finishReason.isNotEmpty() && finishReason != "null") {
+                                        Log.d(TAG, "检测到 finish_reason: $finishReason，流式结束")
+                                        isFinished = true
+                                    } else if (done) {
+                                        Log.d(TAG, "检测到 done=true，流式结束")
+                                        isFinished = true
+                                    } else if (firstChoice.has("message") && !firstChoice.has("delta")) {
+                                        // 如果只有 message 没有 delta，说明是最终完整响应
+                                        Log.d(TAG, "检测到最终完整响应（无 delta），流式结束")
+                                        isFinished = true
+                                    }
+                                    
+                                } catch (e: Exception) {
+                                    Log.w(TAG, "解析响应行失败，跳过: ${e.message}")
+                                    // 继续处理下一行，不中断流式
+                                    continue
+                                }
+                            }
+                            
+                            // 流式结束，检查是否有内容
+                            if (!hasReceivedAnyText && isFinished) {
+                                Log.w(TAG, "流式结束但未收到任何 text 内容，累计文本长度: ${accumulatedText.length}")
+                                // 只有在确实结束时才判断为空
+                                handler.post {
+                                    onChunk("模型返回内容为空")
+                                    onComplete?.invoke()
+                                }
+                            } else {
+                                // 正常结束
+                                handler.post {
+                                    onComplete?.invoke()
+                                }
+                            }
+                            
+                        } finally {
+                            source.close()
+                        }
+                        
+                        return@Thread
+                        
                     } catch (e: Exception) {
                         Log.e(TAG, "解析响应失败", e)
                         handler.post {
