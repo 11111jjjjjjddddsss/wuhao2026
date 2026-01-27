@@ -52,15 +52,17 @@ class MainActivity : AppCompatActivity() {
                 // 严格校验：每一项必须非空且长度合理
                 val imageBase64List = try {
                     if (imageBase64ListJson == "null" || imageBase64ListJson.isBlank()) {
+                        android.util.Log.d("MainActivity", "收到 null 或空字符串，返回空列表")
                         emptyList()
                     } else {
                         val jsonElement = com.google.gson.JsonParser().parse(imageBase64ListJson)
                         if (jsonElement.isJsonNull) {
+                            android.util.Log.d("MainActivity", "JSON 为 null，返回空列表")
                             emptyList()
                         } else {
                             val jsonArray = jsonElement.asJsonArray
                             // 严格过滤：只保留非空且长度合理的 base64 字符串
-                            jsonArray.mapNotNull { element ->
+                            val filteredList = jsonArray.mapNotNull { element ->
                                 val base64 = element.asString
                                 // 校验：非空、长度合理（至少 10 字符）、不包含非法字符
                                 if (base64.isNotBlank() && 
@@ -72,6 +74,13 @@ class MainActivity : AppCompatActivity() {
                                     null
                                 }
                             }
+                            // 如果过滤后为空，返回空列表（等同于无图）
+                            if (filteredList.isEmpty()) {
+                                android.util.Log.d("MainActivity", "过滤后图片列表为空，返回空列表")
+                            } else {
+                                android.util.Log.d("MainActivity", "有效图片数量: ${filteredList.size}")
+                            }
+                            filteredList
                         }
                     }
                 } catch (e: Exception) {

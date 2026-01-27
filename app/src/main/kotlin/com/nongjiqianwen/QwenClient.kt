@@ -62,7 +62,16 @@ object QwenClient {
                 
                 // 构建 DashScope 格式的请求体
                 // 关键：无图时 images 字段必须完全不存在，不能是 []、null 或 ""
-                // image 结构必须符合 DashScope：{ image: { url: "data:image/xxx;base64,..." } }
+                // DashScope API 格式：images 是字符串数组，每个字符串是 data:image/xxx;base64,... 格式
+                
+                // 第一步：严格验证输入参数
+                Log.d(TAG, "=== 请求参数验证 ===")
+                Log.d(TAG, "userMessage: ${userMessage.take(50)}...")
+                Log.d(TAG, "imageBase64List.size: ${imageBase64List.size}")
+                if (imageBase64List.isNotEmpty()) {
+                    Log.d(TAG, "imageBase64List 第一项预览: ${imageBase64List[0].take(50)}...")
+                }
+                
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
                     val inputObject = JsonObject().apply {
@@ -70,10 +79,12 @@ object QwenClient {
                         
                         // 严格校验：只有在有有效图片时才添加 images 字段
                         // DashScope 只要检测到 images 字段，就会按 URL 解析，空数组也会报错
-                        // DashScope API 格式：images 是字符串数组，每个字符串是 data:image/xxx;base64,... 格式
                         val validImageUrls = mutableListOf<String>()
+                        
+                        // 防御性检查：即使 imageBase64List 不为空，也要验证每一项
                         if (imageBase64List.isNotEmpty()) {
-                            imageBase64List.forEach { base64 ->
+                            Log.d(TAG, "开始处理 ${imageBase64List.size} 个图片项")
+                            imageBase64List.forEachIndexed { index, base64 ->
                                 // 严格校验：每一项必须非空且是有效的 base64
                                 if (base64.isNotBlank() && base64.length > 10) {
                                     // 确保 base64 包含 data:image 前缀（如果前端没有提供）
@@ -87,11 +98,17 @@ object QwenClient {
                                     // 验证 URL 格式：必须是 data:image/ 开头，且包含 base64,
                                     if (imageUrl.startsWith("data:image/") && imageUrl.contains(";base64,")) {
                                         validImageUrls.add(imageUrl)
+                                        Log.d(TAG, "图片项 $index 验证通过")
                                     } else {
-                                        Log.w(TAG, "跳过无效的图片 URL 格式: ${imageUrl.take(50)}...")
+                                        Log.w(TAG, "跳过无效的图片 URL 格式 (索引 $index): ${imageUrl.take(50)}...")
                                     }
+                                } else {
+                                    Log.w(TAG, "跳过无效的 base64 (索引 $index): 长度=${base64.length}")
                                 }
                             }
+                            Log.d(TAG, "有效图片数量: ${validImageUrls.size}")
+                        } else {
+                            Log.d(TAG, "imageBase64List 为空，不添加 images 字段")
                         }
                         
                         // 只有在有有效图片时才添加 images 字段
@@ -101,6 +118,9 @@ object QwenClient {
                                 imagesArray.add(imageUrl)
                             }
                             add("images", imagesArray)
+                            Log.d(TAG, "✅ 添加 images 字段，包含 ${validImageUrls.size} 个图片")
+                        } else {
+                            Log.d(TAG, "✅ 不添加 images 字段（无有效图片）")
                         }
                         // 无图时：input 对象中完全没有 images 字段
                     }
