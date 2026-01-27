@@ -48,9 +48,19 @@ class MainActivity : AppCompatActivity() {
                 if (isRequesting) return@runOnUiThread
                 
                 // 解析图片Base64列表
+                // 无图时传递 null，确保 images 字段不存在
                 val imageBase64List = try {
-                    val jsonArray = com.google.gson.JsonParser().parse(imageBase64ListJson).asJsonArray
-                    jsonArray.map { it.asString }
+                    if (imageBase64ListJson == "null" || imageBase64ListJson.isBlank()) {
+                        emptyList()
+                    } else {
+                        val jsonElement = com.google.gson.JsonParser().parse(imageBase64ListJson)
+                        if (jsonElement.isJsonNull) {
+                            emptyList()
+                        } else {
+                            val jsonArray = jsonElement.asJsonArray
+                            jsonArray.map { it.asString }.filter { it.isNotBlank() }
+                        }
+                    }
                 } catch (e: Exception) {
                     emptyList()
                 }

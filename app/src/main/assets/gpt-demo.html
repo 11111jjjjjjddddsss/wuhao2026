@@ -264,8 +264,8 @@
             scrollToBottom();
 
             // 处理图片：转换为Base64
-            const imageBase64List = [];
             if (files.length > 0) {
+                const imageBase64List = [];
                 let processedCount = 0;
                 for (let i = 0; i < files.length; i++) {
                     const file = files[i];
@@ -291,7 +291,8 @@
                     }
                 }
             } else {
-                sendToAndroid(text, []);
+                // 无图时传递 null，确保 images 字段不存在
+                sendToAndroid(text, null);
             }
 
             // 清空输入
@@ -310,7 +311,9 @@
 
         // 发送到Android后端
         function sendToAndroid(text, imageBase64List) {
-            AndroidInterface.sendMessage(text || '', JSON.stringify(imageBase64List));
+            // 无图时传递 null，有图时传递数组
+            const jsonData = imageBase64List === null ? null : JSON.stringify(imageBase64List);
+            AndroidInterface.sendMessage(text || '', jsonData || 'null');
         }
 
         // 接收Android返回的chunk（由Android调用）
@@ -329,6 +332,8 @@
         window.onCompleteReceived = function() {
             isGenerating = false;
             sendButton.disabled = false;
+            // 清空图片选择状态
+            fileInput.value = '';
             updateSendButton();
         };
 

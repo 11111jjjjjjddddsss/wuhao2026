@@ -61,19 +61,28 @@ object QwenClient {
                 }
                 
                 // 构建 DashScope 格式的请求体
+                // 关键：无图时 images 字段必须完全不存在，不能是 []、null 或 ""
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
-                    add("input", JsonObject().apply {
+                    val inputObject = JsonObject().apply {
                         addProperty("prompt", userMessage)
-                        // 如果有图片，添加到images数组
+                        // 只有在有有效图片时才添加 images 字段
+                        // DashScope 只要检测到 images 字段，就会按 URL 解析，空数组也会报错
                         if (imageBase64List.isNotEmpty()) {
                             val imagesArray = com.google.gson.JsonArray()
                             imageBase64List.forEach { base64 ->
-                                imagesArray.add(base64)
+                                if (base64.isNotBlank()) {
+                                    imagesArray.add(base64)
+                                }
                             }
-                            add("images", imagesArray)
+                            // 只有在数组非空时才添加 images 字段
+                            if (imagesArray.size() > 0) {
+                                add("images", imagesArray)
+                            }
                         }
-                    })
+                        // 无图时：input 对象中完全没有 images 字段
+                    }
+                    add("input", inputObject)
                     add("parameters", JsonObject().apply {
                         addProperty("temperature", 0.85)
                         // 启用流式输出
