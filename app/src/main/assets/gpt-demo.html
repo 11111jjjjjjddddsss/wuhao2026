@@ -217,6 +217,9 @@
         const addButton = document.getElementById('addButton');
 
         let isGenerating = false;
+        let typewriterTimer = null; // 打字机定时器
+        let currentTypewriterText = ''; // 当前正在渲染的完整文本
+        let currentTypewriterIndex = 0; // 当前渲染到的字符索引
 
         // Android 接口对象（由 WebView 注入）
         const AndroidInterface = window.AndroidInterface || {
@@ -355,6 +358,12 @@
             fileInput.value = '';
             updateSendButton();
 
+            // 中断上一轮打字机渲染（如果有）
+            if (typewriterTimer !== null) {
+                clearInterval(typewriterTimer);
+                typewriterTimer = null;
+            }
+            
             // 创建AI回复占位
             isGenerating = true;
             sendButton.disabled = true;
@@ -370,20 +379,71 @@
             AndroidInterface.sendMessage(text || '', jsonData || 'null');
         }
 
-        // 接收Android返回的chunk（由Android调用）
-        window.onChunkReceived = function(chunk) {
+        // 接收Android返回的完整文本（由Android调用）
+        // 后端返回完整文本后，前端实现打字机效果
+        window.onChunkReceived = function(fullText) {
+            // 中断上一轮打字机渲染（如果有）
+            if (typewriterTimer !== null) {
+                clearInterval(typewriterTimer);
+                typewriterTimer = null;
+            }
+            
+            // 重置打字机状态
+            currentTypewriterText = fullText || '';
+            currentTypewriterIndex = 0;
+            
             const lastMessage = messagesContainer.lastElementChild;
             if (lastMessage && lastMessage.classList.contains('message')) {
                 const contentDiv = lastMessage.querySelector('.message-content');
                 if (contentDiv) {
-                    contentDiv.textContent += chunk;
-                    scrollToBottom();
+                    // 清空内容，准备打字机渲染
+                    contentDiv.textContent = '';
+                    
+                    // 如果文本为空，直接显示
+                    if (currentTypewriterText.length === 0) {
+                        contentDiv.textContent = '模型返回内容为空';
+                        scrollToBottom();
+                        return;
+                    }
+                    
+                    // 开始打字机效果：按字符逐步显示
+                    typewriterTimer = setInterval(function() {
+                        if (currentTypewriterIndex < currentTypewriterText.length) {
+                            // 追加下一个字符
+                            contentDiv.textContent = currentTypewriterText.substring(0, currentTypewriterIndex + 1);
+                            currentTypewriterIndex++;
+                            scrollToBottom();
+                        } else {
+                            // 打字机完成
+                            clearInterval(typewriterTimer);
+                            typewriterTimer = null;
+                            
+                            // 可选：打字机结束后，对完整文本做一次 Markdown 渲染（整体替换）
+                            // 这里暂时不做 Markdown 渲染，保持纯文本显示
+                        }
+                    }, 30); // 每 30ms 显示一个字符（可调整速度）
                 }
             }
         };
 
         // 接收Android完成通知（由Android调用）
         window.onCompleteReceived = function() {
+            // 确保打字机已完成（如果还在运行，立即完成）
+            if (typewriterTimer !== null) {
+                clearInterval(typewriterTimer);
+                typewriterTimer = null;
+                
+                // 立即显示完整文本（如果还没显示完）
+                const lastMessage = messagesContainer.lastElementChild;
+                if (lastMessage && lastMessage.classList.contains('message')) {
+                    const contentDiv = lastMessage.querySelector('.message-content');
+                    if (contentDiv && currentTypewriterIndex < currentTypewriterText.length) {
+                        contentDiv.textContent = currentTypewriterText;
+                        scrollToBottom();
+                    }
+                }
+            }
+            
             isGenerating = false;
             sendButton.disabled = false;
             // 清空图片选择状态
