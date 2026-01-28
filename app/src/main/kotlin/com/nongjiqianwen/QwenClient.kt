@@ -9,6 +9,8 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 /**
  * 通义千问客户端
@@ -52,10 +54,10 @@ object QwenClient {
     ) {
         Thread {
             try {
-                // 构建请求体 - OpenAI 兼容格式
+                // 构建请求体 - OpenAI 兼容格式（真流式SSE）
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
-                    addProperty("stream", false)
+                    addProperty("stream", true)
                     
                     val messagesArray = com.google.gson.JsonArray()
                     val userMessageObj = JsonObject().apply {
@@ -128,100 +130,109 @@ object QwenClient {
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
+                    .addHeader("Accept", "text/event-stream")
                     .post(requestJsonString.toRequestBody("application/json".toMediaType()))
                     .build()
                 
-                // 执行请求（非流式）
+                // 执行SSE流式请求
                 val response = client.newCall(request).execute()
                 val statusCode = response.code
-                val responseBody = response.body?.string() ?: ""
                 
-                // 强制打印完整响应JSON（原样）
-                Log.d(TAG, "=== FINAL_RESPONSE_JSON ===")
-                Log.d(TAG, responseBody)
+                Log.d(TAG, "HTTP Status Code: $statusCode")
                 
                 if (response.isSuccessful) {
                     try {
-                        val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
+                        val responseBody = response.body
+                        if (responseBody == null) {
+                            throw Exception("响应体为空")
+                        }
                         
-                        // OpenAI 兼容格式解析：choices[0].message.content（字符串）
-                        if (jsonResponse.has("choices") && jsonResponse.getAsJsonArray("choices").size() > 0) {
-                            val choices = jsonResponse.getAsJsonArray("choices")
-                            val firstChoice = choices[0].asJsonObject
-                            
-                            if (firstChoice.has("message")) {
-                                val message = firstChoice.getAsJsonObject("message")
+                        // SSE流式解析
+                        val inputStream = responseBody.byteStream()
+                        val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
+                        
+                        try {
+                            while (true) {
+                                val line = reader.readLine() ?: break
                                 
-                                if (message.has("content")) {
-                                    val content = message.get("content")
-                                    
-                                    Log.d(TAG, "=== 开始解析 content（OpenAI兼容格式）===")
-                                    Log.d(TAG, "content 类型: ${if (content.isJsonPrimitive) "Primitive" else if (content.isJsonArray) "Array" else "Other"}")
-                                    
-                                    // OpenAI 兼容接口：content 是字符串
-                                    val fullText = if (content.isJsonPrimitive && content.asJsonPrimitive.isString) {
-                                        val text = content.asString
-                                        Log.d(TAG, "content 是字符串，长度: ${text.length}")
-                                        text
-                                    } else {
-                                        // 如果不是字符串，打印完整内容并抛出错误
-                                        Log.e(TAG, "content 不是字符串格式: $content")
-                                        throw Exception("响应解析失败：content不是字符串格式，content=$content")
-                                    }
-                                    
-                                    // 最终验证：fullText不允许为空
-                                    if (fullText.isBlank()) {
-                                        Log.e(TAG, "最终解析结果为空，抛出错误")
-                                        throw Exception("响应解析失败：fullText为空，请检查响应结构")
-                                    }
-                                    
-                                    Log.d(TAG, "=== 解析成功 ===")
-                                    Log.d(TAG, "FINAL_TEXT 长度: ${fullText.length}")
-                                    Log.d(TAG, "FINAL_TEXT 预览: ${fullText.take(100)}...")
-                                    
-                                    // 返回完整文本
-                                    handler.post {
-                                        onChunk(fullText)
-                                        onComplete?.invoke()
-                                    }
-                                    return@Thread
-                                } else {
-                                    Log.e(TAG, "message 中缺少 content 字段，完整message: $message")
-                                    handler.post {
-                                        onChunk("响应格式错误：message 中缺少 content 字段，完整响应: $responseBody")
-                                        onComplete?.invoke()
-                                    }
-                                    return@Thread
+                                Log.d(TAG, "=== SSE_LINE ===")
+                                Log.d(TAG, line)
+                                
+                                // 检查结束标记
+                                if (line.trim() == "data: [DONE]") {
+                                    Log.d(TAG, "=== STREAM_DONE ===")
+                                    break
                                 }
-                            } else {
-                                Log.e(TAG, "choice 中缺少 message 字段，完整choice: $firstChoice")
-                                handler.post {
-                                    onChunk("响应格式错误：choice 中缺少 message 字段，完整响应: $responseBody")
-                                    onComplete?.invoke()
+                                
+                                // 解析 data: 开头的行
+                                if (line.startsWith("data: ")) {
+                                    val jsonStr = line.substring(6) // 移除 "data: " 前缀
+                                    
+                                    // 跳过空JSON对象
+                                    if (jsonStr.trim().isEmpty() || jsonStr.trim() == "{}") {
+                                        continue
+                                    }
+                                    
+                                    try {
+                                        val jsonResponse = gson.fromJson(jsonStr, JsonObject::class.java)
+                                        
+                                        // 解析 choices[0].delta.content
+                                        if (jsonResponse.has("choices") && jsonResponse.getAsJsonArray("choices").size() > 0) {
+                                            val choices = jsonResponse.getAsJsonArray("choices")
+                                            val firstChoice = choices[0].asJsonObject
+                                            
+                                            if (firstChoice.has("delta")) {
+                                                val delta = firstChoice.getAsJsonObject("delta")
+                                                
+                                                if (delta.has("content")) {
+                                                    val content = delta.get("content")
+                                                    
+                                                    if (content.isJsonPrimitive && content.asJsonPrimitive.isString) {
+                                                        val deltaText = content.asString
+                                                        
+                                                        if (deltaText.isNotBlank()) {
+                                                            Log.d(TAG, "=== DELTA_CONTENT ===")
+                                                            Log.d(TAG, "\"$deltaText\"")
+                                                            
+                                                            // 立即回调前端渲染
+                                                            handler.post {
+                                                                onChunk(deltaText)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        // 忽略单行JSON解析错误（可能是空行或其他格式）
+                                        Log.w(TAG, "解析SSE行失败: $line", e)
+                                    }
                                 }
-                                return@Thread
                             }
-                        } else {
-                            Log.e(TAG, "响应中缺少 choices 字段或 choices 为空，完整响应: $responseBody")
+                            
+                            // 流式完成
+                            Log.d(TAG, "=== STREAM_COMPLETE ===")
                             handler.post {
-                                onChunk("响应格式错误：缺少 choices 字段，完整响应: $responseBody")
                                 onComplete?.invoke()
                             }
-                            return@Thread
+                            
+                        } finally {
+                            reader.close()
+                            inputStream.close()
                         }
                         
                     } catch (e: Exception) {
-                        Log.e(TAG, "解析响应失败", e)
-                        Log.e(TAG, "完整响应内容: $responseBody")
+                        Log.e(TAG, "SSE流式解析失败", e)
                         e.printStackTrace()
                         handler.post {
-                            onChunk("解析模型响应失败: ${e.message}，完整响应: $responseBody")
+                            onChunk("流式解析失败: ${e.message}")
                             onComplete?.invoke()
                         }
                         return@Thread
                     }
                 } else {
                     // 处理错误响应
+                    val responseBody = response.body?.string() ?: ""
                     handleErrorResponse(statusCode, responseBody, onChunk, onComplete)
                 }
             } catch (e: IOException) {

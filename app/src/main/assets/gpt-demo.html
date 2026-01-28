@@ -227,9 +227,6 @@
         const addButton = document.getElementById('addButton');
 
         let isGenerating = false;
-        let typewriterTimer = null; // 打字机定时器
-        let currentTypewriterText = ''; // 当前正在渲染的完整文本
-        let currentTypewriterIndex = 0; // 当前渲染到的字符索引
 
         // Android 接口对象（由 WebView 注入）
         const AndroidInterface = window.AndroidInterface || {
@@ -368,13 +365,7 @@
             fileInput.value = '';
             updateSendButton();
 
-            // 中断上一轮打字机渲染（如果有）
-            if (typewriterTimer !== null) {
-                clearInterval(typewriterTimer);
-                typewriterTimer = null;
-            }
-            
-            // 创建AI回复占位（左对齐，等待内容）
+            // 创建AI回复占位（左对齐，等待真流式内容）
             isGenerating = true;
             sendButton.disabled = true;
             const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
@@ -389,62 +380,24 @@
             AndroidInterface.sendMessage(text || '', jsonData || 'null');
         }
 
-        // 接收Android返回的完整文本（由Android调用）
-        // AI输出渲染：使用假流式逐字显示（左对齐）
-        window.onChunkReceived = function(fullText) {
-            // 强制打印原始返回（用于定位）
-            console.log("RAW_RESPONSE =", fullText);
-            console.log("RAW_RESPONSE type =", typeof fullText);
-            console.log("RAW_RESPONSE length =", fullText ? fullText.length : 0);
+        // 接收Android返回的流式chunk（由Android调用）
+        // 真流式SSE：直接append chunk，不假流式
+        window.onChunkReceived = function(chunk) {
+            console.log("=== CHUNK_RECEIVED ===", chunk);
             
-            // 防空处理（禁止假装思考）
-            if (!fullText || fullText.trim() === '') {
-                console.error("AI返回为空，显示错误提示");
-                const lastMessage = messagesContainer.lastElementChild;
-                if (lastMessage && lastMessage.classList.contains('assistant')) {
-                    const contentDiv = lastMessage.querySelector('.message-content');
-                    if (contentDiv) {
-                        contentDiv.textContent = "【模型无返回，请查看控制台】";
-                    }
-                }
+            // 防空处理
+            if (!chunk || chunk.trim() === '') {
                 return;
             }
-            
-            // 中断上一轮打字机渲染（如果有）
-            if (typewriterTimer !== null) {
-                clearInterval(typewriterTimer);
-                typewriterTimer = null;
-            }
-            
-            // 重置状态
-            currentTypewriterIndex = 0;
-            currentTypewriterText = fullText;
-            
-            console.log("FINAL_TEXT =", currentTypewriterText);
-            console.log("FINAL_TEXT length =", currentTypewriterText.length);
             
             // 找到最后一个AI消息（assistant类）
             const lastMessage = messagesContainer.lastElementChild;
             if (lastMessage && lastMessage.classList.contains('assistant')) {
                 const contentDiv = lastMessage.querySelector('.message-content');
                 if (contentDiv) {
-                    // 清空内容，准备假流式渲染
-                    contentDiv.textContent = '';
-                    
-                    // 必须进入假流式（已通过防空检查）
-                    // 假流式效果：每 30ms 追加一个字符
-                    typewriterTimer = setInterval(function() {
-                        if (currentTypewriterIndex < currentTypewriterText.length) {
-                            // 追加下一个字符（连续追加，不覆盖）
-                            contentDiv.textContent = currentTypewriterText.substring(0, currentTypewriterIndex + 1);
-                            currentTypewriterIndex++;
-                            scrollToBottom();
-                        } else {
-                            // 假流式完成
-                            clearInterval(typewriterTimer);
-                            typewriterTimer = null;
-                        }
-                    }, 30); // 每 30ms 显示一个字符
+                    // 直接append chunk（不覆盖，不假流式）
+                    contentDiv.textContent += chunk;
+                    scrollToBottom();
                 } else {
                     console.error("找不到AI消息的contentDiv");
                 }
@@ -455,21 +408,7 @@
 
         // 接收Android完成通知（由Android调用）
         window.onCompleteReceived = function() {
-            // 确保假流式已完成（如果还在运行，立即完成）
-            if (typewriterTimer !== null) {
-                clearInterval(typewriterTimer);
-                typewriterTimer = null;
-                
-                // 立即显示完整文本（如果还没显示完）
-                const lastMessage = messagesContainer.lastElementChild;
-                if (lastMessage && lastMessage.classList.contains('assistant')) {
-                    const contentDiv = lastMessage.querySelector('.message-content');
-                    if (contentDiv && currentTypewriterIndex < currentTypewriterText.length) {
-                        contentDiv.textContent = currentTypewriterText;
-                        scrollToBottom();
-                    }
-                }
-            }
+            console.log("=== STREAM_COMPLETE ===");
             
             isGenerating = false;
             sendButton.disabled = false;
