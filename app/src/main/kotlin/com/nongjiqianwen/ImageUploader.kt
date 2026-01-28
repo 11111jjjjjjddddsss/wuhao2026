@@ -1,13 +1,14 @@
 package com.nongjiqianwen
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.net.Uri
+import android.graphics.Matrix
 import android.util.Log
+import androidx.exifinterface.media.ExifInterface
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.CountDownLatch
@@ -30,56 +31,146 @@ object ImageUploader {
     
     /**
      * 压缩图片（中等压缩）
-     * @param inputStream 图片输入流
-     * @return 压缩后的字节数组，失败返回null
+     * 处理流程：EXIF方向矫正 → 缩放长边1600px → JPEG quality=75
+     * @param imageBytes 原始图片字节数组
+     * @return 压缩后的字节数组和原图尺寸信息，失败返回null
      */
-    fun compressImage(inputStream: InputStream): ByteArray? {
+    fun compressImage(imageBytes: ByteArray): CompressResult? {
         return try {
-            // 读取原始图片
+            // 读取原始图片（用于获取EXIF和尺寸）
+            val inputStream = ByteArrayInputStream(imageBytes)
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeStream(inputStream, null, options)
+            inputStream.reset()
+            
+            val originalWidth = options.outWidth
+            val originalHeight = options.outHeight
+            
+            // 读取EXIF方向信息
+            val exif = ExifInterface(inputStream)
+            val orientation = exif.getAttributeInt(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL
+            )
+            
+            // 重新读取bitmap用于处理
+            inputStream.reset()
             val originalBitmap = BitmapFactory.decodeStream(inputStream)
             if (originalBitmap == null) {
                 Log.e(TAG, "无法解码图片")
                 return null
             }
             
-            val width = originalBitmap.width
-            val height = originalBitmap.height
-            
-            // 计算缩放比例（长边缩到MAX_LONG_EDGE）
-            val scale = if (width > height) {
-                minOf(1.0f, MAX_LONG_EDGE.toFloat() / width)
-            } else {
-                minOf(1.0f, MAX_LONG_EDGE.toFloat() / height)
+            // EXIF方向矫正
+            val correctedBitmap = when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(originalBitmap, 90f)
+                ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(originalBitmap, 180f)
+                ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(originalBitmap, 270f)
+                ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> flipBitmap(originalBitmap, horizontal = true)
+                ExifInterface.ORIENTATION_FLIP_VERTICAL -> flipBitmap(originalBitmap, vertical = true)
+                ExifInterface.ORIENTATION_TRANSPOSE -> {
+                    val rotated = rotateBitmap(originalBitmap, 90f)
+                    flipBitmap(rotated, horizontal = true)
+                }
+                ExifInterface.ORIENTATION_TRANSVERSE -> {
+                    val rotated = rotateBitmap(originalBitmap, 270f)
+                    flipBitmap(rotated, horizontal = true)
+                }
+                else -> originalBitmap
             }
             
-            // 压缩图片
-            val compressedBitmap = if (scale < 1.0f) {
-                val newWidth = (width * scale).toInt()
-                val newHeight = (height * scale).toInt()
-                Bitmap.createScaledBitmap(originalBitmap, newWidth, newHeight, true)
+            val correctedWidth = correctedBitmap.width
+            val correctedHeight = correctedBitmap.height
+            
+            // 计算缩放比例（长边缩到MAX_LONG_EDGE）
+            val scale = if (correctedWidth > correctedHeight) {
+                minOf(1.0f, MAX_LONG_EDGE.toFloat() / correctedWidth)
             } else {
-                originalBitmap
+                minOf(1.0f, MAX_LONG_EDGE.toFloat() / correctedHeight)
+            }
+            
+            // 缩放图片
+            val scaledBitmap = if (scale < 1.0f) {
+                val newWidth = (correctedWidth * scale).toInt()
+                val newHeight = (correctedHeight * scale).toInt()
+                Bitmap.createScaledBitmap(correctedBitmap, newWidth, newHeight, true)
+            } else {
+                correctedBitmap
             }
             
             // 转换为JPEG字节数组
             val outputStream = ByteArrayOutputStream()
-            compressedBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
+            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
             val compressedBytes = outputStream.toByteArray()
             
-            Log.d(TAG, "图片压缩完成: ${width}x${height} -> ${compressedBitmap.width}x${compressedBitmap.height}, ${compressedBytes.size} bytes")
+            // 记录日志
+            Log.d(TAG, "=== 图片压缩日志 ===")
+            Log.d(TAG, "原图尺寸: ${originalWidth}x${originalHeight}")
+            Log.d(TAG, "EXIF矫正后: ${correctedWidth}x${correctedHeight} (orientation=$orientation)")
+            Log.d(TAG, "压缩后尺寸: ${scaledBitmap.width}x${scaledBitmap.height}")
+            Log.d(TAG, "压缩后字节数: ${compressedBytes.size} bytes")
             
             // 释放bitmap
-            if (compressedBitmap != originalBitmap) {
-                compressedBitmap.recycle()
+            if (scaledBitmap != correctedBitmap && scaledBitmap != originalBitmap) {
+                scaledBitmap.recycle()
+            }
+            if (correctedBitmap != originalBitmap) {
+                correctedBitmap.recycle()
             }
             originalBitmap.recycle()
             
-            compressedBytes
+            CompressResult(
+                bytes = compressedBytes,
+                originalWidth = originalWidth,
+                originalHeight = originalHeight,
+                compressedWidth = scaledBitmap.width,
+                compressedHeight = scaledBitmap.height,
+                compressedSize = compressedBytes.size
+            )
         } catch (e: Exception) {
             Log.e(TAG, "图片压缩失败", e)
             null
         }
     }
+    
+    /**
+     * 旋转bitmap
+     */
+    private fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
+        val matrix = Matrix().apply {
+            postRotate(degrees)
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    }
+    
+    /**
+     * 翻转bitmap
+     */
+    private fun flipBitmap(bitmap: Bitmap, horizontal: Boolean = false, vertical: Boolean = false): Bitmap {
+        val matrix = Matrix().apply {
+            if (horizontal) {
+                postScale(-1f, 1f, bitmap.width / 2f, bitmap.height / 2f)
+            }
+            if (vertical) {
+                postScale(1f, -1f, bitmap.width / 2f, bitmap.height / 2f)
+            }
+        }
+        return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+    }
+    
+    /**
+     * 压缩结果
+     */
+    data class CompressResult(
+        val bytes: ByteArray,
+        val originalWidth: Int,
+        val originalHeight: Int,
+        val compressedWidth: Int,
+        val compressedHeight: Int,
+        val compressedSize: Int
+    )
     
     /**
      * 上传图片到OSS（需要配置OSS上传接口）
@@ -167,8 +258,11 @@ object ImageUploader {
         }
         
         Log.d(TAG, "所有图片上传成功: ${urls.size} 张")
+        Log.d(TAG, "=== UPLOAD_URLS（脱敏）===")
         urls.forEachIndexed { index, url ->
-            Log.d(TAG, "UPLOAD_URLS[$index]: $url")
+            // 脱敏：只显示域名和路径，隐藏具体文件名
+            val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
+            Log.d(TAG, "UPLOAD_URLS[$index]: $maskedUrl")
         }
         
         return urls

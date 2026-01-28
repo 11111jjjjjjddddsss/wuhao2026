@@ -278,6 +278,26 @@
         });
 
         fileInput.addEventListener('change', () => {
+            // 静默限制：超过4张图直接阻止选择
+            const files = fileInput.files;
+            const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+            if (imageFiles.length > 4) {
+                // 静默处理：只保留前4张
+                const dt = new DataTransfer();
+                let imageCount = 0;
+                for (let i = 0; i < files.length; i++) {
+                    const file = files[i];
+                    if (file.type.startsWith('image/')) {
+                        if (imageCount < 4) {
+                            dt.items.add(file);
+                            imageCount++;
+                        }
+                    } else {
+                        dt.items.add(file);
+                    }
+                }
+                fileInput.files = dt.files;
+            }
             updateSendButton();
         });
 
@@ -306,7 +326,7 @@
                 }
                 if (hasValidImage) {
                     // 有图片但无文字，不允许发送
-                    alert('图片必须带文字说明，请输入文字后再发送');
+                    alert('请补充文字说明');
                     return;
                 }
             }
@@ -318,12 +338,7 @@
 
             // 处理图片：转换为Base64（传递给Android处理上传）
             if (files.length > 0) {
-                // 验证图片数量（最多4张）
                 const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-                if (imageFiles.length > 4) {
-                    alert('最多只能选择4张图片');
-                    return;
-                }
                 
                 if (imageFiles.length > 0) {
                     const imageBase64List = [];

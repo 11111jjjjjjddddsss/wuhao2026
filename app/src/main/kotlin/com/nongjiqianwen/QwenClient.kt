@@ -95,10 +95,13 @@ object QwenClient {
                     add("messages", messagesArray)
                 }
                 
-                // 强制校验请求结构并打印最终payload
+                // 强制校验请求结构并打印最终payload（脱敏）
                 val requestJsonString = requestBody.toString()
-                Log.d(TAG, "=== FINAL_REQUEST_JSON ===")
-                Log.d(TAG, requestJsonString)
+                Log.d(TAG, "=== FINAL_REQUEST_JSON（脱敏）===")
+                // 脱敏：隐藏API Key和完整URL
+                val maskedJson = requestJsonString
+                    .replace(Regex("\"url\":\\s*\"https://[^\"]+\""), "\"url\": \"https://***\"")
+                Log.d(TAG, maskedJson)
                 
                 // 验证请求结构（OpenAI 兼容格式）
                 val modelCheck = requestBody.get("model")?.asString

@@ -60,8 +60,8 @@ class MainActivity : AppCompatActivity() {
                 val hasImages = imageBase64ListJson != "null" && imageBase64ListJson.isNotBlank()
                 
                 if (hasImages && !hasText) {
-                    Log.e("MainActivity", "有图片但无文字，阻止发送")
-                    webView.evaluateJavascript("alert('图片必须带文字说明，请输入文字后再发送');", null)
+                    Log.d("MainActivity", "有图片但无文字，阻止发送")
+                    webView.evaluateJavascript("alert('请补充文字说明');", null)
                     return@runOnUiThread
                 }
                 
@@ -108,39 +108,32 @@ class MainActivity : AppCompatActivity() {
                         emptyList()
                     }
                     
-                    // 验证图片数量（最多4张）
-                    if (imageBase64List.size > 4) {
-                        runOnUiThread {
-                            isRequesting = false
-                            webView.evaluateJavascript("alert('最多只能选择4张图片');", null)
-                        }
-                        return@Thread
-                    }
+                    // 静默处理：最多4张（前端已限制，这里再次确保）
+                    val validImageList = imageBase64List.take(4)
                     
-                    if (imageBase64List.isEmpty()) {
+                    if (validImageList.isEmpty()) {
                         // 没有有效图片，按纯文本处理
                         sendToModel(text, emptyList())
                         return@Thread
                     }
                     
-                    Log.d("MainActivity", "开始处理 ${imageBase64List.size} 张图片")
+                    Log.d("MainActivity", "开始处理 ${validImageList.size} 张图片")
                     
                     // base64 → 压缩 → 上传
                     val imageBytesList = mutableListOf<ByteArray>()
-                    imageBase64List.forEachIndexed { index, base64 ->
+                    validImageList.forEachIndexed { index, base64 ->
                         try {
                             // base64解码
                             val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                             
-                            // 压缩图片
-                            val inputStream = ByteArrayInputStream(imageBytes)
-                            val compressedBytes = ImageUploader.compressImage(inputStream)
+                            // 压缩图片（EXIF矫正 + 缩放 + 压缩）
+                            val compressResult = ImageUploader.compressImage(imageBytes)
                             
-                            if (compressedBytes != null) {
-                                imageBytesList.add(compressedBytes)
-                                Log.d("MainActivity", "图片[$index] 压缩完成: ${compressedBytes.size} bytes")
+                            if (compressResult != null) {
+                                imageBytesList.add(compressResult.bytes)
+                                Log.d("MainActivity", "图片[$index] 处理完成: ${compressResult.originalWidth}x${compressResult.originalHeight} -> ${compressResult.compressedWidth}x${compressResult.compressedHeight}, ${compressResult.compressedSize} bytes")
                             } else {
-                                Log.e("MainActivity", "图片[$index] 压缩失败")
+                                Log.e("MainActivity", "图片[$index] 压缩失败，跳过")
                             }
                         } catch (e: Exception) {
                             Log.e("MainActivity", "处理图片[$index]失败", e)
@@ -148,10 +141,9 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                     if (imageBytesList.isEmpty()) {
-                        runOnUiThread {
-                            isRequesting = false
-                            webView.evaluateJavascript("alert('图片处理失败，请重试');", null)
-                        }
+                        // 静默失败：按纯文本处理，不暴露错误给前端
+                        Log.e("MainActivity", "所有图片处理失败，按纯文本发送")
+                        sendToModel(text, emptyList())
                         return@Thread
                     }
                     
@@ -159,21 +151,17 @@ class MainActivity : AppCompatActivity() {
                     val imageUrls = ImageUploader.uploadImages(imageBytesList)
                     
                     if (imageUrls == null || imageUrls.isEmpty()) {
-                        runOnUiThread {
-                            isRequesting = false
-                            webView.evaluateJavascript("alert('图片上传失败，请检查网络或配置');", null)
-                        }
+                        // 静默失败：按纯文本处理，不暴露错误给前端
+                        Log.e("MainActivity", "图片上传失败，按纯文本发送")
+                        sendToModel(text, emptyList())
                         return@Thread
                     }
                     
                     // 验证URL都是https
                     val validUrls = imageUrls.filter { it.startsWith("https://") }
                     if (validUrls.size != imageUrls.size) {
-                        Log.e("MainActivity", "部分图片URL不是https: $imageUrls")
-                        runOnUiThread {
-                            isRequesting = false
-                            webView.evaluateJavascript("alert('图片URL无效，请重试');", null)
-                        }
+                        Log.e("MainActivity", "部分图片URL不是https，按纯文本发送")
+                        sendToModel(text, emptyList())
                         return@Thread
                     }
                     
@@ -183,11 +171,9 @@ class MainActivity : AppCompatActivity() {
                     sendToModel(text, validUrls)
                     
                 } catch (e: Exception) {
+                    // 静默失败：按纯文本处理，不暴露错误给前端
                     Log.e("MainActivity", "处理图片失败", e)
-                    runOnUiThread {
-                        isRequesting = false
-                        webView.evaluateJavascript("alert('图片处理失败: ${e.message}');", null)
-                    }
+                    sendToModel(text, emptyList())
                 }
             }.start()
         }
