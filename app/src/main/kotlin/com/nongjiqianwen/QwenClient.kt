@@ -38,43 +38,21 @@ object QwenClient {
     }
     
     /**
-     * 调用通义千问 API（流式返回）
+     * 调用通义千问 API（非流式）
      * @param userMessage 用户输入的消息
-     * @param imageBase64List 图片Base64编码列表（可选）
-     * @param onChunk 流式输出回调，每次接收到数据块时调用
-     * @param onComplete 请求完成回调（可选），请求结束时调用
+     * @param imageUrlList 图片URL列表（可选，必须是公网可访问的URL）
+     * @param onChunk 回调函数，返回完整响应文本
+     * @param onComplete 请求完成回调（可选）
      */
     fun callApi(
         userMessage: String,
-        imageBase64List: List<String> = emptyList(),
+        imageUrlList: List<String> = emptyList(),
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null
     ) {
         Thread {
             try {
-                // 首次请求打印调试信息
-                if (isFirstRequest) {
-                    isFirstRequest = false
-                    Log.d(TAG, "=== 首次请求调试信息 ===")
-                    Log.d(TAG, "BAILIAN_API_KEY 长度: ${apiKey.length}")
-                    Log.d(TAG, "当前使用的 model: $model")
-                }
-                
-                // 构建多模态接口请求体
-                // qwen3-vl-flash 是多模态模型，必须使用 multimodal-generation 接口
-                // 支持两种 content 格式：
-                // 1. 纯文本：content 可以是字符串 "你好" 或数组 [{ "type": "text", "text": "你好" }]
-                // 2. 图文：content 必须是数组，包含 text 和 image_url 项
-                
-                // 第一步：严格验证输入参数
-                Log.d(TAG, "=== 请求参数验证（多模态接口）===")
-                Log.d(TAG, "userMessage: ${userMessage.take(50)}...")
-                Log.d(TAG, "imageBase64List.size: ${imageBase64List.size}")
-                if (imageBase64List.isNotEmpty()) {
-                    Log.d(TAG, "imageBase64List 第一项预览: ${imageBase64List[0].take(50)}...")
-                }
-                
-                // 构建请求体
+                // 构建请求体 - 严格按照指令规范
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
                     val inputObject = JsonObject().apply {
@@ -82,44 +60,21 @@ object QwenClient {
                         val userMessageObj = JsonObject().apply {
                             addProperty("role", "user")
                             
-                            // 判断是否有图片
-                            if (imageBase64List.isNotEmpty()) {
-                                // 有图片：content 必须是数组，包含 text 和 image_url
-                                val contentArray = com.google.gson.JsonArray()
-                                
-                                // 1. 添加文本项
-                                if (userMessage.isNotBlank()) {
-                                    val textItem = JsonObject().apply {
-                                        addProperty("type", "text")
-                                        addProperty("text", userMessage)
-                                    }
-                                    contentArray.add(textItem)
-                                    Log.d(TAG, "✅ 添加 text content item")
+                            // content 必须是数组格式
+                            val contentArray = com.google.gson.JsonArray()
+                            
+                            // 1. 添加文本项（纯文本时也必须用数组格式）
+                            if (userMessage.isNotBlank()) {
+                                val textItem = JsonObject().apply {
+                                    addProperty("type", "text")
+                                    addProperty("text", userMessage)
                                 }
-                                
-                                // 2. 处理图片项（多模态接口要求使用 image_url 格式）
-                                val validImageUrls = mutableListOf<String>()
-                                imageBase64List.forEachIndexed { index, base64 ->
-                                    if (base64.isNotBlank() && base64.length > 10) {
-                                        val imageUrl = if (base64.startsWith("data:image/")) {
-                                            base64
-                                        } else {
-                                            "data:image/jpeg;base64,$base64"
-                                        }
-                                        
-                                        if (imageUrl.startsWith("data:image/") && imageUrl.contains(";base64,")) {
-                                            validImageUrls.add(imageUrl)
-                                            Log.d(TAG, "图片项 $index 验证通过")
-                                        } else {
-                                            Log.w(TAG, "跳过无效的图片 URL 格式 (索引 $index): ${imageUrl.take(50)}...")
-                                        }
-                                    } else {
-                                        Log.w(TAG, "跳过无效的 base64 (索引 $index): 长度=${base64.length}")
-                                    }
-                                }
-                                
-                                // 添加图片项（使用 image_url 格式）
-                                validImageUrls.forEach { imageUrl ->
+                                contentArray.add(textItem)
+                            }
+                            
+                            // 2. 添加图片项（如果有图片URL）
+                            imageUrlList.forEach { imageUrl ->
+                                if (imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
                                     val imageItem = JsonObject().apply {
                                         addProperty("type", "image_url")
                                         val imageUrlObj = JsonObject().apply {
@@ -128,33 +83,21 @@ object QwenClient {
                                         add("image_url", imageUrlObj)
                                     }
                                     contentArray.add(imageItem)
-                                    Log.d(TAG, "✅ 添加 image_url content item")
                                 }
-                                
-                                add("content", contentArray)
-                                Log.d(TAG, "✅ 图文请求：使用 content 数组格式")
-                            } else {
-                                // 无图片：content 可以是字符串或数组（两种格式都支持）
-                                // 使用字符串格式（更简洁）
-                                addProperty("content", userMessage)
-                                Log.d(TAG, "✅ 纯文本请求：使用 content 字符串格式")
                             }
+                            
+                            add("content", contentArray)
                         }
                         messagesArray.add(userMessageObj)
                         add("messages", messagesArray)
                     }
                     add("input", inputObject)
-                    add("parameters", JsonObject().apply {
-                        addProperty("temperature", 0.85)
-                        addProperty("incremental_output", true)
-                    })
+                    // 不添加 parameters（非流式，不使用 incremental_output）
                 }
                 
-                // 输出最终 JSON 用于验证（完整打印）
+                // 必须的调试日志：FINAL_REQUEST_JSON
                 val requestJsonString = requestBody.toString()
-                Log.d(TAG, "=== 最终发送给 DashScope 的 HTTP Request Body JSON（完整原文字符串）===")
-                Log.d(TAG, requestJsonString)
-                Log.d(TAG, "=== 最终 JSON 打印结束 ===")
+                Log.d(TAG, "FINAL_REQUEST_JSON: $requestJsonString")
                 val request = Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
@@ -162,24 +105,22 @@ object QwenClient {
                     .post(requestJsonString.toRequestBody("application/json".toMediaType()))
                     .build()
                 
-                Log.d(TAG, "发送请求到: $apiUrl")
-                
-                // 执行请求（非流式调用）
+                // 执行请求（非流式）
                 val response = client.newCall(request).execute()
                 val statusCode = response.code
-                Log.d(TAG, "HTTP Status Code: $statusCode")
-                
                 val responseBody = response.body?.string() ?: ""
+                
+                // 必须的调试日志：FINAL_RESPONSE_JSON
+                Log.d(TAG, "FINAL_RESPONSE_JSON: $responseBody")
                 
                 if (response.isSuccessful) {
                     try {
                         val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
                         
-                        // 多模态接口非流式响应格式: { "output": { "choices": [{ "message": { "content": [...] } }] } }
+                        // 严格按照指令解析：output.choices[0].message.content
                         if (jsonResponse.has("output")) {
                             val output = jsonResponse.getAsJsonObject("output")
                             
-                            // 按照已验证方式解析：output.choices[0].message.content[]
                             if (output.has("choices") && output.getAsJsonArray("choices").size() > 0) {
                                 val choices = output.getAsJsonArray("choices")
                                 val firstChoice = choices[0].asJsonObject
@@ -190,14 +131,14 @@ object QwenClient {
                                     if (message.has("content")) {
                                         val content = message.get("content")
                                         
-                                        // 解析 content 中的完整文本
+                                        // 解析 content：字符串或数组
                                         val fullText = when {
                                             content.isJsonPrimitive && content.asJsonPrimitive.isString -> {
-                                                // 纯文本格式：content 是字符串
+                                                // content 是字符串
                                                 content.asString
                                             }
                                             content.isJsonArray -> {
-                                                // 多模态格式：content 是数组，需要找到 type=text 的项
+                                                // content 是数组，找到 type=text 的项
                                                 val contentArray = content.asJsonArray
                                                 contentArray.firstOrNull { item ->
                                                     item.isJsonObject && 
@@ -206,22 +147,19 @@ object QwenClient {
                                                 }?.asJsonObject?.get("text")?.asString ?: ""
                                             }
                                             else -> {
-                                                Log.w(TAG, "未知的 content 格式，完整响应: $responseBody")
+                                                Log.w(TAG, "未知的 content 格式")
                                                 ""
                                             }
                                         }
                                         
-                                        // 完整解析完成后立刻打印
-                                        Log.d("FINAL_TEXT", "len=${fullText.length}, text=${fullText}")
-                                        
-                                        // 返回完整文本字符串（后端不负责流式、不负责渲染）
+                                        // 返回完整文本
                                         handler.post {
                                             onChunk(fullText)
                                             onComplete?.invoke()
                                         }
                                         return@Thread
                                     } else {
-                                        Log.e(TAG, "message 中缺少 content 字段，完整响应: $responseBody")
+                                        Log.e(TAG, "message 中缺少 content 字段")
                                         handler.post {
                                             onChunk("响应格式错误：message 中缺少 content 字段")
                                             onComplete?.invoke()
@@ -229,7 +167,7 @@ object QwenClient {
                                         return@Thread
                                     }
                                 } else {
-                                    Log.e(TAG, "choice 中缺少 message 字段，完整响应: $responseBody")
+                                    Log.e(TAG, "choice 中缺少 message 字段")
                                     handler.post {
                                         onChunk("响应格式错误：choice 中缺少 message 字段")
                                         onComplete?.invoke()
@@ -237,7 +175,7 @@ object QwenClient {
                                     return@Thread
                                 }
                             } else {
-                                Log.e(TAG, "output 中缺少 choices 字段或 choices 为空，完整响应: $responseBody")
+                                Log.e(TAG, "output 中缺少 choices 字段或 choices 为空")
                                 handler.post {
                                     onChunk("响应格式错误：output 中缺少 choices 字段")
                                     onComplete?.invoke()
@@ -245,7 +183,7 @@ object QwenClient {
                                 return@Thread
                             }
                         } else {
-                            Log.e(TAG, "响应中缺少 output 字段，完整响应: $responseBody")
+                            Log.e(TAG, "响应中缺少 output 字段")
                             handler.post {
                                 onChunk("响应格式错误：缺少 output 字段")
                                 onComplete?.invoke()
@@ -261,10 +199,10 @@ object QwenClient {
                         }
                         return@Thread
                     }
-                    } else {
-                        // 处理错误响应
-                        handleErrorResponse(statusCode, responseBody, onChunk, onComplete)
-                    }
+                } else {
+                    // 处理错误响应
+                    handleErrorResponse(statusCode, responseBody, onChunk, onComplete)
+                }
             } catch (e: IOException) {
                 Log.e(TAG, "网络请求失败", e)
                 val errorMsg = when {
@@ -287,9 +225,6 @@ object QwenClient {
                     onChunk("请求失败: ${e.message}")
                     onComplete?.invoke()
                 }
-            } finally {
-                // 确保无论成功失败都通知完成（作为最后保障）
-                // 注意：由于异步流式返回，主要依赖各分支的 onComplete 调用
             }
         }.start()
     }

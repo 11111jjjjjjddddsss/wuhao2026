@@ -11,19 +11,19 @@ object ModelService {
     private val handler = Handler(Looper.getMainLooper())
     
     /**
-     * 获取模型回复
+     * 获取模型回复（非流式）
      * @param userMessage 用户输入的消息
-     * @param imageBase64List 图片Base64编码列表（可选）
-     * @param onChunk 流式输出回调，每次接收到数据块时调用
+     * @param imageUrlList 图片URL列表（可选，必须是公网可访问的URL）
+     * @param onChunk 回调函数，返回完整响应文本
      * @param onComplete 请求完成回调（可选），请求结束时调用
      */
     fun getReply(
         userMessage: String,
-        imageBase64List: List<String> = emptyList(),
+        imageUrlList: List<String> = emptyList(),
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null
     ) {
-        // 直接调用 QwenClient，它内部会处理流式返回
-        QwenClient.callApi(userMessage, imageBase64List, onChunk, onComplete)
+        // 直接调用 QwenClient
+        QwenClient.callApi(userMessage, imageUrlList, onChunk, onComplete)
     }
 }

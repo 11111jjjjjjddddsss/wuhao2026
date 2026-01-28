@@ -43,53 +43,38 @@ class MainActivity : AppCompatActivity() {
      */
     inner class AndroidJSInterface {
         @JavascriptInterface
-        fun sendMessage(text: String, imageBase64ListJson: String) {
+        fun sendMessage(text: String, imageUrlListJson: String) {
             runOnUiThread {
                 if (isRequesting) return@runOnUiThread
                 
-                // 解析图片Base64列表
-                // 无图时传递 null，确保 images 字段不存在
-                // 严格校验：每一项必须非空且长度合理
-                val imageBase64List = try {
-                    if (imageBase64ListJson == "null" || imageBase64ListJson.isBlank()) {
-                        android.util.Log.d("MainActivity", "收到 null 或空字符串，返回空列表")
+                // 解析图片URL列表（必须是公网可访问的URL）
+                val imageUrlList = try {
+                    if (imageUrlListJson == "null" || imageUrlListJson.isBlank()) {
                         emptyList()
                     } else {
-                        val jsonElement = com.google.gson.JsonParser().parse(imageBase64ListJson)
+                        val jsonElement = com.google.gson.JsonParser().parse(imageUrlListJson)
                         if (jsonElement.isJsonNull) {
-                            android.util.Log.d("MainActivity", "JSON 为 null，返回空列表")
                             emptyList()
                         } else {
                             val jsonArray = jsonElement.asJsonArray
-                            // 严格过滤：只保留非空且长度合理的 base64 字符串
-                            val filteredList = jsonArray.mapNotNull { element ->
-                                val base64 = element.asString
-                                // 校验：非空、长度合理（至少 10 字符）、不包含非法字符
-                                if (base64.isNotBlank() && 
-                                    base64.length >= 10 && 
-                                    !base64.contains("content://") && 
-                                    !base64.contains("file://")) {
-                                    base64
+                            // 只保留有效的HTTP/HTTPS URL
+                            jsonArray.mapNotNull { element ->
+                                val url = element.asString
+                                if (url.isNotBlank() && (url.startsWith("http://") || url.startsWith("https://"))) {
+                                    url
                                 } else {
                                     null
                                 }
                             }
-                            // 如果过滤后为空，返回空列表（等同于无图）
-                            if (filteredList.isEmpty()) {
-                                android.util.Log.d("MainActivity", "过滤后图片列表为空，返回空列表")
-                            } else {
-                                android.util.Log.d("MainActivity", "有效图片数量: ${filteredList.size}")
-                            }
-                            filteredList
                         }
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("MainActivity", "解析图片列表失败", e)
+                    android.util.Log.e("MainActivity", "解析图片URL列表失败", e)
                     emptyList()
                 }
                 
                 // 检查是否有输入
-                val hasInput = text.isNotBlank() || imageBase64List.isNotEmpty()
+                val hasInput = text.isNotBlank() || imageUrlList.isNotEmpty()
                 if (!hasInput) return@runOnUiThread
                 
                 // 设置请求状态
@@ -98,7 +83,7 @@ class MainActivity : AppCompatActivity() {
                 // 发送请求
                 ModelService.getReply(
                     userMessage = text,
-                    imageBase64List = imageBase64List,
+                    imageUrlList = imageUrlList,
                     onChunk = { chunk ->
                         runOnUiThread {
                             // 调用JavaScript函数，传递chunk（转义特殊字符）
