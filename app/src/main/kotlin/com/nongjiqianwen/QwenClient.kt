@@ -23,7 +23,7 @@ object QwenClient {
         .build()
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
-    private val apiUrl = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
+    private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     private val model = "qwen3-vl-flash"
     private val handler = Handler(Looper.getMainLooper())
     private var isFirstRequest = true
@@ -52,47 +52,45 @@ object QwenClient {
     ) {
         Thread {
             try {
-                // 构建请求体 - 严格按照指令规范
+                // 构建请求体 - OpenAI 兼容格式
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
-                    val inputObject = JsonObject().apply {
-                        val messagesArray = com.google.gson.JsonArray()
-                        val userMessageObj = JsonObject().apply {
-                            addProperty("role", "user")
-                            
-                            // content 必须是数组格式
-                            val contentArray = com.google.gson.JsonArray()
-                            
-                            // 1. 添加文本项（纯文本时也必须用数组格式）
-                            if (userMessage.isNotBlank()) {
-                                val textItem = JsonObject().apply {
-                                    addProperty("type", "text")
-                                    addProperty("text", userMessage)
-                                }
-                                contentArray.add(textItem)
+                    addProperty("stream", false)
+                    
+                    val messagesArray = com.google.gson.JsonArray()
+                    val userMessageObj = JsonObject().apply {
+                        addProperty("role", "user")
+                        
+                        // content 必须是数组格式
+                        val contentArray = com.google.gson.JsonArray()
+                        
+                        // 1. 添加文本项
+                        if (userMessage.isNotBlank()) {
+                            val textItem = JsonObject().apply {
+                                addProperty("type", "text")
+                                addProperty("text", userMessage)
                             }
-                            
-                            // 2. 添加图片项（如果有图片URL）
-                            imageUrlList.forEach { imageUrl ->
-                                if (imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
-                                    val imageItem = JsonObject().apply {
-                                        addProperty("type", "image_url")
-                                        val imageUrlObj = JsonObject().apply {
-                                            addProperty("url", imageUrl)
-                                        }
-                                        add("image_url", imageUrlObj)
-                                    }
-                                    contentArray.add(imageItem)
-                                }
-                            }
-                            
-                            add("content", contentArray)
+                            contentArray.add(textItem)
                         }
-                        messagesArray.add(userMessageObj)
-                        add("messages", messagesArray)
+                        
+                        // 2. 添加图片项（如果有图片URL）
+                        imageUrlList.forEach { imageUrl ->
+                            if (imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+                                val imageItem = JsonObject().apply {
+                                    addProperty("type", "image_url")
+                                    val imageUrlObj = JsonObject().apply {
+                                        addProperty("url", imageUrl)
+                                    }
+                                    add("image_url", imageUrlObj)
+                                }
+                                contentArray.add(imageItem)
+                            }
+                        }
+                        
+                        add("content", contentArray)
                     }
-                    add("input", inputObject)
-                    // 不添加 parameters（非流式，不使用 incremental_output）
+                    messagesArray.add(userMessageObj)
+                    add("messages", messagesArray)
                 }
                 
                 // 强制校验请求结构
@@ -100,16 +98,17 @@ object QwenClient {
                 Log.d(TAG, "=== FINAL_REQUEST_JSON ===")
                 Log.d(TAG, requestJsonString)
                 
-                // 验证请求结构
+                // 验证请求结构（OpenAI 兼容格式）
                 val modelCheck = requestBody.get("model")?.asString
-                val inputCheck = requestBody.getAsJsonObject("input")
-                val messagesCheck = inputCheck?.getAsJsonArray("messages")
+                val streamCheck = requestBody.get("stream")?.asBoolean
+                val messagesCheck = requestBody.getAsJsonArray("messages")
                 val firstMessage = messagesCheck?.get(0)?.asJsonObject
                 val contentCheck = firstMessage?.getAsJsonArray("content")
                 
-                Log.d(TAG, "=== 请求结构验证 ===")
+                Log.d(TAG, "=== 请求结构验证（OpenAI兼容格式）===")
                 Log.d(TAG, "model: $modelCheck")
-                Log.d(TAG, "input.messages 是数组: ${messagesCheck != null}")
+                Log.d(TAG, "stream: $streamCheck")
+                Log.d(TAG, "messages 是数组: ${messagesCheck != null}")
                 Log.d(TAG, "messages[0].content 是数组: ${contentCheck != null}")
                 if (contentCheck != null) {
                     Log.d(TAG, "content 数组大小: ${contentCheck.size()}")
@@ -145,120 +144,67 @@ object QwenClient {
                     try {
                         val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
                         
-                        // 严格按照指令解析：output.choices[0].message.content
-                        if (jsonResponse.has("output")) {
-                            val output = jsonResponse.getAsJsonObject("output")
+                        // OpenAI 兼容格式解析：choices[0].message.content（字符串）
+                        if (jsonResponse.has("choices") && jsonResponse.getAsJsonArray("choices").size() > 0) {
+                            val choices = jsonResponse.getAsJsonArray("choices")
+                            val firstChoice = choices[0].asJsonObject
                             
-                            if (output.has("choices") && output.getAsJsonArray("choices").size() > 0) {
-                                val choices = output.getAsJsonArray("choices")
-                                val firstChoice = choices[0].asJsonObject
+                            if (firstChoice.has("message")) {
+                                val message = firstChoice.getAsJsonObject("message")
                                 
-                                if (firstChoice.has("message")) {
-                                    val message = firstChoice.getAsJsonObject("message")
+                                if (message.has("content")) {
+                                    val content = message.get("content")
                                     
-                                    if (message.has("content")) {
-                                        val content = message.get("content")
-                                        
-                                        Log.d(TAG, "=== 开始解析 content ===")
-                                        Log.d(TAG, "content 类型: ${if (content.isJsonPrimitive) "Primitive" else if (content.isJsonArray) "Array" else "Other"}")
-                                        
-                                        // 解析 content：字符串或数组（强制兜底）
-                                        val fullText = when {
-                                            content.isJsonPrimitive && content.asJsonPrimitive.isString -> {
-                                                // content 是字符串
-                                                val text = content.asString
-                                                Log.d(TAG, "content 是字符串，长度: ${text.length}")
-                                                text
-                                            }
-                                            content.isJsonArray -> {
-                                                // content 是数组，提取所有 type=text 的项并join
-                                                val contentArray = content.asJsonArray
-                                                Log.d(TAG, "content 是数组，大小: ${contentArray.size()}")
-                                                
-                                                // 打印完整content数组用于调试
-                                                Log.d(TAG, "完整 content 数组: $contentArray")
-                                                
-                                                // 提取所有text项
-                                                val textItems = mutableListOf<String>()
-                                                contentArray.forEachIndexed { index, element ->
-                                                    if (element.isJsonObject) {
-                                                        val item = element.asJsonObject
-                                                        val type = item.get("type")?.asString
-                                                        Log.d(TAG, "content[$index]: type=$type")
-                                                        
-                                                        if (type == "text" && item.has("text")) {
-                                                            val text = item.get("text")?.asString
-                                                            if (text != null && text.isNotBlank()) {
-                                                                textItems.add(text)
-                                                                Log.d(TAG, "找到 text 项[$index]: ${text.take(50)}...")
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                
-                                                val joinedText = textItems.joinToString("")
-                                                Log.d(TAG, "提取的 text 项数量: ${textItems.size}, 总长度: ${joinedText.length}")
-                                                
-                                                if (joinedText.isBlank()) {
-                                                    // 若仍为空，直接抛出明确错误
-                                                    Log.e(TAG, "解析失败：content数组中没有有效的text项")
-                                                    Log.e(TAG, "完整 content 数组内容: $contentArray")
-                                                    throw Exception("响应解析失败：content数组中无有效text，完整content=$contentArray")
-                                                }
-                                                
-                                                joinedText
-                                            }
-                                            else -> {
-                                                // 未知格式，直接抛出错误
-                                                Log.e(TAG, "未知的 content 格式: $content")
-                                                throw Exception("响应解析失败：未知的content格式，content=$content")
-                                            }
-                                        }
-                                        
-                                        // 最终验证：fullText不允许为空
-                                        if (fullText.isBlank()) {
-                                            Log.e(TAG, "最终解析结果为空，抛出错误")
-                                            throw Exception("响应解析失败：fullText为空，请检查响应结构")
-                                        }
-                                        
-                                        Log.d(TAG, "=== 解析成功 ===")
-                                        Log.d(TAG, "FINAL_TEXT 长度: ${fullText.length}")
-                                        Log.d(TAG, "FINAL_TEXT 预览: ${fullText.take(100)}...")
-                                        
-                                        // 返回完整文本
-                                        handler.post {
-                                            onChunk(fullText)
-                                            onComplete?.invoke()
-                                        }
-                                        return@Thread
+                                    Log.d(TAG, "=== 开始解析 content（OpenAI兼容格式）===")
+                                    Log.d(TAG, "content 类型: ${if (content.isJsonPrimitive) "Primitive" else if (content.isJsonArray) "Array" else "Other"}")
+                                    
+                                    // OpenAI 兼容接口：content 是字符串
+                                    val fullText = if (content.isJsonPrimitive && content.asJsonPrimitive.isString) {
+                                        val text = content.asString
+                                        Log.d(TAG, "content 是字符串，长度: ${text.length}")
+                                        text
                                     } else {
-                                        Log.e(TAG, "message 中缺少 content 字段，完整message: $message")
-                                        handler.post {
-                                            onChunk("响应格式错误：message 中缺少 content 字段，完整响应: $responseBody")
-                                            onComplete?.invoke()
-                                        }
-                                        return@Thread
+                                        // 如果不是字符串，打印完整内容并抛出错误
+                                        Log.e(TAG, "content 不是字符串格式: $content")
+                                        throw Exception("响应解析失败：content不是字符串格式，content=$content")
                                     }
-                                } else {
-                                    Log.e(TAG, "choice 中缺少 message 字段，完整choice: $firstChoice")
+                                    
+                                    // 最终验证：fullText不允许为空
+                                    if (fullText.isBlank()) {
+                                        Log.e(TAG, "最终解析结果为空，抛出错误")
+                                        throw Exception("响应解析失败：fullText为空，请检查响应结构")
+                                    }
+                                    
+                                    Log.d(TAG, "=== 解析成功 ===")
+                                    Log.d(TAG, "FINAL_TEXT 长度: ${fullText.length}")
+                                    Log.d(TAG, "FINAL_TEXT 预览: ${fullText.take(100)}...")
+                                    
+                                    // 返回完整文本
                                     handler.post {
-                                        onChunk("响应格式错误：choice 中缺少 message 字段，完整响应: $responseBody")
+                                        onChunk(fullText)
+                                        onComplete?.invoke()
+                                    }
+                                    return@Thread
+                                } else {
+                                    Log.e(TAG, "message 中缺少 content 字段，完整message: $message")
+                                    handler.post {
+                                        onChunk("响应格式错误：message 中缺少 content 字段，完整响应: $responseBody")
                                         onComplete?.invoke()
                                     }
                                     return@Thread
                                 }
                             } else {
-                                Log.e(TAG, "output 中缺少 choices 字段或 choices 为空，完整output: $output")
+                                Log.e(TAG, "choice 中缺少 message 字段，完整choice: $firstChoice")
                                 handler.post {
-                                    onChunk("响应格式错误：output 中缺少 choices 字段，完整响应: $responseBody")
+                                    onChunk("响应格式错误：choice 中缺少 message 字段，完整响应: $responseBody")
                                     onComplete?.invoke()
                                 }
                                 return@Thread
                             }
                         } else {
-                            Log.e(TAG, "响应中缺少 output 字段，完整响应: $responseBody")
+                            Log.e(TAG, "响应中缺少 choices 字段或 choices 为空，完整响应: $responseBody")
                             handler.post {
-                                onChunk("响应格式错误：缺少 output 字段，完整响应: $responseBody")
+                                onChunk("响应格式错误：缺少 choices 字段，完整响应: $responseBody")
                                 onComplete?.invoke()
                             }
                             return@Thread
