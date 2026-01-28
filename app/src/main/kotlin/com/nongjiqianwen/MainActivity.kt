@@ -50,14 +50,81 @@ class MainActivity : AppCompatActivity() {
      * JavaScript接口，用于WebView与Android通信
      */
     inner class AndroidJSInterface {
+        /**
+         * 上传图片（逐张上传，回传状态）
+         * @param imageDataListJson JSON数组：[{imageId: "img_xxx", base64: "..."}, ...]
+         */
         @JavascriptInterface
-        fun sendMessage(text: String, imageBase64ListJson: String) {
+        fun uploadImages(imageDataListJson: String) {
+            Thread {
+                try {
+                    // 解析图片数据列表
+                    val imageDataList = try {
+                        val jsonElement = com.google.gson.JsonParser().parse(imageDataListJson)
+                        if (jsonElement.isJsonNull) {
+                            emptyList()
+                        } else {
+                            val jsonArray = jsonElement.asJsonArray
+                            jsonArray.mapNotNull { element ->
+                                val obj = element.asJsonObject
+                                val imageId = obj.get("imageId")?.asString
+                                val base64 = obj.get("base64")?.asString
+                                if (imageId != null && base64 != null && base64.isNotBlank()) {
+                                    Pair(imageId, base64)
+                                } else {
+                                    null
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "解析图片数据列表失败", e)
+                        emptyList()
+                    }
+                    
+                    // 验证：最多4张
+                    if (imageDataList.size > 4) {
+                        runOnUiThread {
+                            webView.evaluateJavascript("alert('最多选择4张图片');", null)
+                        }
+                        return@Thread
+                    }
+                    
+                    // 逐张上传
+                    imageDataList.forEach { (imageId, base64) ->
+                        uploadSingleImage(imageId, base64)
+                    }
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "上传图片失败", e)
+                }
+            }.start()
+        }
+        
+        /**
+         * 重试单张图片上传
+         * @param imageId 图片ID
+         * @param base64 图片base64（前端重新传递）
+         */
+        @JavascriptInterface
+        fun retryImage(imageId: String, base64: String) {
+            Thread {
+                Log.d("MainActivity", "重试图片上传: $imageId")
+                uploadSingleImage(imageId, base64)
+            }.start()
+        }
+        
+        /**
+         * 发送消息（此时图片已上传成功，传入的是URL列表）
+         * @param text 用户文字
+         * @param imageUrlsJson JSON数组：["https://...", ...] 或 "null"
+         */
+        @JavascriptInterface
+        fun sendMessage(text: String, imageUrlsJson: String) {
             runOnUiThread {
                 if (isRequesting) return@runOnUiThread
                 
                 // 验证：有图必须有文字
                 val hasText = text.isNotBlank()
-                val hasImages = imageBase64ListJson != "null" && imageBase64ListJson.isNotBlank()
+                val hasImages = imageUrlsJson != "null" && imageUrlsJson.isNotBlank()
                 
                 if (hasImages && !hasText) {
                     Log.d("MainActivity", "有图片但无文字，阻止发送")
@@ -71,113 +138,111 @@ class MainActivity : AppCompatActivity() {
                 // 设置请求状态
                 isRequesting = true
                 
-                // 处理图片：base64 → 压缩 → 上传 → 获取URL
-                if (hasImages) {
-                    processImagesAndSend(text, imageBase64ListJson)
-                } else {
-                    // 纯文本，直接发送
-                    sendToModel(text, emptyList())
-                }
-            }
-        }
-        
-        /**
-         * 处理图片：解析base64 → 压缩 → 上传 → 获取URL → 发送模型请求
-         */
-        private fun processImagesAndSend(text: String, imageBase64ListJson: String) {
-            Thread {
-                try {
-                    // 解析base64列表
-                    val imageBase64List = try {
-                        val jsonElement = com.google.gson.JsonParser().parse(imageBase64ListJson)
+                // 解析图片URL列表
+                val imageUrlList = if (hasImages) {
+                    try {
+                        val jsonElement = com.google.gson.JsonParser().parse(imageUrlsJson)
                         if (jsonElement.isJsonNull) {
                             emptyList()
                         } else {
                             val jsonArray = jsonElement.asJsonArray
                             jsonArray.mapNotNull { element ->
-                                val base64 = element.asString
-                                if (base64.isNotBlank() && base64.length > 10) {
-                                    base64
+                                val url = element.asString
+                                if (url.isNotBlank() && url.startsWith("https://")) {
+                                    url
                                 } else {
                                     null
                                 }
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("MainActivity", "解析图片base64列表失败", e)
+                        Log.e("MainActivity", "解析图片URL列表失败", e)
                         emptyList()
                     }
-                    
-                    // 静默处理：最多4张（前端已限制，这里再次确保）
-                    val validImageList = imageBase64List.take(4)
-                    
-                    if (validImageList.isEmpty()) {
-                        // 没有有效图片，按纯文本处理
-                        sendToModel(text, emptyList())
-                        return@Thread
+                } else {
+                    emptyList()
+                }
+                
+                // 发送模型请求
+                sendToModel(text, imageUrlList)
+            }
+        }
+        
+        /**
+         * 上传单张图片（逐张处理）
+         */
+        private fun uploadSingleImage(imageId: String, base64: String) {
+            Thread {
+                try {
+                    // 回传：开始上传
+                    runOnUiThread {
+                        val escapedImageId = imageId.replace("'", "\\'")
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null);", null)
                     }
                     
-                    Log.d("MainActivity", "开始处理 ${validImageList.size} 张图片")
+                    // base64解码
+                    val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // base64 → 压缩 → 上传
-                    val imageBytesList = mutableListOf<ByteArray>()
-                    validImageList.forEachIndexed { index, base64 ->
-                        try {
-                            // base64解码
-                            val imageBytes = Base64.decode(base64, Base64.DEFAULT)
-                            
-                            // 压缩图片（EXIF矫正 + 缩放 + 压缩）
-                            val compressResult = ImageUploader.compressImage(imageBytes)
-                            
-                            if (compressResult != null) {
-                                imageBytesList.add(compressResult.bytes)
-                                Log.d("MainActivity", "图片[$index] 处理完成: ${compressResult.originalWidth}x${compressResult.originalHeight} -> ${compressResult.compressedWidth}x${compressResult.compressedHeight}, ${compressResult.compressedSize} bytes")
-                            } else {
-                                Log.e("MainActivity", "图片[$index] 压缩失败，跳过")
-                            }
-                        } catch (e: Exception) {
-                            Log.e("MainActivity", "处理图片[$index]失败", e)
+                    // 压缩图片（EXIF矫正 + 缩放 + 压缩）
+                    val compressResult = ImageUploader.compressImage(imageBytes)
+                    
+                    if (compressResult == null) {
+                        Log.e("MainActivity", "图片[$imageId] 压缩失败")
+                        runOnUiThread {
+                            val escapedImageId = imageId.replace("'", "\\'")
+                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null);", null)
                         }
-                    }
-                    
-                    if (imageBytesList.isEmpty()) {
-                        // 静默失败：按纯文本处理，不暴露错误给前端
-                        Log.e("MainActivity", "所有图片处理失败，按纯文本发送")
-                        sendToModel(text, emptyList())
                         return@Thread
                     }
                     
-                    // 上传图片（并发上传，等待全部完成）
-                    val imageUrls = ImageUploader.uploadImages(imageBytesList)
+                    Log.d("MainActivity", "=== 图片[$imageId] 处理完成 ===")
+                    Log.d("MainActivity", "原图尺寸: ${compressResult.originalWidth}x${compressResult.originalHeight}")
+                    Log.d("MainActivity", "压缩后尺寸: ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
+                    Log.d("MainActivity", "压缩后字节数: ${compressResult.compressedSize} bytes")
                     
-                    if (imageUrls == null || imageUrls.isEmpty()) {
-                        // 静默失败：按纯文本处理，不暴露错误给前端
-                        Log.e("MainActivity", "图片上传失败，按纯文本发送")
-                        sendToModel(text, emptyList())
-                        return@Thread
-                    }
+                    // 上传图片
+                    var uploadSuccess = false
+                    var uploadedUrl: String? = null
                     
-                    // 验证URL都是https
-                    val validUrls = imageUrls.filter { it.startsWith("https://") }
-                    if (validUrls.size != imageUrls.size) {
-                        Log.e("MainActivity", "部分图片URL不是https，按纯文本发送")
-                        sendToModel(text, emptyList())
-                        return@Thread
-                    }
-                    
-                    Log.d("MainActivity", "图片处理完成，获取到 ${validUrls.size} 个URL")
-                    
-                    // 发送模型请求
-                    sendToModel(text, validUrls)
+                    ImageUploader.uploadImage(
+                        imageBytes = compressResult.bytes,
+                        onSuccess = { url ->
+                            uploadSuccess = true
+                            uploadedUrl = url
+                            Log.d("MainActivity", "=== 图片[$imageId] 上传成功 ===")
+                            // 脱敏：只显示域名
+                            val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
+                            Log.d("MainActivity", "上传URL（脱敏）: $maskedUrl")
+                            
+                            // 回传：上传成功
+                            runOnUiThread {
+                                val escapedImageId = imageId.replace("'", "\\'")
+                                val escapedUrl = url.replace("'", "\\'").replace("\\", "\\\\")
+                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'success', '$escapedUrl');", null)
+                            }
+                        },
+                        onError = { error ->
+                            Log.e("MainActivity", "=== 图片[$imageId] 上传失败 ===")
+                            Log.e("MainActivity", "错误原因: $error")
+                            Log.e("MainActivity", "HTTP状态码: 未配置（OSS接口未配置）")
+                            
+                            // 回传：上传失败
+                            runOnUiThread {
+                                val escapedImageId = imageId.replace("'", "\\'")
+                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null);", null)
+                            }
+                        }
+                    )
                     
                 } catch (e: Exception) {
-                    // 静默失败：按纯文本处理，不暴露错误给前端
-                    Log.e("MainActivity", "处理图片失败", e)
-                    sendToModel(text, emptyList())
+                    Log.e("MainActivity", "处理图片[$imageId]失败", e)
+                    runOnUiThread {
+                        val escapedImageId = imageId.replace("'", "\\'")
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null);", null)
+                    }
                 }
             }.start()
         }
-        
         /**
          * 发送模型请求
          */

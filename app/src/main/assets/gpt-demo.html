@@ -69,6 +69,107 @@
             border-radius: 4px;
         }
 
+        .image-preview-container {
+            padding: 8px 12px;
+            background-color: #f9f9f9;
+            border-top: 1px solid rgba(0, 0, 0, 0.08);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        .image-preview-item {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #e0e0e0;
+            flex-shrink: 0;
+        }
+
+        .image-preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .image-status-overlay {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 0 0 0 8px;
+        }
+
+        .image-status-uploading {
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .image-status-success {
+            color: #4caf50;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .image-status-fail {
+            color: #f44336;
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .image-actions {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            gap: 4px;
+            padding: 4px;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+        }
+
+        .image-action-btn {
+            flex: 1;
+            padding: 4px 8px;
+            border: none;
+            border-radius: 4px;
+            background-color: rgba(255, 255, 255, 0.9);
+            color: #111;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .image-action-btn:hover {
+            background-color: rgba(255, 255, 255, 1);
+        }
+
+        .image-action-btn.delete {
+            background-color: rgba(244, 67, 54, 0.9);
+            color: white;
+        }
+
+        .image-action-btn.delete:hover {
+            background-color: rgba(244, 67, 54, 1);
+        }
+
         .input-container {
             position: sticky;
             bottom: 0;
@@ -77,8 +178,8 @@
             padding: 10px 12px;
             padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
             display: flex;
-            align-items: flex-end;
-            gap: 8px;
+            flex-direction: column;
+            gap: 0;
         }
 
         .input-wrapper {
@@ -202,6 +303,7 @@
     </div>
 
     <div class="input-container">
+        <div id="imagePreviewContainer" class="image-preview-container" style="display: none;"></div>
         <div class="input-wrapper">
             <input type="file" id="fileInput" class="file-input" accept="image/*" multiple>
             <button class="add-button" id="addButton" title="上传图片">+</button>
@@ -225,13 +327,20 @@
         const sendButton = document.getElementById('sendButton');
         const fileInput = document.getElementById('fileInput');
         const addButton = document.getElementById('addButton');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
 
         let isGenerating = false;
+        
+        // 图片状态管理
+        const imageState = new Map(); // imageId -> {file, base64, status, url, element}
 
         // Android 接口对象（由 WebView 注入）
         const AndroidInterface = window.AndroidInterface || {
-            sendMessage: function(text, imageBase64List) {
-                console.log('AndroidInterface.sendMessage called', text, imageBase64List);
+            uploadImages: function(imageDataListJson) {
+                console.log('AndroidInterface.uploadImages called', imageDataListJson);
+            },
+            retryImage: function(imageId) {
+                console.log('AndroidInterface.retryImage called', imageId);
             }
         };
 
@@ -243,33 +352,37 @@
         });
 
         // 更新发送按钮状态
-        // 规则：图片必须带文字
-        // - 有文字无图片：启用
-        // - 有文字有图片：启用
-        // - 无文字有图片：禁用（图片必须带文字）
-        // - 无文字无图片：禁用
+        // 规则：
+        // - 无文字：禁用
+        // - 有文字无图：可发送
+        // - 有文字有图：只有当全部为Success才可发送（存在Uploading或Fail时禁用）
         function updateSendButton() {
             const hasText = textInput.value.trim().length > 0;
-            const hasFiles = fileInput.files.length > 0;
+            const hasImages = imageState.size > 0;
             
-            // 检查是否有有效图片
-            let hasValidImage = false;
-            if (hasFiles) {
-                for (let i = 0; i < fileInput.files.length; i++) {
-                    if (fileInput.files[i].type.startsWith('image/')) {
-                        hasValidImage = true;
-                        break;
-                    }
+            if (!hasText) {
+                sendButton.disabled = true;
+                return;
+            }
+            
+            if (!hasImages) {
+                sendButton.disabled = false;
+                return;
+            }
+            
+            // 有文字有图：检查所有图片状态
+            let hasUploading = false;
+            let hasFail = false;
+            for (const [imageId, state] of imageState) {
+                if (state.status === 'uploading') {
+                    hasUploading = true;
+                } else if (state.status === 'fail') {
+                    hasFail = true;
                 }
             }
             
-            // 如果有图片但无文字，禁用按钮
-            if (hasValidImage && !hasText) {
-                sendButton.disabled = true;
-            } else {
-                // 其他情况：有文字即可启用（无论是否有图片）
-                sendButton.disabled = !hasText;
-            }
+            // 只要有Uploading或Fail，就禁用发送
+            sendButton.disabled = hasUploading || hasFail;
         }
 
         // 文件选择
@@ -278,28 +391,166 @@
         });
 
         fileInput.addEventListener('change', () => {
-            // 静默限制：超过4张图直接阻止选择
             const files = fileInput.files;
             const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-            if (imageFiles.length > 4) {
-                // 静默处理：只保留前4张
-                const dt = new DataTransfer();
-                let imageCount = 0;
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    if (file.type.startsWith('image/')) {
-                        if (imageCount < 4) {
-                            dt.items.add(file);
-                            imageCount++;
-                        }
-                    } else {
-                        dt.items.add(file);
-                    }
-                }
-                fileInput.files = dt.files;
+            
+            // 检查已选图片数量
+            const currentImageCount = imageState.size;
+            const remainingSlots = 4 - currentImageCount;
+            
+            if (imageFiles.length > remainingSlots) {
+                // 超过限制，提示并取消选择
+                alert('最多选择4张图片');
+                fileInput.value = '';
+                return;
             }
+            
+            // 添加新图片
+            imageFiles.forEach((file) => {
+                const imageId = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                addImagePreview(imageId, file);
+            });
+            
+            // 清空fileInput，允许重复选择同一文件
+            fileInput.value = '';
             updateSendButton();
         });
+        
+        // 添加图片预览
+        function addImagePreview(imageId, file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64 = e.target.result.split(',')[1];
+                
+                // 创建预览元素
+                const previewItem = document.createElement('div');
+                previewItem.className = 'image-preview-item';
+                previewItem.dataset.imageId = imageId;
+                
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                
+                const statusOverlay = document.createElement('div');
+                statusOverlay.className = 'image-status-overlay';
+                const statusIcon = document.createElement('div');
+                statusIcon.className = 'image-status-uploading';
+                statusOverlay.appendChild(statusIcon);
+                
+                const actions = document.createElement('div');
+                actions.className = 'image-actions';
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'image-action-btn delete';
+                deleteBtn.textContent = '删除';
+                deleteBtn.onclick = () => removeImage(imageId);
+                actions.appendChild(deleteBtn);
+                
+                previewItem.appendChild(img);
+                previewItem.appendChild(statusOverlay);
+                previewItem.appendChild(actions);
+                
+                imagePreviewContainer.appendChild(previewItem);
+                imagePreviewContainer.style.display = 'flex';
+                
+                // 保存状态
+                imageState.set(imageId, {
+                    file: file,
+                    base64: base64,
+                    status: 'uploading',
+                    url: null,
+                    element: previewItem
+                });
+                
+                // 开始上传
+                uploadImage(imageId, base64);
+            };
+            reader.readAsDataURL(file);
+        }
+        
+        // 上传图片
+        function uploadImage(imageId, base64) {
+            const imageData = {
+                imageId: imageId,
+                base64: base64
+            };
+            const imageDataList = [imageData];
+            AndroidInterface.uploadImages(JSON.stringify(imageDataList));
+        }
+        
+        // 更新图片状态
+        function updateImageStatus(imageId, status, url) {
+            const state = imageState.get(imageId);
+            if (!state) return;
+            
+            state.status = status;
+            if (url) {
+                state.url = url;
+            }
+            
+            const statusOverlay = state.element.querySelector('.image-status-overlay');
+            statusOverlay.innerHTML = '';
+            
+            if (status === 'uploading') {
+                const spinner = document.createElement('div');
+                spinner.className = 'image-status-uploading';
+                statusOverlay.appendChild(spinner);
+            } else if (status === 'success') {
+                const checkmark = document.createElement('div');
+                checkmark.className = 'image-status-success';
+                checkmark.textContent = '✓';
+                statusOverlay.appendChild(checkmark);
+                
+                // 移除重试按钮（如果存在）
+                const retryBtn = state.element.querySelector('.retry');
+                if (retryBtn) retryBtn.remove();
+            } else if (status === 'fail') {
+                const failIcon = document.createElement('div');
+                failIcon.className = 'image-status-fail';
+                failIcon.textContent = '✗';
+                statusOverlay.appendChild(failIcon);
+                
+                // 添加重试按钮
+                const actions = state.element.querySelector('.image-actions');
+                if (!actions.querySelector('.retry')) {
+                    const retryBtn = document.createElement('button');
+                    retryBtn.className = 'image-action-btn retry';
+                    retryBtn.textContent = '重试';
+                    retryBtn.onclick = () => retryImage(imageId);
+                    actions.insertBefore(retryBtn, actions.firstChild);
+                }
+            }
+            
+            updateSendButton();
+        }
+        
+        // 重试图片
+        function retryImage(imageId) {
+            const state = imageState.get(imageId);
+            if (!state) return;
+            
+            updateImageStatus(imageId, 'uploading', null);
+            // 重新传递base64进行重试
+            AndroidInterface.retryImage(imageId, state.base64);
+        }
+        
+        // 删除图片
+        function removeImage(imageId) {
+            const state = imageState.get(imageId);
+            if (state && state.element) {
+                state.element.remove();
+            }
+            imageState.delete(imageId);
+            
+            if (imageState.size === 0) {
+                imagePreviewContainer.style.display = 'none';
+            }
+            
+            updateSendButton();
+        }
+        
+        // 接收Android上传状态回调
+        window.onImageUploadStatus = function(imageId, status, url) {
+            updateImageStatus(imageId, status, url);
+        };
 
         // 发送消息
         function sendMessage() {
@@ -307,77 +558,57 @@
             if (isGenerating) return;
 
             const text = textInput.value.trim();
-            const files = fileInput.files;
+            const hasImages = imageState.size > 0;
 
-            // 验证规则：图片必须带文字
-            // 1. 无文字无图片：不允许发送
-            // 2. 有图片无文字：不允许发送（图片必须带文字）
-            // 3. 有文字无图片：允许发送
-            // 4. 有文字有图片：允许发送
-            if (!text && files.length === 0) return;
-            if (files.length > 0 && !text) {
-                // 检查是否有有效图片
-                let hasValidImage = false;
-                for (let i = 0; i < files.length; i++) {
-                    if (files[i].type.startsWith('image/')) {
-                        hasValidImage = true;
+            // 验证规则：有图必须有文字
+            if (hasImages && !text) {
+                alert('请补充文字说明');
+                return;
+            }
+
+            // 验证：所有图片必须成功上传
+            if (hasImages) {
+                let allSuccess = true;
+                for (const [imageId, state] of imageState) {
+                    if (state.status !== 'success') {
+                        allSuccess = false;
                         break;
                     }
                 }
-                if (hasValidImage) {
-                    // 有图片但无文字，不允许发送
-                    alert('请补充文字说明');
+                if (!allSuccess) {
+                    // 不应该到达这里（按钮已禁用），但作为双重检查
                     return;
                 }
             }
 
+            // 收集成功上传的图片URL
+            const imageUrls = [];
+            for (const [imageId, state] of imageState) {
+                if (state.status === 'success' && state.url) {
+                    imageUrls.push(state.url);
+                }
+            }
+
             // 添加用户消息（右对齐，立即显示）
-            const userMessage = createMessage({ role: "user", text: text, files: files, stream: false });
+            const userMessage = createMessage({ 
+                role: "user", 
+                text: text, 
+                files: null, 
+                imageUrls: imageUrls,
+                stream: false 
+            });
             messagesContainer.appendChild(userMessage);
             scrollToBottom();
 
-            // 处理图片：转换为Base64（传递给Android处理上传）
-            if (files.length > 0) {
-                const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-                
-                if (imageFiles.length > 0) {
-                    const imageBase64List = [];
-                    let processedCount = 0;
-                    
-                    imageFiles.forEach((file) => {
-                        const reader = new FileReader();
-                        reader.onload = function(e) {
-                            // 移除 data:image/...;base64, 前缀
-                            const base64 = e.target.result.split(',')[1];
-                            if (base64 && base64.length > 10) {
-                                imageBase64List.push(base64);
-                            }
-                            processedCount++;
-                            
-                            if (processedCount === imageFiles.length) {
-                                // 所有图片处理完成，传递给Android
-                                if (imageBase64List.length > 0) {
-                                    sendToAndroid(text, imageBase64List);
-                                } else {
-                                    sendToAndroid(text, null);
-                                }
-                            }
-                        };
-                        reader.readAsDataURL(file);
-                    });
-                } else {
-                    // 没有有效图片
-                    sendToAndroid(text, null);
-                }
-            } else {
-                // 无图时传递 null
-                sendToAndroid(text, null);
-            }
+            // 发送到Android
+            sendToAndroid(text, imageUrls);
 
-            // 清空输入
+            // 清空输入和图片预览
             textInput.value = '';
             textInput.style.height = 'auto';
-            fileInput.value = '';
+            imageState.clear();
+            imagePreviewContainer.innerHTML = '';
+            imagePreviewContainer.style.display = 'none';
             updateSendButton();
 
             // 创建AI回复占位（左对齐，等待真流式内容）
@@ -389,10 +620,9 @@
         }
 
         // 发送到Android后端
-        function sendToAndroid(text, imageBase64List) {
-            // 无图时传递 null，有图时传递数组
-            const jsonData = imageBase64List === null ? null : JSON.stringify(imageBase64List);
-            AndroidInterface.sendMessage(text || '', jsonData || 'null');
+        function sendToAndroid(text, imageUrls) {
+            const imageUrlsJson = imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
+            AndroidInterface.sendMessage(text || '', imageUrlsJson);
         }
 
         // 接收Android返回的流式chunk（由Android调用）
@@ -433,7 +663,7 @@
         };
 
         // 统一消息渲染函数（用户/AI共用）
-        function createMessage({ role, text, files, stream }) {
+        function createMessage({ role, text, files, imageUrls, stream }) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
 
@@ -441,7 +671,15 @@
             contentDiv.className = 'message-content';
 
             // 添加图片（仅用户消息支持）
-            if (files && files.length > 0 && role === 'user') {
+            if (imageUrls && imageUrls.length > 0 && role === 'user') {
+                for (let url of imageUrls) {
+                    const img = document.createElement('img');
+                    img.src = url;
+                    img.className = 'message-image';
+                    contentDiv.appendChild(img);
+                }
+            } else if (files && files.length > 0 && role === 'user') {
+                // 兼容旧逻辑（如果传入files）
                 for (let file of files) {
                     if (file.type.startsWith('image/')) {
                         const reader = new FileReader();

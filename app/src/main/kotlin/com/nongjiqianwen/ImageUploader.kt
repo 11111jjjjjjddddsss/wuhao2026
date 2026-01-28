@@ -186,6 +186,9 @@ object ImageUploader {
         onSuccess: (String) -> Unit,
         onError: (String) -> Unit
     ) {
+        Log.d(TAG, "=== 开始上传图片 ===")
+        Log.d(TAG, "上传图片大小: ${imageBytes.size} bytes")
+        
         // TODO: 配置OSS上传接口URL
         // 示例配置：
         // val uploadUrl = "https://your-oss-endpoint.com/upload"
@@ -195,14 +198,26 @@ object ImageUploader {
         // 实际使用时，需要：
         // 1. 配置OSS endpoint和bucket
         // 2. 实现上传逻辑，返回公网可访问的https URL
-        // 3. 确保URL有效期覆盖本次请求
+        // 3. 确保URL有效期覆盖本次请求（≥10分钟）
         
-        Log.e(TAG, "=== OSS上传接口未配置 ===")
-        Log.e(TAG, "请在 ImageUploader.uploadImage() 中配置OSS上传接口")
-        Log.e(TAG, "上传图片大小: ${imageBytes.size} bytes")
-        
-        // 临时方案：返回错误，提示需要配置
-        onError("图片上传功能未配置：请在ImageUploader.uploadImage()中配置OSS上传接口")
+        // 模拟上传延迟（实际应该调用真实上传接口）
+        Thread {
+            try {
+                // 模拟上传过程
+                Thread.sleep(500)
+                
+                // 临时方案：返回错误，提示需要配置
+                Log.e(TAG, "=== OSS上传接口未配置 ===")
+                Log.e(TAG, "请在 ImageUploader.uploadImage() 中配置OSS上传接口")
+                Log.e(TAG, "上传失败：HTTP状态码=未配置, 错误=OSS接口未配置")
+                
+                onError("图片上传功能未配置：请在ImageUploader.uploadImage()中配置OSS上传接口")
+            } catch (e: Exception) {
+                Log.e(TAG, "上传异常", e)
+                Log.e(TAG, "上传失败：异常=${e.message}")
+                onError("上传异常: ${e.message}")
+            }
+        }.start()
     }
     
     /**
