@@ -316,16 +316,20 @@
             messagesContainer.appendChild(userMessage);
             scrollToBottom();
 
-            // 处理图片：转换为Base64
+            // 处理图片：转换为Base64（传递给Android处理上传）
             if (files.length > 0) {
-                const imageBase64List = [];
-                let processedCount = 0;
-                let hasImage = false;
+                // 验证图片数量（最多4张）
+                const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
+                if (imageFiles.length > 4) {
+                    alert('最多只能选择4张图片');
+                    return;
+                }
                 
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    if (file.type.startsWith('image/')) {
-                        hasImage = true;
+                if (imageFiles.length > 0) {
+                    const imageBase64List = [];
+                    let processedCount = 0;
+                    
+                    imageFiles.forEach((file) => {
                         const reader = new FileReader();
                         reader.onload = function(e) {
                             // 移除 data:image/...;base64, 前缀
@@ -335,27 +339,23 @@
                             }
                             processedCount++;
                             
-                            if (processedCount === files.length) {
-                                // 所有文件处理完成，只有在有有效图片时才传递数组
+                            if (processedCount === imageFiles.length) {
+                                // 所有图片处理完成，传递给Android
                                 if (imageBase64List.length > 0) {
                                     sendToAndroid(text, imageBase64List);
                                 } else {
-                                    // 没有有效图片，传递 null
                                     sendToAndroid(text, null);
                                 }
                             }
                         };
                         reader.readAsDataURL(file);
-                    } else {
-                        processedCount++;
-                        if (processedCount === files.length) {
-                            // 所有文件处理完成，但没有图片
-                            sendToAndroid(text, null);
-                        }
-                    }
+                    });
+                } else {
+                    // 没有有效图片
+                    sendToAndroid(text, null);
                 }
             } else {
-                // 无图时传递 null，确保 images 字段不存在
+                // 无图时传递 null
                 sendToAndroid(text, null);
             }
 

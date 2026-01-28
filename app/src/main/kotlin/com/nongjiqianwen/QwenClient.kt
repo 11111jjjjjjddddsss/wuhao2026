@@ -66,16 +66,7 @@ object QwenClient {
                         // content 必须是数组格式
                         val contentArray = com.google.gson.JsonArray()
                         
-                        // 1. 添加文本项
-                        if (userMessage.isNotBlank()) {
-                            val textItem = JsonObject().apply {
-                                addProperty("type", "text")
-                                addProperty("text", userMessage)
-                            }
-                            contentArray.add(textItem)
-                        }
-                        
-                        // 2. 添加图片项（如果有图片URL）
+                        // 1. 添加图片项（如果有图片URL，图在前）
                         imageUrlList.forEach { imageUrl ->
                             if (imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
                                 val imageItem = JsonObject().apply {
@@ -89,13 +80,22 @@ object QwenClient {
                             }
                         }
                         
+                        // 2. 添加文本项（文字在后，必须带文字）
+                        if (userMessage.isNotBlank()) {
+                            val textItem = JsonObject().apply {
+                                addProperty("type", "text")
+                                addProperty("text", userMessage)
+                            }
+                            contentArray.add(textItem)
+                        }
+                        
                         add("content", contentArray)
                     }
                     messagesArray.add(userMessageObj)
                     add("messages", messagesArray)
                 }
                 
-                // 强制校验请求结构
+                // 强制校验请求结构并打印最终payload
                 val requestJsonString = requestBody.toString()
                 Log.d(TAG, "=== FINAL_REQUEST_JSON ===")
                 Log.d(TAG, requestJsonString)
@@ -112,6 +112,10 @@ object QwenClient {
                 Log.d(TAG, "stream: $streamCheck")
                 Log.d(TAG, "messages 是数组: ${messagesCheck != null}")
                 Log.d(TAG, "messages[0].content 是数组: ${contentCheck != null}")
+                
+                var imageUrlCount = 0
+                var hasText = false
+                
                 if (contentCheck != null) {
                     Log.d(TAG, "content 数组大小: ${contentCheck.size()}")
                     contentCheck.forEachIndexed { index, element ->
@@ -119,12 +123,30 @@ object QwenClient {
                             val item = element.asJsonObject
                             val type = item.get("type")?.asString
                             Log.d(TAG, "content[$index]: type=$type")
-                            if (type == "text") {
+                            
+                            if (type == "image_url") {
+                                imageUrlCount++
+                                val imageUrlObj = item.getAsJsonObject("image_url")
+                                val url = imageUrlObj?.get("url")?.asString
+                                val isHttps = url?.startsWith("https://") == true
+                                Log.d(TAG, "content[$index].image_url.url: $url (https: $isHttps)")
+                            } else if (type == "text") {
+                                hasText = true
                                 val text = item.get("text")?.asString
                                 Log.d(TAG, "content[$index].text: ${text?.take(50)}...")
                             }
                         }
                     }
+                    
+                    // 验证：最多4张图，必须带文字
+                    if (imageUrlCount > 4) {
+                        throw Exception("图片数量超过限制：$imageUrlCount 张，最多4张")
+                    }
+                    if (imageUrlCount > 0 && !hasText) {
+                        throw Exception("有图片时必须带文字描述")
+                    }
+                    
+                    Log.d(TAG, "验证通过：图片数量=$imageUrlCount，有文字=$hasText")
                 }
                 val request = Request.Builder()
                     .url(apiUrl)
