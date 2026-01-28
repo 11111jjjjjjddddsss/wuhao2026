@@ -315,7 +315,7 @@
             }
 
             // 添加用户消息（右对齐，立即显示）
-            const userMessage = createUserMessage(text, files);
+            const userMessage = createMessage({ role: "user", text: text, files: files, stream: false });
             messagesContainer.appendChild(userMessage);
             scrollToBottom();
 
@@ -377,7 +377,7 @@
             // 创建AI回复占位（左对齐，等待内容）
             isGenerating = true;
             sendButton.disabled = true;
-            const assistantMessage = createAssistantMessage();
+            const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
             messagesContainer.appendChild(assistantMessage);
             scrollToBottom();
         }
@@ -392,7 +392,23 @@
         // 接收Android返回的完整文本（由Android调用）
         // AI输出渲染：使用假流式逐字显示（左对齐）
         window.onChunkReceived = function(fullText) {
-            console.log("UI_RAW_TEXT:", JSON.stringify(fullText), fullText ? fullText.length : 0);
+            // 强制打印原始返回（用于定位）
+            console.log("RAW_RESPONSE =", fullText);
+            console.log("RAW_RESPONSE type =", typeof fullText);
+            console.log("RAW_RESPONSE length =", fullText ? fullText.length : 0);
+            
+            // 防空处理（禁止假装思考）
+            if (!fullText || fullText.trim() === '') {
+                console.error("AI返回为空，显示错误提示");
+                const lastMessage = messagesContainer.lastElementChild;
+                if (lastMessage && lastMessage.classList.contains('assistant')) {
+                    const contentDiv = lastMessage.querySelector('.message-content');
+                    if (contentDiv) {
+                        contentDiv.textContent = "【模型无返回，请查看控制台】";
+                    }
+                }
+                return;
+            }
             
             // 中断上一轮打字机渲染（如果有）
             if (typewriterTimer !== null) {
@@ -402,7 +418,10 @@
             
             // 重置状态
             currentTypewriterIndex = 0;
-            currentTypewriterText = fullText || '';
+            currentTypewriterText = fullText;
+            
+            console.log("FINAL_TEXT =", currentTypewriterText);
+            console.log("FINAL_TEXT length =", currentTypewriterText.length);
             
             // 找到最后一个AI消息（assistant类）
             const lastMessage = messagesContainer.lastElementChild;
@@ -412,23 +431,25 @@
                     // 清空内容，准备假流式渲染
                     contentDiv.textContent = '';
                     
-                    // 只要 fullText.length > 0，必须进入假流式
-                    if (currentTypewriterText.length > 0) {
-                        // 假流式效果：每 30ms 追加一个字符
-                        typewriterTimer = setInterval(function() {
-                            if (currentTypewriterIndex < currentTypewriterText.length) {
-                                // 追加下一个字符（连续追加，不覆盖）
-                                contentDiv.textContent = currentTypewriterText.substring(0, currentTypewriterIndex + 1);
-                                currentTypewriterIndex++;
-                                scrollToBottom();
-                            } else {
-                                // 假流式完成
-                                clearInterval(typewriterTimer);
-                                typewriterTimer = null;
-                            }
-                        }, 30); // 每 30ms 显示一个字符
-                    }
+                    // 必须进入假流式（已通过防空检查）
+                    // 假流式效果：每 30ms 追加一个字符
+                    typewriterTimer = setInterval(function() {
+                        if (currentTypewriterIndex < currentTypewriterText.length) {
+                            // 追加下一个字符（连续追加，不覆盖）
+                            contentDiv.textContent = currentTypewriterText.substring(0, currentTypewriterIndex + 1);
+                            currentTypewriterIndex++;
+                            scrollToBottom();
+                        } else {
+                            // 假流式完成
+                            clearInterval(typewriterTimer);
+                            typewriterTimer = null;
+                        }
+                    }, 30); // 每 30ms 显示一个字符
+                } else {
+                    console.error("找不到AI消息的contentDiv");
                 }
+            } else {
+                console.error("找不到assistant类消息，lastMessage =", lastMessage);
             }
         };
 
@@ -457,16 +478,16 @@
             updateSendButton();
         };
 
-        // 创建用户消息（右对齐，同步渲染）
-        function createUserMessage(text, files) {
+        // 统一消息渲染函数（用户/AI共用）
+        function createMessage({ role, text, files, stream }) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message user';
+            messageDiv.className = `message ${role}`;
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
 
-            // 添加图片
-            if (files && files.length > 0) {
+            // 添加图片（仅用户消息支持）
+            if (files && files.length > 0 && role === 'user') {
                 for (let file of files) {
                     if (file.type.startsWith('image/')) {
                         const reader = new FileReader();
@@ -481,24 +502,15 @@
                 }
             }
 
-            // 添加文本（立即显示）
-            if (text) {
+            // 添加文本
+            if (text && role === 'user') {
+                // 用户消息：立即完整显示（同步）
                 const textNode = document.createTextNode(text);
                 contentDiv.appendChild(textNode);
+            } else if (role === 'assistant') {
+                // AI消息：初始为空，等待假流式渲染
+                contentDiv.textContent = '';
             }
-
-            messageDiv.appendChild(contentDiv);
-            return messageDiv;
-        }
-
-        // 创建AI消息（左对齐，等待假流式渲染）
-        function createAssistantMessage() {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
-
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.textContent = ''; // 初始为空，等待AI输出
 
             messageDiv.appendChild(contentDiv);
             return messageDiv;
