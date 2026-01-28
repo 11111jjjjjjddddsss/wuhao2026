@@ -38,26 +38,29 @@ object ImageUploader {
     fun compressImage(imageBytes: ByteArray): CompressResult? {
         return try {
             // 读取原始图片（用于获取EXIF和尺寸）
-            val inputStream = ByteArrayInputStream(imageBytes)
+            val inputStream1 = ByteArrayInputStream(imageBytes)
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
-            BitmapFactory.decodeStream(inputStream, null, options)
-            inputStream.reset()
+            BitmapFactory.decodeStream(inputStream1, null, options)
+            inputStream1.close()
             
             val originalWidth = options.outWidth
             val originalHeight = options.outHeight
             
             // 读取EXIF方向信息
-            val exif = ExifInterface(inputStream)
+            val inputStream2 = ByteArrayInputStream(imageBytes)
+            val exif = ExifInterface(inputStream2)
             val orientation = exif.getAttributeInt(
                 ExifInterface.TAG_ORIENTATION,
                 ExifInterface.ORIENTATION_NORMAL
             )
+            inputStream2.close()
             
             // 重新读取bitmap用于处理
-            inputStream.reset()
-            val originalBitmap = BitmapFactory.decodeStream(inputStream)
+            val inputStream3 = ByteArrayInputStream(imageBytes)
+            val originalBitmap = BitmapFactory.decodeStream(inputStream3)
+            inputStream3.close()
             if (originalBitmap == null) {
                 Log.e(TAG, "无法解码图片")
                 return null
