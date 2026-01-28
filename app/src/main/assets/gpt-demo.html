@@ -52,6 +52,16 @@
             text-rendering: optimizeLegibility;
         }
 
+        /* 用户消息：右对齐 */
+        .message.user .message-content {
+            text-align: right;
+        }
+
+        /* AI消息：左对齐 */
+        .message.assistant .message-content {
+            text-align: left;
+        }
+
         .message-image {
             max-width: 100%;
             margin: 12px 0;
@@ -304,8 +314,8 @@
                 }
             }
 
-            // 添加用户消息
-            const userMessage = createMessage('user', text, files);
+            // 添加用户消息（右对齐，立即显示）
+            const userMessage = createUserMessage(text, files);
             messagesContainer.appendChild(userMessage);
             scrollToBottom();
 
@@ -364,10 +374,10 @@
                 typewriterTimer = null;
             }
             
-            // 创建AI回复占位
+            // 创建AI回复占位（左对齐，等待内容）
             isGenerating = true;
             sendButton.disabled = true;
-            const assistantMessage = createMessage('assistant', '', []);
+            const assistantMessage = createAssistantMessage();
             messagesContainer.appendChild(assistantMessage);
             scrollToBottom();
         }
@@ -380,9 +390,8 @@
         }
 
         // 接收Android返回的完整文本（由Android调用）
-        // 后端返回完整文本后，前端实现打字机效果
+        // AI输出渲染：使用假流式逐字显示（左对齐）
         window.onChunkReceived = function(fullText) {
-            // 前端第一入口确认
             console.log("UI_RAW_TEXT:", JSON.stringify(fullText), fullText ? fullText.length : 0);
             
             // 中断上一轮打字机渲染（如果有）
@@ -391,32 +400,33 @@
                 typewriterTimer = null;
             }
             
-            // 状态初始化顺序：先清空定时器，再重置状态，最后启动打字机
+            // 重置状态
             currentTypewriterIndex = 0;
             currentTypewriterText = fullText || '';
             
+            // 找到最后一个AI消息（assistant类）
             const lastMessage = messagesContainer.lastElementChild;
-            if (lastMessage && lastMessage.classList.contains('message')) {
+            if (lastMessage && lastMessage.classList.contains('assistant')) {
                 const contentDiv = lastMessage.querySelector('.message-content');
                 if (contentDiv) {
-                    // 清空内容，准备打字机渲染
+                    // 清空内容，准备假流式渲染
                     contentDiv.textContent = '';
                     
-                    // 只要 fullText.length > 0，必须进入打字机
+                    // 只要 fullText.length > 0，必须进入假流式
                     if (currentTypewriterText.length > 0) {
-                        // 开始打字机效果：按字符逐步显示
+                        // 假流式效果：每 30ms 追加一个字符
                         typewriterTimer = setInterval(function() {
                             if (currentTypewriterIndex < currentTypewriterText.length) {
-                                // 追加下一个字符
+                                // 追加下一个字符（连续追加，不覆盖）
                                 contentDiv.textContent = currentTypewriterText.substring(0, currentTypewriterIndex + 1);
                                 currentTypewriterIndex++;
                                 scrollToBottom();
                             } else {
-                                // 打字机完成
+                                // 假流式完成
                                 clearInterval(typewriterTimer);
                                 typewriterTimer = null;
                             }
-                        }, 30); // 每 30ms 显示一个字符（可调整速度）
+                        }, 30); // 每 30ms 显示一个字符
                     }
                 }
             }
@@ -424,14 +434,14 @@
 
         // 接收Android完成通知（由Android调用）
         window.onCompleteReceived = function() {
-            // 确保打字机已完成（如果还在运行，立即完成）
+            // 确保假流式已完成（如果还在运行，立即完成）
             if (typewriterTimer !== null) {
                 clearInterval(typewriterTimer);
                 typewriterTimer = null;
                 
                 // 立即显示完整文本（如果还没显示完）
                 const lastMessage = messagesContainer.lastElementChild;
-                if (lastMessage && lastMessage.classList.contains('message')) {
+                if (lastMessage && lastMessage.classList.contains('assistant')) {
                     const contentDiv = lastMessage.querySelector('.message-content');
                     if (contentDiv && currentTypewriterIndex < currentTypewriterText.length) {
                         contentDiv.textContent = currentTypewriterText;
@@ -447,10 +457,10 @@
             updateSendButton();
         };
 
-        // 创建消息元素
-        function createMessage(role, text, files) {
+        // 创建用户消息（右对齐，同步渲染）
+        function createUserMessage(text, files) {
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message';
+            messageDiv.className = 'message user';
 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -471,11 +481,24 @@
                 }
             }
 
-            // 添加文本
+            // 添加文本（立即显示）
             if (text) {
                 const textNode = document.createTextNode(text);
                 contentDiv.appendChild(textNode);
             }
+
+            messageDiv.appendChild(contentDiv);
+            return messageDiv;
+        }
+
+        // 创建AI消息（左对齐，等待假流式渲染）
+        function createAssistantMessage() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = ''; // 初始为空，等待AI输出
 
             messageDiv.appendChild(contentDiv);
             return messageDiv;
