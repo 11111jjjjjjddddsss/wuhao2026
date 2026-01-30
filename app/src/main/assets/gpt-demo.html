@@ -624,7 +624,11 @@
                 if (loadMoreEl) loadMoreEl.remove();
                 requestAnimationFrame(function() {
                     const distFromBottom = oldScrollHeight - oldScrollTop;
-                    messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+                    if (distFromBottom <= 120) {
+                        messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+                    } else {
+                        messagesContainer.scrollTop = Math.min(oldScrollTop, Math.max(0, messagesContainer.scrollHeight - messagesContainer.clientHeight));
+                    }
                 });
                 return;
             }
@@ -655,7 +659,11 @@
             else loadMoreEl.textContent = '加载更多（' + remaining + ' 条）';
             requestAnimationFrame(function() {
                 const distFromBottom = oldScrollHeight - oldScrollTop;
-                messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+                if (distFromBottom <= 120) {
+                    messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+                } else {
+                    messagesContainer.scrollTop = Math.min(oldScrollTop, Math.max(0, messagesContainer.scrollHeight - messagesContainer.clientHeight));
+                }
             });
         }
 
