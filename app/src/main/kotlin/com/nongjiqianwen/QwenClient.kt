@@ -12,6 +12,7 @@ import java.io.IOException
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -22,7 +23,8 @@ import java.util.concurrent.atomic.AtomicReference
 object QwenClient {
     private val TAG = "QwenClient"
     private const val CONNECT_TIMEOUT_SEC = 30L
-    private const val READ_TIMEOUT_SEC = 30L   // 连续 30 秒无 chunk 才判定中断（Watchdog）
+    /** 连续 X 秒无 chunk 才判定中断；chunk 到来（每次 read 成功）即刷新计时器。与 readTimeout 对齐。 */
+    private const val READ_TIMEOUT_SEC = 30L
     private const val CALL_TIMEOUT_SEC = 120L  // 单次请求总时长上限
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
@@ -48,30 +50,36 @@ object QwenClient {
     }
     
     /**
-     * 取消当前进行中的请求（新请求开始前或切后台时调用），保证旧流 chunk 不写到新消息。
+     * 取消当前进行中的请求（仅在新请求开始前或用户点停止时调用；切后台不 cancel）。
      */
     fun cancelCurrentRequest() {
         val oldRequestId = currentRequestId.getAndSet(null)
         currentCall.getAndSet(null)?.cancel()
-        if (oldRequestId != null) Log.d(TAG, "requestId=$oldRequestId 被取消（新请求/切后台）")
+        if (oldRequestId != null) Log.d(TAG, "requestId=$oldRequestId 被取消（新请求/用户停止）")
     }
 
     /**
      * 调用通义千问 API（真流式 SSE）
-     * userId/sessionId/requestId 仅用于日志与请求 header，严禁写入 prompt/messages。
+     * userId/sessionId/requestId/streamId 仅用于日志与请求 header，严禁写入 prompt/messages。
+     * 终态不写正文：仅 onInterrupted(reason) 用于 badge，不通过 onChunk 追加“已取消/已中断”等。
      */
     fun callApi(
         userId: String,
         sessionId: String,
         requestId: String,
+        streamId: String,
         userMessage: String,
         imageUrlList: List<String> = emptyList(),
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null,
-        onInterrupted: (() -> Unit)? = null
+        onInterrupted: (reason: String) -> Unit
     ) {
         val startMs = System.currentTimeMillis()
-        Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 开始")
+        Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 开始")
+        val completed = AtomicBoolean(false)
+        val fireComplete: () -> Unit = {
+            if (completed.compareAndSet(false, true)) handler.post { onComplete?.invoke() }
+        }
         Thread {
             var call: Call? = null
             try {
@@ -118,7 +126,7 @@ object QwenClient {
                 
                 val imageCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
                 val textLen = userMessage.length
-                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 摘要: 图数=$imageCount 字符数=$textLen")
+                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imageCount 字符数=$textLen")
                 
                 if (imageCount > 4) throw Exception("图片数量超过限制：$imageCount 张，最多4张")
                 if (imageCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
@@ -141,7 +149,7 @@ object QwenClient {
                 val response = call!!.execute()
                 val statusCode = response.code
                 
-                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId HTTP=$statusCode")
+                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId HTTP=$statusCode")
                 
                 if (response.isSuccessful) {
                     try {
@@ -158,7 +166,7 @@ object QwenClient {
                                 val line = reader.readLine() ?: break
                                 if (line.startsWith("data: ")) {
                                     if (line.trim() == "data: [DONE]") {
-                                        Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId STREAM_DONE finish_reason=$lastFinishReason")
+                                        Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId STREAM_DONE finish_reason=$lastFinishReason")
                                         break
                                     }
                                     val jsonStr = line.substring(6).trim()
@@ -170,23 +178,27 @@ object QwenClient {
                                             firstChoice.get("finish_reason")?.takeIf { it.isJsonPrimitive }?.asString?.let { lastFinishReason = it }
                                             if (firstChoice.has("delta")) {
                                                 val delta = firstChoice.getAsJsonObject("delta")
-                                                if (delta.has("content")) {
-                                                    val content = delta.get("content")
-                                                    if (content.isJsonPrimitive && content.asJsonPrimitive.isString) {
-                                                        val deltaText = content.asString
-                                                        if (deltaText.isNotBlank()) {
-                                                            handler.post { onChunk(deltaText) }
+                                                    if (delta.has("content")) {
+                                                        val content = delta.get("content")
+                                                        if (content.isJsonPrimitive && content.asJsonPrimitive.isString) {
+                                                            val deltaText = content.asString
+                                                            if (deltaText.isNotBlank()) {
+                                                                if (currentRequestId.get() != requestId) {
+                                                                    Log.d(TAG, "drop stale chunk")
+                                                                    continue
+                                                                }
+                                                                handler.post { onChunk(deltaText) }
+                                                            }
                                                         }
                                                     }
-                                                }
                                             }
                                         }
                                     } catch (_: Exception) { /* 忽略单行解析错误 */ }
                                 }
                             }
                             val elapsed = System.currentTimeMillis() - startMs
-                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms")
-                            handler.post { onComplete?.invoke() }
+                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms")
+                            fireComplete()
                         } finally {
                             reader.close()
                             inputStream.close()
@@ -200,24 +212,22 @@ object QwenClient {
                         val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                         val isInterrupted = e is SocketTimeoutException
                         if (isCanceled) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=canceled 耗时=${elapsed}ms")
+                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled 耗时=${elapsed}ms")
                             handler.post {
-                                onChunk("已取消，可重新发送")
-                                onInterrupted?.invoke()
-                                onComplete?.invoke()
+                                onInterrupted("canceled")
+                                fireComplete()
                             }
                         } else if (isInterrupted) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=interrupted 耗时=${elapsed}ms")
+                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted 耗时=${elapsed}ms")
                             handler.post {
-                                onChunk("网络不稳定，已中断，可重试")
-                                onInterrupted?.invoke()
-                                onComplete?.invoke()
+                                onInterrupted("interrupted")
+                                fireComplete()
                             }
                         } else {
-                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error 耗时=${elapsed}ms", e)
+                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error 耗时=${elapsed}ms", e)
                             handler.post {
-                                onChunk("服务返回异常，请稍后重试")
-                                onComplete?.invoke()
+                                onInterrupted("error")
+                                fireComplete()
                             }
                         }
                         return@Thread
@@ -227,8 +237,8 @@ object QwenClient {
                     currentRequestId.set(null)
                     val responseBody = response.body?.string() ?: ""
                     val elapsed = System.currentTimeMillis() - startMs
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error HTTP=$statusCode 耗时=${elapsed}ms")
-                    handleErrorResponse(userId, sessionId, requestId, statusCode, responseBody, onChunk, onComplete)
+                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error HTTP=$statusCode 耗时=${elapsed}ms")
+                    handleErrorResponse(userId, sessionId, requestId, streamId, statusCode, responseBody, onInterrupted, fireComplete)
                 }
             } catch (e: IOException) {
                 currentCall.set(null)
@@ -237,90 +247,54 @@ object QwenClient {
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
                 if (isCanceled) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=canceled 耗时=${elapsed}ms")
+                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled 耗时=${elapsed}ms")
                     handler.post {
-                        onChunk("已取消，可重新发送")
-                        onInterrupted?.invoke()
-                        onComplete?.invoke()
+                        onInterrupted("canceled")
+                        fireComplete()
                     }
                 } else if (isInterrupted) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=interrupted 耗时=${elapsed}ms")
+                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted 耗时=${elapsed}ms")
                     handler.post {
-                        onChunk("网络不稳定，已中断，可重试")
-                        onInterrupted?.invoke()
-                        onComplete?.invoke()
+                        onInterrupted("interrupted")
+                        fireComplete()
                     }
                 } else {
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error 耗时=${elapsed}ms", e)
-                    val errorMsg = when {
-                        e.message?.contains("timeout", ignoreCase = true) == true -> "网络请求超时，请稍后重试"
-                        e.message?.contains("DNS", ignoreCase = true) == true -> "网络异常，请检查网络设置"
-                        e.message?.contains("connect", ignoreCase = true) == true -> "连接失败，请检查网络"
-                        else -> "网络异常，请稍后重试"
-                    }
+                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error 耗时=${elapsed}ms", e)
                     handler.post {
-                        onChunk(errorMsg)
-                        onComplete?.invoke()
+                        onInterrupted("error")
+                        fireComplete()
                     }
                 }
             } catch (e: Exception) {
                 currentCall.set(null)
                 currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
-                Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error 耗时=${elapsed}ms", e)
+                Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error 耗时=${elapsed}ms", e)
                 handler.post {
-                    onChunk("服务异常，请稍后重试")
-                    onComplete?.invoke()
+                    onInterrupted("error")
+                    fireComplete()
                 }
             }
         }.start()
     }
     
     /**
-     * 处理错误响应：中文可读提示 + onComplete 必到，日志含 userId/sessionId/requestId/HTTP/摘要
+     * 处理错误响应：仅 onInterrupted("error") + fireComplete，不写正文；日志含 userId/sessionId/requestId/streamId/HTTP
      */
-    private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, statusCode: Int, responseBody: String, onChunk: (String) -> Unit, onComplete: (() -> Unit)? = null) {
-        Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error HTTP=$statusCode 耗时见上")
+    private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit) {
+        Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error HTTP=$statusCode 耗时见上")
         
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
-            // DashScope 错误格式: { "code": "...", "message": "..." }
             val errorCode = jsonResponse.get("code")?.asString ?: ""
-            val errorMessage = jsonResponse.get("message")?.asString ?: responseBody
-            
-            // 只有在明确是 DashScope 返回的错误码时才显示"模型不可用"
-            val errorMsg = when {
-                statusCode == 401 || statusCode == 403 ||
-                errorCode.contains("InvalidApiKey", ignoreCase = true) ||
-                errorCode.contains("ModelAccessDenied", ignoreCase = true) -> "鉴权失败，请检查配置"
-                statusCode == 400 || errorCode.contains("InvalidParameter", ignoreCase = true) -> "请求参数错误，请稍后重试"
-                errorCode.isNotEmpty() && (
-                    errorCode.contains("ModelNotFound", ignoreCase = true) ||
-                    errorCode.contains("ModelUnavailable", ignoreCase = true)
-                ) -> "服务暂不可用，请稍后重试"
-                statusCode in 500..599 -> "服务异常，请稍后重试"
-                statusCode == 429 -> "请求过于频繁，请稍后重试"
-                else -> "请求失败，请稍后重试"
-            }
-            
-            handler.post {
-                onChunk(errorMsg)
-                onComplete?.invoke()
-            }
-        } catch (e: Exception) {
-            val errorMsg = when (statusCode) {
-                401, 403 -> "鉴权失败，请检查配置"
-                400 -> "请求参数错误，请稍后重试"
-                404 -> "接口不存在，请检查配置"
-                429 -> "请求过于频繁，请稍后重试"
-                500, 502, 503 -> "服务异常，请稍后重试"
-                else -> "请求失败，请稍后重试"
-            }
-            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 无法解析错误响应 statusCode=$statusCode")
-            handler.post {
-                onChunk(errorMsg)
-                onComplete?.invoke()
-            }
+            @Suppress("UNUSED_VARIABLE") val errorMessage = jsonResponse.get("message")?.asString ?: responseBody
+            // 仅日志用，不写正文
+        } catch (_: Exception) {
+            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 无法解析错误响应 statusCode=$statusCode")
+        }
+        handler.post {
+            onInterrupted("error")
+            fireComplete()
         }
     }
 }

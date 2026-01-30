@@ -23,6 +23,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private var isRequesting = false
+    /** 切后台时 true，onResume 清空并补发缓存；不在此 cancel 请求 */
+    private var isInBackground = false
+
+    /** streamId -> [(type, data)]：切后台时缓存 chunk/complete/interrupted，onResume 按序补发 */
+    private val bufferedEventsByStreamId = mutableMapOf<String, MutableList<Pair<String, String?>>>()
 
     /** 压缩后 bytes 短期缓存，供重试使用：imageId -> (bytes, 写入时间戳)。TTL 60s，LRU 最多 4 条 */
     private val compressedBytesCache = ConcurrentHashMap<String, Pair<ByteArray, Long>>()
@@ -142,28 +147,29 @@ class MainActivity : AppCompatActivity() {
          * 发送消息（此时图片已上传成功，传入的是URL列表）
          * @param text 用户文字
          * @param imageUrlsJson JSON数组：["https://...", ...] 或 "null"
+         * @param streamId 前端生成的流ID，回调时写对应气泡（取消时旧气泡落终态）
          */
         @JavascriptInterface
-        fun sendMessage(text: String, imageUrlsJson: String) {
+        fun sendMessage(text: String, imageUrlsJson: String, streamId: String?) {
             runOnUiThread {
                 if (isRequesting) return@runOnUiThread
-                
+
                 // 验证：有图必须有文字
                 val hasText = text.isNotBlank()
                 val hasImages = imageUrlsJson != "null" && imageUrlsJson.isNotBlank()
-                
+
                 if (hasImages && !hasText) {
                     Log.d("MainActivity", "有图片但无文字，阻止发送")
                     webView.evaluateJavascript("alert('请补充文字说明');", null)
                     return@runOnUiThread
                 }
-                
+
                 // 检查是否有输入
                 if (!hasText && !hasImages) return@runOnUiThread
-                
+
                 // 设置请求状态
                 isRequesting = true
-                
+
                 // 解析图片URL列表
                 val imageUrlList = if (hasImages) {
                     try {
@@ -188,9 +194,9 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     emptyList()
                 }
-                
-                // 发送模型请求
-                sendToModel(text, imageUrlList)
+
+                val sid = streamId?.takeIf { it.isNotBlank() } ?: "stream_${System.currentTimeMillis()}"
+                sendToModel(text, imageUrlList, sid)
             }
         }
         
@@ -288,50 +294,100 @@ class MainActivity : AppCompatActivity() {
         }
         
         private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")
+
+        /** 切后台时按 streamId 缓存事件；前台则直接回调 WebView */
+        private fun dispatchChunk(streamId: String, chunk: String) {
+            runOnUiThread {
+                if (isInBackground) {
+                    synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("chunk" to chunk) }
+                } else {
+                    val esc = escapeJs(streamId)
+                    val escChunk = chunk.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+                    webView.evaluateJavascript("window.onChunkReceived && window.onChunkReceived('$esc', '$escChunk');", null)
+                }
+            }
+        }
+
+        private fun dispatchComplete(streamId: String) {
+            runOnUiThread {
+                if (isInBackground) {
+                    synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("complete" to null) }
+                } else {
+                    isRequesting = false
+                    val esc = escapeJs(streamId)
+                    webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
+                }
+            }
+        }
+
+        private fun dispatchInterrupted(streamId: String, reason: String) {
+            runOnUiThread {
+                if (isInBackground) {
+                    synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("interrupted" to reason) }
+                } else {
+                    val esc = escapeJs(streamId)
+                    val escReason = escapeJs(reason)
+                    webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
+                }
+            }
+        }
+
         /**
-         * 发送模型请求
+         * 发送模型请求（streamId 贯穿；仅新请求时 cancel 旧请求，切后台不断网、缓存补发）
          */
-        private fun sendToModel(text: String, imageUrlList: List<String>) {
+        private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String) {
             ModelService.getReply(
                 userMessage = text,
                 imageUrlList = imageUrlList,
-                onChunk = { chunk ->
-                    runOnUiThread {
-                        val escapedChunk = chunk
-                            .replace("\\", "\\\\")
-                            .replace("'", "\\'")
-                            .replace("\n", "\\n")
-                            .replace("\r", "\\r")
-                        webView.evaluateJavascript("window.onChunkReceived('$escapedChunk');", null)
+                streamId = streamId,
+                onChunk = { chunk -> dispatchChunk(streamId, chunk) },
+                onComplete = { dispatchComplete(streamId) },
+                onInterrupted = { reason -> dispatchInterrupted(streamId, reason) }
+            )
+        }
+    }
+
+    /** onResume 时补发切后台期间缓存的 chunk/complete/interrupted */
+    private fun flushBufferedEventsToWebView() {
+        val copy = synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.toMap().mapValues { it.value.toList() } }
+        bufferedEventsByStreamId.clear()
+        copy.forEach { (streamId, events) ->
+            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'")
+            events.forEach { (type, data) ->
+                when (type) {
+                    "chunk" -> {
+                        val escChunk = (data ?: "").replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+                        webView.evaluateJavascript("window.onChunkReceived && window.onChunkReceived('$esc', '$escChunk');", null)
                     }
-                },
-                onComplete = {
-                    runOnUiThread {
+                    "complete" -> {
                         isRequesting = false
-                        webView.evaluateJavascript("window.onCompleteReceived();", null)
+                        webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                     }
-                },
-                onInterrupted = {
-                    runOnUiThread {
-                        webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted();", null)
+                    "interrupted" -> {
+                        val escReason = (data ?: "").replace("\\", "\\\\").replace("'", "\\'")
+                        webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
                     }
                 }
-            )
+            }
         }
     }
 
     override fun onPause() {
         super.onPause()
-        if (isRequesting) {
-            QwenClient.cancelCurrentRequest()
+        isInBackground = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (isInBackground) {
+            isInBackground = false
+            flushBufferedEventsToWebView()
         }
     }
 
     override fun onStop() {
         super.onStop()
-        if (isRequesting) {
-            QwenClient.cancelCurrentRequest()
-        }
+        // 不在此 cancel：仅新请求或用户点停止时 cancel，切后台不断网
     }
 
     private var resetInstallIdRunnable: Runnable? = null

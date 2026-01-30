@@ -369,8 +369,8 @@
         const RENDER_WINDOW = 80;      // 仅渲染最近 N 条
         const LOAD_MORE_BATCH = 20;    // 每次「加载更多」展开条数
         const CHUNK_FLUSH_MS = 60;    // SSE chunk 合并间隔（ms），避免每 token 重排
-        let chunkBuffer = '';
-        let chunkFlushScheduled = false;
+        const chunkBufferByStream = {};
+        const chunkFlushScheduledByStream = {};
         
         // 图片状态管理（Map 保持插入顺序，发送时 URL 顺序与用户选择一致）
         const imageState = new Map(); // imageId -> {file, base64, status, url, element, currentRequestId}
@@ -697,8 +697,18 @@
             scrollToBottom();
             applyMessageWindow();
 
-            // 发送到Android
-            sendToAndroid(text, imageUrls);
+            // 创建AI回复占位并生成 streamId（取消时旧气泡按 streamId 落终态）
+            const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            isGenerating = true;
+            sendButton.disabled = true;
+            const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
+            assistantMessage.dataset.streamId = streamId;
+            messagesContainer.appendChild(assistantMessage);
+            scrollToBottom();
+            applyMessageWindow();
+
+            // 发送到Android（带 streamId，回调按 streamId 写对应气泡）
+            sendToAndroid(text, imageUrls, streamId);
 
             // 清空输入和图片预览
             textInput.value = '';
@@ -707,67 +717,61 @@
             imagePreviewContainer.innerHTML = '';
             imagePreviewContainer.style.display = 'none';
             updateSendButton();
-
-            // 创建AI回复占位（左对齐，等待真流式内容）
-            isGenerating = true;
-            sendButton.disabled = true;
-            const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
-            messagesContainer.appendChild(assistantMessage);
-            scrollToBottom();
-            applyMessageWindow();
         }
 
-        // 发送到Android后端
-        function sendToAndroid(text, imageUrls) {
+        // 发送到Android后端（streamId 用于 onChunk/onComplete/onStreamInterrupted 写对应气泡）
+        function sendToAndroid(text, imageUrls, streamId) {
             const imageUrlsJson = imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
-            AndroidInterface.sendMessage(text || '', imageUrlsJson);
+            AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '');
         }
 
-        // SSE 节流：buffer 后每 CHUNK_FLUSH_MS 刷新一次，减少重排卡顿
-        function flushChunkBuffer() {
-            chunkFlushScheduled = false;
-            if (!chunkBuffer) return;
-            const list = messagesContainer.querySelectorAll('.message.assistant');
-            const lastMessage = list[list.length - 1];
-            if (lastMessage) {
-                const contentDiv = lastMessage.querySelector('.message-content');
+        // SSE 节流：Map<streamId, buffer> 隔离，每 CHUNK_FLUSH_MS 刷新；只写对应 streamId 的气泡
+        function flushChunkBuffer(streamId) {
+            if (!streamId) return;
+            chunkFlushScheduledByStream[streamId] = false;
+            const buf = chunkBufferByStream[streamId];
+            if (!buf) return;
+            const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            if (msg) {
+                const contentDiv = msg.querySelector('.message-content');
                 if (contentDiv) {
-                    contentDiv.textContent += chunkBuffer;
+                    contentDiv.textContent += buf;
                     scrollToBottom();
                 }
             }
-            chunkBuffer = '';
+            chunkBufferByStream[streamId] = '';
         }
 
-        // 接收Android返回的流式chunk（由Android调用）
-        window.onChunkReceived = function(chunk) {
-            if (!chunk || chunk.trim() === '') return;
-            chunkBuffer += chunk;
-            if (!chunkFlushScheduled) {
-                chunkFlushScheduled = true;
-                setTimeout(flushChunkBuffer, CHUNK_FLUSH_MS);
+        // 接收Android返回的流式chunk（streamId 指定写入哪条 assistant 消息）
+        window.onChunkReceived = function(streamId, chunk) {
+            if (!streamId || !chunk || chunk.trim() === '') return;
+            chunkBufferByStream[streamId] = (chunkBufferByStream[streamId] || '') + chunk;
+            if (!chunkFlushScheduledByStream[streamId]) {
+                chunkFlushScheduledByStream[streamId] = true;
+                setTimeout(function() { flushChunkBuffer(streamId); }, CHUNK_FLUSH_MS);
             }
         };
 
-        // 接收Android完成通知（由Android调用）
-        window.onCompleteReceived = function() {
-            if (chunkFlushScheduled) { flushChunkBuffer(); }
+        // 接收Android完成通知（保证一次；仅操作该 streamId 的 buffer，杜绝串流）
+        window.onCompleteReceived = function(streamId) {
+            if (streamId) { flushChunkBuffer(streamId); }
             isGenerating = false;
             sendButton.disabled = false;
             fileInput.value = '';
             updateSendButton();
         };
 
-        // 流被中断（切后台/弱网/Watchdog）：标记当前 assistant 消息为“已中断”，输入框可继续用
-        window.onStreamInterrupted = function() {
-            const lastMessage = messagesContainer.lastElementChild;
-            if (lastMessage && lastMessage.classList.contains('assistant')) {
-                lastMessage.classList.add('message-interrupted');
-                const contentDiv = lastMessage.querySelector('.message-content');
+        // 终态仅 badge/灰化，不写正文（不污染复制内容）。reason: canceled=已停止, interrupted=已中断, error=请求失败
+        window.onStreamInterrupted = function(streamId, reason) {
+            if (!streamId) return;
+            const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            if (msg) {
+                msg.classList.add('message-interrupted');
+                const contentDiv = msg.querySelector('.message-content');
                 if (contentDiv && !contentDiv.querySelector('.interrupted-badge')) {
                     const badge = document.createElement('span');
                     badge.className = 'interrupted-badge';
-                    badge.textContent = '（已中断）';
+                    badge.textContent = reason === 'canceled' ? '（已停止）' : (reason === 'interrupted' ? '（已中断）' : '（请求失败）');
                     contentDiv.appendChild(badge);
                 }
             }
