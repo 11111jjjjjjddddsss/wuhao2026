@@ -1,5 +1,38 @@
 # 图片上传后端闭环说明
 
+## 闭环验收步骤（按顺序做完并贴证据，脱敏）
+
+1. **跑通上传服务并拿到公网 https**  
+   - 任选：ngrok / Railway / Render / ECS  
+   - 得到 `UPLOAD_BASE_URL=https://xxxx`（不要带 `/upload`）  
+   - 贴证据：服务启动日志 + `/upload` 实际可用证明（如 curl 返回 `{"url":"https://..."}`）
+
+2. **curl 验证上传协议**  
+   - 仓库根目录执行：`test_upload.bat <UPLOAD_BASE_URL>`  
+   - 期望：HTTP 200，返回 JSON 根级 `{"url":"https://..."}`  
+   - 贴证据：返回内容（脱敏域名可留）
+
+3. **模型侧能拉取该 URL**  
+   - 用第 2 步返回的 url 执行：  
+     `set API_KEY=你的key` 然后  
+     `node upload-server/verify-model-url.js "第2步返回的url"`  
+   - 期望：响应里有 `choices[0].message.content`（模型描述图片）  
+   - 贴证据：请求 payload（不含 key）+ 响应 `choices[0].message.content`  
+   - 若失败说明 URL 对模型端不可达（手机可达不算）
+
+4. **上传服务最低安全（已实现）**  
+   - 仅允许 jpeg/png/webp  
+   - 单文件 10MB，超出返回 413 + `{"error":"单文件不超过 10MB"}`  
+   - 文件名 uuid，不用原始文件名  
+   - `/uploads` 仅静态文件，`index: false` 禁目录列表  
+
+5. **App 端到端验证**  
+   - `gradle.properties` 配好 `UPLOAD_BASE_URL`  
+   - App：选图 → 转圈 → 对勾 → 可发送 → 模型图文回复  
+   - 贴证据：Logcat 中 UPLOAD_URLS（脱敏）+ FINAL_REQUEST_JSON（脱敏）+ 模型正常输出  
+
+---
+
 ## 协议（已冻结）
 
 - **URL**：`POST {UPLOAD_BASE_URL}/upload`
