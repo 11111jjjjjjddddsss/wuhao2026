@@ -43,8 +43,8 @@
 ## 1. 后端实现（已就绪）
 
 - 目录：`upload-server/`
-- 实现：接收文件后转发到 0x0.st，返回公网 https URL，无需自建 OSS
-- 本地运行：`cd upload-server && npm install && npm start`（默认 3000 端口）
+- 实现：本地存储 + BASE_PUBLIC_URL，返回公网 https URL（ngrok/部署域名），无需买服务器
+- 本地运行：须设置 `BASE_PUBLIC_URL` 后 `cd upload-server && npm install && npm start`（默认 3000 端口）
 
 ## 2. 获得公网 UPLOAD_BASE_URL
 
