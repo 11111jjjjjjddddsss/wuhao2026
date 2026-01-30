@@ -7,8 +7,11 @@ import android.util.Log
 import androidx.exifinterface.media.ExifInterface
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayInputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.util.concurrent.CountDownLatch
@@ -176,10 +179,8 @@ object ImageUploader {
     )
     
     /**
-     * 上传图片到OSS（需要配置OSS上传接口）
-     * @param imageBytes 压缩后的图片字节数组
-     * @param onSuccess 成功回调，返回https URL
-     * @param onError 失败回调
+     * 上传图片：走后端 POST /upload（multipart）-> 后端写入 OSS -> 返回 https 公网 URL
+     * 禁止在 APP 内写 OSS AK/SK。未配置 UPLOAD_BASE_URL 时回调 onError。
      */
     fun uploadImage(
         imageBytes: ByteArray,
@@ -189,33 +190,65 @@ object ImageUploader {
         Log.d(TAG, "=== 开始上传图片 ===")
         Log.d(TAG, "上传图片大小: ${imageBytes.size} bytes")
         
-        // TODO: 配置OSS上传接口URL
-        // 示例配置：
-        // val uploadUrl = "https://your-oss-endpoint.com/upload"
-        // 或者使用阿里云OSS SDK上传
+        val baseUrl = BuildConfig.UPLOAD_BASE_URL?.trim() ?: ""
+        if (baseUrl.isEmpty()) {
+            Log.e(TAG, "上传失败：UPLOAD_BASE_URL 未配置（请在 gradle.properties 或 buildConfig 中配置后端地址）")
+            Log.e(TAG, "HTTP状态码=未配置, 错误=OSS/后端接口未配置")
+            onError("图片上传未配置：请配置后端上传地址 UPLOAD_BASE_URL")
+            return
+        }
         
-        // 当前实现：返回占位URL（仅用于测试，实际需要配置真实OSS）
-        // 实际使用时，需要：
-        // 1. 配置OSS endpoint和bucket
-        // 2. 实现上传逻辑，返回公网可访问的https URL
-        // 3. 确保URL有效期覆盖本次请求（≥10分钟）
+        val uploadUrl = baseUrl.trimEnd('/') + "/upload"
         
-        // 模拟上传延迟（实际应该调用真实上传接口）
         Thread {
+            var tempFile: File? = null
             try {
-                // 模拟上传过程
-                Thread.sleep(500)
+                tempFile = File.createTempFile("upload_", ".jpg")
+                FileOutputStream(tempFile).use { it.write(imageBytes) }
                 
-                // 临时方案：返回错误，提示需要配置
-                Log.e(TAG, "=== OSS上传接口未配置 ===")
-                Log.e(TAG, "请在 ImageUploader.uploadImage() 中配置OSS上传接口")
-                Log.e(TAG, "上传失败：HTTP状态码=未配置, 错误=OSS接口未配置")
+                val requestBody = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart(
+                        "file",
+                        tempFile.name,
+                        tempFile.asRequestBody("image/jpeg".toMediaType())
+                    )
+                    .build()
                 
-                onError("图片上传功能未配置：请在ImageUploader.uploadImage()中配置OSS上传接口")
+                val request = Request.Builder()
+                    .url(uploadUrl)
+                    .post(requestBody)
+                    .build()
+                
+                client.newCall(request).execute().use { response ->
+                    val code = response.code
+                    val bodyStr = response.body?.string() ?: ""
+                    
+                    if (!response.isSuccessful) {
+                        Log.e(TAG, "上传失败：HTTP状态码=$code, body=${bodyStr.take(200)}")
+                        onError("上传失败：HTTP $code")
+                        return@use
+                    }
+                    
+                    // 期望 JSON：{ "url": "https://..." } 或 { "data": { "url": "..." } }
+                    val json = com.google.gson.JsonParser().parse(bodyStr).asJsonObject
+                    val url = json.get("url")?.takeIf { it.isJsonPrimitive }?.asString
+                        ?: json.getAsJsonObject("data")?.get("url")?.takeIf { it.isJsonPrimitive }?.asString
+                    
+                    if (!url.isNullOrBlank() && url.startsWith("https://")) {
+                        Log.d(TAG, "上传成功：URL（脱敏）=${url.replace(Regex("/([^/]+)$"), "/***")}")
+                        onSuccess(url)
+                    } else {
+                        Log.e(TAG, "上传失败：响应无有效 url, body=${bodyStr.take(200)}")
+                        onError("上传失败：响应格式错误")
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "上传异常", e)
                 Log.e(TAG, "上传失败：异常=${e.message}")
                 onError("上传异常: ${e.message}")
+            } finally {
+                tempFile?.delete()
             }
         }.start()
     }

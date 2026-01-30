@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
         fun uploadImages(imageDataListJson: String) {
             Thread {
                 try {
-                    // 解析图片数据列表
+                    // 解析图片数据列表（含 requestId，用于回调去重）
                     val imageDataList = try {
                         val jsonElement = com.google.gson.JsonParser().parse(imageDataListJson)
                         if (jsonElement.isJsonNull) {
@@ -69,8 +69,9 @@ class MainActivity : AppCompatActivity() {
                                 val obj = element.asJsonObject
                                 val imageId = obj.get("imageId")?.asString
                                 val base64 = obj.get("base64")?.asString
+                                val requestId = obj.get("requestId")?.asString ?: ""
                                 if (imageId != null && base64 != null && base64.isNotBlank()) {
-                                    Pair(imageId, base64)
+                                    Triple(imageId, base64, requestId)
                                 } else {
                                     null
                                 }
@@ -90,8 +91,8 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                     // 逐张上传
-                    imageDataList.forEach { (imageId, base64) ->
-                        uploadSingleImage(imageId, base64)
+                    imageDataList.forEach { (imageId, base64, requestId) ->
+                        uploadSingleImage(imageId, base64, requestId)
                     }
                 } catch (e: Exception) {
                     Log.e("MainActivity", "上传图片失败", e)
@@ -103,12 +104,13 @@ class MainActivity : AppCompatActivity() {
          * 重试单张图片上传
          * @param imageId 图片ID
          * @param base64 图片base64（前端重新传递）
+         * @param requestId 本次尝试ID（回传前端用于去重）
          */
         @JavascriptInterface
-        fun retryImage(imageId: String, base64: String) {
+        fun retryImage(imageId: String, base64: String, requestId: String) {
             Thread {
-                Log.d("MainActivity", "重试图片上传: $imageId")
-                uploadSingleImage(imageId, base64)
+                Log.d("MainActivity", "重试图片上传: $imageId, requestId=$requestId")
+                uploadSingleImage(imageId, base64, requestId)
             }.start()
         }
         
@@ -169,28 +171,30 @@ class MainActivity : AppCompatActivity() {
         }
         
         /**
-         * 上传单张图片（逐张处理）
+         * 上传单张图片（逐张处理；回传 requestId 供前端去重）
          */
-        private fun uploadSingleImage(imageId: String, base64: String) {
+        private fun uploadSingleImage(imageId: String, base64: String, requestId: String) {
             Thread {
                 try {
-                    // 回传：开始上传
+                    // 回传：开始上传（带 requestId）
                     runOnUiThread {
-                        val escapedImageId = imageId.replace("'", "\\'")
-                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null);", null)
+                        val escapedImageId = escapeJs(imageId)
+                        val escapedRequestId = escapeJs(requestId)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null, '$escapedRequestId');", null)
                     }
                     
-                    // base64解码
+                    // base64 解码后即用，不长期驻留
                     val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // 压缩图片（EXIF矫正 + 缩放 + 压缩）
+                    // 压缩：EXIF 矫正 → 等比缩放长边 1600px → JPEG quality=75（不裁剪）
                     val compressResult = ImageUploader.compressImage(imageBytes)
                     
                     if (compressResult == null) {
                         Log.e("MainActivity", "图片[$imageId] 压缩失败")
                         runOnUiThread {
-                            val escapedImageId = imageId.replace("'", "\\'")
-                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null);", null)
+                            val escapedImageId = escapeJs(imageId)
+                            val escapedRequestId = escapeJs(requestId)
+                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId');", null)
                         }
                         return@Thread
                     }
@@ -200,25 +204,18 @@ class MainActivity : AppCompatActivity() {
                     Log.d("MainActivity", "压缩后尺寸: ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
                     Log.d("MainActivity", "压缩后字节数: ${compressResult.compressedSize} bytes")
                     
-                    // 上传图片
-                    var uploadSuccess = false
-                    var uploadedUrl: String? = null
-                    
                     ImageUploader.uploadImage(
                         imageBytes = compressResult.bytes,
                         onSuccess = { url ->
-                            uploadSuccess = true
-                            uploadedUrl = url
                             Log.d("MainActivity", "=== 图片[$imageId] 上传成功 ===")
-                            // 脱敏：只显示域名
                             val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
                             Log.d("MainActivity", "上传URL（脱敏）: $maskedUrl")
                             
-                            // 回传：上传成功
                             runOnUiThread {
-                                val escapedImageId = imageId.replace("'", "\\'")
-                                val escapedUrl = url.replace("'", "\\'").replace("\\", "\\\\")
-                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'success', '$escapedUrl');", null)
+                                val escapedImageId = escapeJs(imageId)
+                                val escapedUrl = url.replace("\\", "\\\\").replace("'", "\\'")
+                                val escapedRequestId = escapeJs(requestId)
+                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'success', '$escapedUrl', '$escapedRequestId');", null)
                             }
                         },
                         onError = { error ->
@@ -226,10 +223,10 @@ class MainActivity : AppCompatActivity() {
                             Log.e("MainActivity", "错误原因: $error")
                             Log.e("MainActivity", "HTTP状态码: 未配置（OSS接口未配置）")
                             
-                            // 回传：上传失败
                             runOnUiThread {
-                                val escapedImageId = imageId.replace("'", "\\'")
-                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null);", null)
+                                val escapedImageId = escapeJs(imageId)
+                                val escapedRequestId = escapeJs(requestId)
+                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId');", null)
                             }
                         }
                     )
@@ -237,12 +234,15 @@ class MainActivity : AppCompatActivity() {
                 } catch (e: Exception) {
                     Log.e("MainActivity", "处理图片[$imageId]失败", e)
                     runOnUiThread {
-                        val escapedImageId = imageId.replace("'", "\\'")
-                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null);", null)
+                        val escapedImageId = escapeJs(imageId)
+                        val escapedRequestId = escapeJs(requestId)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId');", null)
                     }
                 }
             }.start()
         }
+        
+        private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")
         /**
          * 发送模型请求
          */

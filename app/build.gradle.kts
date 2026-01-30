@@ -16,6 +16,9 @@ android {
         val apiKey = System.getenv("BAILIAN_API_KEY") 
             ?: (project.findProperty("API_KEY") as String? ?: "")
         buildConfigField("String", "API_KEY", "\"$apiKey\"")
+        // 图片上传：后端地址（空则不上传）。推荐 ECS 常驻服务 POST /upload -> 写入 OSS -> 返回 https URL；禁止在 APP 内写 OSS AK/SK
+        val uploadBaseUrl = project.findProperty("UPLOAD_BASE_URL") as String? ?: ""
+        buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
     }
     buildTypes {
         release {

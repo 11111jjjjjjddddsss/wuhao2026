@@ -331,8 +331,8 @@
 
         let isGenerating = false;
         
-        // 图片状态管理
-        const imageState = new Map(); // imageId -> {file, base64, status, url, element}
+        // 图片状态管理（Map 保持插入顺序，发送时 URL 顺序与用户选择一致）
+        const imageState = new Map(); // imageId -> {file, base64, status, url, element, currentRequestId}
 
         // Android 接口对象（由 WebView 注入）
         const AndroidInterface = window.AndroidInterface || {
@@ -383,10 +383,18 @@
             
             // 只要有Uploading或Fail，就禁用发送
             sendButton.disabled = hasUploading || hasFail;
+            
+            // 选满4张时禁用“+”按钮，不再打开选择器
+            addButton.disabled = imageState.size >= 4;
+            addButton.style.opacity = imageState.size >= 4 ? '0.5' : '1';
         }
 
-        // 文件选择
+        // 文件选择：选满4张后不允许再选（不在选择器层面静默截断）
         addButton.addEventListener('click', () => {
+            if (imageState.size >= 4) {
+                // 已选满4张，不打开选择器
+                return;
+            }
             fileInput.click();
         });
 
@@ -394,96 +402,102 @@
             const files = fileInput.files;
             const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
             
-            // 检查已选图片数量
             const currentImageCount = imageState.size;
             const remainingSlots = 4 - currentImageCount;
             
+            // 不允许“超过4张只保留前4张”：超过则提示并回滚，不加入任何新图
             if (imageFiles.length > remainingSlots) {
-                // 超过限制，提示并取消选择
                 alert('最多选择4张图片');
                 fileInput.value = '';
                 return;
             }
             
-            // 添加新图片
             imageFiles.forEach((file) => {
                 const imageId = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 addImagePreview(imageId, file);
             });
             
-            // 清空fileInput，允许重复选择同一文件
             fileInput.value = '';
             updateSendButton();
         });
         
-        // 添加图片预览
+        // 添加图片预览（缩略图用 objectURL 减少内存，base64 仅用于发给 Android）
         function addImagePreview(imageId, file) {
+            const previewItem = document.createElement('div');
+            previewItem.className = 'image-preview-item';
+            previewItem.dataset.imageId = imageId;
+            
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(file);
+            
+            const statusOverlay = document.createElement('div');
+            statusOverlay.className = 'image-status-overlay';
+            const statusIcon = document.createElement('div');
+            statusIcon.className = 'image-status-uploading';
+            statusOverlay.appendChild(statusIcon);
+            
+            const actions = document.createElement('div');
+            actions.className = 'image-actions';
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'image-action-btn delete';
+            deleteBtn.textContent = '删除';
+            deleteBtn.onclick = () => removeImage(imageId);
+            actions.appendChild(deleteBtn);
+            
+            previewItem.appendChild(img);
+            previewItem.appendChild(statusOverlay);
+            previewItem.appendChild(actions);
+            
+            imagePreviewContainer.appendChild(previewItem);
+            imagePreviewContainer.style.display = 'flex';
+            
+            const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            // 立即写入 state，便于删除时能清理；base64 稍后填入
+            imageState.set(imageId, {
+                file: file,
+                base64: null,
+                status: 'uploading',
+                url: null,
+                element: previewItem,
+                currentRequestId: requestId
+            });
+            
+            // 读取 base64 仅用于上传（上传后 success 可释放）
             const reader = new FileReader();
             reader.onload = function(e) {
+                const state = imageState.get(imageId);
+                if (!state) return; // 用户已删除，不再上传
                 const base64 = e.target.result.split(',')[1];
-                
-                // 创建预览元素
-                const previewItem = document.createElement('div');
-                previewItem.className = 'image-preview-item';
-                previewItem.dataset.imageId = imageId;
-                
-                const img = document.createElement('img');
-                img.src = e.target.result;
-                
-                const statusOverlay = document.createElement('div');
-                statusOverlay.className = 'image-status-overlay';
-                const statusIcon = document.createElement('div');
-                statusIcon.className = 'image-status-uploading';
-                statusOverlay.appendChild(statusIcon);
-                
-                const actions = document.createElement('div');
-                actions.className = 'image-actions';
-                const deleteBtn = document.createElement('button');
-                deleteBtn.className = 'image-action-btn delete';
-                deleteBtn.textContent = '删除';
-                deleteBtn.onclick = () => removeImage(imageId);
-                actions.appendChild(deleteBtn);
-                
-                previewItem.appendChild(img);
-                previewItem.appendChild(statusOverlay);
-                previewItem.appendChild(actions);
-                
-                imagePreviewContainer.appendChild(previewItem);
-                imagePreviewContainer.style.display = 'flex';
-                
-                // 保存状态
-                imageState.set(imageId, {
-                    file: file,
-                    base64: base64,
-                    status: 'uploading',
-                    url: null,
-                    element: previewItem
-                });
-                
-                // 开始上传
-                uploadImage(imageId, base64);
+                if (!base64 || base64.length < 10) return;
+                state.base64 = base64;
+                uploadImage(imageId, base64, requestId);
             };
             reader.readAsDataURL(file);
         }
         
-        // 上传图片
-        function uploadImage(imageId, base64) {
+        // 上传图片（带 requestId，用于回调去重）
+        function uploadImage(imageId, base64, requestId) {
             const imageData = {
                 imageId: imageId,
-                base64: base64
+                base64: base64,
+                requestId: requestId
             };
             const imageDataList = [imageData];
             AndroidInterface.uploadImages(JSON.stringify(imageDataList));
         }
         
-        // 更新图片状态
-        function updateImageStatus(imageId, status, url) {
+        // 更新图片状态（仅当 imageId 仍存在且 requestId 匹配当前尝试时生效，防删图/重试竞态）
+        function updateImageStatus(imageId, status, url, requestId) {
             const state = imageState.get(imageId);
-            if (!state) return;
+            if (!state) return; // 已删除，忽略回调
+            if (requestId != null && state.currentRequestId !== requestId) return; // 非本次尝试，忽略
             
             state.status = status;
             if (url) {
                 state.url = url;
+            }
+            if (status === 'success') {
+                state.base64 = null; // 成功后释放 base64，减少内存
             }
             
             const statusOverlay = state.element.querySelector('.image-status-overlay');
@@ -499,7 +513,6 @@
                 checkmark.textContent = '✓';
                 statusOverlay.appendChild(checkmark);
                 
-                // 移除重试按钮（如果存在）
                 const retryBtn = state.element.querySelector('.retry');
                 if (retryBtn) retryBtn.remove();
             } else if (status === 'fail') {
@@ -508,7 +521,6 @@
                 failIcon.textContent = '✗';
                 statusOverlay.appendChild(failIcon);
                 
-                // 添加重试按钮
                 const actions = state.element.querySelector('.image-actions');
                 if (!actions.querySelector('.retry')) {
                     const retryBtn = document.createElement('button');
@@ -522,20 +534,25 @@
             updateSendButton();
         }
         
-        // 重试图片
+        // 重试图片（新 requestId，避免旧回调覆盖）
         function retryImage(imageId) {
             const state = imageState.get(imageId);
             if (!state) return;
+            if (!state.base64) return; // 已释放则无法重试（理论上 success 后不会点重试）
             
-            updateImageStatus(imageId, 'uploading', null);
-            // 重新传递base64进行重试
-            AndroidInterface.retryImage(imageId, state.base64);
+            const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            state.currentRequestId = requestId;
+            updateImageStatus(imageId, 'uploading', null, requestId);
+            AndroidInterface.retryImage(imageId, state.base64, requestId);
         }
         
-        // 删除图片
+        // 删除图片：UI 立即移除，已删除图不参与发送，后续该图回调忽略
         function removeImage(imageId) {
             const state = imageState.get(imageId);
             if (state && state.element) {
+                if (state.element.querySelector('img') && state.element.querySelector('img').src) {
+                    URL.revokeObjectURL(state.element.querySelector('img').src);
+                }
                 state.element.remove();
             }
             imageState.delete(imageId);
@@ -547,9 +564,9 @@
             updateSendButton();
         }
         
-        // 接收Android上传状态回调
-        window.onImageUploadStatus = function(imageId, status, url) {
-            updateImageStatus(imageId, status, url);
+        // 接收 Android 上传状态回调（带 requestId，仅接受当前 attempt）
+        window.onImageUploadStatus = function(imageId, status, url, requestId) {
+            updateImageStatus(imageId, status, url || null, requestId || null);
         };
 
         // 发送消息
@@ -581,7 +598,7 @@
                 }
             }
 
-            // 收集成功上传的图片URL
+            // URL 列表严格来自 success 状态，顺序与用户选择顺序一致（Map 插入序）
             const imageUrls = [];
             for (const [imageId, state] of imageState) {
                 if (state.status === 'success' && state.url) {
