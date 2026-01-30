@@ -196,7 +196,6 @@ object QwenClient {
                             while (true) {
                                 val line = reader.readLine() ?: break
                                 if (line.startsWith("data: ")) {
-                                    Log.d(TAG, "SSE data: ${line.take(80)}${if (line.length > 80) "..." else ""}")
                                     if (line.trim() == "data: [DONE]") {
                                         Log.d(TAG, "requestId=$requestId STREAM_DONE finish_reason=$lastFinishReason")
                                         break
@@ -225,7 +224,7 @@ object QwenClient {
                                 }
                             }
                             val elapsed = System.currentTimeMillis() - startMs
-                            Log.d(TAG, "requestId=$requestId STREAM_COMPLETE finish_reason=$lastFinishReason 耗时=${elapsed}ms")
+                            Log.d(TAG, "requestId=$requestId 状态=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms")
                             handler.post { onComplete?.invoke() }
                         } finally {
                             reader.close()
@@ -235,19 +234,26 @@ object QwenClient {
                     } catch (e: Exception) {
                         currentCall.set(null)
                         val elapsed = System.currentTimeMillis() - startMs
-                        val isInterrupt = e is SocketTimeoutException || e.message?.contains("Canceled", ignoreCase = true) == true
-                        if (isInterrupt) {
-                            Log.w(TAG, "requestId=$requestId 流已中断(Watchdog/取消) 耗时=${elapsed}ms")
+                        val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
+                        val isInterrupted = e is SocketTimeoutException
+                        if (isCanceled) {
+                            Log.w(TAG, "requestId=$requestId 状态=canceled 耗时=${elapsed}ms")
+                            handler.post {
+                                onChunk("已取消，可重新发送")
+                                onInterrupted?.invoke()
+                                onComplete?.invoke()
+                            }
+                        } else if (isInterrupted) {
+                            Log.w(TAG, "requestId=$requestId 状态=interrupted 耗时=${elapsed}ms")
                             handler.post {
                                 onChunk("网络不稳定，已中断，可重试")
                                 onInterrupted?.invoke()
                                 onComplete?.invoke()
                             }
                         } else {
-                            Log.e(TAG, "requestId=$requestId SSE解析失败 耗时=${elapsed}ms", e)
-                            val msg = e.message ?: "未知错误"
+                            Log.e(TAG, "requestId=$requestId 状态=error 耗时=${elapsed}ms", e)
                             handler.post {
-                                onChunk("流式解析失败: $msg")
+                                onChunk("服务返回异常，请稍后重试")
                                 onComplete?.invoke()
                             }
                         }
@@ -257,27 +263,35 @@ object QwenClient {
                     currentCall.set(null)
                     val responseBody = response.body?.string() ?: ""
                     val elapsed = System.currentTimeMillis() - startMs
-                    Log.e(TAG, "requestId=$requestId HTTP错误 耗时=${elapsed}ms")
-                    handleErrorResponse(statusCode, responseBody, onChunk, onComplete)
+                    Log.e(TAG, "requestId=$requestId 状态=error HTTP=$statusCode 耗时=${elapsed}ms")
+                    handleErrorResponse(requestId, statusCode, responseBody, onChunk, onComplete)
                 }
             } catch (e: IOException) {
                 currentCall.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
-                val isInterrupt = e is SocketTimeoutException || e.message?.contains("Canceled", ignoreCase = true) == true
-                if (isInterrupt) {
-                    Log.w(TAG, "requestId=$requestId 连接/读超时或已取消 耗时=${elapsed}ms")
+                val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
+                val isInterrupted = e is SocketTimeoutException
+                if (isCanceled) {
+                    Log.w(TAG, "requestId=$requestId 状态=canceled 耗时=${elapsed}ms")
+                    handler.post {
+                        onChunk("已取消，可重新发送")
+                        onInterrupted?.invoke()
+                        onComplete?.invoke()
+                    }
+                } else if (isInterrupted) {
+                    Log.w(TAG, "requestId=$requestId 状态=interrupted 耗时=${elapsed}ms")
                     handler.post {
                         onChunk("网络不稳定，已中断，可重试")
                         onInterrupted?.invoke()
                         onComplete?.invoke()
                     }
                 } else {
-                    Log.e(TAG, "requestId=$requestId 网络异常 耗时=${elapsed}ms", e)
+                    Log.e(TAG, "requestId=$requestId 状态=error 耗时=${elapsed}ms", e)
                     val errorMsg = when {
-                        e.message?.contains("timeout", ignoreCase = true) == true -> "网络请求超时，请检查网络连接"
-                        e.message?.contains("DNS", ignoreCase = true) == true -> "DNS 解析失败，请检查网络设置"
-                        e.message?.contains("connect", ignoreCase = true) == true -> "连接失败，请检查网络连接或代理设置"
-                        else -> "网络错误: ${e.message ?: "未知"}"
+                        e.message?.contains("timeout", ignoreCase = true) == true -> "网络请求超时，请稍后重试"
+                        e.message?.contains("DNS", ignoreCase = true) == true -> "网络异常，请检查网络设置"
+                        e.message?.contains("connect", ignoreCase = true) == true -> "连接失败，请检查网络"
+                        else -> "网络异常，请稍后重试"
                     }
                     handler.post {
                         onChunk(errorMsg)
@@ -287,9 +301,9 @@ object QwenClient {
             } catch (e: Exception) {
                 currentCall.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
-                Log.e(TAG, "requestId=$requestId 异常 耗时=${elapsed}ms", e)
+                Log.e(TAG, "requestId=$requestId 状态=error 耗时=${elapsed}ms", e)
                 handler.post {
-                    onChunk("请求失败: ${e.message ?: "未知错误"}")
+                    onChunk("服务异常，请稍后重试")
                     onComplete?.invoke()
                 }
             }
@@ -297,11 +311,11 @@ object QwenClient {
     }
     
     /**
-     * 处理错误响应，明确分类错误类型
-     * 只有在 HTTP 请求真实失败且 error.code 明确来自 DashScope 时才显示"模型不可用"
+     * 处理错误响应：中文可读提示 + onComplete 必到，日志含 requestId/HTTP/摘要
      */
-    private fun handleErrorResponse(statusCode: Int, responseBody: String, onChunk: (String) -> Unit, onComplete: (() -> Unit)? = null) {
-        Log.e(TAG, "请求失败 - Status: $statusCode, Body: $responseBody")
+    private fun handleErrorResponse(requestId: String, statusCode: Int, responseBody: String, onChunk: (String) -> Unit, onComplete: (() -> Unit)? = null) {
+        val bodySummary = responseBody.take(200) + if (responseBody.length > 200) "..." else ""
+        Log.e(TAG, "requestId=$requestId HTTP=$statusCode body=$bodySummary")
         
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
@@ -311,32 +325,17 @@ object QwenClient {
             
             // 只有在明确是 DashScope 返回的错误码时才显示"模型不可用"
             val errorMsg = when {
-                // 权限问题
-                statusCode == 401 || statusCode == 403 || 
+                statusCode == 401 || statusCode == 403 ||
                 errorCode.contains("InvalidApiKey", ignoreCase = true) ||
-                errorCode.contains("ModelAccessDenied", ignoreCase = true) -> {
-                    Log.e(TAG, "权限问题 - Code: $errorCode, Message: $errorMessage")
-                    "API 权限错误 (${errorCode}): $errorMessage"
-                }
-                // 参数问题
-                statusCode == 400 || 
-                errorCode.contains("InvalidParameter", ignoreCase = true) -> {
-                    Log.e(TAG, "参数问题 - Code: $errorCode, Message: $errorMessage")
-                    "请求参数错误 (${errorCode}): $errorMessage"
-                }
-                // 模型状态问题 - 只有在 DashScope 明确返回这些错误码时才显示"模型不可用"
-                (errorCode.isNotEmpty() && (
+                errorCode.contains("ModelAccessDenied", ignoreCase = true) -> "鉴权失败，请检查配置"
+                statusCode == 400 || errorCode.contains("InvalidParameter", ignoreCase = true) -> "请求参数错误，请稍后重试"
+                errorCode.isNotEmpty() && (
                     errorCode.contains("ModelNotFound", ignoreCase = true) ||
                     errorCode.contains("ModelUnavailable", ignoreCase = true)
-                )) -> {
-                    Log.e(TAG, "模型状态问题 - Code: $errorCode, Message: $errorMessage")
-                    "模型不可用 (${errorCode}): $errorMessage"
-                }
-                // 其他错误 - 不显示"模型不可用"
-                else -> {
-                    Log.e(TAG, "其他错误 - Status: $statusCode, Code: $errorCode, Message: $errorMessage")
-                    "请求失败 (HTTP $statusCode${if (errorCode.isNotEmpty()) ", $errorCode" else ""}): $errorMessage"
-                }
+                ) -> "服务暂不可用，请稍后重试"
+                statusCode in 500..599 -> "服务异常，请稍后重试"
+                statusCode == 429 -> "请求过于频繁，请稍后重试"
+                else -> "请求失败，请稍后重试"
             }
             
             handler.post {
@@ -344,15 +343,15 @@ object QwenClient {
                 onComplete?.invoke()
             }
         } catch (e: Exception) {
-            // 如果无法解析错误响应，使用状态码判断，但不显示"模型不可用"
             val errorMsg = when (statusCode) {
-                401, 403 -> "API 权限错误 (HTTP $statusCode): 请检查 API Key 是否正确"
-                400 -> "请求参数错误 (HTTP $statusCode): $responseBody"
-                404 -> "接口不存在 (HTTP $statusCode): 请检查 API URL"
-                500, 502, 503 -> "服务器错误 (HTTP $statusCode): 请稍后重试"
-                else -> "请求失败 (HTTP $statusCode): $responseBody"
+                401, 403 -> "鉴权失败，请检查配置"
+                400 -> "请求参数错误，请稍后重试"
+                404 -> "接口不存在，请检查配置"
+                429 -> "请求过于频繁，请稍后重试"
+                500, 502, 503 -> "服务异常，请稍后重试"
+                else -> "请求失败，请稍后重试"
             }
-            Log.e(TAG, "无法解析错误响应: $errorMsg")
+            Log.e(TAG, "requestId=$requestId 无法解析错误响应 statusCode=$statusCode")
             handler.post {
                 onChunk(errorMsg)
                 onComplete?.invoke()

@@ -365,12 +365,12 @@
 
         let isGenerating = false;
 
-        // 长聊不卡顿：仅渲染最近 K 条，更老折叠为「加载更多」；SSE 节流
-        const RENDER_WINDOW = 80;
-        const LOAD_MORE_BATCH = 20;
+        // 长聊不卡顿：窗口化 + SSE 节流（常量，便于验证）
+        const RENDER_WINDOW = 80;      // 仅渲染最近 N 条
+        const LOAD_MORE_BATCH = 20;    // 每次「加载更多」展开条数
+        const CHUNK_FLUSH_MS = 60;    // SSE chunk 合并间隔（ms），避免每 token 重排
         let chunkBuffer = '';
         let chunkFlushScheduled = false;
-        const CHUNK_FLUSH_MS = 60;
         
         // 图片状态管理（Map 保持插入顺序，发送时 URL 顺序与用户选择一致）
         const imageState = new Map(); // imageId -> {file, base64, status, url, element, currentRequestId}
@@ -630,9 +630,14 @@
                 loadMoreEl.className = 'load-more-placeholder';
                 loadMoreEl.textContent = '加载更多（' + toFold + ' 条）';
                 loadMoreEl.onclick = function() {
+                    const oldScrollHeight = messagesContainer.scrollHeight;
+                    const oldScrollTop = messagesContainer.scrollTop;
                     const folded = messagesContainer.querySelectorAll('.message-folded');
                     const n = Math.min(LOAD_MORE_BATCH, folded.length);
                     for (let i = 0; i < n; i++) folded[i].classList.remove('message-folded');
+                    requestAnimationFrame(function() {
+                        messagesContainer.scrollTop = oldScrollTop + (messagesContainer.scrollHeight - oldScrollHeight);
+                    });
                     const remaining = messagesContainer.querySelectorAll('.message-folded').length;
                     loadMoreEl.textContent = '加载更多（' + remaining + ' 条）';
                     if (remaining === 0) loadMoreEl.remove();
