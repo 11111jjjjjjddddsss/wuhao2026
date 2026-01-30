@@ -301,7 +301,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
         
-        private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")
+        /** JS 字符串安全：反斜杠/单引号 + U+2028/U+2029（否则断串） */
+        private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
         /** 切后台时按 streamId 缓存事件，受字数/流数/时间三上限；超限丢弃并记 cache_overflow */
         private fun dispatchChunk(streamId: String, chunk: String) {
@@ -330,7 +331,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 } else {
                     val esc = escapeJs(streamId)
-                    val escChunk = chunk.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+                    val escChunk = chunk.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
                     webView.evaluateJavascript("window.onChunkReceived && window.onChunkReceived('$esc', '$escChunk');", null)
                 }
             }
@@ -386,15 +387,15 @@ class MainActivity : AppCompatActivity() {
             overflowedStreamIds.clear()
         }
         overflowed.forEach { streamId ->
-            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'")
+            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
             webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', 'cache_overflow');", null)
         }
         copy.forEach { (streamId, events) ->
-            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'")
+            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
             events.forEach { (type, data) ->
                 when (type) {
                     "chunk" -> {
-                        val escChunk = (data ?: "").replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
+                        val escChunk = (data ?: "").replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
                         webView.evaluateJavascript("window.onChunkReceived && window.onChunkReceived('$esc', '$escChunk');", null)
                     }
                     "complete" -> {
@@ -402,7 +403,7 @@ class MainActivity : AppCompatActivity() {
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                     }
                     "interrupted" -> {
-                        val escReason = (data ?: "").replace("\\", "\\\\").replace("'", "\\'")
+                        val escReason = (data ?: "").replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
                         webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
                     }
                 }

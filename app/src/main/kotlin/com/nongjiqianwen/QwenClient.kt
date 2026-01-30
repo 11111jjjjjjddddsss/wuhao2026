@@ -286,8 +286,6 @@ object QwenClient {
      * 处理错误响应：仅 onInterrupted("error") + fireComplete，不写正文；日志含 userId/sessionId/requestId/streamId/HTTP
      */
     private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit) {
-        Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error HTTP=$statusCode 入=$inLen img=$imgCount 出=$outputCharCount")
-        
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
             val errorCode = jsonResponse.get("code")?.asString ?: ""
