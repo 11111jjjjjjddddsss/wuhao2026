@@ -19,6 +19,7 @@ object ModelService {
         onComplete: (() -> Unit)? = null,
         onInterrupted: (() -> Unit)? = null
     ) {
+        QwenClient.cancelCurrentRequest()
         val userId = IdManager.getInstallId()
         val sessionId = IdManager.getSessionId()
         val requestId = ApiConfig.nextRequestId()

@@ -1,0 +1,16 @@
+# Build
+/build
+**/build/
+.gradle/
+**/.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local
+local.properties
+*.iml
+
+# IDE (optional: uncomment to ignore .idea changes)
+# .idea/
+
+# Logs
+*.log

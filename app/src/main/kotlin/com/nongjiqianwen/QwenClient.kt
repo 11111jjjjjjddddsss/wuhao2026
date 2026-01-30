@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference
 object QwenClient {
     private val TAG = "QwenClient"
     private const val CONNECT_TIMEOUT_SEC = 30L
-    private const val READ_TIMEOUT_SEC = 15L   // 连续 N 秒无 delta 则断开（Watchdog）
+    private const val READ_TIMEOUT_SEC = 30L   // 连续 30 秒无 chunk 才判定中断（Watchdog）
     private const val CALL_TIMEOUT_SEC = 120L  // 单次请求总时长上限
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
@@ -30,6 +30,7 @@ object QwenClient {
         .callTimeout(CALL_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
         .build()
     private val currentCall = AtomicReference<Call?>(null)
+    private val currentRequestId = AtomicReference<String?>(null)
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -47,11 +48,12 @@ object QwenClient {
     }
     
     /**
-     * 取消当前进行中的请求（如切后台/onPause 时调用）。中断后 UI 显示“已中断”，可重试。
+     * 取消当前进行中的请求（新请求开始前或切后台时调用），保证旧流 chunk 不写到新消息。
      */
     fun cancelCurrentRequest() {
+        val oldRequestId = currentRequestId.getAndSet(null)
         currentCall.getAndSet(null)?.cancel()
-        Log.d(TAG, "cancelCurrentRequest 已调用")
+        if (oldRequestId != null) Log.d(TAG, "requestId=$oldRequestId 被取消（新请求/切后台）")
     }
 
     /**
@@ -114,61 +116,14 @@ object QwenClient {
                     add("messages", messagesArray)
                 }
                 
-                // 强制校验请求结构并打印最终payload（脱敏）
+                val imageCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
+                val textLen = userMessage.length
+                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 摘要: 图数=$imageCount 字符数=$textLen")
+                
+                if (imageCount > 4) throw Exception("图片数量超过限制：$imageCount 张，最多4张")
+                if (imageCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
+                
                 val requestJsonString = requestBody.toString()
-                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId FINAL_REQUEST_JSON（脱敏）")
-                val maskedJson = requestJsonString
-                    .replace(Regex("\"url\":\\s*\"https://[^\"]+\""), "\"url\": \"https://***\"")
-                Log.d(TAG, maskedJson)
-                
-                // 验证请求结构（OpenAI 兼容格式）
-                val modelCheck = requestBody.get("model")?.asString
-                val streamCheck = requestBody.get("stream")?.asBoolean
-                val messagesCheck = requestBody.getAsJsonArray("messages")
-                val firstMessage = messagesCheck?.get(0)?.asJsonObject
-                val contentCheck = firstMessage?.getAsJsonArray("content")
-                
-                Log.d(TAG, "=== 请求结构验证（OpenAI兼容格式）===")
-                Log.d(TAG, "model: $modelCheck")
-                Log.d(TAG, "stream: $streamCheck")
-                Log.d(TAG, "messages 是数组: ${messagesCheck != null}")
-                Log.d(TAG, "messages[0].content 是数组: ${contentCheck != null}")
-                
-                var imageUrlCount = 0
-                var hasText = false
-                
-                if (contentCheck != null) {
-                    Log.d(TAG, "content 数组大小: ${contentCheck.size()}")
-                    contentCheck.forEachIndexed { index, element ->
-                        if (element.isJsonObject) {
-                            val item = element.asJsonObject
-                            val type = item.get("type")?.asString
-                            Log.d(TAG, "content[$index]: type=$type")
-                            
-                            if (type == "image_url") {
-                                imageUrlCount++
-                                val imageUrlObj = item.getAsJsonObject("image_url")
-                                val url = imageUrlObj?.get("url")?.asString
-                                val isHttps = url?.startsWith("https://") == true
-                                Log.d(TAG, "content[$index].image_url.url: $url (https: $isHttps)")
-                            } else if (type == "text") {
-                                hasText = true
-                                val text = item.get("text")?.asString
-                                Log.d(TAG, "content[$index].text: ${text?.take(50)}...")
-                            }
-                        }
-                    }
-                    
-                    // 验证：最多4张图，必须带文字
-                    if (imageUrlCount > 4) {
-                        throw Exception("图片数量超过限制：$imageUrlCount 张，最多4张")
-                    }
-                    if (imageUrlCount > 0 && !hasText) {
-                        throw Exception("有图片时必须带文字描述")
-                    }
-                    
-                    Log.d(TAG, "验证通过：图片数量=$imageUrlCount，有文字=$hasText")
-                }
                 val request = Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
@@ -182,6 +137,7 @@ object QwenClient {
                 
                 call = client.newCall(request)
                 currentCall.set(call)
+                currentRequestId.set(requestId)
                 val response = call!!.execute()
                 val statusCode = response.code
                 
@@ -235,9 +191,11 @@ object QwenClient {
                             reader.close()
                             inputStream.close()
                             currentCall.set(null)
+                            currentRequestId.set(null)
                         }
                     } catch (e: Exception) {
                         currentCall.set(null)
+                        currentRequestId.set(null)
                         val elapsed = System.currentTimeMillis() - startMs
                         val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                         val isInterrupted = e is SocketTimeoutException
@@ -266,6 +224,7 @@ object QwenClient {
                     }
                 } else {
                     currentCall.set(null)
+                    currentRequestId.set(null)
                     val responseBody = response.body?.string() ?: ""
                     val elapsed = System.currentTimeMillis() - startMs
                     Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error HTTP=$statusCode 耗时=${elapsed}ms")
@@ -273,6 +232,7 @@ object QwenClient {
                 }
             } catch (e: IOException) {
                 currentCall.set(null)
+                currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
@@ -305,6 +265,7 @@ object QwenClient {
                 }
             } catch (e: Exception) {
                 currentCall.set(null)
+                currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
                 Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error 耗时=${elapsed}ms", e)
                 handler.post {
@@ -319,8 +280,7 @@ object QwenClient {
      * 处理错误响应：中文可读提示 + onComplete 必到，日志含 userId/sessionId/requestId/HTTP/摘要
      */
     private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, statusCode: Int, responseBody: String, onChunk: (String) -> Unit, onComplete: (() -> Unit)? = null) {
-        val bodySummary = responseBody.take(200) + if (responseBody.length > 200) "..." else ""
-        Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId HTTP=$statusCode body=$bodySummary")
+        Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId 状态=error HTTP=$statusCode 耗时见上")
         
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
