@@ -161,6 +161,7 @@ object QwenClient {
                         val inputStream = responseBody.byteStream()
                         val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
                         var lastFinishReason: String? = null
+                        var outputCharCount = 0
                         try {
                             while (true) {
                                 val line = reader.readLine() ?: break
@@ -187,6 +188,7 @@ object QwenClient {
                                                                     Log.d(TAG, "drop stale chunk")
                                                                     continue
                                                                 }
+                                                                outputCharCount += deltaText.length
                                                                 handler.post { onChunk(deltaText) }
                                                             }
                                                         }
@@ -197,7 +199,7 @@ object QwenClient {
                                 }
                             }
                             val elapsed = System.currentTimeMillis() - startMs
-                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete 尾刷 finish_reason=$lastFinishReason 耗时=${elapsed}ms")
+                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete reason=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms 入=$textLen 出=$outputCharCount")
                             fireComplete()
                         } finally {
                             reader.close()
@@ -212,19 +214,19 @@ object QwenClient {
                         val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                         val isInterrupted = e is SocketTimeoutException
                         if (isCanceled) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled 耗时=${elapsed}ms")
+                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$textLen 出=0")
                             handler.post {
                                 onInterrupted("canceled")
                                 fireComplete()
                             }
                         } else if (isInterrupted) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted 耗时=${elapsed}ms")
+                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$textLen 出=0")
                             handler.post {
                                 onInterrupted("interrupted")
                                 fireComplete()
                             }
                         } else {
-                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error 耗时=${elapsed}ms", e)
+                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$textLen 出=0", e)
                             handler.post {
                                 onInterrupted("error")
                                 fireComplete()
@@ -244,22 +246,23 @@ object QwenClient {
                 currentCall.set(null)
                 currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
+                val inLen = userMessage.length
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
                 if (isCanceled) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled 耗时=${elapsed}ms")
+                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$inLen 出=0")
                     handler.post {
                         onInterrupted("canceled")
                         fireComplete()
                     }
                 } else if (isInterrupted) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted 耗时=${elapsed}ms")
+                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen 出=0")
                     handler.post {
                         onInterrupted("interrupted")
                         fireComplete()
                     }
                 } else {
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error 耗时=${elapsed}ms", e)
+                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen 出=0", e)
                     handler.post {
                         onInterrupted("error")
                         fireComplete()
@@ -269,7 +272,8 @@ object QwenClient {
                 currentCall.set(null)
                 currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
-                Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error 耗时=${elapsed}ms", e)
+                val inLen = try { userMessage.length } catch (_: Exception) { 0 }
+                Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen 出=0", e)
                 handler.post {
                     onInterrupted("error")
                     fireComplete()
