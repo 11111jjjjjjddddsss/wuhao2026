@@ -19,8 +19,10 @@ object ModelService {
         onComplete: (() -> Unit)? = null,
         onInterrupted: (() -> Unit)? = null
     ) {
+        val userId = IdManager.getInstallId()
+        val sessionId = IdManager.getSessionId()
         val requestId = ApiConfig.nextRequestId()
-        QwenClient.callApi(requestId, userMessage, imageUrlList, onChunk, onComplete, onInterrupted)
+        QwenClient.callApi(userId, sessionId, requestId, userMessage, imageUrlList, onChunk, onComplete, onInterrupted)
     }
 }
 

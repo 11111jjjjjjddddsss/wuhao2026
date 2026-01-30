@@ -8,10 +8,13 @@ import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
+import android.view.MotionEvent
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import android.widget.Toast
 import java.io.ByteArrayInputStream
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -32,12 +35,14 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // 创建WebView
+        IdManager.init(applicationContext)
+
         webView = WebView(this)
         setContentView(webView)
-        
-        // 配置WebView
+
+        // Debug：长按 WebView 5 秒弹出“重置 install_id”（仅用于测试）
+        setupResetInstallIdOnLongPress()
+
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -326,6 +331,30 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
         if (isRequesting) {
             QwenClient.cancelCurrentRequest()
+        }
+    }
+
+    private var resetInstallIdRunnable: Runnable? = null
+
+    private fun setupResetInstallIdOnLongPress() {
+        resetInstallIdRunnable = Runnable {
+            AlertDialog.Builder(this)
+                .setTitle("Debug")
+                .setMessage("重置 install_id？仅用于测试")
+                .setPositiveButton("重置") { _, _ ->
+                    val newId = IdManager.resetInstallId()
+                    Toast.makeText(this, "install_id 已重置", Toast.LENGTH_SHORT).show()
+                    Log.d("MainActivity", "resetInstallId: $newId")
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
+        webView.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> resetInstallIdRunnable?.let { webView.postDelayed(it, 5000) }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> resetInstallIdRunnable?.let { webView.removeCallbacks(it) }
+            }
+            false
         }
     }
 

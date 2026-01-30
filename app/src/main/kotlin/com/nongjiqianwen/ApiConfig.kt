@@ -7,16 +7,8 @@ import java.util.UUID
  * 当前仍直连 DashScope；后期切 CNB 时只改此处 baseUrl + 鉴权，不动 App 主链路。
  */
 object ApiConfig {
-    /** 当前请求 ID（每次 getReply 生成） */
+    /** 当前请求 ID（每次 getReply 生成）；userId/sessionId 由 IdManager 提供 */
     fun nextRequestId(): String = "req_${UUID.randomUUID()}"
-
-    /** 用户 ID（占位，后期会员/审计用；先填 UUID） */
-    var userId: String = UUID.randomUUID().toString()
-        private set
-
-    /** 会话 ID（占位，后期审计用；先填 UUID） */
-    var sessionId: String = UUID.randomUUID().toString()
-        private set
 
     /** 服务端常驻 API 接口形态（占位，当前未使用） */
     const val PATH_CHAT = "/chat"
