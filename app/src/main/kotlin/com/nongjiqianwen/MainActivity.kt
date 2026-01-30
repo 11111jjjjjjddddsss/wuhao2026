@@ -23,8 +23,11 @@ class MainActivity : AppCompatActivity() {
 
     /** 压缩后 bytes 短期缓存，供重试使用：imageId -> (bytes, 写入时间戳)。TTL 60s，LRU 最多 4 条 */
     private val compressedBytesCache = ConcurrentHashMap<String, Pair<ByteArray, Long>>()
-    private const val CACHE_TTL_MS = 60_000L
-    private const val CACHE_MAX_SIZE = 4
+
+    companion object {
+        private const val CACHE_TTL_MS = 60_000L
+        private const val CACHE_MAX_SIZE = 4
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -260,7 +263,8 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
-                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', null);", null)
+                        val escapedError = escapeJs(error)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedError');", null)
                     }
                 }
             )

@@ -194,7 +194,7 @@ object ImageUploader {
         if (baseUrl.isEmpty()) {
             Log.e(TAG, "上传失败：UPLOAD_BASE_URL 未配置（请在 gradle.properties 或 buildConfig 中配置后端地址）")
             Log.e(TAG, "HTTP状态码=未配置, 错误=OSS/后端接口未配置")
-            onError("图片上传未配置：请配置后端上传地址 UPLOAD_BASE_URL")
+            onError("未配置上传服务")
             return
         }
         

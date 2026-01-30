@@ -40,18 +40,22 @@ object QwenClient {
     }
     
     /**
-     * 调用通义千问 API（非流式）
+     * 调用通义千问 API（真流式 SSE）
+     * @param requestId 请求唯一标识（日志与审计）
      * @param userMessage 用户输入的消息
      * @param imageUrlList 图片URL列表（可选，必须是公网可访问的URL）
-     * @param onChunk 回调函数，返回完整响应文本
-     * @param onComplete 请求完成回调（可选）
+     * @param onChunk 回调函数，逐 chunk 追加
+     * @param onComplete 请求完成回调（成功/失败均调用，保证 UI 可恢复）
      */
     fun callApi(
+        requestId: String,
         userMessage: String,
         imageUrlList: List<String> = emptyList(),
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null
     ) {
+        val startMs = System.currentTimeMillis()
+        Log.d(TAG, "=== requestId=$requestId 开始 ===")
         Thread {
             try {
                 // 构建请求体 - OpenAI 兼容格式（真流式SSE）
@@ -97,8 +101,7 @@ object QwenClient {
                 
                 // 强制校验请求结构并打印最终payload（脱敏）
                 val requestJsonString = requestBody.toString()
-                Log.d(TAG, "=== FINAL_REQUEST_JSON（脱敏）===")
-                // 脱敏：隐藏API Key和完整URL
+                Log.d(TAG, "=== requestId=$requestId FINAL_REQUEST_JSON（脱敏）===")
                 val maskedJson = requestJsonString
                     .replace(Regex("\"url\":\\s*\"https://[^\"]+\""), "\"url\": \"https://***\"")
                 Log.d(TAG, maskedJson)
@@ -163,7 +166,7 @@ object QwenClient {
                 val response = client.newCall(request).execute()
                 val statusCode = response.code
                 
-                Log.d(TAG, "HTTP Status Code: $statusCode")
+                Log.d(TAG, "requestId=$requestId HTTP Status Code: $statusCode")
                 
                 if (response.isSuccessful) {
                     try {
@@ -172,114 +175,82 @@ object QwenClient {
                             throw Exception("响应体为空")
                         }
                         
-                        // SSE流式解析
                         val inputStream = responseBody.byteStream()
                         val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
-                        
+                        var lastFinishReason: String? = null
                         try {
                             while (true) {
                                 val line = reader.readLine() ?: break
-                                
-                                Log.d(TAG, "=== SSE_LINE ===")
-                                Log.d(TAG, line)
-                                
-                                // 检查结束标记
-                                if (line.trim() == "data: [DONE]") {
-                                    Log.d(TAG, "=== STREAM_DONE ===")
-                                    break
-                                }
-                                
-                                // 解析 data: 开头的行
                                 if (line.startsWith("data: ")) {
-                                    val jsonStr = line.substring(6) // 移除 "data: " 前缀
-                                    
-                                    // 跳过空JSON对象
-                                    if (jsonStr.trim().isEmpty() || jsonStr.trim() == "{}") {
-                                        continue
+                                    Log.d(TAG, "SSE data: ${line.take(80)}${if (line.length > 80) "..." else ""}")
+                                    if (line.trim() == "data: [DONE]") {
+                                        Log.d(TAG, "requestId=$requestId STREAM_DONE finish_reason=$lastFinishReason")
+                                        break
                                     }
-                                    
+                                    val jsonStr = line.substring(6).trim()
+                                    if (jsonStr.isEmpty() || jsonStr == "{}") continue
                                     try {
                                         val jsonResponse = gson.fromJson(jsonStr, JsonObject::class.java)
-                                        
-                                        // 解析 choices[0].delta.content
                                         if (jsonResponse.has("choices") && jsonResponse.getAsJsonArray("choices").size() > 0) {
-                                            val choices = jsonResponse.getAsJsonArray("choices")
-                                            val firstChoice = choices[0].asJsonObject
-                                            
+                                            val firstChoice = jsonResponse.getAsJsonArray("choices").get(0).asJsonObject
+                                            firstChoice.get("finish_reason")?.takeIf { it.isJsonPrimitive }?.asString?.let { lastFinishReason = it }
                                             if (firstChoice.has("delta")) {
                                                 val delta = firstChoice.getAsJsonObject("delta")
-                                                
                                                 if (delta.has("content")) {
                                                     val content = delta.get("content")
-                                                    
                                                     if (content.isJsonPrimitive && content.asJsonPrimitive.isString) {
                                                         val deltaText = content.asString
-                                                        
                                                         if (deltaText.isNotBlank()) {
-                                                            Log.d(TAG, "=== DELTA_CONTENT ===")
-                                                            Log.d(TAG, "\"$deltaText\"")
-                                                            
-                                                            // 立即回调前端渲染
-                                                            handler.post {
-                                                                onChunk(deltaText)
-                                                            }
+                                                            handler.post { onChunk(deltaText) }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                    } catch (e: Exception) {
-                                        // 忽略单行JSON解析错误（可能是空行或其他格式）
-                                        Log.w(TAG, "解析SSE行失败: $line", e)
-                                    }
+                                    } catch (_: Exception) { /* 忽略单行解析错误 */ }
                                 }
                             }
-                            
-                            // 流式完成
-                            Log.d(TAG, "=== STREAM_COMPLETE ===")
-                            handler.post {
-                                onComplete?.invoke()
-                            }
-                            
+                            val elapsed = System.currentTimeMillis() - startMs
+                            Log.d(TAG, "requestId=$requestId STREAM_COMPLETE finish_reason=$lastFinishReason 耗时=${elapsed}ms")
+                            handler.post { onComplete?.invoke() }
                         } finally {
                             reader.close()
                             inputStream.close()
                         }
-                        
                     } catch (e: Exception) {
-                        Log.e(TAG, "SSE流式解析失败", e)
-                        e.printStackTrace()
+                        val elapsed = System.currentTimeMillis() - startMs
+                        Log.e(TAG, "requestId=$requestId SSE解析失败 耗时=${elapsed}ms", e)
+                        val msg = e.message ?: "未知错误"
                         handler.post {
-                            onChunk("流式解析失败: ${e.message}")
+                            onChunk("流式解析失败: $msg")
                             onComplete?.invoke()
                         }
                         return@Thread
                     }
                 } else {
-                    // 处理错误响应
                     val responseBody = response.body?.string() ?: ""
+                    val elapsed = System.currentTimeMillis() - startMs
+                    Log.e(TAG, "requestId=$requestId HTTP错误 耗时=${elapsed}ms")
                     handleErrorResponse(statusCode, responseBody, onChunk, onComplete)
                 }
             } catch (e: IOException) {
-                Log.e(TAG, "网络请求失败", e)
+                val elapsed = System.currentTimeMillis() - startMs
+                Log.e(TAG, "requestId=$requestId 网络异常 耗时=${elapsed}ms", e)
                 val errorMsg = when {
-                    e.message?.contains("timeout", ignoreCase = true) == true -> 
-                        "网络请求超时，请检查网络连接"
-                    e.message?.contains("DNS", ignoreCase = true) == true -> 
-                        "DNS 解析失败，请检查网络设置"
-                    e.message?.contains("connect", ignoreCase = true) == true -> 
-                        "连接失败，请检查网络连接或代理设置"
-                    else -> 
-                        "网络错误: ${e.message}"
+                    e.message?.contains("timeout", ignoreCase = true) == true -> "网络请求超时，请检查网络连接"
+                    e.message?.contains("DNS", ignoreCase = true) == true -> "DNS 解析失败，请检查网络设置"
+                    e.message?.contains("connect", ignoreCase = true) == true -> "连接失败，请检查网络连接或代理设置"
+                    else -> "网络错误: ${e.message ?: "未知"}"
                 }
                 handler.post {
                     onChunk(errorMsg)
                     onComplete?.invoke()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "未知错误", e)
+                val elapsed = System.currentTimeMillis() - startMs
+                Log.e(TAG, "requestId=$requestId 异常 耗时=${elapsed}ms", e)
                 handler.post {
-                    onChunk("请求失败: ${e.message}")
+                    onChunk("请求失败: ${e.message ?: "未知错误"}")
                     onComplete?.invoke()
                 }
             }
