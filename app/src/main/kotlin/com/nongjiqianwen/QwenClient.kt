@@ -11,18 +11,25 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.net.SocketTimeoutException
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 通义千问客户端
- * 负责 HTTP 请求和 JSON 解析
+ * 负责 HTTP 请求和 JSON 解析；支持取消、读超时（Watchdog）、callTimeout。
  * 使用阿里云百炼 DashScope API
  */
 object QwenClient {
     private val TAG = "QwenClient"
+    private const val CONNECT_TIMEOUT_SEC = 30L
+    private const val READ_TIMEOUT_SEC = 15L   // 连续 N 秒无 delta 则断开（Watchdog）
+    private const val CALL_TIMEOUT_SEC = 120L  // 单次请求总时长上限
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(READ_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(CALL_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
         .build()
+    private val currentCall = AtomicReference<Call?>(null)
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -40,23 +47,29 @@ object QwenClient {
     }
     
     /**
+     * 取消当前进行中的请求（如切后台/onPause 时调用）。中断后 UI 显示“已中断”，可重试。
+     */
+    fun cancelCurrentRequest() {
+        currentCall.getAndSet(null)?.cancel()
+        Log.d(TAG, "cancelCurrentRequest 已调用")
+    }
+
+    /**
      * 调用通义千问 API（真流式 SSE）
-     * @param requestId 请求唯一标识（日志与审计）
-     * @param userMessage 用户输入的消息
-     * @param imageUrlList 图片URL列表（可选，必须是公网可访问的URL）
-     * @param onChunk 回调函数，逐 chunk 追加
-     * @param onComplete 请求完成回调（成功/失败均调用，保证 UI 可恢复）
+     * @param onInterrupted 流被取消或读超时时调用（用于 UI 标记“已中断”）
      */
     fun callApi(
         requestId: String,
         userMessage: String,
         imageUrlList: List<String> = emptyList(),
         onChunk: (String) -> Unit,
-        onComplete: (() -> Unit)? = null
+        onComplete: (() -> Unit)? = null,
+        onInterrupted: (() -> Unit)? = null
     ) {
         val startMs = System.currentTimeMillis()
         Log.d(TAG, "=== requestId=$requestId 开始 ===")
         Thread {
+            var call: Call? = null
             try {
                 // 构建请求体 - OpenAI 兼容格式（真流式SSE）
                 val requestBody = JsonObject().apply {
@@ -162,8 +175,9 @@ object QwenClient {
                     .post(requestJsonString.toRequestBody("application/json".toMediaType()))
                     .build()
                 
-                // 执行SSE流式请求
-                val response = client.newCall(request).execute()
+                call = client.newCall(request)
+                currentCall.set(call)
+                val response = call!!.execute()
                 val statusCode = response.code
                 
                 Log.d(TAG, "requestId=$requestId HTTP Status Code: $statusCode")
@@ -216,37 +230,62 @@ object QwenClient {
                         } finally {
                             reader.close()
                             inputStream.close()
+                            currentCall.set(null)
                         }
                     } catch (e: Exception) {
+                        currentCall.set(null)
                         val elapsed = System.currentTimeMillis() - startMs
-                        Log.e(TAG, "requestId=$requestId SSE解析失败 耗时=${elapsed}ms", e)
-                        val msg = e.message ?: "未知错误"
-                        handler.post {
-                            onChunk("流式解析失败: $msg")
-                            onComplete?.invoke()
+                        val isInterrupt = e is SocketTimeoutException || e.message?.contains("Canceled", ignoreCase = true) == true
+                        if (isInterrupt) {
+                            Log.w(TAG, "requestId=$requestId 流已中断(Watchdog/取消) 耗时=${elapsed}ms")
+                            handler.post {
+                                onChunk("网络不稳定，已中断，可重试")
+                                onInterrupted?.invoke()
+                                onComplete?.invoke()
+                            }
+                        } else {
+                            Log.e(TAG, "requestId=$requestId SSE解析失败 耗时=${elapsed}ms", e)
+                            val msg = e.message ?: "未知错误"
+                            handler.post {
+                                onChunk("流式解析失败: $msg")
+                                onComplete?.invoke()
+                            }
                         }
                         return@Thread
                     }
                 } else {
+                    currentCall.set(null)
                     val responseBody = response.body?.string() ?: ""
                     val elapsed = System.currentTimeMillis() - startMs
                     Log.e(TAG, "requestId=$requestId HTTP错误 耗时=${elapsed}ms")
                     handleErrorResponse(statusCode, responseBody, onChunk, onComplete)
                 }
             } catch (e: IOException) {
+                currentCall.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
-                Log.e(TAG, "requestId=$requestId 网络异常 耗时=${elapsed}ms", e)
-                val errorMsg = when {
-                    e.message?.contains("timeout", ignoreCase = true) == true -> "网络请求超时，请检查网络连接"
-                    e.message?.contains("DNS", ignoreCase = true) == true -> "DNS 解析失败，请检查网络设置"
-                    e.message?.contains("connect", ignoreCase = true) == true -> "连接失败，请检查网络连接或代理设置"
-                    else -> "网络错误: ${e.message ?: "未知"}"
-                }
-                handler.post {
-                    onChunk(errorMsg)
-                    onComplete?.invoke()
+                val isInterrupt = e is SocketTimeoutException || e.message?.contains("Canceled", ignoreCase = true) == true
+                if (isInterrupt) {
+                    Log.w(TAG, "requestId=$requestId 连接/读超时或已取消 耗时=${elapsed}ms")
+                    handler.post {
+                        onChunk("网络不稳定，已中断，可重试")
+                        onInterrupted?.invoke()
+                        onComplete?.invoke()
+                    }
+                } else {
+                    Log.e(TAG, "requestId=$requestId 网络异常 耗时=${elapsed}ms", e)
+                    val errorMsg = when {
+                        e.message?.contains("timeout", ignoreCase = true) == true -> "网络请求超时，请检查网络连接"
+                        e.message?.contains("DNS", ignoreCase = true) == true -> "DNS 解析失败，请检查网络设置"
+                        e.message?.contains("connect", ignoreCase = true) == true -> "连接失败，请检查网络连接或代理设置"
+                        else -> "网络错误: ${e.message ?: "未知"}"
+                    }
+                    handler.post {
+                        onChunk(errorMsg)
+                        onComplete?.invoke()
+                    }
                 }
             } catch (e: Exception) {
+                currentCall.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
                 Log.e(TAG, "requestId=$requestId 异常 耗时=${elapsed}ms", e)
                 handler.post {

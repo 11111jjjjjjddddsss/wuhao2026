@@ -292,7 +292,6 @@ class MainActivity : AppCompatActivity() {
                 imageUrlList = imageUrlList,
                 onChunk = { chunk ->
                     runOnUiThread {
-                        // 调用JavaScript函数，传递chunk（转义特殊字符）
                         val escapedChunk = chunk
                             .replace("\\", "\\\\")
                             .replace("'", "\\'")
@@ -304,14 +303,32 @@ class MainActivity : AppCompatActivity() {
                 onComplete = {
                     runOnUiThread {
                         isRequesting = false
-                        // 调用JavaScript函数，通知完成
                         webView.evaluateJavascript("window.onCompleteReceived();", null)
+                    }
+                },
+                onInterrupted = {
+                    runOnUiThread {
+                        webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted();", null)
                     }
                 }
             )
         }
     }
-    
+
+    override fun onPause() {
+        super.onPause()
+        if (isRequesting) {
+            QwenClient.cancelCurrentRequest()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isRequesting) {
+            QwenClient.cancelCurrentRequest()
+        }
+    }
+
     override fun onBackPressed() {
         if (webView.canGoBack()) {
             webView.goBack()

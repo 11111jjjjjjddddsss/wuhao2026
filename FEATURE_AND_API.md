@@ -19,6 +19,11 @@
 - **客户端**：`request_id` / `user_id` / `session_id` 已留（先填 UUID），供后期会员/配额/审计
 - **服务端接口形态占位**：`/chat`（文本）、`/chat/stream`（SSE）、`/usage`（配额）、`/auth`（鉴权）
 - **数据结构占位**：`a_messages`（最近 N 轮）、`b_summary`（字符串）、`meta`（作物/地区/时间等）；不做 B 层摘要/锚点真实逻辑
+- **声明**：AB 仅占位，不生效、不入 prompt、不入 payload。模型请求的 messages/content 仅由 `QwenClient.callApi` 内 `userMessage` + `imageUrlList` 拼装，无 AB 字段混入。
+
+**阶段0 证据（纯文本请求 payload 与引用点）**  
+- 纯文本时最终 payload 形态（脱敏）：`{"model":"qwen3-vl-flash","stream":true,"messages":[{"role":"user","content":[{"type":"text","text":"用户输入内容"}]}]}`  
+- 代码引用点：`QwenClient.kt` 第 62–101 行构建 `requestBody`，仅含 `model`、`stream`、`messages`；`messages[0].content` 仅由 `imageUrlList` + `userMessage` 拼装，无 `a_messages`/`b_summary`/`meta`/`user_id`/`session_id`。`ApiConfig` 仅被 `ModelService.getReply` 用于生成 `requestId`（日志），不参与 payload。`ABContextPlaceholder` 全库无引用。
 
 ---
 
@@ -83,5 +88,31 @@
 
 ---
 
-**变更范围**：仅稳定性/接口占位/日志，未改 AB 层核心规则文档内容。  
+---
+
+## 四、阶段验收证据（本轮纯文本体验与稳定性）
+
+### 阶段0：AB 占位不污染主链路
+- 引用点：`ApiConfig` 仅 `ModelService.getReply` 用于 `requestId`（日志）；`ABContextPlaceholder` 全库无引用。payload 仅由 `QwenClient.kt` 第 62–101 行 `userMessage` + `imageUrlList` 拼装。
+- 证据：一次纯文本请求的 FINAL_REQUEST_JSON（脱敏）仅含 `model`/`stream`/`messages`，无 AB 字段。
+
+### 阶段1：纯文本 SSE 弱网/切后台不挂死
+- SSE Watchdog：readTimeout 15s，连续无 delta 则断开；UI 提示「网络不稳定，已中断，可重试」，输入可恢复。
+- 切后台：onPause/onStop 时 `QwenClient.cancelCurrentRequest()`；assistant 消息标记「（已中断）」；onResume 不续用旧连接。
+- 超时：connectTimeout 30s、readTimeout 15s、callTimeout 120s。
+- 重试：不自动重试，仅用户手动重发。
+- 证据：Logcat 含 requestId/耗时/finish_reason/HTTP 状态码；弱网/切后台 10s 后能进入「已中断」并恢复；切 App 回来无一直转圈/禁用输入。
+
+### 阶段2：长聊不卡顿
+- 消息窗口化：仅渲染最近 80 条，更老折叠为「加载更多（N 条）」点击追加 20 条。
+- SSE 节流：chunk 每 60ms 合并 append，减少重排。
+- 证据：连续 200 条对话可顺滑滚动，CPU/卡顿改善（录屏约 10s）。
+
+### 阶段3：图片链路保持冻结
+- UPLOAD_BASE_URL 未配置：图片卡片统一 fail，文案「未配置上传服务」，发送键禁用（有图时）；禁止上传失败降级纯文本发送。
+- 证据：未配置时选图即 fail；有图无法发送；纯文本可发送且流式正常。
+
+---
+
+**变更范围**：仅稳定性/接口占位/日志/渲染层，未改 AB 层核心规则。  
 **云端**：CNB + DIFF 推送。
