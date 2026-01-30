@@ -23,11 +23,17 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private var isRequesting = false
+    /** 单飞：同会话只允许一个流在飞；当前在飞的 streamId，仅其 complete 时清 isRequesting */
+    private var currentStreamId: String? = null
     /** 切后台时 true，onResume 清空并补发缓存；不在此 cancel 请求 */
     private var isInBackground = false
 
     /** streamId -> [(type, data)]：切后台时缓存 chunk/complete/interrupted，onResume 按序补发 */
     private val bufferedEventsByStreamId = mutableMapOf<String, MutableList<Pair<String, String?>>>()
+    /** 后台缓存上限：字数、流数、时间(ms)；超限丢弃并用 badge 提示 */
+    private var backgroundBufferStartMs: Long = 0L
+    /** 因流数超限被丢弃的 streamId，onResume 时补发 cache_overflow badge */
+    private val overflowedStreamIds = mutableSetOf<String>()
 
     /** 压缩后 bytes 短期缓存，供重试使用：imageId -> (bytes, 写入时间戳)。TTL 60s，LRU 最多 4 条 */
     private val compressedBytesCache = ConcurrentHashMap<String, Pair<ByteArray, Long>>()
@@ -35,6 +41,9 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val CACHE_TTL_MS = 60_000L
         private const val CACHE_MAX_SIZE = 4
+        private const val BACKGROUND_CACHE_MAX_CHARS = 20_000
+        private const val BACKGROUND_CACHE_MAX_STREAMS = 3
+        private const val BACKGROUND_CACHE_MAX_MS = 60_000L
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -152,7 +161,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun sendMessage(text: String, imageUrlsJson: String, streamId: String?) {
             runOnUiThread {
-                if (isRequesting) return@runOnUiThread
+                // 单飞：不挡连点；连点 = 取消旧流再开新流，getReply 内 cancelCurrentRequest
 
                 // 验证：有图必须有文字
                 val hasText = text.isNotBlank()
@@ -166,9 +175,6 @@ class MainActivity : AppCompatActivity() {
 
                 // 检查是否有输入
                 if (!hasText && !hasImages) return@runOnUiThread
-
-                // 设置请求状态
-                isRequesting = true
 
                 // 解析图片URL列表
                 val imageUrlList = if (hasImages) {
@@ -196,6 +202,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val sid = streamId?.takeIf { it.isNotBlank() } ?: "stream_${System.currentTimeMillis()}"
+                currentStreamId = sid
+                isRequesting = true
                 sendToModel(text, imageUrlList, sid)
             }
         }
@@ -295,11 +303,31 @@ class MainActivity : AppCompatActivity() {
         
         private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")
 
-        /** 切后台时按 streamId 缓存事件；前台则直接回调 WebView */
+        /** 切后台时按 streamId 缓存事件，受字数/流数/时间三上限；超限丢弃并记 cache_overflow */
         private fun dispatchChunk(streamId: String, chunk: String) {
             runOnUiThread {
                 if (isInBackground) {
-                    synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("chunk" to chunk) }
+                    synchronized(bufferedEventsByStreamId) {
+                        val now = System.currentTimeMillis()
+                        val overTime = (now - backgroundBufferStartMs) > BACKGROUND_CACHE_MAX_MS
+                        val totalChars = bufferedEventsByStreamId.values.sumOf { list -> list.sumOf { (it.second?.length ?: 0) } }
+                        val overChars = (totalChars + chunk.length) > BACKGROUND_CACHE_MAX_CHARS
+                        val streamOrder = bufferedEventsByStreamId.keys.toList()
+                        val overStreams = streamOrder.size >= BACKGROUND_CACHE_MAX_STREAMS && streamId !in bufferedEventsByStreamId
+                        if (overTime || overChars) {
+                            val list = bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }
+                            if (list.isEmpty() || list.last().first != "interrupted" || list.last().second != "cache_overflow")
+                                list.add("interrupted" to "cache_overflow")
+                        } else if (overStreams) {
+                            val oldest = streamOrder.first()
+                            bufferedEventsByStreamId.remove(oldest)
+                            overflowedStreamIds.add(oldest)
+                            if (bufferedEventsByStreamId.size < BACKGROUND_CACHE_MAX_STREAMS)
+                                bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("chunk" to chunk)
+                        } else {
+                            bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("chunk" to chunk)
+                        }
+                    }
                 } else {
                     val esc = escapeJs(streamId)
                     val escChunk = chunk.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r")
@@ -313,7 +341,7 @@ class MainActivity : AppCompatActivity() {
                 if (isInBackground) {
                     synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("complete" to null) }
                 } else {
-                    isRequesting = false
+                    if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                     val esc = escapeJs(streamId)
                     webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                 }
@@ -347,10 +375,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** onResume 时补发切后台期间缓存的 chunk/complete/interrupted */
+    /** onResume 时补发切后台期间缓存的 chunk/complete/interrupted；超限丢弃的流补发 cache_overflow badge */
     private fun flushBufferedEventsToWebView() {
-        val copy = synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.toMap().mapValues { it.value.toList() } }
-        bufferedEventsByStreamId.clear()
+        val copy: Map<String, List<Pair<String, String?>>>
+        val overflowed: Set<String>
+        synchronized(bufferedEventsByStreamId) {
+            copy = bufferedEventsByStreamId.toMap().mapValues { it.value.toList() }
+            bufferedEventsByStreamId.clear()
+            overflowed = overflowedStreamIds.toSet()
+            overflowedStreamIds.clear()
+        }
+        overflowed.forEach { streamId ->
+            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'")
+            webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', 'cache_overflow');", null)
+        }
         copy.forEach { (streamId, events) ->
             val esc = streamId.replace("\\", "\\\\").replace("'", "\\'")
             events.forEach { (type, data) ->
@@ -360,7 +398,7 @@ class MainActivity : AppCompatActivity() {
                         webView.evaluateJavascript("window.onChunkReceived && window.onChunkReceived('$esc', '$escChunk');", null)
                     }
                     "complete" -> {
-                        isRequesting = false
+                        if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                     }
                     "interrupted" -> {
@@ -375,6 +413,7 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         isInBackground = true
+        backgroundBufferStartMs = System.currentTimeMillis()
     }
 
     override fun onResume() {

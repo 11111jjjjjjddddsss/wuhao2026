@@ -752,7 +752,7 @@
             }
         };
 
-        // 接收Android完成通知（保证一次；仅操作该 streamId 的 buffer，杜绝串流）
+        // 接收Android完成通知（保证一次；onComplete 必 flush 该 streamId buffer，最后几个字不丢）
         window.onCompleteReceived = function(streamId) {
             if (streamId) { flushChunkBuffer(streamId); }
             isGenerating = false;
@@ -771,7 +771,7 @@
                 if (contentDiv && !contentDiv.querySelector('.interrupted-badge')) {
                     const badge = document.createElement('span');
                     badge.className = 'interrupted-badge';
-                    badge.textContent = reason === 'canceled' ? '（已停止）' : (reason === 'interrupted' ? '（已中断）' : '（请求失败）');
+                    badge.textContent = reason === 'canceled' ? '（已停止）' : (reason === 'interrupted' ? '（已中断）' : (reason === 'cache_overflow' ? '（缓存超限）' : '（请求失败）'));
                     contentDiv.appendChild(badge);
                 }
             }

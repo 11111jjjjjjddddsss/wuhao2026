@@ -197,7 +197,7 @@ object QwenClient {
                                 }
                             }
                             val elapsed = System.currentTimeMillis() - startMs
-                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms")
+                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete 尾刷 finish_reason=$lastFinishReason 耗时=${elapsed}ms")
                             fireComplete()
                         } finally {
                             reader.close()
