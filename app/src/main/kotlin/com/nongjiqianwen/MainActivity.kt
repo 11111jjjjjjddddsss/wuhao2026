@@ -14,11 +14,17 @@ import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private var isRequesting = false
+
+    /** 压缩后 bytes 短期缓存，供重试使用：imageId -> (bytes, 写入时间戳)。TTL 60s，LRU 最多 4 条 */
+    private val compressedBytesCache = ConcurrentHashMap<String, Pair<ByteArray, Long>>()
+    private const val CACHE_TTL_MS = 60_000L
+    private const val CACHE_MAX_SIZE = 4
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,16 +107,26 @@ class MainActivity : AppCompatActivity() {
         }
         
         /**
-         * 重试单张图片上传
+         * 重试单张图片上传（不传 base64，用缓存 bytes 重传；缓存缺失则回传 fail + 请重新选择该图片）
          * @param imageId 图片ID
-         * @param base64 图片base64（前端重新传递）
          * @param requestId 本次尝试ID（回传前端用于去重）
          */
         @JavascriptInterface
-        fun retryImage(imageId: String, base64: String, requestId: String) {
+        fun retryImage(imageId: String, requestId: String) {
             Thread {
                 Log.d("MainActivity", "重试图片上传: $imageId, requestId=$requestId")
-                uploadSingleImage(imageId, base64, requestId)
+                val cached = compressedBytesCache[imageId]
+                val now = System.currentTimeMillis()
+                if (cached == null || (now - cached.second) > CACHE_TTL_MS) {
+                    runOnUiThread {
+                        val escapedImageId = escapeJs(imageId)
+                        val escapedRequestId = escapeJs(requestId)
+                        val escapedMsg = escapeJs("请重新选择该图片")
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedMsg');", null)
+                    }
+                    return@Thread
+                }
+                uploadSingleImageWithBytes(imageId, cached.first, requestId)
             }.start()
         }
         
@@ -180,7 +196,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
-                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null, '$escapedRequestId');", null)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null, '$escapedRequestId', null);", null)
                     }
                     
                     // base64 解码后即用，不长期驻留
@@ -194,7 +210,7 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread {
                             val escapedImageId = escapeJs(imageId)
                             val escapedRequestId = escapeJs(requestId)
-                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId');", null)
+                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', null);", null)
                         }
                         return@Thread
                     }
@@ -204,42 +220,62 @@ class MainActivity : AppCompatActivity() {
                     Log.d("MainActivity", "压缩后尺寸: ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
                     Log.d("MainActivity", "压缩后字节数: ${compressResult.compressedSize} bytes")
                     
-                    ImageUploader.uploadImage(
-                        imageBytes = compressResult.bytes,
-                        onSuccess = { url ->
-                            Log.d("MainActivity", "=== 图片[$imageId] 上传成功 ===")
-                            val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
-                            Log.d("MainActivity", "上传URL（脱敏）: $maskedUrl")
-                            
-                            runOnUiThread {
-                                val escapedImageId = escapeJs(imageId)
-                                val escapedUrl = url.replace("\\", "\\\\").replace("'", "\\'")
-                                val escapedRequestId = escapeJs(requestId)
-                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'success', '$escapedUrl', '$escapedRequestId');", null)
-                            }
-                        },
-                        onError = { error ->
-                            Log.e("MainActivity", "=== 图片[$imageId] 上传失败 ===")
-                            Log.e("MainActivity", "错误原因: $error")
-                            Log.e("MainActivity", "HTTP状态码: 未配置（OSS接口未配置）")
-                            
-                            runOnUiThread {
-                                val escapedImageId = escapeJs(imageId)
-                                val escapedRequestId = escapeJs(requestId)
-                                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId');", null)
-                            }
-                        }
-                    )
+                    putCompressedCache(imageId, compressResult.bytes)
+                    uploadSingleImageWithBytes(imageId, compressResult.bytes, requestId)
                     
                 } catch (e: Exception) {
                     Log.e("MainActivity", "处理图片[$imageId]失败", e)
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
-                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId');", null)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', null);", null)
                     }
                 }
             }.start()
+        }
+        
+        /** 用已压缩 bytes 上传（首次或重试共用）；失败回调不带 errorMessage，由调用方决定 */
+        private fun uploadSingleImageWithBytes(imageId: String, imageBytes: ByteArray, requestId: String) {
+            runOnUiThread {
+                val escapedImageId = escapeJs(imageId)
+                val escapedRequestId = escapeJs(requestId)
+                webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null, '$escapedRequestId', null);", null)
+            }
+            ImageUploader.uploadImage(
+                imageBytes = imageBytes,
+                onSuccess = { url ->
+                    Log.d("MainActivity", "=== 图片[$imageId] 上传成功 ===")
+                    val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
+                    Log.d("MainActivity", "上传URL（脱敏）: $maskedUrl")
+                    runOnUiThread {
+                        val escapedImageId = escapeJs(imageId)
+                        val escapedUrl = url.replace("\\", "\\\\").replace("'", "\\'")
+                        val escapedRequestId = escapeJs(requestId)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'success', '$escapedUrl', '$escapedRequestId', null);", null)
+                    }
+                },
+                onError = { error ->
+                    Log.e("MainActivity", "=== 图片[$imageId] 上传失败 ===")
+                    Log.e("MainActivity", "错误原因: $error")
+                    runOnUiThread {
+                        val escapedImageId = escapeJs(imageId)
+                        val escapedRequestId = escapeJs(requestId)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', null);", null)
+                    }
+                }
+            )
+        }
+        
+        private fun putCompressedCache(imageId: String, bytes: ByteArray) {
+            val now = System.currentTimeMillis()
+            synchronized(compressedBytesCache) {
+                compressedBytesCache.entries.removeIf { (_, v) -> (now - v.second) > CACHE_TTL_MS }
+                while (compressedBytesCache.size >= CACHE_MAX_SIZE) {
+                    val oldest = compressedBytesCache.entries.minByOrNull { it.value.second } ?: break
+                    compressedBytesCache.remove(oldest.key)
+                }
+                compressedBytesCache[imageId] = Pair(bytes, now)
+            }
         }
         
         private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'")

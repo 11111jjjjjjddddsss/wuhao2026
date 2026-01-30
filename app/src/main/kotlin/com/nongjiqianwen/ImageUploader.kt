@@ -224,22 +224,28 @@ object ImageUploader {
                     val code = response.code
                     val bodyStr = response.body?.string() ?: ""
                     
+                    // 冻结协议：成功 200 仅认根级 url；失败 !=200 仅认根级 error
                     if (!response.isSuccessful) {
-                        Log.e(TAG, "上传失败：HTTP状态码=$code, body=${bodyStr.take(200)}")
-                        onError("上传失败：HTTP $code")
+                        val errorMsg = try {
+                            val json = com.google.gson.JsonParser().parse(bodyStr).asJsonObject
+                            json.get("error")?.takeIf { it.isJsonPrimitive }?.asString ?: "HTTP $code"
+                        } catch (_: Exception) {
+                            "HTTP $code"
+                        }
+                        Log.e(TAG, "上传失败：HTTP状态码=$code, error=$errorMsg")
+                        onError(errorMsg)
                         return@use
                     }
                     
-                    // 期望 JSON：{ "url": "https://..." } 或 { "data": { "url": "..." } }
+                    // 只解析根级 url，不兼容 data.url 等其他字段
                     val json = com.google.gson.JsonParser().parse(bodyStr).asJsonObject
                     val url = json.get("url")?.takeIf { it.isJsonPrimitive }?.asString
-                        ?: json.getAsJsonObject("data")?.get("url")?.takeIf { it.isJsonPrimitive }?.asString
                     
                     if (!url.isNullOrBlank() && url.startsWith("https://")) {
                         Log.d(TAG, "上传成功：URL（脱敏）=${url.replace(Regex("/([^/]+)$"), "/***")}")
                         onSuccess(url)
                     } else {
-                        Log.e(TAG, "上传失败：响应无有效 url, body=${bodyStr.take(200)}")
+                        Log.e(TAG, "上传失败：响应无根级 url, body=${bodyStr.take(200)}")
                         onError("上传失败：响应格式错误")
                     }
                 }

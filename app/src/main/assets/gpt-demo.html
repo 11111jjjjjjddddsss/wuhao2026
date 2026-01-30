@@ -170,6 +170,19 @@
             background-color: rgba(244, 67, 54, 1);
         }
 
+        .image-fail-hint {
+            position: absolute;
+            bottom: 28px;
+            left: 4px;
+            right: 4px;
+            font-size: 10px;
+            color: #f44336;
+            text-align: center;
+            background: rgba(0,0,0,0.6);
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+
         .input-container {
             position: sticky;
             bottom: 0;
@@ -339,8 +352,8 @@
             uploadImages: function(imageDataListJson) {
                 console.log('AndroidInterface.uploadImages called', imageDataListJson);
             },
-            retryImage: function(imageId) {
-                console.log('AndroidInterface.retryImage called', imageId);
+            retryImage: function(imageId, requestId) {
+                console.log('AndroidInterface.retryImage called', imageId, requestId);
             }
         };
 
@@ -403,16 +416,11 @@
             const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
             
             const currentImageCount = imageState.size;
-            const remainingSlots = 4 - currentImageCount;
+            const remainingSlots = Math.max(0, 4 - currentImageCount);
+            // 只吃剩余槽位：只接收前 (4-N) 张，其余忽略；不弹窗、不全回滚
+            const toAdd = imageFiles.slice(0, remainingSlots);
             
-            // 不允许“超过4张只保留前4张”：超过则提示并回滚，不加入任何新图
-            if (imageFiles.length > remainingSlots) {
-                alert('最多选择4张图片');
-                fileInput.value = '';
-                return;
-            }
-            
-            imageFiles.forEach((file) => {
+            toAdd.forEach((file) => {
                 const imageId = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 addImagePreview(imageId, file);
             });
@@ -462,20 +470,20 @@
                 currentRequestId: requestId
             });
             
-            // 读取 base64 仅用于上传（上传后 success 可释放）
+            // base64 仅用于首次发给 Android 上传，发完即丢，不长期保存（重试走 Android 缓存）
             const reader = new FileReader();
             reader.onload = function(e) {
                 const state = imageState.get(imageId);
                 if (!state) return; // 用户已删除，不再上传
                 const base64 = e.target.result.split(',')[1];
                 if (!base64 || base64.length < 10) return;
-                state.base64 = base64;
                 uploadImage(imageId, base64, requestId);
+                state.base64 = null; // 发完立刻丢，不占内存
             };
             reader.readAsDataURL(file);
         }
         
-        // 上传图片（带 requestId，用于回调去重）
+        // 上传图片（带 requestId；base64 仅首次使用）
         function uploadImage(imageId, base64, requestId) {
             const imageData = {
                 imageId: imageId,
@@ -486,8 +494,8 @@
             AndroidInterface.uploadImages(JSON.stringify(imageDataList));
         }
         
-        // 更新图片状态（仅当 imageId 仍存在且 requestId 匹配当前尝试时生效，防删图/重试竞态）
-        function updateImageStatus(imageId, status, url, requestId) {
+        // 更新图片状态（仅当 imageId 仍存在且 requestId 匹配时生效；errorMessage 仅 fail 时卡片展示）
+        function updateImageStatus(imageId, status, url, requestId, errorMessage) {
             const state = imageState.get(imageId);
             if (!state) return; // 已删除，忽略回调
             if (requestId != null && state.currentRequestId !== requestId) return; // 非本次尝试，忽略
@@ -495,9 +503,6 @@
             state.status = status;
             if (url) {
                 state.url = url;
-            }
-            if (status === 'success') {
-                state.base64 = null; // 成功后释放 base64，减少内存
             }
             
             const statusOverlay = state.element.querySelector('.image-status-overlay');
@@ -515,6 +520,8 @@
                 
                 const retryBtn = state.element.querySelector('.retry');
                 if (retryBtn) retryBtn.remove();
+                const hint = state.element.querySelector('.image-fail-hint');
+                if (hint) hint.remove();
             } else if (status === 'fail') {
                 const failIcon = document.createElement('div');
                 failIcon.className = 'image-status-fail';
@@ -529,21 +536,29 @@
                     retryBtn.onclick = () => retryImage(imageId);
                     actions.insertBefore(retryBtn, actions.firstChild);
                 }
+                if (errorMessage) {
+                    let hint = state.element.querySelector('.image-fail-hint');
+                    if (!hint) {
+                        hint = document.createElement('div');
+                        hint.className = 'image-fail-hint';
+                        state.element.appendChild(hint);
+                    }
+                    hint.textContent = errorMessage;
+                }
             }
             
             updateSendButton();
         }
         
-        // 重试图片（新 requestId，避免旧回调覆盖）
+        // 重试：只发 imageId + requestId，不传 base64；Android 用缓存 bytes 重传
         function retryImage(imageId) {
             const state = imageState.get(imageId);
             if (!state) return;
-            if (!state.base64) return; // 已释放则无法重试（理论上 success 后不会点重试）
             
             const requestId = 'req_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             state.currentRequestId = requestId;
-            updateImageStatus(imageId, 'uploading', null, requestId);
-            AndroidInterface.retryImage(imageId, state.base64, requestId);
+            updateImageStatus(imageId, 'uploading', null, requestId, null);
+            AndroidInterface.retryImage(imageId, requestId);
         }
         
         // 删除图片：UI 立即移除，已删除图不参与发送，后续该图回调忽略
@@ -564,9 +579,9 @@
             updateSendButton();
         }
         
-        // 接收 Android 上传状态回调（带 requestId，仅接受当前 attempt）
-        window.onImageUploadStatus = function(imageId, status, url, requestId) {
-            updateImageStatus(imageId, status, url || null, requestId || null);
+        // 接收 Android 上传状态回调（requestId 去重；errorMessage 仅 fail 时在卡片上展示）
+        window.onImageUploadStatus = function(imageId, status, url, requestId, errorMessage) {
+            updateImageStatus(imageId, status, url || null, requestId || null, errorMessage || null);
         };
 
         // 发送消息
