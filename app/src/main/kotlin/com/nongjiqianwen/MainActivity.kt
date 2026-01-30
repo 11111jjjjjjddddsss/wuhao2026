@@ -376,7 +376,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** onResume 时补发切后台期间缓存的 chunk/complete/interrupted；超限丢弃的流补发 cache_overflow badge */
+    /** onResume 时补发切后台期间缓存的 chunk/complete/interrupted；合并连续 chunk 并按 stream 分批 post 避免 UI 卡顿 */
     private fun flushBufferedEventsToWebView() {
         val copy: Map<String, List<Pair<String, String?>>>
         val overflowed: Set<String>
@@ -387,12 +387,16 @@ class MainActivity : AppCompatActivity() {
             overflowedStreamIds.clear()
         }
         overflowed.forEach { streamId ->
-            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+            val esc = escapeJs(streamId)
             webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', 'cache_overflow');", null)
         }
-        copy.forEach { (streamId, events) ->
-            val esc = streamId.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
-            events.forEach { (type, data) ->
+        val streamList = copy.entries.toList()
+        fun replayStreamAt(index: Int) {
+            if (index >= streamList.size) return
+            val (streamId, events) = streamList[index]
+            val esc = escapeJs(streamId)
+            val merged = mergeChunksAndReplayOrder(events)
+            merged.forEach { (type, data) ->
                 when (type) {
                     "chunk" -> {
                         val escChunk = (data ?: "").replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
@@ -403,12 +407,34 @@ class MainActivity : AppCompatActivity() {
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                     }
                     "interrupted" -> {
-                        val escReason = (data ?: "").replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+                        val escReason = escapeJs(data ?: "")
                         webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
                     }
                 }
             }
+            webView.post { replayStreamAt(index + 1) }
         }
+        webView.post { replayStreamAt(0) }
+    }
+
+    /** 将同一流内连续 chunk 合并为一条，保持 complete/interrupted 顺序，减少 JS 调用次数 */
+    private fun mergeChunksAndReplayOrder(events: List<Pair<String, String?>>): List<Pair<String, String?>> {
+        val out = mutableListOf<Pair<String, String?>>()
+        var chunkAcc = StringBuilder()
+        for ((type, data) in events) {
+            when (type) {
+                "chunk" -> chunkAcc.append(data ?: "")
+                "complete", "interrupted" -> {
+                    if (chunkAcc.isNotEmpty()) {
+                        out.add("chunk" to chunkAcc.toString())
+                        chunkAcc = StringBuilder()
+                    }
+                    out.add(type to data)
+                }
+            }
+        }
+        if (chunkAcc.isNotEmpty()) out.add("chunk" to chunkAcc.toString())
+        return out
     }
 
     override fun onPause() {

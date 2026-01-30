@@ -616,10 +616,16 @@
         function applyMessageWindow() {
             const messages = messagesContainer.querySelectorAll('.message');
             const total = messages.length;
+            const oldScrollTop = messagesContainer.scrollTop;
+            const oldScrollHeight = messagesContainer.scrollHeight;
             let loadMoreEl = messagesContainer.querySelector('.load-more-placeholder');
             if (total <= RENDER_WINDOW) {
                 messages.forEach(el => el.classList.remove('message-folded'));
                 if (loadMoreEl) loadMoreEl.remove();
+                requestAnimationFrame(function() {
+                    const distFromBottom = oldScrollHeight - oldScrollTop;
+                    messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+                });
                 return;
             }
             const toFold = total - RENDER_WINDOW;
@@ -639,13 +645,18 @@
                         messagesContainer.scrollTop = oldScrollTop + (messagesContainer.scrollHeight - oldScrollHeight);
                     });
                     const remaining = messagesContainer.querySelectorAll('.message-folded').length;
-                    loadMoreEl.textContent = '加载更多（' + remaining + ' 条）';
                     if (remaining === 0) loadMoreEl.remove();
+                    else loadMoreEl.textContent = '加载更多（' + remaining + ' 条）';
                 };
                 messagesContainer.insertBefore(loadMoreEl, messagesContainer.firstChild);
             }
-            loadMoreEl.textContent = '加载更多（' + messagesContainer.querySelectorAll('.message-folded').length + ' 条）';
-            if (messagesContainer.querySelectorAll('.message-folded').length === 0) loadMoreEl.remove();
+            const remaining = messagesContainer.querySelectorAll('.message-folded').length;
+            if (remaining === 0) loadMoreEl.remove();
+            else loadMoreEl.textContent = '加载更多（' + remaining + ' 条）';
+            requestAnimationFrame(function() {
+                const distFromBottom = oldScrollHeight - oldScrollTop;
+                messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+            });
         }
 
         // 发送消息
