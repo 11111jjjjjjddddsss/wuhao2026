@@ -82,6 +82,9 @@ object QwenClient {
         }
         Thread {
             var call: Call? = null
+            var outputCharCount = 0
+            val inLen = userMessage.length
+            val imgCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
             try {
                 // 构建请求体 - OpenAI 兼容格式（真流式SSE）
                 val requestBody = JsonObject().apply {
@@ -124,12 +127,10 @@ object QwenClient {
                     add("messages", messagesArray)
                 }
                 
-                val imageCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
-                val textLen = userMessage.length
-                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imageCount 字符数=$textLen")
+                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
                 
-                if (imageCount > 4) throw Exception("图片数量超过限制：$imageCount 张，最多4张")
-                if (imageCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
+                if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
+                if (imgCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
                 
                 val requestJsonString = requestBody.toString()
                 val request = Request.Builder()
@@ -161,7 +162,6 @@ object QwenClient {
                         val inputStream = responseBody.byteStream()
                         val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
                         var lastFinishReason: String? = null
-                        var outputCharCount = 0
                         try {
                             while (true) {
                                 val line = reader.readLine() ?: break
@@ -199,7 +199,7 @@ object QwenClient {
                                 }
                             }
                             val elapsed = System.currentTimeMillis() - startMs
-                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete reason=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms 入=$textLen 出=$outputCharCount")
+                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete reason=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
                             fireComplete()
                         } finally {
                             reader.close()
@@ -214,19 +214,19 @@ object QwenClient {
                         val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                         val isInterrupted = e is SocketTimeoutException
                         if (isCanceled) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$textLen 出=0")
+                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
                             handler.post {
                                 onInterrupted("canceled")
                                 fireComplete()
                             }
                         } else if (isInterrupted) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$textLen 出=0")
+                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
                             handler.post {
                                 onInterrupted("interrupted")
                                 fireComplete()
                             }
                         } else {
-                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$textLen 出=0", e)
+                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
                             handler.post {
                                 onInterrupted("error")
                                 fireComplete()
@@ -239,30 +239,29 @@ object QwenClient {
                     currentRequestId.set(null)
                     val responseBody = response.body?.string() ?: ""
                     val elapsed = System.currentTimeMillis() - startMs
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error HTTP=$statusCode 耗时=${elapsed}ms")
-                    handleErrorResponse(userId, sessionId, requestId, streamId, statusCode, responseBody, onInterrupted, fireComplete)
+                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error HTTP=$statusCode 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                    handleErrorResponse(userId, sessionId, requestId, streamId, statusCode, responseBody, inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
                 }
             } catch (e: IOException) {
                 currentCall.set(null)
                 currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
-                val inLen = userMessage.length
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
                 if (isCanceled) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$inLen 出=0")
+                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
                     handler.post {
                         onInterrupted("canceled")
                         fireComplete()
                     }
                 } else if (isInterrupted) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen 出=0")
+                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
                     handler.post {
                         onInterrupted("interrupted")
                         fireComplete()
                     }
                 } else {
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen 出=0", e)
+                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
                     handler.post {
                         onInterrupted("error")
                         fireComplete()
@@ -272,8 +271,9 @@ object QwenClient {
                 currentCall.set(null)
                 currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
-                val inLen = try { userMessage.length } catch (_: Exception) { 0 }
-                Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen 出=0", e)
+                val inC = try { userMessage.length } catch (_: Exception) { 0 }
+                val imgC = try { imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) } } catch (_: Exception) { 0 }
+                Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inC img=$imgC 出=$outputCharCount", e)
                 handler.post {
                     onInterrupted("error")
                     fireComplete()
@@ -285,8 +285,8 @@ object QwenClient {
     /**
      * 处理错误响应：仅 onInterrupted("error") + fireComplete，不写正文；日志含 userId/sessionId/requestId/streamId/HTTP
      */
-    private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit) {
-        Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error HTTP=$statusCode 耗时见上")
+    private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit) {
+        Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error HTTP=$statusCode 入=$inLen img=$imgCount 出=$outputCharCount")
         
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
