@@ -688,8 +688,9 @@
             right: 0;
             bottom: 0;
             background: var(--bg);
-            border-radius: 16px 16px 0 0;
-            padding-bottom: env(safe-area-inset-bottom, 0px);
+            border-radius: 18px 18px 0 0;
+            padding: 24px 20px;
+            padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
             transform: translateY(100%);
             transition: transform var(--transition-sheet);
             z-index: 99;
@@ -697,26 +698,38 @@
         .plus-sheet.open {
             transform: translateY(0);
         }
+        .plus-sheet-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px 24px;
+        }
         .plus-sheet-item {
             height: 56px;
+            min-height: 48px;
             display: flex;
             align-items: center;
-            gap: 16px;
-            padding: 0 20px;
+            justify-content: center;
+            gap: 12px;
+            padding: 0 16px;
             cursor: pointer;
             border: none;
-            background: none;
-            width: 100%;
+            background: rgba(0,0,0,0.04);
+            border-radius: 12px;
             font-size: 16px;
             color: var(--text);
-            text-align: left;
+            text-align: center;
+            transition: background var(--transition-fast);
         }
         .plus-sheet-item:hover {
-            background: rgba(0,0,0,0.04);
+            background: rgba(0,0,0,0.08);
+        }
+        .plus-sheet-item:active {
+            background: rgba(0,0,0,0.06);
         }
         .plus-sheet-item svg {
             width: 24px;
             height: 24px;
+            flex-shrink: 0;
             stroke: var(--text);
             stroke-width: 1.8;
             stroke-linecap: round;
@@ -782,14 +795,16 @@
 
     <div class="plus-sheet-backdrop" id="plusSheetBackdrop"></div>
     <div class="plus-sheet" id="plusSheet">
-        <button type="button" class="plus-sheet-item" id="plusSheetGallery">
-            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-            图片
-        </button>
-        <button type="button" class="plus-sheet-item" id="plusSheetCamera">
-            <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            拍照
-        </button>
+        <div class="plus-sheet-grid">
+            <button type="button" class="plus-sheet-item" id="plusSheetGallery">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                图片
+            </button>
+            <button type="button" class="plus-sheet-item" id="plusSheetCamera">
+                <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                拍照
+            </button>
+        </div>
     </div>
     </div>
 
