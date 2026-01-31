@@ -129,39 +129,30 @@
             min-height: 100%;
         }
 
-        /* G. 空态 */
+        /* G. 空态（P0-2：无大球，文字左对齐） */
         .empty-state {
             position: absolute;
             left: 0;
             right: 0;
-            top: 50%;
-            transform: translateY(-50%);
+            top: 0;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 24px;
+            align-items: flex-start;
+            justify-content: flex-start;
+            padding: 40px 24px 24px;
             pointer-events: none;
         }
         .empty-state.hidden {
             display: none;
         }
         .empty-state .logo {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            background: var(--green);
-            margin-bottom: 20px;
-            animation: logo-float 1.4s ease-in-out infinite;
-        }
-        @keyframes logo-float {
-            0%, 100% { transform: scale(1) translateY(0); }
-            50% { transform: scale(1.04) translateY(-4px); }
+            display: none;
         }
         .empty-state .slogan {
             font-size: 20px;
             font-weight: 600;
             color: var(--text);
+            text-align: left;
         }
 
         /* 气泡 ChatGPT 风格：留白大、角圆、阴影轻 */
