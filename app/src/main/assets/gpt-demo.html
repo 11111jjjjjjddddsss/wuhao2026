@@ -732,7 +732,7 @@
             <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
         </button>
         <span class="app-bar-title">农技千问</span>
-        <button type="button" class="app-bar-right" id="appBarRight" aria-label="更多">+</button>
+        <div class="app-bar-right"></div>
     </header>
 
     <main class="main">
@@ -1527,11 +1527,6 @@
             }
         }
 
-        document.getElementById('appBarRight').addEventListener('click', function() {
-            if (imageState.size >= 4) return;
-            plusSheet.classList.add('open');
-            plusSheetBackdrop.classList.add('open');
-        });
 
         updateInputMode();
         refreshEmptyState();
