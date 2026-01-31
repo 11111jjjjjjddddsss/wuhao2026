@@ -112,11 +112,13 @@ object ImageUploader {
             val compressedBytes = outputStream.toByteArray()
             
             // 记录日志
-            Log.d(TAG, "=== 图片压缩日志 ===")
-            Log.d(TAG, "原图尺寸: ${originalWidth}x${originalHeight}")
-            Log.d(TAG, "EXIF矫正后: ${correctedWidth}x${correctedHeight} (orientation=$orientation)")
-            Log.d(TAG, "压缩后尺寸: ${scaledBitmap.width}x${scaledBitmap.height}")
-            Log.d(TAG, "压缩后字节数: ${compressedBytes.size} bytes")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "=== 图片压缩日志 ===")
+                Log.d(TAG, "原图尺寸: ${originalWidth}x${originalHeight}")
+                Log.d(TAG, "EXIF矫正后: ${correctedWidth}x${correctedHeight} (orientation=$orientation)")
+                Log.d(TAG, "压缩后尺寸: ${scaledBitmap.width}x${scaledBitmap.height}")
+                Log.d(TAG, "压缩后字节数: ${compressedBytes.size} bytes")
+            }
             
             // 释放bitmap
             if (scaledBitmap != correctedBitmap && scaledBitmap != originalBitmap) {
@@ -187,8 +189,10 @@ object ImageUploader {
         onSuccess: (String) -> Unit,
         onError: (String) -> Unit
     ) {
-        Log.d(TAG, "=== 开始上传图片 ===")
-        Log.d(TAG, "上传图片大小: ${imageBytes.size} bytes")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "=== 开始上传图片 ===")
+            Log.d(TAG, "上传图片大小: ${imageBytes.size} bytes")
+        }
         
         val baseUrl = BuildConfig.UPLOAD_BASE_URL?.trim() ?: ""
         if (baseUrl.isEmpty()) {
@@ -242,7 +246,9 @@ object ImageUploader {
                     val url = json.get("url")?.takeIf { it.isJsonPrimitive }?.asString
                     
                     if (!url.isNullOrBlank() && url.startsWith("https://")) {
-                        Log.d(TAG, "上传成功：URL（脱敏）=${url.replace(Regex("/([^/]+)$"), "/***")}")
+                        if (BuildConfig.DEBUG) {
+                            Log.d(TAG, "上传成功：URL（脱敏）=${url.replace(Regex("/([^/]+)$"), "/***")}")
+                        }
                         onSuccess(url)
                     } else {
                         Log.e(TAG, "上传失败：响应无根级 url, body=${bodyStr.take(200)}")
@@ -270,8 +276,10 @@ object ImageUploader {
             return null
         }
         
-        Log.d(TAG, "=== UPLOAD_URLS ===")
-        Log.d(TAG, "开始上传 ${imageBytesList.size} 张图片")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "=== UPLOAD_URLS ===")
+            Log.d(TAG, "开始上传 ${imageBytesList.size} 张图片")
+        }
         
         val urls = mutableListOf<String>()
         val latch = CountDownLatch(imageBytesList.size)
@@ -287,7 +295,9 @@ object ImageUploader {
                         onSuccess = { url ->
                             synchronized(urls) {
                                 urls.add(url)
-                                Log.d(TAG, "图片[$index] 上传成功: $url")
+                                if (BuildConfig.DEBUG) {
+                                    Log.d(TAG, "图片[$index] 上传成功: $url")
+                                }
                             }
                             uploadSuccess = true
                             latch.countDown()
@@ -314,12 +324,13 @@ object ImageUploader {
             return null
         }
         
-        Log.d(TAG, "所有图片上传成功: ${urls.size} 张")
-        Log.d(TAG, "=== UPLOAD_URLS（脱敏）===")
-        urls.forEachIndexed { index, url ->
-            // 脱敏：只显示域名和路径，隐藏具体文件名
-            val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
-            Log.d(TAG, "UPLOAD_URLS[$index]: $maskedUrl")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "所有图片上传成功: ${urls.size} 张")
+            Log.d(TAG, "=== UPLOAD_URLS（脱敏）===")
+            urls.forEachIndexed { index, url ->
+                val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
+                Log.d(TAG, "UPLOAD_URLS[$index]: $maskedUrl")
+            }
         }
         
         return urls

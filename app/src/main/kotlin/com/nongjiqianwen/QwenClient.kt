@@ -41,12 +41,13 @@ object QwenClient {
     private var isFirstRequest = true
     
     init {
-        // 启动或首次请求时打印调试信息
-        val keyLength = apiKey.length
-        Log.d(TAG, "=== DashScope API 初始化 ===")
-        Log.d(TAG, "BAILIAN_API_KEY 读取状态: ${if (keyLength > 0) "成功" else "失败"} (长度: $keyLength)")
-        Log.d(TAG, "当前使用的 model: $model")
-        Log.d(TAG, "API URL: $apiUrl")
+        if (BuildConfig.DEBUG) {
+            val keyLength = apiKey.length
+            Log.d(TAG, "=== DashScope API 初始化 ===")
+            Log.d(TAG, "BAILIAN_API_KEY 读取状态: ${if (keyLength > 0) "成功" else "失败"} (长度: $keyLength)")
+            Log.d(TAG, "当前使用的 model: $model")
+            Log.d(TAG, "API URL: $apiUrl")
+        }
     }
     
     /**
@@ -55,7 +56,9 @@ object QwenClient {
     fun cancelCurrentRequest() {
         val oldRequestId = currentRequestId.getAndSet(null)
         currentCall.getAndSet(null)?.cancel()
-        if (oldRequestId != null) Log.d(TAG, "requestId=$oldRequestId 被取消（新请求/用户停止）")
+        if (BuildConfig.DEBUG && oldRequestId != null) {
+            Log.d(TAG, "requestId=$oldRequestId 被取消（新请求/用户停止）")
+        }
     }
 
     /**
@@ -76,7 +79,9 @@ object QwenClient {
         onInterrupted: (reason: String) -> Unit
     ) {
         val startMs = System.currentTimeMillis()
-        Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 开始")
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 开始")
+        }
         val completed = AtomicBoolean(false)
         val fireComplete: () -> Unit = {
             if (completed.compareAndSet(false, true)) handler.post { onComplete?.invoke() }
@@ -146,6 +151,8 @@ object QwenClient {
                 
                 Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
                 
+                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
+                
                 if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
                 if (imgCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
                 
@@ -167,7 +174,9 @@ object QwenClient {
                 val response = call!!.execute()
                 val statusCode = response.code
                 
-                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId HTTP=$statusCode")
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId HTTP=$statusCode")
+                }
                 
                 if (response.isSuccessful) {
                     try {
@@ -184,7 +193,9 @@ object QwenClient {
                                 val line = reader.readLine() ?: break
                                 if (line.startsWith("data: ")) {
                                     if (line.trim() == "data: [DONE]") {
-                                        Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId STREAM_DONE finish_reason=$lastFinishReason")
+                                        if (BuildConfig.DEBUG) {
+                                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId STREAM_DONE finish_reason=$lastFinishReason")
+                                        }
                                         break
                                     }
                                     val jsonStr = line.substring(6).trim()
@@ -202,7 +213,9 @@ object QwenClient {
                                                             val deltaText = content.asString
                                                             if (deltaText.isNotBlank()) {
                                                                 if (currentRequestId.get() != requestId) {
-                                                                    Log.d(TAG, "drop stale chunk")
+                                                                    if (BuildConfig.DEBUG) {
+                                                                        Log.d(TAG, "drop stale chunk")
+                                                                    }
                                                                     continue
                                                                 }
                                                                 outputCharCount += deltaText.length
@@ -216,7 +229,9 @@ object QwenClient {
                                 }
                             }
                             val elapsed = System.currentTimeMillis() - startMs
-                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete reason=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                            if (BuildConfig.DEBUG) {
+                                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete reason=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                            }
                             fireComplete()
                         } finally {
                             reader.close()
@@ -328,47 +343,52 @@ object QwenClient {
      * 参数冻结：temperature=0.85, top_p=0.9, max_tokens=4000, frequency_penalty=0, presence_penalty=0
      */
     fun extractBSummary(oldB: String, dialogueText: String, systemPrompt: String): String {
-        val userContent = if (oldB.isNotBlank()) {
-            "[历史摘要]\n$oldB\n\n[对话]\n$dialogueText"
-        } else {
-            "[对话]\n$dialogueText"
-        }
-        val messagesArray = com.google.gson.JsonArray().apply {
-            add(JsonObject().apply {
-                addProperty("role", "system")
-                addProperty("content", systemPrompt)
-            })
-            add(JsonObject().apply {
-                addProperty("role", "user")
-                addProperty("content", userContent)
-            })
-        }
-        val body = JsonObject().apply {
-            addProperty("model", model)
-            addProperty("stream", false)
-            addProperty("temperature", ModelParams.TEMPERATURE)
-            addProperty("top_p", ModelParams.TOP_P)
-            addProperty("max_tokens", ModelParams.MAX_TOKENS)
-            addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
-            addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
-            add("messages", messagesArray)
-        }
-        val request = Request.Builder()
-            .url(apiUrl)
-            .addHeader("Authorization", "Bearer $apiKey")
-            .addHeader("Content-Type", "application/json")
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IOException("B提取 HTTP ${response.code}")
+        return try {
+            val userContent = if (oldB.isNotBlank()) {
+                "[历史摘要]\n$oldB\n\n[对话]\n$dialogueText"
+            } else {
+                "[对话]\n$dialogueText"
             }
-            val json = gson.fromJson(response.body?.string() ?: "", JsonObject::class.java)
-            val choices = json.getAsJsonArray("choices") ?: return ""
-            if (choices.size() == 0) return ""
-            val msg = choices.get(0).asJsonObject.getAsJsonObject("message") ?: return ""
-            val content = msg.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: return ""
-            return content
+            val messagesArray = com.google.gson.JsonArray().apply {
+                add(JsonObject().apply {
+                    addProperty("role", "system")
+                    addProperty("content", systemPrompt)
+                })
+                add(JsonObject().apply {
+                    addProperty("role", "user")
+                    addProperty("content", userContent)
+                })
+            }
+            val body = JsonObject().apply {
+                addProperty("model", model)
+                addProperty("stream", false)
+                addProperty("temperature", ModelParams.TEMPERATURE)
+                addProperty("top_p", ModelParams.TOP_P)
+                addProperty("max_tokens", ModelParams.MAX_TOKENS)
+                addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
+                addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
+                add("messages", messagesArray)
+            }
+            val request = Request.Builder()
+                .url(apiUrl)
+                .addHeader("Authorization", "Bearer $apiKey")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("B提取 HTTP ${response.code}")
+                }
+                val json = gson.fromJson(response.body?.string() ?: "", JsonObject::class.java)
+                val choices = json.getAsJsonArray("choices") ?: return ""
+                if (choices.size() == 0) return ""
+                val msg = choices.get(0).asJsonObject.getAsJsonObject("message") ?: return ""
+                val content = msg.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: return ""
+                return content
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "B提取异常，返回空字符串", e)
+            ""
         }
     }
 }

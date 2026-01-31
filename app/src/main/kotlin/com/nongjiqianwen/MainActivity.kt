@@ -66,7 +66,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(webView)
 
         // Debug：长按 WebView 5 秒弹出“重置 install_id”（仅用于测试）
-        setupResetInstallIdOnLongPress()
+        if (BuildConfig.DEBUG) {
+            setupResetInstallIdOnLongPress()
+        }
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -83,7 +85,9 @@ class MainActivity : AppCompatActivity() {
         
         // 加载HTML文件（唯一模板）
         val loadUrl = "file:///android_asset/gpt-demo.html"
-        Log.d("MainActivity", "WebView loadUrl=$loadUrl")
+        if (BuildConfig.DEBUG) {
+            Log.d("MainActivity", "WebView loadUrl=$loadUrl")
+        }
         webView.loadUrl(loadUrl)
     }
     
@@ -159,7 +163,9 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun retryImage(imageId: String, requestId: String) {
             Thread {
-                Log.d("MainActivity", "重试图片上传: $imageId, requestId=$requestId")
+                if (BuildConfig.DEBUG) {
+                    Log.d("MainActivity", "重试图片上传: $imageId, requestId=$requestId")
+                }
                 val cached = compressedBytesCache[imageId]
                 val now = System.currentTimeMillis()
                 if (cached == null || (now - cached.second) > CACHE_TTL_MS) {
@@ -191,7 +197,9 @@ class MainActivity : AppCompatActivity() {
                 val hasImages = imageUrlsJson != "null" && imageUrlsJson.isNotBlank()
 
                 if (hasImages && !hasText) {
-                    Log.d("MainActivity", "有图片但无文字，阻止发送")
+                    if (BuildConfig.DEBUG) {
+                        Log.d("MainActivity", "有图片但无文字，阻止发送")
+                    }
                     webView.evaluateJavascript("alert('请补充文字说明');", null)
                     return@runOnUiThread
                 }
@@ -260,10 +268,12 @@ class MainActivity : AppCompatActivity() {
                         return@Thread
                     }
                     
-                    Log.d("MainActivity", "=== 图片[$imageId] 处理完成 ===")
-                    Log.d("MainActivity", "原图尺寸: ${compressResult.originalWidth}x${compressResult.originalHeight}")
-                    Log.d("MainActivity", "压缩后尺寸: ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
-                    Log.d("MainActivity", "压缩后字节数: ${compressResult.compressedSize} bytes")
+                    if (BuildConfig.DEBUG) {
+                        Log.d("MainActivity", "=== 图片[$imageId] 处理完成 ===")
+                        Log.d("MainActivity", "原图尺寸: ${compressResult.originalWidth}x${compressResult.originalHeight}")
+                        Log.d("MainActivity", "压缩后尺寸: ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
+                        Log.d("MainActivity", "压缩后字节数: ${compressResult.compressedSize} bytes")
+                    }
                     
                     putCompressedCache(imageId, compressResult.bytes)
                     uploadSingleImageWithBytes(imageId, compressResult.bytes, requestId)
@@ -288,11 +298,13 @@ class MainActivity : AppCompatActivity() {
             }
             ImageUploader.uploadImage(
                 imageBytes = imageBytes,
-                onSuccess = { url ->
+            onSuccess = { url ->
+                if (BuildConfig.DEBUG) {
                     Log.d("MainActivity", "=== 图片[$imageId] 上传成功 ===")
                     val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
                     Log.d("MainActivity", "上传URL（脱敏）: $maskedUrl")
-                    runOnUiThread {
+                }
+                runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedUrl = url.replace("\\", "\\\\").replace("'", "\\'")
                         val escapedRequestId = escapeJs(requestId)
@@ -512,7 +524,9 @@ class MainActivity : AppCompatActivity() {
                 .setPositiveButton("重置") { _, _ ->
                     val newId = IdManager.resetInstallId()
                     Toast.makeText(this, "install_id 已重置", Toast.LENGTH_SHORT).show()
-                    Log.d("MainActivity", "resetInstallId: $newId")
+                    if (BuildConfig.DEBUG) {
+                        Log.d("MainActivity", "resetInstallId: $newId")
+                    }
                 }
                 .setNegativeButton("取消", null)
                 .show()

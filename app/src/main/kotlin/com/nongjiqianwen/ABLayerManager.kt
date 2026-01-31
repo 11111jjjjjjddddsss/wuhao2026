@@ -33,7 +33,9 @@ object ABLayerManager {
             appContext = context.applicationContext
             bSummary = appContext!!.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .getString(KEY_B_SUMMARY, "") ?: ""
-            Log.d(TAG, "ABLayerManager init, B摘要长度=${bSummary.length}")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "ABLayerManager init, B摘要长度=${bSummary.length}")
+            }
         }
     }
 
@@ -48,7 +50,9 @@ object ABLayerManager {
         val (shouldExtract, snapshot) = synchronized(aLock) {
             aRounds.add(userMessage to assistantMessage)
             val size = aRounds.size
-            Log.d(TAG, "A层+1轮，当前${size}轮")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "A层+1轮，当前${size}轮")
+            }
             val doExtract = size >= A_MIN_ROUNDS
             val snap = if (doExtract) aRounds.map { it } else emptyList()
             doExtract to snap
@@ -60,7 +64,9 @@ object ABLayerManager {
 
     private fun tryExtractAndUpdateB(aRoundsSnapshot: List<Pair<String, String>>) {
         if (!extracting.compareAndSet(false, true)) {
-            Log.d(TAG, "B提取进行中，跳过")
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "B提取进行中，跳过")
+            }
             return
         }
         Thread {
@@ -84,7 +90,9 @@ object ABLayerManager {
                         aRounds.clear()
                         bSummary = newSummary
                     }
-                    Log.d(TAG, "B写入成功(commit=true)，已清空A，新摘要长度=${newSummary.length}")
+                    if (BuildConfig.DEBUG) {
+                        Log.d(TAG, "B写入成功(commit=true)，已清空A，新摘要长度=${newSummary.length}")
+                    }
                 } else {
                     Log.w(TAG, "B写入commit=false，不写B不清空A")
                 }

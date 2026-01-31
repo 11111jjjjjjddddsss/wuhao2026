@@ -21,7 +21,9 @@ object SystemAnchor {
         try {
             context.assets.open(ASSET_PATH).use { input ->
                 cachedText = InputStreamReader(input, Charsets.UTF_8).readText().trim()
-                Log.d(TAG, "系统锚点已加载，长度=${cachedText.length}")
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "系统锚点已加载，长度=${cachedText.length}")
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "加载 system_anchor.txt 失败", e)

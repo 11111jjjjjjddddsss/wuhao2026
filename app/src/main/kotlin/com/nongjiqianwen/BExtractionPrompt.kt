@@ -24,7 +24,9 @@ object BExtractionPrompt {
                     .filter { !it.trimStart().startsWith("#") }
                     .joinToString("\n")
                     .trim()
-                Log.d(TAG, "B提取提示词已加载，长度=${cachedText.length}")
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "B提取提示词已加载，长度=${cachedText.length}")
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "加载 b_extraction_prompt.txt 失败", e)
