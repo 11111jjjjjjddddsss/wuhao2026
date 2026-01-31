@@ -38,6 +38,11 @@ class MainActivity : AppCompatActivity() {
     /** 压缩后 bytes 短期缓存，供重试使用：imageId -> (bytes, 写入时间戳)。TTL 60s，LRU 最多 4 条 */
     private val compressedBytesCache = ConcurrentHashMap<String, Pair<ByteArray, Long>>()
 
+    /** A/B 层：streamId -> 本轮 user 消息（完整轮次时用于 addRound） */
+    private val pendingUserByStreamId = mutableMapOf<String, String>()
+    /** A/B 层：streamId -> 本轮 assistant 内容累积（完整轮次时用于 addRound） */
+    private val pendingAssistantByStreamId = mutableMapOf<String, StringBuilder>()
+
     companion object {
         private const val CACHE_TTL_MS = 60_000L
         private const val CACHE_MAX_SIZE = 4
@@ -54,6 +59,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         IdManager.init(applicationContext)
         SystemAnchor.init(applicationContext)
+        BExtractionPrompt.init(applicationContext)
+        ABLayerManager.init(applicationContext)
 
         webView = WebView(this)
         setContentView(webView)
@@ -345,6 +352,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } else {
+                    pendingAssistantByStreamId.getOrPut(streamId) { StringBuilder() }.append(chunk)
                     val esc = escapeJs(streamId)
                     val escChunk = chunk.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
                     webView.evaluateJavascript("window.onChunkReceived && window.onChunkReceived('$esc', '$escChunk');", null)
@@ -358,6 +366,11 @@ class MainActivity : AppCompatActivity() {
                     synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("complete" to null) }
                 } else {
                     if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
+                    val userMsg = pendingUserByStreamId.remove(streamId) ?: ""
+                    val assistantMsg = pendingAssistantByStreamId.remove(streamId)?.toString() ?: ""
+                    if (userMsg.isNotBlank() || assistantMsg.isNotBlank()) {
+                        ABLayerManager.onRoundComplete(userMsg, assistantMsg)
+                    }
                     val esc = escapeJs(streamId)
                     webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                 }
@@ -366,6 +379,8 @@ class MainActivity : AppCompatActivity() {
 
         private fun dispatchInterrupted(streamId: String, reason: String) {
             runOnUiThread {
+                pendingUserByStreamId.remove(streamId)
+                pendingAssistantByStreamId.remove(streamId)
                 if (streamId == currentStreamId) {
                     isRequesting = false
                     currentStreamId = null
@@ -384,6 +399,7 @@ class MainActivity : AppCompatActivity() {
          * 发送模型请求（streamId 贯穿；仅新请求时 cancel 旧请求，切后台不断网、缓存补发）
          */
         private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String) {
+            pendingUserByStreamId[streamId] = text
             ModelService.getReply(
                 userMessage = text,
                 imageUrlList = imageUrlList,
@@ -406,6 +422,8 @@ class MainActivity : AppCompatActivity() {
             overflowedStreamIds.clear()
         }
         overflowed.forEach { streamId ->
+            pendingUserByStreamId.remove(streamId)
+            pendingAssistantByStreamId.remove(streamId)
             val esc = escapeJs(streamId)
             webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', 'cache_overflow');", null)
         }
@@ -415,17 +433,25 @@ class MainActivity : AppCompatActivity() {
             val (streamId, events) = streamList[index]
             val esc = escapeJs(streamId)
             val merged = mergeChunksAndReplayOrder(events)
+            var assistantAccum = StringBuilder()
             merged.forEach { (type, data) ->
                 when (type) {
                     "chunk" -> {
+                        assistantAccum.append(data ?: "")
                         val escChunk = (data ?: "").replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
                         webView.evaluateJavascript("window.onChunkReceived && window.onChunkReceived('$esc', '$escChunk');", null)
                     }
                     "complete" -> {
+                        val userMsg = pendingUserByStreamId.remove(streamId) ?: ""
+                        val assistantMsg = assistantAccum.toString()
+                        if (userMsg.isNotBlank() || assistantMsg.isNotBlank()) {
+                            ABLayerManager.onRoundComplete(userMsg, assistantMsg)
+                        }
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                     }
                     "interrupted" -> {
+                        pendingUserByStreamId.remove(streamId)
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escReason = escapeJs(data ?: "")
                         webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)

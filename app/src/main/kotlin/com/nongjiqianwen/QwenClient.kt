@@ -91,13 +91,21 @@ object QwenClient {
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
                     addProperty("stream", true)
-                    
+                    addProperty("temperature", 0.85)
+                    addProperty("top_p", 0.9)
+                    addProperty("max_tokens", 4000)
+                    addProperty("frequency_penalty", 0.0)
+                    addProperty("presence_penalty", 0.0)
                     val messagesArray = com.google.gson.JsonArray()
-                    // 每次请求：messages[0] 为 system 锚点
-                    if (systemAnchorText.isNotBlank()) {
+                    var systemContent = systemAnchorText
+                    val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
+                    if (bSum.isNotBlank()) {
+                        systemContent = if (systemContent.isNotBlank()) "$systemContent\n\n[B层累计摘要]\n$bSum" else "[B层累计摘要]\n$bSum"
+                    }
+                    if (systemContent.isNotBlank()) {
                         val systemObj = JsonObject().apply {
                             addProperty("role", "system")
-                            addProperty("content", systemAnchorText)
+                            addProperty("content", systemContent)
                         }
                         messagesArray.add(systemObj)
                     }
@@ -312,6 +320,55 @@ object QwenClient {
         handler.post {
             onInterrupted("server")
             fireComplete()
+        }
+    }
+
+    /**
+     * B 层摘要提取：非流式，同步返回摘要文本。
+     * 参数冻结：temperature=0.85, top_p=0.9, max_tokens=4000, frequency_penalty=0, presence_penalty=0
+     */
+    fun extractBSummary(oldB: String, dialogueText: String, systemPrompt: String): String {
+        val userContent = if (oldB.isNotBlank()) {
+            "[历史摘要]\n$oldB\n\n[对话]\n$dialogueText"
+        } else {
+            "[对话]\n$dialogueText"
+        }
+        val messagesArray = com.google.gson.JsonArray().apply {
+            add(JsonObject().apply {
+                addProperty("role", "system")
+                addProperty("content", systemPrompt)
+            })
+            add(JsonObject().apply {
+                addProperty("role", "user")
+                addProperty("content", userContent)
+            })
+        }
+        val body = JsonObject().apply {
+            addProperty("model", model)
+            addProperty("stream", false)
+            addProperty("temperature", 0.85)
+            addProperty("top_p", 0.9)
+            addProperty("max_tokens", 4000)
+            addProperty("frequency_penalty", 0.0)
+            addProperty("presence_penalty", 0.0)
+            add("messages", messagesArray)
+        }
+        val request = Request.Builder()
+            .url(apiUrl)
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("B提取 HTTP ${response.code}")
+            }
+            val json = gson.fromJson(response.body?.string() ?: "", JsonObject::class.java)
+            val choices = json.getAsJsonArray("choices") ?: return ""
+            if (choices.size() == 0) return ""
+            val msg = choices.get(0).asJsonObject.getAsJsonObject("message") ?: return ""
+            val content = msg.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: return ""
+            return content
         }
     }
 }
