@@ -1,10 +1,32 @@
+<!-- UI_VERSION: phone-shell-20250128 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>GPT Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <title>农技千问</title>
     <style>
+        /* B. 颜色与尺寸（硬值） */
+        :root {
+            --debug-shell: 0;
+            --green: #169C5C;
+            --green-accent: #1FAE6A;
+            --bg: #FFFFFF;
+            --border: #EDEDED;
+            --text: #111111;
+            --text-secondary: #8C8C8C;
+            --text-disabled: #BDBDBD;
+            --danger: #E14B4B;
+            --stop-bg: #F4F4F4;
+            --divider: #F2F2F2;
+            --placeholder: #9B9B9B;
+            --input-radius: 22px;
+            --btn-circle-size: 40px;
+            --input-min-height: 56px;
+            --transition-fast: 180ms ease;
+            --transition-sheet: 240ms ease;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -13,53 +35,179 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: #ffffff;
-            color: #111;
-            min-height: 100dvh;
+            font-size: 16px;
+            line-height: 1.4;
+            background-color: #F6F6F6;
+            color: var(--text);
+            min-height: 100vh;
             display: flex;
-            flex-direction: column;
+            justify-content: center;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
             text-rendering: optimizeLegibility;
         }
 
-        .messages-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+        .app-shell {
+            width: min(100vw, 430px);
+            max-width: 430px;
+            height: 100vh;
+            margin: 0 auto;
+            background: var(--bg);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            outline: calc(var(--debug-shell) * 1px) solid red;
         }
 
+        @media (orientation: landscape) {
+            .app-shell {
+                max-width: 520px;
+                width: min(100vw, 520px);
+            }
+        }
+
+        /* A. 顶部 AppBar + H. 标题 */
+        .app-bar {
+            flex-shrink: 0;
+            height: 56px;
+            padding: env(safe-area-inset-top) 12px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--divider);
+            background: var(--bg);
+        }
+        .app-bar-left, .app-bar-right {
+            width: var(--btn-circle-size);
+            height: var(--btn-circle-size);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            background: none;
+            cursor: pointer;
+            color: var(--text);
+            border-radius: 50%;
+        }
+        .app-bar-left:hover, .app-bar-right:hover {
+            background: rgba(0,0,0,0.05);
+        }
+        .app-bar-title {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            color: var(--text);
+        }
+        .app-bar svg {
+            width: 22px;
+            height: 22px;
+            stroke: var(--text);
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+
+        .main {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .messages-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .messages-container {
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+            min-height: 100%;
+        }
+
+        /* G. 空态 */
+        .empty-state {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            pointer-events: none;
+        }
+        .empty-state.hidden {
+            display: none;
+        }
+        .empty-state .logo {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: var(--green);
+            margin-bottom: 20px;
+            animation: logo-float 1.4s ease-in-out infinite;
+        }
+        @keyframes logo-float {
+            0%, 100% { transform: scale(1) translateY(0); }
+            50% { transform: scale(1.04) translateY(-4px); }
+        }
+        .empty-state .slogan {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        /* 气泡 ChatGPT 风格：留白大、角圆、阴影轻 */
         .message {
-            margin-bottom: 24px;
+            margin-bottom: 20px;
+            max-width: 85%;
         }
 
         .message:last-child {
             margin-bottom: 0;
         }
 
+        .message.user {
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .message.assistant {
+            align-self: flex-start;
+        }
+
         .message-content {
-            line-height: 1.6;
-            font-size: 15px;
+            line-height: 1.5;
+            font-size: 16px;
             font-weight: 400;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             white-space: pre-wrap;
             word-wrap: break-word;
             max-width: 100%;
-            color: #111;
+            color: var(--text);
+            padding: 14px 18px;
+            border-radius: 18px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
-            text-rendering: optimizeLegibility;
         }
 
-        /* 用户消息：右对齐 */
         .message.user .message-content {
             text-align: right;
+            background: var(--green);
+            color: #fff;
         }
 
-        /* AI消息：左对齐 */
         .message.assistant .message-content {
             text-align: left;
+            background: #f4f4f4;
+            color: var(--text);
         }
 
         .message-image {
@@ -183,12 +331,13 @@
             border-radius: 4px;
         }
 
+        /* F. 底部输入区 */
         .input-container {
-            position: sticky;
-            bottom: 0;
-            background-color: #ffffff;
-            border-top: 1px solid rgba(0, 0, 0, 0.08);
-            padding: 10px 12px;
+            flex-shrink: 0;
+            min-height: var(--input-min-height);
+            background: var(--bg);
+            border-top: 1px solid var(--border);
+            padding: 10px 14px;
             padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
             display: flex;
             flex-direction: column;
@@ -196,99 +345,123 @@
         }
 
         .input-wrapper {
-            flex: 1;
             display: flex;
             align-items: flex-end;
-            gap: 8px;
+            gap: 10px;
+            min-height: 44px;
         }
 
-        .file-input {
+        .file-input, .camera-input {
             display: none;
         }
 
-        .add-button {
-            background: none;
+        .add-button, .btn-mic, .btn-send, .btn-stop {
+            width: var(--btn-circle-size);
+            height: var(--btn-circle-size);
+            min-width: var(--btn-circle-size);
+            min-height: var(--btn-circle-size);
             border: none;
-            color: #111;
-            font-size: 24px;
-            font-weight: 300;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            cursor: pointer;
-            padding: 8px;
-            width: 36px;
-            height: 36px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            text-rendering: optimizeLegibility;
+            cursor: pointer;
+            transition: transform var(--transition-fast), background-color var(--transition-fast);
+        }
+        .add-button:active, .btn-mic:active, .btn-send:active, .btn-stop:active {
+            transform: scale(0.98);
         }
 
-        .add-button:hover {
-            background-color: rgba(0, 0, 0, 0.05);
-            border-radius: 4px;
+        .add-button,         .btn-mic {
+            background: none;
+            color: var(--text);
+            font-size: 24px;
+            font-weight: 300;
+        }
+        .btn-mic svg {
+            width: 22px;
+            height: 22px;
+            stroke: var(--text);
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+        .add-button:hover, .btn-mic:hover {
+            background: rgba(0,0,0,0.05);
+        }
+
+        .btn-send {
+            background: var(--green);
+            color: #fff;
+        }
+        .btn-send:hover {
+            background: var(--green-accent);
+        }
+        .btn-send svg {
+            width: 20px;
+            height: 20px;
+            stroke: #fff;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+
+        .btn-stop {
+            background: var(--stop-bg);
+            color: var(--text);
+        }
+        .btn-stop:hover {
+            background: #e8e8e8;
+        }
+        .btn-stop svg {
+            width: 14px;
+            height: 14px;
+            fill: var(--text);
+        }
+
+        .input-area-buttons .btn-mic,
+        .input-area-buttons .btn-send,
+        .input-area-buttons .btn-stop {
+            transition: opacity var(--transition-fast);
+        }
+        .input-area-buttons .btn-hidden {
+            display: none !important;
         }
 
         .text-input {
             flex: 1;
-            background: #ffffff;
-            border: 1px solid rgba(0, 0, 0, 0.12);
-            border-radius: 20px;
-            padding: 10px 14px;
-            color: #111;
-            font-size: 15px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--input-radius);
+            padding: 12px 16px;
+            color: var(--text);
+            font-size: 16px;
             font-weight: 400;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.35;
             resize: none;
-            min-height: 36px;
+            min-height: 44px;
             max-height: 120px;
-            line-height: 1.5;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-            text-rendering: optimizeLegibility;
             outline: none;
-            box-shadow: none;
+            -webkit-font-smoothing: antialiased;
         }
-
+        .text-input::placeholder {
+            color: var(--placeholder);
+        }
         .text-input:focus {
-            border-color: rgba(0, 0, 0, 0.2);
+            border-color: var(--green);
         }
-
         .text-input::-webkit-resizer {
             display: none;
         }
-
-        .send-button {
-            width: 32px;
-            height: 32px;
-            background-color: #000;
-            border: none;
-            border-radius: 50%;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            transition: background-color 0.15s ease, opacity 0.15s ease;
+        .text-input::-webkit-scrollbar {
+            width: 4px;
         }
-
-        .send-button:disabled {
-            background-color: #555;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-
-        .send-button:not(:disabled):hover {
-            background-color: #1a1a1a;
-        }
-
-        .send-button svg {
-            width: 16px;
-            height: 16px;
-            fill: white;
+        .text-input::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.2);
+            border-radius: 2px;
         }
 
         .typing-indicator {
@@ -329,41 +502,273 @@
             background: rgba(0, 0, 0, 0.2);
             border-radius: 2px;
         }
+
+        /* D. VoicePanel */
+        .voice-panel {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--bg);
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+            padding: 12px 16px;
+            padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+            transform: translateY(100%);
+            transition: transform var(--transition-sheet);
+            z-index: 100;
+            max-height: 260px;
+        }
+        .voice-panel.open {
+            transform: translateY(0);
+        }
+        .voice-panel.cancel-armed {
+            background: rgba(225, 75, 75, 0.06);
+        }
+        .voice-drag-bar {
+            width: 36px;
+            height: 4px;
+            background: #D9D9D9;
+            border-radius: 2px;
+            margin: 0 auto 16px;
+        }
+        .voice-hint {
+            text-align: center;
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            min-height: 40px;
+        }
+        .voice-waveform-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 48px;
+            margin-bottom: 16px;
+        }
+        .voice-waveform {
+            display: block;
+            width: 100%;
+            max-width: 280px;
+            height: 48px;
+        }
+        .voice-mic-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 2px solid var(--green);
+            background: var(--bg);
+            color: var(--green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            cursor: pointer;
+            transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .voice-mic-btn.recording {
+            background: var(--green);
+            color: #fff;
+            border-color: var(--green);
+        }
+        .voice-mic-btn.cancel-armed {
+            background: var(--danger);
+            color: #fff;
+            border-color: var(--danger);
+        }
+        .voice-mic-btn svg {
+            width: 36px;
+            height: 36px;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+        .voice-panel-header {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .btn-keyboard {
+            width: 36px;
+            height: 36px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .btn-keyboard svg {
+            width: 20px;
+            height: 20px;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+
+        /* E. + 面板 BottomSheet */
+        .plus-sheet-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity var(--transition-sheet), visibility var(--transition-sheet);
+            z-index: 98;
+        }
+        .plus-sheet-backdrop.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        .plus-sheet {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--bg);
+            border-radius: 16px 16px 0 0;
+            padding-bottom: env(safe-area-inset-bottom, 0px);
+            transform: translateY(100%);
+            transition: transform var(--transition-sheet);
+            z-index: 99;
+        }
+        .plus-sheet.open {
+            transform: translateY(0);
+        }
+        .plus-sheet-item {
+            height: 56px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 0 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            font-size: 16px;
+            color: var(--text);
+            text-align: left;
+        }
+        .plus-sheet-item:hover {
+            background: rgba(0,0,0,0.04);
+        }
+        .plus-sheet-item svg {
+            width: 24px;
+            height: 24px;
+            stroke: var(--text);
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
     </style>
 </head>
 <body>
-    <div class="messages-container" id="messagesContainer">
-        <!-- 消息将动态添加到这里 -->
-    </div>
+    <div class="app-shell" id="app">
+    <header class="app-bar">
+        <button type="button" class="app-bar-left" id="appBarLeft" aria-label="菜单">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
+        </button>
+        <span class="app-bar-title">农技千问</span>
+        <button type="button" class="app-bar-right" id="appBarRight" aria-label="更多">+</button>
+    </header>
 
-    <div class="input-container">
-        <div id="imagePreviewContainer" class="image-preview-container" style="display: none;"></div>
-        <div class="input-wrapper">
-            <input type="file" id="fileInput" class="file-input" accept="image/*" multiple>
-            <button class="add-button" id="addButton" title="上传图片">+</button>
-            <textarea 
-                id="textInput" 
-                class="text-input" 
-                placeholder="消息"
-                rows="1"
-            ></textarea>
-            <button class="send-button" id="sendButton" title="发送">
-                <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M8 0L6.59 1.41L12.17 7H0V9H12.17L6.59 14.59L8 16L16 8L8 0Z"/>
-                </svg>
+    <main class="main">
+        <div class="messages-wrapper" id="messagesWrapper">
+            <div class="empty-state" id="emptyState">
+                <div class="logo"></div>
+                <p class="slogan">今天有什么可以帮到你？</p>
+            </div>
+            <div class="messages-container" id="messagesContainer"></div>
+        </div>
+
+        <div class="input-container">
+            <div id="imagePreviewContainer" class="image-preview-container" style="display: none;"></div>
+            <div class="input-wrapper">
+                <input type="file" id="fileInput" class="file-input" accept="image/*" multiple>
+                <input type="file" id="cameraInput" class="camera-input" accept="image/*" capture="environment">
+                <button type="button" class="add-button" id="addButton" title="图片或拍照">+</button>
+                <textarea id="textInput" class="text-input" placeholder="给农技千问发消息" rows="1" maxlength="2000"></textarea>
+                <div class="input-area-buttons">
+                    <button type="button" class="btn-mic" id="btnMic" title="语音">
+                        <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    </button>
+                    <button type="button" class="btn-send btn-hidden" id="btnSend" title="发送">
+                        <svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+                    </button>
+                    <button type="button" class="btn-stop btn-hidden" id="btnStop" title="停止">
+                        <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div class="voice-panel" id="voicePanel">
+        <div class="voice-panel-header">
+            <button type="button" class="btn-keyboard" id="btnKeyboard" title="键盘">
+                <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
             </button>
         </div>
+        <div class="voice-drag-bar"></div>
+        <p class="voice-hint" id="voiceHint">按住说话</p>
+        <div class="voice-waveform-wrap"><canvas class="voice-waveform" id="voiceWaveform" width="280" height="48"></canvas></div>
+        <button type="button" class="voice-mic-btn" id="voiceMicBtn">
+            <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+    </div>
+
+    <div class="plus-sheet-backdrop" id="plusSheetBackdrop"></div>
+    <div class="plus-sheet" id="plusSheet">
+        <button type="button" class="plus-sheet-item" id="plusSheetGallery">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            图片
+        </button>
+        <button type="button" class="plus-sheet-item" id="plusSheetCamera">
+            <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            拍照
+        </button>
+    </div>
     </div>
 
     <script>
+        const messagesWrapper = document.getElementById('messagesWrapper');
         const messagesContainer = document.getElementById('messagesContainer');
+        const emptyState = document.getElementById('emptyState');
         const textInput = document.getElementById('textInput');
-        const sendButton = document.getElementById('sendButton');
-        const fileInput = document.getElementById('fileInput');
         const addButton = document.getElementById('addButton');
+        const fileInput = document.getElementById('fileInput');
+        const cameraInput = document.getElementById('cameraInput');
         const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const btnMic = document.getElementById('btnMic');
+        const btnSend = document.getElementById('btnSend');
+        const btnStop = document.getElementById('btnStop');
+        const voicePanel = document.getElementById('voicePanel');
+        const voiceHint = document.getElementById('voiceHint');
+        const voiceMicBtn = document.getElementById('voiceMicBtn');
+        const voiceWaveform = document.getElementById('voiceWaveform');
+        const btnKeyboard = document.getElementById('btnKeyboard');
+        const plusSheet = document.getElementById('plusSheet');
+        const plusSheetBackdrop = document.getElementById('plusSheetBackdrop');
+        const plusSheetGallery = document.getElementById('plusSheetGallery');
+        const plusSheetCamera = document.getElementById('plusSheetCamera');
 
         let isGenerating = false;
+        /** C. 4 态：idle | typing | generating | voicePanel */
+        let inputMode = 'idle';
+        let voiceRecording = false;
+        let voiceCancelArmed = false;
+        let voiceTouchStartY = 0;
+        const VOICE_CANCEL_THRESHOLD_PX = 60;
+        let waveformAnimId = null;
+        let voicePendingTimeout = null;
 
         // 长聊不卡顿：窗口化 + SSE 节流（常量，便于验证）
         const RENDER_WINDOW = 80;      // 仅渲染最近 N 条
@@ -377,85 +782,95 @@
 
         // Android 接口对象（由 WebView 注入）
         const AndroidInterface = window.AndroidInterface || {
-            uploadImages: function(imageDataListJson) {
-                console.log('AndroidInterface.uploadImages called', imageDataListJson);
-            },
-            retryImage: function(imageId, requestId) {
-                console.log('AndroidInterface.retryImage called', imageId, requestId);
-            }
+            uploadImages: function(imageDataListJson) { console.log('uploadImages', imageDataListJson); },
+            retryImage: function(imageId, requestId) { console.log('retryImage', imageId, requestId); },
+            sendMessage: function(text, imageUrlsJson, streamId) { console.log('sendMessage', text, streamId); },
+            stopGeneration: function() { console.log('stopGeneration'); }
         };
 
-        // 自动调整文本域高度
+        // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 120) + 'px';
-            updateSendButton();
+            updateInputMode();
         });
 
-        // 更新发送按钮状态
-        // 规则：
-        // - 无文字：禁用
-        // - 有文字无图：可发送
-        // - 有文字有图：只有当全部为Success才可发送（存在Uploading或Fail时禁用）
-        function updateSendButton() {
+        /** C. 4 态状态机：更新右侧按钮 Mic / Send / Stop 显示与禁用 */
+        function updateInputMode() {
             const hasText = textInput.value.trim().length > 0;
-            const hasImages = imageState.size > 0;
-            
-            if (!hasText) {
-                sendButton.disabled = true;
-                return;
-            }
-            
-            if (!hasImages) {
-                sendButton.disabled = false;
-                return;
-            }
-            
-            // 有文字有图：检查所有图片状态
-            let hasUploading = false;
-            let hasFail = false;
-            for (const [imageId, state] of imageState) {
-                if (state.status === 'uploading') {
-                    hasUploading = true;
-                } else if (state.status === 'fail') {
-                    hasFail = true;
+            const voiceOpen = voicePanel.classList.contains('open');
+
+            if (voiceOpen) {
+                inputMode = 'voicePanel';
+                btnMic.classList.add('btn-hidden');
+                btnSend.classList.add('btn-hidden');
+                btnStop.classList.add('btn-hidden');
+            } else if (isGenerating) {
+                inputMode = 'generating';
+                btnMic.classList.add('btn-hidden');
+                btnSend.classList.add('btn-hidden');
+                btnStop.classList.remove('btn-hidden');
+            } else if (hasText) {
+                inputMode = 'typing';
+                btnMic.classList.add('btn-hidden');
+                btnSend.classList.remove('btn-hidden');
+                btnStop.classList.add('btn-hidden');
+                let sendDisabled = false;
+                if (imageState.size > 0) {
+                    for (const [, state] of imageState) {
+                        if (state.status === 'uploading' || state.status === 'fail') {
+                            sendDisabled = true;
+                            break;
+                        }
+                    }
                 }
+                btnSend.disabled = sendDisabled;
+            } else {
+                inputMode = 'idle';
+                btnMic.classList.remove('btn-hidden');
+                btnSend.classList.add('btn-hidden');
+                btnStop.classList.add('btn-hidden');
             }
-            
-            // 只要有Uploading或Fail，就禁用发送
-            sendButton.disabled = hasUploading || hasFail;
-            
-            // 选满4张时禁用“+”按钮，不再打开选择器
+
             addButton.disabled = imageState.size >= 4;
             addButton.style.opacity = imageState.size >= 4 ? '0.5' : '1';
         }
 
-        // 文件选择：选满4张后不允许再选（不在选择器层面静默截断）
+        // E. + 面板：点击 + 打开 BottomSheet
         addButton.addEventListener('click', () => {
-            if (imageState.size >= 4) {
-                // 已选满4张，不打开选择器
-                return;
-            }
+            if (imageState.size >= 4) return;
+            plusSheet.classList.add('open');
+            plusSheetBackdrop.classList.add('open');
+        });
+        function closePlusSheet() {
+            plusSheet.classList.remove('open');
+            plusSheetBackdrop.classList.remove('open');
+        }
+        plusSheetBackdrop.addEventListener('click', closePlusSheet);
+        plusSheetGallery.addEventListener('click', () => {
+            closePlusSheet();
             fileInput.click();
         });
+        plusSheetCamera.addEventListener('click', () => {
+            closePlusSheet();
+            cameraInput.click();
+        });
 
-        fileInput.addEventListener('change', () => {
-            const files = fileInput.files;
-            const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-            
+        function handleFileSelect(fileList) {
+            const imageFiles = Array.from(fileList || []).filter(file => file.type.startsWith('image/'));
             const currentImageCount = imageState.size;
             const remainingSlots = Math.max(0, 4 - currentImageCount);
-            // 只吃剩余槽位：只接收前 (4-N) 张，其余忽略；不弹窗、不全回滚
             const toAdd = imageFiles.slice(0, remainingSlots);
-            
             toAdd.forEach((file) => {
                 const imageId = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 addImagePreview(imageId, file);
             });
-            
             fileInput.value = '';
-            updateSendButton();
-        });
+            cameraInput.value = '';
+            updateInputMode();
+        }
+        fileInput.addEventListener('change', function() { handleFileSelect(this.files); });
+        cameraInput.addEventListener('change', function() { handleFileSelect(this.files); });
         
         // 添加图片预览（缩略图用 objectURL 减少内存，base64 仅用于发给 Android）
         function addImagePreview(imageId, file) {
@@ -575,7 +990,7 @@
                 }
             }
             
-            updateSendButton();
+            updateInputMode();
         }
         
         // 重试：只发 imageId + requestId，不传 base64；Android 用缓存 bytes 重传
@@ -604,7 +1019,7 @@
                 imagePreviewContainer.style.display = 'none';
             }
             
-            updateSendButton();
+            updateInputMode();
         }
         
         // 接收 Android 上传状态回调（requestId 去重；errorMessage 仅 fail 时在卡片上展示）
@@ -616,8 +1031,8 @@
         function applyMessageWindow() {
             const messages = messagesContainer.querySelectorAll('.message');
             const total = messages.length;
-            const oldScrollTop = messagesContainer.scrollTop;
-            const oldScrollHeight = messagesContainer.scrollHeight;
+            const oldScrollTop = messagesWrapper.scrollTop;
+            const oldScrollHeight = messagesWrapper.scrollHeight;
             let loadMoreEl = messagesContainer.querySelector('.load-more-placeholder');
             if (total <= RENDER_WINDOW) {
                 messages.forEach(el => el.classList.remove('message-folded'));
@@ -625,9 +1040,9 @@
                 requestAnimationFrame(function() {
                     const distFromBottom = oldScrollHeight - oldScrollTop;
                     if (distFromBottom <= 120) {
-                        messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+                        messagesWrapper.scrollTop = Math.max(0, messagesWrapper.scrollHeight - distFromBottom);
                     } else {
-                        messagesContainer.scrollTop = Math.min(oldScrollTop, Math.max(0, messagesContainer.scrollHeight - messagesContainer.clientHeight));
+                        messagesWrapper.scrollTop = Math.min(oldScrollTop, Math.max(0, messagesWrapper.scrollHeight - messagesWrapper.clientHeight));
                     }
                 });
                 return;
@@ -640,13 +1055,13 @@
                 loadMoreEl.className = 'load-more-placeholder';
                 loadMoreEl.textContent = '加载更多（' + toFold + ' 条）';
                 loadMoreEl.onclick = function() {
-                    const oldScrollHeight = messagesContainer.scrollHeight;
-                    const oldScrollTop = messagesContainer.scrollTop;
+                    const oldScrollHeight = messagesWrapper.scrollHeight;
+                    const oldScrollTop = messagesWrapper.scrollTop;
                     const folded = messagesContainer.querySelectorAll('.message-folded');
                     const n = Math.min(LOAD_MORE_BATCH, folded.length);
                     for (let i = 0; i < n; i++) folded[i].classList.remove('message-folded');
                     requestAnimationFrame(function() {
-                        messagesContainer.scrollTop = oldScrollTop + (messagesContainer.scrollHeight - oldScrollHeight);
+                        messagesWrapper.scrollTop = oldScrollTop + (messagesWrapper.scrollHeight - oldScrollHeight);
                     });
                     const remaining = messagesContainer.querySelectorAll('.message-folded').length;
                     if (remaining === 0) loadMoreEl.remove();
@@ -660,20 +1075,21 @@
             requestAnimationFrame(function() {
                 const distFromBottom = oldScrollHeight - oldScrollTop;
                 if (distFromBottom <= 120) {
-                    messagesContainer.scrollTop = Math.max(0, messagesContainer.scrollHeight - distFromBottom);
+                    messagesWrapper.scrollTop = Math.max(0, messagesWrapper.scrollHeight - distFromBottom);
                 } else {
-                    messagesContainer.scrollTop = Math.min(oldScrollTop, Math.max(0, messagesContainer.scrollHeight - messagesContainer.clientHeight));
+                    messagesWrapper.scrollTop = Math.min(oldScrollTop, Math.max(0, messagesWrapper.scrollHeight - messagesWrapper.clientHeight));
                 }
             });
         }
 
         // 发送消息
         function sendMessage() {
-            if (sendButton.disabled) return;
+            if (btnSend.disabled) return;
             if (isGenerating) return;
 
             const text = textInput.value.trim();
             const hasImages = imageState.size > 0;
+            if (!text && !hasImages) return;
 
             // 验证规则：有图必须有文字
             if (hasImages && !text) {
@@ -713,13 +1129,14 @@
                 stream: false 
             });
             messagesContainer.appendChild(userMessage);
+            refreshEmptyState();
             scrollToBottom();
             applyMessageWindow();
 
             // 创建AI回复占位并生成 streamId（取消时旧气泡按 streamId 落终态）
             const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             isGenerating = true;
-            sendButton.disabled = true;
+            updateInputMode();
             const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
             assistantMessage.dataset.streamId = streamId;
             messagesContainer.appendChild(assistantMessage);
@@ -735,7 +1152,7 @@
             imageState.clear();
             imagePreviewContainer.innerHTML = '';
             imagePreviewContainer.style.display = 'none';
-            updateSendButton();
+            updateInputMode();
         }
 
         // 发送到Android后端（streamId 用于 onChunk/onComplete/onStreamInterrupted 写对应气泡）
@@ -775,9 +1192,8 @@
         window.onCompleteReceived = function(streamId) {
             if (streamId) { flushChunkBuffer(streamId); }
             isGenerating = false;
-            sendButton.disabled = false;
             fileInput.value = '';
-            updateSendButton();
+            updateInputMode();
         };
 
         // 终态仅 badge/灰化，不写正文（不污染复制内容）。reason: canceled=已停止, interrupted=已中断, error=请求失败
@@ -842,18 +1258,183 @@
             return messageDiv;
         }
 
-        // 滚动到底部
+        // 滚动到底部（滚动容器为 messagesWrapper）
         function scrollToBottom() {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
         }
 
-        // 初始化发送按钮状态
-        updateSendButton();
+        function refreshEmptyState() {
+            const hasMessages = messagesContainer.querySelectorAll('.message').length > 0;
+            emptyState.classList.toggle('hidden', hasMessages);
+        }
 
-        // 发送按钮点击
-        sendButton.addEventListener('click', sendMessage);
+        // C. Idle 右侧 Mic：点击打开 VoicePanel
+        btnMic.addEventListener('click', function() {
+            voicePanel.classList.add('open');
+            updateInputMode();
+            startWaveform(false, false);
+        });
 
-        // Enter 发送（Shift+Enter 换行）
+        // C. Generating 右侧 Stop：取消当前流式
+        btnStop.addEventListener('click', function() {
+            if (typeof AndroidInterface.stopGeneration === 'function') {
+                AndroidInterface.stopGeneration();
+            }
+        });
+
+        // D. VoicePanel：Keyboard 关闭面板并聚焦输入框
+        btnKeyboard.addEventListener('click', function() {
+            voicePanel.classList.remove('open');
+            voiceRecording = false;
+            voiceCancelArmed = false;
+            voiceMicBtn.classList.remove('recording', 'cancel-armed');
+            voicePanel.classList.remove('cancel-armed');
+            voiceHint.textContent = '按住说话';
+            stopWaveform();
+            updateInputMode();
+            textInput.focus();
+        });
+
+        // D. VoicePanel：按住说话（Press-and-hold）
+        function getTouchY(e) {
+            if (e.touches && e.touches.length) return e.touches[0].clientY;
+            return e.clientY;
+        }
+        voiceMicBtn.addEventListener('mousedown', onVoiceStart);
+        voiceMicBtn.addEventListener('touchstart', onVoiceStart, { passive: true });
+        voiceMicBtn.addEventListener('mouseup', onVoiceEnd);
+        voiceMicBtn.addEventListener('touchend', onVoiceEnd);
+        voiceMicBtn.addEventListener('mouseleave', onVoiceEnd);
+        voiceMicBtn.addEventListener('touchmove', function(e) {
+            if (!voiceRecording) return;
+            const y = getTouchY(e);
+            const delta = voiceTouchStartY - y;
+            if (delta > VOICE_CANCEL_THRESHOLD_PX && !voiceCancelArmed) {
+                voiceCancelArmed = true;
+                voiceMicBtn.classList.add('cancel-armed');
+                voicePanel.classList.add('cancel-armed');
+                voiceHint.textContent = '松手取消';
+                startWaveform(true, true);
+            }
+        }, { passive: true });
+
+        function onVoiceStart(e) {
+            e.preventDefault();
+            if (e.type === 'touchstart') voiceTouchStartY = e.touches[0].clientY;
+            else voiceTouchStartY = e.clientY;
+            voiceRecording = true;
+            voiceCancelArmed = false;
+            voiceMicBtn.classList.add('recording');
+            voiceMicBtn.classList.remove('cancel-armed');
+            voicePanel.classList.remove('cancel-armed');
+            voiceHint.textContent = '松手发送，上滑取消';
+            startWaveform(true, false);
+        }
+
+        function onVoiceEnd(e) {
+            if (!voiceRecording) return;
+            e.preventDefault();
+            voiceRecording = false;
+            voiceMicBtn.classList.remove('recording', 'cancel-armed');
+            voicePanel.classList.remove('cancel-armed');
+            voiceHint.textContent = '按住说话';
+            stopWaveform();
+            if (voiceCancelArmed) return;
+            voiceHint.textContent = '识别中…';
+            if (voicePendingTimeout) clearTimeout(voicePendingTimeout);
+            voicePendingTimeout = setTimeout(function() {
+                voicePendingTimeout = null;
+                finishVoiceSend('语音输入的消息');
+            }, 600);
+            if (typeof window.onVoiceRecognized === 'function') {
+                var t = window.onVoiceRecognized();
+                if (t != null && t !== undefined) {
+                    if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
+                    finishVoiceSend(t);
+                    return;
+                }
+            }
+        }
+        window.onVoiceResult = function(text) {
+            if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
+            voiceHint.textContent = '按住说话';
+            finishVoiceSend(text);
+        };
+
+        function finishVoiceSend(text) {
+            voicePanel.classList.remove('open');
+            updateInputMode();
+            if (!text || !String(text).trim()) {
+                voiceHint.textContent = '未识别到内容';
+                setTimeout(function() { voiceHint.textContent = '按住说话'; }, 1500);
+                return;
+            }
+            const t = String(text).trim();
+            const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const userMessage = createMessage({ role: 'user', text: t, files: null, imageUrls: [], stream: false });
+            messagesContainer.appendChild(userMessage);
+            refreshEmptyState();
+            scrollToBottom();
+            applyMessageWindow();
+            isGenerating = true;
+            const assistantMessage = createMessage({ role: 'assistant', text: '', stream: true });
+            assistantMessage.dataset.streamId = streamId;
+            messagesContainer.appendChild(assistantMessage);
+            scrollToBottom();
+            applyMessageWindow();
+            sendToAndroid(t, [], streamId);
+            updateInputMode();
+        }
+
+        // D4. 波形 Canvas（24 根竖条）
+        const WAVE_BARS = 24;
+        let waveBarsHeights = Array(WAVE_BARS).fill(0.3);
+        let wavePhase = 0;
+
+        function startWaveform(recording, cancelArmed) {
+            stopWaveform();
+            const ctx = voiceWaveform.getContext('2d');
+            const w = voiceWaveform.width;
+            const h = voiceWaveform.height;
+            const barW = (w / WAVE_BARS) * 0.6;
+            const gap = w / WAVE_BARS - barW;
+            const color = cancelArmed ? '#E14B4B' : (recording ? '#169C5C' : '#D9D9D9');
+            const amp = cancelArmed ? 0.4 : (recording ? 0.8 : 0.25);
+
+            function draw() {
+                wavePhase += recording ? 0.15 : 0.04;
+                ctx.clearRect(0, 0, w, h);
+                for (let i = 0; i < WAVE_BARS; i++) {
+                    const t = Math.sin(wavePhase + i * 0.4) * 0.5 + 0.5;
+                    waveBarsHeights[i] = waveBarsHeights[i] * 0.7 + t * amp * 0.3;
+                    const barH = Math.max(4, h * waveBarsHeights[i]);
+                    const x = i * (barW + gap) + gap * 0.5;
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x, (h - barH) / 2, barW, barH);
+                }
+                waveformAnimId = requestAnimationFrame(draw);
+            }
+            draw();
+        }
+
+        function stopWaveform() {
+            if (waveformAnimId) {
+                cancelAnimationFrame(waveformAnimId);
+                waveformAnimId = null;
+            }
+        }
+
+        document.getElementById('appBarRight').addEventListener('click', function() {
+            if (imageState.size >= 4) return;
+            plusSheet.classList.add('open');
+            plusSheetBackdrop.classList.add('open');
+        });
+
+        updateInputMode();
+        refreshEmptyState();
+
+        btnSend.addEventListener('click', sendMessage);
+
         textInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
