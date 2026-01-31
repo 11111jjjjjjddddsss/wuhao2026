@@ -222,7 +222,13 @@ object QwenClient {
                         } else if (isInterrupted) {
                             Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
                             handler.post {
-                                onInterrupted("interrupted")
+                                onInterrupted("timeout")
+                                fireComplete()
+                            }
+                        } else if (e is IOException) {
+                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=network 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
+                            handler.post {
+                                onInterrupted("network")
                                 fireComplete()
                             }
                         } else {
@@ -257,13 +263,13 @@ object QwenClient {
                 } else if (isInterrupted) {
                     Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
                     handler.post {
-                        onInterrupted("interrupted")
+                        onInterrupted("timeout")
                         fireComplete()
                     }
                 } else {
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
+                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=network 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
                     handler.post {
-                        onInterrupted("error")
+                        onInterrupted("network")
                         fireComplete()
                     }
                 }
@@ -295,7 +301,7 @@ object QwenClient {
             Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 无法解析错误响应 statusCode=$statusCode")
         }
         handler.post {
-            onInterrupted("error")
+            onInterrupted("server")
             fireComplete()
         }
     }

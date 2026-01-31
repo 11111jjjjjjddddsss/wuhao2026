@@ -134,6 +134,16 @@ class MainActivity : AppCompatActivity() {
         }
         
         /**
+         * 停止当前流式生成（用户点击 Stop 时调用）
+         */
+        @JavascriptInterface
+        fun stopGeneration() {
+            runOnUiThread {
+                QwenClient.cancelCurrentRequest()
+            }
+        }
+
+        /**
          * 重试单张图片上传（不传 base64，用缓存 bytes 重传；缓存缺失则回传 fail + 请重新选择该图片）
          * @param imageId 图片ID
          * @param requestId 本次尝试ID（回传前端用于去重）
@@ -355,6 +365,10 @@ class MainActivity : AppCompatActivity() {
 
         private fun dispatchInterrupted(streamId: String, reason: String) {
             runOnUiThread {
+                if (streamId == currentStreamId) {
+                    isRequesting = false
+                    currentStreamId = null
+                }
                 if (isInBackground) {
                     synchronized(bufferedEventsByStreamId) { bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("interrupted" to reason) }
                 } else {
@@ -411,6 +425,7 @@ class MainActivity : AppCompatActivity() {
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
                     }
                     "interrupted" -> {
+                        if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escReason = escapeJs(data ?: "")
                         webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
                     }

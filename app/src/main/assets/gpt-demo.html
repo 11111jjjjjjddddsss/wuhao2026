@@ -474,6 +474,19 @@
             font-size: 13px;
             margin-left: 4px;
         }
+        .retry-stream-btn {
+            margin-left: 8px;
+            padding: 2px 10px;
+            font-size: 13px;
+            border: 1px solid var(--green);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--green);
+            cursor: pointer;
+        }
+        .retry-stream-btn:hover {
+            background: rgba(22, 156, 92, 0.08);
+        }
 
         .message-folded {
             display: none;
@@ -1143,6 +1156,9 @@
             scrollToBottom();
             applyMessageWindow();
 
+            // 保存用于重试
+            lastSent = { text: text, imageUrls: imageUrls.slice(), streamId: streamId };
+
             // 发送到Android（带 streamId，回调按 streamId 写对应气泡）
             sendToAndroid(text, imageUrls, streamId);
 
@@ -1196,9 +1212,11 @@
             updateInputMode();
         };
 
-        // 终态仅 badge/灰化，不写正文（不污染复制内容）。reason: canceled=已停止, interrupted=已中断, error=请求失败
+        // 终态仅 badge/灰化，不写正文；提供重试按钮。reason: canceled/timeout/network/server/cache_overflow/error
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;
+            isGenerating = false;
+            updateInputMode();
             const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
             if (msg) {
                 msg.classList.add('message-interrupted');
@@ -1206,8 +1224,28 @@
                 if (contentDiv && !contentDiv.querySelector('.interrupted-badge')) {
                     const badge = document.createElement('span');
                     badge.className = 'interrupted-badge';
-                    badge.textContent = reason === 'canceled' ? '（已停止）' : (reason === 'interrupted' ? '（已中断）' : (reason === 'cache_overflow' ? '（缓存超限）' : '（请求失败）'));
+                    const reasonText = reason === 'canceled' ? '（已停止）' : (reason === 'timeout' ? '（超时）' : (reason === 'network' ? '（网络异常）' : (reason === 'server' ? '（服务异常）' : (reason === 'cache_overflow' ? '（缓存超限）' : '（请求失败）'))));
+                    badge.textContent = reasonText;
                     contentDiv.appendChild(badge);
+                    if (lastSent && lastSent.streamId === streamId) {
+                        const retryBtn = document.createElement('button');
+                        retryBtn.className = 'retry-stream-btn';
+                        retryBtn.textContent = '重试';
+                        retryBtn.onclick = function() {
+                            if (!lastSent) return;
+                            AndroidInterface.stopGeneration && AndroidInterface.stopGeneration();
+                            delete chunkBufferByStream[streamId];
+                            contentDiv.innerHTML = '';
+                            const newStreamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                            msg.dataset.streamId = newStreamId;
+                            msg.classList.remove('message-interrupted');
+                            lastSent.streamId = newStreamId;
+                            isGenerating = true;
+                            updateInputMode();
+                            sendToAndroid(lastSent.text, lastSent.imageUrls, newStreamId);
+                        };
+                        contentDiv.appendChild(retryBtn);
+                    }
                 }
             }
         };

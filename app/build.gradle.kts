@@ -12,9 +12,23 @@ android {
         versionCode = 1
         versionName = "1.0"
         
-        // 优先从环境变量 BAILIAN_API_KEY 读取，否则从 gradle.properties 读取 API_KEY
-        val apiKey = System.getenv("BAILIAN_API_KEY") 
-            ?: (project.findProperty("API_KEY") as String? ?: "")
+        // API_KEY：环境变量 BAILIAN_API_KEY > local.properties > gradle.properties；空/占位符则构建失败
+        var apiKeyFromLocal = ""
+        val localFile = rootProject.file("local.properties")
+        if (localFile.exists()) {
+            localFile.forEachLine { line ->
+                if (line.trimStart().startsWith("API_KEY=")) {
+                    apiKeyFromLocal = line.substringAfter("=").trim().trim('"')
+                }
+            }
+        }
+        val apiKey = (System.getenv("BAILIAN_API_KEY")?.takeIf { s -> s.isNotBlank() }
+            ?: apiKeyFromLocal.takeIf { s -> s.isNotBlank() }
+            ?: (project.findProperty("API_KEY") as String?)?.takeIf { s -> s.isNotBlank() }
+            ?: "").trim()
+        if (apiKey.isBlank() || apiKey == "your_key_here") {
+            throw GradleException("API_KEY 未配置：请在 local.properties 中设置 API_KEY=your_dashscope_key 或设置环境变量 BAILIAN_API_KEY。禁止在 gradle.properties 中提交真实 key。")
+        }
         buildConfigField("String", "API_KEY", "\"$apiKey\"")
         // 图片上传：后端地址（空则不上传）。推荐 ECS 常驻服务 POST /upload -> 写入 OSS -> 返回 https URL；禁止在 APP 内写 OSS AK/SK
         val uploadBaseUrl = project.findProperty("UPLOAD_BASE_URL") as String? ?: ""
