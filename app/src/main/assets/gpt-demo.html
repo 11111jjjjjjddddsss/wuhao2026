@@ -214,22 +214,18 @@
             word-wrap: break-word;
             max-width: 100%;
             color: var(--text);
-            padding: 14px 18px;
-            border-radius: 18px;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+            padding: 4px 0;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
 
         .message.user .message-content {
             text-align: right;
-            background: var(--green);
-            color: #fff;
+            color: var(--text);
         }
 
         .message.assistant .message-content {
             text-align: left;
-            background: #f4f4f4;
             color: var(--text);
         }
 
@@ -366,6 +362,8 @@
             flex-direction: column;
             gap: 0;
             transition: min-height var(--transition-sheet);
+            position: relative;
+            z-index: 100;
         }
         .input-container.voice-mode {
             min-height: calc(var(--input-min-height) + 8px);
@@ -382,7 +380,7 @@
             display: none;
         }
 
-        .add-button, .btn-mic, .btn-send, .btn-stop {
+        .add-button, .btn-mic-or-keyboard, .btn-send, .btn-stop {
             width: var(--btn-circle-size);
             height: var(--btn-circle-size);
             min-width: var(--btn-circle-size);
@@ -396,7 +394,7 @@
             cursor: pointer;
             transition: transform var(--transition-fast), background-color var(--transition-fast);
         }
-        .add-button:active, .btn-mic:active, .btn-send:active, .btn-stop:active {
+        .add-button:active, .btn-mic-or-keyboard:active, .btn-send:active, .btn-stop:active {
             transform: scale(0.98);
         }
 
@@ -419,13 +417,24 @@
             transform: scale(0.96);
             box-shadow: 0 0 0 rgba(0,0,0,0.04);
         }
-        .btn-mic {
+        .btn-mic-or-keyboard {
             background: none;
             color: var(--text);
-            font-size: 24px;
-            font-weight: 300;
+            position: relative;
         }
-        .btn-mic svg {
+        .btn-mic-or-keyboard .icon-keyboard {
+            display: none;
+        }
+        .btn-mic-or-keyboard .icon-mic {
+            display: flex;
+        }
+        .btn-mic-or-keyboard.voice-mode .icon-keyboard {
+            display: flex;
+        }
+        .btn-mic-or-keyboard.voice-mode .icon-mic {
+            display: none;
+        }
+        .btn-mic-or-keyboard svg {
             width: 22px;
             height: 22px;
             stroke: var(--text);
@@ -434,23 +443,11 @@
             stroke-linejoin: round;
             fill: none;
         }
-        .btn-mic:hover {
-            background: rgba(0,0,0,0.05);
-        }
-        .btn-keyboard-main {
-            background: none;
-            color: var(--text);
-        }
-        .btn-keyboard-main svg {
-            width: 22px;
-            height: 22px;
+        .btn-mic-or-keyboard .icon-keyboard svg {
             stroke: var(--text);
-            stroke-width: 1.8;
-            stroke-linecap: round;
-            stroke-linejoin: round;
             fill: none;
         }
-        .btn-keyboard-main:hover {
+        .btn-mic-or-keyboard:hover {
             background: rgba(0,0,0,0.05);
         }
 
@@ -496,10 +493,9 @@
             fill: var(--green);
         }
 
-        .input-area-buttons .btn-mic,
+        .input-area-buttons .btn-mic-or-keyboard,
         .input-area-buttons .btn-send,
-        .input-area-buttons .btn-stop,
-        .input-area-buttons .btn-keyboard-main {
+        .input-area-buttons .btn-stop {
             transition: opacity var(--transition-fast);
         }
         .input-area-buttons .btn-hidden {
@@ -604,8 +600,8 @@
             padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
             transform: translateY(100%);
             transition: transform var(--transition-sheet);
-            z-index: 100;
-            max-height: 260px;
+            z-index: 99;
+            max-height: 200px;
         }
         .voice-panel.open {
             transform: translateY(0);
@@ -688,32 +684,6 @@
         .voice-mic-btn svg {
             width: 36px;
             height: 36px;
-            stroke-width: 1.8;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            fill: none;
-        }
-        .voice-panel-header {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .btn-keyboard {
-            width: 36px;
-            height: 36px;
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            background: var(--bg);
-            color: var(--text);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-        }
-        .btn-keyboard svg {
-            width: 20px;
-            height: 20px;
             stroke-width: 1.8;
             stroke-linecap: round;
             stroke-linejoin: round;
@@ -820,11 +790,9 @@
                     <textarea id="textInput" class="text-input" placeholder="给农技千问发消息" rows="1" maxlength="2000"></textarea>
                 </div>
                 <div class="input-area-buttons">
-                    <button type="button" class="btn-keyboard-main btn-hidden" id="btnKeyboardMain" title="键盘">
-                        <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
-                    </button>
-                    <button type="button" class="btn-mic" id="btnMic" title="语音">
-                        <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                    <button type="button" class="btn-mic-or-keyboard" id="btnMicOrKeyboard" title="语音/键盘">
+                        <span class="icon-mic"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
+                        <span class="icon-keyboard"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="8" width="3" height="3" rx="0.5" fill="currentColor"/><rect x="10" y="8" width="3" height="3" rx="0.5" fill="currentColor"/><rect x="15" y="8" width="3" height="3" rx="0.5" fill="currentColor"/><rect x="6" y="12" width="12" height="2" rx="0.5" fill="currentColor"/></svg></span>
                     </button>
                     <button type="button" class="btn-send btn-hidden" id="btnSend" title="发送">
                         <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
@@ -838,11 +806,6 @@
     </main>
 
     <div class="voice-panel" id="voicePanel">
-        <div class="voice-panel-header">
-            <button type="button" class="btn-keyboard" id="btnKeyboard" title="键盘">
-                <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
-            </button>
-        </div>
         <div class="voice-drag-bar"></div>
         <p class="voice-hint" id="voiceHint">按住说话</p>
         <div class="voice-waveform-wrap"><canvas class="voice-waveform" id="voiceWaveform" width="280" height="48"></canvas></div>
@@ -875,15 +838,13 @@
         const fileInput = document.getElementById('fileInput');
         const cameraInput = document.getElementById('cameraInput');
         const imagePreviewContainer = document.getElementById('imagePreviewContainer');
-        const btnMic = document.getElementById('btnMic');
-        const btnKeyboardMain = document.getElementById('btnKeyboardMain');
+        const btnMicOrKeyboard = document.getElementById('btnMicOrKeyboard');
         const btnSend = document.getElementById('btnSend');
         const btnStop = document.getElementById('btnStop');
         const voicePanel = document.getElementById('voicePanel');
         const voiceHint = document.getElementById('voiceHint');
         const voiceMicBtn = document.getElementById('voiceMicBtn');
         const voiceWaveform = document.getElementById('voiceWaveform');
-        const btnKeyboard = document.getElementById('btnKeyboard');
         const inputContainer = document.getElementById('inputContainer');
         const plusSheet = document.getElementById('plusSheet');
         const plusSheetBackdrop = document.getElementById('plusSheetBackdrop');
@@ -932,20 +893,18 @@
 
             if (voiceOpen) {
                 inputMode = 'voicePanel';
-                btnKeyboardMain.classList.add('btn-hidden');
-                btnMic.classList.add('btn-hidden');
+                btnMicOrKeyboard.classList.remove('btn-hidden');
+                btnMicOrKeyboard.classList.add('voice-mode');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
             } else if (isGenerating) {
                 inputMode = 'generating';
-                btnKeyboardMain.classList.add('btn-hidden');
-                btnMic.classList.add('btn-hidden');
+                btnMicOrKeyboard.classList.add('btn-hidden');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.remove('btn-hidden');
             } else if (hasText) {
                 inputMode = 'typing';
-                btnKeyboardMain.classList.remove('btn-hidden');
-                btnMic.classList.add('btn-hidden');
+                btnMicOrKeyboard.classList.add('btn-hidden');
                 btnSend.classList.remove('btn-hidden');
                 btnStop.classList.add('btn-hidden');
                 let sendDisabled = false;
@@ -960,8 +919,8 @@
                 btnSend.disabled = sendDisabled;
             } else {
                 inputMode = 'idle';
-                btnKeyboardMain.classList.remove('btn-hidden');
-                btnMic.classList.remove('btn-hidden');
+                btnMicOrKeyboard.classList.remove('btn-hidden');
+                btnMicOrKeyboard.classList.remove('voice-mode');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
             }
@@ -1452,19 +1411,18 @@
             emptyState.classList.toggle('hidden', hasMessages);
         }
 
-        // 键盘键：聚焦输入框，若语音面板打开则关闭
-        btnKeyboardMain.addEventListener('click', function() {
-            if (voicePanel.classList.contains('open')) stopVoice();
-            textInput.focus();
-        });
-
-        // C. Idle 右侧 Mic：点击打开 VoicePanel
-        btnMic.addEventListener('click', function() {
+        // 同一位置切换：语音键/键盘键
+        btnMicOrKeyboard.addEventListener('click', function() {
+            if (voicePanel.classList.contains('open')) {
+                stopVoice();
+                textInput.focus();
+            } else {
             voicePanel.classList.add('open');
             inputContainer.classList.add('voice-mode');
             addVoiceExitListeners();
             updateInputMode();
             startWaveform(false, false);
+            }
         });
 
         // C. Generating 右侧 Stop：取消当前流式
@@ -1507,12 +1465,6 @@
             stopVoice();
         }
         function _onVoiceExitHidden() { if (document.hidden) stopVoice(); }
-
-        // D. VoicePanel：Keyboard 关闭面板并聚焦输入框
-        btnKeyboard.addEventListener('click', function() {
-            stopVoice();
-            textInput.focus();
-        });
 
         // D. VoicePanel：按住说话（Press-and-hold）
         function getTouchY(e) {
