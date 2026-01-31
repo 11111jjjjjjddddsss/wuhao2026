@@ -3,7 +3,6 @@ package com.nongjiqianwen
 import android.content.Context
 import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.regex.Pattern
 
 /**
  * A/B 层状态机：A 层累计完整轮次，达 24 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
@@ -15,12 +14,6 @@ object ABLayerManager {
     private const val KEY_B_SUMMARY = "b_summary"
     private const val A_MIN_ROUNDS = 24
 
-    /** B 摘要有效性：长度区间（字） */
-    private const val B_MIN_LEN = 200
-    private const val B_MAX_LEN = 1200
-
-    /** 禁止结构化开头的正则 */
-    private val FORBIDDEN_START = Pattern.compile("^[#*\\-]|^[一二三四五六七八九十百]+、|^\\d+\\.")
 
     private var appContext: Context? = null
 
@@ -103,19 +96,9 @@ object ABLayerManager {
         }.start()
     }
 
-    /** 校验 B 摘要有效性：非空、长度 200~1200、禁止结构化开头 */
+    /** 校验 B 摘要有效性：仅要求非空 */
     private fun validateBSummary(summary: String?): Boolean {
-        val t = summary?.trim() ?: return false
-        if (t.isEmpty()) return false
-        if (t.length !in B_MIN_LEN..B_MAX_LEN) {
-            Log.d(TAG, "B摘要长度${t.length}不在${B_MIN_LEN}~${B_MAX_LEN}区间")
-            return false
-        }
-        if (FORBIDDEN_START.matcher(t).find()) {
-            Log.d(TAG, "B摘要以结构化标记开头，拒绝")
-            return false
-        }
-        return true
+        return !summary.isNullOrBlank()
     }
 
     private fun buildDialogueText(rounds: List<Pair<String, String>>): String {

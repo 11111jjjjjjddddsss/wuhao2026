@@ -21,10 +21,11 @@
 
 | 规则 | 实现位置 | 说明 |
 |------|----------|------|
-| 非空 | `ABLayerManager.validateBSummary` 第 112-113 行 | `trim()` 为空则返回 false |
-| 长度 200~1200 字 | 第 114-117 行 | `t.length !in B_MIN_LEN..B_MAX_LEN` 则拒绝 |
-| 禁止结构化开头 | 第 22 行 + 第 118-121 行 | `FORBIDDEN_START` 匹配 `^[#*\-]`、`^[一二三四五六七八九十百]+、`、`^\d+\.` |
+| 非空 | `ABLayerManager.validateBSummary` | `!summary.isNullOrBlank()` |
+| ~~长度/格式~~ | 已撤销 | 不再限制长度区间或开头符号 |
 | 校验失败处理 | 第 80-83 行 | 不写入 B、不清空 A，直接 return |
+
+> **简化说明**：校验已简化为"非空有效文本"，避免因格式/长度校验导致 B 不更新、A 不清空。
 
 ## 四、A 快照位置
 
