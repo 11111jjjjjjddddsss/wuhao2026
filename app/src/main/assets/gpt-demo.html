@@ -182,16 +182,16 @@
         }
         .message.assistant .avatar-slot {
             flex-shrink: 0;
-            width: 12px;
-            height: 12px;
+            width: 18px;
+            height: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-top: 14px;
         }
         .message.assistant .streaming-dot {
-            width: 10px;
-            height: 10px;
+            width: 15px;
+            height: 15px;
             border-radius: 50%;
             background: var(--green);
             opacity: 0;
@@ -437,6 +437,22 @@
         .btn-mic:hover {
             background: rgba(0,0,0,0.05);
         }
+        .btn-keyboard-main {
+            background: none;
+            color: var(--text);
+        }
+        .btn-keyboard-main svg {
+            width: 22px;
+            height: 22px;
+            stroke: var(--text);
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+        }
+        .btn-keyboard-main:hover {
+            background: rgba(0,0,0,0.05);
+        }
 
         .btn-send {
             background: var(--green);
@@ -449,7 +465,7 @@
             width: 20px;
             height: 20px;
             stroke: #fff;
-            stroke-width: 2;
+            stroke-width: 2.8;
             stroke-linecap: round;
             stroke-linejoin: round;
             fill: none;
@@ -473,8 +489,8 @@
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
         }
         .btn-stop svg {
-            width: 14px;
-            height: 14px;
+            width: 18px;
+            height: 18px;
         }
         .btn-stop svg rect {
             fill: var(--green);
@@ -482,7 +498,8 @@
 
         .input-area-buttons .btn-mic,
         .input-area-buttons .btn-send,
-        .input-area-buttons .btn-stop {
+        .input-area-buttons .btn-stop,
+        .input-area-buttons .btn-keyboard-main {
             transition: opacity var(--transition-fast);
         }
         .input-area-buttons .btn-hidden {
@@ -803,14 +820,17 @@
                     <textarea id="textInput" class="text-input" placeholder="给农技千问发消息" rows="1" maxlength="2000"></textarea>
                 </div>
                 <div class="input-area-buttons">
+                    <button type="button" class="btn-keyboard-main btn-hidden" id="btnKeyboardMain" title="键盘">
+                        <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6.01" y2="10"/><line x1="10" y1="10" x2="10.01" y2="10"/><line x1="14" y1="10" x2="14.01" y2="10"/><line x1="18" y1="10" x2="18.01" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
+                    </button>
                     <button type="button" class="btn-mic" id="btnMic" title="语音">
                         <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                     </button>
                     <button type="button" class="btn-send btn-hidden" id="btnSend" title="发送">
-                        <svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+                        <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
                     </button>
                     <button type="button" class="btn-stop btn-hidden" id="btnStop" title="停止">
-                        <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+                        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
                     </button>
                 </div>
             </div>
@@ -856,6 +876,7 @@
         const cameraInput = document.getElementById('cameraInput');
         const imagePreviewContainer = document.getElementById('imagePreviewContainer');
         const btnMic = document.getElementById('btnMic');
+        const btnKeyboardMain = document.getElementById('btnKeyboardMain');
         const btnSend = document.getElementById('btnSend');
         const btnStop = document.getElementById('btnStop');
         const voicePanel = document.getElementById('voicePanel');
@@ -911,16 +932,19 @@
 
             if (voiceOpen) {
                 inputMode = 'voicePanel';
+                btnKeyboardMain.classList.add('btn-hidden');
                 btnMic.classList.add('btn-hidden');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
             } else if (isGenerating) {
                 inputMode = 'generating';
+                btnKeyboardMain.classList.add('btn-hidden');
                 btnMic.classList.add('btn-hidden');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.remove('btn-hidden');
             } else if (hasText) {
                 inputMode = 'typing';
+                btnKeyboardMain.classList.remove('btn-hidden');
                 btnMic.classList.add('btn-hidden');
                 btnSend.classList.remove('btn-hidden');
                 btnStop.classList.add('btn-hidden');
@@ -936,6 +960,7 @@
                 btnSend.disabled = sendDisabled;
             } else {
                 inputMode = 'idle';
+                btnKeyboardMain.classList.remove('btn-hidden');
                 btnMic.classList.remove('btn-hidden');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
@@ -1200,7 +1225,7 @@
 
             const text = textInput.value.trim();
             const hasImages = imageState.size > 0;
-            if (!text && !hasImages) return;
+            if (!text) return;
 
             // 验证规则：有图必须有文字
             if (hasImages && !text) {
@@ -1426,6 +1451,12 @@
             const hasMessages = messagesContainer.querySelectorAll('.message').length > 0;
             emptyState.classList.toggle('hidden', hasMessages);
         }
+
+        // 键盘键：聚焦输入框，若语音面板打开则关闭
+        btnKeyboardMain.addEventListener('click', function() {
+            if (voicePanel.classList.contains('open')) stopVoice();
+            textInput.focus();
+        });
 
         // C. Idle 右侧 Mic：点击打开 VoicePanel
         btnMic.addEventListener('click', function() {
