@@ -451,17 +451,23 @@
             fill: none;
         }
 
+        /* P0-7: 黑圆+绿方 */
         .btn-stop {
-            background: var(--stop-bg);
+            width: 40px;
+            height: 40px;
+            min-width: 40px;
+            min-height: 40px;
+            background: #111;
             color: var(--text);
+            border-radius: 999px;
         }
         .btn-stop:hover {
-            background: #e8e8e8;
+            background: #222;
         }
         .btn-stop svg {
             width: 14px;
             height: 14px;
-            fill: var(--text);
+            fill: var(--green);
         }
 
         .input-area-buttons .btn-mic,
@@ -772,7 +778,7 @@
                         <svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
                     </button>
                     <button type="button" class="btn-stop btn-hidden" id="btnStop" title="停止">
-                        <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor"/></svg>
                     </button>
                 </div>
             </div>
