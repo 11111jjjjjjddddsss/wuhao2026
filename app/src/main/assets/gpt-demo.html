@@ -66,7 +66,7 @@
             }
         }
 
-        /* A. 顶部 AppBar + H. 标题 */
+        /* A. 顶部 AppBar（上灰→中间白，过渡慢；底部无边界，与内容自然衔接） */
         .app-bar {
             flex-shrink: 0;
             height: 56px;
@@ -74,8 +74,9 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 1px solid var(--divider);
-            background: var(--bg);
+            border-bottom: none;
+            box-shadow: none;
+            background: linear-gradient(to bottom, #FAFAFA 0%, #FBFBFB 18%, #FCFCFC 38%, #FEFEFE 65%, #FFFFFF 100%);
         }
         .app-bar-left, .app-bar-right {
             width: var(--btn-circle-size);
@@ -84,13 +85,19 @@
             align-items: center;
             justify-content: center;
             border: none;
-            background: none;
             cursor: pointer;
             color: var(--text);
             border-radius: 50%;
         }
+        .app-bar-left {
+            background: #FFFFFF;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
         .app-bar-left:hover, .app-bar-right:hover {
             background: rgba(0,0,0,0.05);
+        }
+        .app-bar-left:hover {
+            background: #F8F8F8;
         }
         .app-bar-title {
             font-size: 18px;
@@ -350,12 +357,12 @@
             border-radius: 4px;
         }
 
-        /* F. 底部输入区 */
+        /* F. 底部输入区（中间白→下灰，过渡慢，无边界） */
         .input-container {
             flex-shrink: 0;
             min-height: var(--input-min-height);
-            background: var(--bg);
-            border-top: 1px solid var(--border);
+            background: linear-gradient(to top, #FAFAFA 0%, #FBFBFB 18%, #FCFCFC 38%, #FEFEFE 65%, #FFFFFF 100%);
+            border-top: none;
             padding: 10px 14px;
             padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
             display: flex;
@@ -398,21 +405,25 @@
             transform: scale(0.98);
         }
 
+        /* 加号按钮：圆球白色，底栏浅灰，白球在灰底上显眼；十字架深灰 */
         .add-button {
+            align-self: center;
             min-width: 44px;
             min-height: 44px;
             width: 44px;
             height: 44px;
-            background: rgba(0,0,0,0.06);
-            border: 1px solid rgba(0,0,0,0.08);
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            color: var(--text);
+            background: #FFFFFF;
+            border: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            color: #333333;
             font-size: 48px;
             font-weight: 300;
             line-height: 1;
         }
         .add-button:hover {
-            background: rgba(0,0,0,0.08);
+            background: #F8F8F8;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            color: #333333;
         }
         .add-button:active {
             transform: scale(0.96);
@@ -436,8 +447,8 @@
             display: none;
         }
         .btn-mic-or-keyboard svg {
-            width: 22px;
-            height: 22px;
+            width: 28px;
+            height: 28px;
             stroke: var(--text);
             stroke-width: 1.8;
             stroke-linecap: round;
@@ -460,10 +471,10 @@
             background: var(--green-accent);
         }
         .btn-send svg {
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
             stroke: #fff;
-            stroke-width: 2.8;
+            stroke-width: 3;
             stroke-linecap: round;
             stroke-linejoin: round;
             fill: none;
@@ -494,21 +505,23 @@
             fill: var(--green);
         }
 
-        .input-area-buttons .btn-mic-or-keyboard,
-        .input-area-buttons .btn-send,
-        .input-area-buttons .btn-stop {
+        .input-area-with-hint .btn-mic-or-keyboard,
+        .input-area-with-hint .btn-send,
+        .input-area-with-hint .btn-stop {
             transition: opacity var(--transition-fast);
         }
-        .input-area-buttons .btn-hidden {
+        .input-area-with-hint .btn-hidden {
             display: none !important;
         }
 
         .text-input {
             flex: 1;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: var(--input-radius);
-            padding: 12px 16px;
+            width: 100%;
+            min-width: 0;
+            background: transparent;
+            border: none;
+            border-radius: 0;
+            padding: 10px 4px;
             color: var(--text);
             font-size: 16px;
             font-weight: 400;
@@ -588,27 +601,37 @@
             border-radius: 2px;
         }
 
-        /* D. VoicePanel */
+        /* D. VoicePanel（贴底盖住加号/麦克风；雾蒙蒙毛玻璃 + 精致感；未打开时完全不可见） */
         .voice-panel {
             position: absolute;
             left: 0;
             right: 0;
             bottom: 0;
-            background: var(--bg);
+            background: rgba(255, 255, 255, 0.88);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
             border-radius: 20px 20px 0 0;
-            box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
-            padding: 12px 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.7);
+            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.06);
+            padding: 16px 16px 20px;
             padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
             transform: translateY(100%);
-            transition: transform var(--transition-sheet);
-            z-index: 99;
-            max-height: 200px;
+            opacity: 0;
+            pointer-events: none;
+            transition: transform var(--transition-sheet), opacity var(--transition-sheet);
+            z-index: 102;
+            min-height: 200px;
+            max-height: 320px;
         }
         .voice-panel.open {
             transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
         }
         .voice-panel.cancel-armed {
-            background: rgba(225, 75, 75, 0.06);
+            background: rgba(225, 75, 75, 0.1);
+            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px);
         }
         .voice-drag-bar {
             width: 36px;
@@ -626,28 +649,62 @@
         }
         .input-area-with-hint {
             flex: 1;
-            position: relative;
             min-width: 0;
             display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            padding: 8px 8px 8px 14px;
+            background: #FFFFFF;
+            border: 1px solid var(--border);
+            border-radius: var(--input-radius);
+            transition: border-color var(--transition-fast);
+        }
+        .input-area-with-hint:focus-within {
+            border-color: var(--green);
+        }
+        .input-area-inner {
+            flex: 1;
+            min-width: 0;
+            position: relative;
         }
         .voice-input-hint {
             position: absolute;
-            left: 12px;
-            right: 12px;
-            top: 12px;
+            left: 0;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            text-align: center;
             font-size: 16px;
-            color: var(--placeholder);
+            font-weight: 600;
+            color: #333333;
+            letter-spacing: 0.2em;
             pointer-events: none;
             display: none;
         }
         .input-container.voice-mode .voice-input-hint {
             display: block;
         }
+        /* 语音面板打开时，底部输入框不再重复显示「按住说话」，只保留面板内提示 */
+        body.voice-panel-open .voice-input-hint {
+            display: none !important;
+        }
+        /* 语音模式下，输入框内按住区域（点/按住此处才录音，麦克风键只做切换） */
+        .voice-hold-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            cursor: pointer;
+        }
+        .input-container.voice-mode .voice-hold-overlay {
+            display: block;
+        }
         .voice-waveform-wrap {
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 48px;
+            min-height: 56px;
+            height: 56px;
             margin-bottom: 16px;
         }
         .voice-waveform {
@@ -655,6 +712,11 @@
             width: 100%;
             max-width: 280px;
             height: 48px;
+            background: transparent;
+        }
+        /* 录音由按住输入框触发，面板内不再显示麦克风按钮（麦克风键仅作语音/键盘切换） */
+        .voice-panel .voice-mic-btn {
+            display: none;
         }
         .voice-mic-btn {
             width: 80px;
@@ -691,7 +753,7 @@
             fill: none;
         }
 
-        /* E. + 面板 BottomSheet */
+        /* E. + 面板 BottomSheet（z-index 高于 input-container:100，确保弹出在输入栏上方） */
         .plus-sheet-backdrop {
             position: absolute;
             inset: 0;
@@ -699,27 +761,33 @@
             opacity: 0;
             visibility: hidden;
             transition: opacity var(--transition-sheet), visibility var(--transition-sheet);
-            z-index: 98;
+            z-index: 101;
         }
         .plus-sheet-backdrop.open {
             opacity: 1;
             visibility: visible;
         }
+        /* 未打开时完全不可见、不占视线，避免刷新后底部一直看到方框 */
         .plus-sheet {
             position: absolute;
             left: 0;
             right: 0;
             bottom: 0;
+            min-height: 280px;
             background: var(--bg);
             border-radius: 18px 18px 0 0;
             padding: 24px 20px;
             padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
             transform: translateY(100%);
-            transition: transform var(--transition-sheet);
-            z-index: 99;
+            opacity: 0;
+            pointer-events: none;
+            transition: transform var(--transition-sheet), opacity var(--transition-sheet);
+            z-index: 102;
         }
         .plus-sheet.open {
             transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
         }
         .plus-sheet-grid {
             display: grid;
@@ -765,7 +833,7 @@
     <div class="app-shell" id="app">
     <header class="app-bar">
         <button type="button" class="app-bar-left" id="appBarLeft" aria-label="菜单">
-            <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="14" y2="15"/></svg>
         </button>
         <span class="app-bar-title">农技千问</span>
         <div class="app-bar-right"></div>
@@ -787,13 +855,14 @@
                 <input type="file" id="cameraInput" class="camera-input" accept="image/*" capture="environment">
                 <button type="button" class="add-button" id="addButton" title="图片或拍照">+</button>
                 <div class="input-area-with-hint">
-                    <div class="voice-input-hint" id="voiceInputHint">按住说话</div>
-                    <textarea id="textInput" class="text-input" placeholder="给农技千问发消息" rows="1" maxlength="2000"></textarea>
-                </div>
-                <div class="input-area-buttons">
+                    <div class="input-area-inner">
+                        <div class="voice-input-hint" id="voiceInputHint">按住说话</div>
+                        <textarea id="textInput" class="text-input" placeholder="" rows="1" maxlength="2000"></textarea>
+                        <div class="voice-hold-overlay" id="voiceHoldOverlay" aria-label="按住说话"></div>
+                    </div>
                     <button type="button" class="btn-mic-or-keyboard" id="btnMicOrKeyboard" title="语音/键盘">
                         <span class="icon-mic"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
-                        <span class="icon-keyboard"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="8" width="3" height="3" rx="0.5" fill="currentColor"/><rect x="10" y="8" width="3" height="3" rx="0.5" fill="currentColor"/><rect x="15" y="8" width="3" height="3" rx="0.5" fill="currentColor"/><rect x="6" y="12" width="12" height="2" rx="0.5" fill="currentColor"/></svg></span>
+                        <span class="icon-keyboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="6" cy="9" r="0.6" fill="currentColor"/><circle cx="12" cy="9" r="0.6" fill="currentColor"/><circle cx="18" cy="9" r="0.6" fill="currentColor"/><circle cx="6" cy="15" r="0.6" fill="currentColor"/><circle cx="12" cy="15" r="0.6" fill="currentColor"/><circle cx="18" cy="15" r="0.6" fill="currentColor"/></svg></span>
                     </button>
                     <button type="button" class="btn-send btn-hidden" id="btnSend" title="发送">
                         <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
@@ -846,6 +915,7 @@
         const voiceHint = document.getElementById('voiceHint');
         const voiceMicBtn = document.getElementById('voiceMicBtn');
         const voiceWaveform = document.getElementById('voiceWaveform');
+        const voiceHoldOverlay = document.getElementById('voiceHoldOverlay');
         const inputContainer = document.getElementById('inputContainer');
         const plusSheet = document.getElementById('plusSheet');
         const plusSheetBackdrop = document.getElementById('plusSheetBackdrop');
@@ -891,9 +961,10 @@
         function updateInputMode() {
             const hasText = textInput.value.trim().length > 0;
             const voiceOpen = voicePanel.classList.contains('open');
+            const inVoiceMode = inputContainer.classList.contains('voice-mode');
 
-            if (voiceOpen) {
-                inputMode = 'voicePanel';
+            if (voiceOpen || inVoiceMode) {
+                inputMode = inVoiceMode ? 'voiceMode' : 'voicePanel';
                 btnMicOrKeyboard.classList.remove('btn-hidden');
                 btnMicOrKeyboard.classList.add('voice-mode');
                 btnSend.classList.add('btn-hidden');
@@ -1412,25 +1483,30 @@
             emptyState.classList.toggle('hidden', hasMessages);
         }
 
-        // 同一位置切换：语音键/键盘键
+        // 同一位置切换：语音键/键盘键（麦克风键只做切换，不打开面板；录音由按住输入框触发）
         btnMicOrKeyboard.addEventListener('click', function() {
             if (voicePanel.classList.contains('open')) {
                 stopVoice();
                 textInput.focus();
+                return;
+            }
+            if (inputContainer.classList.contains('voice-mode')) {
+                inputContainer.classList.remove('voice-mode');
+                updateInputMode();
+                textInput.focus();
             } else {
-            voicePanel.classList.add('open');
-            inputContainer.classList.add('voice-mode');
-            addVoiceExitListeners();
-            updateInputMode();
-            startWaveform(false, false);
+                inputContainer.classList.add('voice-mode');
+                updateInputMode();
             }
         });
 
-        // C. Generating 右侧 Stop：取消当前流式
+        // C. Generating 右侧 Stop：取消当前流式（点击后立即更新 UI，避免一直停在状态键）
         btnStop.addEventListener('click', function() {
             if (typeof AndroidInterface.stopGeneration === 'function') {
                 AndroidInterface.stopGeneration();
             }
+            isGenerating = false;
+            updateInputMode();
         });
 
         /** P0-6: 幂等复位，任一退出事件调用 */
@@ -1440,11 +1516,12 @@
             voiceCancelArmed = false;
             if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
             voicePanel.classList.remove('open');
+            document.body.classList.remove('voice-panel-open');
             inputContainer.classList.remove('voice-mode');
-            voiceMicBtn.classList.remove('recording', 'cancel-armed');
             voicePanel.classList.remove('cancel-armed');
             voiceHint.textContent = '按住说话';
             stopWaveform();
+            removeVoiceRecordingListeners();
             removeVoiceExitListeners();
             updateInputMode();
         }
@@ -1463,31 +1540,36 @@
         function _onVoiceExit(e) {
             if (!voicePanel.classList.contains('open')) return;
             if (e && (e.target === voiceMicBtn || voiceMicBtn.contains(e.target))) return;
+            if (e && voiceHoldOverlay && (e.target === voiceHoldOverlay || voiceHoldOverlay.contains(e.target))) return;
             stopVoice();
         }
         function _onVoiceExitHidden() { if (document.hidden) stopVoice(); }
 
-        // D. VoicePanel：按住说话（Press-and-hold）
+        // D. VoicePanel：按住输入框才录音，弹出面板显示蓝态/红态提示（松手发送上滑取消 / 松手取消）
         function getTouchY(e) {
             if (e.touches && e.touches.length) return e.touches[0].clientY;
             return e.clientY;
         }
-        voiceMicBtn.addEventListener('mousedown', onVoiceStart);
-        voiceMicBtn.addEventListener('touchstart', onVoiceStart, { passive: true });
-        voiceMicBtn.addEventListener('mouseup', onVoiceEnd);
-        voiceMicBtn.addEventListener('touchend', onVoiceEnd);
-        voiceMicBtn.addEventListener('mouseleave', onVoiceEnd);
-        voiceMicBtn.addEventListener('touchmove', onVoiceMove);
-        voiceMicBtn.addEventListener('mousemove', onVoiceMove);
+        function addVoiceRecordingListeners() {
+            document.addEventListener('touchmove', onVoiceMove, { passive: true });
+            document.addEventListener('mousemove', onVoiceMove);
+            document.addEventListener('touchend', onVoiceEnd);
+            document.addEventListener('mouseup', onVoiceEnd);
+        }
+        function removeVoiceRecordingListeners() {
+            document.removeEventListener('touchmove', onVoiceMove);
+            document.removeEventListener('mousemove', onVoiceMove);
+            document.removeEventListener('touchend', onVoiceEnd);
+            document.removeEventListener('mouseup', onVoiceEnd);
+        }
         function onVoiceMove(e) {
             if (!voiceRecording) return;
             const y = getTouchY(e);
             const delta = voiceTouchStartY - y;
             if (delta > VOICE_CANCEL_THRESHOLD_PX && !voiceCancelArmed) {
                 voiceCancelArmed = true;
-                voiceMicBtn.classList.add('cancel-armed');
                 voicePanel.classList.add('cancel-armed');
-                voiceHint.textContent = '';
+                voiceHint.textContent = '松手取消';
                 startWaveform(true, true);
             }
         }
@@ -1498,10 +1580,12 @@
             else voiceTouchStartY = e.clientY;
             voiceRecording = true;
             voiceCancelArmed = false;
-            voiceMicBtn.classList.add('recording');
-            voiceMicBtn.classList.remove('cancel-armed');
             voicePanel.classList.remove('cancel-armed');
-            voiceHint.textContent = '';
+            voiceHint.textContent = '松手发送，上滑取消';
+            voicePanel.classList.add('open');
+            document.body.classList.add('voice-panel-open');
+            addVoiceExitListeners();
+            addVoiceRecordingListeners();
             startWaveform(true, false);
         }
 
@@ -1509,11 +1593,17 @@
             if (!voiceRecording) return;
             e.preventDefault();
             voiceRecording = false;
-            voiceMicBtn.classList.remove('recording', 'cancel-armed');
+            removeVoiceRecordingListeners();
             voicePanel.classList.remove('cancel-armed');
             voiceHint.textContent = '按住说话';
             stopWaveform();
-            if (voiceCancelArmed) return;
+            if (voiceCancelArmed) {
+                voicePanel.classList.remove('open');
+                document.body.classList.remove('voice-panel-open');
+                removeVoiceExitListeners();
+                updateInputMode();
+                return;
+            }
             if (voicePendingTimeout) clearTimeout(voicePendingTimeout);
             voicePendingTimeout = setTimeout(function() {
                 voicePendingTimeout = null;
@@ -1528,6 +1618,10 @@
                 }
             }
         }
+        if (voiceHoldOverlay) {
+            voiceHoldOverlay.addEventListener('mousedown', onVoiceStart);
+            voiceHoldOverlay.addEventListener('touchstart', onVoiceStart, { passive: true });
+        }
         window.onVoiceResult = function(text) {
             if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
             finishVoiceSend(text);
@@ -1536,6 +1630,7 @@
         function finishVoiceSend(text) {
             removeVoiceExitListeners();
             voicePanel.classList.remove('open');
+            document.body.classList.remove('voice-panel-open');
             inputContainer.classList.remove('voice-mode');
             updateInputMode();
             if (!text || !String(text).trim()) {
@@ -1560,9 +1655,9 @@
             updateInputMode();
         }
 
-        // D4. 波形 Canvas（24 根竖条）
-        const WAVE_BARS = 24;
-        let waveBarsHeights = Array(WAVE_BARS).fill(0.3);
+        // D4. 波形 Canvas（细条、轻微浮动，不抢注意力）
+        const WAVE_BARS = 32;
+        let waveBarsHeights = Array(WAVE_BARS).fill(0.35);
         let wavePhase = 0;
 
         function startWaveform(recording, cancelArmed) {
@@ -1570,18 +1665,18 @@
             const ctx = voiceWaveform.getContext('2d');
             const w = voiceWaveform.width;
             const h = voiceWaveform.height;
-            const barW = (w / WAVE_BARS) * 0.6;
+            const barW = Math.max(2, (w / WAVE_BARS) * 0.32);
             const gap = w / WAVE_BARS - barW;
-            const color = cancelArmed ? '#E14B4B' : (recording ? '#169C5C' : '#D9D9D9');
-            const amp = cancelArmed ? 0.4 : (recording ? 0.8 : 0.25);
+            const color = cancelArmed ? '#E14B4B' : (recording ? '#2196F3' : '#D9D9D9');
+            const amp = cancelArmed ? 0.2 : (recording ? 0.28 : 0.15);
 
             function draw() {
-                wavePhase += recording ? 0.15 : 0.04;
+                wavePhase += recording ? 0.08 : 0.03;
                 ctx.clearRect(0, 0, w, h);
                 for (let i = 0; i < WAVE_BARS; i++) {
-                    const t = Math.sin(wavePhase + i * 0.4) * 0.5 + 0.5;
-                    waveBarsHeights[i] = waveBarsHeights[i] * 0.7 + t * amp * 0.3;
-                    const barH = Math.max(4, h * waveBarsHeights[i]);
+                    const t = Math.sin(wavePhase + i * 0.35) * 0.5 + 0.5;
+                    waveBarsHeights[i] = waveBarsHeights[i] * 0.88 + t * amp * 0.12;
+                    const barH = Math.max(2, h * waveBarsHeights[i] * 0.5);
                     const x = i * (barW + gap) + gap * 0.5;
                     ctx.fillStyle = color;
                     ctx.fillRect(x, (h - barH) / 2, barW, barH);
