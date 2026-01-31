@@ -46,6 +46,9 @@ class MainActivity : AppCompatActivity() {
         private const val BACKGROUND_CACHE_MAX_MS = 60_000L
     }
 
+    /** JS 字符串安全：反斜杠/单引号 + U+2028/U+2029（否则断串） */
+    private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -70,8 +73,10 @@ class MainActivity : AppCompatActivity() {
         // 设置WebViewClient
         webView.webViewClient = WebViewClient()
         
-        // 加载HTML文件
-        webView.loadUrl("file:///android_asset/gpt-demo.html")
+        // 加载HTML文件（唯一模板）
+        val loadUrl = "file:///android_asset/gpt-demo.html"
+        Log.d("MainActivity", "WebView loadUrl=$loadUrl")
+        webView.loadUrl(loadUrl)
     }
     
     /**
@@ -300,9 +305,6 @@ class MainActivity : AppCompatActivity() {
                 compressedBytesCache[imageId] = Pair(bytes, now)
             }
         }
-        
-        /** JS 字符串安全：反斜杠/单引号 + U+2028/U+2029（否则断串） */
-        private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
         /** 切后台时按 streamId 缓存事件，受字数/流数/时间三上限；超限丢弃并记 cache_overflow */
         private fun dispatchChunk(streamId: String, chunk: String) {
@@ -317,14 +319,16 @@ class MainActivity : AppCompatActivity() {
                         val overStreams = streamOrder.size >= BACKGROUND_CACHE_MAX_STREAMS && streamId !in bufferedEventsByStreamId
                         if (overTime || overChars) {
                             val list = bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }
-                            if (list.isEmpty() || list.last().first != "interrupted" || list.last().second != "cache_overflow")
+                            if (list.isEmpty() || list.last().first != "interrupted" || list.last().second != "cache_overflow") {
                                 list.add("interrupted" to "cache_overflow")
+                            } else Unit
                         } else if (overStreams) {
                             val oldest = streamOrder.first()
                             bufferedEventsByStreamId.remove(oldest)
                             overflowedStreamIds.add(oldest)
-                            if (bufferedEventsByStreamId.size < BACKGROUND_CACHE_MAX_STREAMS)
+                            if (bufferedEventsByStreamId.size < BACKGROUND_CACHE_MAX_STREAMS) {
                                 bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("chunk" to chunk)
+                            } else Unit
                         } else {
                             bufferedEventsByStreamId.getOrPut(streamId) { mutableListOf() }.add("chunk" to chunk)
                         }
