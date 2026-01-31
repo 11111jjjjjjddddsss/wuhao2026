@@ -1456,7 +1456,9 @@
         voiceMicBtn.addEventListener('mouseup', onVoiceEnd);
         voiceMicBtn.addEventListener('touchend', onVoiceEnd);
         voiceMicBtn.addEventListener('mouseleave', onVoiceEnd);
-        voiceMicBtn.addEventListener('touchmove', function(e) {
+        voiceMicBtn.addEventListener('touchmove', onVoiceMove);
+        voiceMicBtn.addEventListener('mousemove', onVoiceMove);
+        function onVoiceMove(e) {
             if (!voiceRecording) return;
             const y = getTouchY(e);
             const delta = voiceTouchStartY - y;
@@ -1467,7 +1469,7 @@
                 voiceHint.textContent = '';
                 startWaveform(true, true);
             }
-        }, { passive: true });
+        }
 
         function onVoiceStart(e) {
             e.preventDefault();
