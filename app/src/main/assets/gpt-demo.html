@@ -495,7 +495,7 @@
             line-height: 1.35;
             resize: none;
             min-height: 44px;
-            max-height: 120px;
+            max-height: 110px;
             outline: none;
             -webkit-font-smoothing: antialiased;
         }
@@ -894,7 +894,7 @@
         // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
             this.style.height = 'auto';
-            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+            this.style.height = Math.min(this.scrollHeight, 110) + 'px';
             updateInputMode();
         });
 
