@@ -68,6 +68,7 @@ object QwenClient {
         sessionId: String,
         requestId: String,
         streamId: String,
+        systemAnchorText: String,
         userMessage: String,
         imageUrlList: List<String> = emptyList(),
         onChunk: (String) -> Unit,
@@ -92,6 +93,14 @@ object QwenClient {
                     addProperty("stream", true)
                     
                     val messagesArray = com.google.gson.JsonArray()
+                    // 每次请求：messages[0] 为 system 锚点
+                    if (systemAnchorText.isNotBlank()) {
+                        val systemObj = JsonObject().apply {
+                            addProperty("role", "system")
+                            addProperty("content", systemAnchorText)
+                        }
+                        messagesArray.add(systemObj)
+                    }
                     val userMessageObj = JsonObject().apply {
                         addProperty("role", "user")
                         

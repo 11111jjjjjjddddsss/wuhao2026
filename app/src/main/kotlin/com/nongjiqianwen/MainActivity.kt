@@ -53,6 +53,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         IdManager.init(applicationContext)
+        SystemAnchor.init(applicationContext)
 
         webView = WebView(this)
         setContentView(webView)

@@ -24,7 +24,8 @@ object ModelService {
         val userId = IdManager.getInstallId()
         val sessionId = IdManager.getSessionId()
         val requestId = ApiConfig.nextRequestId()
-        QwenClient.callApi(userId, sessionId, requestId, streamId, userMessage, imageUrlList, onChunk, onComplete, onInterrupted)
+        val systemAnchor = SystemAnchor.getText()
+        QwenClient.callApi(userId, sessionId, requestId, streamId, systemAnchor, userMessage, imageUrlList, onChunk, onComplete, onInterrupted)
     }
 }
 
