@@ -464,6 +464,10 @@
         .btn-stop:hover {
             background: #222;
         }
+        .btn-stop:active {
+            transform: scale(0.92);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+        }
         .btn-stop svg {
             width: 14px;
             height: 14px;
@@ -604,6 +608,7 @@
             flex: 1;
             position: relative;
             min-width: 0;
+            display: flex;
         }
         .voice-input-hint {
             position: absolute;
@@ -799,7 +804,7 @@
                         <svg viewBox="0 0 24 24"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
                     </button>
                     <button type="button" class="btn-stop btn-hidden" id="btnStop" title="停止">
-                        <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2.5" fill="currentColor"/></svg>
+                        <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor"/></svg>
                     </button>
                 </div>
             </div>
