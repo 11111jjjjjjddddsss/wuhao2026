@@ -23,6 +23,8 @@ import java.util.concurrent.atomic.AtomicReference
 object QwenClient {
     private val TAG = "QwenClient"
     private const val CONNECT_TIMEOUT_SEC = 30L
+    private const val B_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
+    @Volatile private var lastBExtractErrorLogMs = 0L
     /** 连续 X 秒无 chunk 才判定中断；chunk 到来（每次 read 成功）即刷新计时器。与 readTimeout 对齐。 */
     private const val READ_TIMEOUT_SEC = 30L
     private const val CALL_TIMEOUT_SEC = 120L  // 单次请求总时长上限
@@ -246,25 +248,25 @@ object QwenClient {
                         val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                         val isInterrupted = e is SocketTimeoutException
                         if (isCanceled) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                            Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
                             handler.post {
                                 onInterrupted("canceled")
                                 fireComplete()
                             }
                         } else if (isInterrupted) {
-                            Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                            Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
                             handler.post {
                                 onInterrupted("timeout")
                                 fireComplete()
                             }
                         } else if (e is IOException) {
-                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=network 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
+                            Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
                             handler.post {
                                 onInterrupted("network")
                                 fireComplete()
                             }
                         } else {
-                            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
+                            Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
                             handler.post {
                                 onInterrupted("error")
                                 fireComplete()
@@ -277,7 +279,7 @@ object QwenClient {
                     currentRequestId.set(null)
                     val responseBody = response.body?.string() ?: ""
                     val elapsed = System.currentTimeMillis() - startMs
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error HTTP=$statusCode 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                    Log.e(TAG, "callApi HTTP error status=$statusCode, elapsed=${elapsed}ms")
                     handleErrorResponse(userId, sessionId, requestId, streamId, statusCode, responseBody, inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
                 }
             } catch (e: IOException) {
@@ -287,19 +289,19 @@ object QwenClient {
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
                 if (isCanceled) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=canceled reason=canceled 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                    Log.w(TAG, "callApi canceled(IOException), elapsed=${elapsed}ms")
                     handler.post {
                         onInterrupted("canceled")
                         fireComplete()
                     }
                 } else if (isInterrupted) {
-                    Log.w(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=interrupted reason=timeout 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                    Log.w(TAG, "callApi timeout(IOException), elapsed=${elapsed}ms")
                     handler.post {
                         onInterrupted("timeout")
                         fireComplete()
                     }
                 } else {
-                    Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=network 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount", e)
+                    Log.e(TAG, "callApi network error(IOException), elapsed=${elapsed}ms", e)
                     handler.post {
                         onInterrupted("network")
                         fireComplete()
@@ -311,7 +313,7 @@ object QwenClient {
                 val elapsed = System.currentTimeMillis() - startMs
                 val inC = try { userMessage.length } catch (_: Exception) { 0 }
                 val imgC = try { imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) } } catch (_: Exception) { 0 }
-                Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=error reason=error 耗时=${elapsed}ms 入=$inC img=$imgC 出=$outputCharCount", e)
+                Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
                 handler.post {
                     onInterrupted("error")
                     fireComplete()
@@ -330,7 +332,7 @@ object QwenClient {
             @Suppress("UNUSED_VARIABLE") val errorMessage = jsonResponse.get("message")?.asString ?: responseBody
             // 仅日志用，不写正文
         } catch (_: Exception) {
-            Log.e(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 无法解析错误响应 statusCode=$statusCode")
+            Log.e(TAG, "callApi 无法解析错误响应 statusCode=$statusCode")
         }
         handler.post {
             onInterrupted("server")
@@ -387,7 +389,14 @@ object QwenClient {
                 return content
             }
         } catch (e: Exception) {
-            Log.e(TAG, "B提取异常，返回空字符串", e)
+            // Release 节流：60s 内只打一条简短错误，避免 A>=24 每轮失败时刷屏
+            val now = System.currentTimeMillis()
+            if (BuildConfig.DEBUG) {
+                Log.e(TAG, "B提取异常，返回空字符串", e)
+            } else if (now - lastBExtractErrorLogMs > B_EXTRACT_ERROR_LOG_INTERVAL_MS) {
+                lastBExtractErrorLogMs = now
+                Log.e(TAG, "B提取失败", e)
+            }
             ""
         }
     }

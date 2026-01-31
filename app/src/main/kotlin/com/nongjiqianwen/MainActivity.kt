@@ -517,6 +517,7 @@ class MainActivity : AppCompatActivity() {
     private var resetInstallIdRunnable: Runnable? = null
 
     private fun setupResetInstallIdOnLongPress() {
+        if (!BuildConfig.DEBUG) return
         resetInstallIdRunnable = Runnable {
             AlertDialog.Builder(this)
                 .setTitle("Debug")

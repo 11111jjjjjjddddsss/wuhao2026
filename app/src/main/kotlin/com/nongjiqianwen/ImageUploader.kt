@@ -251,7 +251,7 @@ object ImageUploader {
                         }
                         onSuccess(url)
                     } else {
-                        Log.e(TAG, "上传失败：响应无根级 url, body=${bodyStr.take(200)}")
+                        Log.e(TAG, if (BuildConfig.DEBUG) "上传失败：响应无根级 url, body=${bodyStr.take(200)}" else "上传失败：响应无根级 url")
                         onError("上传失败：响应格式错误")
                     }
                 }
