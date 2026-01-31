@@ -365,6 +365,10 @@
             display: flex;
             flex-direction: column;
             gap: 0;
+            transition: min-height var(--transition-sheet);
+        }
+        .input-container.voice-mode {
+            min-height: calc(var(--input-min-height) + 8px);
         }
 
         .input-wrapper {
