@@ -1464,7 +1464,7 @@
                 voiceCancelArmed = true;
                 voiceMicBtn.classList.add('cancel-armed');
                 voicePanel.classList.add('cancel-armed');
-                voiceHint.textContent = '松手取消';
+                voiceHint.textContent = '';
                 startWaveform(true, true);
             }
         }, { passive: true });
@@ -1478,7 +1478,7 @@
             voiceMicBtn.classList.add('recording');
             voiceMicBtn.classList.remove('cancel-armed');
             voicePanel.classList.remove('cancel-armed');
-            voiceHint.textContent = '松手发送，上滑取消';
+            voiceHint.textContent = '';
             startWaveform(true, false);
         }
 
@@ -1491,7 +1491,6 @@
             voiceHint.textContent = '按住说话';
             stopWaveform();
             if (voiceCancelArmed) return;
-            voiceHint.textContent = '识别中…';
             if (voicePendingTimeout) clearTimeout(voicePendingTimeout);
             voicePendingTimeout = setTimeout(function() {
                 voicePendingTimeout = null;
@@ -1508,7 +1507,6 @@
         }
         window.onVoiceResult = function(text) {
             if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
-            voiceHint.textContent = '按住说话';
             finishVoiceSend(text);
         };
 
