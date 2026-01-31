@@ -1389,6 +1389,7 @@
         // C. Idle 右侧 Mic：点击打开 VoicePanel
         btnMic.addEventListener('click', function() {
             voicePanel.classList.add('open');
+            addVoiceExitListeners();
             updateInputMode();
             startWaveform(false, false);
         });
@@ -1400,16 +1401,42 @@
             }
         });
 
-        // D. VoicePanel：Keyboard 关闭面板并聚焦输入框
-        btnKeyboard.addEventListener('click', function() {
-            voicePanel.classList.remove('open');
+        /** P0-6: 幂等复位，任一退出事件调用 */
+        function stopVoice() {
+            if (!voicePanel.classList.contains('open') && !voiceRecording) return;
             voiceRecording = false;
             voiceCancelArmed = false;
+            if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
+            voicePanel.classList.remove('open');
             voiceMicBtn.classList.remove('recording', 'cancel-armed');
             voicePanel.classList.remove('cancel-armed');
             voiceHint.textContent = '按住说话';
             stopWaveform();
+            removeVoiceExitListeners();
             updateInputMode();
+        }
+        function addVoiceExitListeners() {
+            document.addEventListener('pointerup', _onVoiceExit);
+            document.addEventListener('pointercancel', _onVoiceExit);
+            window.addEventListener('blur', _onVoiceExit);
+            document.addEventListener('visibilitychange', _onVoiceExitHidden);
+        }
+        function removeVoiceExitListeners() {
+            document.removeEventListener('pointerup', _onVoiceExit);
+            document.removeEventListener('pointercancel', _onVoiceExit);
+            window.removeEventListener('blur', _onVoiceExit);
+            document.removeEventListener('visibilitychange', _onVoiceExitHidden);
+        }
+        function _onVoiceExit(e) {
+            if (!voicePanel.classList.contains('open')) return;
+            if (e && (e.target === voiceMicBtn || voiceMicBtn.contains(e.target))) return;
+            stopVoice();
+        }
+        function _onVoiceExitHidden() { if (document.hidden) stopVoice(); }
+
+        // D. VoicePanel：Keyboard 关闭面板并聚焦输入框
+        btnKeyboard.addEventListener('click', function() {
+            stopVoice();
             textInput.focus();
         });
 
@@ -1480,6 +1507,7 @@
         };
 
         function finishVoiceSend(text) {
+            removeVoiceExitListeners();
             voicePanel.classList.remove('open');
             updateInputMode();
             if (!text || !String(text).trim()) {
