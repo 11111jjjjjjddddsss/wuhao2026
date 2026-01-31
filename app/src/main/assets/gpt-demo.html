@@ -1164,7 +1164,9 @@
                     const n = Math.min(LOAD_MORE_BATCH, folded.length);
                     for (let i = 0; i < n; i++) folded[i].classList.remove('message-folded');
                     requestAnimationFrame(function() {
-                        messagesWrapper.scrollTop = oldScrollTop + (messagesWrapper.scrollHeight - oldScrollHeight);
+                        requestAnimationFrame(function() {
+                            messagesWrapper.scrollTop = oldScrollTop + (messagesWrapper.scrollHeight - oldScrollHeight);
+                        });
                     });
                     const remaining = messagesContainer.querySelectorAll('.message-folded').length;
                     if (remaining === 0) loadMoreEl.remove();
