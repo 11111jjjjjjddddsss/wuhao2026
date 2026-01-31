@@ -600,6 +600,24 @@
             margin-bottom: 16px;
             min-height: 40px;
         }
+        .input-area-with-hint {
+            flex: 1;
+            position: relative;
+            min-width: 0;
+        }
+        .voice-input-hint {
+            position: absolute;
+            left: 12px;
+            right: 12px;
+            top: 12px;
+            font-size: 16px;
+            color: var(--placeholder);
+            pointer-events: none;
+            display: none;
+        }
+        .input-container.voice-mode .voice-input-hint {
+            display: block;
+        }
         .voice-waveform-wrap {
             display: flex;
             justify-content: center;
@@ -763,13 +781,16 @@
             <div class="messages-container" id="messagesContainer"></div>
         </div>
 
-        <div class="input-container">
+        <div class="input-container" id="inputContainer">
             <div id="imagePreviewContainer" class="image-preview-container" style="display: none;"></div>
             <div class="input-wrapper">
                 <input type="file" id="fileInput" class="file-input" accept="image/*" multiple>
                 <input type="file" id="cameraInput" class="camera-input" accept="image/*" capture="environment">
                 <button type="button" class="add-button" id="addButton" title="图片或拍照">+</button>
-                <textarea id="textInput" class="text-input" placeholder="给农技千问发消息" rows="1" maxlength="2000"></textarea>
+                <div class="input-area-with-hint">
+                    <div class="voice-input-hint" id="voiceInputHint">按住说话</div>
+                    <textarea id="textInput" class="text-input" placeholder="给农技千问发消息" rows="1" maxlength="2000"></textarea>
+                </div>
                 <div class="input-area-buttons">
                     <button type="button" class="btn-mic" id="btnMic" title="语音">
                         <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -831,6 +852,7 @@
         const voiceMicBtn = document.getElementById('voiceMicBtn');
         const voiceWaveform = document.getElementById('voiceWaveform');
         const btnKeyboard = document.getElementById('btnKeyboard');
+        const inputContainer = document.getElementById('inputContainer');
         const plusSheet = document.getElementById('plusSheet');
         const plusSheetBackdrop = document.getElementById('plusSheetBackdrop');
         const plusSheetGallery = document.getElementById('plusSheetGallery');
@@ -1395,6 +1417,7 @@
         // C. Idle 右侧 Mic：点击打开 VoicePanel
         btnMic.addEventListener('click', function() {
             voicePanel.classList.add('open');
+            inputContainer.classList.add('voice-mode');
             addVoiceExitListeners();
             updateInputMode();
             startWaveform(false, false);
@@ -1414,6 +1437,7 @@
             voiceCancelArmed = false;
             if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
             voicePanel.classList.remove('open');
+            inputContainer.classList.remove('voice-mode');
             voiceMicBtn.classList.remove('recording', 'cancel-armed');
             voicePanel.classList.remove('cancel-armed');
             voiceHint.textContent = '按住说话';
@@ -1515,6 +1539,7 @@
         function finishVoiceSend(text) {
             removeVoiceExitListeners();
             voicePanel.classList.remove('open');
+            inputContainer.classList.remove('voice-mode');
             updateInputMode();
             if (!text || !String(text).trim()) {
                 voiceHint.textContent = '未识别到内容';
