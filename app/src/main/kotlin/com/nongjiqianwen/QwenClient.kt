@@ -91,11 +91,11 @@ object QwenClient {
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
                     addProperty("stream", true)
-                    addProperty("temperature", 0.85)
-                    addProperty("top_p", 0.9)
-                    addProperty("max_tokens", 4000)
-                    addProperty("frequency_penalty", 0.0)
-                    addProperty("presence_penalty", 0.0)
+                    addProperty("temperature", ModelParams.TEMPERATURE)
+                    addProperty("top_p", ModelParams.TOP_P)
+                    addProperty("max_tokens", ModelParams.MAX_TOKENS)
+                    addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
+                    addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                     val messagesArray = com.google.gson.JsonArray()
                     var systemContent = systemAnchorText
                     val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
@@ -346,11 +346,11 @@ object QwenClient {
         val body = JsonObject().apply {
             addProperty("model", model)
             addProperty("stream", false)
-            addProperty("temperature", 0.85)
-            addProperty("top_p", 0.9)
-            addProperty("max_tokens", 4000)
-            addProperty("frequency_penalty", 0.0)
-            addProperty("presence_penalty", 0.0)
+            addProperty("temperature", ModelParams.TEMPERATURE)
+            addProperty("top_p", ModelParams.TOP_P)
+            addProperty("max_tokens", ModelParams.MAX_TOKENS)
+            addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
+            addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
             add("messages", messagesArray)
         }
         val request = Request.Builder()

@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.content.Context
 import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.regex.Pattern
 
 /**
  * A/B 层状态机：A 层累计完整轮次，达 24 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
@@ -14,6 +15,13 @@ object ABLayerManager {
     private const val KEY_B_SUMMARY = "b_summary"
     private const val A_MIN_ROUNDS = 24
 
+    /** B 摘要有效性：长度区间（字） */
+    private const val B_MIN_LEN = 200
+    private const val B_MAX_LEN = 1200
+
+    /** 禁止结构化开头的正则 */
+    private val FORBIDDEN_START = Pattern.compile("^[#*\\-]|^[一二三四五六七八九十百]+、|^\\d+\\.")
+
     private var appContext: Context? = null
 
     /** A 层：完整轮次 (user, assistant) */
@@ -24,7 +32,7 @@ object ABLayerManager {
     @Volatile
     private var bSummary: String = ""
 
-    /** 防止并发提取 */
+    /** 防止并发提取：extracting=true 时本轮跳过，不阻塞不排队 */
     private val extracting = AtomicBoolean(false)
 
     fun init(context: Context) {
@@ -72,16 +80,20 @@ object ABLayerManager {
                     return@Thread
                 }
                 val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
-                if (newSummary.isNotBlank()) {
-                    val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                    prefs?.edit()?.putString(KEY_B_SUMMARY, newSummary)?.apply()
+                if (!validateBSummary(newSummary)) {
+                    Log.w(TAG, "B摘要校验不通过，不写入不清空A")
+                    return@Thread
+                }
+                val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val committed = prefs?.edit()?.putString(KEY_B_SUMMARY, newSummary)?.commit() ?: false
+                if (committed) {
                     synchronized(aLock) {
                         aRounds.clear()
                         bSummary = newSummary
                     }
-                    Log.d(TAG, "B提取成功，已清空A，新摘要长度=${newSummary.length}")
+                    Log.d(TAG, "B写入成功(commit=true)，已清空A，新摘要长度=${newSummary.length}")
                 } else {
-                    Log.w(TAG, "B提取返回空，不写入不清空A")
+                    Log.w(TAG, "B写入commit=false，不写B不清空A")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "B提取失败，A层保持", e)
@@ -89,6 +101,21 @@ object ABLayerManager {
                 extracting.set(false)
             }
         }.start()
+    }
+
+    /** 校验 B 摘要有效性：非空、长度 200~1200、禁止结构化开头 */
+    private fun validateBSummary(summary: String?): Boolean {
+        val t = summary?.trim() ?: return false
+        if (t.isEmpty()) return false
+        if (t.length !in B_MIN_LEN..B_MAX_LEN) {
+            Log.d(TAG, "B摘要长度${t.length}不在${B_MIN_LEN}~${B_MAX_LEN}区间")
+            return false
+        }
+        if (FORBIDDEN_START.matcher(t).find()) {
+            Log.d(TAG, "B摘要以结构化标记开头，拒绝")
+            return false
+        }
+        return true
     }
 
     private fun buildDialogueText(rounds: List<Pair<String, String>>): String {
