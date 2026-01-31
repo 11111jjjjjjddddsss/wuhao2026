@@ -183,6 +183,38 @@
             align-self: flex-start;
         }
 
+        /* P0-1: 左侧生成中跳动绿球 */
+        .message.assistant .message-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+        .message.assistant .avatar-slot {
+            flex-shrink: 0;
+            width: 12px;
+            height: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 14px;
+        }
+        .message.assistant .streaming-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--green);
+            opacity: 0;
+            pointer-events: none;
+        }
+        .message.assistant.streaming .streaming-dot {
+            opacity: 1;
+            animation: dot-breathe 1s ease-in-out infinite;
+        }
+        @keyframes dot-breathe {
+            0%, 100% { transform: scale(0.9); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+        }
+
         .message-content {
             line-height: 1.5;
             font-size: 16px;
@@ -1206,7 +1238,11 @@
 
         // 接收Android完成通知（保证一次；onComplete 必 flush 该 streamId buffer，最后几个字不丢）
         window.onCompleteReceived = function(streamId) {
-            if (streamId) { flushChunkBuffer(streamId); }
+            if (streamId) {
+                flushChunkBuffer(streamId);
+                const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+                if (msg) msg.classList.remove('streaming');
+            }
             isGenerating = false;
             fileInput.value = '';
             updateInputMode();
@@ -1219,6 +1255,7 @@
             updateInputMode();
             const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
             if (msg) {
+                msg.classList.remove('streaming');
                 msg.classList.add('message-interrupted');
                 const contentDiv = msg.querySelector('.message-content');
                 if (contentDiv && !contentDiv.querySelector('.interrupted-badge')) {
@@ -1258,6 +1295,22 @@
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
 
+            if (role === 'assistant') {
+                const row = document.createElement('div');
+                row.className = 'message-row';
+                const avatarSlot = document.createElement('div');
+                avatarSlot.className = 'avatar-slot';
+                const dot = document.createElement('span');
+                dot.className = 'streaming-dot';
+                avatarSlot.appendChild(dot);
+                row.appendChild(avatarSlot);
+                row.appendChild(contentDiv);
+                messageDiv.appendChild(row);
+                if (stream) messageDiv.classList.add('streaming');
+            } else {
+                messageDiv.appendChild(contentDiv);
+            }
+
             // 添加图片（仅用户消息支持）
             if (imageUrls && imageUrls.length > 0 && role === 'user') {
                 for (let url of imageUrls) {
@@ -1288,11 +1341,13 @@
                 const textNode = document.createTextNode(text);
                 contentDiv.appendChild(textNode);
             } else if (role === 'assistant') {
-                // AI消息：初始为空，等待假流式渲染
+                // AI消息：初始为空，等待流式渲染
                 contentDiv.textContent = '';
             }
 
-            messageDiv.appendChild(contentDiv);
+            if (role !== 'assistant') {
+                messageDiv.appendChild(contentDiv);
+            }
             return messageDiv;
         }
 
