@@ -99,6 +99,15 @@
         .app-bar-left:hover {
             background: #F8F8F8;
         }
+        .app-bar-title-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #FFFFFF;
+            border-radius: 999px;
+            padding: 6px 14px 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
         .app-bar-title {
             font-size: 18px;
             font-weight: 600;
@@ -357,13 +366,13 @@
             border-radius: 4px;
         }
 
-        /* F. 底部输入区（中间白→下灰，过渡慢，无边界） */
+        /* F. 底部输入区（下灰→中间白，自然过渡，无横杠） */
         .input-container {
             flex-shrink: 0;
-            min-height: var(--input-min-height);
+            min-height: calc(var(--input-min-height) - 2px);
             background: linear-gradient(to top, #FAFAFA 0%, #FBFBFB 18%, #FCFCFC 38%, #FEFEFE 65%, #FFFFFF 100%);
             border-top: none;
-            padding: 10px 14px;
+            padding: 8px 14px;
             padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
             display: flex;
             flex-direction: column;
@@ -378,7 +387,7 @@
 
         .input-wrapper {
             display: flex;
-            align-items: flex-end;
+            align-items: baseline;
             gap: 10px;
             min-height: 44px;
         }
@@ -433,6 +442,7 @@
             background: none;
             color: var(--text);
             position: relative;
+            margin-top: -1px;
         }
         .btn-mic-or-keyboard .icon-keyboard {
             display: none;
@@ -449,14 +459,13 @@
         .btn-mic-or-keyboard svg {
             width: 28px;
             height: 28px;
+        }
+        .btn-mic-or-keyboard .icon-mic svg,
+        .btn-mic-or-keyboard .icon-keyboard svg {
             stroke: var(--text);
             stroke-width: 1.8;
             stroke-linecap: round;
             stroke-linejoin: round;
-            fill: none;
-        }
-        .btn-mic-or-keyboard .icon-keyboard svg {
-            stroke: var(--text);
             fill: none;
         }
         .btn-mic-or-keyboard:hover {
@@ -660,7 +669,7 @@
             transition: border-color var(--transition-fast);
         }
         .input-area-with-hint:focus-within {
-            border-color: var(--green);
+            border-color: var(--border);
         }
         .input-area-inner {
             flex: 1;
@@ -835,7 +844,7 @@
         <button type="button" class="app-bar-left" id="appBarLeft" aria-label="菜单">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="14" y2="15"/></svg>
         </button>
-        <span class="app-bar-title">农技千问</span>
+        <span class="app-bar-title-wrap"><span class="app-bar-title">农技千问</span></span>
         <div class="app-bar-right"></div>
     </header>
 
@@ -862,7 +871,7 @@
                     </div>
                     <button type="button" class="btn-mic-or-keyboard" id="btnMicOrKeyboard" title="语音/键盘">
                         <span class="icon-mic"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
-                        <span class="icon-keyboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="6" cy="9" r="0.6" fill="currentColor"/><circle cx="12" cy="9" r="0.6" fill="currentColor"/><circle cx="18" cy="9" r="0.6" fill="currentColor"/><circle cx="6" cy="15" r="0.6" fill="currentColor"/><circle cx="12" cy="15" r="0.6" fill="currentColor"/><circle cx="18" cy="15" r="0.6" fill="currentColor"/></svg></span>
+                        <span class="icon-keyboard" style="margin-top: -2px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4.5" width="21" height="19" rx="2"/><rect x="5.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="11.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="17.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="5.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><rect x="11.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><rect x="17.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" stroke-width="1.5"/></svg></span>
                     </button>
                     <button type="button" class="btn-send btn-hidden" id="btnSend" title="发送">
                         <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
@@ -1003,7 +1012,18 @@
 
         // E. + 面板：点击 + 打开 BottomSheet
         addButton.addEventListener('click', () => {
-            if (imageState.size >= 4) return;
+            if (imageState.size >= 4) {
+                // 显示最多4张图片提示
+                const tip = document.createElement('div');
+                tip.className = 'image-limit-tip';
+                tip.textContent = '最多可上传4张图片';
+                tip.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 16px; border-radius: 4px; font-size: 14px; z-index: 1000;';
+                document.body.appendChild(tip);
+                setTimeout(() => {
+                    tip.remove();
+                }, 1000);
+                return;
+            }
             plusSheet.classList.add('open');
             plusSheetBackdrop.classList.add('open');
         });
