@@ -1,19 +1,16 @@
-# 农技千问 App
+# 农技千问
 
-## 1. 项目定位
-- 本项目为：农业指导型 AI 应用
-- 非确诊、非权威裁决，仅提供参考性建议
-- 核心能力：视觉识别 + 推理建议
+农业指导型 AI 应用（Android + WebView，通义千问多模态）。
 
-## 2. 当前阶段说明
-- 当前仓库仅用于承载正式工程代码
-- 在规则冻结前，不允许引入任何业务代码
+## 构建
 
-## 3. 核心规则来源说明
-- 核心逻辑规则不在本仓库维护
-- 规则以「线下规则文档 + 审核确认」为准
-- 本仓库代码必须 **严格遵循已确认规则**
+- **Debug**：`./gradlew assembleDebug` 或 `build_apk.bat`  
+- 输出：`app/build/outputs/apk/debug/app-debug.apk`
 
-## 4. 修改约束（临时）
-- 任何代码提交必须可解释
-- 不允许引入未讨论的功能、模块或隐性逻辑
+## 运行时关键 assets（必须存在且被读取）
+
+- `app/src/main/assets/system_anchor.txt` — 系统锚点，SystemAnchor.kt 加载，注入为 system role  
+- `app/src/main/assets/b_extraction_prompt.txt` — B 层摘要提取 prompt，BExtractionPrompt.kt 加载  
+- `app/src/main/assets/gpt-demo.html` — WebView 对话页
+
+除上述 assets 外，其余文档不参与 prompt/messages 构造。
