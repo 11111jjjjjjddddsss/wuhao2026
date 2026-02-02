@@ -7,13 +7,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * A/B 层状态机：A 层累计完整轮次，达 24 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
  * 禁止：B 未写入却清空 A；B 已写入却未清空 A。
+ * B 摘要长度硬门槛：trim 后 > 600 视为提取失败（不写 B、不注入、不清空 A）；≤ 600 才写入并清空 A。
  */
 object ABLayerManager {
     private const val TAG = "ABLayerManager"
     private const val PREFS_NAME = "ab_layer"
     private const val KEY_B_SUMMARY = "b_summary"
     private const val A_MIN_ROUNDS = 24
-
+    /** B 摘要 trim 后长度上限；超过视为提取失败，不写入 B、不清空 A */
+    private const val B_SUMMARY_MAX_LENGTH = 600
 
     private var appContext: Context? = null
 
@@ -104,9 +106,11 @@ object ABLayerManager {
         }.start()
     }
 
-    /** 校验 B 摘要有效性：仅要求非空 */
+    /** 校验 B 摘要：非空且 trim 后长度 ≤ B_SUMMARY_MAX_LENGTH 才通过；>600 视为提取失败，不写 B、不清空 A */
     private fun validateBSummary(summary: String?): Boolean {
-        return !summary.isNullOrBlank()
+        if (summary.isNullOrBlank()) return false
+        val trimmed = summary.trim()
+        return trimmed.length <= B_SUMMARY_MAX_LENGTH
     }
 
     private fun buildDialogueText(rounds: List<Pair<String, String>>): String {
