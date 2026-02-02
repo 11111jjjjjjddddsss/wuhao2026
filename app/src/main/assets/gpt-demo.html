@@ -645,11 +645,12 @@
             justify-content: center;
             margin-top: 14px;
         }
+        /* ChatGPT 风格：生成中仅显示小尺寸黑白三点 loading，无彩色 */
         .message.assistant .streaming-dot {
-            width: 15px;
-            height: 15px;
+            width: 12px;
+            height: 12px;
             border-radius: 50%;
-            background: var(--green);
+            background: #333;
             opacity: 0;
             pointer-events: none;
         }
@@ -658,8 +659,8 @@
             animation: dot-breathe 1s ease-in-out infinite;
         }
         @keyframes dot-breathe {
-            0%, 100% { transform: scale(0.9); opacity: 0.8; }
-            50% { transform: scale(1.1); opacity: 1; }
+            0%, 100% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.05); opacity: 1; }
         }
 
         .message-content {
@@ -1007,23 +1008,24 @@
             color: #666;
         }
 
+        /* ChatGPT 风格：失败/中断仅该条底部一行灰字，不弹窗 */
         .interrupted-badge {
-            color: #999;
+            color: #666;
             font-size: 13px;
-            margin-left: 4px;
+            margin-left: 0;
         }
         .retry-stream-btn {
             margin-left: 8px;
             padding: 2px 10px;
             font-size: 13px;
-            border: 1px solid var(--green);
+            border: 1px solid #999;
             border-radius: 4px;
             background: transparent;
-            color: var(--green);
+            color: #333;
             cursor: pointer;
         }
         .retry-stream-btn:hover {
-            background: rgba(22, 156, 92, 0.08);
+            background: rgba(0, 0, 0, 0.05);
         }
 
         .message-folded {
@@ -1606,9 +1608,7 @@
                     <button type="button" class="btn-send btn-hidden" id="btnSend" title="发送">
                         <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
                     </button>
-                    <button type="button" class="btn-stop btn-hidden" id="btnStop" title="停止">
-                        <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-                    </button>
+                    <button type="button" class="btn-stop btn-hidden" id="btnStop" title="停止">停止</button>
                 </div>
             </div>
         </div>
@@ -1983,11 +1983,24 @@
         const TYPEWRITER_MS = 50;     // 打字机每片间隔（ms），避免 DOM 频繁重排
         const TYPEWRITER_CHARS = 2;   // 每片追加字符数
         const TYPEWRITER_MAX_MS = 60000; // 打字机最大时长兜底（ms），超时直接补全剩余
+        const MAX_WAIT_MS = 65000;       // 全局 Watchdog：该 streamId 未在 65s 内收到 onComplete/onInterrupted 则强制中断收尾
         const chunkBufferByStream = {};
         // streamId -> 该 stream 当前累计的 buffer 全文（与 chunkBufferByStream 同步），供 onComplete 时 buffer 为空降级直出；语义是「最后一次可见的全文」非「最后一个 chunk」
         const lastFullBufferByStream = {};
+        const watchdogTimerByStream = {}; // streamId -> setTimeout id，onComplete/onInterrupted 时 clear
         // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
+        // reason → 文案（ChatGPT 风格：短句、灰字、不露技术细节）
+        var reasonToCopy = {
+            network: '网络不可用，点击重试。',
+            timeout: '请求超时（60 秒），点击重试。',
+            server: '服务繁忙，稍后重试。',
+            error: '响应异常，点击重试。',
+            canceled: '已停止生成。',
+            no_network: '当前无网络，未发送。',
+            cache_overflow: '请求失败，点击重试。',
+            unknown: '请求失败，点击重试。'
+        };
         
         // 图片状态管理（Map 保持插入顺序，发送时 URL 顺序与用户选择一致）
         const imageState = new Map(); // imageId -> {file, base64, status, url, element, currentRequestId}
@@ -2414,6 +2427,7 @@
 
             // 发送到Android（带 streamId、模型；回调按 streamId 写对应气泡）
             sendToAndroid(text, imageUrls, streamId);
+            startWatchdog(streamId);
 
             // 今日已用 +1 对话 + N 次图片上传
             incrementUsage(1, imgCount);
@@ -2435,6 +2449,71 @@
             var model = tier === 'expert' ? 'plus' : 'flash';
             if (typeof AndroidInterface.sendMessage === 'function') {
                 AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model);
+            }
+        }
+
+        // 全局 Watchdog：65s 内该 streamId 未收到 onComplete/onInterrupted 则强制中断收尾（永不无限转圈）
+        function startWatchdog(streamId) {
+            if (!streamId) return;
+            if (watchdogTimerByStream[streamId]) {
+                clearTimeout(watchdogTimerByStream[streamId]);
+                delete watchdogTimerByStream[streamId];
+            }
+            watchdogTimerByStream[streamId] = setTimeout(function() {
+                if (watchdogTimerByStream[streamId]) {
+                    clearTimeout(watchdogTimerByStream[streamId]);
+                    delete watchdogTimerByStream[streamId];
+                }
+                stopTypewriter();
+                isGenerating = false;
+                updateInputMode();
+                delete chunkBufferByStream[streamId];
+                delete lastFullBufferByStream[streamId];
+                applyInterruptedUI(streamId, 'timeout');
+            }, MAX_WAIT_MS);
+        }
+
+        function clearWatchdog(streamId) {
+            if (!streamId) return;
+            if (watchdogTimerByStream[streamId]) {
+                clearTimeout(watchdogTimerByStream[streamId]);
+                delete watchdogTimerByStream[streamId];
+            }
+        }
+
+        // 统一中断 UI：该条消息底部一行灰字 +「重试」按钮（ChatGPT 风格，不弹窗）
+        function applyInterruptedUI(streamId, reason) {
+            var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            if (!msg) return;
+            msg.classList.remove('streaming');
+            msg.classList.add('message-interrupted');
+            var contentDiv = msg.querySelector('.message-content');
+            if (!contentDiv || contentDiv.querySelector('.interrupted-badge')) return;
+            var text = reasonToCopy[reason] || reasonToCopy.unknown;
+            var badge = document.createElement('span');
+            badge.className = 'interrupted-badge';
+            badge.textContent = text;
+            contentDiv.appendChild(badge);
+            if (lastSent && lastSent.streamId === streamId) {
+                var retryBtn = document.createElement('button');
+                retryBtn.className = 'retry-stream-btn';
+                retryBtn.textContent = '重试';
+                retryBtn.onclick = function() {
+                    if (!lastSent) return;
+                    AndroidInterface.stopGeneration && AndroidInterface.stopGeneration();
+                    delete chunkBufferByStream[streamId];
+                    delete lastFullBufferByStream[streamId];
+                    contentDiv.innerHTML = '';
+                    var newStreamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    msg.dataset.streamId = newStreamId;
+                    msg.classList.remove('message-interrupted');
+                    lastSent.streamId = newStreamId;
+                    isGenerating = true;
+                    updateInputMode();
+                    sendToAndroid(lastSent.text, lastSent.imageUrls, newStreamId);
+                    startWatchdog(newStreamId);
+                };
+                contentDiv.appendChild(retryBtn);
             }
         }
 
@@ -2506,9 +2585,10 @@
             lastFullBufferByStream[streamId] = chunkBufferByStream[streamId];
         };
 
-        // 收到完成通知后：取 buffer 全文，用打字机分片追加；buffer 为空则用 lastFullBuffer 降级直出；结束后清理 buffer
+        // 收到完成通知后：取 buffer 全文，用打字机分片追加；buffer 为空则用 lastFullBuffer 降级直出；结束后清理 buffer；必须 clear Watchdog
         window.onCompleteReceived = function(streamId) {
             if (!streamId) return;
+            clearWatchdog(streamId);
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
             if (!fullText) fullText = (lastFullBufferByStream[streamId] || '');
@@ -2540,46 +2620,16 @@
             }
         };
 
-        // 终态仅 badge/灰化，不写正文；提供重试按钮。开头清理 buffer（当前非流式无问题；若恢复真流式分片需评估是否导致中断时 DOM 空白）
+        // 终态仅 badge/灰字 + 重试；开头 clear Watchdog、清理 buffer，再统一 applyInterruptedUI
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;
+            clearWatchdog(streamId);
             if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
             updateInputMode();
             delete chunkBufferByStream[streamId];
             delete lastFullBufferByStream[streamId];
-            const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
-            if (msg) {
-                msg.classList.remove('streaming');
-                msg.classList.add('message-interrupted');
-                const contentDiv = msg.querySelector('.message-content');
-                if (contentDiv && !contentDiv.querySelector('.interrupted-badge')) {
-                    const badge = document.createElement('span');
-                    badge.className = 'interrupted-badge';
-                    const reasonText = reason === 'canceled' ? '（已停止）' : (reason === 'timeout' ? '（超时）' : (reason === 'network' ? '（网络异常）' : (reason === 'server' ? '（服务异常）' : (reason === 'cache_overflow' ? '（缓存超限）' : '（请求失败）'))));
-                    badge.textContent = reasonText;
-                    contentDiv.appendChild(badge);
-                    if (lastSent && lastSent.streamId === streamId) {
-                        const retryBtn = document.createElement('button');
-                        retryBtn.className = 'retry-stream-btn';
-                        retryBtn.textContent = '重试';
-                        retryBtn.onclick = function() {
-                            if (!lastSent) return;
-                            AndroidInterface.stopGeneration && AndroidInterface.stopGeneration();
-                            delete chunkBufferByStream[streamId];
-                            contentDiv.innerHTML = '';
-                            const newStreamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                            msg.dataset.streamId = newStreamId;
-                            msg.classList.remove('message-interrupted');
-                            lastSent.streamId = newStreamId;
-                            isGenerating = true;
-                            updateInputMode();
-                            sendToAndroid(lastSent.text, lastSent.imageUrls, newStreamId);
-                        };
-                        contentDiv.appendChild(retryBtn);
-                    }
-                }
-            }
+            applyInterruptedUI(streamId, reason);
         };
 
         // 统一消息渲染函数（用户/AI共用）

@@ -2,8 +2,10 @@ package com.nongjiqianwen
 
 import android.annotation.SuppressLint
 import android.content.ContentResolver
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.os.Bundle
 import android.util.Base64
@@ -200,7 +202,6 @@ class MainActivity : AppCompatActivity() {
                     if (BuildConfig.DEBUG) {
                         Log.d("MainActivity", "有图片但无文字，阻止发送")
                     }
-                    webView.evaluateJavascript("alert('请补充文字说明');", null)
                     return@runOnUiThread
                 }
 
@@ -233,10 +234,24 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val sid = streamId?.takeIf { it.isNotBlank() } ?: "stream_${System.currentTimeMillis()}"
+                // 发送前断网拦截：无网不转圈，直接在该条 assistant 显示「当前无网络，未发送。」+ 重试
+                if (!isNetworkAvailable()) {
+                    val esc = escapeJs(sid)
+                    val escReason = escapeJs("no_network")
+                    webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
+                    return@runOnUiThread
+                }
                 currentStreamId = sid
                 isRequesting = true
                 sendToModel(text, imageUrlList, sid)
             }
+        }
+
+        @SuppressLint("MissingPermission")
+        private fun isNetworkAvailable(): Boolean {
+            val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
+            @Suppress("DEPRECATION")
+            return cm.activeNetworkInfo?.isConnected == true
         }
         
         /**

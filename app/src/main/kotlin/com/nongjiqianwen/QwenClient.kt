@@ -20,15 +20,16 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object QwenClient {
     private val TAG = "QwenClient"
-    private const val CONNECT_TIMEOUT_SEC = 30L
+    private const val CONNECT_TIMEOUT_SEC = 10L
+    private const val READ_TIMEOUT_SEC = 60L
+    private const val WRITE_TIMEOUT_SEC = 10L
+    private const val CALL_TIMEOUT_SEC = 60L   // 单次请求总时长上限（1 分钟体验）
     private const val B_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
     @Volatile private var lastBExtractErrorLogMs = 0L
-    /** 连续 X 秒无 chunk 才判定中断；chunk 到来（每次 read 成功）即刷新计时器。与 readTimeout 对齐。 */
-    private const val READ_TIMEOUT_SEC = 30L
-    private const val CALL_TIMEOUT_SEC = 120L  // 单次请求总时长上限
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(WRITE_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
         .callTimeout(CALL_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
         .build()
     private val currentCall = AtomicReference<Call?>(null)
