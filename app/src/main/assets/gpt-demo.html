@@ -52,7 +52,7 @@
             max-width: 430px;
             height: 100vh;
             margin: 0 auto;
-            background: var(--bg);
+            background: linear-gradient(to bottom, #F2F2F2 0%, #FFFFFF 22%, #FFFFFF 78%, #F2F2F2 100%);
             display: flex;
             flex-direction: column;
             position: relative;
@@ -66,7 +66,7 @@
             }
         }
 
-        /* A. 顶部 AppBar（上灰→中间白，过渡慢；底部无边界，与内容自然衔接） */
+        /* A. 顶部 AppBar（背景透明，沿用 app-shell 整页渐变） */
         .app-bar {
             flex-shrink: 0;
             height: 56px;
@@ -76,7 +76,7 @@
             justify-content: space-between;
             border-bottom: none;
             box-shadow: none;
-            background: linear-gradient(to bottom, #FAFAFA 0%, #FBFBFB 18%, #FCFCFC 38%, #FEFEFE 65%, #FFFFFF 100%);
+            background: transparent;
         }
         .app-bar-left, .app-bar-right {
             width: var(--btn-circle-size);
@@ -122,6 +122,442 @@
             stroke-linecap: round;
             stroke-linejoin: round;
             fill: none;
+        }
+
+        /* 左侧抽屉：340px 最大 360px，移动端 80% 最大 360px；左滑入 220ms；禁止竖排/旋转文字 */
+        #drawer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 340px;
+            max-width: 360px;
+            height: 100%;
+            background: #F5F5F5;
+            box-shadow: 2px 0 12px rgba(0,0,0,0.12);
+            z-index: 301;
+            transform: translateX(-100%);
+            transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            writing-mode: horizontal-tb;
+        }
+        #drawer .drawer-content {
+            writing-mode: horizontal-tb;
+            transform: none;
+            text-orientation: mixed;
+            overflow-y: auto;
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        #drawer .drawer-content::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+        }
+        #drawer .menu-card {
+            writing-mode: horizontal-tb;
+            transform: none;
+            text-orientation: mixed;
+        }
+        #drawer .menu-card:active {
+            transform: scale(0.98);
+        }
+        @media (max-width: 600px) {
+            #drawer { width: 80%; max-width: 360px; }
+        }
+        #drawer.open {
+            transform: translateX(0);
+        }
+        .drawer-header {
+            flex-shrink: 0;
+            padding: 20px 16px;
+            background: #FFFFFF;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .drawer-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #E0E0E0 0%, #BDBDBD 100%);
+        }
+        .drawer-user {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+        .drawer-nickname {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .drawer-member {
+            font-size: 12px;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 260px;
+            display: block;
+        }
+        .drawer-content {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            padding: 12px 16px;
+        }
+        .drawer-content .section-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin: 16px 0 8px;
+            padding: 0 4px;
+        }
+        .drawer-content .section-title:first-child {
+            margin-top: 0;
+        }
+        .menu-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 60px;
+            padding: 16px;
+            margin-bottom: 12px;
+            background: #F6F6F6;
+            border-radius: 12px;
+            font-size: 15px;
+            color: var(--text);
+            cursor: pointer;
+            transition: background 0.2s ease, transform 0.15s ease;
+        }
+        .menu-card:hover {
+            background: #EEEEEE;
+        }
+        .menu-card:active {
+            background: #E0E0E0;
+        }
+        .menu-card > span:first-of-type {
+            flex: 1;
+            min-width: 0;
+        }
+        .menu-card .menu-card-right {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .menu-card .menu-arrow {
+            flex-shrink: 0;
+            opacity: 0.5;
+        }
+        .menu-card .menu-arrow svg {
+            width: 18px;
+            height: 18px;
+        }
+        .drawer-footer {
+            flex-shrink: 0;
+            padding: 12px 16px 20px;
+            padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+            background: #F5F5F5;
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+        .drawer-footer .menu-card {
+            margin-bottom: 0;
+        }
+        .drawer-logout {
+            color: var(--text-secondary);
+        }
+        .drawer-version {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+            margin-top: 12px;
+        }
+        /* 遮罩：rgba(0,0,0,0.35)，点击关闭抽屉 */
+        #drawer-mask {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.35);
+            cursor: pointer;
+            z-index: 300;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        #drawer-mask.show {
+            pointer-events: auto;
+            opacity: 1;
+        }
+
+        /* ========== 会员中心：一屏可见（默认无内部滚动条） ========== */
+        #membership-modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.35);
+            z-index: 400;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity .22s ease, visibility .22s ease;
+            writing-mode: horizontal-tb;
+        }
+        #membership-modal-backdrop.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        #membership-modal {
+            width: min(560px, calc(100vw - 24px));
+            height: min(720px, calc(100vh - 24px));
+            background: #fff;
+            border-radius: 18px;
+            box-shadow: 0 10px 40px rgba(0,0,0,.18);
+            padding: 16px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            writing-mode: horizontal-tb;
+            transform: none;
+            text-orientation: mixed;
+        }
+        .membership-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 4px 4px 10px;
+            border-bottom: 1px solid rgba(0,0,0,.06);
+        }
+        .membership-title {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--text);
+        }
+        .membership-close {
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            border: 1px solid rgba(0,0,0,.10);
+            background: #fff;
+            cursor: pointer;
+        }
+        .membership-close:active {
+            transform: scale(.98);
+        }
+        .membership-sub {
+            font-size: 13px;
+            color: var(--text-secondary);
+            padding: 8px 4px 12px;
+            line-height: 1.4;
+        }
+        .membership-cards {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding-top: 12px;
+        }
+        .membership-card {
+            flex: 1;
+            min-height: 0;
+            border-radius: 16px;
+            border: 1px solid rgba(0,0,0,.08);
+            background: #fff;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+            writing-mode: horizontal-tb;
+            transform: none;
+            text-orientation: mixed;
+        }
+        .membership-card[data-tier="pro"] {
+            border-color: rgba(0,0,0,.18);
+            box-shadow: 0 6px 18px rgba(0,0,0,.06);
+        }
+        .membership-card.recommended-highlight {
+            border-color: rgba(0,0,0,.35);
+            box-shadow: 0 8px 24px rgba(0,0,0,.12);
+        }
+        .card-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+            padding-right: 96px;
+            /* 兜底：系统字体放大也不挤 */
+        }
+        .card-name {
+            font-size: 16px;
+            font-weight: 900;
+            color: var(--text);
+        }
+        .card-price {
+            font-size: 16px;
+            font-weight: 900;
+            color: var(--text);
+            white-space: nowrap;
+        }
+        .card-badge {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            font-size: 11px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(0,0,0,.14);
+            background: #fff;
+            color: rgba(0,0,0,.72);
+            /* 防止长文案顶到价格：badge 自己收敛 */
+            max-width: 88px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dot {
+            font-weight: 900;
+            color: rgba(0,0,0,.70);
+            padding: 0 2px;
+        }
+        .card-desc {
+            font-size: 13px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            line-height: 1.45;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            padding-left: 12px;
+            padding-right: 96px;
+            min-width: 0;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .card-desc .dot {
+            font-weight: 900;
+        }
+        .card-btn {
+            margin-top: auto;
+            width: 100%;
+            height: 44px;
+            border-radius: 12px;
+            border: 1px solid rgba(0,0,0,.12);
+            background: #111;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 900;
+            cursor: pointer;
+            writing-mode: horizontal-tb;
+            transform: none;
+        }
+        .card-btn:active {
+            transform: scale(.99);
+        }
+        .card-btn.btn-current, .card-btn:disabled {
+            opacity: .45;
+            cursor: not-allowed;
+        }
+        .membership-footnote {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        @media (max-height: 680px) {
+            #membership-modal {
+                height: calc(100vh - 24px);
+                overflow: auto;
+                scrollbar-width: none;
+            }
+            #membership-modal::-webkit-scrollbar {
+                width: 0;
+                height: 0;
+            }
+        }
+        #toast {
+            position: fixed;
+            left: 50%;
+            bottom: 80px;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(0,0,0,0.75);
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            z-index: 500;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.25s, transform 0.25s, visibility 0.25s;
+        }
+        #toast.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ===== ChatGPT-ish neutral theme（覆盖 drawer + modal 为黑白灰极简） ===== */
+        :root {
+            --bg: #f7f7f8;
+            --surface: #ffffff;
+            --text: #111111;
+            --muted: rgba(17,17,17,.65);
+            --border: rgba(0,0,0,.08);
+            --shadow: 0 8px 30px rgba(0,0,0,.12);
+            --radius: 16px;
+        }
+        #drawer {
+            background: var(--surface);
+            box-shadow: 8px 0 30px rgba(0,0,0,.10);
+            border-right: 1px solid var(--border);
+        }
+        .drawer-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .drawer-avatar {
+            background: #e9e9ee;
+        }
+        .drawer-nickname {
+            color: var(--text);
+        }
+        .drawer-member {
+            color: var(--muted);
+        }
+        .menu-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            margin-bottom: 10px;
+            min-height: 56px;
+            padding: 14px;
+            box-shadow: 0 1px 0 rgba(0,0,0,.02);
+            transition: background .15s ease, border-color .15s ease;
+        }
+        .menu-card:hover {
+            background: #fbfbfc;
+            border-color: rgba(0,0,0,.12);
+        }
+        .menu-card:active {
+            transform: none;
+            background: #f3f3f5;
+        }
+        .menu-card .menu-card-right {
+            color: var(--muted);
+        }
+        .menu-card .menu-arrow {
+            opacity: .35;
+        }
+        #drawer-mask {
+            background: rgba(0,0,0,.28);
         }
 
         .main {
@@ -171,10 +607,14 @@
             text-align: left;
         }
 
-        /* 气泡 ChatGPT 风格：留白大、角圆、阴影轻 */
+        /* 全对话无气泡：GPT 纯净文本块 */
         .message {
             margin-bottom: 20px;
             max-width: 85%;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            border-radius: 0;
         }
 
         .message:last-child {
@@ -230,7 +670,11 @@
             word-wrap: break-word;
             max-width: 100%;
             color: var(--text);
-            padding: 4px 0;
+            padding: 4px 12px;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            border-radius: 0;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
@@ -366,11 +810,11 @@
             border-radius: 4px;
         }
 
-        /* F. 底部输入区（下灰→中间白，自然过渡，无横杠） */
+        /* F. 底部输入区（背景透明，沿用 app-shell 整页渐变） */
         .input-container {
             flex-shrink: 0;
             min-height: calc(var(--input-min-height) - 2px);
-            background: linear-gradient(to top, #FAFAFA 0%, #FBFBFB 18%, #FCFCFC 38%, #FEFEFE 65%, #FFFFFF 100%);
+            background: transparent;
             border-top: none;
             padding: 8px 14px;
             padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
@@ -414,7 +858,7 @@
             transform: scale(0.98);
         }
 
-        /* 加号按钮：圆球白色，底栏浅灰，白球在灰底上显眼；十字架深灰 */
+        /* 加号按钮：圆球白色，底栏浅灰，白球在灰底上显眼；十字架浅灰 */
         .add-button {
             align-self: center;
             min-width: 44px;
@@ -424,7 +868,7 @@
             background: #FFFFFF;
             border: none;
             box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-            color: #333333;
+            color: #666666;
             font-size: 48px;
             font-weight: 300;
             line-height: 1;
@@ -432,7 +876,7 @@
         .add-button:hover {
             background: #F8F8F8;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            color: #333333;
+            color: #666666;
         }
         .add-button:active {
             transform: scale(0.96);
@@ -442,7 +886,7 @@
             background: none;
             color: var(--text);
             position: relative;
-            margin-top: -1px;
+            margin-top: -2px;
         }
         .btn-mic-or-keyboard .icon-keyboard {
             display: none;
@@ -660,7 +1104,7 @@
             flex: 1;
             min-width: 0;
             display: flex;
-            align-items: flex-end;
+            align-items: center;
             gap: 8px;
             padding: 8px 8px 8px 14px;
             background: #FFFFFF;
@@ -785,7 +1229,7 @@
             min-height: 280px;
             background: var(--bg);
             border-radius: 18px 18px 0 0;
-            padding: 24px 20px;
+            padding: 8px 20px;
             padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
             transform: translateY(100%);
             opacity: 0;
@@ -797,6 +1241,15 @@
             transform: translateY(0);
             opacity: 1;
             pointer-events: auto;
+        }
+        .plus-sheet-status {
+            padding: 12px 14px 10px;
+            font-size: 13px;
+            color: rgba(0,0,0,.65);
+            border-bottom: 1px solid rgba(0,0,0,.06);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .plus-sheet-grid {
             display: grid;
@@ -836,6 +1289,216 @@
             stroke-linejoin: round;
             fill: none;
         }
+        /* + 面板：当前会员档位条（黑白干净） */
+        .plus-sheet-tier {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(0,0,0,.10);
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .plus-sheet-tier:active {
+            transform: scale(.99);
+        }
+        .plus-sheet-tier .tier-left {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+        .plus-sheet-tier .tier-name {
+            font-size: 14px;
+            font-weight: 800;
+            color: rgba(0,0,0,.88);
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .plus-sheet-tier .tier-sub {
+            font-size: 12px;
+            color: rgba(0,0,0,.55);
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .plus-sheet-tier .tier-right {
+            font-size: 12px;
+            font-weight: 800;
+            color: rgba(0,0,0,.75);
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(0,0,0,.14);
+            background: #fff;
+            flex-shrink: 0;
+        }
+        /* ===== + 面板：GPT 风格定版 ===== */
+        #plusSheet {
+            will-change: transform, opacity;
+            opacity: 0;
+            transform: translateY(18px);
+            transition: transform .18s ease-out, opacity .18s ease-out;
+        }
+        #plusSheet.open {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .plus-sheet-content {
+            padding: 14px 14px 18px;
+            border-top-left-radius: 18px;
+            border-top-right-radius: 18px;
+        }
+        .plus-sheet-content {
+            padding-top: 12px;
+        }
+        .plus-sheet-status {
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: rgba(0,0,0,.03);
+            color: rgba(0,0,0,.68);
+            font-size: 13px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 12px;
+        }
+        #plusSheetStatus.plus-sheet-status {
+            margin-top: 10px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: rgba(0,0,0,.55);
+            background: rgba(0,0,0,.03);
+            border-radius: 12px;
+            line-height: 1.4;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 0;
+        }
+        .plus-sheet-grid {
+            margin-top: 0 !important;
+            margin-bottom: 12px;
+        }
+        .plus-sheet-content {
+            padding-top: 6px !important;
+        }
+        .plus-sheet-item {
+            height: 52px;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 14px;
+        }
+        .plus-sheet-tier {
+            margin-top: 6px;
+            padding: 12px 12px;
+            border-radius: 14px;
+            background: rgba(0,0,0,.03);
+            border: 1px solid rgba(0,0,0,.06);
+        }
+        .plus-sheet-tier .tier-right {
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(0,0,0,.06);
+            font-size: 13px;
+            font-weight: 700;
+            border: none;
+        }
+        /* 额度用尽：灰按钮（可点击以提示一次） */
+        .disabled, button:disabled {
+            opacity: .38;
+            cursor: not-allowed;
+            pointer-events: auto;
+        }
+
+        /* ===== 会员中心：收紧空白 + 取消 flex 均分撑高（最终版覆盖） ===== */
+        #membership-modal-backdrop {
+            overflow: hidden !important;
+        }
+        #membership-modal {
+            height: auto !important;
+            max-height: min(720px, calc(100vh - 24px)) !important;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            padding: 14px !important;
+        }
+        #membership-modal::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+        }
+        #membership-modal .membership-cards,
+        #membership-modal .cards-list,
+        #membership-modal .modal-body {
+            flex: 0 0 auto !important;
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
+        }
+        #membership-modal .membership-cards {
+            flex: 0 0 auto !important;
+            min-height: auto !important;
+            padding-top: 8px !important;
+            gap: 10px !important;
+        }
+        #membership-modal .membership-card {
+            flex: 0 0 auto !important;
+            min-height: auto !important;
+            padding: 12px !important;
+            gap: 6px !important;
+            margin-bottom: 10px !important;
+        }
+        #membership-modal .membership-header {
+            padding: 2px 2px 8px !important;
+        }
+        #membership-modal .membership-sub {
+            padding: 6px 2px 8px !important;
+            font-size: 12.5px !important;
+            line-height: 1.35 !important;
+        }
+        #membership-modal .card-desc {
+            line-height: 1.35 !important;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        #membership-modal .card-btn {
+            height: 42px !important;
+            margin-top: 8px !important;
+            border-radius: 12px !important;
+        }
+
+        /* P0：会员中心空白再收紧一点（只动间距/内边距，不改结构） */
+        #membership-modal {
+            padding: 12px !important;
+        }
+        #membership-modal .membership-header {
+            padding: 0 2px 6px !important;
+        }
+        #membership-modal .membership-sub {
+            margin: 4px 0 6px !important;
+            padding: 0 2px !important;
+        }
+        #membership-modal .membership-cards {
+            padding-top: 6px !important;
+            gap: 8px !important;
+        }
+        #membership-modal .membership-card {
+            padding: 10px !important;
+            gap: 4px !important;
+            margin-bottom: 8px !important;
+        }
+        #membership-modal .card-btn {
+            height: 40px !important;
+            margin-top: 6px !important;
+        }
+
     </style>
 </head>
 <body>
@@ -847,6 +1510,73 @@
         <span class="app-bar-title-wrap"><span class="app-bar-title">农技千问</span></span>
         <div class="app-bar-right"></div>
     </header>
+
+    <!-- 标准侧边抽屉：主内容仍在，抽屉 #drawer + 遮罩 #drawer-mask -->
+    <div id="drawer-mask" aria-hidden="true"></div>
+    <div id="drawer" aria-hidden="true">
+        <div class="drawer-header">
+            <div class="drawer-avatar"></div>
+            <div class="drawer-user">
+                <span class="drawer-nickname">用户</span>
+                <span class="drawer-member">当前：免费版</span>
+            </div>
+        </div>
+        <div class="drawer-content">
+            <div class="section-title">账号</div>
+            <div class="menu-card" data-menu="membership"><span>会员中心</span><span class="menu-card-right" id="drawerTierText">当前：-</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
+            <div class="section-title">其他</div>
+            <div class="menu-card" data-menu="help"><span>帮助与反馈</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
+            <div class="menu-card" data-menu="about"><span>关于</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
+        </div>
+        <div class="drawer-footer">
+            <div class="menu-card drawer-logout" data-menu="logout"><span>退出登录</span></div>
+            <div class="drawer-version">v1.0.0</div>
+        </div>
+    </div>
+
+    <!-- 会员中心：一屏可见（默认无内部滚动条） -->
+    <div id="membership-modal-backdrop" aria-hidden="true">
+        <div id="membership-modal" onclick="event.stopPropagation()">
+            <div class="membership-header">
+                <div class="membership-title">会员中心</div>
+                <button class="membership-close" type="button" data-close-membership aria-label="关闭">✕</button>
+            </div>
+            <div class="membership-sub" id="membershipSub"></div>
+            <div class="membership-cards">
+                <div class="membership-card" data-tier="plus">
+                    <div class="card-top">
+                        <div class="card-name">Plus</div>
+                        <div class="card-price">¥19.9/月</div>
+                    </div>
+                    <div class="card-desc">30 次对话/天 <span class="dot">•</span> 5 次图片上传/天（Flash）</div>
+                    <div class="card-desc">适合：日常问答、轻量咨询、随手拍图识别</div>
+                    <button type="button" class="card-btn" data-tier="plus">开通 Plus</button>
+                </div>
+                <div class="membership-card" data-tier="pro">
+                    <div class="card-badge">推荐</div>
+                    <div class="card-top">
+                        <div class="card-name">Pro</div>
+                        <div class="card-price">¥29.9/月</div>
+                    </div>
+                    <div class="card-desc">60 次对话/天 <span class="dot">•</span> 10 次图片上传/天（Flash）</div>
+                    <div class="card-desc">适合：高频使用、额度更稳、更多图片诊断</div>
+                    <button type="button" class="card-btn" data-tier="pro">开通 Pro</button>
+                </div>
+                <div class="membership-card" data-tier="expert">
+                    <div class="card-badge">推理/图片更强</div>
+                    <div class="card-top">
+                        <div class="card-name">专家模式</div>
+                        <div class="card-price">¥99/月</div>
+                    </div>
+                    <div class="card-desc">80 次对话/天 <span class="dot">•</span> 20 次图片上传/天（PLUS）</div>
+                    <div class="card-desc">适合：复杂问题、多图综合判断、推理更强</div>
+                    <button type="button" class="card-btn" data-tier="expert">开通 专家模式</button>
+                </div>
+            </div>
+            <div class="membership-footnote">注：1 次图片上传最多 4 张图（系统默认中等压缩，不限制用户文件大小）。</div>
+        </div>
+    </div>
+    <div id="toast">功能开发中</div>
 
     <main class="main">
         <div class="messages-wrapper" id="messagesWrapper">
@@ -871,7 +1601,7 @@
                     </div>
                     <button type="button" class="btn-mic-or-keyboard" id="btnMicOrKeyboard" title="语音/键盘">
                         <span class="icon-mic"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 1 3 3v8a3 3 0 0 1-6 0V4a3 3 0 0 1 3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
-                        <span class="icon-keyboard" style="margin-top: -2px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4.5" width="21" height="19" rx="2"/><rect x="5.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="11.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="17.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="5.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><rect x="11.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><rect x="17.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" stroke-width="1.5"/></svg></span>
+                        <span class="icon-keyboard" style="margin-top: -3px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="4.5" width="21" height="19" rx="2"/><rect x="5.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="11.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="17.42" y="8.42" width="1.25" height="1.25" fill="currentColor"/><rect x="5.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><rect x="11.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><rect x="17.42" y="12.42" width="1.25" height="1.25" fill="currentColor"/><line x1="5" y1="18" x2="19" y2="18" stroke="currentColor" stroke-width="1.5"/></svg></span>
                     </button>
                     <button type="button" class="btn-send btn-hidden" id="btnSend" title="发送">
                         <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
@@ -895,20 +1625,32 @@
 
     <div class="plus-sheet-backdrop" id="plusSheetBackdrop"></div>
     <div class="plus-sheet" id="plusSheet">
-        <div class="plus-sheet-grid">
-            <button type="button" class="plus-sheet-item" id="plusSheetGallery">
-                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                图片上传
-            </button>
-            <button type="button" class="plus-sheet-item" id="plusSheetCamera">
-                <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                拍照
-            </button>
+        <div class="plus-sheet-content">
+            <div class="plus-sheet-grid">
+                <button type="button" class="plus-sheet-item" id="plusSheetGallery" data-action="upload">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                    图片上传
+                </button>
+                <button type="button" class="plus-sheet-item" id="plusSheetCamera" data-action="camera">
+                    <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    拍照
+                </button>
+            </div>
+            <div class="plus-sheet-tier" id="tier-card" role="button" tabindex="0">
+                <div class="tier-left">
+                    <div class="tier-name" id="tier-name">会员中心</div>
+                    <div class="tier-sub" id="tier-sub">查看套餐与额度</div>
+                </div>
+                <div class="tier-right">升级</div>
+            </div>
+            <div class="plus-sheet-status" id="plusSheetStatus"></div>
         </div>
     </div>
     </div>
 
     <script>
+        const MAX_ROUNDS = 30;
+        const MAX_MESSAGES = MAX_ROUNDS * 2;
         const messagesWrapper = document.getElementById('messagesWrapper');
         const messagesContainer = document.getElementById('messagesContainer');
         const emptyState = document.getElementById('emptyState');
@@ -930,6 +1672,300 @@
         const plusSheetBackdrop = document.getElementById('plusSheetBackdrop');
         const plusSheetGallery = document.getElementById('plusSheetGallery');
         const plusSheetCamera = document.getElementById('plusSheetCamera');
+        const drawer = document.getElementById('drawer');
+        const drawerMask = document.getElementById('drawer-mask');
+        const appBarLeft = document.getElementById('appBarLeft');
+
+        function closeDrawer() {
+            drawer.classList.remove('open');
+            drawerMask.classList.remove('show');
+            drawer.setAttribute('aria-hidden', 'true');
+            drawerMask.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+        function openDrawer() {
+            updateTierUIEverywhere();
+            drawer.classList.add('open');
+            drawerMask.classList.add('show');
+            drawer.setAttribute('aria-hidden', 'false');
+            drawerMask.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+        function toggleDrawer() {
+            const open = drawer.classList.contains('open');
+            open ? closeDrawer() : openDrawer();
+        }
+        closeDrawer();
+        appBarLeft.addEventListener('click', toggleDrawer);
+        drawerMask.addEventListener('click', closeDrawer);
+
+        var membershipBackdrop = document.getElementById('membership-modal-backdrop');
+        var toastEl = document.getElementById('toast');
+
+        // ========== 会员额度闭环：tier 配置 + 今日用量 + 超额拦截 + 模拟开通 ==========
+        var tier_config = {
+            free:   { label: '免费版', chatPerDay: 10, imgPerDay: 1,  model: 'flash' },
+            plus:   { label: 'Plus',   chatPerDay: 30, imgPerDay: 5,  model: 'flash' },
+            pro:    { label: 'Pro',    chatPerDay: 60, imgPerDay: 10, model: 'flash' },
+            expert: { label: '专家模式', chatPerDay: 80, imgPerDay: 20, model: 'plus' }
+        };
+        var STORAGE_KEY_TIER = 'membership_tier';
+        function getTodayKey() {
+            var d = new Date();
+            return 'usage_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+        function getUsage() {
+            var key = getTodayKey();
+            try {
+                var raw = localStorage.getItem(key);
+                if (raw) {
+                    var o = JSON.parse(raw);
+                    return { chat: (o.chat || 0) | 0, img: (o.img || 0) | 0 };
+                }
+            } catch (e) {}
+            return { chat: 0, img: 0 };
+        }
+        function setUsage(chat, img) {
+            var key = getTodayKey();
+            localStorage.setItem(key, JSON.stringify({ chat: chat, img: img }));
+        }
+        function resetUsageIfNewDay() {
+            var key = getTodayKey();
+            var stored = localStorage.getItem('usage_date');
+            if (stored !== key) {
+                localStorage.setItem('usage_date', key);
+                setUsage(0, 0);
+                if (typeof refreshQuotaUI === 'function') refreshQuotaUI();
+            }
+        }
+        function getCurrentTier() {
+            var t = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
+            return tier_config[t] ? t : 'free';
+        }
+        function getMembership() {
+            var tier = localStorage.getItem(STORAGE_KEY_TIER) || 'free';
+            var exp = Number(localStorage.getItem('membership_expire_at') || 0);
+            if (tier !== 'free' && exp && Date.now() > exp) {
+                localStorage.setItem(STORAGE_KEY_TIER, 'free');
+                localStorage.setItem('membership_expire_at', '0');
+                return { tier: 'free', exp: 0 };
+            }
+            return { tier: tier, exp: exp };
+        }
+        function formatDate(ts) {
+            if (!ts) return '';
+            var d = new Date(ts);
+            var y = d.getFullYear();
+            var m = String(d.getMonth() + 1).padStart(2, '0');
+            var da = String(d.getDate()).padStart(2, '0');
+            return y + '-' + m + '-' + da;
+        }
+        function daysLeft(ts) {
+            if (!ts) return 0;
+            return Math.max(0, Math.ceil((ts - Date.now()) / 86400000));
+        }
+        function setCurrentTier(tier) {
+            if (!tier_config[tier]) return;
+            localStorage.setItem(STORAGE_KEY_TIER, tier);
+            if (tier === 'free') {
+                localStorage.setItem('membership_expire_at', '0');
+            } else {
+                localStorage.setItem('membership_expire_at', String(Date.now() + 30 * 86400000));
+            }
+            if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
+            if (typeof updateMembershipUI === 'function') updateMembershipUI();
+        }
+        function getQuota() {
+            var c = tier_config[getCurrentTier()];
+            return c ? { chat: c.chatPerDay, img: c.imgPerDay } : { chat: 10, img: 1 };
+        }
+        function checkQuotaBeforeSend(chatNeed, imgNeed) {
+            resetUsageIfNewDay();
+            var usage = getUsage();
+            var quota = getQuota();
+            var chatOk = (usage.chat + chatNeed) <= quota.chat;
+            var imgOk = (usage.img + imgNeed) <= quota.img;
+            return { allowed: chatOk && imgOk, chatOk: chatOk, imgOk: imgOk };
+        }
+        function incrementUsage(chatDelta, imgDelta) {
+            resetUsageIfNewDay();
+            var u = getUsage();
+            setUsage(u.chat + (chatDelta || 0), u.img + (imgDelta || 0));
+            updateDrawerFromTierAndUsage();
+        }
+        function getTierLabel(tier) {
+            var map = { free: '免费版', plus: 'Plus', pro: 'Pro', expert: '专家模式' };
+            return map[tier] || tier;
+        }
+        function updateTierUIEverywhere() {
+            var tier = getCurrentTier();
+            var usage = getUsage();
+            var quota = getQuota();
+            var chatLeft = Math.max(0, quota.chat - usage.chat);
+            var imgLeft = Math.max(0, quota.img - usage.img);
+            var fullText = '当前：' + getTierLabel(tier) + ' · 今日剩余 ' + chatLeft + ' 次对话 / ' + imgLeft + ' 次图片上传';
+            var labelOnly = '当前：' + getTierLabel(tier);
+            var drawerMember = document.querySelector('.drawer-member');
+            if (drawerMember) drawerMember.textContent = labelOnly;
+            var drawerTierText = document.getElementById('drawerTierText');
+            if (drawerTierText) drawerTierText.textContent = labelOnly;
+            var plusStatus = document.getElementById('plusSheetStatus');
+            if (plusStatus) plusStatus.textContent = fullText;
+        }
+        function updateDrawerFromTierAndUsage() {
+            resetUsageIfNewDay();
+            updateTierUIEverywhere();
+        }
+        function setDisabled(selector, disabled) {
+            var el = document.querySelector(selector);
+            if (!el) return;
+            el.classList.toggle('disabled', disabled);
+            el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+        }
+        function refreshQuotaUI() {
+            resetUsageIfNewDay();
+            var tier = getCurrentTier();
+            var usage = getUsage();
+            var quota = getQuota();
+            var chatLeft = quota.chat - usage.chat;
+            var imgLeft = quota.img - usage.img;
+            var canChat = chatLeft > 0;
+            var canImg = imgLeft > 0;
+            setDisabled('#btnSend', !canChat);
+            setDisabled('#btnMicOrKeyboard', !canChat);
+            setDisabled('#plusSheetGallery', !canImg);
+            setDisabled('#plusSheetCamera', !canImg);
+            if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
+        }
+        function showToastOncePerDay(key, msg) {
+            var day = getTodayKey();
+            var k = 'toast_once_' + day + '_' + key;
+            if (localStorage.getItem(k) === '1') return;
+            localStorage.setItem(k, '1');
+            showToast(msg);
+        }
+        function updateMembershipUI() {
+            var m = getMembership();
+            var tier = m.tier;
+            var exp = m.exp;
+            var sub = document.getElementById('membershipSub');
+            if (sub) {
+                if (tier === 'free') {
+                    sub.textContent = '当前：免费版';
+                } else {
+                    sub.textContent = '当前：' + getTierLabel(tier) + ' · 到期：' + formatDate(exp) + '（剩余 ' + daysLeft(exp) + ' 天）';
+                }
+            }
+            document.querySelectorAll('#membership-modal .membership-card').forEach(function(card) {
+                var t = card.getAttribute('data-tier');
+                var btn = card.querySelector('.card-btn');
+                if (!btn) return;
+                var isCurrent = (t === tier);
+                if (isCurrent && tier !== 'free') {
+                    btn.textContent = '当前已开通';
+                    btn.disabled = true;
+                    btn.classList.add('btn-current');
+                } else {
+                    btn.disabled = false;
+                    btn.classList.remove('btn-current');
+                    if (t === 'plus') btn.textContent = '开通 Plus';
+                    else if (t === 'pro') btn.textContent = '开通 Pro';
+                    else if (t === 'expert') btn.textContent = '开通 专家模式';
+                }
+            });
+        }
+        function openMembershipModal(highlightRecommended) {
+            var cards = document.querySelectorAll('#membership-modal .membership-card');
+            cards.forEach(function(el) {
+                if (el.getAttribute('data-tier') === 'pro') el.classList.toggle('recommended-highlight', !!highlightRecommended);
+                else el.classList.remove('recommended-highlight');
+            });
+            updateMembershipUI();
+            membershipBackdrop.classList.add('open');
+            membershipBackdrop.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+        function closeMembershipModal() {
+            membershipBackdrop.classList.remove('open');
+            membershipBackdrop.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+        function showToast(msg) {
+            toastEl.textContent = msg != null ? msg : '功能开发中';
+            toastEl.classList.add('show');
+            setTimeout(function() {
+                toastEl.classList.remove('show');
+            }, 2000);
+        }
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('[data-close-membership]')) {
+                closeMembershipModal();
+                return;
+            }
+            if (e.target.id === 'membership-modal-backdrop') {
+                closeMembershipModal();
+            }
+        });
+        document.querySelectorAll('#membership-modal .card-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var tier = this.getAttribute('data-tier');
+                if (tier && tier_config[tier]) {
+                    setCurrentTier(tier);
+                    closeMembershipModal();
+                    showToast('开通成功');
+                } else {
+                    showToast('功能开发中');
+                }
+            });
+        });
+
+        document.querySelectorAll('#drawer .menu-card').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var key = this.getAttribute('data-menu') || 'unknown';
+                if (key === 'membership') {
+                    openMembershipModal(false);
+                } else {
+                    console.log(key);
+                }
+            });
+        });
+        resetUsageIfNewDay();
+        getMembership();
+        updateDrawerFromTierAndUsage();
+        refreshQuotaUI();
+
+        document.addEventListener('click', function(e) {
+            var sendBtn = document.getElementById('btnSend');
+            var micBtn = document.getElementById('btnMicOrKeyboard');
+            if (sendBtn && (e.target === sendBtn || sendBtn.contains(e.target))) {
+                if (sendBtn.classList.contains('disabled') || sendBtn.getAttribute('aria-disabled') === 'true') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showToastOncePerDay('chat', '今日额度已用尽');
+                    return;
+                }
+                if (imageState.size > 0 && !textInput.value.trim()) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showToastOncePerDay('img_no_text', '图片需要配合文字描述');
+                    return;
+                }
+            }
+            if (micBtn && (e.target === micBtn || micBtn.contains(e.target))) {
+                if (micBtn.classList.contains('disabled') || micBtn.getAttribute('aria-disabled') === 'true') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showToastOncePerDay('chat', '今日额度已用尽');
+                    return;
+                }
+            }
+            var up = e.target.closest && e.target.closest('[data-action="upload"], [data-action="camera"]');
+            if (up && (up.classList.contains('disabled') || up.getAttribute('aria-disabled') === 'true')) {
+                e.preventDefault();
+                e.stopPropagation();
+                showToastOncePerDay('img', '今日图片额度已用尽');
+            }
+        }, true);
 
         let isGenerating = false;
         /** C. 4 态：idle | typing | generating | voicePanel */
@@ -971,6 +2007,7 @@
             const hasText = textInput.value.trim().length > 0;
             const voiceOpen = voicePanel.classList.contains('open');
             const inVoiceMode = inputContainer.classList.contains('voice-mode');
+            const hasImages = imageState.size > 0;
 
             if (voiceOpen || inVoiceMode) {
                 inputMode = inVoiceMode ? 'voiceMode' : 'voicePanel';
@@ -978,20 +2015,30 @@
                 btnMicOrKeyboard.classList.add('voice-mode');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
+                textInput.placeholder = '';
             } else if (isGenerating) {
                 inputMode = 'generating';
                 btnMicOrKeyboard.classList.add('btn-hidden');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.remove('btn-hidden');
+                textInput.placeholder = '';
+            } else if (hasImages && !hasText) {
+                inputMode = 'typing';
+                btnMicOrKeyboard.classList.add('btn-hidden');
+                btnSend.classList.remove('btn-hidden');
+                btnSend.disabled = true;
+                btnStop.classList.add('btn-hidden');
+                textInput.placeholder = '请补充文字描述后再发送';
             } else if (hasText) {
                 inputMode = 'typing';
                 btnMicOrKeyboard.classList.add('btn-hidden');
                 btnSend.classList.remove('btn-hidden');
                 btnStop.classList.add('btn-hidden');
-                let sendDisabled = false;
-                if (imageState.size > 0) {
-                    for (const [, state] of imageState) {
-                        if (state.status === 'uploading' || state.status === 'fail') {
+                textInput.placeholder = '';
+                var sendDisabled = false;
+                if (hasImages) {
+                    for (var _s of imageState.values()) {
+                        if (_s.status === 'uploading' || _s.status === 'fail') {
                             sendDisabled = true;
                             break;
                         }
@@ -1004,6 +2051,7 @@
                 btnMicOrKeyboard.classList.remove('voice-mode');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
+                textInput.placeholder = '';
             }
 
             addButton.disabled = imageState.size >= 4;
@@ -1024,12 +2072,28 @@
                 }, 1000);
                 return;
             }
+            refreshQuotaUI();
+            updatePlusSheetTier();
             plusSheet.classList.add('open');
             plusSheetBackdrop.classList.add('open');
         });
         function closePlusSheet() {
             plusSheet.classList.remove('open');
             plusSheetBackdrop.classList.remove('open');
+        }
+        function getTierLocal() {
+            if (typeof getCurrentTier === 'function') return getCurrentTier();
+            return localStorage.getItem('membership_tier') || 'free';
+        }
+        function tierLabel(tier) {
+            return ({ free: '免费版', plus: 'Plus', pro: 'Pro', expert: '专家模式' })[tier] || '免费版';
+        }
+        function updatePlusSheetTier() {
+            var nameEl = document.getElementById('tier-name');
+            var subEl = document.getElementById('tier-sub');
+            if (!nameEl || !subEl) return;
+            nameEl.textContent = '会员中心';
+            subEl.textContent = '查看套餐与额度';
         }
         plusSheetBackdrop.addEventListener('click', closePlusSheet);
         plusSheetGallery.addEventListener('click', () => {
@@ -1040,6 +2104,13 @@
             closePlusSheet();
             cameraInput.click();
         });
+        var tierEntry = document.getElementById('tier-card');
+        if (tierEntry) {
+            tierEntry.addEventListener('click', function() {
+                closePlusSheet();
+                openMembershipModal(false);
+            });
+        }
 
         function handleFileSelect(fileList) {
             const imageFiles = Array.from(fileList || []).filter(file => file.type.startsWith('image/'));
@@ -1278,11 +2349,8 @@
             const hasImages = imageState.size > 0;
             if (!text) return;
 
-            // 验证规则：有图必须有文字
-            if (hasImages && !text) {
-                alert('请补充文字说明');
-                return;
-            }
+            // 有图必须有文字（硬拦截，不弹窗；灰按钮点击已 toast 一次）
+            if (hasImages && !text) return;
 
             // 验证：所有图片必须成功上传
             if (hasImages) {
@@ -1294,7 +2362,6 @@
                     }
                 }
                 if (!allSuccess) {
-                    // 不应该到达这里（按钮已禁用），但作为双重检查
                     return;
                 }
             }
@@ -1307,6 +2374,11 @@
                 }
             }
 
+            // 额度硬拦截：无剩余直接 return，不弹会员、不 toast（toast 由点击灰按钮时提示一次）
+            var imgCount = imageUrls.length;
+            var quotaCheck = checkQuotaBeforeSend(1, imgCount);
+            if (!quotaCheck.allowed) return;
+
             // 添加用户消息（右对齐，立即显示）
             const userMessage = createMessage({ 
                 role: "user", 
@@ -1316,6 +2388,7 @@
                 stream: false 
             });
             messagesContainer.appendChild(userMessage);
+            hardTrimMessages();
             refreshEmptyState();
             scrollToBottom();
             applyMessageWindow();
@@ -1327,14 +2400,19 @@
             const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
             assistantMessage.dataset.streamId = streamId;
             messagesContainer.appendChild(assistantMessage);
+            hardTrimMessages();
             scrollToBottom();
             applyMessageWindow();
 
             // 保存用于重试
             lastSent = { text: text, imageUrls: imageUrls.slice(), streamId: streamId };
 
-            // 发送到Android（带 streamId，回调按 streamId 写对应气泡）
+            // 发送到Android（带 streamId、模型；回调按 streamId 写对应气泡）
             sendToAndroid(text, imageUrls, streamId);
+
+            // 今日已用 +1 对话 + N 次图片上传
+            incrementUsage(1, imgCount);
+            refreshQuotaUI();
 
             // 清空输入和图片预览
             textInput.value = '';
@@ -1345,10 +2423,14 @@
             updateInputMode();
         }
 
-        // 发送到Android后端（streamId 用于 onChunk/onComplete/onStreamInterrupted 写对应气泡）
+        // 发送到Android后端（streamId 写对应气泡；模型路由：专家=plus，其余=flash）
         function sendToAndroid(text, imageUrls, streamId) {
-            const imageUrlsJson = imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
-            AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '');
+            var imageUrlsJson = imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
+            var tier = getCurrentTier();
+            var model = tier === 'expert' ? 'plus' : 'flash';
+            if (typeof AndroidInterface.sendMessage === 'function') {
+                AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model);
+            }
         }
 
         // SSE 节流：Map<streamId, buffer> 隔离，每 CHUNK_FLUSH_MS 刷新；只写对应 streamId 的气泡
@@ -1385,6 +2467,7 @@
                 const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
                 if (msg) msg.classList.remove('streaming');
             }
+            hardTrimMessages();
             isGenerating = false;
             fileInput.value = '';
             updateInputMode();
@@ -1498,6 +2581,15 @@
             messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
         }
 
+        function hardTrimMessages() {
+            if (!messagesContainer) return;
+            var nodes = Array.from(messagesContainer.querySelectorAll('.message'));
+            if (nodes.length <= MAX_MESSAGES) return;
+            var removeCount = nodes.length - MAX_MESSAGES;
+            for (var i = 0; i < removeCount; i++) {
+                nodes[i].remove();
+            }
+        }
         function refreshEmptyState() {
             const hasMessages = messagesContainer.querySelectorAll('.message').length > 0;
             emptyState.classList.toggle('hidden', hasMessages);
@@ -1654,25 +2746,14 @@
             inputContainer.classList.remove('voice-mode');
             updateInputMode();
             if (!text || !String(text).trim()) {
-                voiceHint.textContent = '未识别到内容';
-                setTimeout(function() { voiceHint.textContent = '按住说话'; }, 1500);
+                showToastOncePerDay('voice_empty', '未识别到内容');
+                voiceHint.textContent = '按住说话';
                 return;
             }
-            const t = String(text).trim();
-            const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            const userMessage = createMessage({ role: 'user', text: t, files: null, imageUrls: [], stream: false });
-            messagesContainer.appendChild(userMessage);
-            refreshEmptyState();
-            scrollToBottom();
-            applyMessageWindow();
-            isGenerating = true;
-            const assistantMessage = createMessage({ role: 'assistant', text: '', stream: true });
-            assistantMessage.dataset.streamId = streamId;
-            messagesContainer.appendChild(assistantMessage);
-            scrollToBottom();
-            applyMessageWindow();
-            sendToAndroid(t, [], streamId);
+            var t = String(text).trim();
+            textInput.value = t;
             updateInputMode();
+            sendMessage();
         }
 
         // D4. 波形 Canvas（细条、轻微浮动，不抢注意力）
@@ -1687,7 +2768,7 @@
             const h = voiceWaveform.height;
             const barW = Math.max(2, (w / WAVE_BARS) * 0.32);
             const gap = w / WAVE_BARS - barW;
-            const color = cancelArmed ? '#E14B4B' : (recording ? '#2196F3' : '#D9D9D9');
+            const color = cancelArmed ? '#E14B4B' : (recording ? '#000000' : '#D9D9D9');
             const amp = cancelArmed ? 0.2 : (recording ? 0.28 : 0.15);
 
             function draw() {
