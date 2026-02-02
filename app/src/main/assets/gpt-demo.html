@@ -1977,12 +1977,14 @@
         let waveformAnimId = null;
         let voicePendingTimeout = null;
 
-        // 长聊不卡顿：窗口化 + SSE 节流（常量，便于验证）
+        // 长聊不卡顿：窗口化 + 前端假流式（打字机）
         const RENDER_WINDOW = 80;      // 仅渲染最近 N 条
         const LOAD_MORE_BATCH = 20;    // 每次「加载更多」展开条数
-        const CHUNK_FLUSH_MS = 60;    // SSE chunk 合并间隔（ms），避免每 token 重排
+        const TYPEWRITER_MS = 50;     // 打字机每片间隔（ms），避免 DOM 频繁重排
+        const TYPEWRITER_CHARS = 2;   // 每片追加字符数
         const chunkBufferByStream = {};
-        const chunkFlushScheduledByStream = {};
+        // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
+        let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         
         // 图片状态管理（Map 保持插入顺序，发送时 URL 顺序与用户选择一致）
         const imageState = new Map(); // imageId -> {file, base64, status, url, element, currentRequestId}
@@ -2433,49 +2435,78 @@
             }
         }
 
-        // SSE 节流：Map<streamId, buffer> 隔离，每 CHUNK_FLUSH_MS 刷新；只写对应 streamId 的气泡
-        function flushChunkBuffer(streamId) {
-            if (!streamId) return;
-            chunkFlushScheduledByStream[streamId] = false;
-            const buf = chunkBufferByStream[streamId];
-            if (!buf) return;
-            const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
-            if (msg) {
-                const contentDiv = msg.querySelector('.message-content');
-                if (contentDiv) {
-                    contentDiv.textContent += buf;
-                    scrollToBottom();
+        // 停止打字机（用户点「停止」时）：仅停定时器，可选一次性补全剩余文字
+        function stopTypewriter() {
+            if (typewriterState.timerId) {
+                clearInterval(typewriterState.timerId);
+                typewriterState.timerId = null;
+            }
+            if (typewriterState.streamId && typewriterState.fullText && typewriterState.index < typewriterState.fullText.length) {
+                const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === typewriterState.streamId; });
+                if (msg) {
+                    const contentDiv = msg.querySelector('.message-content');
+                    if (contentDiv) contentDiv.textContent += typewriterState.fullText.slice(typewriterState.index);
+                    msg.classList.remove('streaming');
                 }
             }
-            chunkBufferByStream[streamId] = '';
+            typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         }
 
-        // 接收Android返回的流式chunk（streamId 指定写入哪条 assistant 消息）
+        // 前端假流式：用定时器分片追加 fullText，保留渲染节流
+        function runTypewriter(streamId, fullText) {
+            stopTypewriter();
+            if (!streamId || !fullText) return;
+            const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            if (!msg) return;
+            const contentDiv = msg.querySelector('.message-content');
+            if (!contentDiv) return;
+            typewriterState = { timerId: null, streamId: streamId, fullText: fullText, index: 0 };
+            typewriterState.timerId = setInterval(function() {
+                var n = Math.min(TYPEWRITER_CHARS, fullText.length - typewriterState.index);
+                if (n <= 0) {
+                    clearInterval(typewriterState.timerId);
+                    typewriterState.timerId = null;
+                    msg.classList.remove('streaming');
+                    typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
+                    isGenerating = false;
+                    fileInput.value = '';
+                    updateInputMode();
+                    hardTrimMessages();
+                    return;
+                }
+                contentDiv.textContent += fullText.slice(typewriterState.index, typewriterState.index + n);
+                typewriterState.index += n;
+                scrollToBottom();
+            }, TYPEWRITER_MS);
+        }
+
+        // 接收后端一次性返回的完整内容（仅累积到 buffer，不直接写 DOM）
         window.onChunkReceived = function(streamId, chunk) {
-            if (!streamId || !chunk || chunk.trim() === '') return;
+            if (!streamId || !chunk) return;
             chunkBufferByStream[streamId] = (chunkBufferByStream[streamId] || '') + chunk;
-            if (!chunkFlushScheduledByStream[streamId]) {
-                chunkFlushScheduledByStream[streamId] = true;
-                setTimeout(function() { flushChunkBuffer(streamId); }, CHUNK_FLUSH_MS);
-            }
         };
 
-        // 接收Android完成通知（保证一次；onComplete 必 flush 该 streamId buffer，最后几个字不丢）
+        // 收到完成通知后：取 buffer 全文，用打字机分片追加（不一次性渲染）
         window.onCompleteReceived = function(streamId) {
-            if (streamId) {
-                flushChunkBuffer(streamId);
-                const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            if (!streamId) return;
+            var fullText = (chunkBufferByStream[streamId] || '');
+            chunkBufferByStream[streamId] = '';
+            if (!fullText) {
+                var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
                 if (msg) msg.classList.remove('streaming');
+                isGenerating = false;
+                fileInput.value = '';
+                updateInputMode();
+                hardTrimMessages();
+                return;
             }
-            hardTrimMessages();
-            isGenerating = false;
-            fileInput.value = '';
-            updateInputMode();
+            runTypewriter(streamId, fullText);
         };
 
         // 终态仅 badge/灰化，不写正文；提供重试按钮。reason: canceled/timeout/network/server/cache_overflow/error
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;
+            if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
             updateInputMode();
             const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
@@ -2612,8 +2643,9 @@
             }
         });
 
-        // C. Generating 右侧 Stop：取消当前流式（点击后立即更新 UI，避免一直停在状态键）
+        // C. Generating 右侧 Stop：仅停止前端打字机定时器（后端已非流式，占位调用 stopGeneration）
         btnStop.addEventListener('click', function() {
+            stopTypewriter();
             if (typeof AndroidInterface.stopGeneration === 'function') {
                 AndroidInterface.stopGeneration();
             }

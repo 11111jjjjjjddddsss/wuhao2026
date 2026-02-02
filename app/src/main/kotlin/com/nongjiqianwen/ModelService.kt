@@ -3,14 +3,13 @@ package com.nongjiqianwen
 import java.util.UUID
 
 /**
- * 模型服务接口：真流式 SSE，错误兜底，requestId/streamId/耗时日志。
- * 取消策略：仅在新请求或用户点停止时 cancel 旧请求；切后台不 cancel。
+ * 模型服务接口：非流式一次返回；错误兜底；stop/cancel 占位保留。
  */
 object ModelService {
 
     /**
-     * 获取模型回复（真流式 SSE）
-     * @param onInterrupted 流被取消/读超时/错误时调用，reason=canceled|interrupted|error，仅用于 UI badge，不写正文
+     * 获取模型回复（非流式，一次 onChunk(完整文本) + onComplete）
+     * @param onInterrupted 错误时调用，仅用于 UI badge
      */
     fun getReply(
         userMessage: String,

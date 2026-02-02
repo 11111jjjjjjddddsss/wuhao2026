@@ -9,15 +9,13 @@ import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import java.net.SocketTimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 通义千问客户端
- * 负责 HTTP 请求和 JSON 解析；支持取消、读超时（Watchdog）、callTimeout。
+ * 非流式：一次性返回完整答案；取消/停止仅占位，不要求真正中断。
  * 使用阿里云百炼 DashScope API
  */
 object QwenClient {
@@ -64,9 +62,9 @@ object QwenClient {
     }
 
     /**
-     * 调用通义千问 API（真流式 SSE）
-     * userId/sessionId/requestId/streamId 仅用于日志与请求 header，严禁写入 prompt/messages。
-     * 终态不写正文：仅 onInterrupted(reason) 用于 badge，不通过 onChunk 追加“已取消/已中断”等。
+     * 调用通义千问 API（非流式，一次返回完整 response_text）
+     * 返回：一次 onChunk(完整文本) + onComplete；错误时 onInterrupted(reason)。
+     * stop/cancel 占位保留，当前不要求真正中断。
      */
     fun callApi(
         userId: String,
@@ -94,10 +92,10 @@ object QwenClient {
             val inLen = userMessage.length
             val imgCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
             try {
-                // 构建请求体 - OpenAI 兼容格式（真流式SSE）
+                // 构建请求体 - 非流式，一次返回完整内容
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
-                    addProperty("stream", true)
+                    addProperty("stream", false)
                     addProperty("temperature", ModelParams.TEMPERATURE)
                     addProperty("top_p", ModelParams.TOP_P)
                     addProperty("max_tokens", ModelParams.MAX_TOKENS)
@@ -172,7 +170,7 @@ object QwenClient {
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
-                    .addHeader("Accept", "text/event-stream")
+                    .addHeader("Accept", "application/json")
                     .addHeader("X-User-Id", userId)
                     .addHeader("X-Session-Id", sessionId)
                     .addHeader("X-Request-Id", requestId)
@@ -191,64 +189,31 @@ object QwenClient {
                 
                 if (response.isSuccessful) {
                     try {
-                        val responseBody = response.body
-                        if (responseBody == null) {
-                            throw Exception("响应体为空")
+                        val responseBodyStr = response.body?.string() ?: throw Exception("响应体为空")
+                        currentCall.set(null)
+                        currentRequestId.set(null)
+                        val json = gson.fromJson(responseBodyStr, JsonObject::class.java)
+                        val choices = json.getAsJsonArray("choices") ?: run {
+                            handler.post { onInterrupted("error"); fireComplete() }
+                            return@Thread
                         }
-                        
-                        val inputStream = responseBody.byteStream()
-                        val reader = BufferedReader(InputStreamReader(inputStream, "UTF-8"))
-                        var lastFinishReason: String? = null
-                        try {
-                            while (true) {
-                                val line = reader.readLine() ?: break
-                                if (line.startsWith("data: ")) {
-                                    if (line.trim() == "data: [DONE]") {
-                                        if (BuildConfig.DEBUG) {
-                                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId STREAM_DONE finish_reason=$lastFinishReason")
-                                        }
-                                        break
-                                    }
-                                    val jsonStr = line.substring(6).trim()
-                                    if (jsonStr.isEmpty() || jsonStr == "{}") continue
-                                    try {
-                                        val jsonResponse = gson.fromJson(jsonStr, JsonObject::class.java)
-                                        if (jsonResponse.has("choices") && jsonResponse.getAsJsonArray("choices").size() > 0) {
-                                            val firstChoice = jsonResponse.getAsJsonArray("choices").get(0).asJsonObject
-                                            firstChoice.get("finish_reason")?.takeIf { it.isJsonPrimitive }?.asString?.let { lastFinishReason = it }
-                                            if (firstChoice.has("delta")) {
-                                                val delta = firstChoice.getAsJsonObject("delta")
-                                                    if (delta.has("content")) {
-                                                        val content = delta.get("content")
-                                                        if (content.isJsonPrimitive && content.asJsonPrimitive.isString) {
-                                                            val deltaText = content.asString
-                                                            if (deltaText.isNotBlank()) {
-                                                                if (currentRequestId.get() != requestId) {
-                                                                    if (BuildConfig.DEBUG) {
-                                                                        Log.d(TAG, "drop stale chunk")
-                                                                    }
-                                                                    continue
-                                                                }
-                                                                outputCharCount += deltaText.length
-                                                                handler.post { onChunk(deltaText) }
-                                                            }
-                                                        }
-                                                    }
-                                            }
-                                        }
-                                    } catch (_: Exception) { /* 忽略单行解析错误 */ }
-                                }
-                            }
-                            val elapsed = System.currentTimeMillis() - startMs
-                            if (BuildConfig.DEBUG) {
-                                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 状态=complete reason=complete finish_reason=$lastFinishReason 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
-                            }
+                        if (choices.size() == 0) {
+                            handler.post { onInterrupted("error"); fireComplete() }
+                            return@Thread
+                        }
+                        val message = choices.get(0).asJsonObject.getAsJsonObject("message") ?: run {
+                            handler.post { onInterrupted("error"); fireComplete() }
+                            return@Thread
+                        }
+                        val content = message.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
+                        outputCharCount = content.length
+                        val elapsed = System.currentTimeMillis() - startMs
+                        if (BuildConfig.DEBUG) {
+                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 非流式完成 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                        }
+                        handler.post {
+                            onChunk(content)
                             fireComplete()
-                        } finally {
-                            reader.close()
-                            inputStream.close()
-                            currentCall.set(null)
-                            currentRequestId.set(null)
                         }
                     } catch (e: Exception) {
                         currentCall.set(null)
