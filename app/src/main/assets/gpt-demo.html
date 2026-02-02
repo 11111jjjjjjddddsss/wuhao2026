@@ -2473,6 +2473,7 @@
                 delete chunkBufferByStream[streamId];
                 delete lastFullBufferByStream[streamId];
                 applyInterruptedUI(streamId, 'timeout');
+                setTimeout(function() { delete terminatedStreamIds[streamId]; }, 2 * 60 * 1000);
             }, MAX_WAIT_MS);
         }
 
@@ -2606,6 +2607,7 @@
                 fileInput.value = '';
                 updateInputMode();
                 hardTrimMessages();
+                delete terminatedStreamIds[streamId];
                 return;
             }
             if (hadBuffer) {
@@ -2623,6 +2625,7 @@
                 updateInputMode();
                 hardTrimMessages();
             }
+            delete terminatedStreamIds[streamId];
         };
 
         // 终态仅 badge/灰字 + 重试；开头 clear Watchdog、清理 buffer，再统一 applyInterruptedUI
@@ -2636,6 +2639,7 @@
             delete chunkBufferByStream[streamId];
             delete lastFullBufferByStream[streamId];
             applyInterruptedUI(streamId, reason);
+            delete terminatedStreamIds[streamId];
         };
 
         // 统一消息渲染函数（用户/AI共用）
