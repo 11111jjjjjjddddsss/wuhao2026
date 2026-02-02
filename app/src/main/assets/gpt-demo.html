@@ -1984,7 +1984,8 @@
         const TYPEWRITER_CHARS = 2;   // 每片追加字符数
         const TYPEWRITER_MAX_MS = 60000; // 打字机最大时长兜底（ms），超时直接补全剩余
         const chunkBufferByStream = {};
-        const lastChunkByStream = {}; // 最后一次 onChunk 累积值，供 onComplete 时 buffer 为空降级直出
+        // streamId -> 该 stream 当前累计的 buffer 全文（与 chunkBufferByStream 同步），供 onComplete 时 buffer 为空降级直出；语义是「最后一次可见的全文」非「最后一个 chunk」
+        const lastFullBufferByStream = {};
         // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         
@@ -2447,7 +2448,7 @@
                 const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === typewriterState.streamId; });
                 if (msg) {
                     const contentDiv = msg.querySelector('.message-content');
-                    if (contentDiv) contentDiv.textContent += typewriterState.fullText.slice(typewriterState.index);
+                    if (contentDiv) contentDiv.textContent += typewriterState.fullText.slice(typewriterState.index); // 仅追加剩余部分，避免重复
                     msg.classList.remove('streaming');
                 }
             }
@@ -2469,7 +2470,7 @@
                     clearInterval(typewriterState.timerId);
                     typewriterState.timerId = null;
                     if (typewriterState.index < fullText.length) {
-                        contentDiv.textContent += fullText.slice(typewriterState.index);
+                        contentDiv.textContent += fullText.slice(typewriterState.index); // 仅追加剩余部分，避免重复
                     }
                     msg.classList.remove('streaming');
                     typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
@@ -2502,17 +2503,17 @@
         window.onChunkReceived = function(streamId, chunk) {
             if (!streamId || !chunk) return;
             chunkBufferByStream[streamId] = (chunkBufferByStream[streamId] || '') + chunk;
-            lastChunkByStream[streamId] = chunkBufferByStream[streamId];
+            lastFullBufferByStream[streamId] = chunkBufferByStream[streamId];
         };
 
-        // 收到完成通知后：取 buffer 全文，用打字机分片追加；buffer 为空则用 lastChunk 降级直出；结束后清理 buffer
+        // 收到完成通知后：取 buffer 全文，用打字机分片追加；buffer 为空则用 lastFullBuffer 降级直出；结束后清理 buffer
         window.onCompleteReceived = function(streamId) {
             if (!streamId) return;
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
-            if (!fullText) fullText = (lastChunkByStream[streamId] || '');
+            if (!fullText) fullText = (lastFullBufferByStream[streamId] || '');
             delete chunkBufferByStream[streamId];
-            delete lastChunkByStream[streamId];
+            delete lastFullBufferByStream[streamId];
             if (!fullText) {
                 var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
                 if (msg) msg.classList.remove('streaming');
@@ -2539,14 +2540,14 @@
             }
         };
 
-        // 终态仅 badge/灰化，不写正文；提供重试按钮。结束后清理 buffer
+        // 终态仅 badge/灰化，不写正文；提供重试按钮。开头清理 buffer（当前非流式无问题；若恢复真流式分片需评估是否导致中断时 DOM 空白）
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;
             if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
             updateInputMode();
             delete chunkBufferByStream[streamId];
-            delete lastChunkByStream[streamId];
+            delete lastFullBufferByStream[streamId];
             const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
             if (msg) {
                 msg.classList.remove('streaming');
