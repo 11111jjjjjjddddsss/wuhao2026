@@ -148,10 +148,16 @@ object QwenClient {
                         add("content", contentArray)
                     }
                     messagesArray.add(userMessageObj)
+                    com.nongjiqianwen.SystemAnchor.ensureSystemRole(messagesArray)
+                    if (bSum.isNotBlank() && messagesArray.size() > 0) {
+                        val first = messagesArray.get(0).asJsonObject
+                        if (first.get("role")?.asString == "system") {
+                            val cur = first.get("content")?.asString ?: ""
+                            first.addProperty("content", "$cur\n\n[B层累计摘要]\n$bSum")
+                        }
+                    }
                     add("messages", messagesArray)
                 }
-                
-                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
                 
                 Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
                 
