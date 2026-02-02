@@ -1982,7 +1982,9 @@
         const LOAD_MORE_BATCH = 20;    // 每次「加载更多」展开条数
         const TYPEWRITER_MS = 50;     // 打字机每片间隔（ms），避免 DOM 频繁重排
         const TYPEWRITER_CHARS = 2;   // 每片追加字符数
+        const TYPEWRITER_MAX_MS = 60000; // 打字机最大时长兜底（ms），超时直接补全剩余
         const chunkBufferByStream = {};
+        const lastChunkByStream = {}; // 最后一次 onChunk 累积值，供 onComplete 时 buffer 为空降级直出
         // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         
@@ -2452,7 +2454,7 @@
             typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         }
 
-        // 前端假流式：用定时器分片追加 fullText，保留渲染节流
+        // 前端假流式：用定时器分片追加 fullText；先停旧打字机（防旧写到新消息）；超时兜底直接补全
         function runTypewriter(streamId, fullText) {
             stopTypewriter();
             if (!streamId || !fullText) return;
@@ -2460,8 +2462,24 @@
             if (!msg) return;
             const contentDiv = msg.querySelector('.message-content');
             if (!contentDiv) return;
+            var typewriterStartMs = Date.now();
             typewriterState = { timerId: null, streamId: streamId, fullText: fullText, index: 0 };
             typewriterState.timerId = setInterval(function() {
+                if ((Date.now() - typewriterStartMs) >= TYPEWRITER_MAX_MS) {
+                    clearInterval(typewriterState.timerId);
+                    typewriterState.timerId = null;
+                    if (typewriterState.index < fullText.length) {
+                        contentDiv.textContent += fullText.slice(typewriterState.index);
+                    }
+                    msg.classList.remove('streaming');
+                    typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
+                    isGenerating = false;
+                    fileInput.value = '';
+                    updateInputMode();
+                    hardTrimMessages();
+                    scrollToBottom();
+                    return;
+                }
                 var n = Math.min(TYPEWRITER_CHARS, fullText.length - typewriterState.index);
                 if (n <= 0) {
                     clearInterval(typewriterState.timerId);
@@ -2484,13 +2502,17 @@
         window.onChunkReceived = function(streamId, chunk) {
             if (!streamId || !chunk) return;
             chunkBufferByStream[streamId] = (chunkBufferByStream[streamId] || '') + chunk;
+            lastChunkByStream[streamId] = chunkBufferByStream[streamId];
         };
 
-        // 收到完成通知后：取 buffer 全文，用打字机分片追加（不一次性渲染）
+        // 收到完成通知后：取 buffer 全文，用打字机分片追加；buffer 为空则用 lastChunk 降级直出；结束后清理 buffer
         window.onCompleteReceived = function(streamId) {
             if (!streamId) return;
+            var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
-            chunkBufferByStream[streamId] = '';
+            if (!fullText) fullText = (lastChunkByStream[streamId] || '');
+            delete chunkBufferByStream[streamId];
+            delete lastChunkByStream[streamId];
             if (!fullText) {
                 var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
                 if (msg) msg.classList.remove('streaming');
@@ -2500,15 +2522,31 @@
                 hardTrimMessages();
                 return;
             }
-            runTypewriter(streamId, fullText);
+            if (hadBuffer) {
+                runTypewriter(streamId, fullText);
+            } else {
+                var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+                if (msg) {
+                    var contentDiv = msg.querySelector('.message-content');
+                    if (contentDiv) contentDiv.textContent = fullText;
+                    msg.classList.remove('streaming');
+                }
+                scrollToBottom();
+                isGenerating = false;
+                fileInput.value = '';
+                updateInputMode();
+                hardTrimMessages();
+            }
         };
 
-        // 终态仅 badge/灰化，不写正文；提供重试按钮。reason: canceled/timeout/network/server/cache_overflow/error
+        // 终态仅 badge/灰化，不写正文；提供重试按钮。结束后清理 buffer
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;
             if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
             updateInputMode();
+            delete chunkBufferByStream[streamId];
+            delete lastChunkByStream[streamId];
             const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
             if (msg) {
                 msg.classList.remove('streaming');
@@ -2643,14 +2681,14 @@
             }
         });
 
-        // C. Generating 右侧 Stop：仅停止前端打字机定时器（后端已非流式，占位调用 stopGeneration）
+        // C. Stop：只停前端（stopTypewriter + 状态）；stopGeneration 保留调用但不依赖其中断后端
         btnStop.addEventListener('click', function() {
             stopTypewriter();
+            isGenerating = false;
+            updateInputMode();
             if (typeof AndroidInterface.stopGeneration === 'function') {
                 AndroidInterface.stopGeneration();
             }
-            isGenerating = false;
-            updateInputMode();
         });
 
         /** P0-6: 幂等复位，任一退出事件调用 */
