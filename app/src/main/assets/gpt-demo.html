@@ -1988,6 +1988,7 @@
         // streamId -> 该 stream 当前累计的 buffer 全文（与 chunkBufferByStream 同步），供 onComplete 时 buffer 为空降级直出；语义是「最后一次可见的全文」非「最后一个 chunk」
         const lastFullBufferByStream = {};
         const watchdogTimerByStream = {}; // streamId -> setTimeout id，onComplete/onInterrupted 时 clear
+        const terminatedStreamIds = {};   // 护栏：watchdog 触发后加入，onChunk/onComplete/onInterrupted 入口若已存在则直接 return
         // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         // reason → 文案（ChatGPT 风格：短句、灰字、不露技术细节）
@@ -2464,6 +2465,8 @@
                     clearTimeout(watchdogTimerByStream[streamId]);
                     delete watchdogTimerByStream[streamId];
                 }
+                terminatedStreamIds[streamId] = true;
+                AndroidInterface.stopGeneration && AndroidInterface.stopGeneration();
                 stopTypewriter();
                 isGenerating = false;
                 updateInputMode();
@@ -2581,6 +2584,7 @@
         // 接收后端一次性返回的完整内容（仅累积到 buffer，不直接写 DOM）
         window.onChunkReceived = function(streamId, chunk) {
             if (!streamId || !chunk) return;
+            if (terminatedStreamIds[streamId]) return;
             chunkBufferByStream[streamId] = (chunkBufferByStream[streamId] || '') + chunk;
             lastFullBufferByStream[streamId] = chunkBufferByStream[streamId];
         };
@@ -2588,6 +2592,7 @@
         // 收到完成通知后：取 buffer 全文，用打字机分片追加；buffer 为空则用 lastFullBuffer 降级直出；结束后清理 buffer；必须 clear Watchdog
         window.onCompleteReceived = function(streamId) {
             if (!streamId) return;
+            if (terminatedStreamIds[streamId]) return;
             clearWatchdog(streamId);
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
@@ -2623,6 +2628,7 @@
         // 终态仅 badge/灰字 + 重试；开头 clear Watchdog、清理 buffer，再统一 applyInterruptedUI
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;
+            if (terminatedStreamIds[streamId]) return;
             clearWatchdog(streamId);
             if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
