@@ -28,7 +28,7 @@ object SystemAnchor {
     private var lastWarnReason: String? = null
     private var lastWarnTimeMs: Long = 0L
 
-    /** 兜底短锚点：完整锚点不可用时使用，保证风格与成本约束不失控 */
+    /** 兜底短锚点：完整锚点不可用时使用；长度须 >= MIN_VALID_LENGTH(200)，避免被误判 too_short */
     private const val FALLBACK_ANCHOR = """【系统兜底短锚点】
 你是"农技千问"，资深农业技术顾问。仅提供农业技术建议与可行方案，不替用户做最终决策。
 当前轮输入优先；历史仅用于语义承接。输出控制在约800字以内；用自然段与要点列表表达；禁止表情符号。
@@ -53,6 +53,9 @@ object SystemAnchor {
             } catch (e: Exception) {
                 Log.e(TAG, "加载 system_anchor.txt 失败", e)
                 cachedText = ""
+            }
+            if (FALLBACK_ANCHOR.length < MIN_VALID_LENGTH) {
+                Log.w(TAG, "FALLBACK_ANCHOR 长度不足 $MIN_VALID_LENGTH，可能被误判为 too_short")
             }
         }
     }
@@ -105,10 +108,11 @@ object SystemAnchor {
             else -> {
                 val first = messagesArray.get(systemIndices[0]).asJsonObject
                 val content = first.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim()
+                val fallbackTrim = getFallbackAnchor().trim()
                 when {
                     content == null || content.isEmpty() -> reason = "empty"
-                    content.length < MIN_VALID_LENGTH -> reason = "too_short"
-                    else -> { /* valid */ }
+                    content.length < MIN_VALID_LENGTH && content != fallbackTrim -> reason = "too_short"
+                    else -> { /* valid：含 fallback 不因过短再次触发兜底 */ }
                 }
             }
         }

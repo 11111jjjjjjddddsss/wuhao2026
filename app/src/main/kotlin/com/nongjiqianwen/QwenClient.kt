@@ -152,7 +152,10 @@ object QwenClient {
                     if (bSum.isNotBlank() && messagesArray.size() > 0) {
                         val first = messagesArray.get(0).asJsonObject
                         if (first.get("role")?.asString == "system") {
-                            val cur = first.get("content")?.asString ?: ""
+                            var cur = first.get("content")?.asString ?: ""
+                            if (cur.contains("[B层累计摘要]")) {
+                                cur = cur.substringBefore("[B层累计摘要]").trimEnd()
+                            }
                             first.addProperty("content", "$cur\n\n[B层累计摘要]\n$bSum")
                         }
                     }
