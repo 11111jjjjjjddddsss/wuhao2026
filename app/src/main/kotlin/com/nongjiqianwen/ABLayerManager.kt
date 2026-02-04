@@ -12,20 +12,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 object ABLayerManager {
     private const val TAG = "ABLayerManager"
     private const val PREFS_NAME = "ab_layer"
-    private const val KEY_B_SUMMARY = "b_summary"
+    private const val KEY_B_SUMMARY_PREFIX = "b_summary_"
     private const val A_MIN_ROUNDS = 24
     /** B 摘要 trim 后长度上限；超过视为提取失败，不写入 B、不清空 A */
     private const val B_SUMMARY_MAX_LENGTH = 600
 
     private var appContext: Context? = null
 
-    /** A 层：完整轮次 (user, assistant) */
-    private val aRounds = mutableListOf<Pair<String, String>>()
+    /** A 层：按 session 隔离，sessionId -> 完整轮次 (user, assistant) */
+    private val aRoundsBySession = mutableMapOf<String, MutableList<Pair<String, String>>>()
     private val aLock = Any()
-
-    /** B 层摘要（持久化） */
-    @Volatile
-    private var bSummary: String = ""
 
     /** 防止并发提取：extracting=true 时本轮跳过，不阻塞不排队 */
     private val extracting = AtomicBoolean(false)
@@ -33,38 +29,42 @@ object ABLayerManager {
     fun init(context: Context) {
         if (appContext == null) {
             appContext = context.applicationContext
-            bSummary = appContext!!.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                .getString(KEY_B_SUMMARY, "") ?: ""
             if (BuildConfig.DEBUG) {
-                Log.d(TAG, "ABLayerManager init, B摘要长度=${bSummary.length}")
+                Log.d(TAG, "ABLayerManager init, B 按 sessionId 隔离")
             }
         }
     }
 
-    /** 当前 B 摘要，供主对话注入 */
-    fun getBSummary(): String = bSummary
+    /** 当前会话 B 摘要，供主对话注入；key = b_summary_<sessionId> */
+    fun getBSummary(): String {
+        val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) ?: return ""
+        val sessionId = IdManager.getSessionId()
+        return prefs.getString(KEY_B_SUMMARY_PREFIX + sessionId, "") ?: ""
+    }
 
     /**
      * 完整轮次完成时调用（仅 onComplete 时，非 interrupted）
-     * 加入 A，若 A>=24 则异步尝试 B 提取；成功则原子清空 A 并写入 B。
+     * 加入 A，若 A>=24 则异步尝试 B 提取；成功则原子清空 A 并写入 B。按 session 隔离。
      */
     fun onRoundComplete(userMessage: String, assistantMessage: String) {
+        val sessionId = IdManager.getSessionId()
         val (shouldExtract, snapshot) = synchronized(aLock) {
-            aRounds.add(userMessage to assistantMessage)
-            val size = aRounds.size
+            val list = aRoundsBySession.getOrPut(sessionId) { mutableListOf() }
+            list.add(userMessage to assistantMessage)
+            val size = list.size
             if (BuildConfig.DEBUG) {
-                Log.d(TAG, "A层+1轮，当前${size}轮")
+                Log.d(TAG, "A层+1轮(session=$sessionId)，当前${size}轮")
             }
             val doExtract = size >= A_MIN_ROUNDS
-            val snap = if (doExtract) aRounds.map { it } else emptyList()
+            val snap = if (doExtract) list.map { it } else emptyList()
             doExtract to snap
         }
         if (shouldExtract && snapshot.isNotEmpty()) {
-            tryExtractAndUpdateB(snapshot)
+            tryExtractAndUpdateB(sessionId, snapshot)
         }
     }
 
-    private fun tryExtractAndUpdateB(aRoundsSnapshot: List<Pair<String, String>>) {
+    private fun tryExtractAndUpdateB(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>) {
         if (!extracting.compareAndSet(false, true)) {
             if (BuildConfig.DEBUG) {
                 Log.d(TAG, "B提取进行中，跳过")
@@ -73,7 +73,9 @@ object ABLayerManager {
         }
         Thread {
             try {
-                val oldB = bSummary
+                val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val keyB = KEY_B_SUMMARY_PREFIX + sessionId
+                val oldB = prefs?.getString(keyB, "") ?: ""
                 val dialogueText = buildDialogueText(aRoundsSnapshot)
                 val prompt = BExtractionPrompt.getText()
                 if (prompt.isBlank()) {
@@ -85,15 +87,13 @@ object ABLayerManager {
                     Log.w(TAG, "B摘要校验不通过，不写入不清空A")
                     return@Thread
                 }
-                val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val committed = prefs?.edit()?.putString(KEY_B_SUMMARY, newSummary)?.commit() ?: false
+                val committed = prefs?.edit()?.putString(keyB, newSummary)?.commit() ?: false
                 if (committed) {
                     synchronized(aLock) {
-                        aRounds.clear()
-                        bSummary = newSummary
+                        aRoundsBySession[sessionId]?.clear()
                     }
                     if (BuildConfig.DEBUG) {
-                        Log.d(TAG, "B写入成功(commit=true)，已清空A，新摘要长度=${newSummary.length}")
+                        Log.d(TAG, "B写入成功(session=$sessionId)，已清空A，新摘要长度=${newSummary.length}")
                     }
                 } else {
                     Log.w(TAG, "B写入commit=false，不写B不清空A")

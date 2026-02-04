@@ -9,8 +9,8 @@
 local.properties
 *.iml
 
-# IDE (optional: uncomment to ignore .idea changes)
-# .idea/
+# IDE
+.idea/
 
 # Logs
 *.log

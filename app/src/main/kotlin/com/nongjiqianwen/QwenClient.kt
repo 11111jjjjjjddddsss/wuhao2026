@@ -180,6 +180,7 @@ object QwenClient {
                     .addHeader("X-User-Id", userId)
                     .addHeader("X-Session-Id", sessionId)
                     .addHeader("X-Request-Id", requestId)
+                    .addHeader("X-Client-Msg-Id", requestId)  // 后端计费/去重/对账主键，与 requestId 一致
                     .post(requestJsonString.toRequestBody("application/json".toMediaType()))
                     .build()
                 

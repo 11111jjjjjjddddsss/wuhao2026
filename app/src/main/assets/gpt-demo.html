@@ -1937,7 +1937,7 @@
                 if (key === 'membership') {
                     openMembershipModal(false);
                 } else {
-                    console.log(key);
+                    if (typeof DEBUG !== 'undefined' && DEBUG) console.log(key);
                 }
             });
         });
@@ -2027,12 +2027,13 @@
         // 图片状态管理（Map 保持插入顺序，发送时 URL 顺序与用户选择一致）
         const imageState = new Map(); // imageId -> {file, base64, status, url, element, currentRequestId}
 
-        // Android 接口对象（由 WebView 注入）
+        // Android 接口对象（由 WebView 注入）；未注入时 no-op，DEBUG 时打日志
+        var DEBUG = false;
         const AndroidInterface = window.AndroidInterface || {
-            uploadImages: function(imageDataListJson) { console.log('uploadImages', imageDataListJson); },
-            retryImage: function(imageId, requestId) { console.log('retryImage', imageId, requestId); },
-            sendMessage: function(text, imageUrlsJson, streamId) { console.log('sendMessage', text, streamId); },
-            stopGeneration: function() { console.log('stopGeneration'); }
+            uploadImages: function(imageDataListJson) { if (DEBUG) console.log('uploadImages', imageDataListJson); },
+            retryImage: function(imageId, requestId) { if (DEBUG) console.log('retryImage', imageId, requestId); },
+            sendMessage: function(text, imageUrlsJson, streamId) { if (DEBUG) console.log('sendMessage', text, streamId); },
+            stopGeneration: function() { if (DEBUG) console.log('stopGeneration'); }
         };
 
         // 自动调整文本域高度（最多 5 行视觉）
@@ -2697,7 +2698,7 @@
 
         // 博查联网搜索结果：仅在有结果时展示灰字块；空结果完全静默（对齐 GPT）
         window.onSearchResult = function(streamId, resultText) {
-            if (resultText == null || (typeof resultText === 'string' && resultText.trim() === '')) return;
+            if (!resultText || (typeof resultText !== 'string') || !resultText.trim()) return;
             renderToolResult(streamId, 'bocha', resultText);
         };
 
