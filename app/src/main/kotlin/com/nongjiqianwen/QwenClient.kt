@@ -79,6 +79,7 @@ object QwenClient {
         userMessage: String,
         imageUrlList: List<String> = emptyList(),
         chatModel: String? = null,
+        toolInfo: String? = null,
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null,
         onInterrupted: (reason: String) -> Unit
@@ -111,7 +112,7 @@ object QwenClient {
                     var systemContent = systemAnchorText
                     val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
                     if (bSum.isNotBlank()) {
-                        systemContent = if (systemContent.isNotBlank()) "$systemContent\n\n[B层累计摘要]\n$bSum" else "[B层累计摘要]\n$bSum"
+                        systemContent = if (systemContent.isNotBlank()) "$systemContent\n\n[低参考性·B层累计摘要]\n$bSum" else "[低参考性·B层累计摘要]\n$bSum"
                     }
                     if (systemContent.isNotBlank()) {
                         val systemObj = JsonObject().apply {
@@ -140,13 +141,19 @@ object QwenClient {
                             }
                         }
                         
-                        // 2. 添加文本项（文字在后，必须带文字）
-                        if (userMessage.isNotBlank()) {
-                            val textItem = JsonObject().apply {
+                        // 2. 文本项：输入规则四层标记。当前优先处理的问题 + 极低参考性·工具信息（若有）
+                        val mainText = if (userMessage.isNotBlank()) "[当前优先处理的问题]\n$userMessage" else ""
+                        val toolText = toolInfo?.takeIf { it.isNotBlank() }?.trim()?.let { "[极低参考性·工具信息]\n$it" } ?: ""
+                        val textParts = listOfNotNull(
+                            mainText.takeIf { it.isNotBlank() },
+                            toolText.takeIf { it.isNotBlank() }
+                        )
+                        val combinedText = textParts.joinToString("\n\n")
+                        if (combinedText.isNotBlank()) {
+                            contentArray.add(JsonObject().apply {
                                 addProperty("type", "text")
-                                addProperty("text", userMessage)
-                            }
-                            contentArray.add(textItem)
+                                addProperty("text", combinedText)
+                            })
                         }
                         
                         add("content", contentArray)
@@ -157,10 +164,10 @@ object QwenClient {
                         val first = messagesArray.get(0).asJsonObject
                         if (first.get("role")?.asString == "system") {
                             var cur = first.get("content")?.asString ?: ""
-                            if (cur.contains("[B层累计摘要]")) {
-                                cur = cur.substringBefore("[B层累计摘要]").trimEnd()
+                            if (cur.contains("[低参考性·B层累计摘要]")) {
+                                cur = cur.substringBefore("[低参考性·B层累计摘要]").trimEnd()
                             }
-                            first.addProperty("content", "$cur\n\n[B层累计摘要]\n$bSum")
+                            first.addProperty("content", "$cur\n\n[低参考性·B层累计摘要]\n$bSum")
                         }
                     }
                     add("messages", messagesArray)
