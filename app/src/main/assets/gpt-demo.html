@@ -2640,10 +2640,10 @@
             delete terminatedStreamIds[streamId];
         };
 
-        // 统一渲染工具结果块：同 streamId + toolName 只保留一块，重复回调则覆盖更新
+        // 统一渲染工具结果块：同 streamId + toolName 只保留一块，重复回调则覆盖更新（定位与创建消息处一致：data-stream-id）
         function renderToolResult(streamId, toolName, text) {
             if (!streamId || toolName == null) return;
-            var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            var msg = messagesContainer.querySelector('.message.assistant[data-stream-id="' + streamId + '"]');
             if (!msg) return;
             var contentDiv = msg.querySelector('.message-content');
             if (!contentDiv) return;
