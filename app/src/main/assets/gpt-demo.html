@@ -2003,7 +2003,9 @@
         const terminatedStreamIds = {};   // 护栏：watchdog 触发后加入，onChunk/onComplete/onInterrupted 入口若已存在则直接 return
         const pendingDeduct = {};          // streamId -> imgUploadCount(0|1)，按次扣；onComplete 时扣后 delete，interrupted 只 delete 不扣
         const pendingRequest = {};         // streamId -> { text, imageUrls }，重试从此处取数不依赖 lastSent，连发不串单
-        const deducted = {};               // streamId -> true，同一 streamId 只扣一次，重复 onComplete 不重复扣
+        const deducted = {};               // streamId -> true，同一 streamId 只扣一次；24h 后清理（P2a）
+        const DEDUCTED_TTL_MS = 24 * 60 * 60 * 1000;
+        const PENDING_MAX_AGE_MS = 15 * 60 * 1000;  // P2b：pending 悬挂超 15 分钟自动清
         // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         // reason → 文案（ChatGPT 风格：短句、灰字、不露技术细节）
@@ -2443,7 +2445,7 @@
             applyMessageWindow();
 
             lastSent = { text: text, imageUrls: imageUrls.slice(), streamId: streamId };
-            pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice() };
+            pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), ts: Date.now() };
             pendingDeduct[streamId] = (imageUrls.length > 0 ? 1 : 0);
 
             // 发送到Android（带 streamId、模型；回调按 streamId 写对应气泡）
@@ -2503,6 +2505,18 @@
             }
         }
 
+        function cleanupStalePending() {
+            var now = Date.now();
+            Object.keys(pendingRequest).forEach(function(sid) {
+                var req = pendingRequest[sid];
+                if (req && req.ts != null && (now - req.ts) > PENDING_MAX_AGE_MS) {
+                    delete pendingRequest[sid];
+                    delete pendingDeduct[sid];
+                }
+            });
+        }
+        setInterval(cleanupStalePending, 5 * 60 * 1000);
+
         // 统一中断 UI：该条消息底部一行灰字 +「重试」按钮（ChatGPT 风格，不弹窗）
         function applyInterruptedUI(streamId, reason) {
             var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
@@ -2533,7 +2547,7 @@
                     msg.dataset.streamId = newStreamId;
                     msg.classList.remove('message-interrupted');
                     var urls = data.imageUrls && data.imageUrls.slice ? data.imageUrls.slice() : (data.imageUrls || []);
-                    pendingRequest[newStreamId] = { text: data.text, imageUrls: urls };
+                    pendingRequest[newStreamId] = { text: data.text, imageUrls: urls, ts: Date.now() };
                     pendingDeduct[newStreamId] = (urls.length > 0 ? 1 : 0);
                     lastSent = { text: data.text, imageUrls: urls, streamId: newStreamId };
                     isGenerating = true;
@@ -2625,7 +2639,7 @@
             delete pendingDeduct[streamId];
             incrementUsage(1, imgUploadCount);
             deducted[streamId] = true;
-            setTimeout(function() { delete deducted[streamId]; }, 2 * 60 * 1000);
+            setTimeout(function() { delete deducted[streamId]; }, DEDUCTED_TTL_MS);
             refreshQuotaUI();
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
