@@ -37,7 +37,8 @@ object QwenClient {
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-    private val model = "qwen3-vl-flash"
+    private val modelFlash = "qwen3-vl-flash"
+    private val modelPlus = "qwen3-vl-plus"
     private val handler = Handler(Looper.getMainLooper())
     private var isFirstRequest = true
     
@@ -46,8 +47,7 @@ object QwenClient {
             val keyLength = apiKey.length
             Log.d(TAG, "=== DashScope API 初始化 ===")
             Log.d(TAG, "BAILIAN_API_KEY 读取状态: ${if (keyLength > 0) "成功" else "失败"} (长度: $keyLength)")
-            Log.d(TAG, "当前使用的 model: $model")
-            Log.d(TAG, "API URL: $apiUrl")
+            Log.d(TAG, "API URL: $apiUrl (主对话 model 按专家/非专家路由)")
         }
     }
     
@@ -67,6 +67,9 @@ object QwenClient {
      * 返回：一次 onChunk(完整文本) + onComplete；错误时 onInterrupted(reason)。
      * stop/cancel 占位保留，当前不要求真正中断。
      */
+    /**
+     * @param chatModel 主对话模型：传 "plus" 为专家模式（qwen3-vl-plus），否则 qwen3-vl-flash。B 层摘要不由此控制。
+     */
     fun callApi(
         userId: String,
         sessionId: String,
@@ -75,10 +78,12 @@ object QwenClient {
         systemAnchorText: String,
         userMessage: String,
         imageUrlList: List<String> = emptyList(),
+        chatModel: String? = null,
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null,
         onInterrupted: (reason: String) -> Unit
     ) {
+        val model = if (chatModel == "plus") modelPlus else modelFlash
         val startMs = System.currentTimeMillis()
         if (BuildConfig.DEBUG) {
             Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 开始")
@@ -95,7 +100,7 @@ object QwenClient {
             try {
                 // 构建请求体 - 非流式，一次返回完整内容
                 val requestBody = JsonObject().apply {
-                    addProperty("model", model)
+                    addProperty("model", model)  // 专家=qwen3-vl-plus，其余=qwen3-vl-flash
                     addProperty("stream", false)
                     addProperty("temperature", ModelParams.TEMPERATURE)
                     addProperty("top_p", ModelParams.TOP_P)
@@ -337,7 +342,7 @@ object QwenClient {
                 })
             }
             val body = JsonObject().apply {
-                addProperty("model", model)
+                addProperty("model", modelFlash)  // B 层摘要固定 Flash，不随专家切换
                 addProperty("stream", false)
                 addProperty("temperature", ModelParams.TEMPERATURE)
                 addProperty("top_p", ModelParams.TOP_P)
