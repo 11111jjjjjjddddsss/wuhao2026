@@ -22,7 +22,7 @@ object BochaClient {
     private const val CONNECT_TIMEOUT_SEC = 10L
     private const val READ_TIMEOUT_SEC = 30L
     private const val CALL_TIMEOUT_SEC = 40L
-    private const val URL = "https://api.bochaai.com/v1/web-search"
+    private const val URL = "https://api.bocha.cn/v1/web-search"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, TimeUnit.SECONDS)
@@ -90,11 +90,12 @@ object BochaClient {
         }.start()
     }
 
-    /** 解析博查返回 JSON，输出固定文本块；不打印任何 key 或完整响应体 */
+    /** 解析博查返回 JSON（格式：{ code, data: { webPages: { value: [ WebPageValue ] } } }），输出固定文本块；不打印任何 key 或完整响应体 */
     private fun parseResult(bodyStr: String): String {
         return try {
             val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return emptyResult()
-            val webPages = root.getAsJsonObject("webPages") ?: return emptyResult()
+            val data = root.getAsJsonObject("data") ?: return emptyResult()
+            val webPages = data.getAsJsonObject("webPages") ?: return emptyResult()
             val value = webPages.getAsJsonArray("value") ?: return emptyResult()
             val sb = StringBuilder()
             sb.append("【联网搜索结果（Bocha）】\n")
