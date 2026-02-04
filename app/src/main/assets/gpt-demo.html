@@ -2439,16 +2439,12 @@
             scrollToBottom();
             applyMessageWindow();
 
-            // 保存用于重试
+            // 保存用于重试（扣减改为 onCompleteReceived 时执行，发送时不扣）
             lastSent = { text: text, imageUrls: imageUrls.slice(), streamId: streamId };
 
             // 发送到Android（带 streamId、模型；回调按 streamId 写对应气泡）
             sendToAndroid(text, imageUrls, streamId);
             startWatchdog(streamId);
-
-            // 今日已用 +1 对话 + N 次图片上传
-            incrementUsage(1, imgCount);
-            refreshQuotaUI();
 
             // 清空输入和图片预览
             textInput.value = '';
@@ -2606,11 +2602,15 @@
             lastFullBufferByStream[streamId] = chunkBufferByStream[streamId];
         };
 
-        // 收到完成通知后：取 buffer 全文，用打字机分片追加；buffer 为空则用 lastFullBuffer 降级直出；结束后清理 buffer；必须 clear Watchdog
+        // 收到完成通知后：仅在此处扣减 1 次对话 + 图片额度；再取 buffer 全文、打字机/直出、清理 buffer、clear Watchdog
         window.onCompleteReceived = function(streamId) {
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
             clearWatchdog(streamId);
+            // 仅在成功完成时扣减（中断/失败不扣，见 onStreamInterrupted）
+            var imgCount = (lastSent && lastSent.streamId === streamId && lastSent.imageUrls) ? lastSent.imageUrls.length : 0;
+            incrementUsage(1, imgCount);
+            refreshQuotaUI();
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
             if (!fullText) fullText = (lastFullBufferByStream[streamId] || '');
