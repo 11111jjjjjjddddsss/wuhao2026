@@ -20,6 +20,7 @@
             --stop-bg: #F4F4F4;
             --divider: #F2F2F2;
             --placeholder: #9B9B9B;
+            --tool-result-text: #6B6B6B;
             --input-radius: 22px;
             --btn-circle-size: 40px;
             --input-min-height: 56px;
@@ -690,6 +691,17 @@
             color: var(--text);
         }
 
+        /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
+        .tool-result {
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--tool-result-text);
+            margin-top: 8px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            padding-left: 12px;
+            border-left: 1px solid rgba(0, 0, 0, 0.08);
+        }
         .message-image {
             max-width: 100%;
             margin: 12px 0;
@@ -2628,18 +2640,30 @@
             delete terminatedStreamIds[streamId];
         };
 
-        // 博查联网搜索结果：作为工具结果块插入当前 assistant 气泡内容下方（灰字、等宽）
-        window.onSearchResult = function(streamId, resultText) {
-            if (!streamId || resultText == null) return;
+        // 统一渲染工具结果块：同 streamId + toolName 只保留一块，重复回调则覆盖更新
+        function renderToolResult(streamId, toolName, text) {
+            if (!streamId || toolName == null) return;
             var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
             if (!msg) return;
             var contentDiv = msg.querySelector('.message-content');
             if (!contentDiv) return;
-            var block = document.createElement('div');
-            block.className = 'search-result-block';
-            block.textContent = (resultText + '').replace(/\\n/g, '\n');
-            contentDiv.appendChild(block);
+            var normalized = (text != null ? (text + '') : '').replace(/\\n/g, '\n');
+            var existing = contentDiv.querySelector('.tool-result[data-tool="' + toolName + '"]');
+            if (existing) {
+                existing.textContent = normalized;
+            } else {
+                var block = document.createElement('div');
+                block.className = 'tool-result';
+                block.setAttribute('data-tool', toolName);
+                block.textContent = normalized;
+                contentDiv.appendChild(block);
+            }
             scrollToBottom();
+        }
+
+        // 博查联网搜索结果：ChatGPT 风格灰字块，不写触发逻辑
+        window.onSearchResult = function(streamId, resultText) {
+            renderToolResult(streamId, 'bocha', resultText);
         };
 
         // 安卓本地时间：供锚点/业务按需调用
