@@ -33,20 +33,20 @@ object BochaClient {
     private val handler = Handler(Looper.getMainLooper())
 
     /**
-     * 发起联网搜索；成功回调 resultText，失败回调 reason（timeout/network/server/error）。
+     * 发起联网搜索；成功回调 resultText，失败回调 reason（timeout/network/server/error/auth/quota/rate_limit/bad_request）。
      * @param query 搜索词
-     * @param freshness 可空，默认 oneWeek
-     * @param count 可空，默认 5
+     * @param freshness 可空，默认 noLimit（官方推荐，减少时间范围内无结果）
+     * @param count 可空，默认 5（展示层仍最多 5 条）
      */
     fun search(
         query: String,
-        freshness: String? = "oneWeek",
+        freshness: String? = "noLimit",
         count: Int = 5,
         onSuccess: (String) -> Unit,
         onFailure: (String) -> Unit
     ) {
         if (query.isBlank()) {
-            handler.post { onFailure("error") }
+            handler.post { onFailure("bad_request") }
             return
         }
         Thread {
@@ -54,9 +54,9 @@ object BochaClient {
             try {
                 val body = JsonObject().apply {
                     addProperty("query", query.trim())
-                    addProperty("freshness", freshness?.takeIf { it.isNotBlank() } ?: "oneWeek")
+                    addProperty("freshness", freshness?.takeIf { it.isNotBlank() } ?: "noLimit")
                     addProperty("summary", true)
-                    addProperty("count", count.coerceIn(1, 5))
+                    addProperty("count", count.coerceIn(1, 50))
                 }
                 val request = Request.Builder()
                     .url(URL)
@@ -71,6 +71,11 @@ object BochaClient {
                         return@Thread
                     }
                     val bodyStr = response.body?.string() ?: ""
+                    val bodyReason = parseBodyCode(bodyStr)
+                    if (bodyReason != null) {
+                        handler.post { onFailure(bodyReason) }
+                        return@Thread
+                    }
                     val resultText = parseResult(bodyStr)
                     handler.post { onSuccess(resultText) }
                 }
@@ -88,6 +93,31 @@ object BochaClient {
                 handler.post { onFailure(reason) }
             }
         }.start()
+    }
+
+    /** 官方异常码：HTTP 200 时 body 可能带 code!=200（文档中 code 可为数字或字符串）。返回非 null 表示业务失败，走 onFailure(reason)，不泄露响应体/密钥。 */
+    private fun parseBodyCode(bodyStr: String): String? {
+        return try {
+            val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return null
+            val c = root.get("code") ?: return null
+            if (!c.isJsonPrimitive) return null
+            val p = c.asJsonPrimitive
+            val code = try {
+                p.asInt
+            } catch (_: Exception) {
+                p.asString.toIntOrNull() ?: 200
+            }
+            when (code) {
+                200 -> null
+                401 -> "auth"      // Invalid API KEY
+                403 -> "quota"    // 余额不足
+                429 -> "rate_limit"
+                400 -> "bad_request"
+                else -> "server"  // 500 等
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /** 解析博查返回 JSON（格式：{ code, data: { webPages: { value: [ WebPageValue ] } } }），输出固定文本块；不打印任何 key 或完整响应体 */
