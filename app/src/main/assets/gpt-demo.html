@@ -2628,6 +2628,28 @@
             delete terminatedStreamIds[streamId];
         };
 
+        // 博查联网搜索结果：作为工具结果块插入当前 assistant 气泡内容下方（灰字、等宽）
+        window.onSearchResult = function(streamId, resultText) {
+            if (!streamId || resultText == null) return;
+            var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            if (!msg) return;
+            var contentDiv = msg.querySelector('.message-content');
+            if (!contentDiv) return;
+            var block = document.createElement('div');
+            block.className = 'search-result-block';
+            block.textContent = (resultText + '').replace(/\\n/g, '\n');
+            contentDiv.appendChild(block);
+            scrollToBottom();
+        };
+
+        // 安卓本地时间：供锚点/业务按需调用
+        window.getLocalDateTimeFromAndroid = function() {
+            if (typeof AndroidInterface !== 'undefined' && typeof AndroidInterface.getLocalDateTime === 'function') {
+                return AndroidInterface.getLocalDateTime();
+            }
+            return '';
+        };
+
         // 终态仅 badge/灰字 + 重试；开头 clear Watchdog、清理 buffer，再统一 applyInterruptedUI
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;

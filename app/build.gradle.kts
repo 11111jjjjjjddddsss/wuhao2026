@@ -14,11 +14,14 @@ android {
         
         // API_KEY：环境变量 BAILIAN_API_KEY > local.properties > gradle.properties；空/占位符则构建失败
         var apiKeyFromLocal = ""
+        var bochaKeyFromLocal = ""
         val localFile = rootProject.file("local.properties")
         if (localFile.exists()) {
             localFile.forEachLine { line ->
-                if (line.trimStart().startsWith("API_KEY=")) {
-                    apiKeyFromLocal = line.substringAfter("=").trim().trim('"')
+                val t = line.trimStart()
+                when {
+                    t.startsWith("API_KEY=") -> apiKeyFromLocal = line.substringAfter("=").trim().trim('"')
+                    t.startsWith("BOCHA_API_KEY=") -> bochaKeyFromLocal = line.substringAfter("=").trim().trim('"')
                 }
             }
         }
@@ -30,6 +33,8 @@ android {
             throw GradleException("API_KEY 未配置：请在 local.properties 中设置 API_KEY=your_dashscope_key 或设置环境变量 BAILIAN_API_KEY。禁止在 gradle.properties 中提交真实 key。")
         }
         buildConfigField("String", "API_KEY", "\"$apiKey\"")
+        val bochaKey = System.getenv("BOCHA_API_KEY")?.takeIf { it.isNotBlank() } ?: bochaKeyFromLocal.takeIf { it.isNotBlank() } ?: ""
+        buildConfigField("String", "BOCHA_API_KEY", "\"$bochaKey\"")
         // 图片上传：后端地址（空则不上传）。推荐 ECS 常驻服务 POST /upload -> 写入 OSS -> 返回 https URL；禁止在 APP 内写 OSS AK/SK
         val uploadBaseUrl = project.findProperty("UPLOAD_BASE_URL") as String? ?: ""
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")

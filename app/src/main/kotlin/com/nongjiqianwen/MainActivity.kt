@@ -158,6 +158,60 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
+         * 博查联网搜索；成功回调 onSearchResult(streamId, resultText)，失败回调 onStreamInterrupted(streamId, reason)
+         */
+        @JavascriptInterface
+        fun webSearch(streamId: String, query: String, freshness: String?, countStr: String?) {
+            val f = freshness?.takeIf { it.isNotBlank() } ?: "oneWeek"
+            val c = countStr?.toIntOrNull()?.coerceIn(1, 5) ?: 5
+            BochaClient.search(
+                query = query,
+                freshness = f,
+                count = c,
+                onSuccess = { resultText ->
+                    runOnUiThread {
+                        val escStreamId = escapeJs(streamId)
+                        val escResult = escapeJs(resultText).replace("\n", "\\n").replace("\r", "\\r")
+                        webView.evaluateJavascript("window.onSearchResult && window.onSearchResult('$escStreamId', '$escResult');", null)
+                    }
+                },
+                onFailure = { reason ->
+                    runOnUiThread {
+                        val escStreamId = escapeJs(streamId)
+                        val escReason = escapeJs(reason)
+                        webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$escStreamId', '$escReason');", null)
+                    }
+                }
+            )
+        }
+
+        /**
+         * 返回设备本地时间字符串：YYYY-MM-DD HH:mm（周X） 时区名
+         */
+        @JavascriptInterface
+        fun getLocalDateTime(): String {
+            return try {
+                val zone = java.time.ZoneId.of("Asia/Taipei")
+                val now = java.time.ZonedDateTime.now(zone)
+                val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[now.dayOfWeek.value % 7]
+                String.format("%04d-%02d-%02d %02d:%02d（周%s） %s",
+                    now.year, now.monthValue, now.dayOfMonth,
+                    now.hour, now.minute, week, zone.id)
+            } catch (_: Exception) {
+                try {
+                    val now = java.util.Calendar.getInstance()
+                    val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[now.get(java.util.Calendar.DAY_OF_WEEK) - 1]
+                    val zoneName = now.timeZone.id
+                    String.format("%04d-%02d-%02d %02d:%02d（周%s） %s",
+                        now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH) + 1, now.get(java.util.Calendar.DAY_OF_MONTH),
+                        now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE), week, zoneName)
+                } catch (_: Exception) {
+                    ""
+                }
+            }
+        }
+
+        /**
          * 重试单张图片上传（不传 base64，用缓存 bytes 重传；缓存缺失则回传 fail + 请重新选择该图片）
          * @param imageId 图片ID
          * @param requestId 本次尝试ID（回传前端用于去重）
