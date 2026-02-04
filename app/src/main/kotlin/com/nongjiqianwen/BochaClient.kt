@@ -77,7 +77,10 @@ object BochaClient {
                         return@Thread
                     }
                     val resultText = parseResult(bodyStr)
-                    handler.post { onSuccess(resultText) }
+                    when {
+                        resultText == null -> handler.post { onFailure("server") }
+                        else -> handler.post { onSuccess(resultText) }
+                    }
                 }
             } catch (e: SocketTimeoutException) {
                 reason = "timeout"
@@ -120,13 +123,14 @@ object BochaClient {
         }
     }
 
-    /** 解析博查返回 JSON（格式：{ code, data: { webPages: { value: [ WebPageValue ] } } }），输出固定文本块；不打印任何 key 或完整响应体 */
-    private fun parseResult(bodyStr: String): String {
+    /** 解析博查返回 JSON。返回 null=解析/结构异常走 server；""=无结果静默；非空=成功展示（最多 5 条）。不打印 key/响应体。 */
+    private fun parseResult(bodyStr: String): String? {
         return try {
-            val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return emptyResult()
-            val data = root.getAsJsonObject("data") ?: return emptyResult()
-            val webPages = data.getAsJsonObject("webPages") ?: return emptyResult()
-            val value = webPages.getAsJsonArray("value") ?: return emptyResult()
+            val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return null
+            val data = root.getAsJsonObject("data") ?: return null
+            val webPages = data.getAsJsonObject("webPages") ?: return null
+            val value = webPages.getAsJsonArray("value") ?: return null
+            if (value.size() == 0) return ""
             val sb = StringBuilder()
             sb.append("【联网搜索结果（Bocha）】\n")
             val limit = value.size().coerceAtMost(5)
@@ -141,9 +145,7 @@ object BochaClient {
             }
             sb.toString().trim()
         } catch (_: Exception) {
-            emptyResult()
+            null
         }
     }
-
-    private fun emptyResult(): String = "【联网搜索结果（Bocha）】\n（暂无结果）"
 }

@@ -1,5 +1,7 @@
 # 博查 Web Search 接入说明（联网搜索）
 
+**结论冻结**：成功才展示，失败一律静默（仅 network/timeout/rate_limit 可提示重试）。
+
 ## Endpoint
 
 - `https://api.bocha.cn/v1/web-search`（POST，JSON）
@@ -20,6 +22,12 @@
 | 其他 | server       | 服务繁忙，稍后重试。         |
 
 HTTP 层：超时 → timeout；断网/IO → network；非 2xx → server。
+
+## UI 策略（对齐 GPT）
+
+- **有结果**（value.length > 0）：对应 assistant 下灰字工具块，最多 5 条。
+- **无结果**（value 为空）：完全静默，不显示任何“暂无结果”等提示。
+- **仅允许提示**：network / timeout / rate_limit（可重试）；401/403/400/500/解析异常 → 对用户静默，仅日志。
 
 ## 4 条冒烟用例（验收必跑）
 

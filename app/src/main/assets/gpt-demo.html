@@ -2665,8 +2665,9 @@
             scrollToBottom();
         }
 
-        // 博查联网搜索结果：ChatGPT 风格灰字块，不写触发逻辑
+        // 博查联网搜索结果：仅在有结果时展示灰字块；空结果完全静默（对齐 GPT）
         window.onSearchResult = function(streamId, resultText) {
+            if (resultText == null || (typeof resultText === 'string' && resultText.trim() === '')) return;
             renderToolResult(streamId, 'bocha', resultText);
         };
 

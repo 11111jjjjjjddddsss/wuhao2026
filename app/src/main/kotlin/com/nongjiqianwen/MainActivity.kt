@@ -177,9 +177,14 @@ class MainActivity : AppCompatActivity() {
                 },
                 onFailure = { reason ->
                     runOnUiThread {
-                        val escStreamId = escapeJs(streamId)
-                        val escReason = escapeJs(reason)
-                        webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$escStreamId', '$escReason');", null)
+                        val showReason = reason == "network" || reason == "timeout" || reason == "rate_limit"
+                        if (showReason) {
+                            val escStreamId = escapeJs(streamId)
+                            val escReason = escapeJs(reason)
+                            webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$escStreamId', '$escReason');", null)
+                        } else {
+                            if (BuildConfig.DEBUG) android.util.Log.w("BochaSearch", "web-search silent failure: reason=$reason")
+                        }
                     }
                 }
             )
