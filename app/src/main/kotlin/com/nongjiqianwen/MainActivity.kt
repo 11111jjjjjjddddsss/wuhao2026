@@ -90,11 +90,11 @@ class MainActivity : AppCompatActivity() {
                         if (snapshot != null) {
                             runOnUiThread {
                                 ABLayerManager.loadSnapshot(snapshot)
-                                val list = snapshot.a_rounds.map { mapOf("user" to it.user, "assistant" to it.assistant) }
+                                val list = snapshot.a_rounds_for_ui.map { mapOf("user" to it.user, "assistant" to it.assistant) }
                                 val jsonStr = com.google.gson.Gson().toJson(list)
                                 val escaped = jsonStr.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
                                 webView.evaluateJavascript("if(window.setInitialHistory) window.setInitialHistory(JSON.parse(\"$escaped\"));", null)
-                                if (BuildConfig.DEBUG) Log.d("MainActivity", "snapshot loaded a_rounds=${snapshot.a_rounds.size} injected to WebView")
+                                if (BuildConfig.DEBUG) Log.d("MainActivity", "snapshot loaded a_rounds_full=${snapshot.a_rounds_full.size} injected for_ui=${snapshot.a_rounds_for_ui.size}")
                             }
                         }
                     }

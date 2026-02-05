@@ -78,8 +78,10 @@ object SessionApi {
                 val body = response.body?.string() ?: ""
                 try {
                     val json = gson.fromJson(body, SessionSnapshotJson::class.java)
-                    val rounds = (json.a_rounds ?: emptyList()).map { ARound(it.user ?: "", it.assistant ?: "") }
-                    onResult(SessionSnapshot(json.b_summary ?: "", rounds))
+                    val legacy = (json.a_rounds ?: emptyList()).map { ARound(it.user ?: "", it.assistant ?: "") }
+                    val full = (json.a_rounds_full ?: legacy).map { ARound(it.user ?: "", it.assistant ?: "") }
+                    val forUi = (json.a_rounds_for_ui ?: full).map { ARound(it.user ?: "", it.assistant ?: "") }
+                    onResult(SessionSnapshot(json.b_summary ?: "", full, forUi))
                 } catch (e: Exception) {
                     Log.e(TAG, "parse snapshot", e)
                     onResult(null)
@@ -151,7 +153,9 @@ object SessionApi {
 
     private data class SessionSnapshotJson(
         @SerializedName("b_summary") val b_summary: String?,
-        @SerializedName("a_rounds") val a_rounds: List<ARoundJson>?
+        @SerializedName("a_rounds_full") val a_rounds_full: List<ARoundJson>?,
+        @SerializedName("a_rounds_for_ui") val a_rounds_for_ui: List<ARoundJson>?,
+        @SerializedName("a_rounds") val a_rounds: List<ARoundJson>? = null
     )
     private data class ARoundJson(
         @SerializedName("user") val user: String?,

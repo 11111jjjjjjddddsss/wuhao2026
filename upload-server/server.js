@@ -153,49 +153,147 @@ app.post('/api/subscription/apply', (req, res) => {
   return res.status(200).json({ ok: true });
 });
 
-// ---------- 会话两条线：A/B 存后端，GET snapshot / POST append-a / POST update-b ----------
-const SESSION_STORE = {}; // key = `${user_id}:${session_id}` -> { b_summary: '', a_rounds: [] }
+// ---------- 会话两条线：A/B 落库（PolarDB/MySQL），禁止内存为真相；重启后数据不丢 ----------
 const A_ROUNDS_UI_MAX = 24;
+let dbPool = null;
+const dbConfig = {
+  host: process.env.DB_HOST || process.env.POLARDB_HOST,
+  user: process.env.DB_USER || process.env.POLARDB_USER,
+  password: process.env.DB_PASSWORD || process.env.POLARDB_PASSWORD,
+  database: process.env.DB_DATABASE || process.env.DB_NAME || process.env.POLARDB_DATABASE,
+  waitForConnections: true,
+  connectionLimit: 10,
+};
+if (dbConfig.host && dbConfig.user && dbConfig.database) {
+  const mysql = require('mysql2/promise');
+  dbPool = mysql.createPool(dbConfig);
+  dbPool.getConnection().then(() => {
+    console.log('[SESSION] DB connected, session_ab 落库生效');
+  }).catch((err) => {
+    console.error('[SESSION] DB connect failed', err.message);
+    dbPool = null;
+  });
+} else {
+  console.warn('[SESSION] DB_* / POLARDB_* 未配置，session 接口将返回 503');
+}
 
-function sessionKey(user_id, session_id) { return `${user_id}:${session_id}`; }
+function ensureSessionTable(conn) {
+  return conn.execute(
+    `CREATE TABLE IF NOT EXISTS session_ab (
+      user_id VARCHAR(128) NOT NULL,
+      session_id VARCHAR(128) NOT NULL,
+      b_summary TEXT NOT NULL DEFAULT '',
+      a_rounds_json LONGTEXT NOT NULL DEFAULT '[]',
+      updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+      PRIMARY KEY (user_id, session_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  ).catch(() => {});
+}
 
 app.get('/api/session/snapshot', (req, res) => {
-  const user_id = req.query.user_id || '';
-  const session_id = req.query.session_id || '';
-  const key = sessionKey(user_id, session_id);
-  const sess = SESSION_STORE[key] || { b_summary: '', a_rounds: [] };
-  const a_rounds = Array.isArray(sess.a_rounds) ? sess.a_rounds : [];
-  const last24 = a_rounds.slice(-A_ROUNDS_UI_MAX);
-  console.log('[SESSION] GET snapshot', user_id, session_id, 'b_len=' + (sess.b_summary || '').length, 'a_rounds=' + a_rounds.length, 'return_ui=' + last24.length);
-  return res.status(200).json({ b_summary: sess.b_summary || '', a_rounds: last24 });
+  if (!dbPool) {
+    return res.status(503).json({ error: 'session 未配置数据库，请设置 DB_HOST/DB_USER/DB_PASSWORD/DB_DATABASE' });
+  }
+  const user_id = (req.query.user_id || '').slice(0, 128);
+  const session_id = (req.query.session_id || '').slice(0, 128);
+  dbPool.getConnection()
+    .then(conn => {
+      return ensureSessionTable(conn)
+        .then(() => conn.execute('SELECT b_summary, a_rounds_json FROM session_ab WHERE user_id = ? AND session_id = ?', [user_id, session_id]))
+        .then(([rows]) => {
+          conn.release();
+          let b_summary = '';
+          let a_rounds = [];
+          if (Array.isArray(rows) && rows.length > 0) {
+            b_summary = rows[0].b_summary != null ? String(rows[0].b_summary) : '';
+            try {
+              const raw = rows[0].a_rounds_json;
+              a_rounds = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+            } catch (_) { a_rounds = []; }
+          }
+          if (!Array.isArray(a_rounds)) a_rounds = [];
+          const a_rounds_full = a_rounds;
+          const a_rounds_for_ui = a_rounds_full.slice(-A_ROUNDS_UI_MAX);
+          console.log('[SESSION] GET snapshot', user_id, session_id, 'b_len=' + b_summary.length, 'a_rounds_full=' + a_rounds_full.length, 'a_rounds_for_ui=' + a_rounds_for_ui.length);
+          return res.status(200).json({ b_summary, a_rounds_full, a_rounds_for_ui });
+        });
+    })
+    .catch(err => {
+      console.error('[SESSION] GET snapshot error', err);
+      res.status(500).json({ error: '数据库错误' });
+    });
 });
 
 app.post('/api/session/append-a', (req, res) => {
-  const { user_id, session_id, user_message, assistant_message } = req.body || {};
+  if (!dbPool) {
+    return res.status(503).json({ error: 'session 未配置数据库' });
+  }
+  const { user_id: uid, session_id: sid, user_message, assistant_message } = req.body || {};
+  const user_id = (uid || '').slice(0, 128);
+  const session_id = (sid || '').slice(0, 128);
   if (!user_id || !session_id) {
     return res.status(400).json({ error: '缺少 user_id 或 session_id' });
   }
-  const key = sessionKey(user_id, session_id);
-  if (!SESSION_STORE[key]) SESSION_STORE[key] = { b_summary: '', a_rounds: [] };
-  const sess = SESSION_STORE[key];
-  sess.a_rounds = sess.a_rounds || [];
-  sess.a_rounds.push({ user: user_message || '', assistant: assistant_message || '' });
-  console.log('[SESSION] POST append-a', user_id, session_id, 'a_rounds=' + sess.a_rounds.length);
-  return res.status(200).json({ ok: true, a_rounds_count: sess.a_rounds.length });
+  const round = { user: String(user_message || ''), assistant: String(assistant_message || '') };
+  dbPool.getConnection()
+    .then(conn => {
+      return ensureSessionTable(conn)
+        .then(() => conn.execute('SELECT a_rounds_json FROM session_ab WHERE user_id = ? AND session_id = ?', [user_id, session_id]))
+        .then(([rows]) => {
+          let a_rounds = [];
+          if (Array.isArray(rows) && rows.length > 0) {
+            try {
+              const raw = rows[0].a_rounds_json;
+              a_rounds = raw ? (typeof raw === 'string' ? JSON.parse(raw) : raw) : [];
+            } catch (_) {}
+          }
+          if (!Array.isArray(a_rounds)) a_rounds = [];
+          a_rounds.push(round);
+          const a_rounds_json = JSON.stringify(a_rounds);
+          return conn.execute(
+            'INSERT INTO session_ab (user_id, session_id, b_summary, a_rounds_json) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE a_rounds_json = ?, updated_at = CURRENT_TIMESTAMP(3)',
+            [user_id, session_id, '', a_rounds_json, a_rounds_json]
+          ).then(() => {
+            conn.release();
+            console.log('[SESSION] POST append-a', user_id, session_id, 'a_rounds=' + a_rounds.length);
+            return res.status(200).json({ ok: true, a_rounds_count: a_rounds.length });
+          });
+        });
+    })
+    .catch(err => {
+      console.error('[SESSION] POST append-a error', err);
+      res.status(500).json({ error: '数据库错误' });
+    });
 });
 
 app.post('/api/session/update-b', (req, res) => {
-  const { user_id, session_id, b_summary } = req.body || {};
+  if (!dbPool) {
+    return res.status(503).json({ error: 'session 未配置数据库' });
+  }
+  const { user_id: uid, session_id: sid, b_summary: bSum } = req.body || {};
+  const user_id = (uid || '').slice(0, 128);
+  const session_id = (sid || '').slice(0, 128);
   if (!user_id || !session_id) {
     return res.status(400).json({ error: '缺少 user_id 或 session_id' });
   }
-  const key = sessionKey(user_id, session_id);
-  if (!SESSION_STORE[key]) SESSION_STORE[key] = { b_summary: '', a_rounds: [] };
-  const sess = SESSION_STORE[key];
-  sess.b_summary = typeof b_summary === 'string' ? b_summary : '';
-  sess.a_rounds = [];
-  console.log('[SESSION] POST update-b', user_id, session_id, 'b_len=' + sess.b_summary.length, 'a_cleared');
-  return res.status(200).json({ ok: true });
+  const b_summary = typeof bSum === 'string' ? bSum : '';
+  dbPool.getConnection()
+    .then(conn => {
+      return ensureSessionTable(conn)
+        .then(() => conn.execute(
+          'INSERT INTO session_ab (user_id, session_id, b_summary, a_rounds_json) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE b_summary = ?, a_rounds_json = ?',
+          [user_id, session_id, b_summary, '[]', b_summary, '[]']
+        ))
+        .then(() => {
+          conn.release();
+          console.log('[SESSION] POST update-b', user_id, session_id, 'b_len=' + b_summary.length, 'a_cleared');
+          return res.status(200).json({ ok: true });
+        });
+    })
+    .catch(err => {
+      console.error('[SESSION] POST update-b error', err);
+      res.status(500).json({ error: '数据库错误' });
+    });
 });
 
 app.get('/health', (_, res) => res.status(200).send('ok'));

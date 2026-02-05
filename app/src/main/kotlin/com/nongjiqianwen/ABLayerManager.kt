@@ -34,16 +34,16 @@ object ABLayerManager {
         }
     }
 
-    /** 后端模式：拉取 snapshot 后调用，用于启动/换设备恢复；UI 仅用 a_rounds 展示最近 24 轮 */
+    /** 后端模式：拉取 snapshot 后调用。B 提取用 a_rounds_full（全量）；UI 注入只用 a_rounds_for_ui（最近 24） */
     fun loadSnapshot(snapshot: SessionSnapshot?) {
         if (snapshot == null) return
         synchronized(serverLock) {
             serverBSummary = snapshot.b_summary
             serverARoundsCache.clear()
-            serverARoundsCache.addAll(snapshot.a_rounds.map { it.user to it.assistant })
+            serverARoundsCache.addAll(snapshot.a_rounds_full.map { it.user to it.assistant })
         }
         if (BuildConfig.DEBUG) {
-            Log.d(TAG, "loadSnapshot b_len=${serverBSummary.length} a_rounds=${snapshot.a_rounds.size}")
+            Log.d(TAG, "loadSnapshot b_len=${serverBSummary.length} a_rounds_full=${snapshot.a_rounds_full.size} a_rounds_for_ui=${snapshot.a_rounds_for_ui.size}")
         }
     }
 
