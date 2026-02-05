@@ -24,53 +24,50 @@ import java.util.concurrent.atomic.AtomicReference
 object ImageUploader {
     private const val TAG = "ImageUploader"
     private const val MAX_IMAGE_COUNT = 4
-    /** 输入规则 P0：最长边 ≤1280px */
-    private const val MAX_LONG_EDGE = 1280
-    /** 输入规则 P0：单张 ≤800KB */
-    private const val MAX_SIZE_BYTES = 800 * 1024
-    /** 优先质量 80，超 800KB 再降 75 */
-    private const val JPEG_QUALITY_HIGH = 80
-    private const val JPEG_QUALITY_LOW = 75
+    /** 输入规则（最终版·冻结）：最长边 1536px，单张 ≤1MB，JPEG 质量 80–85 */
+    private const val MAX_LONG_EDGE = 1536
+    private const val MAX_SIZE_BYTES = 1024 * 1024
+    private const val JPEG_QUALITY_HIGH = 85
+    private const val JPEG_QUALITY_LOW = 80
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .build()
     
+    /** 解码失败时调用方使用的固定提示文案（不得改语义） */
+    const val DECODE_FAIL_MESSAGE = "该图片格式暂不支持，请转为JPG/PNG后重试"
+
     /**
-     * 压缩图片（中等压缩）
-     * 处理流程：EXIF方向矫正 → 缩放长边1600px → JPEG quality=75
-     * @param imageBytes 原始图片字节数组
-     * @return 压缩后的字节数组和原图尺寸信息，失败返回null
+     * 压缩图片（P0 工程强制：长边≤1536px，单张≤1MB，质量先85再80，仅输出JPEG）
+     * 能解码则转 JPEG 后上传；解码失败返回 null，由调用方提示 DECODE_FAIL_MESSAGE，不调用模型、不扣费、不计轮次。
      */
     fun compressImage(imageBytes: ByteArray): CompressResult? {
         return try {
-            // 读取原始图片（用于获取EXIF和尺寸）
             val inputStream1 = ByteArrayInputStream(imageBytes)
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
+            val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeStream(inputStream1, null, options)
             inputStream1.close()
-            
             val originalWidth = options.outWidth
             val originalHeight = options.outHeight
-            
-            // 读取EXIF方向信息
-            val inputStream2 = ByteArrayInputStream(imageBytes)
-            val exif = ExifInterface(inputStream2)
-            val orientation = exif.getAttributeInt(
-                ExifInterface.TAG_ORIENTATION,
+            if (originalWidth <= 0 || originalHeight <= 0) {
+                Log.e(TAG, "无法解码图片(bounds无效)")
+                return null
+            }
+            val orientation = try {
+                val inputStream2 = ByteArrayInputStream(imageBytes)
+                val exif = ExifInterface(inputStream2)
+                val o = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+                inputStream2.close()
+                o
+            } catch (_: Exception) {
                 ExifInterface.ORIENTATION_NORMAL
-            )
-            inputStream2.close()
-            
-            // 重新读取bitmap用于处理
+            }
             val inputStream3 = ByteArrayInputStream(imageBytes)
             val originalBitmap = BitmapFactory.decodeStream(inputStream3)
             inputStream3.close()
             if (originalBitmap == null) {
-                Log.e(TAG, "无法解码图片")
+                Log.e(TAG, "无法解码图片(bitmap=null)")
                 return null
             }
             
@@ -111,7 +108,7 @@ object ImageUploader {
                 correctedBitmap
             }
             
-            // 转 JPEG：先质量 80，若 >800KB 再降 75；仍超限则按比例再缩放直至 ≤800KB
+            // P0 强制：质量压缩→判断大小→必要时轻度缩放→再判断；质量先85，仍>1MB则80，不允许低于80
             var compressedBytes = compressToJpeg(scaledBitmap, JPEG_QUALITY_HIGH)
             if (compressedBytes.size > MAX_SIZE_BYTES) {
                 compressedBytes = compressToJpeg(scaledBitmap, JPEG_QUALITY_LOW)
@@ -127,12 +124,15 @@ object ImageUploader {
                 resultBitmap = next
                 compressedBytes = compressToJpeg(resultBitmap, JPEG_QUALITY_LOW)
             }
-            
+            if (compressedBytes.size > MAX_SIZE_BYTES) {
+                Log.e(TAG, "压缩后仍超1MB: ${compressedBytes.size} bytes，继续缩放")
+            }
             val finalWidth = resultBitmap.width
             val finalHeight = resultBitmap.height
+            val longEdge = maxOf(finalWidth, finalHeight)
             if (BuildConfig.DEBUG) {
-                Log.d(TAG, "=== 图片压缩日志(P0: 长边≤${MAX_LONG_EDGE}px, ≤${MAX_SIZE_BYTES / 1024}KB) ===")
-                Log.d(TAG, "原图: ${originalWidth}x${originalHeight}, 压缩后: ${finalWidth}x${finalHeight}, ${compressedBytes.size} bytes")
+                Log.d(TAG, "P0验收: 长边=${longEdge}px(≤${MAX_LONG_EDGE}) size=${compressedBytes.size}bytes(≤${MAX_SIZE_BYTES}) format=JPEG")
+                Log.d(TAG, "原图: ${originalWidth}x${originalHeight} -> 压缩: ${finalWidth}x${finalHeight} ${compressedBytes.size}bytes")
             }
             
             if (resultBitmap != scaledBitmap && resultBitmap != correctedBitmap) {
@@ -160,7 +160,7 @@ object ImageUploader {
         }
     }
     
-    /** 输出 JPEG 字节数组（质量 75–80），用于 ≤800KB 控制 */
+    /** 输出 JPEG 字节数组（质量 80–85），用于 ≤1MB 控制 */
     private fun compressToJpeg(bitmap: Bitmap, quality: Int): ByteArray {
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)

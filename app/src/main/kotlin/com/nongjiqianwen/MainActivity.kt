@@ -146,10 +146,9 @@ class MainActivity : AppCompatActivity() {
                         emptyList()
                     }
                     
-                    // 验证：最多4张
                     if (imageDataList.size > 4) {
                         runOnUiThread {
-                            webView.evaluateJavascript("alert('最多选择4张图片');", null)
+                            webView.evaluateJavascript("if(typeof showToast==='function')showToast('最多4张图片');else alert('最多4张图片');", null)
                         }
                         return@Thread
                     }
@@ -288,43 +287,36 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 // 单飞：不挡连点；连点 = 取消旧流再开新流，getReply 内 cancelCurrentRequest
 
-                // 验证：有图必须有文字
                 val hasText = text.isNotBlank()
                 val hasImages = imageUrlsJson != "null" && imageUrlsJson.isNotBlank()
-
                 if (hasImages && !hasText) {
-                    if (BuildConfig.DEBUG) {
-                        Log.d("MainActivity", "有图片但无文字，阻止发送")
-                    }
+                    if (BuildConfig.DEBUG) Log.d("MainActivity", "有图片但无文字，阻止发送")
+                    webView.evaluateJavascript("if(typeof showToast==='function')showToast('请补充文字描述后再发送');", null)
                     return@runOnUiThread
                 }
-
-                // 检查是否有输入
                 if (!hasText && !hasImages) return@runOnUiThread
 
-                // 解析图片URL列表
                 val imageUrlList = if (hasImages) {
                     try {
                         val jsonElement = com.google.gson.JsonParser().parse(imageUrlsJson)
-                        if (jsonElement.isJsonNull) {
-                            emptyList()
-                        } else {
+                        if (jsonElement.isJsonNull) emptyList()
+                        else {
                             val jsonArray = jsonElement.asJsonArray
-                            jsonArray.mapNotNull { element ->
-                                val url = element.asString
-                                if (url.isNotBlank() && url.startsWith("https://")) {
-                                    url
-                                } else {
-                                    null
-                                }
+                            jsonArray.mapNotNull { e ->
+                                val url = e.asString
+                                if (url.isNotBlank() && url.startsWith("https://")) url else null
                             }
                         }
                     } catch (e: Exception) {
                         Log.e("MainActivity", "解析图片URL列表失败", e)
                         emptyList()
                     }
-                } else {
-                    emptyList()
+                } else emptyList()
+
+                if (imageUrlList.size > 4) {
+                    if (BuildConfig.DEBUG) Log.d("MainActivity", "图片超过4张，阻止发送")
+                    webView.evaluateJavascript("if(typeof showToast==='function')showToast('最多4张图片');", null)
+                    return@runOnUiThread
                 }
 
                 val sid = streamId?.takeIf { it.isNotBlank() } ?: "stream_${System.currentTimeMillis()}"
@@ -365,16 +357,15 @@ class MainActivity : AppCompatActivity() {
                     // base64 解码后即用，不长期驻留
                     val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // 压缩：EXIF 矫正 → 长边≤1280px、≤800KB、质量80→75、统一JPEG（输入规则 P0）
+                    // 压缩：EXIF 矫正 → 长边≤1536px、≤1MB、JPEG 质量 80–85（输入规则最终版·冻结）
                     val compressResult = ImageUploader.compressImage(imageBytes)
                     
                     if (compressResult == null) {
-                        Log.e("MainActivity", "图片[$imageId] 解码/压缩失败（格式不支持或损坏）")
+                        Log.e("MainActivity", "图片[$imageId] 解码失败，不调用模型/不扣费/不计轮次")
                         runOnUiThread {
                             val escapedImageId = escapeJs(imageId)
                             val escapedRequestId = escapeJs(requestId)
-                            val errMsg = "该图片格式暂不支持，请转为JPG/PNG后重试"
-                            val escapedErr = escapeJs(errMsg)
+                            val escapedErr = escapeJs(ImageUploader.DECODE_FAIL_MESSAGE)
                             webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedErr');", null)
                         }
                         return@Thread
@@ -395,8 +386,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
-                        val errMsg = "该图片格式暂不支持，请转为JPG/PNG后重试"
-                        val escapedErr = escapeJs(errMsg)
+                        val escapedErr = escapeJs(ImageUploader.DECODE_FAIL_MESSAGE)
                         webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedErr');", null)
                     }
                 }

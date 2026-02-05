@@ -2588,41 +2588,39 @@
             });
         }
 
-        // 发送消息
+        // 发送消息（P0：数量≤4、有图必须有文字，双层拦截）
         function sendMessage() {
             if (btnSend.disabled) return;
             if (isGenerating) return;
 
             const text = textInput.value.trim();
             const hasImages = imageState.size > 0;
-            if (!text) return;
-
-            // 有图必须有文字（硬拦截，不弹窗；灰按钮点击已 toast 一次）
+            if (!text) {
+                if (hasImages) showToast('请补充文字描述后再发送');
+                return;
+            }
             if (hasImages && !text) return;
 
-            // 验证：所有图片必须成功上传
             if (hasImages) {
-                let allSuccess = true;
+                var allSuccess = true;
                 for (const [imageId, state] of imageState) {
                     if (state.status !== 'success') {
                         allSuccess = false;
                         break;
                     }
                 }
-                if (!allSuccess) {
-                    return;
-                }
+                if (!allSuccess) return;
             }
 
-            // URL 列表严格来自 success 状态，顺序与用户选择顺序一致（Map 插入序）
             const imageUrls = [];
             for (const [imageId, state] of imageState) {
-                if (state.status === 'success' && state.url) {
-                    imageUrls.push(state.url);
-                }
+                if (state.status === 'success' && state.url) imageUrls.push(state.url);
+            }
+            if (imageUrls.length > 4) {
+                showToast('最多4张图片');
+                return;
             }
 
-            // 额度硬拦截：无剩余直接 return，不弹会员、不 toast（toast 由点击灰按钮时提示一次）
             var imgCount = imageUrls.length;
             var quotaCheck = checkQuotaBeforeSend(1, imgCount);
             if (!quotaCheck.allowed) return;
