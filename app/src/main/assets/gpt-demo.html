@@ -1857,9 +1857,12 @@
             }
         }
         function getCurrentTier() {
-            if (USE_BACKEND_ENTITLEMENT && window._cachedEntitlement) {
-                var t = window._cachedEntitlement.effective_tier;
-                return tier_config[t] ? t : 'free';
+            if (USE_BACKEND_ENTITLEMENT) {
+                if (window._cachedEntitlement) {
+                    var t = window._cachedEntitlement.effective_tier;
+                    return tier_config[t] ? t : 'free';
+                }
+                return 'free'; // 后端不可用时不回退本地，不污染会员状态，避免两套真相打架
             }
             migrateLegacyToSubscriptions();
             var list = getSubscriptions();
@@ -1871,9 +1874,12 @@
             return tier_config[ent.effective_tier] ? ent.effective_tier : 'free';
         }
         function getMembership() {
-            if (USE_BACKEND_ENTITLEMENT && window._cachedEntitlement) {
-                var e = window._cachedEntitlement;
-                return { tier: e.effective_tier || 'free', exp: e.effective_end_at || 0, paused: e.paused_list || [] };
+            if (USE_BACKEND_ENTITLEMENT) {
+                if (window._cachedEntitlement) {
+                    var e = window._cachedEntitlement;
+                    return { tier: e.effective_tier || 'free', exp: e.effective_end_at || 0, paused: e.paused_list || [] };
+                }
+                return { tier: 'free', exp: 0, paused: [] }; // 后端不可用时不回退本地
             }
             migrateLegacyToSubscriptions();
             var list = getSubscriptions();

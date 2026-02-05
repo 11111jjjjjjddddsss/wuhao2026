@@ -87,14 +87,17 @@ class MainActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 if (BuildConfig.USE_BACKEND_AB && (BuildConfig.UPLOAD_BASE_URL?.trim() ?: "").isNotEmpty()) {
                     SessionApi.getSnapshot(IdManager.getInstallId(), IdManager.getSessionId()) { snapshot ->
-                        if (snapshot != null) {
-                            runOnUiThread {
+                        runOnUiThread {
+                            if (snapshot != null) {
                                 ABLayerManager.loadSnapshot(snapshot)
                                 val list = snapshot.a_rounds_for_ui.map { mapOf("user" to it.user, "assistant" to it.assistant) }
                                 val jsonStr = com.google.gson.Gson().toJson(list)
                                 val escaped = jsonStr.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
                                 webView.evaluateJavascript("if(window.setInitialHistory) window.setInitialHistory(JSON.parse(\"$escaped\"));", null)
                                 if (BuildConfig.DEBUG) Log.d("MainActivity", "snapshot loaded a_rounds_full=${snapshot.a_rounds_full.size} injected for_ui=${snapshot.a_rounds_for_ui.size}")
+                            } else {
+                                if (BuildConfig.DEBUG) Log.w("MainActivity", "GET snapshot 失败(503/timeout/网络)，不回退本地、不注入；降级策略：仅本次不展示历史")
+                                webView.evaluateJavascript("if(typeof showToast==='function')showToast('会话同步失败，请稍后重试');", null)
                             }
                         }
                     }

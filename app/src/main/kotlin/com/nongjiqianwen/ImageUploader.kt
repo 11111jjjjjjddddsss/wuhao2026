@@ -38,6 +38,10 @@ object ImageUploader {
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
     const val DECODE_FAIL_MESSAGE = "该图片格式暂不支持，请转为JPG/PNG后重试"
 
+    /** 体积压缩循环硬退出：防止死循环/卡死 */
+    private const val MAX_ITERATIONS = 25
+    private const val MIN_EDGE_PX = 48
+
     /**
      * 压缩图片（P0 工程强制：长边≤1536px，单张≤1MB，质量先85再80，仅输出JPEG）
      * 能解码则转 JPEG 后上传；解码失败返回 null，由调用方提示 DECODE_FAIL_MESSAGE，不调用模型、不扣费、不计轮次。
@@ -110,28 +114,38 @@ object ImageUploader {
             
             // P0 强制：质量压缩→判断大小→必要时轻度缩放→再判断；质量先85，仍>1MB则80，不允许低于80
             var compressedBytes = compressToJpeg(scaledBitmap, JPEG_QUALITY_HIGH)
+            var usedQuality = JPEG_QUALITY_HIGH
             if (compressedBytes.size > MAX_SIZE_BYTES) {
                 compressedBytes = compressToJpeg(scaledBitmap, JPEG_QUALITY_LOW)
+                usedQuality = JPEG_QUALITY_LOW
             }
             var resultBitmap = scaledBitmap
             var scaleFactor = 1.0f
-            while (compressedBytes.size > MAX_SIZE_BYTES && scaleFactor > 0.25f) {
+            var iterations = 0
+            while (compressedBytes.size > MAX_SIZE_BYTES && iterations < MAX_ITERATIONS) {
+                val minEdge = minOf(resultBitmap.width, resultBitmap.height)
+                if (minEdge < MIN_EDGE_PX) {
+                    Log.w(TAG, "体积循环硬退出: 最短边=${minEdge}px < ${MIN_EDGE_PX}")
+                    break
+                }
+                iterations++
                 scaleFactor *= 0.85f
-                val w = (resultBitmap.width * scaleFactor).toInt().coerceAtLeast(1)
-                val h = (resultBitmap.height * scaleFactor).toInt().coerceAtLeast(1)
+                val w = (resultBitmap.width * scaleFactor).toInt().coerceAtLeast(MIN_EDGE_PX).coerceAtMost(resultBitmap.width)
+                val h = (resultBitmap.height * scaleFactor).toInt().coerceAtLeast(MIN_EDGE_PX).coerceAtMost(resultBitmap.height)
                 val next = Bitmap.createScaledBitmap(resultBitmap, w, h, true)
                 if (resultBitmap != scaledBitmap && resultBitmap != correctedBitmap) resultBitmap.recycle()
                 resultBitmap = next
                 compressedBytes = compressToJpeg(resultBitmap, JPEG_QUALITY_LOW)
+                usedQuality = JPEG_QUALITY_LOW
             }
             if (compressedBytes.size > MAX_SIZE_BYTES) {
-                Log.e(TAG, "压缩后仍超1MB: ${compressedBytes.size} bytes，继续缩放")
+                Log.e(TAG, "压缩后仍超1MB: ${compressedBytes.size} bytes iterations=$iterations")
             }
             val finalWidth = resultBitmap.width
             val finalHeight = resultBitmap.height
             val longEdge = maxOf(finalWidth, finalHeight)
             if (BuildConfig.DEBUG) {
-                Log.d(TAG, "P0验收: 长边=${longEdge}px(≤${MAX_LONG_EDGE}) size=${compressedBytes.size}bytes(≤${MAX_SIZE_BYTES}) format=JPEG")
+                Log.d(TAG, "P0验收: 长边=${longEdge}px(≤${MAX_LONG_EDGE}) size=${compressedBytes.size}bytes(≤${MAX_SIZE_BYTES}) format=JPEG quality=${usedQuality}")
                 Log.d(TAG, "原图: ${originalWidth}x${originalHeight} -> 压缩: ${finalWidth}x${finalHeight} ${compressedBytes.size}bytes")
             }
             

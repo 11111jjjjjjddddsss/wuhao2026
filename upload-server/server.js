@@ -81,6 +81,9 @@ function computeEntitlement(list, now) {
         best.resume_at = now;
         best.end_at = now + (best.remaining_seconds || 0) * 1000;
         best.remaining_seconds = 0;
+        if (typeof console !== 'undefined' && console.log) {
+          console.log('[ENT] expiry_thaw', best.tier, 'paused->active', 'remaining_seconds->end_at');
+        }
       }
     }
   }
@@ -128,6 +131,7 @@ app.post('/api/subscription/apply', (req, res) => {
   }
   const list = subscriptionsByUser[user_id] || [];
   if (list.some(s => s.order_id === order_id)) {
+    console.log('[ENT] apply idempotent', user_id, order_id, tier);
     return res.status(200).json({ ok: true, idempotent: true });
   }
   const now = Date.now();
@@ -136,6 +140,7 @@ app.post('/api/subscription/apply', (req, res) => {
   const effectiveLevel = getTierLevel(ent.effective_tier);
   const reqLevel = getTierLevel(tier);
   if (reqLevel < effectiveLevel) {
+    console.log('[ENT] apply no_downgrade', user_id, order_id, tier, 'effective=' + ent.effective_tier);
     return res.status(400).json({ error: 'no_downgrade' });
   }
   const days = Math.max(1, parseInt(duration_days, 10) || 30);
@@ -143,13 +148,15 @@ app.post('/api/subscription/apply', (req, res) => {
   if (reqLevel === effectiveLevel && listCopy.some(s => s.status === 'active' && s.tier === tier && s.end_at > now)) {
     const sub = listCopy.find(s => s.status === 'active' && s.tier === tier && s.end_at > now);
     sub.end_at += days * 86400000;
+    console.log('[ENT] apply same_tier_renew', user_id, order_id, tier, 'end_at_extended');
   } else {
     listCopy.push({ user_id, tier, start_at: now, end_at, status: 'active', order_id, created_at: now });
+    console.log('[ENT] apply upgrade_freeze', user_id, order_id, tier, 'new_sub lower_tiers_paused');
   }
   const list2 = JSON.parse(JSON.stringify(listCopy));
   const entAfter = computeEntitlement(list2, now);
   subscriptionsByUser[user_id] = list2;
-  console.log('[ENT] apply', user_id, order_id, tier, '->', JSON.stringify(entAfter));
+  console.log('[ENT] apply result', user_id, order_id, tier, '->', JSON.stringify(entAfter));
   return res.status(200).json({ ok: true });
 });
 
