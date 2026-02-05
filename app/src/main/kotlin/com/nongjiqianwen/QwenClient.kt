@@ -364,12 +364,15 @@ object QwenClient {
             } else {
                 "[对话]\n$dialogueText"
             }
-            // 锚点收敛：仅 SystemAnchor.ensureSystemRole 可写 role=system；此处将 B 层指令并入 user 消息，不再手写 system
-            val fullUserContent = if (systemPrompt.isNotBlank()) "[B层摘要指令]\n$systemPrompt\n\n$userContent" else userContent
+            // B 层提取必须保留 system role：system = b_extraction_prompt.txt；锚点剔旧仅作用于主对话，不约束此处
             val messagesArray = com.google.gson.JsonArray().apply {
                 add(JsonObject().apply {
+                    addProperty("role", "system")
+                    addProperty("content", systemPrompt)
+                })
+                add(JsonObject().apply {
                     addProperty("role", "user")
-                    addProperty("content", fullUserContent)
+                    addProperty("content", userContent)
                 })
             }
             val body = JsonObject().apply {
