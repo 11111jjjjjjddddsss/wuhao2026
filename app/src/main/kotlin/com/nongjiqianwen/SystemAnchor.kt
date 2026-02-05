@@ -112,7 +112,7 @@ object SystemAnchor {
                 when {
                     content == null || content.isEmpty() -> reason = "empty"
                     content.length < MIN_VALID_LENGTH && content != fallbackTrim -> reason = "too_short"
-                    else -> { /* valid：含 fallback 不因过短再次触发兜底 */ }
+                    else -> { /* valid：已是 fallback 时不再因 too_short 触发兜底，防循环 */ }
                 }
             }
         }

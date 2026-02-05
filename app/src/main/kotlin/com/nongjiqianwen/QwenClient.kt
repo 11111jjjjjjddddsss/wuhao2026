@@ -313,11 +313,19 @@ object QwenClient {
         }.start()
     }
     
-    /** 输入规则四层：在 system 基座上按顺序拼接 A（中等参考性）、B（低参考性） */
+    /** 输入规则四层：在 system 基座上按顺序拼接 A（中等参考性）、B（低参考性）。B 层追加前去重，防膨胀。 */
     private fun buildSystemContentWithLayers(base: String, aText: String, bSum: String): String {
         var s = base.trimEnd()
         if (aText.isNotBlank()) s = if (s.isNotBlank()) "$s\n\n$aText" else aText
-        if (bSum.isNotBlank()) s = if (s.isNotBlank()) "$s\n\n[低参考性·B层累计摘要]\n$bSum" else "[低参考性·B层累计摘要]\n$bSum"
+        if (bSum.isNotBlank()) {
+            val marker = "[低参考性·B层累计摘要]"
+            if (s.contains(marker)) {
+                val idx = s.indexOf(marker)
+                val afterBlock = s.indexOf("\n\n[", idx + marker.length).let { if (it > 0) it else s.length }
+                s = (s.substring(0, idx) + s.substring(afterBlock)).trimEnd()
+            }
+            s = if (s.isNotBlank()) "$s\n\n$marker\n$bSum" else "$marker\n$bSum"
+        }
         return s
     }
 
