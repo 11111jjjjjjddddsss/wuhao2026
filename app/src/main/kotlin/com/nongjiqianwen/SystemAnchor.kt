@@ -5,23 +5,15 @@ import android.util.Log
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import java.io.InputStreamReader
-import java.util.concurrent.atomic.AtomicLong
 
 /**
- * 系统锚点兜底规则（最终完整版·冻结）：见 docs/系统锚点兜底规则_最终完整版_冻结.md
- *
- * 总原则：system 只允许 1 条、只允许覆盖、不允许拼接；注入失败先用完整锚点，不可用才降级短锚点；永不累加、永不膨胀。
- *
- * 关键禁止项（写进代码）：
- * - 禁止任何 oldSystem + newText 的字符串拼接
- * - 禁止每次请求 append 新 system
- * - 禁止 system 条数 >1
- * - 禁止在锚点兜底逻辑中处理 A/B/联网内容；锚点兜底只负责 system_anchor 本体，不参与上下文拼接
+ * 主对话 system 锚点兜底（三段式·宽松·必须成功）：见 P0 口令。
+ * 总原则：system 只 1 条、index 0、覆盖式；完整锚点先试两次，不行才短锚点；判断从宽，只求 system 必定存在。
+ * 禁止：oldSystem+anchor 拼接、append system、system>1、ensureSystemRole 后再覆盖、用过短/阈值否定锚点（非空即有效）。
  */
 object SystemAnchor {
     private const val TAG = "SystemAnchor"
     private const val ASSET_PATH = "system_anchor.txt"
-    private const val MIN_VALID_LENGTH = 200
     private const val WARN_THROTTLE_MS = 60_000L
 
     @Volatile
@@ -34,7 +26,7 @@ object SystemAnchor {
     private var lastWarnReason: String? = null
     private var lastWarnTimeMs: Long = 0L
 
-    /** 兜底短锚点：完整锚点不可用时使用；长度须 >= MIN_VALID_LENGTH(200)，避免被误判 too_short */
+    /** 兜底短锚点：Step1/Step2 都失败时使用，一字不改 */
     private const val FALLBACK_ANCHOR = """【系统兜底短锚点】
 你是"农技千问"，资深农业技术顾问。仅提供农业技术建议与可行方案，不替用户做最终决策。
 当前轮输入优先；历史仅用于语义承接。输出控制在约800字以内；用自然段与要点列表表达；禁止表情符号。
@@ -60,9 +52,6 @@ object SystemAnchor {
                 Log.e(TAG, "加载 system_anchor.txt 失败", e)
                 cachedText = ""
             }
-            if (FALLBACK_ANCHOR.length < MIN_VALID_LENGTH) {
-                Log.w(TAG, "FALLBACK_ANCHOR 长度不足 $MIN_VALID_LENGTH，可能被误判为 too_short")
-            }
         }
     }
 
@@ -72,34 +61,25 @@ object SystemAnchor {
     /** 短锚点，仅当完整锚点不可用时使用 */
     fun getFallbackAnchor(): String = FALLBACK_ANCHOR
 
-    /**
-     * Slow path：检测到注入失败时重读 assets，尝试恢复完整锚点。
-     * @return true 表示读取并校验通过（trim 非空且长度≥MIN_VALID_LENGTH）
-     */
-    fun reloadFromAssets(): Boolean {
-        val ctx = appContext ?: return false
-        synchronized(lock) {
-            try {
-                ctx.assets.open(ASSET_PATH).use { input ->
-                    val raw = InputStreamReader(input, Charsets.UTF_8).readText().trim()
-                    if (raw.length >= MIN_VALID_LENGTH) {
-                        cachedText = raw
-                        return true
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "reloadFromAssets 失败", e)
-            }
-            return false
+    /** 一次从 assets 读取完整锚点，仅判断 trim 非空；失败返回 null */
+    private fun readFromAssetsOnce(): String? {
+        val ctx = appContext ?: return null
+        return try {
+            ctx.assets.open(ASSET_PATH).use { input ->
+                InputStreamReader(input, Charsets.UTF_8).readText().trim()
+            }.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            Log.e(TAG, "readFromAssetsOnce 失败", e)
+            null
         }
     }
 
     /**
-     * 确保 messages 中恰好有一条 system 且位于 index 0，内容有效（覆盖式，不累加）。
-     * 注入失败时：Level-1 重读完整锚点并覆盖；Level-1 不可用时 Level-2 使用短锚点。
+     * 三段式兜底（宽松·必须成功）：一次请求只走一次。
+     * 有效 = system 仅 1 条、在 index 0、content trim 非空（无长度阈值）。
+     * Step1 缓存完整锚点 → Step2 再次读 assets → Step3 FALLBACK_ANCHOR；禁止循环。
      */
     fun ensureSystemRole(messagesArray: com.google.gson.JsonArray) {
-        var reason = "ok"
         val systemIndices = mutableListOf<Int>()
         for (i in 0 until messagesArray.size()) {
             val el = messagesArray.get(i)
@@ -107,39 +87,41 @@ object SystemAnchor {
                 systemIndices.add(i)
             }
         }
-        when {
-            systemIndices.isEmpty() -> reason = "missing_system"
-            systemIndices.size > 1 -> reason = "multi_system"
-            systemIndices[0] != 0 -> reason = "not_at_zero"
-            else -> {
-                val first = messagesArray.get(systemIndices[0]).asJsonObject
-                val content = first.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim()
-                val fallbackTrim = getFallbackAnchor().trim()
-                when {
-                    content == null || content.isEmpty() -> reason = "empty"
-                    content.length < MIN_VALID_LENGTH && content != fallbackTrim -> reason = "too_short"
-                    else -> { /* valid：已是 fallback 时不再因 too_short 触发兜底，防循环 */ }
-                }
-            }
+        val valid = systemIndices.size == 1 && systemIndices[0] == 0 && run {
+            val first = messagesArray.get(systemIndices[0]).asJsonObject
+            val content = first.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim()
+            !content.isNullOrEmpty()
         }
-        if (reason == "ok") return
+        if (valid) return
 
-        var contentToUse: String? = null
-        var strategy = "L2_fallback"
-
-        if (reloadFromAssets()) {
-            val full = getText()
-            if (full.isNotBlank() && full.length >= MIN_VALID_LENGTH) {
-                contentToUse = full
-                strategy = "L1_full"
-            }
-        }
-        if (contentToUse == null) {
-            contentToUse = getFallbackAnchor()
+        val reason = when {
+            systemIndices.isEmpty() -> "missing_system"
+            systemIndices.size > 1 -> "multi_system"
+            systemIndices[0] != 0 -> "not_at_zero"
+            else -> "empty"
         }
 
-        applySystemFix(messagesArray, contentToUse!!)
-        logWarnThrottled(reason, strategy)
+        // Step 1：第一次尝试【完整锚点】缓存
+        val step1 = getText().trim()
+        if (step1.isNotEmpty()) {
+            applySystemFix(messagesArray, step1)
+            logWarnThrottled(reason, "L1_cached")
+            return
+        }
+
+        // Step 2：第二次尝试【再次读取完整锚点】
+        val step2 = readFromAssetsOnce()
+        if (step2 != null && step2.isNotEmpty()) {
+            synchronized(lock) { cachedText = step2 }
+            applySystemFix(messagesArray, step2)
+            logWarnThrottled(reason, "L2_reread")
+            return
+        }
+
+        // Step 3：最终兜底【短锚点 FALLBACK_ANCHOR】
+        val step3 = getFallbackAnchor()
+        applySystemFix(messagesArray, step3)
+        logWarnThrottled(reason, "L3_fallback")
     }
 
     private fun applySystemFix(messagesArray: com.google.gson.JsonArray, content: String) {
