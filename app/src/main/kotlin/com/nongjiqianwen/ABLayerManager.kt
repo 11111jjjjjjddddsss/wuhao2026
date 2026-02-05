@@ -8,6 +8,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * A/B 层状态机：A 层累计完整轮次，达 24 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
  * 禁止：B 未写入却清空 A；B 已写入却未清空 A。
  * B 摘要长度硬门槛：trim 后 > 600 视为提取失败（不写 B、不注入、不清空 A）；≤ 600 才写入并清空 A。
+ *
+ * 两条线分离：A/B 数据只来自本地写入（onComplete/updateB）或后端 GET session snapshot 恢复；
+ * UI 展示层裁剪（如只渲染最近 30 轮）不得用于回写或推导 A/B，换设备/重装后以后端拉取为准。
  */
 object ABLayerManager {
     private const val TAG = "ABLayerManager"

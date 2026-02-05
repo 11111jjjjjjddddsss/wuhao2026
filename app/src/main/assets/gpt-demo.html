@@ -2129,6 +2129,7 @@
         let voicePendingTimeout = null;
 
         // 长聊不卡顿：窗口化 + 前端假流式（打字机）
+        // 【两条线分离】RENDER_WINDOW 为纯展示裁剪，不参与 A/B 推导；A/B 只来自后端拉取或 onComplete/updateB 写入
         const RENDER_WINDOW = 80;      // 仅渲染最近 N 条
         const LOAD_MORE_BATCH = 20;    // 每次「加载更多」展开条数
         const TYPEWRITER_MS = 50;     // 打字机每片间隔（ms），避免 DOM 频繁重排
@@ -2970,6 +2971,7 @@
             messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
         }
 
+        // 纯展示裁剪：删除超出 MAX_MESSAGES 的 DOM，不得用裁剪结果更新或推导 A/B
         function hardTrimMessages() {
             if (!messagesContainer) return;
             var nodes = Array.from(messagesContainer.querySelectorAll('.message'));
