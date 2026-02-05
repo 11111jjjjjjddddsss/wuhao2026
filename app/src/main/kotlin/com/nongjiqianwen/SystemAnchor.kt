@@ -66,8 +66,8 @@ object SystemAnchor {
         }
     }
 
-    /** 供 QwenClient 每次请求注入；未 init 或加载失败时返回空字符串 */
-    fun getText(): String = cachedText
+    /** 仅 ensureSystemRole 内部使用；禁止外部调用，锚点注入唯一入口为 ensureSystemRole */
+    private fun getText(): String = cachedText
 
     /** 短锚点，仅当完整锚点不可用时使用 */
     fun getFallbackAnchor(): String = FALLBACK_ANCHOR

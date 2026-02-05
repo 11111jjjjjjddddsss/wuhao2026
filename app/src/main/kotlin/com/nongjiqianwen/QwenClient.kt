@@ -69,13 +69,13 @@ object QwenClient {
      */
     /**
      * @param chatModel 主对话模型：传 "plus" 为专家模式（qwen3-vl-plus），否则 qwen3-vl-flash。B 层摘要不由此控制。
+     * 锚点注入：仅在此方法内通过 SystemAnchor.ensureSystemRole(messagesArray) 统一注入，不接收外部锚点参数。
      */
     fun callApi(
         userId: String,
         sessionId: String,
         requestId: String,
         streamId: String,
-        systemAnchorText: String,
         userMessage: String,
         imageUrlList: List<String> = emptyList(),
         chatModel: String? = null,
@@ -109,22 +109,13 @@ object QwenClient {
                     addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                     addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                     val messagesArray = com.google.gson.JsonArray()
-                    var systemContent = systemAnchorText
                     val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
-                    if (aText.isNotBlank()) {
-                        systemContent = if (systemContent.isNotBlank()) "$systemContent\n\n$aText" else aText
-                    }
                     val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
-                    if (bSum.isNotBlank()) {
-                        systemContent = if (systemContent.isNotBlank()) "$systemContent\n\n[低参考性·B层累计摘要]\n$bSum" else "[低参考性·B层累计摘要]\n$bSum"
-                    }
-                    if (systemContent.isNotBlank()) {
-                        val systemObj = JsonObject().apply {
-                            addProperty("role", "system")
-                            addProperty("content", systemContent)
-                        }
-                        messagesArray.add(systemObj)
-                    }
+                    // 锚点唯一注入：先占位 system，由 ensureSystemRole 统一覆盖后再拼 A/B 层
+                    messagesArray.add(JsonObject().apply {
+                        addProperty("role", "system")
+                        addProperty("content", "")
+                    })
                     val userMessageObj = JsonObject().apply {
                         addProperty("role", "user")
                         
