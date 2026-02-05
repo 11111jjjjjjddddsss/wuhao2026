@@ -8,9 +8,15 @@ import java.io.InputStreamReader
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * 系统锚点：从 assets/system_anchor.txt 加载，供每次请求注入为 system role。
- * 兜底规则：注入失败时优先重读完整锚点（Level-1），不可用时降级短锚点（Level-2）；
- * system 全局只保留 1 条，内容只覆盖不拼接，严禁累加膨胀。
+ * 系统锚点兜底规则（最终完整版·冻结）：见 docs/系统锚点兜底规则_最终完整版_冻结.md
+ *
+ * 总原则：system 只允许 1 条、只允许覆盖、不允许拼接；注入失败先用完整锚点，不可用才降级短锚点；永不累加、永不膨胀。
+ *
+ * 关键禁止项（写进代码）：
+ * - 禁止任何 oldSystem + newText 的字符串拼接
+ * - 禁止每次请求 append 新 system
+ * - 禁止 system 条数 >1
+ * - 禁止在锚点兜底逻辑中处理 A/B/联网内容；锚点兜底只负责 system_anchor 本体，不参与上下文拼接
  */
 object SystemAnchor {
     private const val TAG = "SystemAnchor"
@@ -119,13 +125,13 @@ object SystemAnchor {
         if (reason == "ok") return
 
         var contentToUse: String? = null
-        var strategy = "Level-2(fallback)"
+        var strategy = "L2_fallback"
 
         if (reloadFromAssets()) {
             val full = getText()
             if (full.isNotBlank() && full.length >= MIN_VALID_LENGTH) {
                 contentToUse = full
-                strategy = "Level-1(full)"
+                strategy = "L1_full"
             }
         }
         if (contentToUse == null) {
@@ -160,6 +166,6 @@ object SystemAnchor {
             lastWarnReason = reason
             lastWarnTimeMs = now
         }
-        Log.w(TAG, "system锚点兜底 reason=$reason strategy=$strategy buildType=${if (BuildConfig.DEBUG) "debug" else "release"}")
+        Log.w(TAG, "system锚点兜底 reason=$reason strategy=$strategy")
     }
 }
