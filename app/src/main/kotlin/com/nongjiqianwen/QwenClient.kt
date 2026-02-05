@@ -180,6 +180,7 @@ object QwenClient {
                     check(systemContent.contains("你是\"农技千问\"")) {
                         "FATAL: system anchor missing or overwritten"
                     }
+                    Log.d(TAG, "P0_SMOKE: main dialogue ensureSystemRole done, system@index0")
                 }
                 
                 Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
@@ -365,6 +366,7 @@ object QwenClient {
                 "[对话]\n$dialogueText"
             }
             // B 层提取必须保留 system role：system = b_extraction_prompt.txt；锚点剔旧仅作用于主对话，不约束此处
+            if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: B extract system=b_extraction_prompt")
             val messagesArray = com.google.gson.JsonArray().apply {
                 add(JsonObject().apply {
                     addProperty("role", "system")
