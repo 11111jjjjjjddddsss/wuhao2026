@@ -37,10 +37,11 @@ CREATE TABLE IF NOT EXISTS session_ab (
 
 ## 2) A 轮次口径：全量保留直到 B 成功
 
-### 规则
+### 必须统一的正确口径（无歧义）
 
-- A 可累计 **>24**（如 26 轮）；仅当 **B 写入成功**（POST update-b 成功）后才清 A；B 失败不清 A。
-- snapshot 返回 **a_rounds_full**（全量）+ **a_rounds_for_ui**（最近 24）；客户端 B 提取用 full，UI 注入用 for_ui。
+- **A 是“累计队列”**，不会被固定在某个轮数；只要未发生「B 写入成功」，A 就不会被清空，会继续累积。
+- **B 提取输入** = 触发时刻 A 的「全量快照」（此刻 A 有多少轮，就用多少轮），不做固定轮数假设。
+- **仅当 POST /api/session/update-b 成功写入 B 时**，才允许清空 A；B 失败/超时/空输出/写入失败 → 禁止清 A。
 
 ### 接口返回样例（snapshot JSON）
 
@@ -59,19 +60,22 @@ CREATE TABLE IF NOT EXISTS session_ab (
 }
 ```
 
-（a_rounds_for_ui 为 a_rounds_full 的最近 24 条；若全量不足 24 则与 full 相同。）
+（a_rounds_for_ui 为 a_rounds_full 的最近 24 条；若全量不足 24 则与 full 相同。代码逻辑不做任何“限制轮数”处理：snapshot 全量 A + UI 仅取 for_ui 最近 24 展示即可。）
 
 ### 日志要求
 
-- **append-a**：`[SESSION] POST append-a user_id=U1 session_id=S1 a_rounds=26`（写入后该 session 共 26 轮）。
+- **append-a**：`[SESSION] POST append-a user_id=U1 session_id=S1 a_rounds=N`（写入后该 session 共 N 轮，N 随追加变化）。
 - **update-b 成功清 A**：`[SESSION] POST update-b user_id=U1 session_id=S1 b_len=xxx a_cleared`；之后 GET snapshot 的 a_rounds_full 长度为 0。
-- **B 失败不清 A**：不调用 update-b，故无 a_cleared；下次 GET snapshot 仍为完整累计（如 26 轮）。
+- **B 失败不清 A**：不调用 update-b，故无 a_cleared；下次 GET snapshot 仍为当时 A 的完整累计（是否仍为同一轮数取决于失败后有没有新增 done 轮次，见下例）。
 
-### 用例：A 累计 26 轮 → B 提取用 26 轮；B 失败则下次仍 26；B 成功则 A 清空
+### 用例（举例且随新增轮次变化）
 
-1. 连续 append-a 至 26 轮。
-2. 客户端用 **a_rounds_full（26 轮）** 做 B 提取；若 B 校验失败（如摘要超长），不调 update-b，后端 A 仍为 26 轮；下次 GET snapshot 仍返回 a_rounds_full.length=26。
-3. B 提取成功 → 调用 update-b → 后端清空 A；下次 GET snapshot 为 a_rounds_full=[]，b_summary 为新值。
+当 A 累计到 26 轮时触发 B 提取，B 输入为**当时 A 的 26 轮全量快照**；若提取失败，则不清空 A。之后：
+
+- **若失败后没有新增「完整完成轮次」**（done=true 才写 A）：再次触发时输入仍为 26 轮。
+- **若失败后新增了 n 轮完整完成轮次**：再次触发时输入为 **26+n** 轮（全量快照随 A 累积变化）。
+
+**仅当 update-b 成功写入后，才清空 A。**
 
 ---
 

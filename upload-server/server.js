@@ -266,6 +266,7 @@ app.post('/api/session/append-a', (req, res) => {
     });
 });
 
+// 仅当 update-b 成功时清空 A；B 失败/超时/写入失败不调此接口，故不清 A（A 为累计队列，不固定轮数）
 app.post('/api/session/update-b', (req, res) => {
   if (!dbPool) {
     return res.status(503).json({ error: 'session 未配置数据库' });

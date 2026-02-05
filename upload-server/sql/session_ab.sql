@@ -1,6 +1,6 @@
 -- 会话 A/B 表（PolarDB/MySQL 兼容）
 -- 真相落库：GET snapshot / POST append-a / POST update-b 均读写此表；服务重启后数据不丢。
--- 规则：A 可累计 >24；仅当 POST update-b 成功后才清空 A；B 失败不清 A。
+-- 口径：A 为累计队列，不固定轮数；仅当 POST update-b 成功写入 B 时才清空 A；B 失败/超时/写入失败禁止清 A。
 
 CREATE TABLE IF NOT EXISTS session_ab (
   user_id     VARCHAR(128) NOT NULL,
