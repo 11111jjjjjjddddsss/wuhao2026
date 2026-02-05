@@ -78,9 +78,11 @@ object SessionApi {
                 val body = response.body?.string() ?: ""
                 try {
                     val json = gson.fromJson(body, SessionSnapshotJson::class.java)
-                    val legacy = (json.a_rounds ?: emptyList()).map { ARound(it.user ?: "", it.assistant ?: "") }
-                    val full = (json.a_rounds_full ?: legacy).map { ARound(it.user ?: "", it.assistant ?: "") }
-                    val forUi = (json.a_rounds_for_ui ?: full).map { ARound(it.user ?: "", it.assistant ?: "") }
+                    val legacyList = json.a_rounds ?: emptyList()
+                    val fullList = json.a_rounds_full ?: legacyList
+                    val forUiList = json.a_rounds_for_ui ?: fullList
+                    val full = fullList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
+                    val forUi = forUiList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
                     onResult(SessionSnapshot(json.b_summary ?: "", full, forUi))
                 } catch (e: Exception) {
                     Log.e(TAG, "parse snapshot", e)
