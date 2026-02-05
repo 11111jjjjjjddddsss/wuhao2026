@@ -465,6 +465,15 @@
         }
         .card-btn.btn-current, .card-btn:disabled {
             opacity: .45;
+        }
+        .card-btn.btn-higher-disabled {
+            cursor: not-allowed;
+            opacity: .5;
+        }
+        .card-higher-hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
             cursor: not-allowed;
         }
         .membership-footnote {
@@ -1714,13 +1723,16 @@
         var membershipBackdrop = document.getElementById('membership-modal-backdrop');
         var toastEl = document.getElementById('toast');
 
-        // ========== 会员额度闭环：tier 配置 + 今日用量 + 超额拦截 + 模拟开通 ==========
+        // ========== 会员额度闭环：tier 配置 + 今日用量 + 超额拦截 + 模拟开通（会员体系规则·冻结） ==========
         var tier_config = {
             free:   { label: '免费版', chatPerDay: 10, imgPerDay: 1,  model: 'flash' },
             plus:   { label: 'Plus',   chatPerDay: 30, imgPerDay: 5,  model: 'flash' },
             pro:    { label: 'Pro',    chatPerDay: 60, imgPerDay: 10, model: 'flash' },
             expert: { label: '专家模式', chatPerDay: 80, imgPerDay: 20, model: 'plus' }
         };
+        var TIER_ORDER = { free: 0, plus: 1, pro: 2, expert: 3 };
+        function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
+        var COPY_REFRESH_FAIL = '权益状态暂未更新，请稍后重试';
         var STORAGE_KEY_TIER = 'membership_tier';
         function getTodayKey() {
             var d = new Date();
@@ -1815,7 +1827,7 @@
             var quota = getQuota();
             var chatLeft = Math.max(0, quota.chat - usage.chat);
             var imgLeft = Math.max(0, quota.img - usage.img);
-            var fullText = '当前：' + getTierLabel(tier) + ' · 今日剩余 ' + chatLeft + ' 次对话 / ' + imgLeft + ' 次图片上传';
+            var fullText = '当前生效档位：' + getTierLabel(tier) + ' · 今日剩余 ' + chatLeft + ' 次对话 / ' + imgLeft + ' 次图片上传';
             var labelOnly = '当前：' + getTierLabel(tier);
             var drawerMember = document.querySelector('.drawer-member');
             if (drawerMember) drawerMember.textContent = labelOnly;
@@ -1860,26 +1872,42 @@
             var m = getMembership();
             var tier = m.tier;
             var exp = m.exp;
+            var currentLevel = getTierLevel(tier);
             var sub = document.getElementById('membershipSub');
             if (sub) {
                 if (tier === 'free') {
-                    sub.textContent = '当前：免费版';
+                    sub.textContent = '当前生效档位：免费版';
                 } else {
-                    sub.textContent = '当前：' + getTierLabel(tier) + ' · 到期：' + formatDate(exp) + '（剩余 ' + daysLeft(exp) + ' 天）';
+                    sub.textContent = '当前生效档位：' + getTierLabel(tier) + '（以最高档位计） · 到期：' + formatDate(exp) + '（剩余 ' + daysLeft(exp) + ' 天）';
                 }
             }
             document.querySelectorAll('#membership-modal .membership-card').forEach(function(card) {
                 var t = card.getAttribute('data-tier');
                 var btn = card.querySelector('.card-btn');
+                var hint = card.querySelector('.card-higher-hint');
                 if (!btn) return;
+                var cardLevel = getTierLevel(t);
                 var isCurrent = (t === tier);
-                if (isCurrent && tier !== 'free') {
+                var isHigherAlready = (currentLevel > cardLevel);
+                btn.classList.remove('btn-current', 'btn-higher-disabled');
+                if (hint) hint.style.display = 'none';
+                if (isHigherAlready) {
+                    btn.textContent = '已开通更高档位';
+                    btn.disabled = true;
+                    btn.classList.add('btn-higher-disabled');
+                    if (!hint) {
+                        hint = document.createElement('div');
+                        hint.className = 'card-higher-hint';
+                        card.appendChild(hint);
+                    }
+                    hint.textContent = '当前权益已包含';
+                    hint.style.display = 'block';
+                } else if (isCurrent && tier !== 'free') {
                     btn.textContent = '当前已开通';
                     btn.disabled = true;
                     btn.classList.add('btn-current');
                 } else {
                     btn.disabled = false;
-                    btn.classList.remove('btn-current');
                     if (t === 'plus') btn.textContent = '开通 Plus';
                     else if (t === 'pro') btn.textContent = '开通 Pro';
                     else if (t === 'expert') btn.textContent = '开通 专家模式';
@@ -1921,13 +1949,21 @@
         document.querySelectorAll('#membership-modal .card-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var tier = this.getAttribute('data-tier');
-                if (tier && tier_config[tier]) {
-                    setCurrentTier(tier);
-                    closeMembershipModal();
-                    showToast('开通成功');
-                } else {
+                if (!tier || !tier_config[tier]) {
                     showToast('功能开发中');
+                    return;
                 }
+                var current = getCurrentTier();
+                var currentLevel = getTierLevel(current);
+                var cardLevel = getTierLevel(tier);
+                if (cardLevel <= currentLevel && tier !== current) {
+                    showToastOncePerDay('no_downgrade', '已开通更高档位，无需重复购买');
+                    return;
+                }
+                if (cardLevel <= currentLevel) return;
+                setCurrentTier(tier);
+                closeMembershipModal();
+                showToast('已升级，立即生效');
             });
         });
 
@@ -1953,7 +1989,7 @@
                 if (sendBtn.classList.contains('disabled') || sendBtn.getAttribute('aria-disabled') === 'true') {
                     e.preventDefault();
                     e.stopPropagation();
-                    showToastOncePerDay('chat', '今日额度已用尽');
+                    showToastOncePerDay('chat', '今日额度已用完');
                     return;
                 }
                 if (imageState.size > 0 && !textInput.value.trim()) {
@@ -1967,7 +2003,7 @@
                 if (micBtn.classList.contains('disabled') || micBtn.getAttribute('aria-disabled') === 'true') {
                     e.preventDefault();
                     e.stopPropagation();
-                    showToastOncePerDay('chat', '今日额度已用尽');
+                    showToastOncePerDay('chat', '今日额度已用完');
                     return;
                 }
             }
@@ -1975,7 +2011,7 @@
             if (up && (up.classList.contains('disabled') || up.getAttribute('aria-disabled') === 'true')) {
                 e.preventDefault();
                 e.stopPropagation();
-                showToastOncePerDay('img', '今日图片额度已用尽');
+                showToastOncePerDay('img', '今日额度已用完');
             }
         }, true);
 
