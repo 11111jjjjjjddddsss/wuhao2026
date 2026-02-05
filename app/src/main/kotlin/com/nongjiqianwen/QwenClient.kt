@@ -166,6 +166,21 @@ object QwenClient {
                     }
                     add("messages", messagesArray)
                 }
+                // P0 锚点生效自查：Debug 下断言，不通过即 crash，证明锚点存在且未被覆盖
+                if (BuildConfig.DEBUG) {
+                    val msgs = requestBody.getAsJsonArray("messages")
+                    val systemCount = msgs.count { el ->
+                        el.isJsonObject && el.asJsonObject.get("role")?.asString == "system"
+                    }
+                    check(systemCount == 1) { "FATAL: system role count != 1, count=$systemCount" }
+                    check(msgs.size() > 0 && msgs.get(0).asJsonObject.get("role")?.asString == "system") {
+                        "FATAL: system not at index 0"
+                    }
+                    val systemContent = msgs.get(0).asJsonObject.get("content")?.asString ?: ""
+                    check(systemContent.contains("你是\"农技千问\"")) {
+                        "FATAL: system anchor missing or overwritten"
+                    }
+                }
                 
                 Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
                 
@@ -349,14 +364,12 @@ object QwenClient {
             } else {
                 "[对话]\n$dialogueText"
             }
+            // 锚点收敛：仅 SystemAnchor.ensureSystemRole 可写 role=system；此处将 B 层指令并入 user 消息，不再手写 system
+            val fullUserContent = if (systemPrompt.isNotBlank()) "[B层摘要指令]\n$systemPrompt\n\n$userContent" else userContent
             val messagesArray = com.google.gson.JsonArray().apply {
                 add(JsonObject().apply {
-                    addProperty("role", "system")
-                    addProperty("content", systemPrompt)
-                })
-                add(JsonObject().apply {
                     addProperty("role", "user")
-                    addProperty("content", userContent)
+                    addProperty("content", fullUserContent)
                 })
             }
             val body = JsonObject().apply {
