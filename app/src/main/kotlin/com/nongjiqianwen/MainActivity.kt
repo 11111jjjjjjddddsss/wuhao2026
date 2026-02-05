@@ -82,9 +82,26 @@ class MainActivity : AppCompatActivity() {
         // 注入JavaScript接口
         webView.addJavascriptInterface(AndroidJSInterface(), "AndroidInterface")
         
-        // 设置WebViewClient
-        webView.webViewClient = WebViewClient()
-        
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (BuildConfig.USE_BACKEND_AB && (BuildConfig.UPLOAD_BASE_URL?.trim() ?: "").isNotEmpty()) {
+                    SessionApi.getSnapshot(IdManager.getInstallId(), IdManager.getSessionId()) { snapshot ->
+                        if (snapshot != null) {
+                            runOnUiThread {
+                                ABLayerManager.loadSnapshot(snapshot)
+                                val list = snapshot.a_rounds.map { mapOf("user" to it.user, "assistant" to it.assistant) }
+                                val jsonStr = com.google.gson.Gson().toJson(list)
+                                val escaped = jsonStr.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+                                webView.evaluateJavascript("if(window.setInitialHistory) window.setInitialHistory(JSON.parse(\"$escaped\"));", null)
+                                if (BuildConfig.DEBUG) Log.d("MainActivity", "snapshot loaded a_rounds=${snapshot.a_rounds.size} injected to WebView")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 加载HTML文件（唯一模板）
         val loadUrl = "file:///android_asset/gpt-demo.html"
         if (BuildConfig.DEBUG) {
@@ -193,6 +210,22 @@ class MainActivity : AppCompatActivity() {
         /**
          * 返回设备本地时间字符串：YYYY-MM-DD HH:mm（周X） 时区名
          */
+        @JavascriptInterface
+        fun getEntitlement(callbackId: String) {
+            SessionApi.getEntitlement(IdManager.getInstallId()) { json ->
+                runOnUiThread {
+                    val escId = escapeJs(callbackId)
+                    val js = if (json != null) {
+                        val escaped = json.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+                        "if(window._entitlementCallback && window._entitlementCallback['$escId']) window._entitlementCallback['$escId'](JSON.parse(\"$escaped\"));"
+                    } else {
+                        "if(window._entitlementCallback && window._entitlementCallback['$escId']) window._entitlementCallback['$escId'](null);"
+                    }
+                    webView.evaluateJavascript("$js delete window._entitlementCallback['$escId'];", null)
+                }
+            }
+        }
+
         @JavascriptInterface
         fun getLocalDateTime(): String {
             return try {

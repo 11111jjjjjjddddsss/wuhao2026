@@ -6,84 +6,133 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A/B 层状态机：A 层累计完整轮次，达 24 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
- * 禁止：B 未写入却清空 A；B 已写入却未清空 A。
- * B 摘要长度硬门槛：trim 后 > 600 视为提取失败（不写 B、不注入、不清空 A）；≤ 600 才写入并清空 A。
- *
- * 两条线分离：A/B 数据只来自本地写入（onComplete/updateB）或后端 GET session snapshot 恢复；
- * UI 展示层裁剪（如只渲染最近 30 轮）不得用于回写或推导 A/B，换设备/重装后以后端拉取为准。
+ * 两条线分离：USE_BACKEND_AB 时 A/B 真相在后端，仅通过 GET snapshot / append-a / update-b 同步。
  */
 object ABLayerManager {
     private const val TAG = "ABLayerManager"
     private const val PREFS_NAME = "ab_layer"
     private const val KEY_B_SUMMARY_PREFIX = "b_summary_"
     private const val A_MIN_ROUNDS = 24
-    /** B 摘要 trim 后长度上限；超过视为提取失败，不写入 B、不清空 A */
     private const val B_SUMMARY_MAX_LENGTH = 600
 
     private var appContext: Context? = null
-
-    /** A 层：按 session 隔离，sessionId -> 完整轮次 (user, assistant) */
     private val aRoundsBySession = mutableMapOf<String, MutableList<Pair<String, String>>>()
     private val aLock = Any()
-
-    /** 防止并发提取：extracting=true 时本轮跳过，不阻塞不排队 */
     private val extracting = AtomicBoolean(false)
+
+    /** 后端模式：GET snapshot 后写入；update-b 成功后续写 */
+    private var serverBSummary: String = ""
+    private val serverARoundsCache = mutableListOf<Pair<String, String>>()
+    private val serverLock = Any()
 
     fun init(context: Context) {
         if (appContext == null) {
             appContext = context.applicationContext
             if (BuildConfig.DEBUG) {
-                Log.d(TAG, "ABLayerManager init, B 按 sessionId 隔离")
+                Log.d(TAG, "ABLayerManager init, USE_BACKEND_AB=${BuildConfig.USE_BACKEND_AB}")
             }
         }
     }
 
-    /** 当前会话 B 摘要，供主对话注入；key = b_summary_<sessionId> */
-    fun getBSummary(): String {
-        val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) ?: return ""
-        val sessionId = IdManager.getSessionId()
-        return prefs.getString(KEY_B_SUMMARY_PREFIX + sessionId, "") ?: ""
+    /** 后端模式：拉取 snapshot 后调用，用于启动/换设备恢复；UI 仅用 a_rounds 展示最近 24 轮 */
+    fun loadSnapshot(snapshot: SessionSnapshot?) {
+        if (snapshot == null) return
+        synchronized(serverLock) {
+            serverBSummary = snapshot.b_summary
+            serverARoundsCache.clear()
+            serverARoundsCache.addAll(snapshot.a_rounds.map { it.user to it.assistant })
+        }
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "loadSnapshot b_len=${serverBSummary.length} a_rounds=${snapshot.a_rounds.size}")
+        }
     }
 
-    /** 当前会话 A 层历史对话文本（带标记），供主对话「中等参考性」注入；无则返回空字符串 */
+    /** 当前会话 B 摘要 */
+    fun getBSummary(): String {
+        if (BuildConfig.USE_BACKEND_AB) {
+            synchronized(serverLock) { return serverBSummary }
+        }
+        val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) ?: return ""
+        return prefs.getString(KEY_B_SUMMARY_PREFIX + IdManager.getSessionId(), "") ?: ""
+    }
+
+    /** 当前会话 A 层历史对话文本（供主对话注入） */
     fun getARoundsTextForMainDialogue(): String {
-        val sessionId = IdManager.getSessionId()
-        val snapshot = synchronized(aLock) {
-            aRoundsBySession[sessionId]?.toList() ?: emptyList()
+        val snapshot = if (BuildConfig.USE_BACKEND_AB) {
+            synchronized(serverLock) { serverARoundsCache.toList() }
+        } else {
+            synchronized(aLock) { aRoundsBySession[IdManager.getSessionId()]?.toList() ?: emptyList() }
         }
         if (snapshot.isEmpty()) return ""
         return "[中等参考性·A层历史对话]\n" + buildDialogueText(snapshot)
     }
 
     /**
-     * 完整轮次完成时调用（仅 onComplete 时，非 interrupted）
-     * 加入 A，若 A>=24 则异步尝试 B 提取；成功则原子清空 A 并写入 B。按 session 隔离。
+     * 完整轮次完成时调用（仅 done=true/onComplete；中断不写 A、不扣费）。
+     * 后端模式：先 POST append-a，成功则加入 serverARoundsCache，若 A>=24 再尝试 B 提取 → update-b 成功才清 A。
      */
     fun onRoundComplete(userMessage: String, assistantMessage: String) {
         val sessionId = IdManager.getSessionId()
+        val userId = IdManager.getInstallId()
+        if (BuildConfig.USE_BACKEND_AB) {
+            SessionApi.appendA(userId, sessionId, userMessage, assistantMessage) { ok ->
+                if (!ok) return@appendA
+                synchronized(serverLock) {
+                    serverARoundsCache.add(userMessage to assistantMessage)
+                    val size = serverARoundsCache.size
+                    if (BuildConfig.DEBUG) Log.d(TAG, "appendA ok session=$sessionId a_rounds=$size")
+                    if (size >= A_MIN_ROUNDS) {
+                        tryExtractAndUpdateBBackend(userId, sessionId, serverARoundsCache.toList())
+                    }
+                }
+            }
+            return
+        }
         val (shouldExtract, snapshot) = synchronized(aLock) {
             val list = aRoundsBySession.getOrPut(sessionId) { mutableListOf() }
             list.add(userMessage to assistantMessage)
             val size = list.size
-            if (BuildConfig.DEBUG) {
-                Log.d(TAG, "A层+1轮(session=$sessionId)，当前${size}轮")
-            }
+            if (BuildConfig.DEBUG) Log.d(TAG, "A层+1轮(session=$sessionId)，当前$size 轮")
             val doExtract = size >= A_MIN_ROUNDS
-            val snap = if (doExtract) list.map { it } else emptyList()
-            doExtract to snap
+            (doExtract to if (doExtract) list.map { it } else emptyList())
         }
         if (shouldExtract && snapshot.isNotEmpty()) {
-            tryExtractAndUpdateB(sessionId, snapshot)
+            tryExtractAndUpdateBLocal(sessionId, snapshot)
         }
     }
 
-    private fun tryExtractAndUpdateB(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>) {
-        if (!extracting.compareAndSet(false, true)) {
-            if (BuildConfig.DEBUG) {
-                Log.d(TAG, "B提取进行中，跳过")
+    private fun tryExtractAndUpdateBBackend(userId: String, sessionId: String, aRoundsSnapshot: List<Pair<String, String>>) {
+        if (!extracting.compareAndSet(false, true)) return
+        Thread {
+            try {
+                val oldB = synchronized(serverLock) { serverBSummary }
+                val dialogueText = buildDialogueText(aRoundsSnapshot)
+                val prompt = BExtractionPrompt.getText()
+                if (prompt.isBlank()) { return@Thread }
+                val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
+                if (!validateBSummary(newSummary)) {
+                    Log.w(TAG, "B摘要校验不通过，不写B不清A")
+                    return@Thread
+                }
+                SessionApi.updateB(userId, sessionId, newSummary) { ok ->
+                    if (ok) {
+                        synchronized(serverLock) {
+                            serverBSummary = newSummary
+                            serverARoundsCache.clear()
+                        }
+                        if (BuildConfig.DEBUG) Log.d(TAG, "updateB ok session=$sessionId b_len=${newSummary.length} a_cleared")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "B提取失败", e)
+            } finally {
+                extracting.set(false)
             }
-            return
-        }
+        }.start()
+    }
+
+    private fun tryExtractAndUpdateBLocal(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>) {
+        if (!extracting.compareAndSet(false, true)) return
         Thread {
             try {
                 val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -91,28 +140,16 @@ object ABLayerManager {
                 val oldB = prefs?.getString(keyB, "") ?: ""
                 val dialogueText = buildDialogueText(aRoundsSnapshot)
                 val prompt = BExtractionPrompt.getText()
-                if (prompt.isBlank()) {
-                    Log.w(TAG, "B提取提示词为空，跳过")
-                    return@Thread
-                }
+                if (prompt.isBlank()) return@Thread
                 val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
-                if (!validateBSummary(newSummary)) {
-                    Log.w(TAG, "B摘要校验不通过，不写入不清空A")
-                    return@Thread
-                }
+                if (!validateBSummary(newSummary)) return@Thread
                 val committed = prefs?.edit()?.putString(keyB, newSummary)?.commit() ?: false
                 if (committed) {
-                    synchronized(aLock) {
-                        aRoundsBySession[sessionId]?.clear()
-                    }
-                    if (BuildConfig.DEBUG) {
-                        Log.d(TAG, "B写入成功(session=$sessionId)，已清空A，新摘要长度=${newSummary.length}")
-                    }
-                } else {
-                    Log.w(TAG, "B写入commit=false，不写B不清空A")
+                    synchronized(aLock) { aRoundsBySession[sessionId]?.clear() }
+                    if (BuildConfig.DEBUG) Log.d(TAG, "B写入成功(session=$sessionId) 已清空A")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "B提取失败，A层保持", e)
+                Log.e(TAG, "B提取失败", e)
             } finally {
                 extracting.set(false)
             }

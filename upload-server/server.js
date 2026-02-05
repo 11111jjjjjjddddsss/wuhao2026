@@ -153,6 +153,51 @@ app.post('/api/subscription/apply', (req, res) => {
   return res.status(200).json({ ok: true });
 });
 
+// ---------- 会话两条线：A/B 存后端，GET snapshot / POST append-a / POST update-b ----------
+const SESSION_STORE = {}; // key = `${user_id}:${session_id}` -> { b_summary: '', a_rounds: [] }
+const A_ROUNDS_UI_MAX = 24;
+
+function sessionKey(user_id, session_id) { return `${user_id}:${session_id}`; }
+
+app.get('/api/session/snapshot', (req, res) => {
+  const user_id = req.query.user_id || '';
+  const session_id = req.query.session_id || '';
+  const key = sessionKey(user_id, session_id);
+  const sess = SESSION_STORE[key] || { b_summary: '', a_rounds: [] };
+  const a_rounds = Array.isArray(sess.a_rounds) ? sess.a_rounds : [];
+  const last24 = a_rounds.slice(-A_ROUNDS_UI_MAX);
+  console.log('[SESSION] GET snapshot', user_id, session_id, 'b_len=' + (sess.b_summary || '').length, 'a_rounds=' + a_rounds.length, 'return_ui=' + last24.length);
+  return res.status(200).json({ b_summary: sess.b_summary || '', a_rounds: last24 });
+});
+
+app.post('/api/session/append-a', (req, res) => {
+  const { user_id, session_id, user_message, assistant_message } = req.body || {};
+  if (!user_id || !session_id) {
+    return res.status(400).json({ error: '缺少 user_id 或 session_id' });
+  }
+  const key = sessionKey(user_id, session_id);
+  if (!SESSION_STORE[key]) SESSION_STORE[key] = { b_summary: '', a_rounds: [] };
+  const sess = SESSION_STORE[key];
+  sess.a_rounds = sess.a_rounds || [];
+  sess.a_rounds.push({ user: user_message || '', assistant: assistant_message || '' });
+  console.log('[SESSION] POST append-a', user_id, session_id, 'a_rounds=' + sess.a_rounds.length);
+  return res.status(200).json({ ok: true, a_rounds_count: sess.a_rounds.length });
+});
+
+app.post('/api/session/update-b', (req, res) => {
+  const { user_id, session_id, b_summary } = req.body || {};
+  if (!user_id || !session_id) {
+    return res.status(400).json({ error: '缺少 user_id 或 session_id' });
+  }
+  const key = sessionKey(user_id, session_id);
+  if (!SESSION_STORE[key]) SESSION_STORE[key] = { b_summary: '', a_rounds: [] };
+  const sess = SESSION_STORE[key];
+  sess.b_summary = typeof b_summary === 'string' ? b_summary : '';
+  sess.a_rounds = [];
+  console.log('[SESSION] POST update-b', user_id, session_id, 'b_len=' + sess.b_summary.length, 'a_cleared');
+  return res.status(200).json({ ok: true });
+});
+
 app.get('/health', (_, res) => res.status(200).send('ok'));
 
 app.use((err, req, res, next) => {

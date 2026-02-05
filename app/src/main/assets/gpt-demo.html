@@ -1723,28 +1723,14 @@
         var membershipBackdrop = document.getElementById('membership-modal-backdrop');
         var toastEl = document.getElementById('toast');
 
-        // ========== 会员额度闭环：tier 配置 + 今日用量 + 超额拦截 + 模拟开通（会员体系规则·冻结） ==========
-        // 档位顺序：全工程只改此处；裁决/扣减/展示均据此比较
-        var TIER_ORDER = { free: 0, plus: 1, pro: 2, expert: 3 };
-        var tier_config = {
-            free:   { label: '免费版', chatPerDay: 10, imgPerDay: 1,  model: 'flash' },
-            plus:   { label: 'Plus',   chatPerDay: 30, imgPerDay: 5,  model: 'flash' },
-            pro:    { label: 'Pro',    chatPerDay: 60, imgPerDay: 10, model: 'flash' },
-            expert: { label: '专家模式', chatPerDay: 80, imgPerDay: 20, model: 'plus' }
-        };
-        function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
-        var COPY_REFRESH_FAIL = '权益状态暂未更新，请稍后重试';
+        // ==================== 开关：仅切换 Data 层来源，UI 不改 ====================
+        var USE_BACKEND_AB = false;           // 实际生效在 Android BuildConfig.USE_BACKEND_AB；此处仅文档
+        var USE_BACKEND_ENTITLEMENT = false; // true 时额度/展示只读后端 GET /api/entitlement
+
+        // ==================== Data 层：存储 + 后端 HTTP（不直接给 UI，经 Domain） ====================
         var STORAGE_KEY_TIER = 'membership_tier';
         var STORAGE_KEY_SUBSCRIPTIONS = 'membership_subscriptions';
         var SUBSCRIPTION_DAYS = 30;
-        // 后端为唯一真相时设为 true；前端仅渲染，不做裁决（保留兼容，一键切换）
-        var USE_BACKEND_ENTITLEMENT = false;
-        function getEntitlementFromBackend(cb) {
-            if (!USE_BACKEND_ENTITLEMENT || typeof cb !== 'function') return;
-            // 替换点：GET /api/entitlement?user_id=xxx，成功后 cb({ effective_tier, effective_end_at, paused_list, chat_remaining, img_remaining })
-            // 失败或未实现时 cb(null)，回退到本地 computeEntitlement
-            cb(null);
-        }
         function getSubscriptions() {
             try {
                 var raw = localStorage.getItem(STORAGE_KEY_SUBSCRIPTIONS);
@@ -1758,7 +1744,48 @@
         function saveSubscriptions(arr) {
             localStorage.setItem(STORAGE_KEY_SUBSCRIPTIONS, JSON.stringify(arr));
         }
-        // 状态机 (a) active且end_at<=now=>expired (b) 多active=>仅最高档active其余paused (c) 最高active到期=>解冻最高paused用remaining_seconds重算end_at
+        function getEntitlementFromBackend(cb) {
+            if (!USE_BACKEND_ENTITLEMENT || typeof cb !== 'function') return;
+            if (!window.AndroidInterface || typeof window.AndroidInterface.getEntitlement !== 'function') { cb(null); return; }
+            window._entitlementCallback = window._entitlementCallback || {};
+            var id = 'ent_' + Date.now();
+            window._entitlementCallback[id] = function(ent) {
+                if (ent) window._cachedEntitlement = ent;
+                cb(ent);
+            };
+            window.AndroidInterface.getEntitlement(id);
+        }
+        function getTodayKey() {
+            var d = new Date();
+            return 'usage_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+        function getUsage() {
+            var key = getTodayKey();
+            try {
+                var raw = localStorage.getItem(key);
+                if (raw) {
+                    var o = JSON.parse(raw);
+                    return { chat: (o.chat || 0) | 0, img: (o.img || 0) | 0 };
+                }
+            } catch (e) {}
+            return { chat: 0, img: 0 };
+        }
+        function setUsage(chat, img) {
+            var key = getTodayKey();
+            localStorage.setItem(key, JSON.stringify({ chat: chat, img: img }));
+        }
+
+        // ==================== Domain 层：会员裁决、扣减口径、输入规则（只调 Data，不直接改 DOM） ====================
+        var TIER_ORDER = { free: 0, plus: 1, pro: 2, expert: 3 };
+        var tier_config = {
+            free:   { label: '免费版', chatPerDay: 10, imgPerDay: 1,  model: 'flash' },
+            plus:   { label: 'Plus',   chatPerDay: 30, imgPerDay: 5,  model: 'flash' },
+            pro:    { label: 'Pro',    chatPerDay: 60, imgPerDay: 10, model: 'flash' },
+            expert: { label: '专家模式', chatPerDay: 80, imgPerDay: 20, model: 'plus' }
+        };
+        var COPY_REFRESH_FAIL = '权益状态暂未更新，请稍后重试';
+        function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
+        // 状态机 (a)(b)(c)；仅读 Data 层 getSubscriptions/saveSubscriptions
         function computeEntitlement() {
             var now = Date.now();
             var list = getSubscriptions();
@@ -1809,25 +1836,6 @@
             if (typeof console !== 'undefined' && console.log) console.log('[ENT] entitlement:', JSON.stringify(out));
             return out;
         }
-        function getTodayKey() {
-            var d = new Date();
-            return 'usage_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        }
-        function getUsage() {
-            var key = getTodayKey();
-            try {
-                var raw = localStorage.getItem(key);
-                if (raw) {
-                    var o = JSON.parse(raw);
-                    return { chat: (o.chat || 0) | 0, img: (o.img || 0) | 0 };
-                }
-            } catch (e) {}
-            return { chat: 0, img: 0 };
-        }
-        function setUsage(chat, img) {
-            var key = getTodayKey();
-            localStorage.setItem(key, JSON.stringify({ chat: chat, img: img }));
-        }
         function resetUsageIfNewDay() {
             var key = getTodayKey();
             var stored = localStorage.getItem('usage_date');
@@ -1849,6 +1857,10 @@
             }
         }
         function getCurrentTier() {
+            if (USE_BACKEND_ENTITLEMENT && window._cachedEntitlement) {
+                var t = window._cachedEntitlement.effective_tier;
+                return tier_config[t] ? t : 'free';
+            }
             migrateLegacyToSubscriptions();
             var list = getSubscriptions();
             if (list.length === 0) {
@@ -1859,6 +1871,10 @@
             return tier_config[ent.effective_tier] ? ent.effective_tier : 'free';
         }
         function getMembership() {
+            if (USE_BACKEND_ENTITLEMENT && window._cachedEntitlement) {
+                var e = window._cachedEntitlement;
+                return { tier: e.effective_tier || 'free', exp: e.effective_end_at || 0, paused: e.paused_list || [] };
+            }
             migrateLegacyToSubscriptions();
             var list = getSubscriptions();
             if (list.length === 0) {
@@ -1977,6 +1993,7 @@
             resetUsageIfNewDay();
             updateTierUIEverywhere();
         }
+        // ==================== UI 层：只负责渲染/动画/灰块/置灰/Toast，不直接改订阅、不直接改 A/B ====================
         function setDisabled(selector, disabled) {
             var el = document.querySelector(selector);
             if (!el) return;
@@ -2124,6 +2141,12 @@
         getMembership();
         updateDrawerFromTierAndUsage();
         refreshQuotaUI();
+        if (USE_BACKEND_ENTITLEMENT && window.AndroidInterface && typeof window.AndroidInterface.getEntitlement === 'function') {
+            getEntitlementFromBackend(function(ent) {
+                if (ent && (typeof updateDrawerFromTierAndUsage === 'function')) updateDrawerFromTierAndUsage();
+                if (ent && (typeof updateMembershipUI === 'function')) updateMembershipUI();
+            });
+        }
 
         document.addEventListener('click', function(e) {
             var sendBtn = document.getElementById('btnSend');
@@ -3005,6 +3028,24 @@
             }
             return messageDiv;
         }
+
+        // 两条线分离：Android 拉取 snapshot 后注入最近 N 轮仅做 UI 展示，不参与 A/B 存储
+        function setInitialHistory(rounds) {
+            if (!messagesContainer || !Array.isArray(rounds) || rounds.length === 0) return;
+            for (var i = 0; i < rounds.length; i++) {
+                var r = rounds[i];
+                var userMsg = createMessage({ role: 'user', text: (r && r.user) || '', files: null, imageUrls: null, stream: false });
+                messagesContainer.appendChild(userMsg);
+                var astMsg = createMessage({ role: 'assistant', text: '', stream: false });
+                var contentDiv = astMsg.querySelector('.message-content');
+                if (contentDiv) contentDiv.textContent = (r && r.assistant) || '';
+                messagesContainer.appendChild(astMsg);
+            }
+            refreshEmptyState();
+            if (typeof applyMessageWindow === 'function') applyMessageWindow();
+            scrollToBottom();
+        }
+        window.setInitialHistory = setInitialHistory;
 
         // 滚动到底部（滚动容器为 messagesWrapper）
         function scrollToBottom() {
