@@ -1734,6 +1734,69 @@
         function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
         var COPY_REFRESH_FAIL = '权益状态暂未更新，请稍后重试';
         var STORAGE_KEY_TIER = 'membership_tier';
+        var STORAGE_KEY_SUBSCRIPTIONS = 'membership_subscriptions';
+        var SUBSCRIPTION_DAYS = 30;
+        function getSubscriptions() {
+            try {
+                var raw = localStorage.getItem(STORAGE_KEY_SUBSCRIPTIONS);
+                if (raw) {
+                    var arr = JSON.parse(raw);
+                    return Array.isArray(arr) ? arr : [];
+                }
+            } catch (e) {}
+            return [];
+        }
+        function saveSubscriptions(arr) {
+            localStorage.setItem(STORAGE_KEY_SUBSCRIPTIONS, JSON.stringify(arr));
+        }
+        function computeEntitlement() {
+            var now = Date.now();
+            var list = getSubscriptions();
+            for (var i = 0; i < list.length; i++) {
+                var s = list[i];
+                if (s.status !== 'active' && s.status !== 'paused') continue;
+                var endMs = s.end_at || 0;
+                if (s.status === 'active' && endMs <= now) {
+                    s.status = 'expired';
+                    var pausedSubs = list.filter(function(x) { return x.status === 'paused' && (x.remaining_seconds > 0 || (x.end_at && x.end_at > now)); });
+                    var best = null;
+                    for (var j = 0; j < pausedSubs.length; j++) {
+                        if (!best || getTierLevel(pausedSubs[j].tier) > getTierLevel(best.tier)) best = pausedSubs[j];
+                    }
+                    if (best) {
+                        best.status = 'active';
+                        best.resume_at = now;
+                        best.end_at = now + (best.remaining_seconds || 0) * 1000;
+                        best.remaining_seconds = 0;
+                    }
+                }
+            }
+            var activeList = list.filter(function(s) { return s.status === 'active' && s.end_at > now; });
+            var effective = null;
+            for (var i = 0; i < activeList.length; i++) {
+                if (!effective || getTierLevel(activeList[i].tier) > getTierLevel(effective.tier)) effective = activeList[i];
+            }
+            for (var i = 0; i < list.length; i++) {
+                var s = list[i];
+                if (s.status !== 'active' && s.status !== 'paused') continue;
+                if (effective && getTierLevel(s.tier) < getTierLevel(effective.tier)) {
+                    if (s.status !== 'paused') {
+                        s.status = 'paused';
+                        s.pause_at = now;
+                        s.remaining_seconds = Math.max(0, Math.floor((s.end_at - now) / 1000));
+                    }
+                }
+            }
+            var pausedList = list.filter(function(s) { return s.status === 'paused'; });
+            var effectiveTier = effective ? effective.tier : 'free';
+            var effectiveEndAt = effective ? effective.end_at : 0;
+            var pausedForShow = pausedList.map(function(p) {
+                var sec = p.remaining_seconds != null ? p.remaining_seconds : Math.max(0, Math.floor((p.end_at - now) / 1000));
+                return { tier: p.tier, remaining_days: Math.ceil(sec / 86400) };
+            });
+            saveSubscriptions(list);
+            return { effective_tier: effectiveTier, effective_end_at: effectiveEndAt, paused_list: pausedForShow };
+        }
         function getTodayKey() {
             var d = new Date();
             return 'usage_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -1762,19 +1825,43 @@
                 if (typeof refreshQuotaUI === 'function') refreshQuotaUI();
             }
         }
+        function migrateLegacyToSubscriptions() {
+            var list = getSubscriptions();
+            if (list.length > 0) return;
+            var tier = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
+            var exp = Number(localStorage.getItem('membership_expire_at') || 0);
+            if (tier !== 'free' && tier_config[tier] && exp > Date.now()) {
+                list.push({ id: 'legacy_1', tier: tier, start_at: exp - SUBSCRIPTION_DAYS * 86400000, end_at: exp, status: 'active', order_id: 'legacy_1' });
+                saveSubscriptions(list);
+            }
+        }
         function getCurrentTier() {
-            var t = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
-            return tier_config[t] ? t : 'free';
+            migrateLegacyToSubscriptions();
+            var list = getSubscriptions();
+            if (list.length === 0) {
+                var t = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
+                return tier_config[t] ? t : 'free';
+            }
+            var ent = computeEntitlement();
+            return tier_config[ent.effective_tier] ? ent.effective_tier : 'free';
         }
         function getMembership() {
-            var tier = localStorage.getItem(STORAGE_KEY_TIER) || 'free';
-            var exp = Number(localStorage.getItem('membership_expire_at') || 0);
-            if (tier !== 'free' && exp && Date.now() > exp) {
-                localStorage.setItem(STORAGE_KEY_TIER, 'free');
-                localStorage.setItem('membership_expire_at', '0');
-                return { tier: 'free', exp: 0 };
+            migrateLegacyToSubscriptions();
+            var list = getSubscriptions();
+            if (list.length === 0) {
+                var tier = localStorage.getItem(STORAGE_KEY_TIER) || 'free';
+                var exp = Number(localStorage.getItem('membership_expire_at') || 0);
+                if (tier !== 'free' && exp && Date.now() > exp) {
+                    localStorage.setItem(STORAGE_KEY_TIER, 'free');
+                    localStorage.setItem('membership_expire_at', '0');
+                    return { tier: 'free', exp: 0, paused: [] };
+                }
+                return { tier: tier, exp: exp, paused: [] };
             }
-            return { tier: tier, exp: exp };
+            var ent = computeEntitlement();
+            localStorage.setItem(STORAGE_KEY_TIER, ent.effective_tier);
+            localStorage.setItem('membership_expire_at', String(ent.effective_end_at));
+            return { tier: ent.effective_tier, exp: ent.effective_end_at, paused: ent.paused_list };
         }
         function formatDate(ts) {
             if (!ts) return '';
@@ -1790,12 +1877,22 @@
         }
         function setCurrentTier(tier) {
             if (!tier_config[tier]) return;
-            localStorage.setItem(STORAGE_KEY_TIER, tier);
             if (tier === 'free') {
+                localStorage.setItem(STORAGE_KEY_TIER, 'free');
                 localStorage.setItem('membership_expire_at', '0');
-            } else {
-                localStorage.setItem('membership_expire_at', String(Date.now() + 30 * 86400000));
+                if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
+                if (typeof updateMembershipUI === 'function') updateMembershipUI();
+                return;
             }
+            var list = getSubscriptions();
+            var now = Date.now();
+            var endAt = now + SUBSCRIPTION_DAYS * 86400000;
+            var newSub = { id: 'local_' + now, tier: tier, start_at: now, end_at: endAt, status: 'active', order_id: 'local_' + now };
+            list.push(newSub);
+            saveSubscriptions(list);
+            var ent = computeEntitlement();
+            localStorage.setItem(STORAGE_KEY_TIER, ent.effective_tier);
+            localStorage.setItem('membership_expire_at', String(ent.effective_end_at));
             if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
             if (typeof updateMembershipUI === 'function') updateMembershipUI();
         }
@@ -1875,11 +1972,17 @@
             var currentLevel = getTierLevel(tier);
             var sub = document.getElementById('membershipSub');
             if (sub) {
+                var parts = [];
                 if (tier === 'free') {
-                    sub.textContent = '当前生效档位：免费版';
+                    parts.push('当前生效档位：免费版');
                 } else {
-                    sub.textContent = '当前生效档位：' + getTierLabel(tier) + '（以最高档位计） · 到期：' + formatDate(exp) + '（剩余 ' + daysLeft(exp) + ' 天）';
+                    parts.push('当前生效档位：' + getTierLabel(tier) + '（以最高档位计） · 到期：' + formatDate(exp) + '（剩余 ' + daysLeft(exp) + ' 天）');
                 }
+                var paused = (m.paused && m.paused.length) ? m.paused : [];
+                for (var i = 0; i < paused.length; i++) {
+                    parts.push('已冻结：' + getTierLabel(paused[i].tier) + '（剩余' + (paused[i].remaining_days || 0) + '天）');
+                }
+                sub.innerHTML = parts.join('<br>');
             }
             document.querySelectorAll('#membership-modal .membership-card').forEach(function(card) {
                 var t = card.getAttribute('data-tier');
