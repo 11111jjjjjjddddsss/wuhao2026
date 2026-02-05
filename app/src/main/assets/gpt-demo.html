@@ -2701,7 +2701,15 @@
             delete terminatedStreamIds[streamId];
         };
 
-        // 统一渲染工具结果块：同 streamId + toolName 只保留一块，重复回调则覆盖更新（定位与创建消息处一致：data-stream-id）
+        // 灰块内 URL 可点击：将文本中的 http(s) URL 转为 <a target="_blank">，其余转义防 XSS
+        function linkifyToolResultText(text) {
+            var s = (text != null ? (text + '') : '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            return s.replace(/(https?:\/\/[^\s\n&lt;&amp;]+)/g, function(m) {
+                var href = m.replace(/"/g, '&quot;');
+                return '<a href="' + href + '" target="_blank" rel="noopener noreferrer">' + m + '</a>';
+            });
+        }
+        // 统一渲染工具结果块：同 streamId + toolName 只保留一块，重复回调则覆盖更新；灰块内 URL 可点击
         function renderToolResult(streamId, toolName, text) {
             if (!streamId || toolName == null) return;
             var msg = messagesContainer.querySelector('.message.assistant[data-stream-id="' + streamId + '"]');
@@ -2709,14 +2717,15 @@
             var contentDiv = msg.querySelector('.message-content');
             if (!contentDiv) return;
             var normalized = (text != null ? (text + '') : '').replace(/\\n/g, '\n');
+            var html = linkifyToolResultText(normalized);
             var existing = contentDiv.querySelector('.tool-result[data-tool="' + toolName + '"]');
             if (existing) {
-                existing.textContent = normalized;
+                existing.innerHTML = html;
             } else {
                 var block = document.createElement('div');
                 block.className = 'tool-result';
                 block.setAttribute('data-tool', toolName);
-                block.textContent = normalized;
+                block.innerHTML = html;
                 contentDiv.appendChild(block);
             }
             scrollToBottom();

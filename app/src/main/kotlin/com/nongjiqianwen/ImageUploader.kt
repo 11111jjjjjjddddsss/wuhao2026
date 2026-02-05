@@ -24,8 +24,13 @@ import java.util.concurrent.atomic.AtomicReference
 object ImageUploader {
     private const val TAG = "ImageUploader"
     private const val MAX_IMAGE_COUNT = 4
-    private const val MAX_LONG_EDGE = 1600 // 长边最大尺寸
-    private const val JPEG_QUALITY = 75 // 中等压缩质量
+    /** 输入规则 P0：最长边 ≤1280px */
+    private const val MAX_LONG_EDGE = 1280
+    /** 输入规则 P0：单张 ≤800KB */
+    private const val MAX_SIZE_BYTES = 800 * 1024
+    /** 优先质量 80，超 800KB 再降 75 */
+    private const val JPEG_QUALITY_HIGH = 80
+    private const val JPEG_QUALITY_LOW = 75
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -97,8 +102,8 @@ object ImageUploader {
                 minOf(1.0f, MAX_LONG_EDGE.toFloat() / correctedHeight)
             }
             
-            // 缩放图片
-            val scaledBitmap = if (scale < 1.0f) {
+            // 缩放图片（长边 ≤ MAX_LONG_EDGE）
+            var scaledBitmap = if (scale < 1.0f) {
                 val newWidth = (correctedWidth * scale).toInt()
                 val newHeight = (correctedHeight * scale).toInt()
                 Bitmap.createScaledBitmap(correctedBitmap, newWidth, newHeight, true)
@@ -106,21 +111,33 @@ object ImageUploader {
                 correctedBitmap
             }
             
-            // 转换为JPEG字节数组
-            val outputStream = ByteArrayOutputStream()
-            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, outputStream)
-            val compressedBytes = outputStream.toByteArray()
-            
-            // 记录日志
-            if (BuildConfig.DEBUG) {
-                Log.d(TAG, "=== 图片压缩日志 ===")
-                Log.d(TAG, "原图尺寸: ${originalWidth}x${originalHeight}")
-                Log.d(TAG, "EXIF矫正后: ${correctedWidth}x${correctedHeight} (orientation=$orientation)")
-                Log.d(TAG, "压缩后尺寸: ${scaledBitmap.width}x${scaledBitmap.height}")
-                Log.d(TAG, "压缩后字节数: ${compressedBytes.size} bytes")
+            // 转 JPEG：先质量 80，若 >800KB 再降 75；仍超限则按比例再缩放直至 ≤800KB
+            var compressedBytes = compressToJpeg(scaledBitmap, JPEG_QUALITY_HIGH)
+            if (compressedBytes.size > MAX_SIZE_BYTES) {
+                compressedBytes = compressToJpeg(scaledBitmap, JPEG_QUALITY_LOW)
+            }
+            var resultBitmap = scaledBitmap
+            var scaleFactor = 1.0f
+            while (compressedBytes.size > MAX_SIZE_BYTES && scaleFactor > 0.25f) {
+                scaleFactor *= 0.85f
+                val w = (resultBitmap.width * scaleFactor).toInt().coerceAtLeast(1)
+                val h = (resultBitmap.height * scaleFactor).toInt().coerceAtLeast(1)
+                val next = Bitmap.createScaledBitmap(resultBitmap, w, h, true)
+                if (resultBitmap != scaledBitmap && resultBitmap != correctedBitmap) resultBitmap.recycle()
+                resultBitmap = next
+                compressedBytes = compressToJpeg(resultBitmap, JPEG_QUALITY_LOW)
             }
             
-            // 释放bitmap
+            val finalWidth = resultBitmap.width
+            val finalHeight = resultBitmap.height
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "=== 图片压缩日志(P0: 长边≤${MAX_LONG_EDGE}px, ≤${MAX_SIZE_BYTES / 1024}KB) ===")
+                Log.d(TAG, "原图: ${originalWidth}x${originalHeight}, 压缩后: ${finalWidth}x${finalHeight}, ${compressedBytes.size} bytes")
+            }
+            
+            if (resultBitmap != scaledBitmap && resultBitmap != correctedBitmap) {
+                resultBitmap.recycle()
+            }
             if (scaledBitmap != correctedBitmap && scaledBitmap != originalBitmap) {
                 scaledBitmap.recycle()
             }
@@ -133,14 +150,21 @@ object ImageUploader {
                 bytes = compressedBytes,
                 originalWidth = originalWidth,
                 originalHeight = originalHeight,
-                compressedWidth = scaledBitmap.width,
-                compressedHeight = scaledBitmap.height,
+                compressedWidth = finalWidth,
+                compressedHeight = finalHeight,
                 compressedSize = compressedBytes.size
             )
         } catch (e: Exception) {
             Log.e(TAG, "图片压缩失败", e)
             null
         }
+    }
+    
+    /** 输出 JPEG 字节数组（质量 75–80），用于 ≤800KB 控制 */
+    private fun compressToJpeg(bitmap: Bitmap, quality: Int): ByteArray {
+        val out = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
+        return out.toByteArray()
     }
     
     /**

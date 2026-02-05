@@ -110,6 +110,10 @@ object QwenClient {
                     addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                     val messagesArray = com.google.gson.JsonArray()
                     var systemContent = systemAnchorText
+                    val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
+                    if (aText.isNotBlank()) {
+                        systemContent = if (systemContent.isNotBlank()) "$systemContent\n\n$aText" else aText
+                    }
                     val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
                     if (bSum.isNotBlank()) {
                         systemContent = if (systemContent.isNotBlank()) "$systemContent\n\n[低参考性·B层累计摘要]\n$bSum" else "[低参考性·B层累计摘要]\n$bSum"
@@ -160,14 +164,13 @@ object QwenClient {
                     }
                     messagesArray.add(userMessageObj)
                     com.nongjiqianwen.SystemAnchor.ensureSystemRole(messagesArray)
-                    if (bSum.isNotBlank() && messagesArray.size() > 0) {
+                    if (messagesArray.size() > 0) {
                         val first = messagesArray.get(0).asJsonObject
                         if (first.get("role")?.asString == "system") {
-                            var cur = first.get("content")?.asString ?: ""
-                            if (cur.contains("[低参考性·B层累计摘要]")) {
-                                cur = cur.substringBefore("[低参考性·B层累计摘要]").trimEnd()
-                            }
-                            first.addProperty("content", "$cur\n\n[低参考性·B层累计摘要]\n$bSum")
+                            var base = first.get("content")?.asString ?: ""
+                            if (base.contains("[中等参考性·A层历史对话]")) base = base.substringBefore("[中等参考性·A层历史对话]").trimEnd()
+                            if (base.contains("[低参考性·B层累计摘要]")) base = base.substringBefore("[低参考性·B层累计摘要]").trimEnd()
+                            first.addProperty("content", buildSystemContentWithLayers(base, aText, bSum))
                         }
                     }
                     add("messages", messagesArray)
@@ -310,6 +313,14 @@ object QwenClient {
         }.start()
     }
     
+    /** 输入规则四层：在 system 基座上按顺序拼接 A（中等参考性）、B（低参考性） */
+    private fun buildSystemContentWithLayers(base: String, aText: String, bSum: String): String {
+        var s = base.trimEnd()
+        if (aText.isNotBlank()) s = if (s.isNotBlank()) "$s\n\n$aText" else aText
+        if (bSum.isNotBlank()) s = if (s.isNotBlank()) "$s\n\n[低参考性·B层累计摘要]\n$bSum" else "[低参考性·B层累计摘要]\n$bSum"
+        return s
+    }
+
     /**
      * 处理错误响应：仅 onInterrupted("error") + fireComplete，不写正文；日志含 userId/sessionId/requestId/streamId/HTTP
      */

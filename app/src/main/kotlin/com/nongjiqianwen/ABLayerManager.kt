@@ -42,6 +42,16 @@ object ABLayerManager {
         return prefs.getString(KEY_B_SUMMARY_PREFIX + sessionId, "") ?: ""
     }
 
+    /** 当前会话 A 层历史对话文本（带标记），供主对话「中等参考性」注入；无则返回空字符串 */
+    fun getARoundsTextForMainDialogue(): String {
+        val sessionId = IdManager.getSessionId()
+        val snapshot = synchronized(aLock) {
+            aRoundsBySession[sessionId]?.toList() ?: emptyList()
+        }
+        if (snapshot.isEmpty()) return ""
+        return "[中等参考性·A层历史对话]\n" + buildDialogueText(snapshot)
+    }
+
     /**
      * 完整轮次完成时调用（仅 onComplete 时，非 interrupted）
      * 加入 A，若 A>=24 则异步尝试 B 提取；成功则原子清空 A 并写入 B。按 session 隔离。

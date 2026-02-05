@@ -332,15 +332,17 @@ class MainActivity : AppCompatActivity() {
                     // base64 解码后即用，不长期驻留
                     val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // 压缩：EXIF 矫正 → 等比缩放长边 1600px → JPEG quality=75（不裁剪）
+                    // 压缩：EXIF 矫正 → 长边≤1280px、≤800KB、质量80→75、统一JPEG（输入规则 P0）
                     val compressResult = ImageUploader.compressImage(imageBytes)
                     
                     if (compressResult == null) {
-                        Log.e("MainActivity", "图片[$imageId] 压缩失败")
+                        Log.e("MainActivity", "图片[$imageId] 解码/压缩失败（格式不支持或损坏）")
                         runOnUiThread {
                             val escapedImageId = escapeJs(imageId)
                             val escapedRequestId = escapeJs(requestId)
-                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', null);", null)
+                            val errMsg = "该图片格式暂不支持，请转为JPG/PNG后重试"
+                            val escapedErr = escapeJs(errMsg)
+                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedErr');", null)
                         }
                         return@Thread
                     }
@@ -360,7 +362,9 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
-                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', null);", null)
+                        val errMsg = "该图片格式暂不支持，请转为JPG/PNG后重试"
+                        val escapedErr = escapeJs(errMsg)
+                        webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedErr');", null)
                     }
                 }
             }.start()
