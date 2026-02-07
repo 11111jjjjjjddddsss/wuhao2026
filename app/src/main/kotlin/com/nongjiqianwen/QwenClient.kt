@@ -182,8 +182,8 @@ object QwenClient {
         val fireComplete: () -> Unit = {
             if (completed.compareAndSet(false, true)) handler.post { onComplete?.invoke() }
         }
+        canceledFlag.set(false)
         Thread {
-            canceledFlag.set(false)
             var call: Call? = null
             var phase = 0
             var outputCharCount = 0
@@ -275,13 +275,49 @@ object QwenClient {
                         if (q.length >= 2) queries.add(q)
                     }
                     if (queries.isEmpty()) {
-                        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true parsed_queries_count=0 action=SKIP_TOOL_CALL show_tool_block=false cancelled=false")
-                        val content = message1.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
-                        outputCharCount = content.length
-                        handler.post {
-                            if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onChunk(content)
-                            fireComplete()
+                        val contentFirst = message1.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
+                        if (contentFirst.isNotBlank()) {
+                            if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true parsed_queries_count=0 action=SKIP_TOOL_CALL show_tool_block=false cancelled=false")
+                            outputCharCount = contentFirst.length
+                            handler.post {
+                                if (!phaseEnded.compareAndSet(false, true)) return@post
+                                onChunk(contentFirst)
+                                fireComplete()
+                            }
+                            return@Thread
+                        }
+                        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true parsed_queries_count=0 action=SKIP_TOOL_CALL_FALLBACK_DIRECT_ANSWER show_tool_block=false cancelled=false")
+                        val msgFb = buildMainDialogueMessages(userMessage, imageUrlList, null)
+                        val bodyFb = JsonObject().apply {
+                            addProperty("model", model); addProperty("stream", false)
+                            addProperty("temperature", ModelParams.TEMPERATURE); addProperty("top_p", ModelParams.TOP_P)
+                            addProperty("max_tokens", ModelParams.MAX_TOKENS)
+                            addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY); addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
+                            add("messages", msgFb)
+                        }
+                        val reqFb = Request.Builder().url(apiUrl)
+                            .addHeader("Authorization", "Bearer $apiKey").addHeader("Content-Type", "application/json").addHeader("Accept", "application/json")
+                            .addHeader("X-User-Id", userId).addHeader("X-Session-Id", sessionId).addHeader("X-Request-Id", requestId).addHeader("X-Client-Msg-Id", requestId)
+                            .post(bodyFb.toString().toRequestBody("application/json".toMediaType())).build()
+                        val callFb = client.newCall(reqFb)
+                        currentCall.set(callFb)
+                        try {
+                            val rspFb = callFb.execute()
+                            currentCall.set(null)
+                            if (rspFb.code != 200) {
+                                handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; onChunk("网络波动，已停止"); fireComplete() }
+                                return@Thread
+                            }
+                            val jsFb = gson.fromJson(rspFb.body?.string() ?: "", JsonObject::class.java)
+                            val choicesFb = jsFb.getAsJsonArray("choices")
+                            val contentFb = if (choicesFb != null && choicesFb.size() > 0) choicesFb.get(0).asJsonObject.getAsJsonObject("message")?.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: "" else ""
+                            outputCharCount = contentFb.length
+                            handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; onChunk(if (contentFb.isNotBlank()) contentFb else "网络波动，已停止"); fireComplete() }
+                        } catch (e: Exception) {
+                            val isCanceled = canceledFlag.get() || callFb.isCanceled()
+                            currentCall.set(null)
+                            if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true action=SKIP_TOOL_CALL_FALLBACK_DIRECT_ANSWER show_tool_block=false cancelled=$isCanceled")
+                            handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error"); fireComplete() }
                         }
                         return@Thread
                     }
