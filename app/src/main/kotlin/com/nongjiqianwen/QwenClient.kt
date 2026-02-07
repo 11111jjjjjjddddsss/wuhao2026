@@ -38,6 +38,7 @@ object QwenClient {
         .callTimeout(CALL_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
         .build()
     private val currentCall = AtomicReference<Call?>(null)
+    private val currentBochaCall = AtomicReference<Call?>(null)
     private val currentRequestId = AtomicReference<String?>(null)
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
@@ -96,6 +97,7 @@ object QwenClient {
     fun cancelCurrentRequest() {
         val oldRequestId = currentRequestId.getAndSet(null)
         currentCall.getAndSet(null)?.cancel()
+        currentBochaCall.getAndSet(null)?.cancel()
         if (BuildConfig.DEBUG && oldRequestId != null) {
             Log.d(TAG, "requestId=$oldRequestId 被取消（新请求/用户停止）")
         }
@@ -170,6 +172,7 @@ object QwenClient {
         }
         Thread {
             var call: Call? = null
+            var phase = 0
             var outputCharCount = 0
             val inLen = userMessage.length
             val imgCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
@@ -252,10 +255,13 @@ object QwenClient {
                             if (!q.isNullOrBlank()) queries.add(q)
                         } catch (_: Exception) { }
                     }
+                    phase = 1
+                    currentBochaCall.set(null)
                     val toolInfoFormatted = if (queries.isEmpty()) {
                         "联网搜索失败/未命中（仅供参考）"
                     } else {
-                        val results = queries.mapNotNull { q -> BochaClient.webSearch(q) }
+                        val results = queries.mapNotNull { q -> BochaClient.webSearch(q, currentBochaCall) }
+                        currentBochaCall.set(null)
                         val combined = results.joinToString("\n\n").trim()
                         if (combined.isBlank()) "联网搜索失败/未命中（仅供参考）" else combined
                     }
@@ -282,34 +288,39 @@ object QwenClient {
                         .addHeader("X-Client-Msg-Id", requestId)
                         .post(body2.toString().toRequestBody("application/json".toMediaType()))
                         .build()
-                    val response2 = client.newCall(request2).execute()
+                    phase = 2
+                    val call2 = client.newCall(request2)
+                    currentCall.set(call2)
+                    val response2 = call2.execute()
+                    currentCall.set(null)
                     val code2 = response2.code
                     val body2Str = response2.body?.string() ?: ""
                     if (code2 != 200) {
                         Log.e(TAG, "callApi 二次请求 HTTP error status=$code2")
-                        handleErrorResponse(userId, sessionId, requestId, streamId, code2, body2Str, inLen, imgCount, 0, onInterrupted, fireComplete)
+                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
                         return@Thread
                     }
                     val json2 = gson.fromJson(body2Str, JsonObject::class.java)
                     val choices2 = json2.getAsJsonArray("choices") ?: run {
-                        handler.post { onInterrupted("error"); fireComplete() }
+                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
                         return@Thread
                     }
                     if (choices2.size() == 0) {
-                        handler.post { onInterrupted("error"); fireComplete() }
+                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
                         return@Thread
                     }
                     val message2 = choices2.get(0).asJsonObject.getAsJsonObject("message") ?: run {
-                        handler.post { onInterrupted("error"); fireComplete() }
+                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
                         return@Thread
                     }
                     val content = message2.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
                     outputCharCount = content.length
                     val elapsed = System.currentTimeMillis() - startMs
+                    val showToolBlock = toolInfoFormatted.isNotBlank() && !toolInfoFormatted.contains("联网搜索失败") && !toolInfoFormatted.contains("未命中")
                     if (BuildConfig.DEBUG) Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 二次完成 耗时=${elapsed}ms 出=$outputCharCount")
                     handler.post {
                         onChunk(content)
-                        onToolInfo?.invoke(streamId, "web_search", toolInfoFormatted)
+                        if (showToolBlock) onToolInfo?.invoke(streamId, "web_search", toolInfoFormatted)
                         fireComplete()
                     }
                     return@Thread
@@ -327,33 +338,26 @@ object QwenClient {
                 }
             } catch (e: Exception) {
                 currentCall.set(null)
+                currentBochaCall.set(null)
                 currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
-                if (isCanceled) {
-                    Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
-                    handler.post {
-                        onInterrupted("canceled")
-                        fireComplete()
-                    }
-                } else if (isInterrupted) {
-                    Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
-                    handler.post {
-                        onInterrupted("timeout")
-                        fireComplete()
-                    }
-                } else if (e is IOException) {
-                    Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
-                    handler.post {
-                        onInterrupted("network")
-                        fireComplete()
-                    }
+                if (phase == 2) {
+                    handler.post { onChunk("网络波动，已停止"); fireComplete() }
                 } else {
-                    Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
-                    handler.post {
-                        onInterrupted("error")
-                        fireComplete()
+                    if (isCanceled) {
+                        Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
+                        handler.post { onInterrupted("canceled"); fireComplete() }
+                    } else if (isInterrupted) {
+                        Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
+                        handler.post { onInterrupted("timeout"); fireComplete() }
+                    } else if (e is IOException) {
+                        Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
+                        handler.post { onInterrupted("network"); fireComplete() }
+                    } else {
+                        Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
+                        handler.post { onInterrupted("error"); fireComplete() }
                     }
                 }
                 return@Thread

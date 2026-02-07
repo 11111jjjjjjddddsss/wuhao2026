@@ -11,6 +11,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 博查 Web Search API 客户端。
@@ -32,49 +33,39 @@ object BochaClient {
     private val gson = Gson()
     private val handler = Handler(Looper.getMainLooper())
 
-        /**
-     * 纯工具函数：只做请求 → 返回结果 或 null
-     * 不抛异常，不影响主流程
-     * 搜索失败 / 超时 / 空结果 → 返回 null 即可
+    /**
+     * 纯工具函数：只做请求 → 返回结果 或 null。
+     * 搜索失败/超时/空结果 → 返回 null；callRef 用于外部 cancel，取消时抛出 IOException。
      */
-    fun webSearch(query: String): String? {
-        if (query.isBlank()) {
-            return null
+    fun webSearch(query: String, callRef: AtomicReference<Call?>? = null): String? {
+        if (query.isBlank()) return null
+        val body = JsonObject().apply {
+            addProperty("query", query.trim())
+            addProperty("freshness", "noLimit")
+            addProperty("summary", true)
+            addProperty("count", 5)
         }
-        
+        val request = Request.Builder()
+            .url(URL)
+            .addHeader("Authorization", "Bearer ${BuildConfig.BOCHA_API_KEY}")
+            .addHeader("Content-Type", "application/json")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        val call = client.newCall(request)
+        callRef?.set(call)
         return try {
-            val body = JsonObject().apply {
-                addProperty("query", query.trim())
-                addProperty("freshness", "noLimit")
-                addProperty("summary", true)
-                addProperty("count", 5)
-            }
-            
-            val request = Request.Builder()
-                .url(URL)
-                .addHeader("Authorization", "Bearer ${BuildConfig.BOCHA_API_KEY}")
-                .addHeader("Content-Type", "application/json")
-                .post(body.toString().toRequestBody("application/json".toMediaType()))
-                .build()
-            
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return null
-                }
-                
+            call.execute().use { response ->
+                if (!response.isSuccessful) return null
                 val bodyStr = response.body?.string() ?: ""
-                val bodyReason = parseBodyCode(bodyStr)
-                if (bodyReason != null) {
-                    return null
-                }
-                
+                if (parseBodyCode(bodyStr) != null) return null
                 parseResult(bodyStr)
             }
+        } catch (e: IOException) {
+            if (e.message?.contains("Canceled", ignoreCase = true) == true) throw e
+            if (BuildConfig.DEBUG) Log.w(TAG, "web-search network", e)
+            null
         } catch (e: SocketTimeoutException) {
             if (BuildConfig.DEBUG) Log.w(TAG, "web-search timeout")
-            null
-        } catch (e: IOException) {
-            if (BuildConfig.DEBUG) Log.w(TAG, "web-search network", e)
             null
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.w(TAG, "web-search error", e)
