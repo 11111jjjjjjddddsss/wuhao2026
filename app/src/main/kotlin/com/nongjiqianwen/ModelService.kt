@@ -18,13 +18,14 @@ object ModelService {
         chatModel: String? = null,
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null,
-        onInterrupted: (reason: String) -> Unit
+        onInterrupted: (reason: String) -> Unit,
+        onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null
     ) {
         QwenClient.cancelCurrentRequest()
         val userId = IdManager.getInstallId()
         val sessionId = IdManager.getSessionId()
         val requestId = ApiConfig.nextRequestId()
-        // 单次请求；工具信息仅当模型侧调用 webSearch 时由调用方传入，此处不传
+        // 单次请求；工具信息仅当模型侧调用 webSearch 时由调用方传入，此处不传；onToolInfo 仅用于 UI 灰块，不写 A/B
         QwenClient.callApi(
             userId = userId,
             sessionId = sessionId,
@@ -36,7 +37,8 @@ object ModelService {
             toolInfo = null,
             onChunk = onChunk,
             onComplete = onComplete,
-            onInterrupted = onInterrupted
+            onInterrupted = onInterrupted,
+            onToolInfo = onToolInfo
         )
     }
 }

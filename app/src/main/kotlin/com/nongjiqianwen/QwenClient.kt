@@ -156,7 +156,8 @@ object QwenClient {
         toolInfo: String? = null,
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null,
-        onInterrupted: (reason: String) -> Unit
+        onInterrupted: (reason: String) -> Unit,
+        onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null
     ) {
         val model = if (chatModel == "plus") modelPlus else modelFlash
         val startMs = System.currentTimeMillis()
@@ -308,6 +309,7 @@ object QwenClient {
                     if (BuildConfig.DEBUG) Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 二次完成 耗时=${elapsed}ms 出=$outputCharCount")
                     handler.post {
                         onChunk(content)
+                        onToolInfo?.invoke(streamId, "web_search", toolInfoFormatted)
                         fireComplete()
                     }
                     return@Thread

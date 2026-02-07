@@ -510,7 +510,14 @@ class MainActivity : AppCompatActivity() {
                 chatModel = chatModel,
                 onChunk = { chunk -> dispatchChunk(streamId, chunk) },
                 onComplete = { dispatchComplete(streamId) },
-                onInterrupted = { reason -> dispatchInterrupted(streamId, reason) }
+                onInterrupted = { reason -> dispatchInterrupted(streamId, reason) },
+                onToolInfo = { sid, toolName, toolText ->
+                    runOnUiThread {
+                        val escStreamId = escapeJs(sid)
+                        val escText = toolText.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+                        webView.evaluateJavascript("renderToolResult('$escStreamId','$toolName','$escText');", null)
+                    }
+                }
             )
         }
     }
