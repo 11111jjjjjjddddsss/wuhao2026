@@ -111,12 +111,12 @@ object QwenClient {
     /** 本地假流式：首段立刻吐，余下分批 postDelayed；isCanceled 为 true 或 phaseEnded 时停止。 */
     private fun emitFakeStream(fullText: String, onChunk: (String) -> Unit, isCanceled: () -> Boolean, onDone: () -> Unit) {
         if (fullText.isBlank()) { onDone(); return }
-        if (fullText.length <= 120) {
+        if (fullText.length <= 160) {
             onChunk(fullText)
             onDone()
             return
         }
-        val burstLen = minOf(24, fullText.length)
+        val burstLen = minOf(32, fullText.length)
         onChunk(fullText.substring(0, burstLen))
         if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream start len=${fullText.length} burst=$burstLen")
         val remaining = fullText.substring(burstLen)
@@ -139,7 +139,7 @@ object QwenClient {
                 onDone()
                 return@Runnable
             }
-            val chunkLen = (remaining.length - offset).coerceAtLeast(0).let { rest -> minOf(16, rest).coerceAtLeast(1) }
+            val chunkLen = (remaining.length - offset).coerceAtLeast(0).let { rest -> minOf(24, rest).coerceAtLeast(1) }
             if (chunkLen <= 0) {
                 streamingRunnableRef.set(null)
                 if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
@@ -154,10 +154,10 @@ object QwenClient {
                 onDone()
                 return@Runnable
             }
-            handler.postDelayed(runnable, 20)
+            handler.postDelayed(runnable, 30)
         }
         streamingRunnableRef.set(runnable)
-        handler.postDelayed(runnable, 20)
+        handler.postDelayed(runnable, 30)
     }
 
     /** 合并多条 Bocha 成功文本：单标题行 + 最多 5 条「- 标题 | 域名 | URL」，总长 <= TOOL_INFO_MAX_CHARS。 */

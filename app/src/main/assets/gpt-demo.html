@@ -2230,7 +2230,7 @@
             bad_request: '请求参数有误，请重试。',
             canceled: '已停止生成。',
             no_network: '当前无网络，未发送。',
-            cache_overflow: '请求失败，点击重试。',
+            cache_overflow: '',
             unknown: '请求失败，点击重试。'
         };
         
@@ -2736,6 +2736,7 @@
             var contentDiv = msg.querySelector('.message-content');
             if (!contentDiv || contentDiv.querySelector('.interrupted-badge')) return;
             var text = reasonToCopy[reason] || reasonToCopy.unknown;
+            if (!text) return;
             var badge = document.createElement('span');
             badge.className = 'interrupted-badge';
             badge.textContent = text;
