@@ -2167,7 +2167,7 @@
                 if (imageState.size > 0 && !textInput.value.trim()) {
                     e.preventDefault();
                     e.stopPropagation();
-                    showToastOncePerDay('img_no_text', '图片需要配合文字描述');
+                    showToastOncePerDay('img_no_text', '请补充图片描述后再发送');
                     return;
                 }
             }
@@ -2246,12 +2246,19 @@
             updateInputMode();
         });
 
-        /** C. 4 态状态机：更新右侧按钮 Mic / Send / Stop 显示与禁用 */
+        /** C. 4 态状态机：更新右侧按钮 Mic / Send / Stop 显示与禁用；图片=必须配文字，有图无字时 placeholder 提示 */
         function updateInputMode() {
             const hasText = textInput.value.trim().length > 0;
             const voiceOpen = voicePanel.classList.contains('open');
             const inVoiceMode = inputContainer.classList.contains('voice-mode');
             const hasImages = imageState.size > 0;
+            var hasAnyImageUploadingOrFailed = false;
+            for (var _s of imageState.values()) {
+                if (_s.status === 'uploading' || _s.status === 'fail') {
+                    hasAnyImageUploadingOrFailed = true;
+                    break;
+                }
+            }
 
             if (voiceOpen || inVoiceMode) {
                 inputMode = inVoiceMode ? 'voiceMode' : 'voicePanel';
@@ -2272,15 +2279,15 @@
                 btnSend.classList.remove('btn-hidden');
                 btnSend.disabled = true;
                 btnStop.classList.add('btn-hidden');
-                textInput.placeholder = '请补充文字描述后再发送';
+                textInput.placeholder = '请补充图片描述后再发送';
             } else if (hasText) {
                 inputMode = 'typing';
                 btnMicOrKeyboard.classList.add('btn-hidden');
                 btnSend.classList.remove('btn-hidden');
                 btnStop.classList.add('btn-hidden');
                 textInput.placeholder = '';
-                var sendDisabled = false;
-                if (hasImages) {
+                var sendDisabled = hasAnyImageUploadingOrFailed;
+                if (hasImages && !sendDisabled) {
                     for (var _s of imageState.values()) {
                         if (_s.status === 'uploading' || _s.status === 'fail') {
                             sendDisabled = true;
@@ -2298,6 +2305,7 @@
                 textInput.placeholder = '';
             }
 
+            if (hasAnyImageUploadingOrFailed && !btnSend.classList.contains('btn-hidden')) btnSend.disabled = true;
             addButton.disabled = imageState.size >= 4;
             addButton.style.opacity = imageState.size >= 4 ? '0.5' : '1';
         }
@@ -2592,7 +2600,7 @@
             const text = textInput.value.trim();
             const hasImages = imageState.size > 0;
             if (!text) {
-                if (hasImages) showToast('请补充文字描述后再发送');
+                if (hasImages) showToastOncePerDay('img_no_text', '请补充图片描述后再发送');
                 return;
             }
             if (hasImages && !text) return;
