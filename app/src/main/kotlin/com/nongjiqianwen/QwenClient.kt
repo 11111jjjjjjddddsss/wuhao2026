@@ -122,7 +122,7 @@ object QwenClient {
         val messagesArray = JsonArray()
         messagesArray.add(JsonObject().apply {
             addProperty("role", "system")
-            addProperty("content", "")
+            addProperty("content", com.nongjiqianwen.SystemAnchor.getAnchorForPreFill())
         })
         val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
         val parts = mutableListOf<String>()
@@ -202,7 +202,7 @@ object QwenClient {
                     val sysCount = messagesFirst.count { el -> el.isJsonObject && el.asJsonObject.get("role")?.asString == "system" }
                     check(sysCount == 1) { "FATAL: system role count != 1, count=$sysCount" }
                     val firstContent = messagesFirst.get(0).asJsonObject.get("content")?.asString ?: ""
-                    check(firstContent.contains("你是\"农技千问\"")) { "FATAL: system anchor missing" }
+                    check(firstContent.contains("【系统前置锚点】") || firstContent.contains("【系统兜底短锚点】")) { "FATAL: system anchor missing" }
                     if (toolInfo != null && toolInfo.isNotBlank()) Log.d(TAG, "P0_SMOKE: 联网成功 工具信息（极低参考性）已注入本轮")
                     else Log.d(TAG, "P0_SMOKE: 主对话 ${if (useTools) "首次带 tools" else "未联网"}")
                 }
