@@ -239,6 +239,63 @@ object QwenClient {
 
                 if (code1 != 200) {
                     Log.e(TAG, "callApi HTTP error status=$code1")
+                    val body1Lower = body1.lowercase()
+                    val isToolsUnsupported = (code1 == 400 || code1 == 422) || body1Lower.contains("unsupported tools") || body1Lower.contains("tools not allowed")
+                    if (useTools && isToolsUnsupported) {
+                        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: first request tools unsupported retry without tools")
+                        val bodyRetry = JsonObject().apply {
+                            addProperty("model", model)
+                            addProperty("stream", false)
+                            addProperty("temperature", ModelParams.TEMPERATURE)
+                            addProperty("top_p", ModelParams.TOP_P)
+                            addProperty("max_tokens", ModelParams.MAX_TOKENS)
+                            addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
+                            addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
+                            add("messages", messagesFirst)
+                        }
+                        val reqRetry = Request.Builder()
+                            .url(apiUrl)
+                            .addHeader("Authorization", "Bearer $apiKey")
+                            .addHeader("Content-Type", "application/json")
+                            .addHeader("Accept", "application/json")
+                            .addHeader("X-User-Id", userId)
+                            .addHeader("X-Session-Id", sessionId)
+                            .addHeader("X-Request-Id", requestId)
+                            .addHeader("X-Client-Msg-Id", requestId)
+                            .post(bodyRetry.toString().toRequestBody("application/json".toMediaType()))
+                            .build()
+                        val callRetry = client.newCall(reqRetry)
+                        currentCall.set(callRetry)
+                        try {
+                            val rspRetry = callRetry.execute()
+                            currentCall.set(null)
+                            if (rspRetry.code != 200) {
+                                handleErrorResponse(userId, sessionId, requestId, streamId, rspRetry.code, rspRetry.body?.string() ?: "", inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
+                                return@Thread
+                            }
+                            val jsonRetry = gson.fromJson(rspRetry.body?.string() ?: "", JsonObject::class.java)
+                            val choicesRetry = jsonRetry.getAsJsonArray("choices")
+                            val contentRetry = if (choicesRetry != null && choicesRetry.size() > 0) {
+                                choicesRetry.get(0).asJsonObject.getAsJsonObject("message")?.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
+                            } else ""
+                            outputCharCount = contentRetry.length
+                            handler.post {
+                                if (!phaseEnded.compareAndSet(false, true)) return@post
+                                onChunk(if (contentRetry.isNotBlank()) contentRetry else "网络波动，已停止")
+                                fireComplete()
+                            }
+                        } catch (e: Exception) {
+                            currentCall.set(null)
+                            val isCanceled = canceledFlag.get() || callRetry.isCanceled()
+                            if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: tools_unsupported_retry cancelled=$isCanceled")
+                            handler.post {
+                                if (!phaseEnded.compareAndSet(false, true)) return@post
+                                if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error")
+                                fireComplete()
+                            }
+                        }
+                        return@Thread
+                    }
                     handleErrorResponse(userId, sessionId, requestId, streamId, code1, body1, inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
                     return@Thread
                 }
