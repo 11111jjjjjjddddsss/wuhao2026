@@ -177,36 +177,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * 博查联网搜索；成功回调 onSearchResult(streamId, resultText)，失败回调 onStreamInterrupted(streamId, reason)
+         * 博查联网搜索；纯工具函数，返回结果或null
          */
         @JavascriptInterface
         fun webSearch(streamId: String, query: String, freshness: String?, countStr: String?) {
-            val f = freshness?.takeIf { it.isNotBlank() } ?: "oneWeek"
-            val c = countStr?.toIntOrNull()?.coerceIn(1, 5) ?: 5
-            BochaClient.search(
-                query = query,
-                freshness = f,
-                count = c,
-                onSuccess = { resultText ->
-                    runOnUiThread {
+            Thread {
+                val resultText = BochaClient.webSearch(query)
+                runOnUiThread {
+                    if (resultText != null) {
                         val escStreamId = escapeJs(streamId)
                         val escResult = escapeJs(resultText).replace("\n", "\\n").replace("\r", "\\r")
                         webView.evaluateJavascript("window.onSearchResult && window.onSearchResult('$escStreamId', '$escResult');", null)
                     }
-                },
-                onFailure = { reason ->
-                    runOnUiThread {
-                        val showReason = reason == "network" || reason == "timeout" || reason == "rate_limit"
-                        if (showReason) {
-                            val escStreamId = escapeJs(streamId)
-                            val escReason = escapeJs(reason)
-                            webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$escStreamId', '$escReason');", null)
-                        } else {
-                            if (BuildConfig.DEBUG) android.util.Log.w("BochaSearch", "web-search silent failure: reason=$reason")
-                        }
-                    }
+                    // 搜索失败/超时/空结果 → 返回null，前端静默处理
                 }
-            )
+            }.start()
         }
 
         /**

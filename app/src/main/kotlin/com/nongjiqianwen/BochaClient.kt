@@ -32,70 +32,54 @@ object BochaClient {
     private val gson = Gson()
     private val handler = Handler(Looper.getMainLooper())
 
-    /**
-     * 发起联网搜索；成功回调 resultText，失败回调 reason（timeout/network/server/error/auth/quota/rate_limit/bad_request）。
-     * @param query 搜索词
-     * @param freshness 可空，默认 noLimit（官方推荐，减少时间范围内无结果）
-     * @param count 可空，默认 5（展示层仍最多 5 条）
+        /**
+     * 纯工具函数：只做请求 → 返回结果 或 null
+     * 不抛异常，不影响主流程
+     * 搜索失败 / 超时 / 空结果 → 返回 null 即可
      */
-    fun search(
-        query: String,
-        freshness: String? = "noLimit",
-        count: Int = 5,
-        onSuccess: (String) -> Unit,
-        onFailure: (String) -> Unit
-    ) {
+    fun webSearch(query: String): String? {
         if (query.isBlank()) {
-            handler.post { onFailure("bad_request") }
-            return
+            return null
         }
-        Thread {
-            var reason = "error"
-            try {
-                val body = JsonObject().apply {
-                    addProperty("query", query.trim())
-                    addProperty("freshness", freshness?.takeIf { it.isNotBlank() } ?: "noLimit")
-                    addProperty("summary", true)
-                    addProperty("count", count.coerceIn(1, 50))
-                }
-                val request = Request.Builder()
-                    .url(URL)
-                    .addHeader("Authorization", "Bearer ${BuildConfig.BOCHA_API_KEY}")
-                    .addHeader("Content-Type", "application/json")
-                    .post(body.toString().toRequestBody("application/json".toMediaType()))
-                    .build()
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        reason = "server"
-                        handler.post { onFailure(reason) }
-                        return@Thread
-                    }
-                    val bodyStr = response.body?.string() ?: ""
-                    val bodyReason = parseBodyCode(bodyStr)
-                    if (bodyReason != null) {
-                        handler.post { onFailure(bodyReason) }
-                        return@Thread
-                    }
-                    val resultText = parseResult(bodyStr)
-                    when {
-                        resultText == null -> handler.post { onFailure("server") }
-                        else -> handler.post { onSuccess(resultText) }
-                    }
-                }
-            } catch (e: SocketTimeoutException) {
-                reason = "timeout"
-                if (BuildConfig.DEBUG) Log.w(TAG, "web-search timeout")
-                handler.post { onFailure(reason) }
-            } catch (e: IOException) {
-                reason = "network"
-                if (BuildConfig.DEBUG) Log.w(TAG, "web-search network", e)
-                handler.post { onFailure(reason) }
-            } catch (e: Exception) {
-                reason = "error"
-                if (BuildConfig.DEBUG) Log.w(TAG, "web-search error", e)
-                handler.post { onFailure(reason) }
+        
+        return try {
+            val body = JsonObject().apply {
+                addProperty("query", query.trim())
+                addProperty("freshness", "noLimit")
+                addProperty("summary", true)
+                addProperty("count", 5)
             }
-        }.start()
+            
+            val request = Request.Builder()
+                .url(URL)
+                .addHeader("Authorization", "Bearer ${BuildConfig.BOCHA_API_KEY}")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return null
+                }
+                
+                val bodyStr = response.body?.string() ?: ""
+                val bodyReason = parseBodyCode(bodyStr)
+                if (bodyReason != null) {
+                    return null
+                }
+                
+                parseResult(bodyStr)
+            }
+        } catch (e: SocketTimeoutException) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "web-search timeout")
+            null
+        } catch (e: IOException) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "web-search network", e)
+            null
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "web-search error", e)
+            null
+        }
     }
 
     /** 官方异常码：HTTP 200 时 body 可能带 code!=200（文档中 code 可为数字或字符串）。返回非 null 表示业务失败，走 onFailure(reason)，不泄露响应体/密钥。 */

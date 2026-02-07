@@ -2660,18 +2660,10 @@
             pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), ts: Date.now() };
             pendingDeduct[streamId] = (imageUrls.length > 0 ? 1 : 0);
 
-            // 输入规则：先联网搜索（若有），再带「极低参考性·工具信息」发送；超时则不带工具信息发送
+            // 不再强制联网搜索，由主模型自行决定是否调用联网工具
             pendingSendByStreamId[streamId] = { text: text, imageUrls: imageUrls.slice() };
-            if (typeof AndroidInterface.webSearch === 'function' && text) {
-                AndroidInterface.webSearch(streamId, text, 'noLimit', '5');
-                var searchTimeout = setTimeout(function() {
-                    if (pendingSendByStreamId[streamId]) doSendWithSearchResult(streamId, '');
-                    delete searchTimeoutByStreamId[streamId];
-                }, SEARCH_WAIT_MS);
-                searchTimeoutByStreamId[streamId] = searchTimeout;
-            } else {
-                doSendWithSearchResult(streamId, '');
-            }
+            // 直接发送，不提前搜索
+            doSendWithSearchResult(streamId, '');
 
             // 清空输入和图片预览
             textInput.value = '';

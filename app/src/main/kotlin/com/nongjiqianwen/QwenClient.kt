@@ -136,9 +136,9 @@ object QwenClient {
                             }
                         }
                         
-                        // 2. 文本项：输入规则四层标记。当前优先处理的问题 + 极低参考性·工具信息（若有）
-                        val mainText = if (userMessage.isNotBlank()) "[当前优先处理的问题]\n$userMessage" else ""
-                        val toolText = toolInfo?.takeIf { it.isNotBlank() }?.trim()?.let { "[极低参考性·工具信息]\n$it" } ?: ""
+                                                // 2. 文本项：用户输入 + 工具信息（若有）
+                        val mainText = userMessage
+                        val toolText = toolInfo?.takeIf { it.isNotBlank() }?.trim() ?: ""
                         val textParts = listOfNotNull(
                             mainText.takeIf { it.isNotBlank() },
                             toolText.takeIf { it.isNotBlank() }
