@@ -136,9 +136,9 @@ object QwenClient {
                             }
                         }
                         
-                                                // 2. 文本项：用户输入 + 工具信息（若有）
-                        val mainText = userMessage
-                        val toolText = toolInfo?.takeIf { it.isNotBlank() }?.trim() ?: ""
+                                                                        // 2. 文本项：输入规则四层标记。当前优先处理的问题 + 极低参考性·工具信息（若有）
+                        val mainText = if (userMessage.isNotBlank()) "【当前输入】\n$userMessage" else ""
+                        val toolText = toolInfo?.takeIf { it.isNotBlank() }?.trim()?.let { "【极低参考性·工具信息】\n$it" } ?: ""
                         val textParts = listOfNotNull(
                             mainText.takeIf { it.isNotBlank() },
                             toolText.takeIf { it.isNotBlank() }
@@ -320,18 +320,21 @@ object QwenClient {
         }.start()
     }
     
-    /** 输入规则四层：在 system 基座上按顺序拼接 A（中等参考性）、B（低参考性）。B 层追加前去重，防膨胀。 */
+        /** 输入规则四层：在 system 基座上按顺序拼接 A（中等参考性）、B（低参考性）。B 层追加前去重，防膨胀。 */
     private fun buildSystemContentWithLayers(base: String, aText: String, bSum: String): String {
         var s = base.trimEnd()
-        if (aText.isNotBlank()) s = if (s.isNotBlank()) "$s\n\n$aText" else aText
+        if (aText.isNotBlank()) {
+            val aMarker = "【A层对话（中等参考性）】"
+            s = if (s.isNotBlank()) "$s\n\n$aMarker\n$aText" else "$aMarker\n$aText"
+        }
         if (bSum.isNotBlank()) {
-            val marker = "[低参考性·B层累计摘要]"
-            if (s.contains(marker)) {
-                val idx = s.indexOf(marker)
-                val afterBlock = s.indexOf("\n\n[", idx + marker.length).let { if (it > 0) it else s.length }
+            val bMarker = "【低参考性·B层累计摘要】"
+            if (s.contains(bMarker)) {
+                val idx = s.indexOf(bMarker)
+                val afterBlock = s.indexOf("\n\n【", idx + bMarker.length).let { if (it > 0) it else s.length }
                 s = (s.substring(0, idx) + s.substring(afterBlock)).trimEnd()
             }
-            s = if (s.isNotBlank()) "$s\n\n$marker\n$bSum" else "$marker\n$bSum"
+            s = if (s.isNotBlank()) "$s\n\n$bMarker\n$bSum" else "$bMarker\n$bSum"
         }
         return s
     }

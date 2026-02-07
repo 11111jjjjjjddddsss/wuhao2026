@@ -268,10 +268,9 @@ class MainActivity : AppCompatActivity() {
          * @param imageUrlsJson JSON数组：["https://...", ...] 或 "null"
          * @param streamId 前端生成的流ID，回调时写对应气泡（取消时旧气泡落终态）
          * @param model 可选，传 "plus" 为专家模式（qwen3-vl-plus），否则 qwen3-vl-flash
-         * @param searchResult 本轮联网搜索结果（极低参考性·工具信息），空则省略
          */
         @JavascriptInterface
-        fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?, searchResult: String?) {
+        fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?) {
             runOnUiThread {
                 // 单飞：不挡连点；连点 = 取消旧流再开新流，getReply 内 cancelCurrentRequest
 
@@ -317,8 +316,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 currentStreamId = sid
                 isRequesting = true
-                val toolInfo = searchResult?.takeIf { it.isNotBlank() }?.trim()
-                sendToModel(text, imageUrlList, sid, model?.takeIf { it.isNotBlank() }, toolInfo)
+                sendToModel(text, imageUrlList, sid, model?.takeIf { it.isNotBlank() })
             }
         }
 
@@ -502,16 +500,14 @@ class MainActivity : AppCompatActivity() {
         /**
          * 发送模型请求（streamId 贯穿；仅新请求时 cancel 旧请求，切后台不断网、缓存补发）
          * @param chatModel "plus"=专家 qwen3-vl-plus，否则 qwen3-vl-flash
-         * @param toolInfo 本轮联网搜索结果（极低参考性·工具信息），空则省略
          */
-        private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String, chatModel: String? = null, toolInfo: String? = null) {
+        private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String, chatModel: String? = null) {
             pendingUserByStreamId[streamId] = text
             ModelService.getReply(
                 userMessage = text,
                 imageUrlList = imageUrlList,
                 streamId = streamId,
                 chatModel = chatModel,
-                toolInfo = toolInfo,
                 onChunk = { chunk -> dispatchChunk(streamId, chunk) },
                 onComplete = { dispatchComplete(streamId) },
                 onInterrupted = { reason -> dispatchInterrupted(streamId, reason) }

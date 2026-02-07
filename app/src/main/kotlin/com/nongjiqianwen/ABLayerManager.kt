@@ -63,8 +63,8 @@ object ABLayerManager {
         } else {
             synchronized(aLock) { aRoundsBySession[IdManager.getSessionId()]?.toList() ?: emptyList() }
         }
-        if (snapshot.isEmpty()) return ""
-        return "[中等参考性·A层历史对话]\n" + buildDialogueText(snapshot)
+                if (snapshot.isEmpty()) return ""
+        return buildDialogueText(snapshot)
     }
 
     /**

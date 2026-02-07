@@ -2215,9 +2215,7 @@
         const deducted = {};               // streamId -> true，同一 streamId 只扣一次；24h 后清理（P2a）
         const DEDUCTED_TTL_MS = 24 * 60 * 60 * 1000;
         const PENDING_MAX_AGE_MS = 15 * 60 * 1000;  // P2b：pending 悬挂超 15 分钟自动清
-        const SEARCH_WAIT_MS = 5000;  // 发送前联网搜索等待上限，超时则不带工具信息发送
-        const pendingSendByStreamId = {};   // streamId -> { text, imageUrls }，先搜索再发送时暂存
-        const searchTimeoutByStreamId = {}; // streamId -> setTimeout id，onSearchResult 或超时后 clear
+
         // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         // reason → 文案（ChatGPT 风格：短句、灰字、不露技术细节）
@@ -2660,10 +2658,9 @@
             pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), ts: Date.now() };
             pendingDeduct[streamId] = (imageUrls.length > 0 ? 1 : 0);
 
-            // 不再强制联网搜索，由主模型自行决定是否调用联网工具
-            pendingSendByStreamId[streamId] = { text: text, imageUrls: imageUrls.slice() };
-            // 直接发送，不提前搜索
-            doSendWithSearchResult(streamId, '');
+            // 直接发送，由模型自行决策是否需要联网搜索
+            sendToAndroid(text, imageUrls, streamId);
+            startWatchdog(streamId);
 
             // 清空输入和图片预览
             textInput.value = '';
@@ -2674,26 +2671,13 @@
             updateInputMode();
         }
 
-        // 先搜索再发送：用搜索结果（极低参考性·工具信息）或空字符串调用发送
-        function doSendWithSearchResult(streamId, searchResult) {
-            var data = pendingSendByStreamId[streamId];
-            if (!data) return;
-            sendToAndroid(data.text, data.imageUrls, streamId, searchResult || '');
-            delete pendingSendByStreamId[streamId];
-            if (searchTimeoutByStreamId[streamId]) {
-                clearTimeout(searchTimeoutByStreamId[streamId]);
-                delete searchTimeoutByStreamId[streamId];
-            }
-            startWatchdog(streamId);
-        }
-
-        // 发送到Android后端（streamId 写对应气泡；模型路由：专家=plus，其余=flash；searchResult 为本轮工具信息）
-        function sendToAndroid(text, imageUrls, streamId, searchResult) {
+        // 发送到Android后端（streamId 写对应气泡；模型路由：专家=plus，其余=flash）
+        function sendToAndroid(text, imageUrls, streamId) {
             var imageUrlsJson = imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
             var tier = getCurrentTier();
             var model = tier === 'expert' ? 'plus' : 'flash';
             if (typeof AndroidInterface.sendMessage === 'function') {
-                AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model, searchResult || '');
+                AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model);
             }
         }
 
@@ -2930,12 +2914,7 @@
             scrollToBottom();
         }
 
-        // 博查联网搜索结果：仅在有结果时展示灰字块；空结果完全静默（对齐 GPT）；若本轮在等搜索再发送则带工具信息发送
-        window.onSearchResult = function(streamId, resultText) {
-            var trimmed = (resultText != null && typeof resultText === 'string') ? resultText.trim() : '';
-            if (trimmed) renderToolResult(streamId, 'bocha', trimmed);
-            if (pendingSendByStreamId[streamId]) doSendWithSearchResult(streamId, trimmed);
-        };
+
 
         // 安卓本地时间：供锚点/业务按需调用
         window.getLocalDateTimeFromAndroid = function() {
