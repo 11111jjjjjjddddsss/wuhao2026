@@ -14,3 +14,14 @@
 - `app/src/main/assets/gpt-demo.html` — WebView 对话页
 
 除上述 assets 外，其余文档不参与 prompt/messages 构造。
+
+## 联网搜索冒烟用例（3+1）
+
+验收时过滤 `adb logcat -s QwenClient:D` 中 `P0_SMOKE` 行，确认与下表一致。
+
+| 场景 | 预期 | P0_SMOKE 关键字段 |
+|------|------|-------------------|
+| **1) 联网成功** | 灰块出现、URL 可点；Stop 可取消 | `phase=2 tool_calls=true show_tool_block=true cancelled=false` |
+| **2) 不触发联网** | 无灰块，正常回复 | `phase=0 tool_calls=false show_tool_block=false cancelled=false` |
+| **3) 联网失败/未命中** | 无灰块，正文正常或兜底 | `phase=2 tool_calls=true show_tool_block=false cancelled=false` |
+| **4) 二次阶段 Stop** | 显示「网络波动，已停止」、UI 恢复 | `phase=2 tool_calls=true show_tool_block=false cancelled=true` |

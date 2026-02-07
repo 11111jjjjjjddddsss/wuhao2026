@@ -10,6 +10,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.net.URL
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -34,11 +35,11 @@ object BochaClient {
     private val handler = Handler(Looper.getMainLooper())
 
     /**
-     * 纯工具函数：只做请求 → 返回结果 或 null。
-     * 搜索失败/超时/空结果 → 返回 null；callRef 用于外部 cancel，取消时抛出 IOException。
+     * 返回 Pair(success, text)：success==true 且 text 非空时才可展示灰块；失败/空返回 (false, null)。
+     * 取消时抛出 IOException。
      */
-    fun webSearch(query: String, callRef: AtomicReference<Call?>? = null): String? {
-        if (query.isBlank()) return null
+    fun webSearch(query: String, callRef: AtomicReference<Call?>? = null): Pair<Boolean, String?> {
+        if (query.isBlank()) return Pair(false, null)
         val body = JsonObject().apply {
             addProperty("query", query.trim())
             addProperty("freshness", "noLimit")
@@ -55,21 +56,21 @@ object BochaClient {
         callRef?.set(call)
         return try {
             call.execute().use { response ->
-                if (!response.isSuccessful) return null
+                if (!response.isSuccessful) return Pair(false, null)
                 val bodyStr = response.body?.string() ?: ""
-                if (parseBodyCode(bodyStr) != null) return null
+                if (parseBodyCode(bodyStr) != null) return Pair(false, null)
                 parseResult(bodyStr)
             }
+        } catch (e: SocketTimeoutException) {
+            if (BuildConfig.DEBUG) Log.w(TAG, "web-search timeout")
+            Pair(false, null)
         } catch (e: IOException) {
             if (e.message?.contains("Canceled", ignoreCase = true) == true) throw e
             if (BuildConfig.DEBUG) Log.w(TAG, "web-search network", e)
-            null
-        } catch (e: SocketTimeoutException) {
-            if (BuildConfig.DEBUG) Log.w(TAG, "web-search timeout")
-            null
+            Pair(false, null)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.w(TAG, "web-search error", e)
-            null
+            Pair(false, null)
         }
     }
 
@@ -98,29 +99,30 @@ object BochaClient {
         }
     }
 
-    /** 解析博查返回 JSON。返回 null=解析/结构异常走 server；""=无结果静默；非空=成功展示（最多 5 条）。不打印 key/响应体。 */
-    private fun parseResult(bodyStr: String): String? {
+    /** 规范格式：顶部「联网搜索（仅供参考）」；最多 5 条「- 标题 | 域名 | URL」；标题截断 60 字；URL 纯文本。返回 (true,text) 仅当有结果。 */
+    private fun parseResult(bodyStr: String): Pair<Boolean, String?> {
         return try {
-            val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return null
-            val data = root.getAsJsonObject("data") ?: return null
-            val webPages = data.getAsJsonObject("webPages") ?: return null
-            val value = webPages.getAsJsonArray("value") ?: return null
-            if (value.size() == 0) return ""
-            val sb = StringBuilder()
-            sb.append("【联网搜索结果（Bocha）】\n")
+            val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return Pair(false, null)
+            val data = root.getAsJsonObject("data") ?: return Pair(false, null)
+            val webPages = data.getAsJsonObject("webPages") ?: return Pair(false, null)
+            val value = webPages.getAsJsonArray("value") ?: return Pair(false, null)
+            if (value.size() == 0) return Pair(false, null)
+            val header = "联网搜索（仅供参考）"
+            val lines = mutableListOf<String>()
             val limit = value.size().coerceAtMost(5)
             for (i in 0 until limit) {
                 val item = value.get(i).asJsonObject
                 val name = item.get("name")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
                 val url = item.get("url")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
-                val summary = item.get("summary")?.takeIf { it.isJsonPrimitive }?.asString?.trim()
-                    ?: item.get("snippet")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
-                sb.append("${i + 1}) $name - $url\n")
-                if (summary.isNotBlank()) sb.append("   摘要：$summary\n")
+                val title = name.take(60)
+                val domain = try { URL(url).host ?: "-" } catch (_: Exception) { "-" }
+                lines.add("- $title | $domain | $url")
             }
-            sb.toString().trim()
+            val body = lines.joinToString("\n")
+            val full = "$header\n$body".trim()
+            Pair(true, full)
         } catch (_: Exception) {
-            null
+            Pair(false, null)
         }
     }
 }

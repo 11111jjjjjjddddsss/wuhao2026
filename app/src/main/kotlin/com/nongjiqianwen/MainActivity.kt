@@ -182,9 +182,9 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun webSearch(streamId: String, query: String, freshness: String?, countStr: String?) {
             Thread {
-                val resultText = BochaClient.webSearch(query)
+                val (success, resultText) = BochaClient.webSearch(query)
                 runOnUiThread {
-                    if (resultText != null) {
+                    if (success && resultText != null) {
                         val escStreamId = escapeJs(streamId)
                         val escResult = escapeJs(resultText).replace("\n", "\\n").replace("\r", "\\r")
                         webView.evaluateJavascript("window.onSearchResult && window.onSearchResult('$escStreamId', '$escResult');", null)

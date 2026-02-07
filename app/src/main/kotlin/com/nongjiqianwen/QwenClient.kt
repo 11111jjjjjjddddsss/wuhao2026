@@ -30,6 +30,7 @@ object QwenClient {
     private const val WRITE_TIMEOUT_SEC = 10L
     private const val CALL_TIMEOUT_SEC = 60L   // 单次请求总时长上限（1 分钟体验）
     private const val B_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
+    private const val TOOL_INFO_MAX_CHARS = 1500
     @Volatile private var lastBExtractErrorLogMs = 0L
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
@@ -103,6 +104,15 @@ object QwenClient {
         }
     }
 
+    /** 合并多条 Bocha 成功文本：单标题行 + 最多 5 条「- 标题 | 域名 | URL」，总长 <= TOOL_INFO_MAX_CHARS。 */
+    private fun normalizeToolInfo(successTexts: List<String>): String {
+        val header = "联网搜索（仅供参考）"
+        val itemLines = successTexts.flatMap { it.lines().filter { line -> line.startsWith("- ") } }.take(5)
+        val body = itemLines.joinToString("\n")
+        val full = if (body.isBlank()) header else "$header\n$body"
+        return if (full.length <= TOOL_INFO_MAX_CHARS) full else full.take(TOOL_INFO_MAX_CHARS) + "…(已截断)"
+    }
+
     /** 构建主对话 messages（四层在 user；system 仅锚点）。toolInfo 为 null 时不含【工具信息】段。 */
     private fun buildMainDialogueMessages(userMessage: String, imageUrlList: List<String>, toolInfo: String?): JsonArray {
         val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
@@ -174,6 +184,9 @@ object QwenClient {
             var call: Call? = null
             var phase = 0
             var outputCharCount = 0
+            val phaseEnded = AtomicBoolean(false)
+            var bochaMs = 0L
+            var secondMs = 0L
             val inLen = userMessage.length
             val imgCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
             try {
@@ -257,15 +270,15 @@ object QwenClient {
                     }
                     phase = 1
                     currentBochaCall.set(null)
-                    val toolInfoFormatted = if (queries.isEmpty()) {
-                        "联网搜索失败/未命中（仅供参考）"
-                    } else {
-                        val results = queries.mapNotNull { q -> BochaClient.webSearch(q, currentBochaCall) }
-                        currentBochaCall.set(null)
-                        val combined = results.joinToString("\n\n").trim()
-                        if (combined.isBlank()) "联网搜索失败/未命中（仅供参考）" else combined
-                    }
-                    if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: " + if (toolInfoFormatted.contains("失败") || toolInfoFormatted.contains("未命中")) "联网失败/未命中 仍二次调用" else "联网成功 工具信息已注入 二次调用")
+                    val bochaStartMs = System.currentTimeMillis()
+                    val results = if (queries.isEmpty()) emptyList() else queries.map { q -> BochaClient.webSearch(q, currentBochaCall) }
+                    currentBochaCall.set(null)
+                    bochaMs = System.currentTimeMillis() - bochaStartMs
+                    val successTexts = results.filter { it.first && !it.second.isNullOrBlank() }.map { it.second!! }
+                    val hasEffectiveResult = successTexts.isNotEmpty()
+                    val normalizedText = if (hasEffectiveResult) normalizeToolInfo(successTexts) else ""
+                    val toolInfoFormatted = if (hasEffectiveResult) normalizedText else "联网搜索失败/未命中（仅供参考）"
+                    val showToolBlock = hasEffectiveResult && normalizedText.isNotBlank()
                     val messagesSecond = buildMainDialogueMessages(userMessage, imageUrlList, toolInfoFormatted)
                     val body2 = JsonObject().apply {
                         addProperty("model", model)
@@ -289,36 +302,54 @@ object QwenClient {
                         .post(body2.toString().toRequestBody("application/json".toMediaType()))
                         .build()
                     phase = 2
+                    val secondStartMs = System.currentTimeMillis()
                     val call2 = client.newCall(request2)
                     currentCall.set(call2)
                     val response2 = call2.execute()
                     currentCall.set(null)
+                    secondMs = System.currentTimeMillis() - secondStartMs
                     val code2 = response2.code
                     val body2Str = response2.body?.string() ?: ""
                     if (code2 != 200) {
                         Log.e(TAG, "callApi 二次请求 HTTP error status=$code2")
-                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
+                        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onChunk("网络波动，已停止")
+                            fireComplete()
+                        }
                         return@Thread
                     }
                     val json2 = gson.fromJson(body2Str, JsonObject::class.java)
                     val choices2 = json2.getAsJsonArray("choices") ?: run {
-                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onChunk("网络波动，已停止")
+                            fireComplete()
+                        }
                         return@Thread
                     }
                     if (choices2.size() == 0) {
-                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onChunk("网络波动，已停止")
+                            fireComplete()
+                        }
                         return@Thread
                     }
                     val message2 = choices2.get(0).asJsonObject.getAsJsonObject("message") ?: run {
-                        handler.post { onChunk("网络波动，已停止"); fireComplete() }
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onChunk("网络波动，已停止")
+                            fireComplete()
+                        }
                         return@Thread
                     }
                     val content = message2.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
                     outputCharCount = content.length
-                    val elapsed = System.currentTimeMillis() - startMs
-                    val showToolBlock = toolInfoFormatted.isNotBlank() && !toolInfoFormatted.contains("联网搜索失败") && !toolInfoFormatted.contains("未命中")
-                    if (BuildConfig.DEBUG) Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 二次完成 耗时=${elapsed}ms 出=$outputCharCount")
+                    if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
                     handler.post {
+                        if (!phaseEnded.compareAndSet(false, true)) return@post
                         onChunk(content)
                         if (showToolBlock) onToolInfo?.invoke(streamId, "web_search", toolInfoFormatted)
                         fireComplete()
@@ -329,38 +360,59 @@ object QwenClient {
                 val content = message1.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
                 outputCharCount = content.length
                 val elapsed = System.currentTimeMillis() - startMs
-                if (BuildConfig.DEBUG) {
-                    Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 非流式完成 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
-                }
+                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=false bocha_ms=0 second_ms=0 show_tool_block=false cancelled=false")
                 handler.post {
+                    if (!phaseEnded.compareAndSet(false, true)) return@post
                     onChunk(content)
                     fireComplete()
                 }
             } catch (e: Exception) {
-                currentCall.set(null)
-                currentBochaCall.set(null)
-                currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
+                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=$phase tool_calls=${phase >= 1} bocha_ms=$bochaMs second_ms=$secondMs show_tool_block=false cancelled=$isCanceled")
                 if (phase == 2) {
-                    handler.post { onChunk("网络波动，已停止"); fireComplete() }
+                    handler.post {
+                        if (!phaseEnded.compareAndSet(false, true)) return@post
+                        onChunk("网络波动，已停止")
+                        fireComplete()
+                    }
                 } else {
                     if (isCanceled) {
                         Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
-                        handler.post { onInterrupted("canceled"); fireComplete() }
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onInterrupted("canceled")
+                            fireComplete()
+                        }
                     } else if (isInterrupted) {
                         Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
-                        handler.post { onInterrupted("timeout"); fireComplete() }
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onInterrupted("timeout")
+                            fireComplete()
+                        }
                     } else if (e is IOException) {
                         Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
-                        handler.post { onInterrupted("network"); fireComplete() }
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onInterrupted("network")
+                            fireComplete()
+                        }
                     } else {
                         Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
-                        handler.post { onInterrupted("error"); fireComplete() }
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onInterrupted("error")
+                            fireComplete()
+                        }
                     }
                 }
                 return@Thread
+            } finally {
+                currentCall.set(null)
+                currentBochaCall.set(null)
+                currentRequestId.set(null)
             }
         }.start()
     }
