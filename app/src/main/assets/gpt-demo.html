@@ -2218,21 +2218,11 @@
 
         // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
-        // reason → 文案（ChatGPT 风格：短句、灰字、不露技术细节）
+        // 统一失败提示（弱提示、无指令感）；除 canceled/resumable 外均用 default
         var reasonToCopy = {
-            network: '网络不可用，点击重试。',
-            timeout: '请求超时（60 秒），点击重试。',
-            server: '服务繁忙，稍后重试。',
-            error: '响应异常，点击重试。',
-            auth: 'API 密钥无效，请检查配置。',
-            quota: COPY_REFRESH_FAIL,
-            rate_limit: '请求过于频繁，请稍后重试。',
-            bad_request: '请求参数有误，请重试。',
-            canceled: '已停止生成。',
-            no_network: '当前无网络，未发送。',
-            cache_overflow: '',
+            canceled: '已停止',
             resumable: '已中断 · 点击继续',
-            unknown: '请求失败，点击重试。'
+            default: '连接中断 · 点击重试'
         };
         
         // 图片状态管理（Map 保持插入顺序，发送时 URL 顺序与用户选择一致）
@@ -2731,13 +2721,16 @@
 
         // 统一中断 UI：该条消息底部一行灰字 +「重试」按钮（ChatGPT 风格，不弹窗）
         function applyInterruptedUI(streamId, reason) {
+            if (!streamId) return;
             var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
             if (!msg) return;
-            msg.classList.remove('streaming');
-            msg.classList.add('message-interrupted');
             var contentDiv = msg.querySelector('.message-content');
             if (!contentDiv || contentDiv.querySelector('.interrupted-badge')) return;
-            var text = reasonToCopy[reason] || reasonToCopy.unknown;
+            var hasContent = contentDiv.textContent && contentDiv.textContent.trim().length > 0;
+            if (!hasContent) return;
+            msg.classList.remove('streaming');
+            msg.classList.add('message-interrupted');
+            var text = reason === 'canceled' ? reasonToCopy.canceled : reason === 'resumable' ? reasonToCopy.resumable : reasonToCopy.default;
             if (!text) return;
             var badge = document.createElement('span');
             badge.className = 'interrupted-badge';
