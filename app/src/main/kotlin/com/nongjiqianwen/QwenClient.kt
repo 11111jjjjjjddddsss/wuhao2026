@@ -126,35 +126,37 @@ object QwenClient {
             return
         }
         var offset = 0
-        val runnable = Runnable {
-            if (isCanceled()) {
-                streamingRunnableRef.set(null)
-                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=true")
-                onDone()
-                return@Runnable
+        val runnable = object : Runnable {
+            override fun run() {
+                if (isCanceled()) {
+                    streamingRunnableRef.set(null)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=true")
+                    onDone()
+                    return
+                }
+                if (offset >= remaining.length) {
+                    streamingRunnableRef.set(null)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
+                    onDone()
+                    return
+                }
+                val chunkLen = (remaining.length - offset).coerceAtLeast(0).let { rest -> minOf(24, rest).coerceAtLeast(1) }
+                if (chunkLen <= 0) {
+                    streamingRunnableRef.set(null)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
+                    onDone()
+                    return
+                }
+                onChunk(remaining.substring(offset, offset + chunkLen))
+                offset += chunkLen
+                if (offset >= remaining.length) {
+                    streamingRunnableRef.set(null)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
+                    onDone()
+                    return
+                }
+                handler.postDelayed(this, 30)
             }
-            if (offset >= remaining.length) {
-                streamingRunnableRef.set(null)
-                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
-                onDone()
-                return@Runnable
-            }
-            val chunkLen = (remaining.length - offset).coerceAtLeast(0).let { rest -> minOf(24, rest).coerceAtLeast(1) }
-            if (chunkLen <= 0) {
-                streamingRunnableRef.set(null)
-                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
-                onDone()
-                return@Runnable
-            }
-            onChunk(remaining.substring(offset, offset + chunkLen))
-            offset += chunkLen
-            if (offset >= remaining.length) {
-                streamingRunnableRef.set(null)
-                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
-                onDone()
-                return@Runnable
-            }
-            handler.postDelayed(runnable, 30)
         }
         streamingRunnableRef.set(runnable)
         handler.postDelayed(runnable, 30)
@@ -225,7 +227,8 @@ object QwenClient {
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null,
         onInterrupted: (reason: String) -> Unit,
-        onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null
+        onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null,
+        onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         val model = if (chatModel == "plus") modelPlus else modelFlash
         val startMs = System.currentTimeMillis()
@@ -327,7 +330,7 @@ object QwenClient {
                             val rspRetry = callRetry.execute()
                             currentCall.set(null)
                             if (rspRetry.code != 200) {
-                                handleErrorResponse(userId, sessionId, requestId, streamId, rspRetry.code, rspRetry.body?.string() ?: "", inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
+                                handleErrorResponse(userId, sessionId, requestId, streamId, rspRetry.code, rspRetry.body?.string() ?: "", inLen, imgCount, outputCharCount, onInterrupted, fireComplete, onInterruptedResumable)
                                 return@Thread
                             }
                             val jsonRetry = gson.fromJson(rspRetry.body?.string() ?: "", JsonObject::class.java)
@@ -347,27 +350,27 @@ object QwenClient {
                             if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: tools_unsupported_retry cancelled=$isCanceled")
                             handler.post {
                                 if (!phaseEnded.compareAndSet(false, true)) return@post
-                                if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error")
-                                fireComplete()
+                                if (onInterruptedResumable != null) onInterruptedResumable(streamId, if (isCanceled) "canceled" else "error")
+                                else { if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error"); fireComplete() }
                             }
                         }
                         return@Thread
                     }
-                    handleErrorResponse(userId, sessionId, requestId, streamId, code1, body1, inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
+                    handleErrorResponse(userId, sessionId, requestId, streamId, code1, body1, inLen, imgCount, outputCharCount, onInterrupted, fireComplete, onInterruptedResumable)
                     return@Thread
                 }
 
                 val json1 = gson.fromJson(body1, JsonObject::class.java)
                 val choices1 = json1.getAsJsonArray("choices") ?: run {
-                    handler.post { onInterrupted("error"); fireComplete() }
+                    handler.post { if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() } }
                     return@Thread
                 }
                 if (choices1.size() == 0) {
-                    handler.post { onInterrupted("error"); fireComplete() }
+                    handler.post { if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() } }
                     return@Thread
                 }
                 val message1 = choices1.get(0).asJsonObject.getAsJsonObject("message") ?: run {
-                    handler.post { onInterrupted("error"); fireComplete() }
+                    handler.post { if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() } }
                     return@Thread
                 }
                 val toolCalls = message1.getAsJsonArray("tool_calls")?.takeIf { it.size() > 0 }
@@ -418,7 +421,7 @@ object QwenClient {
                             val rspFb = callFb.execute()
                             currentCall.set(null)
                             if (rspFb.code != 200) {
-                                handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; onChunk("网络波动，已停止"); fireComplete() }
+                                handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onChunk("网络波动，已停止"); fireComplete() } }
                                 return@Thread
                             }
                             val jsFb = gson.fromJson(rspFb.body?.string() ?: "", JsonObject::class.java)
@@ -434,7 +437,11 @@ object QwenClient {
                             val isCanceled = canceledFlag.get() || callFb.isCanceled()
                             currentCall.set(null)
                             if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true action=SKIP_TOOL_CALL_FALLBACK_DIRECT_ANSWER show_tool_block=false cancelled=$isCanceled")
-                            handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error"); fireComplete() }
+                            handler.post {
+                                if (!phaseEnded.compareAndSet(false, true)) return@post
+                                if (onInterruptedResumable != null) onInterruptedResumable(streamId, if (isCanceled) "canceled" else "error")
+                                else { if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error"); fireComplete() }
+                            }
                         }
                         return@Thread
                     }
@@ -485,8 +492,7 @@ object QwenClient {
                         if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onChunk("网络波动，已停止")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onChunk("网络波动，已停止"); fireComplete() }
                         }
                         return@Thread
                     }
@@ -494,24 +500,21 @@ object QwenClient {
                     val choices2 = json2.getAsJsonArray("choices") ?: run {
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onChunk("网络波动，已停止")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
                         }
                         return@Thread
                     }
                     if (choices2.size() == 0) {
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onChunk("网络波动，已停止")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
                         }
                         return@Thread
                     }
                     val message2 = choices2.get(0).asJsonObject.getAsJsonObject("message") ?: run {
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onChunk("网络波动，已停止")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
                         }
                         return@Thread
                     }
@@ -544,37 +547,32 @@ object QwenClient {
                 if (phase == 2) {
                     handler.post {
                         if (!phaseEnded.compareAndSet(false, true)) return@post
-                        onChunk("网络波动，已停止")
-                        fireComplete()
+                        if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
                     }
                 } else {
                     if (isCanceled) {
                         Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onInterrupted("canceled")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "canceled") else { onInterrupted("canceled"); fireComplete() }
                         }
                     } else if (isInterrupted) {
                         Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onInterrupted("timeout")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "timeout") else { onInterrupted("timeout"); fireComplete() }
                         }
                     } else if (e is IOException) {
                         Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onInterrupted("network")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "network") else { onInterrupted("network"); fireComplete() }
                         }
                     } else {
                         Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            onInterrupted("error")
-                            fireComplete()
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() }
                         }
                     }
                 }
@@ -590,7 +588,7 @@ object QwenClient {
     /**
      * 处理错误响应：仅 onInterrupted("error") + fireComplete，不写正文；日志含 userId/sessionId/requestId/streamId/HTTP
      */
-    private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit) {
+    private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit, onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null) {
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
             val errorCode = jsonResponse.get("code")?.asString ?: ""
@@ -600,8 +598,7 @@ object QwenClient {
             Log.e(TAG, "callApi 无法解析错误响应 statusCode=$statusCode")
         }
         handler.post {
-            onInterrupted("server")
-            fireComplete()
+            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onInterrupted("server"); fireComplete() }
         }
     }
 

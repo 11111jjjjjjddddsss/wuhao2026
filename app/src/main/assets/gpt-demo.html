@@ -2231,6 +2231,7 @@
             canceled: '已停止生成。',
             no_network: '当前无网络，未发送。',
             cache_overflow: '',
+            resumable: '已中断 · 点击继续',
             unknown: '请求失败，点击重试。'
         };
         
@@ -2244,7 +2245,8 @@
             retryImage: function(imageId, requestId) { if (DEBUG) console.log('retryImage', imageId, requestId); },
             sendMessage: function(text, imageUrlsJson, streamId, model, searchResult) { if (DEBUG) console.log('sendMessage', text, streamId); },
             webSearch: function(streamId, query, freshness, countStr) { if (DEBUG) console.log('webSearch', streamId, query); },
-            stopGeneration: function() { if (DEBUG) console.log('stopGeneration'); }
+            stopGeneration: function() { if (DEBUG) console.log('stopGeneration'); },
+            requestResume: function(streamId) { if (DEBUG) console.log('requestResume', streamId); }
         };
 
         // 自动调整文本域高度（最多 5 行视觉）
@@ -2740,8 +2742,12 @@
             var badge = document.createElement('span');
             badge.className = 'interrupted-badge';
             badge.textContent = text;
+            if (reason === 'resumable') {
+                badge.style.cursor = 'pointer';
+                badge.onclick = function() { AndroidInterface.requestResume && AndroidInterface.requestResume(streamId); };
+            }
             contentDiv.appendChild(badge);
-            if (pendingRequest[streamId]) {
+            if (reason !== 'resumable' && pendingRequest[streamId]) {
                 var retryBtn = document.createElement('button');
                 retryBtn.className = 'retry-stream-btn';
                 retryBtn.textContent = '重试';

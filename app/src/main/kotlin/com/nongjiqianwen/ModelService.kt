@@ -19,13 +19,13 @@ object ModelService {
         onChunk: (String) -> Unit,
         onComplete: (() -> Unit)? = null,
         onInterrupted: (reason: String) -> Unit,
-        onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null
+        onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null,
+        onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         QwenClient.cancelCurrentRequest()
         val userId = IdManager.getInstallId()
         val sessionId = IdManager.getSessionId()
         val requestId = ApiConfig.nextRequestId()
-        // 单次请求；工具信息仅当模型侧调用 webSearch 时由调用方传入，此处不传；onToolInfo 仅用于 UI 灰块，不写 A/B
         QwenClient.callApi(
             userId = userId,
             sessionId = sessionId,
@@ -38,7 +38,39 @@ object ModelService {
             onChunk = onChunk,
             onComplete = onComplete,
             onInterrupted = onInterrupted,
-            onToolInfo = onToolInfo
+            onToolInfo = onToolInfo,
+            onInterruptedResumable = onInterruptedResumable
+        )
+    }
+
+    /** 补全请求：无 tools，userMessage 为“请从我已输出的内容继续…”+ prefix；同一轮继续生成，成功才 onComplete 写 A。 */
+    fun getReplyContinuation(
+        streamId: String,
+        continuationUserMessage: String,
+        chatModel: String? = null,
+        onChunk: (String) -> Unit,
+        onComplete: (() -> Unit)? = null,
+        onInterrupted: (reason: String) -> Unit,
+        onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
+    ) {
+        QwenClient.cancelCurrentRequest()
+        val userId = IdManager.getInstallId()
+        val sessionId = IdManager.getSessionId()
+        val requestId = ApiConfig.nextRequestId()
+        QwenClient.callApi(
+            userId = userId,
+            sessionId = sessionId,
+            requestId = requestId,
+            streamId = streamId,
+            userMessage = continuationUserMessage,
+            imageUrlList = emptyList(),
+            chatModel = chatModel,
+            toolInfo = null,
+            onChunk = onChunk,
+            onComplete = onComplete,
+            onInterrupted = onInterrupted,
+            onToolInfo = null,
+            onInterruptedResumable = onInterruptedResumable
         )
     }
 }

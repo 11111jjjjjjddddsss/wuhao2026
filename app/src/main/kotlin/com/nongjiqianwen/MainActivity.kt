@@ -45,7 +45,21 @@ class MainActivity : AppCompatActivity() {
     /** A/B 层：streamId -> 本轮 assistant 内容累积（完整轮次时用于 addRound） */
     private val pendingAssistantByStreamId = mutableMapOf<String, StringBuilder>()
 
+    /** 后台断流无感补全：待补全时非 null；3 秒节流用 lastFailAt */
+    private data class ResumeState(
+        val streamId: String,
+        val lastUserInputText: String,
+        val assistantPrefix: String,
+        var isWaitingResume: Boolean,
+        var lastFailAt: Long,
+        val lastChatModel: String?
+    )
+    private var resumeState: ResumeState? = null
+    private var currentChatModelForResume: String? = null
+
     companion object {
+        private const val RESUME_THROTTLE_MS = 3000L
+        private const val CONTINUATION_PREFIX_MAX = 800
         private const val CACHE_TTL_MS = 60_000L
         private const val CACHE_MAX_SIZE = 4
         private const val BACKGROUND_CACHE_MAX_CHARS = 20_000
@@ -80,7 +94,8 @@ class MainActivity : AppCompatActivity() {
         }
         
         // 注入JavaScript接口
-        webView.addJavascriptInterface(AndroidJSInterface(), "AndroidInterface")
+        androidJSInterface = AndroidJSInterface()
+        webView.addJavascriptInterface(androidJSInterface!!, "AndroidInterface")
         
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
@@ -320,6 +335,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        /** 灰字「已中断 · 点击继续」点击时由前端调用，触发补全请求（无 tools） */
+        @JavascriptInterface
+        fun requestResume(streamId: String?) {
+            runOnUiThread {
+                triggerResume(streamId?.takeIf { it.isNotBlank() })
+            }
+        }
+
         @SuppressLint("MissingPermission")
         private fun isNetworkAvailable(): Boolean {
             val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
@@ -503,13 +526,17 @@ class MainActivity : AppCompatActivity() {
          */
         private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String, chatModel: String? = null) {
             pendingUserByStreamId[streamId] = text
+            currentChatModelForResume = chatModel
             ModelService.getReply(
                 userMessage = text,
                 imageUrlList = imageUrlList,
                 streamId = streamId,
                 chatModel = chatModel,
                 onChunk = { chunk -> dispatchChunk(streamId, chunk) },
-                onComplete = { dispatchComplete(streamId) },
+                onComplete = {
+                    resumeState?.takeIf { it.streamId == streamId }?.let { it.isWaitingResume = false }
+                    dispatchComplete(streamId)
+                },
                 onInterrupted = { reason -> dispatchInterrupted(streamId, reason) },
                 onToolInfo = { sid, toolName, toolText ->
                     runOnUiThread {
@@ -517,10 +544,56 @@ class MainActivity : AppCompatActivity() {
                         val escText = toolText.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
                         webView.evaluateJavascript("renderToolResult('$escStreamId','$toolName','$escText');", null)
                     }
+                },
+                onInterruptedResumable = { sid, _ ->
+                    runOnUiThread {
+                        val userMsg = pendingUserByStreamId[sid] ?: ""
+                        val prefix = pendingAssistantByStreamId[sid]?.toString() ?: ""
+                        if (userMsg.isNotBlank() || prefix.isNotBlank()) {
+                            resumeState = ResumeState(sid, userMsg, prefix, true, System.currentTimeMillis(), currentChatModelForResume)
+                        }
+                        dispatchInterrupted(sid, "resumable")
+                    }
+                }
+            )
+        }
+
+        /** 补全请求：无 tools，同一 streamId 续写；成功则 dispatchComplete 写 A，失败保持灰字 */
+        fun triggerResume(streamId: String?) {
+            val state = resumeState ?: return
+            val sid = streamId ?: state.streamId
+            if (state.streamId != sid || !state.isWaitingResume || state.lastUserInputText.isBlank()) return
+            val now = System.currentTimeMillis()
+            if (now - state.lastFailAt < RESUME_THROTTLE_MS) return
+            state.lastFailAt = now
+            val continuationUserMessage = state.lastUserInputText + "\n请从我已输出的内容继续，避免重复。已输出前缀如下：\n" + state.assistantPrefix.take(CONTINUATION_PREFIX_MAX)
+            pendingUserByStreamId[sid] = state.lastUserInputText
+            pendingAssistantByStreamId[sid] = StringBuilder(state.assistantPrefix)
+            currentStreamId = sid
+            isRequesting = true
+            ModelService.getReplyContinuation(
+                streamId = sid,
+                continuationUserMessage = continuationUserMessage,
+                chatModel = state.lastChatModel,
+                onChunk = { chunk -> dispatchChunk(sid, chunk) },
+                onComplete = {
+                    state.isWaitingResume = false
+                    resumeState = null
+                    dispatchComplete(sid)
+                },
+                onInterrupted = { _ -> dispatchInterrupted(sid, "error") },
+                onInterruptedResumable = { _, _ ->
+                    runOnUiThread {
+                        val prefix = pendingAssistantByStreamId[sid]?.toString() ?: state.assistantPrefix
+                        resumeState = ResumeState(sid, state.lastUserInputText, prefix, true, System.currentTimeMillis(), state.lastChatModel)
+                        dispatchInterrupted(sid, "resumable")
+                    }
                 }
             )
         }
     }
+
+    private var androidJSInterface: AndroidJSInterface? = null
 
     /** onResume 时补发切后台期间缓存的 chunk/complete/interrupted；合并连续 chunk 并按 stream 分批 post 避免 UI 卡顿 */
     private fun flushBufferedEventsToWebView() {
@@ -605,6 +678,11 @@ class MainActivity : AppCompatActivity() {
         if (isInBackground) {
             isInBackground = false
             flushBufferedEventsToWebView()
+            resumeState?.let { state ->
+                if (state.isWaitingResume && state.lastUserInputText.isNotBlank() && (System.currentTimeMillis() - state.lastFailAt >= RESUME_THROTTLE_MS)) {
+                    androidJSInterface?.triggerResume(state.streamId)
+                }
+            }
         }
     }
 
