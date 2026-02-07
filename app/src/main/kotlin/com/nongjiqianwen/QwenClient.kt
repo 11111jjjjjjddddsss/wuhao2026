@@ -111,59 +111,45 @@ object QwenClient {
                     val messagesArray = com.google.gson.JsonArray()
                     val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
                     val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
-                    // 锚点唯一注入：先占位 system，由 ensureSystemRole 统一覆盖后再拼 A/B 层
+                    // 锚点唯一注入：system 仅锚点；四层标记全部放在 user 内容（输入规则最终版·冻结）
                     messagesArray.add(JsonObject().apply {
                         addProperty("role", "system")
                         addProperty("content", "")
                     })
+                    // user 内容：四层按顺序拼接，标记名一字不改
+                    val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
+                    val parts = mutableListOf<String>()
+                    parts.add(layer1.trim())
+                    if (aText.isNotBlank()) parts.add("【A层历史对话（中等参考性）】\n$aText")
+                    if (bSum.isNotBlank()) parts.add("【B层累计摘要（低参考性）】\n$bSum")
+                    if (toolInfo != null && toolInfo.isNotBlank()) {
+                        parts.add("【工具信息（极低参考性）】\n${toolInfo.trim()}")
+                        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: 联网成功 工具信息（极低参考性）已注入本轮")
+                    } else if (BuildConfig.DEBUG) {
+                        Log.d(TAG, "P0_SMOKE: 主对话 未联网 toolInfo=null")
+                    }
+                    val userTextContent = parts.joinToString("\n\n").trim()
                     val userMessageObj = JsonObject().apply {
                         addProperty("role", "user")
-                        
-                        // content 必须是数组格式
                         val contentArray = com.google.gson.JsonArray()
-                        
-                        // 1. 添加图片项（如果有图片URL，图在前）
                         imageUrlList.forEach { imageUrl ->
                             if (imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
-                                val imageItem = JsonObject().apply {
+                                contentArray.add(JsonObject().apply {
                                     addProperty("type", "image_url")
-                                    val imageUrlObj = JsonObject().apply {
-                                        addProperty("url", imageUrl)
-                                    }
-                                    add("image_url", imageUrlObj)
-                                }
-                                contentArray.add(imageItem)
+                                    add("image_url", JsonObject().apply { addProperty("url", imageUrl) })
+                                })
                             }
                         }
-                        
-                                                                        // 2. 文本项：输入规则四层标记。当前优先处理的问题 + 极低参考性·工具信息（若有）
-                        val mainText = if (userMessage.isNotBlank()) "【当前输入】\n$userMessage" else ""
-                        val toolText = toolInfo?.takeIf { it.isNotBlank() }?.trim()?.let { "【极低参考性·工具信息】\n$it" } ?: ""
-                        val textParts = listOfNotNull(
-                            mainText.takeIf { it.isNotBlank() },
-                            toolText.takeIf { it.isNotBlank() }
-                        )
-                        val combinedText = textParts.joinToString("\n\n")
-                        if (combinedText.isNotBlank()) {
+                        if (userTextContent.isNotBlank()) {
                             contentArray.add(JsonObject().apply {
                                 addProperty("type", "text")
-                                addProperty("text", combinedText)
+                                addProperty("text", userTextContent)
                             })
                         }
-                        
                         add("content", contentArray)
                     }
                     messagesArray.add(userMessageObj)
                     com.nongjiqianwen.SystemAnchor.ensureSystemRole(messagesArray)
-                    if (messagesArray.size() > 0) {
-                        val first = messagesArray.get(0).asJsonObject
-                        if (first.get("role")?.asString == "system") {
-                            var base = first.get("content")?.asString ?: ""
-                            if (base.contains("[中等参考性·A层历史对话]")) base = base.substringBefore("[中等参考性·A层历史对话]").trimEnd()
-                            if (base.contains("[低参考性·B层累计摘要]")) base = base.substringBefore("[低参考性·B层累计摘要]").trimEnd()
-                            first.addProperty("content", buildSystemContentWithLayers(base, aText, bSum))
-                        }
-                    }
                     add("messages", messagesArray)
                 }
                 // P0 锚点生效自查：Debug 下断言，不通过即 crash，证明锚点存在且未被覆盖
@@ -320,25 +306,6 @@ object QwenClient {
         }.start()
     }
     
-        /** 输入规则四层：在 system 基座上按顺序拼接 A（中等参考性）、B（低参考性）。B 层追加前去重，防膨胀。 */
-    private fun buildSystemContentWithLayers(base: String, aText: String, bSum: String): String {
-        var s = base.trimEnd()
-        if (aText.isNotBlank()) {
-            val aMarker = "【A层对话（中等参考性）】"
-            s = if (s.isNotBlank()) "$s\n\n$aMarker\n$aText" else "$aMarker\n$aText"
-        }
-        if (bSum.isNotBlank()) {
-            val bMarker = "【低参考性·B层累计摘要】"
-            if (s.contains(bMarker)) {
-                val idx = s.indexOf(bMarker)
-                val afterBlock = s.indexOf("\n\n【", idx + bMarker.length).let { if (it > 0) it else s.length }
-                s = (s.substring(0, idx) + s.substring(afterBlock)).trimEnd()
-            }
-            s = if (s.isNotBlank()) "$s\n\n$bMarker\n$bSum" else "$bMarker\n$bSum"
-        }
-        return s
-    }
-
     /**
      * 处理错误响应：仅 onInterrupted("error") + fireComplete，不写正文；日志含 userId/sessionId/requestId/streamId/HTTP
      */
