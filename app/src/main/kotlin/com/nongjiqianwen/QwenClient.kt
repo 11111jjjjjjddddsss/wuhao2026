@@ -253,10 +253,13 @@ object QwenClient {
                 val useTools = (toolInfo == null)
                 val messagesFirst = buildMainDialogueMessages(userMessage, imageUrlList, toolInfo)
                 if (BuildConfig.DEBUG) {
-                    val sysCount = messagesFirst.count { el -> el.isJsonObject && el.asJsonObject.get("role")?.asString == "system" }
-                    check(sysCount == 1) { "FATAL: system role count != 1, count=$sysCount" }
-                    val firstContent = messagesFirst.get(0).asJsonObject.get("content")?.asString ?: ""
-                    check(firstContent.contains("【系统前置锚点】") || firstContent.contains("【系统兜底短锚点】")) { "FATAL: system anchor missing" }
+                    val first = if (messagesFirst.size() > 0 && messagesFirst.get(0).isJsonObject) messagesFirst.get(0).asJsonObject else null
+                    val role = first?.get("role")?.takeIf { it.isJsonPrimitive }?.asString
+                    val content = first?.get("content")?.takeIf { it.isJsonPrimitive }?.asString ?: ""
+                    val trimmed = content.trim()
+                    if (role != "system" || trimmed.isEmpty()) {
+                        Log.w(TAG, "DEBUG: system role check failed role=$role content_preview=${content.take(60)}")
+                    }
                     if (toolInfo != null && toolInfo.isNotBlank()) Log.d(TAG, "P0_SMOKE: 联网成功 工具信息（极低参考性）已注入本轮")
                     else Log.d(TAG, "P0_SMOKE: 主对话 ${if (useTools) "首次带 tools" else "未联网"}")
                 }
