@@ -41,6 +41,7 @@ object QwenClient {
     private val currentCall = AtomicReference<Call?>(null)
     private val currentBochaCall = AtomicReference<Call?>(null)
     private val currentRequestId = AtomicReference<String?>(null)
+    private val canceledFlag = AtomicBoolean(false)
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -96,6 +97,7 @@ object QwenClient {
      * 取消当前进行中的请求（仅在新请求开始前或用户点停止时调用；切后台不 cancel）。
      */
     fun cancelCurrentRequest() {
+        canceledFlag.set(true)
         val oldRequestId = currentRequestId.getAndSet(null)
         currentCall.getAndSet(null)?.cancel()
         currentBochaCall.getAndSet(null)?.cancel()
@@ -181,6 +183,7 @@ object QwenClient {
             if (completed.compareAndSet(false, true)) handler.post { onComplete?.invoke() }
         }
         Thread {
+            canceledFlag.set(false)
             var call: Call? = null
             var phase = 0
             var outputCharCount = 0
@@ -261,12 +264,26 @@ object QwenClient {
                         val tc = toolCalls.get(i).asJsonObject
                         val fn = tc.getAsJsonObject("function") ?: continue
                         if (fn.get("name")?.asString != "web_search") continue
-                        val argsStr = fn.get("arguments")?.asString ?: continue
-                        try {
-                            val args = gson.fromJson(argsStr, JsonObject::class.java)
-                            val q = args.get("query")?.asString?.trim()
-                            if (!q.isNullOrBlank()) queries.add(q)
-                        } catch (_: Exception) { }
+                        val argsEl = fn.get("arguments") ?: continue
+                        val argsObj = when {
+                            argsEl.isJsonPrimitive && argsEl.asJsonPrimitive.isString ->
+                                try { gson.fromJson(argsEl.asString, JsonObject::class.java) } catch (_: Exception) { if (BuildConfig.DEBUG) Log.d(TAG, "tool_calls arguments string parse fail"); continue }
+                            argsEl.isJsonObject -> argsEl.asJsonObject
+                            else -> { if (BuildConfig.DEBUG) Log.d(TAG, "tool_calls arguments unsupported type"); continue }
+                        }
+                        val q = argsObj.get("query")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: continue
+                        if (q.length >= 2) queries.add(q)
+                    }
+                    if (queries.isEmpty()) {
+                        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true parsed_queries_count=0 action=SKIP_TOOL_CALL show_tool_block=false cancelled=false")
+                        val content = message1.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
+                        outputCharCount = content.length
+                        handler.post {
+                            if (!phaseEnded.compareAndSet(false, true)) return@post
+                            onChunk(content)
+                            fireComplete()
+                        }
+                        return@Thread
                     }
                     phase = 1
                     currentBochaCall.set(null)
@@ -368,7 +385,7 @@ object QwenClient {
                 }
             } catch (e: Exception) {
                 val elapsed = System.currentTimeMillis() - startMs
-                val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
+                val isCanceled = canceledFlag.get() || currentCall.get()?.isCanceled() == true || currentBochaCall.get()?.isCanceled() == true
                 val isInterrupted = e is SocketTimeoutException
                 if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=$phase tool_calls=${phase >= 1} bocha_ms=$bochaMs second_ms=$secondMs show_tool_block=false cancelled=$isCanceled")
                 if (phase == 2) {
