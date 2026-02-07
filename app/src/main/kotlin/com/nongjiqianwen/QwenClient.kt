@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,6 +18,10 @@ import java.util.concurrent.atomic.AtomicReference
  * 通义千问客户端
  * 非流式：一次性返回完整答案；取消/停止仅占位，不要求真正中断。
  * 使用阿里云百炼 DashScope API
+ *
+ * 会员路由（P0 冻结）：
+ * - Free/Plus/Pro 主对话 → Flash；专家模式主对话 → PLUS；B 层摘要固定 Flash。
+ * - Flash 与 PLUS 走同一套 callApi：同一 tools、同一 messages 拼接、同一 tool-call 闭环与兜底，仅 model 不同。
  */
 object QwenClient {
     private val TAG = "QwenClient"
@@ -40,6 +45,40 @@ object QwenClient {
     private val modelFlash = "qwen3-vl-flash"
     private val modelPlus = "qwen3-vl-plus"
     private val handler = Handler(Looper.getMainLooper())
+
+    /** Flash 与 PLUS 共用同一份 tools schema（会员路由一致性） */
+    private fun buildWebSearchTools(): JsonArray {
+        return JsonArray().apply {
+            add(JsonObject().apply {
+                addProperty("type", "function")
+                add("function", JsonObject().apply {
+                    addProperty("name", "web_search")
+                    addProperty("description", "Web search via Bocha. Use ONLY when you truly need up-to-date facts or verification.")
+                    add("parameters", JsonObject().apply {
+                        addProperty("type", "object")
+                        add("properties", JsonObject().apply {
+                            add("query", JsonObject().apply {
+                                addProperty("type", "string")
+                                addProperty("description", "Search query")
+                            })
+                            add("freshness", JsonObject().apply {
+                                addProperty("type", "string")
+                                addProperty("description", "noLimit or date range")
+                            })
+                            add("summary", JsonObject().apply {
+                                addProperty("type", "boolean")
+                            })
+                            add("count", JsonObject().apply {
+                                addProperty("type", "integer")
+                                addProperty("description", "1-50")
+                            })
+                        })
+                        add("required", JsonArray().apply { add("query") })
+                    })
+                })
+            })
+        }
+    }
     private var isFirstRequest = true
     
     init {
@@ -62,14 +101,49 @@ object QwenClient {
         }
     }
 
+    /** 构建主对话 messages（四层在 user；system 仅锚点）。toolInfo 为 null 时不含【工具信息】段。 */
+    private fun buildMainDialogueMessages(userMessage: String, imageUrlList: List<String>, toolInfo: String?): JsonArray {
+        val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
+        val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
+        val messagesArray = JsonArray()
+        messagesArray.add(JsonObject().apply {
+            addProperty("role", "system")
+            addProperty("content", "")
+        })
+        val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
+        val parts = mutableListOf<String>()
+        parts.add(layer1.trim())
+        if (aText.isNotBlank()) parts.add("【A层历史对话（中等参考性）】\n$aText")
+        if (bSum.isNotBlank()) parts.add("【B层累计摘要（低参考性）】\n$bSum")
+        if (toolInfo != null && toolInfo.isNotBlank()) parts.add("【工具信息（极低参考性）】\n${toolInfo.trim()}")
+        val userTextContent = parts.joinToString("\n\n").trim()
+        val userMessageObj = JsonObject().apply {
+            addProperty("role", "user")
+            val contentArray = JsonArray()
+            imageUrlList.forEach { imageUrl ->
+                if (imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+                    contentArray.add(JsonObject().apply {
+                        addProperty("type", "image_url")
+                        add("image_url", JsonObject().apply { addProperty("url", imageUrl) })
+                    })
+                }
+            }
+            if (userTextContent.isNotBlank()) {
+                contentArray.add(JsonObject().apply {
+                    addProperty("type", "text")
+                    addProperty("text", userTextContent)
+                })
+            }
+            add("content", contentArray)
+        }
+        messagesArray.add(userMessageObj)
+        com.nongjiqianwen.SystemAnchor.ensureSystemRole(messagesArray)
+        return messagesArray
+    }
+
     /**
-     * 调用通义千问 API（非流式，一次返回完整 response_text）
-     * 返回：一次 onChunk(完整文本) + onComplete；错误时 onInterrupted(reason)。
-     * stop/cancel 占位保留，当前不要求真正中断。
-     */
-    /**
-     * @param chatModel 主对话模型：传 "plus" 为专家模式（qwen3-vl-plus），否则 qwen3-vl-flash。B 层摘要不由此控制。
-     * 锚点注入：仅在此方法内通过 SystemAnchor.ensureSystemRole(messagesArray) 统一注入，不接收外部锚点参数。
+     * 调用通义千问 API（非流式）。会员路由：Flash/Plus/Pro 主对话=Flash，专家=PLUS；B 摘要固定 Flash。
+     * 工具闭环：首次请求带 tools=web_search；若模型返回 tool_calls 则执行 web_search、二次请求带【工具信息】；否则直接返回首次内容。
      */
     fun callApi(
         userId: String,
@@ -87,7 +161,7 @@ object QwenClient {
         val model = if (chatModel == "plus") modelPlus else modelFlash
         val startMs = System.currentTimeMillis()
         if (BuildConfig.DEBUG) {
-            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 开始")
+            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId model=$model 开始")
         }
         val completed = AtomicBoolean(false)
         val fireComplete: () -> Unit = {
@@ -99,83 +173,31 @@ object QwenClient {
             val inLen = userMessage.length
             val imgCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
             try {
-                // 构建请求体 - 非流式，一次返回完整内容
+                if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
+                if (imgCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
+
+                val useTools = (toolInfo == null)
+                val messagesFirst = buildMainDialogueMessages(userMessage, imageUrlList, toolInfo)
+                if (BuildConfig.DEBUG) {
+                    val sysCount = messagesFirst.count { el -> el.isJsonObject && el.asJsonObject.get("role")?.asString == "system" }
+                    check(sysCount == 1) { "FATAL: system role count != 1, count=$sysCount" }
+                    val firstContent = messagesFirst.get(0).asJsonObject.get("content")?.asString ?: ""
+                    check(firstContent.contains("你是\"农技千问\"")) { "FATAL: system anchor missing" }
+                    if (toolInfo != null && toolInfo.isNotBlank()) Log.d(TAG, "P0_SMOKE: 联网成功 工具信息（极低参考性）已注入本轮")
+                    else Log.d(TAG, "P0_SMOKE: 主对话 ${if (useTools) "首次带 tools" else "未联网"}")
+                }
                 val requestBody = JsonObject().apply {
-                    addProperty("model", model)  // 专家=qwen3-vl-plus，其余=qwen3-vl-flash
+                    addProperty("model", model)
                     addProperty("stream", false)
                     addProperty("temperature", ModelParams.TEMPERATURE)
                     addProperty("top_p", ModelParams.TOP_P)
                     addProperty("max_tokens", ModelParams.MAX_TOKENS)
                     addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                     addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
-                    val messagesArray = com.google.gson.JsonArray()
-                    val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
-                    val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
-                    // 锚点唯一注入：system 仅锚点；四层标记全部放在 user 内容（输入规则最终版·冻结）
-                    messagesArray.add(JsonObject().apply {
-                        addProperty("role", "system")
-                        addProperty("content", "")
-                    })
-                    // user 内容：四层按顺序拼接，标记名一字不改
-                    val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
-                    val parts = mutableListOf<String>()
-                    parts.add(layer1.trim())
-                    if (aText.isNotBlank()) parts.add("【A层历史对话（中等参考性）】\n$aText")
-                    if (bSum.isNotBlank()) parts.add("【B层累计摘要（低参考性）】\n$bSum")
-                    if (toolInfo != null && toolInfo.isNotBlank()) {
-                        parts.add("【工具信息（极低参考性）】\n${toolInfo.trim()}")
-                        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: 联网成功 工具信息（极低参考性）已注入本轮")
-                    } else if (BuildConfig.DEBUG) {
-                        Log.d(TAG, "P0_SMOKE: 主对话 未联网 toolInfo=null")
-                    }
-                    val userTextContent = parts.joinToString("\n\n").trim()
-                    val userMessageObj = JsonObject().apply {
-                        addProperty("role", "user")
-                        val contentArray = com.google.gson.JsonArray()
-                        imageUrlList.forEach { imageUrl ->
-                            if (imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
-                                contentArray.add(JsonObject().apply {
-                                    addProperty("type", "image_url")
-                                    add("image_url", JsonObject().apply { addProperty("url", imageUrl) })
-                                })
-                            }
-                        }
-                        if (userTextContent.isNotBlank()) {
-                            contentArray.add(JsonObject().apply {
-                                addProperty("type", "text")
-                                addProperty("text", userTextContent)
-                            })
-                        }
-                        add("content", contentArray)
-                    }
-                    messagesArray.add(userMessageObj)
-                    com.nongjiqianwen.SystemAnchor.ensureSystemRole(messagesArray)
-                    add("messages", messagesArray)
+                    add("messages", messagesFirst)
+                    if (useTools) add("tools", buildWebSearchTools())
                 }
-                // P0 锚点生效自查：Debug 下断言，不通过即 crash，证明锚点存在且未被覆盖
-                if (BuildConfig.DEBUG) {
-                    val msgs = requestBody.getAsJsonArray("messages")
-                    val systemCount = msgs.count { el ->
-                        el.isJsonObject && el.asJsonObject.get("role")?.asString == "system"
-                    }
-                    check(systemCount == 1) { "FATAL: system role count != 1, count=$systemCount" }
-                    check(msgs.size() > 0 && msgs.get(0).asJsonObject.get("role")?.asString == "system") {
-                        "FATAL: system not at index 0"
-                    }
-                    val systemContent = msgs.get(0).asJsonObject.get("content")?.asString ?: ""
-                    check(systemContent.contains("你是\"农技千问\"")) {
-                        "FATAL: system anchor missing or overwritten"
-                    }
-                    Log.d(TAG, "P0_SMOKE: main dialogue ensureSystemRole done, system@index0")
-                }
-                
-                Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 摘要: 图数=$imgCount 字符数=$inLen")
-                
-                if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
-                if (imgCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
-                
-                val requestJsonString = requestBody.toString()
-                val request = Request.Builder()
+                val request1 = Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
@@ -183,125 +205,156 @@ object QwenClient {
                     .addHeader("X-User-Id", userId)
                     .addHeader("X-Session-Id", sessionId)
                     .addHeader("X-Request-Id", requestId)
-                    .addHeader("X-Client-Msg-Id", requestId)  // 后端计费/去重/对账主键，与 requestId 一致
-                    .post(requestJsonString.toRequestBody("application/json".toMediaType()))
+                    .addHeader("X-Client-Msg-Id", requestId)
+                    .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
                     .build()
-                
-                call = client.newCall(request)
+                call = client.newCall(request1)
                 currentCall.set(call)
                 currentRequestId.set(requestId)
-                val response = call!!.execute()
-                val statusCode = response.code
-                
-                if (BuildConfig.DEBUG) {
-                    Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId HTTP=$statusCode")
+                val response1 = call!!.execute()
+                val code1 = response1.code
+                val body1 = response1.body?.string() ?: ""
+                currentCall.set(null)
+                currentRequestId.set(null)
+
+                if (code1 != 200) {
+                    Log.e(TAG, "callApi HTTP error status=$code1")
+                    handleErrorResponse(userId, sessionId, requestId, streamId, code1, body1, inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
+                    return@Thread
                 }
-                
-                if (response.isSuccessful) {
-                    try {
-                        val responseBodyStr = response.body?.string() ?: throw Exception("响应体为空")
-                        currentCall.set(null)
-                        currentRequestId.set(null)
-                        val json = gson.fromJson(responseBodyStr, JsonObject::class.java)
-                        val choices = json.getAsJsonArray("choices") ?: run {
-                            handler.post { onInterrupted("error"); fireComplete() }
-                            return@Thread
-                        }
-                        if (choices.size() == 0) {
-                            handler.post { onInterrupted("error"); fireComplete() }
-                            return@Thread
-                        }
-                        val message = choices.get(0).asJsonObject.getAsJsonObject("message") ?: run {
-                            handler.post { onInterrupted("error"); fireComplete() }
-                            return@Thread
-                        }
-                        val content = message.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
-                        outputCharCount = content.length
-                        val elapsed = System.currentTimeMillis() - startMs
-                        if (BuildConfig.DEBUG) {
-                            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 非流式完成 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
-                        }
-                        handler.post {
-                            onChunk(content)
-                            fireComplete()
-                        }
-                    } catch (e: Exception) {
-                        currentCall.set(null)
-                        currentRequestId.set(null)
-                        val elapsed = System.currentTimeMillis() - startMs
-                        val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
-                        val isInterrupted = e is SocketTimeoutException
-                        if (isCanceled) {
-                            Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
-                            handler.post {
-                                onInterrupted("canceled")
-                                fireComplete()
-                            }
-                        } else if (isInterrupted) {
-                            Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
-                            handler.post {
-                                onInterrupted("timeout")
-                                fireComplete()
-                            }
-                        } else if (e is IOException) {
-                            Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
-                            handler.post {
-                                onInterrupted("network")
-                                fireComplete()
-                            }
-                        } else {
-                            Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
-                            handler.post {
-                                onInterrupted("error")
-                                fireComplete()
-                            }
-                        }
+
+                val json1 = gson.fromJson(body1, JsonObject::class.java)
+                val choices1 = json1.getAsJsonArray("choices") ?: run {
+                    handler.post { onInterrupted("error"); fireComplete() }
+                    return@Thread
+                }
+                if (choices1.size() == 0) {
+                    handler.post { onInterrupted("error"); fireComplete() }
+                    return@Thread
+                }
+                val message1 = choices1.get(0).asJsonObject.getAsJsonObject("message") ?: run {
+                    handler.post { onInterrupted("error"); fireComplete() }
+                    return@Thread
+                }
+                val toolCalls = message1.getAsJsonArray("tool_calls")?.takeIf { it.size() > 0 }
+
+                if (useTools && toolCalls != null) {
+                    val queries = mutableListOf<String>()
+                    for (i in 0 until toolCalls.size()) {
+                        val tc = toolCalls.get(i).asJsonObject
+                        val fn = tc.getAsJsonObject("function") ?: continue
+                        if (fn.get("name")?.asString != "web_search") continue
+                        val argsStr = fn.get("arguments")?.asString ?: continue
+                        try {
+                            val args = gson.fromJson(argsStr, JsonObject::class.java)
+                            val q = args.get("query")?.asString?.trim()
+                            if (!q.isNullOrBlank()) queries.add(q)
+                        } catch (_: Exception) { }
+                    }
+                    val toolInfoFormatted = if (queries.isEmpty()) {
+                        "联网搜索失败/未命中（仅供参考）"
+                    } else {
+                        val results = queries.mapNotNull { q -> BochaClient.webSearch(q) }
+                        val combined = results.joinToString("\n\n").trim()
+                        if (combined.isBlank()) "联网搜索失败/未命中（仅供参考）" else combined
+                    }
+                    if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: " + if (toolInfoFormatted.contains("失败") || toolInfoFormatted.contains("未命中")) "联网失败/未命中 仍二次调用" else "联网成功 工具信息已注入 二次调用")
+                    val messagesSecond = buildMainDialogueMessages(userMessage, imageUrlList, toolInfoFormatted)
+                    val body2 = JsonObject().apply {
+                        addProperty("model", model)
+                        addProperty("stream", false)
+                        addProperty("temperature", ModelParams.TEMPERATURE)
+                        addProperty("top_p", ModelParams.TOP_P)
+                        addProperty("max_tokens", ModelParams.MAX_TOKENS)
+                        addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
+                        addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
+                        add("messages", messagesSecond)
+                    }
+                    val request2 = Request.Builder()
+                        .url(apiUrl)
+                        .addHeader("Authorization", "Bearer $apiKey")
+                        .addHeader("Content-Type", "application/json")
+                        .addHeader("Accept", "application/json")
+                        .addHeader("X-User-Id", userId)
+                        .addHeader("X-Session-Id", sessionId)
+                        .addHeader("X-Request-Id", requestId)
+                        .addHeader("X-Client-Msg-Id", requestId)
+                        .post(body2.toString().toRequestBody("application/json".toMediaType()))
+                        .build()
+                    val response2 = client.newCall(request2).execute()
+                    val code2 = response2.code
+                    val body2Str = response2.body?.string() ?: ""
+                    if (code2 != 200) {
+                        Log.e(TAG, "callApi 二次请求 HTTP error status=$code2")
+                        handleErrorResponse(userId, sessionId, requestId, streamId, code2, body2Str, inLen, imgCount, 0, onInterrupted, fireComplete)
                         return@Thread
                     }
-                } else {
-                    currentCall.set(null)
-                    currentRequestId.set(null)
-                    val responseBody = response.body?.string() ?: ""
+                    val json2 = gson.fromJson(body2Str, JsonObject::class.java)
+                    val choices2 = json2.getAsJsonArray("choices") ?: run {
+                        handler.post { onInterrupted("error"); fireComplete() }
+                        return@Thread
+                    }
+                    if (choices2.size() == 0) {
+                        handler.post { onInterrupted("error"); fireComplete() }
+                        return@Thread
+                    }
+                    val message2 = choices2.get(0).asJsonObject.getAsJsonObject("message") ?: run {
+                        handler.post { onInterrupted("error"); fireComplete() }
+                        return@Thread
+                    }
+                    val content = message2.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
+                    outputCharCount = content.length
                     val elapsed = System.currentTimeMillis() - startMs
-                    Log.e(TAG, "callApi HTTP error status=$statusCode, elapsed=${elapsed}ms")
-                    handleErrorResponse(userId, sessionId, requestId, streamId, statusCode, responseBody, inLen, imgCount, outputCharCount, onInterrupted, fireComplete)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 二次完成 耗时=${elapsed}ms 出=$outputCharCount")
+                    handler.post {
+                        onChunk(content)
+                        fireComplete()
+                    }
+                    return@Thread
                 }
-            } catch (e: IOException) {
+
+                val content = message1.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
+                outputCharCount = content.length
+                val elapsed = System.currentTimeMillis() - startMs
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId 非流式完成 耗时=${elapsed}ms 入=$inLen img=$imgCount 出=$outputCharCount")
+                }
+                handler.post {
+                    onChunk(content)
+                    fireComplete()
+                }
+            } catch (e: Exception) {
                 currentCall.set(null)
                 currentRequestId.set(null)
                 val elapsed = System.currentTimeMillis() - startMs
                 val isCanceled = e.message?.contains("Canceled", ignoreCase = true) == true
                 val isInterrupted = e is SocketTimeoutException
                 if (isCanceled) {
-                    Log.w(TAG, "callApi canceled(IOException), elapsed=${elapsed}ms")
+                    Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
                     handler.post {
                         onInterrupted("canceled")
                         fireComplete()
                     }
                 } else if (isInterrupted) {
-                    Log.w(TAG, "callApi timeout(IOException), elapsed=${elapsed}ms")
+                    Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
                     handler.post {
                         onInterrupted("timeout")
                         fireComplete()
                     }
-                } else {
-                    Log.e(TAG, "callApi network error(IOException), elapsed=${elapsed}ms", e)
+                } else if (e is IOException) {
+                    Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
                     handler.post {
                         onInterrupted("network")
                         fireComplete()
                     }
+                } else {
+                    Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
+                    handler.post {
+                        onInterrupted("error")
+                        fireComplete()
+                    }
                 }
-            } catch (e: Exception) {
-                currentCall.set(null)
-                currentRequestId.set(null)
-                val elapsed = System.currentTimeMillis() - startMs
-                val inC = try { userMessage.length } catch (_: Exception) { 0 }
-                val imgC = try { imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) } } catch (_: Exception) { 0 }
-                Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
-                handler.post {
-                    onInterrupted("error")
-                    fireComplete()
-                }
+                return@Thread
             }
         }.start()
     }
