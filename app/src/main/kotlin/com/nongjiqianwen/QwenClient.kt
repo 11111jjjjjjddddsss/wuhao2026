@@ -342,7 +342,7 @@ object QwenClient {
                             handler.post {
                                 if (!phaseEnded.compareAndSet(false, true)) return@post
                                 if (contentRetry.isNotBlank()) emitFakeStream(contentRetry, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
-                                else { onChunk("网络波动，已停止"); fireComplete() }
+                                else { onInterrupted("error"); fireComplete() }
                             }
                         } catch (e: Exception) {
                             currentCall.set(null)
@@ -351,7 +351,7 @@ object QwenClient {
                             handler.post {
                                 if (!phaseEnded.compareAndSet(false, true)) return@post
                                 if (onInterruptedResumable != null) onInterruptedResumable(streamId, if (isCanceled) "canceled" else "error")
-                                else { if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error"); fireComplete() }
+                                else { if (isCanceled) onInterrupted("canceled") else onInterrupted("error"); fireComplete() }
                             }
                         }
                         return@Thread
@@ -421,7 +421,7 @@ object QwenClient {
                             val rspFb = callFb.execute()
                             currentCall.set(null)
                             if (rspFb.code != 200) {
-                                handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onChunk("网络波动，已停止"); fireComplete() } }
+                                handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onInterrupted("server"); fireComplete() } }
                                 return@Thread
                             }
                             val jsFb = gson.fromJson(rspFb.body?.string() ?: "", JsonObject::class.java)
@@ -431,7 +431,7 @@ object QwenClient {
                             handler.post {
                                 if (!phaseEnded.compareAndSet(false, true)) return@post
                                 if (contentFb.isNotBlank()) emitFakeStream(contentFb, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
-                                else { onChunk("网络波动，已停止"); fireComplete() }
+                                else { onInterrupted("error"); fireComplete() }
                             }
                         } catch (e: Exception) {
                             val isCanceled = canceledFlag.get() || callFb.isCanceled()
@@ -440,7 +440,7 @@ object QwenClient {
                             handler.post {
                                 if (!phaseEnded.compareAndSet(false, true)) return@post
                                 if (onInterruptedResumable != null) onInterruptedResumable(streamId, if (isCanceled) "canceled" else "error")
-                                else { if (isCanceled) onChunk("网络波动，已停止") else onInterrupted("error"); fireComplete() }
+                                else { if (isCanceled) onInterrupted("canceled") else onInterrupted("error"); fireComplete() }
                             }
                         }
                         return@Thread
@@ -492,7 +492,7 @@ object QwenClient {
                         if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onChunk("网络波动，已停止"); fireComplete() }
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onInterrupted("server"); fireComplete() }
                         }
                         return@Thread
                     }
@@ -500,21 +500,21 @@ object QwenClient {
                     val choices2 = json2.getAsJsonArray("choices") ?: run {
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() }
                         }
                         return@Thread
                     }
                     if (choices2.size() == 0) {
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() }
                         }
                         return@Thread
                     }
                     val message2 = choices2.get(0).asJsonObject.getAsJsonObject("message") ?: run {
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
-                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
+                            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() }
                         }
                         return@Thread
                     }
@@ -547,7 +547,7 @@ object QwenClient {
                 if (phase == 2) {
                     handler.post {
                         if (!phaseEnded.compareAndSet(false, true)) return@post
-                        if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onChunk("网络波动，已停止"); fireComplete() }
+                        if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error") else { onInterrupted("error"); fireComplete() }
                     }
                 } else {
                     if (isCanceled) {
