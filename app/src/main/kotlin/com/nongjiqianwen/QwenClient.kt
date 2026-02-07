@@ -42,6 +42,7 @@ object QwenClient {
     private val currentBochaCall = AtomicReference<Call?>(null)
     private val currentRequestId = AtomicReference<String?>(null)
     private val canceledFlag = AtomicBoolean(false)
+    private val streamingRunnableRef = AtomicReference<Runnable?>(null)
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -98,12 +99,65 @@ object QwenClient {
      */
     fun cancelCurrentRequest() {
         canceledFlag.set(true)
+        streamingRunnableRef.getAndSet(null)?.let { handler.removeCallbacks(it) }
         val oldRequestId = currentRequestId.getAndSet(null)
         currentCall.getAndSet(null)?.cancel()
         currentBochaCall.getAndSet(null)?.cancel()
         if (BuildConfig.DEBUG && oldRequestId != null) {
             Log.d(TAG, "requestId=$oldRequestId 被取消（新请求/用户停止）")
         }
+    }
+
+    /** 本地假流式：首段立刻吐，余下分批 postDelayed；isCanceled 为 true 或 phaseEnded 时停止。 */
+    private fun emitFakeStream(fullText: String, onChunk: (String) -> Unit, isCanceled: () -> Boolean, onDone: () -> Unit) {
+        if (fullText.isBlank()) { onDone(); return }
+        if (fullText.length <= 120) {
+            onChunk(fullText)
+            onDone()
+            return
+        }
+        val burstLen = minOf(24, fullText.length)
+        onChunk(fullText.substring(0, burstLen))
+        if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream start len=${fullText.length} burst=$burstLen")
+        val remaining = fullText.substring(burstLen)
+        if (remaining.isEmpty()) {
+            if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
+            onDone()
+            return
+        }
+        var offset = 0
+        val runnable = Runnable {
+            if (isCanceled()) {
+                streamingRunnableRef.set(null)
+                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=true")
+                onDone()
+                return@Runnable
+            }
+            if (offset >= remaining.length) {
+                streamingRunnableRef.set(null)
+                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
+                onDone()
+                return@Runnable
+            }
+            val chunkLen = (remaining.length - offset).coerceAtLeast(0).let { rest -> minOf(16, rest).coerceAtLeast(1) }
+            if (chunkLen <= 0) {
+                streamingRunnableRef.set(null)
+                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
+                onDone()
+                return@Runnable
+            }
+            onChunk(remaining.substring(offset, offset + chunkLen))
+            offset += chunkLen
+            if (offset >= remaining.length) {
+                streamingRunnableRef.set(null)
+                if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: fake_stream done cancelled=false")
+                onDone()
+                return@Runnable
+            }
+            handler.postDelayed(runnable, 20)
+        }
+        streamingRunnableRef.set(runnable)
+        handler.postDelayed(runnable, 20)
     }
 
     /** 合并多条 Bocha 成功文本：单标题行 + 最多 5 条「- 标题 | 域名 | URL」，总长 <= TOOL_INFO_MAX_CHARS。 */
@@ -281,8 +335,8 @@ object QwenClient {
                             outputCharCount = contentRetry.length
                             handler.post {
                                 if (!phaseEnded.compareAndSet(false, true)) return@post
-                                onChunk(if (contentRetry.isNotBlank()) contentRetry else "网络波动，已停止")
-                                fireComplete()
+                                if (contentRetry.isNotBlank()) emitFakeStream(contentRetry, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
+                                else { onChunk("网络波动，已停止"); fireComplete() }
                             }
                         } catch (e: Exception) {
                             currentCall.set(null)
@@ -338,8 +392,7 @@ object QwenClient {
                             outputCharCount = contentFirst.length
                             handler.post {
                                 if (!phaseEnded.compareAndSet(false, true)) return@post
-                                onChunk(contentFirst)
-                                fireComplete()
+                                emitFakeStream(contentFirst, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
                             }
                             return@Thread
                         }
@@ -369,7 +422,11 @@ object QwenClient {
                             val choicesFb = jsFb.getAsJsonArray("choices")
                             val contentFb = if (choicesFb != null && choicesFb.size() > 0) choicesFb.get(0).asJsonObject.getAsJsonObject("message")?.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: "" else ""
                             outputCharCount = contentFb.length
-                            handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; onChunk(if (contentFb.isNotBlank()) contentFb else "网络波动，已停止"); fireComplete() }
+                            handler.post {
+                                if (!phaseEnded.compareAndSet(false, true)) return@post
+                                if (contentFb.isNotBlank()) emitFakeStream(contentFb, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
+                                else { onChunk("网络波动，已停止"); fireComplete() }
+                            }
                         } catch (e: Exception) {
                             val isCanceled = canceledFlag.get() || callFb.isCanceled()
                             currentCall.set(null)
@@ -460,9 +517,10 @@ object QwenClient {
                     if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
                     handler.post {
                         if (!phaseEnded.compareAndSet(false, true)) return@post
-                        onChunk(content)
-                        if (showToolBlock) onToolInfo?.invoke(streamId, "web_search", toolInfoFormatted)
-                        fireComplete()
+                        emitFakeStream(content, onChunk, { canceledFlag.get() || phaseEnded.get() }, {
+                            if (showToolBlock) onToolInfo?.invoke(streamId, "web_search", toolInfoFormatted)
+                            fireComplete()
+                        })
                     }
                     return@Thread
                 }
@@ -473,8 +531,7 @@ object QwenClient {
                 if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=false bocha_ms=0 second_ms=0 show_tool_block=false cancelled=false")
                 handler.post {
                     if (!phaseEnded.compareAndSet(false, true)) return@post
-                    onChunk(content)
-                    fireComplete()
+                    emitFakeStream(content, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
                 }
             } catch (e: Exception) {
                 val elapsed = System.currentTimeMillis() - startMs
