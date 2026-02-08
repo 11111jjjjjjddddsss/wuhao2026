@@ -1158,6 +1158,7 @@
             transform: translateY(0);
             opacity: 1;
             pointer-events: auto;
+            touch-action: none;
         }
         .voice-panel.cancel-armed {
             background: rgba(225, 75, 75, 0.1);
@@ -1214,10 +1215,9 @@
         .input-container.voice-mode .voice-input-hint {
             display: block;
         }
-        /* 语音面板打开时：禁止页面滚动/拖拽，保证上滑取消手势稳定 */
+        /* 语音面板打开时：禁止页面滚动，保证上滑取消手势稳定 */
         body.voice-panel-open {
             overflow-y: hidden;
-            touch-action: none;
         }
         body.voice-panel-open .voice-input-hint {
             display: none !important;
