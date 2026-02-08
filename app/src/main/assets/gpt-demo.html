@@ -656,19 +656,6 @@
         .empty-state .logo {
             display: none;
         }
-        .empty-state .slogan {
-            font-size: 20px;
-            font-weight: 600;
-            color: var(--text);
-            text-align: left;
-        }
-        .empty-state .slogan-sub {
-            font-size: 14px;
-            color: var(--text-secondary);
-            text-align: left;
-            margin-top: 8px;
-        }
-
         /* 全对话无气泡：GPT 纯净文本块 */
         .message {
             margin-bottom: 20px;
@@ -1686,10 +1673,6 @@
         <div class="messages-wrapper" id="messagesWrapper">
             <div class="empty-state" id="emptyState">
                 <div class="logo"></div>
-                <div id="emptyStateWelcome" style="display:none;">
-                    <p class="slogan">欢迎咨询种植、病虫害防治、施肥等问题。</p>
-                    <p class="slogan-sub">描述作物/地区/现象，必要时可上传照片。</p>
-                </div>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
         </div>
@@ -1764,7 +1747,6 @@
         const messagesWrapper = document.getElementById('messagesWrapper');
         const messagesContainer = document.getElementById('messagesContainer');
         const emptyState = document.getElementById('emptyState');
-        const emptyStateWelcome = document.getElementById('emptyStateWelcome');
         const textInput = document.getElementById('textInput');
         const addButton = document.getElementById('addButton');
         const fileInput = document.getElementById('fileInput');
@@ -1810,20 +1792,58 @@
         appBarLeft.addEventListener('click', toggleDrawer);
         drawerMask.addEventListener('click', closeDrawer);
 
-        /* 欢迎语：仅空状态、首次或距上次活动≥48h 展示一次，不进历史 */
+        /* UI-only 欢迎语：仅 DOM，不进历史/轮次/扣费；lastUserActivityAt / lastWelcomeShownAt */
         var WELCOME_48H_MS = 48 * 60 * 60 * 1000;
         function getLastUserActivityAt() { return parseInt(localStorage.getItem('lastUserActivityAt') || '0', 10); }
         function setLastUserActivityAt() { localStorage.setItem('lastUserActivityAt', String(Date.now())); }
         function getLastWelcomeShownAt() { return parseInt(localStorage.getItem('lastWelcomeShownAt') || '0', 10); }
         function setLastWelcomeShownAt() { localStorage.setItem('lastWelcomeShownAt', String(Date.now())); }
-        function hideWelcome() { if (emptyStateWelcome) emptyStateWelcome.style.display = 'none'; }
-        function maybeShowWelcome() {
-            if (messagesContainer.querySelectorAll('.message').length > 0) return;
+        function getRealMessageCount() { return messagesContainer ? messagesContainer.querySelectorAll('.message:not([data-ui-only="1"])').length : 0; }
+        function hideWelcomePseudoMsg() {
+            var el = document.getElementById('welcomePseudoMsg');
+            if (el) el.remove();
+        }
+        function renderWelcomePseudoMsg() {
+            hideWelcomePseudoMsg();
+            var realCount = getRealMessageCount();
+            var msg = document.createElement('div');
+            msg.id = 'welcomePseudoMsg';
+            msg.setAttribute('data-ui-only', '1');
+            msg.className = 'message assistant';
+            var row = document.createElement('div');
+            row.className = 'message-row';
+            var avatarSlot = document.createElement('div');
+            avatarSlot.className = 'avatar-slot';
+            var dot = document.createElement('span');
+            dot.className = 'streaming-dot';
+            avatarSlot.appendChild(dot);
+            var contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            var line1 = document.createElement('div');
+            line1.textContent = '欢迎咨询种植、病虫害防治、施肥等问题。';
+            var line2 = document.createElement('div');
+            line2.style.fontSize = '14px';
+            line2.style.color = 'var(--text-secondary)';
+            line2.textContent = '描述作物/地区/现象，必要时可上传照片。';
+            contentDiv.appendChild(line1);
+            contentDiv.appendChild(line2);
+            row.appendChild(avatarSlot);
+            row.appendChild(contentDiv);
+            msg.appendChild(row);
+            if (realCount === 0) messagesContainer.prepend(msg);
+            else messagesContainer.appendChild(msg);
+        }
+        function maybeShowWelcomePseudoMsg() {
             var now = Date.now();
-            if (getLastWelcomeShownAt() > 0 && now - getLastWelcomeShownAt() < WELCOME_48H_MS) return;
-            if (getLastUserActivityAt() > 0 && now - getLastUserActivityAt() < WELCOME_48H_MS) return;
-            setLastWelcomeShownAt();
-            if (emptyStateWelcome) emptyStateWelcome.style.display = 'block';
+            var realCount = getRealMessageCount();
+            var needShow = (realCount === 0) || (getLastUserActivityAt() === 0) || (now - getLastUserActivityAt() >= WELCOME_48H_MS);
+            var rateOk = (getLastWelcomeShownAt() === 0) || (now - getLastWelcomeShownAt() >= WELCOME_48H_MS);
+            if (needShow && rateOk) {
+                renderWelcomePseudoMsg();
+                setLastWelcomeShownAt();
+            } else {
+                hideWelcomePseudoMsg();
+            }
         }
 
         var membershipBackdrop = document.getElementById('membership-modal-backdrop');
@@ -2352,7 +2372,7 @@
         // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
             setLastUserActivityAt();
-            hideWelcome();
+            hideWelcomePseudoMsg();
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 110) + 'px';
             updateInputMode();
@@ -2773,7 +2793,7 @@
             pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), ts: Date.now() };
             pendingDeduct[streamId] = (imageUrls.length > 0 ? 1 : 0);
             setLastUserActivityAt();
-            hideWelcome();
+            hideWelcomePseudoMsg();
 
             // 直接发送，由模型自行决策是否需要联网搜索
             sendToAndroid(text, imageUrls, streamId);
@@ -3188,10 +3208,10 @@
             if (btn) btn.addEventListener('click', function() { scrollToBottom(true); });
         })();
 
-        // 纯展示裁剪：删除超出 MAX_MESSAGES 的 DOM，不得用裁剪结果更新或推导 A/B
+        // 纯展示裁剪：删除超出 MAX_MESSAGES 的 DOM，不得用裁剪结果更新或推导 A/B（排除 UI-only 欢迎语）
         function hardTrimMessages() {
             if (!messagesContainer) return;
-            var nodes = Array.from(messagesContainer.querySelectorAll('.message'));
+            var nodes = Array.from(messagesContainer.querySelectorAll('.message:not([data-ui-only="1"])'));
             if (nodes.length <= MAX_MESSAGES) return;
             var removeCount = nodes.length - MAX_MESSAGES;
             for (var i = 0; i < removeCount; i++) {
@@ -3199,7 +3219,7 @@
             }
         }
         function refreshEmptyState() {
-            const hasMessages = messagesContainer.querySelectorAll('.message').length > 0;
+            const hasMessages = getRealMessageCount() > 0;
             emptyState.classList.toggle('hidden', hasMessages);
         }
 
@@ -3303,7 +3323,7 @@
         function onVoiceStart(e) {
             e.preventDefault();
             setLastUserActivityAt();
-            hideWelcome();
+            hideWelcomePseudoMsg();
             if (e.type === 'touchstart') voiceTouchStartY = e.touches[0].clientY;
             else voiceTouchStartY = e.clientY;
             voiceRecording = true;
@@ -3413,9 +3433,10 @@
 
         updateInputMode();
         refreshEmptyState();
-        maybeShowWelcome();
-        document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') maybeShowWelcome(); });
+        maybeShowWelcomePseudoMsg();
+        document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') maybeShowWelcomePseudoMsg(); });
 
+        textInput.addEventListener('focus', function() { setLastUserActivityAt(); hideWelcomePseudoMsg(); });
         btnSend.addEventListener('click', sendMessage);
 
         textInput.addEventListener('keydown', function(e) {
