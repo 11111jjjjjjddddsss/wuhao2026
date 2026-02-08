@@ -1077,6 +1077,33 @@
             border-radius: 2px;
         }
 
+        /* GPT 风格：回到底部居中圆形箭头（生成中且用户离开底部时显示） */
+        .scroll-to-bottom-btn {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 88px;
+            width: 44px;
+            height: 44px;
+            min-width: 44px;
+            min-height: 44px;
+            border-radius: 999px;
+            background: #fff;
+            border: 1px solid #e5e5e5;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            color: #111;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 80;
+            cursor: pointer;
+        }
+        .scroll-to-bottom-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
         /* D. VoicePanel（贴底盖住加号/麦克风；雾蒙蒙毛玻璃 + 精致感；未打开时完全不可见） */
         .voice-panel {
             position: absolute;
@@ -1634,6 +1661,7 @@
             </div>
         </div>
     </main>
+    <button type="button" id="scrollToBottomBtn" class="scroll-to-bottom-btn" aria-label="回到底部" style="display: none;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg></button>
 
     <div class="voice-panel" id="voicePanel">
         <div class="voice-drag-bar"></div>
@@ -2188,6 +2216,10 @@
         }, true);
 
         let isGenerating = false;
+        let stickToBottom = true;
+        const BOTTOM_THRESHOLD_PX = 120;
+        function distanceToBottom(container) { return container.scrollHeight - (container.scrollTop + container.clientHeight); }
+        function atBottom(container) { return distanceToBottom(container) <= BOTTOM_THRESHOLD_PX; }
         /** C. 4 态：idle | typing | generating | voicePanel */
         let inputMode = 'idle';
         let voiceRecording = false;
@@ -2647,6 +2679,7 @@
             const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             isGenerating = true;
             updateInputMode();
+            updateScrollToBottomBtn();
             const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
             assistantMessage.dataset.streamId = streamId;
             messagesContainer.appendChild(assistantMessage);
@@ -2698,6 +2731,7 @@
                 stopTypewriter();
                 isGenerating = false;
                 updateInputMode();
+                updateScrollToBottomBtn();
                 delete chunkBufferByStream[streamId];
                 delete lastFullBufferByStream[streamId];
                 delete pendingRequest[streamId];
@@ -2816,6 +2850,7 @@
                     isGenerating = false;
                     fileInput.value = '';
                     updateInputMode();
+                    updateScrollToBottomBtn();
                     hardTrimMessages();
                     scrollToBottom();
                     return;
@@ -2829,6 +2864,7 @@
                     isGenerating = false;
                     fileInput.value = '';
                     updateInputMode();
+                    updateScrollToBottomBtn();
                     hardTrimMessages();
                     return;
                 }
@@ -2870,6 +2906,7 @@
                 isGenerating = false;
                 fileInput.value = '';
                 updateInputMode();
+                updateScrollToBottomBtn();
                 hardTrimMessages();
                 delete terminatedStreamIds[streamId];
                 return;
@@ -2887,6 +2924,7 @@
                 isGenerating = false;
                 fileInput.value = '';
                 updateInputMode();
+                updateScrollToBottomBtn();
                 hardTrimMessages();
             }
             delete terminatedStreamIds[streamId];
@@ -2942,6 +2980,7 @@
             if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
             updateInputMode();
+            updateScrollToBottomBtn();
             delete chunkBufferByStream[streamId];
             delete lastFullBufferByStream[streamId];
             applyInterruptedUI(streamId, reason);
@@ -3030,10 +3069,37 @@
         }
         window.setInitialHistory = setInitialHistory;
 
-        // 滚动到底部（滚动容器为 messagesWrapper）
-        function scrollToBottom() {
-            messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+        // 滚动到底部：仅当 stickToBottom 时自动跟；force=true 时一键回底并恢复跟随
+        var scrollToBottomRaf = null;
+        function scheduleScrollToBottom() {
+            if (scrollToBottomRaf) return;
+            scrollToBottomRaf = requestAnimationFrame(function() {
+                scrollToBottomRaf = null;
+                if (stickToBottom && messagesWrapper) messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+            });
         }
+        function scrollToBottom(force) {
+            if (force) {
+                stickToBottom = true;
+                if (messagesWrapper) messagesWrapper.scrollTop = messagesWrapper.scrollHeight;
+                updateScrollToBottomBtn();
+            } else {
+                if (stickToBottom) scheduleScrollToBottom();
+            }
+        }
+        function updateScrollToBottomBtn() {
+            var btn = document.getElementById('scrollToBottomBtn');
+            if (!btn) return;
+            if (isGenerating && !stickToBottom) btn.style.display = ''; else btn.style.display = 'none';
+        }
+        messagesWrapper.addEventListener('scroll', function() {
+            stickToBottom = atBottom(messagesWrapper);
+            updateScrollToBottomBtn();
+        });
+        (function() {
+            var btn = document.getElementById('scrollToBottomBtn');
+            if (btn) btn.addEventListener('click', function() { scrollToBottom(true); });
+        })();
 
         // 纯展示裁剪：删除超出 MAX_MESSAGES 的 DOM，不得用裁剪结果更新或推导 A/B
         function hardTrimMessages() {
@@ -3072,6 +3138,7 @@
             stopTypewriter();
             isGenerating = false;
             updateInputMode();
+            updateScrollToBottomBtn();
             if (typeof AndroidInterface.stopGeneration === 'function') {
                 AndroidInterface.stopGeneration();
             }
