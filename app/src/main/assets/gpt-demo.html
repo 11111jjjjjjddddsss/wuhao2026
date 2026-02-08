@@ -53,11 +53,33 @@
             max-width: 430px;
             height: 100vh;
             margin: 0 auto;
-            background: linear-gradient(to bottom, #F2F2F2 0%, #FFFFFF 22%, #FFFFFF 78%, #F2F2F2 100%);
+            background: #F6F6F6;
             display: flex;
             flex-direction: column;
             position: relative;
             outline: calc(var(--debug-shell) * 1px) solid red;
+        }
+        .app-shell::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.04), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .app-shell::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 150px;
+            background: linear-gradient(to top, rgba(0,0,0,0.06), transparent);
+            pointer-events: none;
+            z-index: 0;
         }
 
         @media (orientation: landscape) {
@@ -67,8 +89,10 @@
             }
         }
 
-        /* A. 顶部 AppBar（背景透明，沿用 app-shell 整页渐变） */
+        /* A. 顶部 AppBar（背景透明，沿用 app-shell 底色） */
         .app-bar {
+            position: relative;
+            z-index: 1;
             flex-shrink: 0;
             height: 56px;
             padding: env(safe-area-inset-top) 12px 0;
@@ -93,6 +117,7 @@
         .app-bar-left {
             background: #FFFFFF;
             box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+            border: 1px solid rgba(0,0,0,0.06);
         }
         .app-bar-left:hover, .app-bar-right:hover {
             background: rgba(0,0,0,0.05);
@@ -108,6 +133,7 @@
             border-radius: 999px;
             padding: 6px 14px 8px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid rgba(0,0,0,0.06);
         }
         .app-bar-title {
             font-size: 18px;
@@ -571,6 +597,8 @@
         }
 
         .main {
+            position: relative;
+            z-index: 1;
             flex: 1;
             min-height: 0;
             display: flex;
@@ -882,13 +910,13 @@
 
         /* 加号按钮：圆球白色，底栏浅灰，白球在灰底上显眼；十字架浅灰 */
         .add-button {
+            border: 1px solid rgba(0,0,0,0.06);
             align-self: center;
             min-width: 44px;
             min-height: 44px;
             width: 44px;
             height: 44px;
             background: #FFFFFF;
-            border: none;
             box-shadow: 0 1px 3px rgba(0,0,0,0.12);
             color: #666666;
             font-size: 48px;
