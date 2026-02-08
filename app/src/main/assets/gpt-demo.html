@@ -1149,7 +1149,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(255, 255, 255, 0.96);
+            background: #ffffff !important;
             -webkit-backdrop-filter: none;
             backdrop-filter: none;
             border-radius: 20px 20px 0 0;
@@ -1161,7 +1161,7 @@
             opacity: 0;
             pointer-events: none;
             transition: none !important;
-            z-index: 102;
+            z-index: 9999 !important;
             min-height: 200px;
             max-height: 320px;
         }
@@ -1172,9 +1172,8 @@
             touch-action: none;
         }
         .voice-panel.cancel-armed {
-            background: rgba(225, 75, 75, 0.12);
-            -webkit-backdrop-filter: none;
-            backdrop-filter: none;
+            background: #ffffff !important;
+            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.06), inset 0 0 0 1px rgba(225, 75, 75, 0.28) !important;
         }
         .voice-drag-bar {
             visibility: hidden;
