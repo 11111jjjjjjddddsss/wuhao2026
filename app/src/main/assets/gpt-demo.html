@@ -1165,10 +1165,9 @@
             backdrop-filter: blur(20px);
         }
         .voice-drag-bar {
+            visibility: hidden;
             width: 36px;
             height: 4px;
-            background: #D9D9D9;
-            border-radius: 2px;
             margin: 0 auto 16px;
         }
         .voice-hint {
@@ -1215,7 +1214,11 @@
         .input-container.voice-mode .voice-input-hint {
             display: block;
         }
-        /* 语音面板打开时，底部输入框不再重复显示「按住说话」，只保留面板内提示 */
+        /* 语音面板打开时：禁止页面滚动/拖拽，保证上滑取消手势稳定 */
+        body.voice-panel-open {
+            overflow-y: hidden;
+            touch-action: none;
+        }
         body.voice-panel-open .voice-input-hint {
             display: none !important;
         }
