@@ -662,6 +662,12 @@
             color: var(--text);
             text-align: left;
         }
+        .empty-state .slogan-sub {
+            font-size: 14px;
+            color: var(--text-secondary);
+            text-align: left;
+            margin-top: 8px;
+        }
 
         /* 全对话无气泡：GPT 纯净文本块 */
         .message {
@@ -1680,7 +1686,10 @@
         <div class="messages-wrapper" id="messagesWrapper">
             <div class="empty-state" id="emptyState">
                 <div class="logo"></div>
-                <p class="slogan" id="emptyStateWelcome" style="display:none;">欢迎咨询种植、病虫害防治、施肥等问题，描述作物/地区/现象，必要时可上传照片。</p>
+                <div id="emptyStateWelcome" style="display:none;">
+                    <p class="slogan">欢迎咨询种植、病虫害防治、施肥等问题。</p>
+                    <p class="slogan-sub">描述作物/地区/现象，必要时可上传照片。</p>
+                </div>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
         </div>
