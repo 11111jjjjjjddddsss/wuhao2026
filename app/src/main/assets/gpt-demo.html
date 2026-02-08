@@ -142,14 +142,15 @@
             content: '';
             position: absolute;
             left: 0;
-            bottom: 0;
-            height: 1px;
+            bottom: 1px;
+            height: 3px;
             width: 45%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.26), transparent);
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
             transform: translateX(-140%);
             opacity: 0;
             pointer-events: none;
             animation: none;
+            filter: drop-shadow(0 0 0.6px rgba(0,0,0,0.18));
         }
         body.generating .app-bar-title-wrap::after {
             opacity: 1;
