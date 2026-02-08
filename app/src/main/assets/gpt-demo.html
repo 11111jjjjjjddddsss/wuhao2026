@@ -656,6 +656,11 @@
         .empty-state .logo {
             display: block;
         }
+        .empty-state .empty-state-hint {
+            font-size: 16px;
+            color: var(--text);
+            margin-top: 12px;
+        }
         /* 全对话无气泡：GPT 纯净文本块 */
         .message {
             margin-bottom: 20px;
@@ -1673,6 +1678,7 @@
         <div class="messages-wrapper" id="messagesWrapper">
             <div class="empty-state" id="emptyState">
                 <div class="logo"></div>
+                <p class="empty-state-hint">欢迎咨询种植、病虫害防治、施肥等问题。</p>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
         </div>
@@ -1791,60 +1797,6 @@
         closeDrawer();
         appBarLeft.addEventListener('click', toggleDrawer);
         drawerMask.addEventListener('click', closeDrawer);
-
-        /* UI-only 欢迎语：仅 DOM，不进历史/轮次/扣费；lastUserActivityAt / lastWelcomeShownAt */
-        var WELCOME_48H_MS = 48 * 60 * 60 * 1000;
-        function getLastUserActivityAt() { return parseInt(localStorage.getItem('lastUserActivityAt') || '0', 10); }
-        function setLastUserActivityAt() { localStorage.setItem('lastUserActivityAt', String(Date.now())); }
-        function getLastWelcomeShownAt() { return parseInt(localStorage.getItem('lastWelcomeShownAt') || '0', 10); }
-        function setLastWelcomeShownAt() { localStorage.setItem('lastWelcomeShownAt', String(Date.now())); }
-        function getRealMessageCount() { return messagesContainer ? messagesContainer.querySelectorAll('.message:not([data-ui-only="1"])').length : 0; }
-        function renderWelcomePseudoMsg() {
-            if (!messagesContainer) return;
-            var realCount = getRealMessageCount();
-            var msg = document.createElement('div');
-            msg.id = 'welcomePseudoMsg';
-            msg.setAttribute('data-ui-only', '1');
-            msg.className = 'message assistant';
-            var row = document.createElement('div');
-            row.className = 'message-row';
-            var avatarSlot = document.createElement('div');
-            avatarSlot.className = 'avatar-slot';
-            var dot = document.createElement('span');
-            dot.className = 'streaming-dot';
-            avatarSlot.appendChild(dot);
-            var contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            var line1 = document.createElement('div');
-            line1.textContent = '欢迎咨询种植、病虫害防治、施肥等问题。';
-            var line2 = document.createElement('div');
-            line2.textContent = '描述作物/地区/现象，必要时可上传照片。';
-            contentDiv.appendChild(line1);
-            contentDiv.appendChild(line2);
-            row.appendChild(avatarSlot);
-            row.appendChild(contentDiv);
-            msg.appendChild(row);
-            if (realCount === 0) messagesContainer.prepend(msg);
-            else messagesContainer.appendChild(msg);
-        }
-        function ensureWelcomePseudoMsg() {
-            if (!messagesContainer) return;
-            if (!document.getElementById('welcomePseudoMsg')) renderWelcomePseudoMsg();
-        }
-        function tryRearmWelcomeBy48h() {
-            if (!messagesContainer) return;
-            var now = Date.now();
-            var needRearm = (getLastUserActivityAt() === 0) || (now - getLastUserActivityAt() >= WELCOME_48H_MS);
-            var rateOk = (getLastWelcomeShownAt() === 0) || (now - getLastWelcomeShownAt() >= WELCOME_48H_MS);
-            if (needRearm && rateOk) {
-                var el = document.getElementById('welcomePseudoMsg');
-                if (el && el.parentNode) el.remove();
-                renderWelcomePseudoMsg();
-                setLastWelcomeShownAt();
-            } else {
-                ensureWelcomePseudoMsg();
-            }
-        }
 
         var membershipBackdrop = document.getElementById('membership-modal-backdrop');
         var toastEl = document.getElementById('toast');
@@ -2371,7 +2323,6 @@
 
         // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
-            setLastUserActivityAt();
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 110) + 'px';
             updateInputMode();
@@ -2791,7 +2742,6 @@
             lastSent = { text: text, imageUrls: imageUrls.slice(), streamId: streamId };
             pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), ts: Date.now() };
             pendingDeduct[streamId] = (imageUrls.length > 0 ? 1 : 0);
-            setLastUserActivityAt();
 
             // 直接发送，由模型自行决策是否需要联网搜索
             sendToAndroid(text, imageUrls, streamId);
@@ -3206,10 +3156,10 @@
             if (btn) btn.addEventListener('click', function() { scrollToBottom(true); });
         })();
 
-        // 纯展示裁剪：删除超出 MAX_MESSAGES 的 DOM，不得用裁剪结果更新或推导 A/B（排除 UI-only 欢迎语）
+        // 纯展示裁剪：删除超出 MAX_MESSAGES 的 DOM，不得用裁剪结果更新或推导 A/B
         function hardTrimMessages() {
             if (!messagesContainer) return;
-            var nodes = Array.from(messagesContainer.querySelectorAll('.message:not([data-ui-only="1"])'));
+            var nodes = Array.from(messagesContainer.querySelectorAll('.message'));
             if (nodes.length <= MAX_MESSAGES) return;
             var removeCount = nodes.length - MAX_MESSAGES;
             for (var i = 0; i < removeCount; i++) {
@@ -3320,7 +3270,6 @@
 
         function onVoiceStart(e) {
             e.preventDefault();
-            setLastUserActivityAt();
             if (e.type === 'touchstart') voiceTouchStartY = e.touches[0].clientY;
             else voiceTouchStartY = e.clientY;
             voiceRecording = true;
@@ -3430,14 +3379,6 @@
 
         updateInputMode();
         refreshEmptyState();
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() { tryRearmWelcomeBy48h(); });
-        } else {
-            tryRearmWelcomeBy48h();
-        }
-        document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible' && messagesContainer) tryRearmWelcomeBy48h(); });
-
-        textInput.addEventListener('focus', function() { /* no-op: focus 不算 48h 活动 */ });
         btnSend.addEventListener('click', sendMessage);
 
         textInput.addEventListener('keydown', function(e) {
