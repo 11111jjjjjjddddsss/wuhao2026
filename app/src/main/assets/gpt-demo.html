@@ -3276,7 +3276,7 @@
             voicePanel.classList.add('open');
             document.body.classList.add('voice-panel-open');
             addVoiceExitListeners();
-            addVoiceRecordingListeners();
+            if (typeof addVoiceRecordingListeners === 'function') addVoiceRecordingListeners();
             startWaveform(true, false);
         }
 
