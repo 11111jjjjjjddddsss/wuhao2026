@@ -143,14 +143,19 @@
             position: absolute;
             left: 0;
             bottom: 1px;
-            height: 3px;
+            height: 2px;
             width: 45%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+            background: linear-gradient(90deg,
+                transparent,
+                rgba(255,255,255,0.10),
+                rgba(255,255,255,0.70),
+                rgba(255,255,255,0.10),
+                transparent);
             transform: translateX(-140%);
             opacity: 0;
             pointer-events: none;
             animation: none;
-            filter: drop-shadow(0 0 0.6px rgba(0,0,0,0.18));
+            filter: drop-shadow(0 0 1.2px rgba(255,255,255,0.35));
         }
         body.generating .app-bar-title-wrap::after {
             opacity: 1;
