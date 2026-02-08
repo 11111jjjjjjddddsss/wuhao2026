@@ -120,23 +120,10 @@
         .app-bar-left:hover {
             background: #F8F8F8;
         }
-        .app-bar-right {
-            width: var(--btn-circle-size);
-            height: var(--btn-circle-size);
-            display: block;
-            background: transparent;
-            border: 0;
-            box-shadow: none;
-            pointer-events: none;
-            visibility: hidden;
-        }
         .app-bar-title-wrap {
-            position: absolute;
-            left: 50%;
-            transform: translateX(-50%);
-            margin: 0;
+            position: relative;
+            margin-left: auto;
             pointer-events: none;
-            z-index: 1;
             max-width: calc(100% - (var(--btn-circle-size) * 2) - 24px);
             white-space: nowrap;
             overflow: hidden;
@@ -1605,7 +1592,6 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="14" y2="15"/></svg>
         </button>
         <span class="app-bar-title-wrap"><span class="app-bar-title">农技千问</span></span>
-        <div class="app-bar-right" aria-hidden="true"></div>
     </header>
 
     <!-- 标准侧边抽屉：主内容仍在，抽屉 #drawer + 遮罩 #drawer-mask -->
@@ -3380,7 +3366,8 @@
             }
         }
 
-
+        inputContainer.classList.remove('voice-mode');
+        btnMicOrKeyboard.classList.remove('voice-mode');
         updateInputMode();
         refreshEmptyState();
         btnSend.addEventListener('click', sendMessage);
