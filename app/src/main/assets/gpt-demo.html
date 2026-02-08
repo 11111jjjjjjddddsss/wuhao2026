@@ -1689,7 +1689,7 @@
                     </button>
                     <button type="button" class="btn-stop btn-hidden" id="btnStop" title="停止" aria-label="停止">
                         <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <rect x="7.5" y="7.5" width="9" height="9" rx="1.5"></rect>
+                            <rect x="6.5" y="6.5" width="11" height="11" rx="1.5"></rect>
                         </svg>
                     </button>
                 </div>
@@ -3041,7 +3041,10 @@
                 row.appendChild(avatarSlot);
                 row.appendChild(contentDiv);
                 messageDiv.appendChild(row);
-                if (stream) messageDiv.classList.add('streaming');
+                if (stream) {
+                    if (messagesContainer) messagesContainer.querySelectorAll('.message.assistant.streaming').forEach(function(m) { m.classList.remove('streaming'); });
+                    messageDiv.classList.add('streaming');
+                }
             } else {
                 messageDiv.appendChild(contentDiv);
             }
@@ -3171,6 +3174,10 @@
         // C. Stop：只停前端（stopTypewriter + 状态）；stopGeneration 保留调用但不依赖其中断后端
         btnStop.addEventListener('click', function() {
             stopTypewriter();
+            // 确保结束流式态：移除所有 assistant 的 .streaming，dot 只在「正在流式的那一条」显示
+            if (messagesContainer) {
+                messagesContainer.querySelectorAll('.message.assistant.streaming').forEach(function(m) { m.classList.remove('streaming'); });
+            }
             isGenerating = false;
             updateInputMode();
             updateScrollToBottomBtn();
