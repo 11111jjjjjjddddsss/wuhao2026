@@ -1818,8 +1818,6 @@
             var line1 = document.createElement('div');
             line1.textContent = '欢迎咨询种植、病虫害防治、施肥等问题。';
             var line2 = document.createElement('div');
-            line2.style.fontSize = '14px';
-            line2.style.color = 'var(--text-secondary)';
             line2.textContent = '描述作物/地区/现象，必要时可上传照片。';
             contentDiv.appendChild(line1);
             contentDiv.appendChild(line2);
@@ -3433,14 +3431,13 @@
         updateInputMode();
         refreshEmptyState();
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() { ensureWelcomePseudoMsg(); tryRearmWelcomeBy48h(); });
+            document.addEventListener('DOMContentLoaded', function() { tryRearmWelcomeBy48h(); });
         } else {
-            ensureWelcomePseudoMsg();
             tryRearmWelcomeBy48h();
         }
         document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible' && messagesContainer) tryRearmWelcomeBy48h(); });
 
-        textInput.addEventListener('focus', function() { setLastUserActivityAt(); });
+        textInput.addEventListener('focus', function() { /* no-op: focus 不算 48h 活动 */ });
         btnSend.addEventListener('click', sendMessage);
 
         textInput.addEventListener('keydown', function(e) {
