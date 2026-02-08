@@ -1696,7 +1696,7 @@
                 <div class="input-area-with-hint">
                     <div class="input-area-inner">
                         <div class="voice-input-hint" id="voiceInputHint">按住说话</div>
-                        <textarea id="textInput" class="text-input" placeholder="描述作物/地区/问题，我来帮你分析" rows="1" maxlength="2000"></textarea>
+                        <textarea id="textInput" class="text-input" placeholder="" rows="1" maxlength="2000"></textarea>
                         <div class="voice-hold-overlay" id="voiceHoldOverlay" aria-label="按住说话"></div>
                     </div>
                     <button type="button" class="btn-mic-or-keyboard" id="btnMicOrKeyboard" title="语音/键盘">
@@ -2388,7 +2388,7 @@
                 btnMicOrKeyboard.classList.remove('voice-mode');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
-                textInput.placeholder = '';
+                textInput.placeholder = '描述作物/地区/问题，我来帮你分析';
             }
 
             if (hasAnyImageUploadingOrFailed && !btnSend.classList.contains('btn-hidden')) btnSend.disabled = true;
