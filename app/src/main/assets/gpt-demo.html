@@ -157,6 +157,10 @@
             animation: none;
             filter: drop-shadow(0 0 1.2px rgba(255,255,255,0.35));
         }
+        body.generating .app-bar-title-wrap {
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08), inset 0 -1px 0 rgba(0,0,0,0.10);
+            border-color: rgba(0,0,0,0.08);
+        }
         body.generating .app-bar-title-wrap::after {
             opacity: 1;
             animation: capsule-shimmer 1.4s ease-in-out infinite;
