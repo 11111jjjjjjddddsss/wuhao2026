@@ -654,7 +654,7 @@
             display: none;
         }
         .empty-state .logo {
-            display: none;
+            display: block;
         }
         /* 全对话无气泡：GPT 纯净文本块 */
         .message {
@@ -1801,9 +1801,10 @@
         function getRealMessageCount() { return messagesContainer ? messagesContainer.querySelectorAll('.message:not([data-ui-only="1"])').length : 0; }
         function hideWelcomePseudoMsg() {
             var el = document.getElementById('welcomePseudoMsg');
-            if (el) el.remove();
+            if (el && el.parentNode) el.remove();
         }
         function renderWelcomePseudoMsg() {
+            if (!messagesContainer) return;
             hideWelcomePseudoMsg();
             var realCount = getRealMessageCount();
             var msg = document.createElement('div');
@@ -1834,6 +1835,7 @@
             else messagesContainer.appendChild(msg);
         }
         function maybeShowWelcomePseudoMsg() {
+            if (!messagesContainer) return;
             var now = Date.now();
             var realCount = getRealMessageCount();
             var needShow = (realCount === 0) || (getLastUserActivityAt() === 0) || (now - getLastUserActivityAt() >= WELCOME_48H_MS);
@@ -3433,8 +3435,12 @@
 
         updateInputMode();
         refreshEmptyState();
-        maybeShowWelcomePseudoMsg();
-        document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') maybeShowWelcomePseudoMsg(); });
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() { maybeShowWelcomePseudoMsg(); });
+        } else {
+            maybeShowWelcomePseudoMsg();
+        }
+        document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible' && messagesContainer) maybeShowWelcomePseudoMsg(); });
 
         textInput.addEventListener('focus', function() { setLastUserActivityAt(); hideWelcomePseudoMsg(); });
         btnSend.addEventListener('click', sendMessage);
