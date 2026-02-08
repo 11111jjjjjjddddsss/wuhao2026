@@ -137,43 +137,23 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
             border: 1px solid rgba(0,0,0,0.06);
         }
-        /* 标题胶囊下边缘扫光，仅 body.generating 时播放 */
-        .app-bar-title-wrap::after {
-            content: '';
-            position: absolute;
-            left: 0;
-            bottom: 1px;
-            height: 2px;
-            width: 45%;
-            background: linear-gradient(90deg,
-                transparent,
-                rgba(255,255,255,0.10),
-                rgba(255,255,255,0.70),
-                rgba(255,255,255,0.10),
-                transparent);
-            transform: translateX(-140%);
-            opacity: 0;
-            pointer-events: none;
-            animation: none;
-            filter: drop-shadow(0 0 1.2px rgba(255,255,255,0.35));
-        }
+        /* 生成态：胶囊底部白色呼吸底线（无扫光、无绿、无黑阴影） */
         body.generating .app-bar-title-wrap::before {
             content: '';
             position: absolute;
             left: 14px;
             right: 14px;
             bottom: 0;
-            height: 1px;
-            background: rgba(0,0,0,0.10);
+            height: 2px;
+            background: rgba(255,255,255,0.60);
+            border-radius: 2px;
             pointer-events: none;
+            animation: capsule-breathe 1.2s ease-in-out infinite;
         }
-        body.generating .app-bar-title-wrap::after {
-            opacity: 1;
-            animation: capsule-shimmer 1.4s ease-in-out infinite;
-        }
-        @keyframes capsule-shimmer {
-            0% { transform: translateX(-140%); }
-            100% { transform: translateX(260%); }
+        @keyframes capsule-breathe {
+            0% { opacity: 0.30; }
+            50% { opacity: 0.90; }
+            100% { opacity: 0.30; }
         }
         .app-bar-title {
             font-size: 18px;
