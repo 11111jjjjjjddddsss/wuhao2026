@@ -1233,6 +1233,7 @@
             inset: 0;
             z-index: 2;
             cursor: pointer;
+            touch-action: none;
         }
         .input-container.voice-mode .voice-hold-overlay {
             display: block;
@@ -3236,7 +3237,7 @@
             return e.clientY;
         }
         function addVoiceRecordingListeners() {
-            document.addEventListener('touchmove', onVoiceMove, { passive: true });
+            document.addEventListener('touchmove', onVoiceMove, { passive: false });
             document.addEventListener('mousemove', onVoiceMove);
             document.addEventListener('touchend', onVoiceEnd);
             document.addEventListener('mouseup', onVoiceEnd);
@@ -3248,6 +3249,7 @@
             document.removeEventListener('mouseup', onVoiceEnd);
         }
         function onVoiceMove(e) {
+            if (voiceRecording && e && e.cancelable) e.preventDefault();
             if (!voiceRecording) return;
             const y = getTouchY(e);
             const delta = voiceTouchStartY - y;
@@ -3305,7 +3307,7 @@
         }
         if (voiceHoldOverlay) {
             voiceHoldOverlay.addEventListener('mousedown', onVoiceStart);
-            voiceHoldOverlay.addEventListener('touchstart', onVoiceStart, { passive: true });
+            voiceHoldOverlay.addEventListener('touchstart', onVoiceStart, { passive: false });
         }
         window.onVoiceResult = function(text) {
             if (voicePendingTimeout) { clearTimeout(voicePendingTimeout); voicePendingTimeout = null; }
