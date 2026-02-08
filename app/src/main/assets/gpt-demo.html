@@ -137,7 +137,7 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
             border: 1px solid rgba(0,0,0,0.06);
         }
-        /* 生成态：胶囊底部白色呼吸底线（无扫光、无绿、无黑阴影） */
+        /* 生成态：胶囊底部明暗呼吸状态线（无扫光、无白高光、无绿） */
         body.generating .app-bar-title-wrap::before {
             content: '';
             position: absolute;
@@ -145,15 +145,14 @@
             right: 14px;
             bottom: 0;
             height: 2px;
-            background: rgba(255,255,255,0.60);
+            background: rgba(0,0,0,0.10);
             border-radius: 2px;
             pointer-events: none;
             animation: capsule-breathe 1.2s ease-in-out infinite;
         }
         @keyframes capsule-breathe {
-            0% { opacity: 0.30; }
-            50% { opacity: 0.90; }
-            100% { opacity: 0.30; }
+            0%, 100% { opacity: 0.35; }
+            50% { opacity: 0.85; }
         }
         .app-bar-title {
             font-size: 18px;
