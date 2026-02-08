@@ -1680,8 +1680,7 @@
         <div class="messages-wrapper" id="messagesWrapper">
             <div class="empty-state" id="emptyState">
                 <div class="logo"></div>
-                <p class="slogan">今天有什么可以帮到你？</p>
-                <p class="empty-state-nudge" id="emptyStateNudge" style="display:none; font-size:14px; color:var(--text-secondary); margin-top:8px; line-height:1.5;"></p>
+                <p class="slogan" id="emptyStateWelcome" style="display:none;">欢迎咨询种植、病虫害防治、施肥等问题，描述作物/地区/现象，必要时可上传照片。</p>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
         </div>
@@ -1756,7 +1755,7 @@
         const messagesWrapper = document.getElementById('messagesWrapper');
         const messagesContainer = document.getElementById('messagesContainer');
         const emptyState = document.getElementById('emptyState');
-        const emptyStateNudge = document.getElementById('emptyStateNudge');
+        const emptyStateWelcome = document.getElementById('emptyStateWelcome');
         const textInput = document.getElementById('textInput');
         const addButton = document.getElementById('addButton');
         const fileInput = document.getElementById('fileInput');
@@ -1802,18 +1801,20 @@
         appBarLeft.addEventListener('click', toggleDrawer);
         drawerMask.addEventListener('click', closeDrawer);
 
-        /* 48h 未输入提醒：仅 localStorage，不参与业务 */
-        var NUDGE_48H_MS = 48 * 60 * 60 * 1000;
+        /* 欢迎语：仅空状态、首次或距上次活动≥48h 展示一次，不进历史 */
+        var WELCOME_48H_MS = 48 * 60 * 60 * 1000;
         function getLastUserActivityAt() { return parseInt(localStorage.getItem('lastUserActivityAt') || '0', 10); }
         function setLastUserActivityAt() { localStorage.setItem('lastUserActivityAt', String(Date.now())); }
-        function getLastNudgeAt() { return parseInt(localStorage.getItem('lastNudgeAt') || '0', 10); }
-        function setLastNudgeAt() { localStorage.setItem('lastNudgeAt', String(Date.now())); }
-        function maybeShow48hNudge() {
+        function getLastWelcomeShownAt() { return parseInt(localStorage.getItem('lastWelcomeShownAt') || '0', 10); }
+        function setLastWelcomeShownAt() { localStorage.setItem('lastWelcomeShownAt', String(Date.now())); }
+        function hideWelcome() { if (emptyStateWelcome) emptyStateWelcome.style.display = 'none'; }
+        function maybeShowWelcome() {
             if (messagesContainer.querySelectorAll('.message').length > 0) return;
             var now = Date.now();
-            if (now - getLastUserActivityAt() < NUDGE_48H_MS || now - getLastNudgeAt() < NUDGE_48H_MS) return;
-            setLastNudgeAt();
-            if (emptyStateNudge) { emptyStateNudge.textContent = '欢迎咨询种植、病虫害、防治、施肥等问题。描述作物/地区/现象，必要时可上传照片。'; emptyStateNudge.style.display = 'block'; }
+            if (getLastWelcomeShownAt() > 0 && now - getLastWelcomeShownAt() < WELCOME_48H_MS) return;
+            if (getLastUserActivityAt() > 0 && now - getLastUserActivityAt() < WELCOME_48H_MS) return;
+            setLastWelcomeShownAt();
+            if (emptyStateWelcome) emptyStateWelcome.style.display = 'block';
         }
 
         var membershipBackdrop = document.getElementById('membership-modal-backdrop');
@@ -2342,6 +2343,7 @@
         // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
             setLastUserActivityAt();
+            hideWelcome();
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 110) + 'px';
             updateInputMode();
@@ -2762,6 +2764,7 @@
             pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), ts: Date.now() };
             pendingDeduct[streamId] = (imageUrls.length > 0 ? 1 : 0);
             setLastUserActivityAt();
+            hideWelcome();
 
             // 直接发送，由模型自行决策是否需要联网搜索
             sendToAndroid(text, imageUrls, streamId);
@@ -3291,6 +3294,7 @@
         function onVoiceStart(e) {
             e.preventDefault();
             setLastUserActivityAt();
+            hideWelcome();
             if (e.type === 'touchstart') voiceTouchStartY = e.touches[0].clientY;
             else voiceTouchStartY = e.clientY;
             voiceRecording = true;
@@ -3400,8 +3404,8 @@
 
         updateInputMode();
         refreshEmptyState();
-        maybeShow48hNudge();
-        document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') maybeShow48hNudge(); });
+        maybeShowWelcome();
+        document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'visible') maybeShowWelcome(); });
 
         btnSend.addEventListener('click', sendMessage);
 
