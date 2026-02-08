@@ -150,6 +150,37 @@
             stroke-linejoin: round;
             fill: none;
         }
+        /* 标题胶囊下横线：基线 + 生成态 shimmer（仅 body.generating 时动） */
+        .app-bar::before {
+            content: '';
+            position: absolute;
+            left: 15%;
+            width: 70%;
+            top: 48px;
+            height: 1px;
+            background: rgba(0,0,0,0.06);
+            pointer-events: none;
+        }
+        .app-bar::after {
+            content: '';
+            position: absolute;
+            top: 48px;
+            left: 0;
+            width: 20%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent);
+            pointer-events: none;
+            opacity: 0;
+            animation: none;
+        }
+        body.generating .app-bar::after {
+            opacity: 1;
+            animation: shimmer-run 1.4s ease-in-out infinite;
+        }
+        @keyframes shimmer-run {
+            0% { transform: translateX(-130%); }
+            100% { transform: translateX(520%); }
+        }
 
         /* 左侧抽屉：340px 最大 360px，移动端 80% 最大 360px；左滑入 220ms；禁止竖排/旋转文字 */
         #drawer {
@@ -694,11 +725,11 @@
         }
         .message.assistant.streaming .streaming-dot {
             opacity: 1;
-            animation: dot-breathe 1s ease-in-out infinite;
+            animation: dot-breathe 1.1s ease-in-out infinite;
         }
         @keyframes dot-breathe {
-            0%, 100% { transform: scale(0.9); opacity: 0.7; }
-            50% { transform: scale(1.05); opacity: 1; }
+            0%, 100% { transform: scale(1); opacity: 0.75; }
+            50% { transform: scale(1.18); opacity: 1; }
         }
 
         .message-content {
@@ -2375,6 +2406,8 @@
             if (hasAnyImageUploadingOrFailed && !btnSend.classList.contains('btn-hidden')) btnSend.disabled = true;
             addButton.disabled = imageState.size >= 4;
             addButton.style.opacity = imageState.size >= 4 ? '0.5' : '1';
+            if (inputMode === 'generating') document.body.classList.add('generating');
+            else document.body.classList.remove('generating');
         }
 
         // E. + 面板：点击 + 打开 BottomSheet
