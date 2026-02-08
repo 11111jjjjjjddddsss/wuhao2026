@@ -659,6 +659,7 @@
         .empty-state .empty-state-hint {
             font-size: 16px;
             color: var(--text);
+            font-weight: 500;
             margin-top: 12px;
         }
         /* 全对话无气泡：GPT 纯净文本块 */
@@ -1678,7 +1679,10 @@
         <div class="messages-wrapper" id="messagesWrapper">
             <div class="empty-state" id="emptyState">
                 <div class="logo"></div>
-                <p class="empty-state-hint">欢迎咨询种植、病虫害防治、施肥等问题。</p>
+                <p class="empty-state-hint">
+                    欢迎咨询种植、病虫害防治、施肥等问题。<br>
+                    描述作物/地区/现象，必要时可上传照片。
+                </p>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
         </div>
