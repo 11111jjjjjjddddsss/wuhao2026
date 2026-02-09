@@ -840,6 +840,27 @@
         .message-content p:last-child { margin-bottom: 0; }
         .message-content ul, .message-content ol { margin: 6px 0 8px 22px; }
         .message-content li { margin: 3px 0; }
+        .message-content { -webkit-user-select: text; user-select: text; }
+        .copy-popover {
+            position: fixed;
+            z-index: 9999;
+            background: rgba(255,255,255,0.98);
+            border: 1px solid rgba(0,0,0,0.08);
+            box-shadow: 0 6px 18px rgba(0,0,0,0.10);
+            border-radius: 12px;
+            padding: 6px;
+            display: none;
+        }
+        .copy-popover button {
+            border: 0;
+            background: transparent;
+            padding: 8px 10px;
+            font-size: 14px;
+            color: var(--text);
+            cursor: pointer;
+            border-radius: 10px;
+        }
+        .copy-popover button:active { background: rgba(0,0,0,0.06); }
 
         /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
         .tool-result {
@@ -1847,6 +1868,10 @@
     </div>
     </div>
 
+    <div id="copyPopover" class="copy-popover" aria-hidden="true">
+        <button id="copyBtn" type="button">复制</button>
+    </div>
+
     <script>
         const MAX_ROUNDS = 30;
         const MAX_MESSAGES = MAX_ROUNDS * 2;
@@ -1874,6 +1899,8 @@
         const drawer = document.getElementById('drawer');
         const drawerMask = document.getElementById('drawer-mask');
         const appBarLeft = document.getElementById('appBarLeft');
+        const copyPopover = document.getElementById('copyPopover');
+        const copyBtn = document.getElementById('copyBtn');
 
         function closeDrawer() {
             drawer.classList.remove('open');
@@ -2280,6 +2307,113 @@
             setTimeout(function() {
                 toastEl.classList.remove('show');
             }, 2000);
+        }
+        function getPlainTextFromMessage(msg) {
+            if (!msg) return '';
+            var content = msg.querySelector && msg.querySelector('.message-content');
+            if (content && content.dataset.rawText !== undefined && content.dataset.rawText !== '') return content.dataset.rawText;
+            if (msg.dataset && msg.dataset.rawText !== undefined && msg.dataset.rawText !== '') return msg.dataset.rawText;
+            return content ? content.innerText : msg.innerText || '';
+        }
+        function copyText(text) {
+            var t = (text != null ? text + '' : '').trim();
+            if (!t) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(t).catch(function() {
+                    if (typeof AndroidInterface !== 'undefined' && AndroidInterface.copyText) AndroidInterface.copyText(t);
+                    else fallbackCopy(t);
+                });
+                return;
+            }
+            if (typeof AndroidInterface !== 'undefined' && AndroidInterface.copyText) { AndroidInterface.copyText(t); return; }
+            fallbackCopy(t);
+        }
+        function fallbackCopy(text) {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed'; ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+        var copyPopoverCurrentMsg = null;
+        var copyLongPressState = { timerId: null, startX: 0, startY: 0 };
+        var COPY_LONG_PRESS_MS = 380;
+        var COPY_MOVE_THRESHOLD = 8;
+        function showCopyPopover(x, y, msgEl) {
+            if (!copyPopover || !msgEl) return;
+            copyPopoverCurrentMsg = msgEl;
+            copyPopover.style.display = 'block';
+            copyPopover.setAttribute('aria-hidden', 'false');
+            var w = copyPopover.offsetWidth || 80;
+            var h = copyPopover.offsetHeight || 44;
+            var vw = window.innerWidth;
+            var vh = window.innerHeight;
+            var left = Math.max(8, Math.min(x - w / 2, vw - w - 8));
+            var top = Math.max(8, Math.min(y - h - 12, vh - h - 8));
+            copyPopover.style.left = left + 'px';
+            copyPopover.style.top = top + 'px';
+        }
+        function hideCopyPopover() {
+            if (copyPopover) {
+                copyPopover.style.display = 'none';
+                copyPopover.setAttribute('aria-hidden', 'true');
+            }
+            copyPopoverCurrentMsg = null;
+        }
+        function clearCopyLongPress() {
+            if (copyLongPressState.timerId) {
+                clearTimeout(copyLongPressState.timerId);
+                copyLongPressState.timerId = null;
+            }
+        }
+        function onCopyLongPressStart(e) {
+            var content = e.target.closest && e.target.closest('.message-content');
+            if (!content || !messagesContainer || !messagesContainer.contains(content)) return;
+            var msg = content.closest('.message');
+            if (!msg) return;
+            var x = e.touches ? e.touches[0].clientX : e.clientX;
+            var y = e.touches ? e.touches[0].clientY : e.clientY;
+            clearCopyLongPress();
+            copyLongPressState.startX = x;
+            copyLongPressState.startY = y;
+            copyLongPressState.timerId = setTimeout(function() {
+                copyLongPressState.timerId = null;
+                showCopyPopover(x, y, msg);
+            }, COPY_LONG_PRESS_MS);
+        }
+        function onCopyLongPressMove(e) {
+            if (!copyLongPressState.timerId) return;
+            var x = e.touches ? e.touches[0].clientX : e.clientX;
+            var y = e.touches ? e.touches[0].clientY : e.clientY;
+            var dx = x - copyLongPressState.startX;
+            var dy = y - copyLongPressState.startY;
+            if (Math.sqrt(dx * dx + dy * dy) > COPY_MOVE_THRESHOLD) clearCopyLongPress();
+        }
+        function onCopyLongPressEnd() { clearCopyLongPress(); }
+        if (messagesContainer) {
+            messagesContainer.addEventListener('touchstart', onCopyLongPressStart, { passive: true });
+            messagesContainer.addEventListener('mousedown', onCopyLongPressStart);
+        }
+        document.addEventListener('touchmove', onCopyLongPressMove, { passive: true });
+        document.addEventListener('mousemove', onCopyLongPressMove);
+        document.addEventListener('touchend', onCopyLongPressEnd);
+        document.addEventListener('mouseup', onCopyLongPressEnd);
+        document.addEventListener('scroll', hideCopyPopover, true);
+        document.addEventListener('touchstart', function(e) {
+            if (!e.target.closest || !e.target.closest('#copyPopover')) hideCopyPopover();
+        }, true);
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest || !e.target.closest('#copyPopover')) hideCopyPopover();
+        }, true);
+        if (copyBtn) {
+            copyBtn.addEventListener('click', function() {
+                var text = getPlainTextFromMessage(copyPopoverCurrentMsg);
+                copyText(text);
+                showToast('已复制');
+                hideCopyPopover();
+            });
         }
         document.addEventListener('click', function(e) {
             if (e.target.closest('[data-close-membership]')) {
