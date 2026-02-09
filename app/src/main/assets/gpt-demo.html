@@ -332,7 +332,7 @@
             position: fixed;
             inset: 0;
             background: rgba(0,0,0,.35);
-            z-index: 400;
+            z-index: 900;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -356,6 +356,8 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            position: relative;
+            z-index: 1000;
             writing-mode: horizontal-tb;
             transform: none;
             text-orientation: mixed;
@@ -373,12 +375,20 @@
             color: var(--text);
         }
         .membership-close {
-            width: 34px;
-            height: 34px;
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             border-radius: 10px;
             border: 1px solid rgba(0,0,0,.10);
             background: #fff;
             cursor: pointer;
+            pointer-events: auto;
+            z-index: 1100;
         }
         .membership-close:active {
             transform: scale(.98);
@@ -2035,6 +2045,8 @@
         drawerMask.addEventListener('click', closeDrawer);
 
         var membershipBackdrop = document.getElementById('membership-modal-backdrop');
+        var membershipModal = document.getElementById('membership-modal');
+        var membershipCloseBtn = document.querySelector('[data-close-membership]');
         var toastEl = document.getElementById('toast');
 
         // ==================== 开关：仅切换 Data 层来源，UI 不改 ====================
@@ -2609,15 +2621,22 @@
                 forceCloseCopyUI();
             });
         }
-        document.addEventListener('click', function(e) {
-            if (e.target.closest('[data-close-membership]')) {
+        if (membershipCloseBtn) {
+            membershipCloseBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
                 closeMembershipModal();
-                return;
-            }
-            if (e.target.id === 'membership-modal-backdrop') {
-                closeMembershipModal();
-            }
-        });
+            });
+        }
+        if (membershipModal) {
+            membershipModal.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+        }
+        if (membershipBackdrop) {
+            membershipBackdrop.addEventListener('click', function(e) {
+                if (e.target === membershipBackdrop) closeMembershipModal();
+            });
+        }
         document.querySelectorAll('#membership-modal .card-btn').forEach(function(btn) {
             btn.addEventListener('click', function() {
                 var tier = this.getAttribute('data-tier');
