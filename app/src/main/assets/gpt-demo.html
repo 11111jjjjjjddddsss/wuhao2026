@@ -784,6 +784,15 @@
         .message-content blockquote { padding: 8px 10px; background: rgba(0,0,0,0.02); border-left-color: rgba(0,0,0,0.12); border-radius: 10px; }
         .message-content pre { line-height: 1.55; font-size: 14px; padding: 12px 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         .message-content pre code { white-space: pre; }
+        .message-content { width: 100%; box-sizing: border-box; }
+        .message.user .message-content ul,
+        .message.user .message-content ol,
+        .message.user .message-content blockquote,
+        .message.user .message-content pre,
+        .message.user .message-content h1,
+        .message.user .message-content h2,
+        .message.user .message-content h3,
+        .message.user .message-content h4 { text-align: left; }
 
         .message.user .message-content {
             text-align: right;
