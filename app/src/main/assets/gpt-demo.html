@@ -820,6 +820,18 @@
             color: var(--text);
         }
 
+        /* ===== GPT-ish message spacing (override only) ===== */
+        /* 1) 每条消息的垂直间距：别挤、别太散 */
+        .message { margin: 10px 0; }
+        /* 2) 消息行内部：头像与正文的距离、对齐更稳 */
+        .message-row { gap: 10px; align-items: flex-start; }
+        /* 3) 内容块内边距：GPT 更“纸张感”，但别变成气泡 */
+        .message-content { padding: 6px 12px; }
+        /* 4) 用户消息块：右侧靠边但别贴死（不改你现有右对齐策略） */
+        .message.user .message-content { padding: 6px 12px; }
+        /* 5) 如果你有 message-wrapper/ container 的 padding，确保上下留白 */
+        .messages-container { padding-top: 6px; padding-bottom: 12px; }
+
         /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
         .tool-result {
             font-size: 12px;
