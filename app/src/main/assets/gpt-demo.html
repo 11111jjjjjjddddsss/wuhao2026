@@ -832,6 +832,15 @@
         /* 5) 如果你有 message-wrapper/ container 的 padding，确保上下留白 */
         .messages-container { padding-top: 6px; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 
+        /* ===== 完成态 GPT 观感最小风险收口（仅追加覆盖） ===== */
+        .message-content.md-rendered { overflow-wrap: break-word; word-break: break-word; }
+        .message-content.md-rendered a { word-break: break-all; }
+        .message-content { line-height: 1.62; }
+        .message-content p { margin: 0 0 8px; }
+        .message-content p:last-child { margin-bottom: 0; }
+        .message-content ul, .message-content ol { margin: 6px 0 8px 22px; }
+        .message-content li { margin: 3px 0; }
+
         /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
         .tool-result {
             font-size: 12px;
