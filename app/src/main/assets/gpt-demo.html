@@ -921,6 +921,9 @@
             line-height: 1.5;
             max-height: calc(55vh - 120px);
         }
+        body.copy-ui-open { overflow: hidden; }
+        .copy-sheet-body { -webkit-user-select: text; user-select: text; }
+        .copy-sheet-body * { -webkit-user-select: text; user-select: text; }
 
         /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
         .tool-result {
@@ -2443,29 +2446,28 @@
             clearCopyLongPress();
         }
         var copySheetCurrentMsg = null;
+        var copySheetOpenedAt = 0;
         function openCopySheet(msg) {
-            if (!copySheet || !copySheetBody) return;
+            if (!copySheet || !copySheetMask || !copySheetBody) return;
+            copySheetOpenedAt = Date.now();
+            document.body.classList.add('copy-ui-open');
             var text = getPlainTextFromMessage(msg);
             copySheetBody.textContent = text != null ? text : '';
-            copySheetCurrentMsg = msg;
-            if (copySheetMask) {
-                copySheetMask.classList.add('open');
-                copySheetMask.setAttribute('aria-hidden', 'false');
-            }
+            copySheetCurrentMsg = msg || null;
+            copySheetMask.classList.add('open');
             copySheet.classList.add('open');
+            copySheetMask.setAttribute('aria-hidden', 'false');
             copySheet.setAttribute('aria-hidden', 'false');
         }
         function closeCopySheet() {
-            if (copySheetMask) {
-                copySheetMask.classList.remove('open');
-                copySheetMask.setAttribute('aria-hidden', 'true');
-            }
-            if (copySheet) {
-                copySheet.classList.remove('open');
-                copySheet.setAttribute('aria-hidden', 'true');
-            }
-            if (copySheetBody) copySheetBody.textContent = '';
+            if (!copySheet || !copySheetMask || !copySheetBody) return;
+            copySheet.classList.remove('open');
+            copySheetMask.classList.remove('open');
+            copySheet.setAttribute('aria-hidden', 'true');
+            copySheetMask.setAttribute('aria-hidden', 'true');
+            copySheetBody.textContent = '';
             copySheetCurrentMsg = null;
+            document.body.classList.remove('copy-ui-open');
             clearCopyLongPress();
         }
         function clearCopyLongPress() {
@@ -2475,6 +2477,7 @@
             }
         }
         function onCopyLongPressStart(e) {
+            if (e && e.target && e.target.closest && e.target.closest('#copySheet')) return;
             var content = e.target.closest && e.target.closest('.message-content');
             if (!content || !messagesContainer || !messagesContainer.contains(content)) return;
             var msg = content.closest('.message');
@@ -2512,19 +2515,31 @@
         }, true);
         if (copySheetMask) copySheetMask.addEventListener('click', closeCopySheet);
         if (copySheetCloseBtn) copySheetCloseBtn.addEventListener('click', closeCopySheet);
+        function shouldIgnoreCloseByRecentlyOpened() {
+            return copySheetOpenedAt && (Date.now() - copySheetOpenedAt < 250);
+        }
+        function isInsideCopyUI(t) {
+            if (!t || !t.closest) return false;
+            return !!(t.closest('#copySheet') || t.closest('#copySheetMask') || t.closest('#copyPopover'));
+        }
         if (copySheetCopyBtn) {
             copySheetCopyBtn.addEventListener('click', function() {
-                var text = copySheetBody ? copySheetBody.textContent : (copySheetCurrentMsg ? getPlainTextFromMessage(copySheetCurrentMsg) : '');
-                copyText(text);
+                var txt = (copySheetBody && copySheetBody.textContent) ? copySheetBody.textContent : '';
+                if (!txt && copySheetCurrentMsg) txt = getPlainTextFromMessage(copySheetCurrentMsg) || '';
+                copyText(txt);
                 showToast('已复制');
                 closeCopySheet();
             });
         }
         document.addEventListener('touchstart', function(e) {
-            if (!e.target.closest || (!e.target.closest('#copyPopover') && !e.target.closest('#copySheet') && !e.target.closest('#copySheetMask'))) forceCloseCopyUI();
+            var t = e && e.target;
+            if (shouldIgnoreCloseByRecentlyOpened()) return;
+            if (!isInsideCopyUI(t)) forceCloseCopyUI();
         }, true);
         document.addEventListener('click', function(e) {
-            if (!e.target.closest || (!e.target.closest('#copyPopover') && !e.target.closest('#copySheet') && !e.target.closest('#copySheetMask'))) forceCloseCopyUI();
+            var t = e && e.target;
+            if (shouldIgnoreCloseByRecentlyOpened()) return;
+            if (!isInsideCopyUI(t)) forceCloseCopyUI();
         }, true);
         document.addEventListener('keydown', function(e) {
             if (e && (e.key === 'Escape' || e.keyCode === 27)) forceCloseCopyUI();
