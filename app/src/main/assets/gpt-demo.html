@@ -2448,6 +2448,13 @@
         var copySheetCurrentMsg = null;
         var copySheetOpenedAt = 0;
         var copyUiScrollY = 0;
+        function getRenderedHtmlFromMessage(msg) {
+            if (!msg) return '';
+            var content = msg.querySelector && msg.querySelector('.message-content');
+            if (!content) return '';
+            if (!content.classList || !content.classList.contains('md-rendered')) return '';
+            return content.innerHTML || '';
+        }
         function openCopySheet(msg) {
             if (!copySheet || !copySheetMask || !copySheetBody) return;
             copySheetOpenedAt = Date.now();
@@ -2458,8 +2465,13 @@
             document.body.style.left = '0';
             document.body.style.right = '0';
             document.body.style.width = '100%';
-            var text = getPlainTextFromMessage(msg);
-            copySheetBody.textContent = text != null ? text : '';
+            var renderedHtml = getRenderedHtmlFromMessage(msg);
+            if (renderedHtml) {
+                copySheetBody.innerHTML = renderedHtml;
+            } else {
+                var text = getPlainTextFromMessage(msg);
+                copySheetBody.textContent = text != null ? text : '';
+            }
             copySheetCurrentMsg = msg || null;
             copySheetMask.classList.add('open');
             copySheet.classList.add('open');
@@ -2472,6 +2484,7 @@
             copySheetMask.classList.remove('open');
             copySheet.setAttribute('aria-hidden', 'true');
             copySheetMask.setAttribute('aria-hidden', 'true');
+            copySheetBody.innerHTML = '';
             copySheetBody.textContent = '';
             copySheetCurrentMsg = null;
             document.body.classList.remove('copy-ui-open');
