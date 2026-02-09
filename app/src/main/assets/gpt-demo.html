@@ -862,6 +862,66 @@
         }
         .copy-popover button:active { background: rgba(0,0,0,0.06); }
 
+        .copy-sheet-mask {
+            position: fixed;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 9998;
+            background: rgba(0,0,0,0.08);
+            display: none;
+        }
+        .copy-sheet-mask.open { display: block; }
+        .copy-sheet {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            max-height: 55vh;
+            background: #fff;
+            border-radius: 16px 16px 0 0;
+            box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
+            transform: translateY(110%);
+            transition: transform 0.25s ease;
+            display: block;
+        }
+        .copy-sheet.open { transform: translateY(0); }
+        .copy-sheet-handle {
+            height: 4px;
+            width: 36px;
+            margin: 8px auto;
+            background: rgba(0,0,0,0.12);
+            border-radius: 2px;
+        }
+        .copy-sheet-actions {
+            display: flex;
+            gap: 8px;
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .copy-sheet-actions button {
+            border: 0;
+            background: transparent;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: var(--text);
+            cursor: pointer;
+            border-radius: 8px;
+        }
+        .copy-sheet-actions button:active { background: rgba(0,0,0,0.06); }
+        .copy-sheet-body {
+            padding: 12px;
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            user-select: text;
+            white-space: pre-wrap;
+            font-size: 14px;
+            line-height: 1.5;
+            max-height: calc(55vh - 120px);
+        }
+
         /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
         .tool-result {
             font-size: 12px;
@@ -1872,6 +1932,16 @@
         <button id="copyBtn" type="button">复制</button>
     </div>
 
+    <div id="copySheetMask" class="copy-sheet-mask" aria-hidden="true"></div>
+    <div id="copySheet" class="copy-sheet" aria-hidden="true">
+        <div class="copy-sheet-handle"></div>
+        <div class="copy-sheet-actions">
+            <button id="copySheetCopyBtn" type="button">复制全文</button>
+            <button id="copySheetCloseBtn" type="button">关闭</button>
+        </div>
+        <div id="copySheetBody" class="copy-sheet-body"></div>
+    </div>
+
     <script>
         const MAX_ROUNDS = 30;
         const MAX_MESSAGES = MAX_ROUNDS * 2;
@@ -1901,6 +1971,11 @@
         const appBarLeft = document.getElementById('appBarLeft');
         const copyPopover = document.getElementById('copyPopover');
         const copyBtn = document.getElementById('copyBtn');
+        const copySheetMask = document.getElementById('copySheetMask');
+        const copySheet = document.getElementById('copySheet');
+        const copySheetBody = document.getElementById('copySheetBody');
+        const copySheetCopyBtn = document.getElementById('copySheetCopyBtn');
+        const copySheetCloseBtn = document.getElementById('copySheetCloseBtn');
 
         function closeDrawer() {
             drawer.classList.remove('open');
@@ -2364,6 +2439,33 @@
         }
         function forceCloseCopyUI() {
             hideCopyPopover();
+            closeCopySheet();
+            clearCopyLongPress();
+        }
+        var copySheetCurrentMsg = null;
+        function openCopySheet(msg) {
+            if (!copySheet || !copySheetBody) return;
+            var text = getPlainTextFromMessage(msg);
+            copySheetBody.textContent = text != null ? text : '';
+            copySheetCurrentMsg = msg;
+            if (copySheetMask) {
+                copySheetMask.classList.add('open');
+                copySheetMask.setAttribute('aria-hidden', 'false');
+            }
+            copySheet.classList.add('open');
+            copySheet.setAttribute('aria-hidden', 'false');
+        }
+        function closeCopySheet() {
+            if (copySheetMask) {
+                copySheetMask.classList.remove('open');
+                copySheetMask.setAttribute('aria-hidden', 'true');
+            }
+            if (copySheet) {
+                copySheet.classList.remove('open');
+                copySheet.setAttribute('aria-hidden', 'true');
+            }
+            if (copySheetBody) copySheetBody.textContent = '';
+            copySheetCurrentMsg = null;
             clearCopyLongPress();
         }
         function clearCopyLongPress() {
@@ -2384,7 +2486,7 @@
             copyLongPressState.startY = y;
             copyLongPressState.timerId = setTimeout(function() {
                 copyLongPressState.timerId = null;
-                showCopyPopover(x, y, msg);
+                openCopySheet(msg);
             }, COPY_LONG_PRESS_MS);
         }
         function onCopyLongPressMove(e) {
@@ -2404,12 +2506,25 @@
         document.addEventListener('mousemove', onCopyLongPressMove);
         document.addEventListener('touchend', onCopyLongPressEnd);
         document.addEventListener('mouseup', onCopyLongPressEnd);
-        document.addEventListener('scroll', function() { forceCloseCopyUI(); }, true);
+        document.addEventListener('scroll', function() {
+            if (copySheet && copySheet.classList.contains('open')) return;
+            forceCloseCopyUI();
+        }, true);
+        if (copySheetMask) copySheetMask.addEventListener('click', closeCopySheet);
+        if (copySheetCloseBtn) copySheetCloseBtn.addEventListener('click', closeCopySheet);
+        if (copySheetCopyBtn) {
+            copySheetCopyBtn.addEventListener('click', function() {
+                var text = copySheetBody ? copySheetBody.textContent : (copySheetCurrentMsg ? getPlainTextFromMessage(copySheetCurrentMsg) : '');
+                copyText(text);
+                showToast('已复制');
+                closeCopySheet();
+            });
+        }
         document.addEventListener('touchstart', function(e) {
-            if (!e.target.closest || !e.target.closest('#copyPopover')) forceCloseCopyUI();
+            if (!e.target.closest || (!e.target.closest('#copyPopover') && !e.target.closest('#copySheet') && !e.target.closest('#copySheetMask'))) forceCloseCopyUI();
         }, true);
         document.addEventListener('click', function(e) {
-            if (!e.target.closest || !e.target.closest('#copyPopover')) forceCloseCopyUI();
+            if (!e.target.closest || (!e.target.closest('#copyPopover') && !e.target.closest('#copySheet') && !e.target.closest('#copySheetMask'))) forceCloseCopyUI();
         }, true);
         document.addEventListener('keydown', function(e) {
             if (e && (e.key === 'Escape' || e.keyCode === 27)) forceCloseCopyUI();
