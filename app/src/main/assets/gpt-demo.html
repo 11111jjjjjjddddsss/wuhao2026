@@ -1412,6 +1412,23 @@
             min-width: 0;
             position: relative;
         }
+        .text-placeholder {
+            position: absolute;
+            left: 4px;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--placeholder);
+            font-size: 16px;
+            font-weight: 400;
+            line-height: 22px;
+            text-align: left;
+            pointer-events: none;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: none;
+        }
         .voice-input-hint {
             position: absolute;
             left: 0;
@@ -1928,6 +1945,7 @@
                 <div class="input-area-with-hint">
                     <div class="input-area-inner">
                         <div class="voice-input-hint" id="voiceInputHint">按住说话</div>
+                        <div class="text-placeholder" id="textPlaceholder"></div>
                         <textarea id="textInput" class="text-input" placeholder="" rows="1" maxlength="2000"></textarea>
                         <div class="voice-hold-overlay" id="voiceHoldOverlay" aria-label="按住说话"></div>
                     </div>
@@ -2002,6 +2020,7 @@
         const messagesContainer = document.getElementById('messagesContainer');
         const emptyState = document.getElementById('emptyState');
         const textInput = document.getElementById('textInput');
+        const textPlaceholder = document.getElementById('textPlaceholder');
         const addButton = document.getElementById('addButton');
         const fileInput = document.getElementById('fileInput');
         const cameraInput = document.getElementById('cameraInput');
@@ -2843,6 +2862,10 @@
             }
 
             if (hasAnyImageUploadingOrFailed && !btnSend.classList.contains('btn-hidden')) btnSend.disabled = true;
+            if (textPlaceholder) {
+                textPlaceholder.textContent = textInput.placeholder || '';
+                textPlaceholder.style.display = (!hasText && !!textInput.placeholder) ? 'block' : 'none';
+            }
             addButton.disabled = imageState.size >= 4;
             addButton.style.opacity = imageState.size >= 4 ? '0.5' : '1';
             if (inputMode === 'generating') document.body.classList.add('generating');
