@@ -2362,6 +2362,10 @@
             }
             copyPopoverCurrentMsg = null;
         }
+        function forceCloseCopyUI() {
+            hideCopyPopover();
+            clearCopyLongPress();
+        }
         function clearCopyLongPress() {
             if (copyLongPressState.timerId) {
                 clearTimeout(copyLongPressState.timerId);
@@ -2400,19 +2404,22 @@
         document.addEventListener('mousemove', onCopyLongPressMove);
         document.addEventListener('touchend', onCopyLongPressEnd);
         document.addEventListener('mouseup', onCopyLongPressEnd);
-        document.addEventListener('scroll', hideCopyPopover, true);
+        document.addEventListener('scroll', function() { forceCloseCopyUI(); }, true);
         document.addEventListener('touchstart', function(e) {
-            if (!e.target.closest || !e.target.closest('#copyPopover')) hideCopyPopover();
+            if (!e.target.closest || !e.target.closest('#copyPopover')) forceCloseCopyUI();
         }, true);
         document.addEventListener('click', function(e) {
-            if (!e.target.closest || !e.target.closest('#copyPopover')) hideCopyPopover();
+            if (!e.target.closest || !e.target.closest('#copyPopover')) forceCloseCopyUI();
+        }, true);
+        document.addEventListener('keydown', function(e) {
+            if (e && (e.key === 'Escape' || e.keyCode === 27)) forceCloseCopyUI();
         }, true);
         if (copyBtn) {
             copyBtn.addEventListener('click', function() {
                 var text = getPlainTextFromMessage(copyPopoverCurrentMsg);
                 copyText(text);
                 showToast('已复制');
-                hideCopyPopover();
+                forceCloseCopyUI();
             });
         }
         document.addEventListener('click', function(e) {
