@@ -3013,6 +3013,21 @@
                 delete terminatedStreamIds[streamId];
                 return;
             }
+            var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            if (msg && !msg.classList.contains('streaming')) {
+                var contentDiv = msg.querySelector('.message-content');
+                if (contentDiv) applyMarkdownToElement(contentDiv, fullText);
+                msg.classList.remove('streaming');
+                scrollToBottom();
+                isGenerating = false;
+                fileInput.value = '';
+                updateInputMode();
+                updateScrollToBottomBtn();
+                hardTrimMessages();
+                refreshEmptyState();
+                delete terminatedStreamIds[streamId];
+                return;
+            }
             if (hadBuffer) {
                 runTypewriter(streamId, fullText);
             } else {
