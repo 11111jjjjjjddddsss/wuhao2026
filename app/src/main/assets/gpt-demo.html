@@ -710,13 +710,14 @@
         }
 
         .message-content {
-            line-height: 1.65;
+            line-height: 1.62;
             font-size: 16px;
             font-weight: 400;
             white-space: pre-wrap;
             word-wrap: break-word;
             word-break: break-word;
-            overflow-wrap: anywhere;
+            /* 断行别太碎（anywhere 会把中文/URL 断得很怪） */
+            overflow-wrap: break-word;
             letter-spacing: 0.1px;
             max-width: 100%;
             color: var(--text);
@@ -724,7 +725,7 @@
             background: transparent;
             border: none;
             box-shadow: none;
-            border-radius: 0;
+            border-radius: 12px;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
@@ -753,6 +754,9 @@
             border: 1px solid rgba(0,0,0,0.08);
             border-radius: 12px;
             overflow: auto;
+            /* WebView 里代码块更稳、更像 GPT */
+            white-space: pre;
+            tab-size: 4;
         }
         .message-content pre code {
             background: transparent;
@@ -768,23 +772,28 @@
         .message-content a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
         .message-content hr { border: 0; border-top: 1px solid rgba(0,0,0,0.08); margin: 10px 0; }
         .message-content.md-rendered { white-space: normal; }
-        .message-content { line-height: 1.62; }
-        .message-content p { margin: 0 0 8px; }
-        .message-content ul, .message-content ol { margin: 6px 0 8px 22px; }
-        .message-content li { margin: 3px 0; }
-        .message-content blockquote { padding: 6px 10px; border-left-width: 3px; background: rgba(0,0,0,0.02); border-radius: 8px; }
-        .message-content pre { background: rgba(0,0,0,0.035); border-color: rgba(0,0,0,0.07); border-radius: 14px; }
-        .message-content code { background: rgba(0,0,0,0.045); }
-        .message-content a { text-decoration-thickness: 1px; }
-        .message-content { max-width: 680px; margin-right: auto; margin-left: 0; }
+        /* ===== 追加覆盖：收口成 GPT 观感（不删旧规则，仅后写覆盖） ===== */
+        /* 1) 内容宽度与贴边：assistant 靠左、user 靠右，但都别铺满 */
+        .message-content { max-width: 680px; width: 100%; box-sizing: border-box; margin-right: auto; margin-left: 0; }
+        .message.user .message-content { margin-left: auto; margin-right: 0; max-width: 680px; }
+
+        /* 2) 节奏更像 GPT：段落/列表间距略收紧 */
         .message-content p { margin: 0 0 8px; }
         .message-content p:last-child { margin-bottom: 0; }
         .message-content ul, .message-content ol { margin: 6px 0 8px 22px; }
         .message-content li { margin: 3px 0; }
+
+        /* 3) 引用块：淡底 + 圆角，避免“硬框” */
         .message-content blockquote { padding: 8px 10px; background: rgba(0,0,0,0.02); border-left-color: rgba(0,0,0,0.12); border-radius: 10px; }
-        .message-content pre { line-height: 1.55; font-size: 14px; padding: 12px 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .message-content pre code { white-space: pre; }
-        .message-content { width: 100%; box-sizing: border-box; }
+
+        /* 4) 代码块：更顺滑拖动、更稳的字号与行高 */
+        .message-content pre { line-height: 1.55; font-size: 14px; padding: 12px 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; background: rgba(0,0,0,0.035); border-color: rgba(0,0,0,0.07); border-radius: 14px; }
+        .message-content code { background: rgba(0,0,0,0.045); }
+
+        /* 5) 链接：别太“硬”，下划线淡一点 */
+        .message-content a { text-decoration-thickness: 1px; text-decoration-color: rgba(0,0,0,0.35); }
+
+        /* 6) 用户消息：容器靠右，块级与段落左对齐可读 */
         .message.user .message-content ul,
         .message.user .message-content ol,
         .message.user .message-content blockquote,
@@ -793,6 +802,10 @@
         .message.user .message-content h2,
         .message.user .message-content h3,
         .message.user .message-content h4 { text-align: left; }
+        .message.user .message-content p,
+        .message.user .message-content li,
+        .message.user .message-content blockquote,
+        .message.user .message-content pre { text-align: left; }
 
         .message.user .message-content {
             text-align: right;
