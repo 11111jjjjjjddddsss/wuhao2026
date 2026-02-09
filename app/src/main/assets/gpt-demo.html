@@ -1545,19 +1545,20 @@
             gap: 12px;
             padding: 0 16px;
             cursor: pointer;
-            border: none;
-            background: rgba(0,0,0,0.04);
-            border-radius: 12px;
+            border: 1px solid rgba(0,0,0,0.06);
+            background: rgba(255,255,255,0.86);
+            border-radius: 16px;
+            box-shadow: none;
             font-size: 16px;
             color: var(--text);
             text-align: center;
             transition: background var(--transition-fast);
         }
         .plus-sheet-item:hover {
-            background: rgba(0,0,0,0.08);
+            background: rgba(255,255,255,0.96);
         }
         .plus-sheet-item:active {
-            background: rgba(0,0,0,0.06);
+            background: rgba(255,255,255,0.82);
         }
         .plus-sheet-item svg {
             width: 24px;
@@ -1575,8 +1576,8 @@
             padding: 13px 14px;
             border-radius: 16px;
             border: 1px solid rgba(0,0,0,0.06);
-            background: rgba(255,255,255,0.72);
-            box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+            background: rgba(255,255,255,0.86);
+            box-shadow: none;
             min-height: 44px;
             display: flex;
             align-items: center;
@@ -1664,7 +1665,7 @@
         }
         .plus-sheet-item {
             height: 52px;
-            border-radius: 14px;
+            border-radius: 16px;
             font-weight: 700;
             font-size: 14px;
         }
@@ -1672,7 +1673,7 @@
             margin-top: 0;
         }
         /* + 面板：会员中心卡片（真实 DOM，两行文案） */
-        #tier-card { margin-top: 28px; }
+        #tier-card { margin-top: 24px; }
         #tier-card .tier-left {
             width: 100%;
             display: flex;
@@ -1683,14 +1684,6 @@
             font-size: 16px;
             font-weight: 600;
             color: rgba(0,0,0,0.88);
-            line-height: 1.2;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        #tier-card .tier-subtitle {
-            font-size: 13px;
-            color: rgba(0,0,0,0.58);
             line-height: 1.2;
             white-space: nowrap;
             overflow: hidden;
@@ -1955,8 +1948,7 @@
             <div class="plus-sheet-tier" id="tier-card" role="button" tabindex="0">
                 <div class="tier-left">
                     <div class="tier-title" id="tier-name">会员中心</div>
-                    <div class="tier-subtitle">查看套餐与额度</div>
-                    <div class="tier-tierline">当前生效档位：<strong class="tier-tiername" id="tier-tier">-</strong></div>
+                    <div class="tier-tierline">当前生效：<strong class="tier-tiername" id="tier-tier">-</strong> · 查看套餐与额度</div>
                 </div>
             </div>
         </div>
