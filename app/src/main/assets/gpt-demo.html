@@ -767,6 +767,7 @@
         .message-content h4 { font-size: 16px; margin: 8px 0 6px; font-weight: 600; }
         .message-content a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
         .message-content hr { border: 0; border-top: 1px solid rgba(0,0,0,0.08); margin: 10px 0; }
+        .message-content.md-rendered { white-space: normal; }
 
         .message.user .message-content {
             text-align: right;
@@ -3120,7 +3121,9 @@
         }
         function applyMarkdownToElement(el, rawText) {
             if (!el || rawText == null) return;
+            el.classList.remove('md-rendered');
             el.innerHTML = renderMarkdownSafe(rawText);
+            el.classList.add('md-rendered');
         }
 
         // 灰块内 URL 可点击：将文本中的 http(s) URL 转为 <a target="_blank">，其余转义防 XSS
