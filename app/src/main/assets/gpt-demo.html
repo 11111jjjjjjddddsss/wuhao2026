@@ -2457,6 +2457,7 @@
             document.body.style.top = (-copyUiScrollY) + 'px';
             document.body.style.left = '0';
             document.body.style.right = '0';
+            document.body.style.width = '100%';
             var text = getPlainTextFromMessage(msg);
             copySheetBody.textContent = text != null ? text : '';
             copySheetCurrentMsg = msg || null;
@@ -2478,6 +2479,7 @@
             document.body.style.top = '';
             document.body.style.left = '';
             document.body.style.right = '';
+            document.body.style.width = '';
             window.scrollTo(0, copyUiScrollY || 0);
             copyUiScrollY = 0;
             clearCopyLongPress();
