@@ -2725,7 +2725,6 @@
                 if (hasImages) showToastOncePerDay('img_no_text', '请补充图片描述后再发送');
                 return;
             }
-            if (hasImages && !text) return;
 
             if (hasImages) {
                 var allSuccess = true;
@@ -2941,6 +2940,7 @@
                     applyMarkdownToElement(contentDiv, fullText);
                     fileInput.value = '';
                     updateInputMode();
+                    refreshEmptyState();
                     updateScrollToBottomBtn();
                     hardTrimMessages();
                     scrollToBottom();
@@ -2956,6 +2956,7 @@
                     applyMarkdownToElement(contentDiv, fullText);
                     fileInput.value = '';
                     updateInputMode();
+                    refreshEmptyState();
                     updateScrollToBottomBtn();
                     hardTrimMessages();
                     scrollToBottom();
@@ -3431,7 +3432,7 @@
 
         function onVoiceEnd(e) {
             if (!voiceRecording) return;
-            e.preventDefault();
+            if (e && e.cancelable) e.preventDefault();
             voiceRecording = false;
             removeVoiceRecordingListeners();
             voicePanel.classList.remove('cancel-armed');
