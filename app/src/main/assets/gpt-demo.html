@@ -212,8 +212,6 @@
         .drawer-avatar {
             width: 48px;
             height: 48px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #E0E0E0 0%, #BDBDBD 100%);
         }
         .drawer-user {
             display: flex;
@@ -577,7 +575,9 @@
             border-bottom: 1px solid var(--border);
         }
         .drawer-avatar {
+            border-radius: 6px;
             background: #e9e9ee;
+            border: 1px solid rgba(0,0,0,0.06);
         }
         .drawer-nickname {
             color: var(--text);
@@ -2063,6 +2063,7 @@
             drawer.setAttribute('aria-hidden', 'false');
             drawerMask.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
+            applyAvatarColor();
         }
         function toggleDrawer() {
             const open = drawer.classList.contains('open');
@@ -2076,6 +2077,41 @@
         var membershipModal = document.getElementById('membership-modal');
         var membershipCloseBtn = document.querySelector('[data-close-membership]');
         var toastEl = document.getElementById('toast');
+        var AVATAR_COLORS = ['#2F3238', '#354150', '#3A4A46', '#44404A', '#304957', '#4A5562', '#3D534F', '#52464D', '#3A4D43', '#4E4E58'];
+        function hashString(s) {
+            var hash = 5381;
+            for (var i = 0; i < s.length; i++) hash = ((hash << 5) + hash) ^ s.charCodeAt(i);
+            return (hash >>> 0);
+        }
+        function getStableSeed() {
+            var globalKeys = ['userId', 'uid', 'phone', 'mobile'];
+            for (var i = 0; i < globalKeys.length; i++) {
+                var key = globalKeys[i];
+                var val = window[key];
+                if (val != null && String(val).trim()) return String(val).trim();
+            }
+            var storageKeys = ['userId', 'uid', 'phone', 'mobile'];
+            for (var j = 0; j < storageKeys.length; j++) {
+                var sk = storageKeys[j];
+                var sval = localStorage.getItem(sk);
+                if (sval && String(sval).trim()) return String(sval).trim();
+            }
+            var clientId = localStorage.getItem('clientId');
+            if (!clientId) {
+                clientId = String(Date.now()) + '_' + Math.random().toString(36).slice(2, 10);
+                localStorage.setItem('clientId', clientId);
+            }
+            return clientId;
+        }
+        function applyAvatarColor() {
+            var seed = getStableSeed();
+            var idx = hashString(seed) % AVATAR_COLORS.length;
+            var color = AVATAR_COLORS[idx];
+            var avatars = document.querySelectorAll('.drawer-avatar');
+            avatars.forEach(function(el) {
+                el.style.backgroundColor = color;
+            });
+        }
 
         // ==================== 开关：仅切换 Data 层来源，UI 不改 ====================
         var USE_BACKEND_AB = false;           // 实际生效在 Android BuildConfig.USE_BACKEND_AB；此处仅文档
@@ -2350,6 +2386,7 @@
         function updateDrawerFromTierAndUsage() {
             resetUsageIfNewDay();
             updateTierUIEverywhere();
+            applyAvatarColor();
         }
         // ==================== UI 层：只负责渲染/动画/灰块/置灰/Toast，不直接改订阅、不直接改 A/B ====================
         function setDisabled(selector, disabled) {
@@ -3979,6 +4016,7 @@
 
         inputContainer.classList.remove('voice-mode');
         btnMicOrKeyboard.classList.remove('voice-mode');
+        applyAvatarColor();
         updateInputMode();
         refreshEmptyState();
         btnSend.addEventListener('click', sendMessage);
