@@ -924,6 +924,7 @@
         body.copy-ui-open { overflow: hidden; }
         .copy-sheet-body { -webkit-user-select: text; user-select: text; }
         .copy-sheet-body * { -webkit-user-select: text; user-select: text; }
+        .copy-sheet-body a { pointer-events: none; }
 
         /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
         .tool-result {
@@ -2467,7 +2468,8 @@
             document.body.style.width = '100%';
             var renderedHtml = getRenderedHtmlFromMessage(msg);
             if (renderedHtml) {
-                copySheetBody.innerHTML = renderedHtml;
+                copySheetBody.innerHTML =
+                    '<div class="message-content md-rendered copy-sheet-rendered">' + renderedHtml + '</div>';
             } else {
                 var text = getPlainTextFromMessage(msg);
                 copySheetBody.textContent = text != null ? text : '';
@@ -2485,7 +2487,6 @@
             copySheet.setAttribute('aria-hidden', 'true');
             copySheetMask.setAttribute('aria-hidden', 'true');
             copySheetBody.innerHTML = '';
-            copySheetBody.textContent = '';
             copySheetCurrentMsg = null;
             document.body.classList.remove('copy-ui-open');
             document.body.style.position = '';
