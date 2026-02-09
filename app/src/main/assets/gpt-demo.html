@@ -2283,7 +2283,6 @@
                 if (imageState.size > 0 && !textInput.value.trim()) {
                     e.preventDefault();
                     e.stopPropagation();
-                    showToastOncePerDay('img_no_text', '请补充图片描述后再发送');
                     return;
                 }
             }
@@ -2825,6 +2824,7 @@
                 delete lastFullBufferByStream[streamId];
                 delete pendingRequest[streamId];
                 delete pendingDeduct[streamId];
+                // 前端 watchdog 仅做 UI 中断与本地 pending 清理，不推导/修改后端扣费结果；扣费以服务端 onComplete 规则为准。
                 applyInterruptedUI(streamId, 'timeout');
                 setTimeout(function() { delete terminatedStreamIds[streamId]; }, 2 * 60 * 1000);
             }, MAX_WAIT_MS);
