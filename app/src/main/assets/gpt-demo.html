@@ -1926,7 +1926,7 @@
                     <div class="tier-name" id="tier-name">会员中心</div>
                     <div class="tier-sub" id="tier-sub">查看套餐与额度</div>
                 </div>
-                <div class="tier-right">升级</div>
+                <div class="tier-right" aria-hidden="true">›</div>
             </div>
             <div class="plus-sheet-status" id="plusSheetStatus"></div>
         </div>
@@ -2271,7 +2271,7 @@
             var quota = getQuota();
             var chatLeft = Math.max(0, quota.chat - usage.chat);
             var imgLeft = Math.max(0, quota.img - usage.img);
-            var fullText = '当前生效档位：' + getTierLabel(tier) + ' · 今日剩余 ' + chatLeft + ' 次对话 / ' + imgLeft + ' 次图片上传';
+            var fullText = '当前生效档位：' + getTierLabel(tier) + ' · 查看套餐与额度';
             var labelOnly = '当前：' + getTierLabel(tier);
             var drawerMember = document.querySelector('.drawer-member');
             if (drawerMember) drawerMember.textContent = labelOnly;
@@ -2608,7 +2608,7 @@
                 if (cardLevel <= currentLevel) return;
                 setCurrentTier(tier);
                 closeMembershipModal();
-                showToast('已升级，立即生效');
+                showToast('已开通，立即生效');
             });
         });
 
