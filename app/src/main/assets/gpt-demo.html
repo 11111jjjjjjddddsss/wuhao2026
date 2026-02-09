@@ -2447,10 +2447,16 @@
         }
         var copySheetCurrentMsg = null;
         var copySheetOpenedAt = 0;
+        var copyUiScrollY = 0;
         function openCopySheet(msg) {
             if (!copySheet || !copySheetMask || !copySheetBody) return;
             copySheetOpenedAt = Date.now();
             document.body.classList.add('copy-ui-open');
+            copyUiScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+            document.body.style.position = 'fixed';
+            document.body.style.top = (-copyUiScrollY) + 'px';
+            document.body.style.left = '0';
+            document.body.style.right = '0';
             var text = getPlainTextFromMessage(msg);
             copySheetBody.textContent = text != null ? text : '';
             copySheetCurrentMsg = msg || null;
@@ -2468,7 +2474,14 @@
             copySheetBody.textContent = '';
             copySheetCurrentMsg = null;
             document.body.classList.remove('copy-ui-open');
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            window.scrollTo(0, copyUiScrollY || 0);
+            copyUiScrollY = 0;
             clearCopyLongPress();
+            copySheetOpenedAt = 0;
         }
         function clearCopyLongPress() {
             if (copyLongPressState.timerId) {
