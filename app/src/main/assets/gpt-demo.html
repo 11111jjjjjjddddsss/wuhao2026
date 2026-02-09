@@ -1669,7 +1669,43 @@
             font-size: 14px;
         }
         .plus-sheet-tier {
-            margin-top: 14px;
+            margin-top: 16px;
+        }
+        /* + 面板：会员中心两行文案（第一行：前缀+档位；第二行弱提示） */
+        #tier-card .tier-left {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            grid-template-rows: auto auto;
+            column-gap: 6px;
+            row-gap: 4px;
+            align-items: baseline;
+        }
+        #tier-card .tier-name {
+            grid-column: 1;
+            grid-row: 1;
+            font-size: 15px;
+            font-weight: 400;
+            color: rgba(0,0,0,0.78);
+            white-space: nowrap;
+        }
+        #tier-card .tier-sub {
+            grid-column: 2;
+            grid-row: 1;
+            font-size: 15px;
+            font-weight: 700;
+            color: rgba(0,0,0,0.88);
+            white-space: nowrap;
+        }
+        #tier-card .tier-left::after {
+            content: '查看套餐与额度';
+            grid-column: 1 / span 2;
+            grid-row: 2;
+            font-size: 13px;
+            color: rgba(0,0,0,0.58);
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         /* 额度用尽：灰按钮（可点击以提示一次） */
         .disabled, button:disabled {
@@ -2806,8 +2842,8 @@
             var subEl = document.getElementById('tier-sub');
             if (!nameEl || !subEl) return;
             var t = getTierLocal();
-            nameEl.textContent = '会员中心';
-            subEl.textContent = '当前生效档位：' + getTierLabel(t) + ' · 查看套餐与额度';
+            nameEl.textContent = '当前生效档位：';
+            subEl.textContent = getTierLabel(t);
         }
         plusSheetBackdrop.addEventListener('click', closePlusSheet);
         plusSheetGallery.addEventListener('click', () => {
