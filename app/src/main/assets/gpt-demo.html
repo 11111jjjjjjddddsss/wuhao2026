@@ -1676,19 +1676,11 @@
             font-size: 14px;
         }
         .plus-sheet-tier {
-            margin-top: 6px;
+            margin-top: 16px;
             padding: 12px 12px;
             border-radius: 14px;
             background: rgba(0,0,0,.03);
             border: 1px solid rgba(0,0,0,.06);
-        }
-        .plus-sheet-tier .tier-right {
-            padding: 8px 12px;
-            border-radius: 999px;
-            background: rgba(0,0,0,.06);
-            font-size: 13px;
-            font-weight: 700;
-            border: none;
         }
         /* 额度用尽：灰按钮（可点击以提示一次） */
         .disabled, button:disabled {
@@ -1926,9 +1918,7 @@
                     <div class="tier-name" id="tier-name">会员中心</div>
                     <div class="tier-sub" id="tier-sub">查看套餐与额度</div>
                 </div>
-                <div class="tier-right" aria-hidden="true">›</div>
             </div>
-            <div class="plus-sheet-status" id="plusSheetStatus"></div>
         </div>
     </div>
     </div>
@@ -2277,8 +2267,6 @@
             if (drawerMember) drawerMember.textContent = labelOnly;
             var drawerTierText = document.getElementById('drawerTierText');
             if (drawerTierText) drawerTierText.textContent = labelOnly;
-            var plusStatus = document.getElementById('plusSheetStatus');
-            if (plusStatus) plusStatus.textContent = fullText;
         }
         function updateDrawerFromTierAndUsage() {
             resetUsageIfNewDay();
@@ -2828,8 +2816,9 @@
             var nameEl = document.getElementById('tier-name');
             var subEl = document.getElementById('tier-sub');
             if (!nameEl || !subEl) return;
+            var t = getTierLocal();
             nameEl.textContent = '会员中心';
-            subEl.textContent = '查看套餐与额度';
+            subEl.textContent = '当前生效档位：' + getTierLabel(t) + ' · 查看套餐与额度';
         }
         plusSheetBackdrop.addEventListener('click', closePlusSheet);
         plusSheetGallery.addEventListener('click', () => {
