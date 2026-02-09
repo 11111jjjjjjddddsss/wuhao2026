@@ -830,7 +830,7 @@
         /* 4) 用户消息块：右侧靠边但别贴死（不改你现有右对齐策略） */
         .message.user .message-content { padding: 6px 12px; }
         /* 5) 如果你有 message-wrapper/ container 的 padding，确保上下留白 */
-        .messages-container { padding-top: 6px; padding-bottom: 12px; }
+        .messages-container { padding-top: 6px; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
 
         /* 工具结果块：ChatGPT 风格灰字小号，绑定在 assistant 消息下方 */
         .tool-result {
