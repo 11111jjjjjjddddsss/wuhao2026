@@ -1246,9 +1246,17 @@
             max-height: 110px;
             outline: none;
             -webkit-font-smoothing: antialiased;
+            text-align: left;
         }
         .text-input::placeholder {
             color: var(--placeholder);
+            text-align: center;
+        }
+        .text-input:placeholder-shown {
+            text-align: center;
+        }
+        .text-input:not(:placeholder-shown) {
+            text-align: left;
         }
         .text-input:focus {
             border-color: var(--green);
