@@ -1672,13 +1672,12 @@
             margin-top: 0;
         }
         /* + 面板：会员中心卡片（真实 DOM，两行文案） */
-        #tier-card { margin-top: 16px; }
-        #tier-card .tier-left { width: 100%; }
-        #tier-card .tier-row-top {
+        #tier-card { margin-top: 28px; }
+        #tier-card .tier-left {
+            width: 100%;
             display: flex;
-            align-items: baseline;
-            justify-content: flex-start;
-            min-width: 0;
+            flex-direction: column;
+            gap: 6px;
         }
         #tier-card .tier-title {
             font-size: 16px;
@@ -1689,10 +1688,25 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        #tier-card .tier-tierline { white-space: nowrap; flex-shrink: 0; }
+        #tier-card .tier-subtitle {
+            font-size: 13px;
+            color: rgba(0,0,0,0.58);
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        #tier-card .tier-tierline {
+            font-size: 13px;
+            color: rgba(0,0,0,0.58);
+            line-height: 1.2;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         #tier-card .tier-tiername {
             font-weight: 700;
-            color: rgba(0,0,0,0.88);
+            color: inherit;
         }
         #tier-card .tier-row-sub {
             margin-top: 4px;
@@ -1940,13 +1954,9 @@
             </div>
             <div class="plus-sheet-tier" id="tier-card" role="button" tabindex="0">
                 <div class="tier-left">
-                    <div class="tier-row-top">
-                        <div class="tier-title" id="tier-name">会员中心</div>
-                    </div>
-                    <div class="tier-row-sub" id="tier-sub">
-                        <span>查看套餐与额度</span>
-                        <span class="tier-tierline">当前生效：<span class="tier-tiername" id="tier-tier">-</span></span>
-                    </div>
+                    <div class="tier-title" id="tier-name">会员中心</div>
+                    <div class="tier-subtitle">查看套餐与额度</div>
+                    <div class="tier-tierline">当前生效档位：<strong class="tier-tiername" id="tier-tier">-</strong></div>
                 </div>
             </div>
         </div>
@@ -2843,14 +2853,9 @@
             return ({ free: '免费版', plus: 'Plus', pro: 'Pro', expert: '专家模式' })[tier] || '免费版';
         }
         function updatePlusSheetTier() {
-            var nameEl = document.getElementById('tier-name');
-            var subEl = document.getElementById('tier-sub');
             var tierEl = document.getElementById('tier-tier');
-            if (!nameEl || !subEl) return;
-            var t = getTierLocal();
-            nameEl.textContent = '会员中心';
-            subEl.textContent = '查看套餐与额度';
-            if (tierEl) tierEl.textContent = getTierLabel(t);
+            if (!tierEl) return;
+            tierEl.textContent = getTierLabel(getTierLocal());
         }
         plusSheetBackdrop.addEventListener('click', closePlusSheet);
         plusSheetGallery.addEventListener('click', () => {
