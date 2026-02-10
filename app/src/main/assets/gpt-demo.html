@@ -2804,8 +2804,7 @@
                 if (key === 'membership') {
                     openMembershipModal(false);
                 } else if (key === 'account-manage') {
-                    if (!isLoggedIn()) { location.replace('login.html'); return; }
-                    showToast('已登录');
+                    openLocalPage('account.html');
                 } else if (key === 'help') {
                     openLocalPage(HELP_FEEDBACK_URL);
                 } else if (key === 'privacy') {
