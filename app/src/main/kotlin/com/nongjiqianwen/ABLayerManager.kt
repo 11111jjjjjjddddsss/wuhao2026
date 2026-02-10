@@ -13,7 +13,6 @@ object ABLayerManager {
     private const val PREFS_NAME = "ab_layer"
     private const val KEY_B_SUMMARY_PREFIX = "b_summary_"
     private const val A_MIN_ROUNDS = 24
-    private const val B_SUMMARY_MAX_LENGTH = 600
 
     private var appContext: Context? = null
     private val aRoundsBySession = mutableMapOf<String, MutableList<Pair<String, String>>>()
@@ -156,11 +155,10 @@ object ABLayerManager {
         }.start()
     }
 
-    /** 校验 B 摘要：非空且 trim 后长度 ≤ B_SUMMARY_MAX_LENGTH 才通过；>600 视为提取失败，不写 B、不清空 A */
+    /** 校验 B 摘要：仅要求非空（长度由提示词约束），避免因硬编码长度导致提取失败 */
     private fun validateBSummary(summary: String?): Boolean {
         if (summary.isNullOrBlank()) return false
-        val trimmed = summary.trim()
-        return trimmed.length <= B_SUMMARY_MAX_LENGTH
+        return summary.trim().isNotEmpty()
     }
 
     private fun buildDialogueText(rounds: List<Pair<String, String>>): String {
