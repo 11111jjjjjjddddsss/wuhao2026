@@ -1855,7 +1855,7 @@
     <div id="drawer-mask" aria-hidden="true"></div>
     <div id="drawer" aria-hidden="true">
         <div class="drawer-content">
-            <div class="menu-card" data-menu="account-manage"><span>账号管理</span><span class="menu-card-right" id="drawerAccountText">未登录</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
+            <div class="menu-card" data-menu="account-manage"><span>账号管理</span><span class="menu-card-right" id="drawerAccountText">-</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
             <div class="menu-card" data-menu="membership"><span>会员中心</span><span class="menu-card-right" id="drawerTierText">当前：-</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
             <div class="menu-card" data-menu="privacy"><span>隐私政策</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
             <div class="menu-card" data-menu="terms"><span>用户协议</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
@@ -2096,14 +2096,6 @@
             }
             window.location.href = path;
         }
-        var ENABLE_ANON_LOGIN = true;
-        try { localStorage.setItem('enable_anon_login', ENABLE_ANON_LOGIN ? '1' : '0'); } catch (e) {}
-        function createAnonAccountId() {
-            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-                return 'anon_' + window.crypto.randomUUID();
-            }
-            return 'anon_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
-        }
         function getAccountId() {
             var val = localStorage.getItem('account_id');
             if (val && String(val).trim()) return String(val).trim();
@@ -2117,16 +2109,6 @@
             var accountId = getAccountId();
             if (!accountId) return '';
             return accountId.indexOf('anon_') === 0 ? 'anon' : 'phone';
-        }
-        function ensureAnonLogin() {
-            if (!ENABLE_ANON_LOGIN) return false;
-            if (getAccountId()) return false;
-            var anonId = createAnonAccountId();
-            localStorage.setItem('account_id', anonId);
-            localStorage.setItem('account_type', 'anon');
-            window.account_id = anonId;
-            window.account_type = 'anon';
-            return true;
         }
         function setPhoneLoginIdentity(phoneAccountId) {
             var nextId = (phoneAccountId == null ? '' : String(phoneAccountId).trim());
@@ -2160,35 +2142,6 @@
         function isLoggedIn() {
             return !!getAccountId();
         }
-        function performDrawerLogin() {
-            if (isLoggedIn()) return;
-            if (!ENABLE_ANON_LOGIN) {
-                showToast('暂未开放登录');
-                return;
-            }
-            ensureAnonLogin();
-            updateDrawerLoginState();
-            if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
-            showToast('登录成功');
-        }
-        function performDrawerLogout() {
-            if (!isLoggedIn()) return;
-            var now = Date.now();
-            if (!window.__logoutConfirmUntil || now > window.__logoutConfirmUntil) {
-                window.__logoutConfirmUntil = now + 2000;
-                showToast('再点一次确认');
-                return;
-            }
-            window.__logoutConfirmUntil = 0;
-            localStorage.removeItem('account_id');
-            localStorage.removeItem('account_type');
-            localStorage.removeItem('debug_tier');
-            window.account_id = '';
-            window.account_type = '';
-            showToast('已退出登录');
-            updateDrawerLoginState();
-            if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
-        }
         function performLogoutToLogin() {
             var now = Date.now();
             if (!window.__logoutStripConfirmUntil || now > window.__logoutStripConfirmUntil) {
@@ -2206,11 +2159,11 @@
         }
         function updateDrawerLoginState() {
             var loggedIn = isLoggedIn();
+            if (!loggedIn) { location.replace('login.html'); return; }
             var accountText = document.getElementById('drawerAccountText');
-            if (accountText) accountText.textContent = loggedIn ? getMaskedAccountText() : '未登录';
+            if (accountText) accountText.textContent = getMaskedAccountText();
         }
         window.__refreshDrawerLoginState = updateDrawerLoginState;
-        window.__ensureAnonLogin = ensureAnonLogin;
         window.__setPhoneLoginIdentity = setPhoneLoginIdentity;
         window.__getIdentityReservedParams = getIdentityReservedParams;
 
