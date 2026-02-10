@@ -2819,6 +2819,7 @@
         const pendingDeduct = {};          // client_msg_id -> imgUploadCount(0|1)，onComplete 扣后 delete
         const pendingRequest = {};         // streamId -> { text, imageUrls, clientMsgId }，重试复用同一 client_msg_id
         const clientMsgIdByStream = {};    // streamId -> client_msg_id，UI stream 与业务幂等键解耦
+        const assistantMsgByStream = {};   // streamId -> assistant message element，减少高频 DOM 查询
         const deducted = {};               // client_msg_id -> true，同一 client_msg_id 只扣一次；24h 后清理
         const DEDUCTED_TTL_MS = 24 * 60 * 60 * 1000;
         const PENDING_MAX_AGE_MS = 15 * 60 * 1000;  // P2b：pending 悬挂超 15 分钟自动清
@@ -3269,6 +3270,7 @@
             updateScrollToBottomBtn();
             const assistantMessage = createMessage({ role: "assistant", text: "", stream: true });
             assistantMessage.dataset.streamId = streamId;
+            bindAssistantMessage(streamId, assistantMessage);
             messagesContainer.appendChild(assistantMessage);
             hardTrimMessages();
             scrollToBottom();
@@ -3325,6 +3327,7 @@
                 var timeoutClientMsgId = clientMsgIdByStream[streamId];
                 delete pendingRequest[streamId];
                 delete clientMsgIdByStream[streamId];
+                unbindAssistantMessage(streamId);
                 if (timeoutClientMsgId) delete pendingDeduct[timeoutClientMsgId];
                 // 前端 watchdog 仅做 UI 中断与本地 pending 清理，不推导/修改后端扣费结果；扣费以服务端 onComplete 规则为准。
                 applyInterruptedUI(streamId, 'timeout');
@@ -3355,7 +3358,19 @@
         setInterval(cleanupStalePending, 5 * 60 * 1000);
         function findAssistantMessageByStreamId(streamId) {
             if (!streamId || !messagesContainer) return null;
-            return messagesContainer.querySelector('.message.assistant[data-stream-id="' + streamId + '"]');
+            var cached = assistantMsgByStream[streamId];
+            if (cached && cached.isConnected && cached.dataset && cached.dataset.streamId === streamId) return cached;
+            var found = messagesContainer.querySelector('.message.assistant[data-stream-id="' + streamId + '"]');
+            if (found) assistantMsgByStream[streamId] = found;
+            return found;
+        }
+        function bindAssistantMessage(streamId, el) {
+            if (!streamId || !el) return;
+            assistantMsgByStream[streamId] = el;
+        }
+        function unbindAssistantMessage(streamId) {
+            if (!streamId) return;
+            delete assistantMsgByStream[streamId];
         }
 
         // 统一中断 UI：该条消息底部一行灰字 +「重试」按钮（ChatGPT 风格，不弹窗）
@@ -3392,9 +3407,11 @@
                     var oldClientMsgId = clientMsgIdByStream[streamId];
                     delete pendingRequest[streamId];
                     delete clientMsgIdByStream[streamId];
+                    unbindAssistantMessage(streamId);
                     contentDiv.innerHTML = '';
                     var newStreamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                     msg.dataset.streamId = newStreamId;
+                    bindAssistantMessage(newStreamId, msg);
                     msg.classList.remove('message-interrupted');
                     var urls = data.imageUrls && data.imageUrls.slice ? data.imageUrls.slice() : (data.imageUrls || []);
                     var retryClientMsgId = data.clientMsgId || oldClientMsgId || generateClientMsgId();
@@ -3437,6 +3454,9 @@
             const contentDiv = msg.querySelector('.message-content');
             if (!contentDiv) return;
             var typewriterStartMs = Date.now();
+            var dynamicChars = TYPEWRITER_CHARS;
+            if (fullText.length > 1200) dynamicChars = 6;
+            else if (fullText.length > 700) dynamicChars = 4;
             typewriterState = { timerId: null, streamId: streamId, fullText: fullText, index: 0 };
             typewriterState.timerId = setInterval(function() {
                 if ((Date.now() - typewriterStartMs) >= TYPEWRITER_MAX_MS) {
@@ -3457,7 +3477,7 @@
                     scrollToBottom();
                     return;
                 }
-                var n = Math.min(TYPEWRITER_CHARS, fullText.length - typewriterState.index);
+                var n = Math.min(dynamicChars, fullText.length - typewriterState.index);
                 if (n <= 0) {
                     clearInterval(typewriterState.timerId);
                     typewriterState.timerId = null;
@@ -3492,12 +3512,12 @@
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
             var dedupeKey = clientMsgId || clientMsgIdByStream[streamId];
-            if (dedupeKey && deducted[dedupeKey]) return;
             clearWatchdog(streamId);
+            var shouldDeduct = !!dedupeKey && !deducted[dedupeKey];
             var imgUploadCount = (dedupeKey && pendingDeduct[dedupeKey] != null ? pendingDeduct[dedupeKey] : 0);
             delete pendingRequest[streamId];
             delete clientMsgIdByStream[streamId];
-            if (dedupeKey) {
+            if (shouldDeduct) {
                 delete pendingDeduct[dedupeKey];
                 incrementUsage(1, imgUploadCount);
                 deducted[dedupeKey] = true;
@@ -3517,6 +3537,7 @@
                 updateInputMode();
                 updateScrollToBottomBtn();
                 hardTrimMessages();
+                unbindAssistantMessage(streamId);
                 delete terminatedStreamIds[streamId];
                 return;
             }
@@ -3532,6 +3553,7 @@
                 updateScrollToBottomBtn();
                 hardTrimMessages();
                 refreshEmptyState();
+                unbindAssistantMessage(streamId);
                 delete terminatedStreamIds[streamId];
                 return;
             }
@@ -3550,6 +3572,7 @@
                 updateInputMode();
                 updateScrollToBottomBtn();
                 hardTrimMessages();
+                unbindAssistantMessage(streamId);
             }
             delete terminatedStreamIds[streamId];
         };
@@ -3705,6 +3728,7 @@
             var interruptedClientMsgId = clientMsgIdByStream[streamId];
             delete pendingRequest[streamId];
             delete clientMsgIdByStream[streamId];
+            unbindAssistantMessage(streamId);
             if (interruptedClientMsgId) delete pendingDeduct[interruptedClientMsgId];
             if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
