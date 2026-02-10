@@ -3353,11 +3353,15 @@
             });
         }
         setInterval(cleanupStalePending, 5 * 60 * 1000);
+        function findAssistantMessageByStreamId(streamId) {
+            if (!streamId || !messagesContainer) return null;
+            return messagesContainer.querySelector('.message.assistant[data-stream-id="' + streamId + '"]');
+        }
 
         // 统一中断 UI：该条消息底部一行灰字 +「重试」按钮（ChatGPT 风格，不弹窗）
         function applyInterruptedUI(streamId, reason) {
             if (!streamId) return;
-            var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            var msg = findAssistantMessageByStreamId(streamId);
             if (!msg) return;
             var contentDiv = msg.querySelector('.message-content');
             if (!contentDiv || contentDiv.querySelector('.interrupted-badge')) return;
@@ -3414,7 +3418,7 @@
                 typewriterState.timerId = null;
             }
             if (typewriterState.streamId && typewriterState.fullText && typewriterState.index < typewriterState.fullText.length) {
-                const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === typewriterState.streamId; });
+                const msg = findAssistantMessageByStreamId(typewriterState.streamId);
                 if (msg) {
                     const contentDiv = msg.querySelector('.message-content');
                     if (contentDiv) contentDiv.textContent += typewriterState.fullText.slice(typewriterState.index); // 仅追加剩余部分，避免重复
@@ -3428,7 +3432,7 @@
         function runTypewriter(streamId, fullText) {
             stopTypewriter();
             if (!streamId || !fullText) return;
-            const msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            const msg = findAssistantMessageByStreamId(streamId);
             if (!msg) return;
             const contentDiv = msg.querySelector('.message-content');
             if (!contentDiv) return;
@@ -3506,7 +3510,7 @@
             delete chunkBufferByStream[streamId];
             delete lastFullBufferByStream[streamId];
             if (!fullText) {
-                var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+                var msg = findAssistantMessageByStreamId(streamId);
                 if (msg) msg.classList.remove('streaming');
                 isGenerating = false;
                 fileInput.value = '';
@@ -3516,7 +3520,7 @@
                 delete terminatedStreamIds[streamId];
                 return;
             }
-            var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+            var msg = findAssistantMessageByStreamId(streamId);
             if (msg && !msg.classList.contains('streaming')) {
                 var contentDiv = msg.querySelector('.message-content');
                 if (contentDiv) applyMarkdownToElement(contentDiv, fullText);
@@ -3534,7 +3538,7 @@
             if (hadBuffer) {
                 runTypewriter(streamId, fullText);
             } else {
-                var msg = Array.from(messagesContainer.querySelectorAll('.message.assistant')).find(function(m) { return m.dataset.streamId === streamId; });
+                var msg = findAssistantMessageByStreamId(streamId);
                 if (msg) {
                     var contentDiv = msg.querySelector('.message-content');
                     if (contentDiv) applyMarkdownToElement(contentDiv, fullText);
@@ -3840,7 +3844,7 @@
             }
         }
         function refreshEmptyState() {
-            const hasMessages = messagesContainer ? messagesContainer.querySelectorAll('.message').length > 0 : false;
+            const hasMessages = !!(messagesContainer && messagesContainer.querySelector('.message'));
             emptyState.classList.toggle('hidden', hasMessages);
         }
 
