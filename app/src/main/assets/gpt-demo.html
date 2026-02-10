@@ -2058,6 +2058,7 @@
             window.location.href = path;
         }
         var ENABLE_ANON_LOGIN = true;
+        try { localStorage.setItem('enable_anon_login', ENABLE_ANON_LOGIN ? '1' : '0'); } catch (e) {}
         function createAnonAccountId() {
             if (window.crypto && typeof window.crypto.randomUUID === 'function') {
                 return 'anon_' + window.crypto.randomUUID();
@@ -2087,6 +2088,27 @@
             window.account_id = anonId;
             window.account_type = 'anon';
             return true;
+        }
+        function setPhoneLoginIdentity(phoneAccountId) {
+            var nextId = (phoneAccountId == null ? '' : String(phoneAccountId).trim());
+            if (!nextId) return false;
+            var prevId = getAccountId();
+            if (getAccountType() === 'anon' && prevId) {
+                localStorage.setItem('merge_from_anon', prevId);
+            }
+            localStorage.setItem('account_id', nextId);
+            localStorage.setItem('account_type', 'phone');
+            window.account_id = nextId;
+            window.account_type = 'phone';
+            updateDrawerLoginState();
+            return true;
+        }
+        function getIdentityReservedParams() {
+            return {
+                account_id: getAccountId() || '',
+                account_type: getAccountType() || '',
+                merge_from_anon: localStorage.getItem('merge_from_anon') || ''
+            };
         }
         function getMaskedAccountText() {
             if (getAccountType() === 'anon') return '匿名';
@@ -2141,6 +2163,8 @@
         window.__drawerLogout = performDrawerLogout;
         window.__refreshDrawerLoginState = updateDrawerLoginState;
         window.__ensureAnonLogin = ensureAnonLogin;
+        window.__setPhoneLoginIdentity = setPhoneLoginIdentity;
+        window.__getIdentityReservedParams = getIdentityReservedParams;
 
         // ==================== 开关：仅切换 Data 层来源，UI 不改 ====================
         var USE_BACKEND_AB = false;           // 实际生效在 Android BuildConfig.USE_BACKEND_AB；此处仅文档

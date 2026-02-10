@@ -1,9 +1,9 @@
-<!doctype html>
+ï»¿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ÕËºÅ¹ÜÀí</title>
+  <title>è´¦å·ç®¡ç†</title>
   <style>
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #f7f7f8; color: #111; }
     .wrap { max-width: 680px; margin: 0 auto; padding: 20px 16px 28px; }
@@ -21,25 +21,25 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="topbar"><button id="btnBack" class="back-btn" type="button">·µ»Ø</button></div>
-    <h1>ÕËºÅ¹ÜÀí</h1>
+    <div class="topbar"><button id="btnBack" class="back-btn" type="button">è¿”å›</button></div>
+    <h1>è´¦å·ç®¡ç†</h1>
     <div class="card">
-      <p class="line" id="statusLine">µ±Ç°×´Ì¬£º-</p>
-      <p class="line" id="idLine">ÕËºÅ±êÊ¶£º-</p>
+      <p class="line" id="statusLine">å½“å‰çŠ¶æ€ï¼š-</p>
+      <p class="line" id="idLine">è´¦å·æ ‡è¯†ï¼š-</p>
       <div class="btns">
-        <button id="btnLogin" type="button">ÊÖ»úºÅµÇÂ¼£¨Õ¼Î»£©</button>
-        <button id="btnLogout" class="danger" type="button">²Ù×÷</button>
+        <button id="btnLogin" type="button">æ‰‹æœºå·ç™»å½•ï¼ˆå ä½ï¼‰</button>
+        <button id="btnLogout" class="danger" type="button">æ“ä½œ</button>
       </div>
     </div>
   </div>
-  <div id="toast">ÌáÊ¾</div>
+  <div id="toast">æç¤º</div>
   <script>
-    var ENABLE_ANON_LOGIN = true;
+    var ENABLE_ANON_LOGIN = (localStorage.getItem('enable_anon_login') || '1') !== '0';
     var pendingConfirmUntil = 0;
 
     function showToast(msg) {
       var el = document.getElementById('toast');
-      el.textContent = msg || 'ÌáÊ¾';
+      el.textContent = msg || 'æç¤º';
       el.classList.add('show');
       setTimeout(function() { el.classList.remove('show'); }, 1600);
     }
@@ -65,20 +65,37 @@
       localStorage.setItem('account_type', 'anon');
       return true;
     }
+    function setPhoneLoginIdentity(phoneAccountId) {
+      var nextId = (phoneAccountId == null ? '' : String(phoneAccountId).trim());
+      if (!nextId) return false;
+      var prevId = getAccountId();
+      if (getAccountType() === 'anon' && prevId) localStorage.setItem('merge_from_anon', prevId);
+      localStorage.setItem('account_id', nextId);
+      localStorage.setItem('account_type', 'phone');
+      render();
+      return true;
+    }
+    function getIdentityReservedParams() {
+      return {
+        account_id: getAccountId() || '',
+        account_type: getAccountType() || '',
+        merge_from_anon: localStorage.getItem('merge_from_anon') || ''
+      };
+    }
     function render() {
       ensureAnonLogin();
       var type = getAccountType();
-      var status = (type === 'anon') ? 'ÄäÃû' : (type ? 'ÊÖ»úºÅ' : 'Î´µÇÂ¼');
+      var status = (type === 'anon') ? 'åŒ¿å' : (type ? 'æ‰‹æœºå·' : 'æœªç™»å½•');
       var id = getAccountId() || '-';
-      document.getElementById('statusLine').textContent = 'µ±Ç°×´Ì¬£º' + status;
-      document.getElementById('idLine').textContent = 'ÕËºÅ±êÊ¶£º' + id;
-      document.getElementById('btnLogout').textContent = (type === 'anon') ? 'ÖØÖÃÄäÃûÉí·İ' : 'ÍË³öµÇÂ¼';
+      document.getElementById('statusLine').textContent = 'å½“å‰çŠ¶æ€ï¼š' + status;
+      document.getElementById('idLine').textContent = 'è´¦å·æ ‡è¯†ï¼š' + id;
+      document.getElementById('btnLogout').textContent = (type === 'anon') ? 'é‡ç½®åŒ¿åèº«ä»½' : 'é€€å‡ºç™»å½•';
     }
     function triggerAccountAction() {
       var now = Date.now();
       if (!pendingConfirmUntil || now > pendingConfirmUntil) {
         pendingConfirmUntil = now + 2000;
-        showToast('ÔÙµãÒ»´ÎÈ·ÈÏ');
+        showToast('å†ç‚¹ä¸€æ¬¡ç¡®è®¤');
         return;
       }
       pendingConfirmUntil = 0;
@@ -86,12 +103,12 @@
       if (type === 'anon') {
         localStorage.setItem('account_id', createAnonAccountId());
         localStorage.setItem('account_type', 'anon');
-        showToast('ÒÑÖØÖÃÄäÃûÉí·İ');
+        showToast('å·²é‡ç½®åŒ¿åèº«ä»½');
       } else {
         localStorage.removeItem('account_id');
         localStorage.removeItem('account_type');
         ensureAnonLogin();
-        showToast(getAccountType() === 'anon' ? 'ÒÑÍË³öµÇÂ¼£¬µ±Ç°ÎªÄäÃûÄ£Ê½' : 'ÒÑÍË³öµÇÂ¼');
+        showToast(getAccountType() === 'anon' ? 'å·²é€€å‡ºç™»å½•ï¼Œå½“å‰ä¸ºåŒ¿åæ¨¡å¼' : 'å·²é€€å‡ºç™»å½•');
       }
       render();
     }
@@ -100,8 +117,10 @@
       if (history.length > 1) history.back();
       else window.location.href = 'gpt-demo.html';
     });
-    document.getElementById('btnLogin').addEventListener('click', function() { showToast('ÔİÎ´¿ª·ÅµÇÂ¼'); });
+    document.getElementById('btnLogin').addEventListener('click', function() { showToast('æš‚æœªå¼€æ”¾ç™»å½•'); });
     document.getElementById('btnLogout').addEventListener('click', triggerAccountAction);
+    window.__setPhoneLoginIdentity = setPhoneLoginIdentity;
+    window.__getIdentityReservedParams = getIdentityReservedParams;
     render();
   </script>
 </body>
