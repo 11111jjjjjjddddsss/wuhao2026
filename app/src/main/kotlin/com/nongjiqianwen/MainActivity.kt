@@ -45,6 +45,7 @@ class MainActivity : AppCompatActivity() {
     /** A/B 层：streamId -> 本轮 assistant 内容累积（完整轮次时用于 addRound） */
     private val pendingAssistantByStreamId = mutableMapOf<String, StringBuilder>()
     private val clientMsgIdByStreamId = mutableMapOf<String, String>()
+    private val clientMsgIdUpdatedAtByStreamId = mutableMapOf<String, Long>()
 
     /** 后台断流无感补全：待补全时非 null；3 秒节流用 lastFailAt */
     private data class ResumeState(
@@ -66,10 +67,50 @@ class MainActivity : AppCompatActivity() {
         private const val BACKGROUND_CACHE_MAX_CHARS = 20_000
         private const val BACKGROUND_CACHE_MAX_STREAMS = 3
         private const val BACKGROUND_CACHE_MAX_MS = 60_000L
+        private const val CLIENT_MSG_ID_CACHE_MAX = 2000
+        private const val CLIENT_MSG_ID_CACHE_TRIM_TO = 1500
     }
 
     /** JS 字符串安全：反斜杠/单引号 + U+2028/U+2029（否则断串） */
     private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
+
+    private fun putClientMsgId(streamId: String, clientMsgId: String) {
+        if (streamId.isBlank() || clientMsgId.isBlank()) return
+        clientMsgIdByStreamId[streamId] = clientMsgId
+        clientMsgIdUpdatedAtByStreamId[streamId] = System.currentTimeMillis()
+        QwenClient.setClientMsgIdForStream(streamId, clientMsgId)
+    }
+
+    private fun removeClientMsgId(streamId: String) {
+        if (streamId.isBlank()) return
+        clientMsgIdByStreamId.remove(streamId)
+        clientMsgIdUpdatedAtByStreamId.remove(streamId)
+        QwenClient.clearClientMsgIdForStream(streamId)
+    }
+
+    private fun markClientMsgIdCompleted(streamId: String) {
+        if (streamId.isBlank()) return
+        if (clientMsgIdByStreamId.containsKey(streamId)) {
+            clientMsgIdUpdatedAtByStreamId[streamId] = System.currentTimeMillis()
+        }
+        QwenClient.clearClientMsgIdForStream(streamId)
+        pruneClientMsgIdCacheIfNeeded()
+    }
+
+    private fun pruneClientMsgIdCacheIfNeeded() {
+        if (clientMsgIdByStreamId.size <= CLIENT_MSG_ID_CACHE_MAX) return
+        val removeCount = (clientMsgIdByStreamId.size - CLIENT_MSG_ID_CACHE_TRIM_TO).coerceAtLeast(0)
+        if (removeCount <= 0) return
+        val staleKeys = clientMsgIdUpdatedAtByStreamId.entries
+            .sortedBy { it.value }
+            .take(removeCount)
+            .map { it.key }
+        staleKeys.forEach { key ->
+            clientMsgIdByStreamId.remove(key)
+            clientMsgIdUpdatedAtByStreamId.remove(key)
+            QwenClient.clearClientMsgIdForStream(key)
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -336,8 +377,7 @@ class MainActivity : AppCompatActivity() {
                     webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
                     return@runOnUiThread
                 }
-                clientMsgIdByStreamId[sid] = cid
-                QwenClient.setClientMsgIdForStream(sid, cid)
+                putClientMsgId(sid, cid)
                 currentStreamId = sid
                 isRequesting = true
                 sendToModel(text, imageUrlList, sid, model?.takeIf { it.isNotBlank() })
@@ -508,6 +548,7 @@ class MainActivity : AppCompatActivity() {
                     val esc = escapeJs(streamId)
                     val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: streamId)
                     webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
+                    markClientMsgIdCompleted(streamId)
                 }
             }
         }
@@ -516,8 +557,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 pendingUserByStreamId.remove(streamId)
                 pendingAssistantByStreamId.remove(streamId)
-                clientMsgIdByStreamId.remove(streamId)
-                QwenClient.clearClientMsgIdForStream(streamId)
+                removeClientMsgId(streamId)
                 if (streamId == currentStreamId) {
                     isRequesting = false
                     currentStreamId = null
@@ -620,8 +660,7 @@ class MainActivity : AppCompatActivity() {
         overflowed.forEach { streamId ->
             pendingUserByStreamId.remove(streamId)
             pendingAssistantByStreamId.remove(streamId)
-            clientMsgIdByStreamId.remove(streamId)
-            QwenClient.clearClientMsgIdForStream(streamId)
+            removeClientMsgId(streamId)
             val esc = escapeJs(streamId)
             webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', 'cache_overflow');", null)
         }
@@ -648,11 +687,11 @@ class MainActivity : AppCompatActivity() {
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: streamId)
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
+                        markClientMsgIdCompleted(streamId)
                     }
                     "interrupted" -> {
                         pendingUserByStreamId.remove(streamId)
-                        clientMsgIdByStreamId.remove(streamId)
-                        QwenClient.clearClientMsgIdForStream(streamId)
+                        removeClientMsgId(streamId)
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escReason = escapeJs(data ?: "")
                         webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
