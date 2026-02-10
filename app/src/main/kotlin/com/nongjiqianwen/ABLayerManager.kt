@@ -13,6 +13,7 @@ object ABLayerManager {
     private const val PREFS_NAME = "ab_layer"
     private const val KEY_B_SUMMARY_PREFIX = "b_summary_"
     private const val A_MIN_ROUNDS = 24
+    private const val B_SUMMARY_MAX_LENGTH = 600
 
     private var appContext: Context? = null
     private val aRoundsBySession = mutableMapOf<String, MutableList<Pair<String, String>>>()
@@ -109,17 +110,18 @@ object ABLayerManager {
                 val prompt = BExtractionPrompt.getText()
                 if (prompt.isBlank()) { return@Thread }
                 val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
-                if (!validateBSummary(newSummary)) {
+                val normalizedSummary = normalizeBSummaryForStore(newSummary)
+                if (normalizedSummary == null) {
                     Log.w(TAG, "B摘要校验不通过，不写B不清A")
                     return@Thread
                 }
-                SessionApi.updateB(userId, sessionId, newSummary) { ok ->
+                SessionApi.updateB(userId, sessionId, normalizedSummary) { ok ->
                     if (ok) {
                         synchronized(serverLock) {
-                            serverBSummary = newSummary
+                            serverBSummary = normalizedSummary
                             serverARoundsCache.clear()
                         }
-                        if (BuildConfig.DEBUG) Log.d(TAG, "updateB ok session=$sessionId b_len=${newSummary.length} a_cleared")
+                        if (BuildConfig.DEBUG) Log.d(TAG, "updateB ok session=$sessionId b_len=${normalizedSummary.length} a_cleared")
                     }
                 }
             } catch (e: Exception) {
@@ -141,8 +143,8 @@ object ABLayerManager {
                 val prompt = BExtractionPrompt.getText()
                 if (prompt.isBlank()) return@Thread
                 val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
-                if (!validateBSummary(newSummary)) return@Thread
-                val committed = prefs?.edit()?.putString(keyB, newSummary)?.commit() ?: false
+                val normalizedSummary = normalizeBSummaryForStore(newSummary) ?: return@Thread
+                val committed = prefs?.edit()?.putString(keyB, normalizedSummary)?.commit() ?: false
                 if (committed) {
                     synchronized(aLock) { aRoundsBySession[sessionId]?.clear() }
                     if (BuildConfig.DEBUG) Log.d(TAG, "B写入成功(session=$sessionId) 已清空A")
@@ -156,9 +158,10 @@ object ABLayerManager {
     }
 
     /** 校验 B 摘要：仅要求非空（长度由提示词约束），避免因硬编码长度导致提取失败 */
-    private fun validateBSummary(summary: String?): Boolean {
-        if (summary.isNullOrBlank()) return false
-        return summary.trim().isNotEmpty()
+    private fun normalizeBSummaryForStore(summary: String?): String? {
+        val trimmed = summary?.trim() ?: return null
+        if (trimmed.isEmpty()) return null
+        return if (trimmed.length <= B_SUMMARY_MAX_LENGTH) trimmed else trimmed.substring(0, B_SUMMARY_MAX_LENGTH)
     }
 
     private fun buildDialogueText(rounds: List<Pair<String, String>>): String {
