@@ -165,7 +165,7 @@
             width: 340px;
             max-width: 360px;
             height: 100%;
-            background: #F5F5F5;
+            background: #F7F7F8;
             box-shadow: 2px 0 12px rgba(0,0,0,0.12);
             z-index: 301;
             transform: translateX(-100%);
@@ -204,37 +204,58 @@
             flex: 1;
             min-height: 0;
             overflow-y: auto;
-            padding: 8px 0 12px;
+            padding: 10px 13px 12px;
+        }
+        .drawer-menu-group {
+            background: #fff;
+            border: 1px solid rgba(0,0,0,.06);
+            border-radius: 16px;
+            box-shadow: 0 1px 2px rgba(0,0,0,.04);
+            overflow: hidden;
         }
         .menu-card {
             display: flex;
             align-items: center;
             gap: 12px;
-            min-height: 54px;
+            min-height: 56px;
             padding: 16px;
             margin-bottom: 0;
             background: #fff;
             border: 0;
-            border-bottom: 1px solid var(--border);
             border-radius: 0;
-            font-size: 15px;
+            font-size: 16px;
             color: var(--text);
             cursor: pointer;
-            transition: background 0.15s ease;
+            position: relative;
+            transition: background 120ms ease, transform 120ms ease;
+        }
+        .menu-card::after {
+            content: "";
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            bottom: 0;
+            height: 1px;
+            background: rgba(0,0,0,.06);
+        }
+        .menu-card:last-child::after {
+            display: none;
         }
         .menu-card:hover {
-            background: #fbfbfc;
+            background: #FAFAFB;
         }
         .menu-card:active {
-            background: #f3f3f5;
+            background: #F1F1F3;
+            transform: scale(0.998);
         }
         .menu-card > span:first-of-type {
             flex: 1;
             min-width: 0;
         }
         .menu-card .menu-card-right {
-            font-size: 12px;
-            color: var(--text-secondary);
+            font-size: 13px;
+            color: #8E8E93;
+            text-align: right;
         }
         .menu-card .menu-arrow {
             display: none !important;
@@ -243,44 +264,83 @@
             width: 18px;
             height: 18px;
         }
-        .drawer-footer {
-            flex-shrink: 0;
-            padding: 8px 16px 16px;
-            padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-            background: transparent;
-            border-top: 0;
-        }
-        .drawer-footer .menu-card {
-            margin-bottom: 2px;
-            min-height: auto;
-            padding: 0;
-            border: 0;
-            border-radius: 0;
-            background: transparent;
-            box-shadow: none;
-            justify-content: center;
-        }
-        .drawer-footer .menu-card:hover,
-        .drawer-footer .menu-card:active {
-            background: transparent;
-            border-color: transparent;
-            transform: none;
-        }
         .drawer-logout {
             color: #C2362B;
             font-size: 14px;
             font-weight: 600;
         }
         .menu-card.menu-card-danger {
-            color: #C2362B;
-            border-color: transparent;
-            background: transparent;
+            color: #D64A3A;
         }
         .menu-card.is-hidden {
             display: none;
         }
         .drawer-version { display: none; }
         .drawer-logout-strip { display: none; }
+        #logoutConfirmMask {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.35);
+            z-index: 920;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 160ms ease, visibility 160ms ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        #logoutConfirmMask.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        #logoutConfirmDialog {
+            width: min(320px, 86vw);
+            background: #fff;
+            border-radius: 16px;
+            padding: 16px;
+            transform: translateY(4px);
+            opacity: 0;
+            transition: transform 160ms ease, opacity 160ms ease;
+        }
+        #logoutConfirmMask.open #logoutConfirmDialog {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        .logout-confirm-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #111;
+            line-height: 24px;
+        }
+        .logout-confirm-text {
+            margin-top: 6px;
+            font-size: 14px;
+            color: #8E8E93;
+            line-height: 20px;
+        }
+        .logout-confirm-actions {
+            margin-top: 14px;
+            display: flex;
+            gap: 10px;
+        }
+        .logout-confirm-btn {
+            flex: 1;
+            height: 40px;
+            border-radius: 12px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .logout-confirm-cancel {
+            border: 1px solid rgba(0,0,0,.1);
+            background: #fff;
+            color: #111;
+        }
+        .logout-confirm-ok {
+            border: 1px solid #111;
+            background: #111;
+            color: #fff;
+        }
         /* 遮罩：rgba(0,0,0,0.35)，点击关闭抽屉 */
         #drawer-mask {
             position: fixed;
@@ -545,31 +605,31 @@
             --radius: 16px;
         }
         #drawer {
-            background: var(--surface);
+            background: #F7F7F8;
             box-shadow: 8px 0 30px rgba(0,0,0,.10);
             border-right: 1px solid var(--border);
         }
         .menu-card {
             background: var(--surface);
             border: 0;
-            border-bottom: 1px solid var(--border);
             border-radius: 0;
             margin-bottom: 0;
-            min-height: 54px;
+            min-height: 56px;
             padding: 16px;
             box-shadow: none;
-            transition: background .15s ease;
+            transition: background 120ms ease, transform 120ms ease;
         }
         .menu-card:hover {
-            background: #fbfbfc;
-            border-color: var(--border);
+            background: #FAFAFB;
         }
         .menu-card:active {
-            transform: none;
-            background: #f3f3f5;
+            transform: scale(0.998);
+            background: #F1F1F3;
         }
         .menu-card .menu-card-right {
-            color: var(--muted);
+            font-size: 13px;
+            color: #8E8E93;
+            text-align: right;
         }
         .menu-card .menu-arrow {
             display: none !important;
@@ -1840,13 +1900,25 @@
     <div id="drawer-mask" aria-hidden="true"></div>
     <div id="drawer" aria-hidden="true">
         <div class="drawer-content">
-            <div class="menu-card" data-menu="account-manage"><span>账号管理</span><span class="menu-card-right" id="drawerAccountText">-</span></div>
-            <div class="menu-card" data-menu="membership"><span>会员中心</span><span class="menu-card-right" id="drawerTierText">当前：-</span></div>
-            <div class="menu-card" data-menu="privacy"><span>隐私政策</span></div>
-            <div class="menu-card" data-menu="terms"><span>用户协议</span></div>
-            <div class="menu-card" data-menu="help"><span>帮助与反馈</span></div>
-            <div class="menu-card" data-menu="about"><span>关于</span></div>
-            <div class="menu-card" data-menu="logout"><span>退出登录</span></div>
+            <div class="drawer-menu-group">
+                <div class="menu-card" data-menu="account-manage"><span>账号管理</span><span class="menu-card-right" id="drawerAccountText">-</span></div>
+                <div class="menu-card" data-menu="membership"><span>会员中心</span><span class="menu-card-right" id="drawerTierText">当前：-</span></div>
+                <div class="menu-card" data-menu="privacy"><span>隐私政策</span></div>
+                <div class="menu-card" data-menu="terms"><span>用户协议</span></div>
+                <div class="menu-card" data-menu="help"><span>帮助与反馈</span></div>
+                <div class="menu-card" data-menu="about"><span>关于</span></div>
+                <div class="menu-card menu-card-danger" data-menu="logout"><span>退出登录</span></div>
+            </div>
+        </div>
+    </div>
+    <div id="logoutConfirmMask" aria-hidden="true">
+        <div id="logoutConfirmDialog" onclick="event.stopPropagation()">
+            <div class="logout-confirm-title">确认退出登录</div>
+            <div class="logout-confirm-text">退出后将返回登录页</div>
+            <div class="logout-confirm-actions">
+                <button type="button" class="logout-confirm-btn logout-confirm-cancel" id="logoutConfirmCancel">取消</button>
+                <button type="button" class="logout-confirm-btn logout-confirm-ok" id="logoutConfirmOk">退出</button>
+            </div>
         </div>
     </div>
 
@@ -2011,6 +2083,9 @@
         const plusSheetCamera = document.getElementById('plusSheetCamera');
         const drawer = document.getElementById('drawer');
         const drawerMask = document.getElementById('drawer-mask');
+        const logoutConfirmMask = document.getElementById('logoutConfirmMask');
+        const logoutConfirmCancel = document.getElementById('logoutConfirmCancel');
+        const logoutConfirmOk = document.getElementById('logoutConfirmOk');
         const appBarLeft = document.getElementById('appBarLeft');
         const copyPopover = document.getElementById('copyPopover');
         const copyBtn = document.getElementById('copyBtn');
@@ -2043,6 +2118,28 @@
         closeDrawer();
         appBarLeft.addEventListener('click', toggleDrawer);
         drawerMask.addEventListener('click', closeDrawer);
+        function closeLogoutConfirm() {
+            if (!logoutConfirmMask) return;
+            logoutConfirmMask.classList.remove('open');
+            logoutConfirmMask.setAttribute('aria-hidden', 'true');
+        }
+        function openLogoutConfirm() {
+            if (!logoutConfirmMask) return;
+            logoutConfirmMask.classList.add('open');
+            logoutConfirmMask.setAttribute('aria-hidden', 'false');
+        }
+        if (logoutConfirmMask) {
+            logoutConfirmMask.addEventListener('click', closeLogoutConfirm);
+        }
+        if (logoutConfirmCancel) {
+            logoutConfirmCancel.addEventListener('click', closeLogoutConfirm);
+        }
+        if (logoutConfirmOk) {
+            logoutConfirmOk.addEventListener('click', function() {
+                closeLogoutConfirm();
+                performLogoutToLogin();
+            });
+        }
         window.addEventListener('focus', function() { updateDrawerLoginState(); });
         window.addEventListener('pageshow', function() { updateDrawerLoginState(); });
         document.addEventListener('visibilitychange', function() {
@@ -2118,13 +2215,6 @@
             return !!getAccountId();
         }
         function performLogoutToLogin() {
-            var now = Date.now();
-            if (!window.__logoutStripConfirmUntil || now > window.__logoutStripConfirmUntil) {
-                window.__logoutStripConfirmUntil = now + 2000;
-                showToast('再点一次退出登录');
-                return;
-            }
-            window.__logoutStripConfirmUntil = 0;
             localStorage.removeItem('account_id');
             localStorage.removeItem('account_type');
             localStorage.removeItem('debug_tier');
@@ -2789,7 +2879,7 @@
                 } else if (key === 'about') {
                     openLocalPage('about.html');
                 } else if (key === 'logout') {
-                    performLogoutToLogin();
+                    openLogoutConfirm();
                 } else {
                     if (typeof DEBUG !== 'undefined' && DEBUG) console.log(key);
                 }
