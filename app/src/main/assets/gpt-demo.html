@@ -1863,7 +1863,6 @@
             <div class="menu-card" data-menu="about"><span>关于</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
         </div>
         <div class="drawer-footer">
-            <div class="menu-card menu-card-danger drawer-logout" id="drawerLogoutBtn" data-menu="logout"><span>登录</span></div>
             <button type="button" class="drawer-logout-strip" id="drawerLogoutStrip">退出登录</button>
             <div class="drawer-version">v1.0.0</div>
         </div>
@@ -2209,13 +2208,7 @@
             var loggedIn = isLoggedIn();
             var accountText = document.getElementById('drawerAccountText');
             if (accountText) accountText.textContent = loggedIn ? getMaskedAccountText() : '未登录';
-            var logoutBtn = document.getElementById('drawerLogoutBtn');
-            if (logoutBtn) {
-                var textEl = logoutBtn.querySelector('span');
-                if (textEl) textEl.textContent = loggedIn ? '退出登录' : '登录';
-            }
         }
-        window.__drawerLogout = performDrawerLogout;
         window.__refreshDrawerLoginState = updateDrawerLoginState;
         window.__ensureAnonLogin = ensureAnonLogin;
         window.__setPhoneLoginIdentity = setPhoneLoginIdentity;
@@ -2858,11 +2851,8 @@
                 if (key === 'membership') {
                     openMembershipModal(false);
                 } else if (key === 'account-manage') {
-                    if (!isLoggedIn()) {
-                        performDrawerLogin();
-                    } else {
-                        showToast('已登录');
-                    }
+                    if (!isLoggedIn()) { location.replace('login.html'); return; }
+                    showToast('已登录');
                 } else if (key === 'help') {
                     openLocalPage(HELP_FEEDBACK_URL);
                 } else if (key === 'privacy') {
@@ -2872,11 +2862,7 @@
                 } else if (key === 'about') {
                     openLocalPage('about.html');
                 } else if (key === 'logout') {
-                    if (isLoggedIn()) {
-                        performDrawerLogout();
-                    } else {
-                        performDrawerLogin();
-                    }
+                    performLogoutToLogin();
                 } else {
                     if (typeof DEBUG !== 'undefined' && DEBUG) console.log(key);
                 }
