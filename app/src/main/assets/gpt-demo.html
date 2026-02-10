@@ -2850,6 +2850,8 @@
         function generateClientMsgId() {
             return 'cmsg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 12);
         }
+        const SEND_DEBOUNCE_MS = 300;
+        let lastSendTriggeredAt = 0;
 
         // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
@@ -3212,6 +3214,9 @@
         function sendMessage() {
             if (btnSend.disabled) return;
             if (isGenerating) return;
+            var now = Date.now();
+            if ((now - lastSendTriggeredAt) < SEND_DEBOUNCE_MS) return;
+            lastSendTriggeredAt = now;
             if (!hasNativeAndroidSend) {
                 showToastOncePerDay('preview_send', '预览模式无法发送');
                 return;
@@ -3398,9 +3403,13 @@
                 var retryBtn = document.createElement('button');
                 retryBtn.className = 'retry-stream-btn';
                 retryBtn.textContent = '重试';
+                var retrying = false;
                 retryBtn.onclick = function() {
+                    if (retrying || isGenerating) return;
+                    retrying = true;
+                    retryBtn.disabled = true;
                     var data = pendingRequest[streamId];
-                    if (!data) return;
+                    if (!data) { retrying = false; retryBtn.disabled = false; return; }
                     AndroidInterface.stopGeneration && AndroidInterface.stopGeneration();
                     delete chunkBufferByStream[streamId];
                     delete lastFullBufferByStream[streamId];
@@ -3457,6 +3466,7 @@
             var dynamicChars = TYPEWRITER_CHARS;
             if (fullText.length > 1200) dynamicChars = 6;
             else if (fullText.length > 700) dynamicChars = 4;
+            var typewriterTick = 0;
             typewriterState = { timerId: null, streamId: streamId, fullText: fullText, index: 0 };
             typewriterState.timerId = setInterval(function() {
                 if ((Date.now() - typewriterStartMs) >= TYPEWRITER_MAX_MS) {
@@ -3495,7 +3505,8 @@
                 }
                 contentDiv.textContent += fullText.slice(typewriterState.index, typewriterState.index + n);
                 typewriterState.index += n;
-                scrollToBottom();
+                typewriterTick++;
+                if (typewriterTick % 3 === 0 || typewriterState.index >= fullText.length) scrollToBottom();
             }, TYPEWRITER_MS);
         }
 
