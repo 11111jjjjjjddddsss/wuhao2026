@@ -31,6 +31,11 @@ object QwenClient {
     private const val CALL_TIMEOUT_SEC = 60L   // 单次请求总时长上限（1 分钟体验）
     private const val B_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
     private const val TOOL_INFO_MAX_CHARS = 1500
+    private const val B_EXTRACT_TEMPERATURE = 0.85
+    private const val B_EXTRACT_TOP_P = 0.9
+    private const val B_EXTRACT_MAX_TOKENS = 4000
+    private const val B_EXTRACT_FREQUENCY_PENALTY = 0.0
+    private const val B_EXTRACT_PRESENCE_PENALTY = 0.0
     @Volatile private var lastBExtractErrorLogMs = 0L
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
@@ -628,11 +633,11 @@ object QwenClient {
             val body = JsonObject().apply {
                 addProperty("model", modelFlash)  // B 层摘要固定 Flash，不随专家切换
                 addProperty("stream", false)
-                addProperty("temperature", ModelParams.TEMPERATURE)
-                addProperty("top_p", ModelParams.TOP_P)
-                addProperty("max_tokens", ModelParams.MAX_TOKENS)
-                addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
-                addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
+                addProperty("temperature", B_EXTRACT_TEMPERATURE)
+                addProperty("top_p", B_EXTRACT_TOP_P)
+                addProperty("max_tokens", B_EXTRACT_MAX_TOKENS)
+                addProperty("frequency_penalty", B_EXTRACT_FREQUENCY_PENALTY)
+                addProperty("presence_penalty", B_EXTRACT_PRESENCE_PENALTY)
                 add("messages", messagesArray)
             }
             val request = Request.Builder()
