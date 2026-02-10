@@ -2029,6 +2029,11 @@
         closeDrawer();
         appBarLeft.addEventListener('click', toggleDrawer);
         drawerMask.addEventListener('click', closeDrawer);
+        window.addEventListener('focus', function() { updateDrawerLoginState(); });
+        window.addEventListener('pageshow', function() { updateDrawerLoginState(); });
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) updateDrawerLoginState();
+        });
 
         var membershipBackdrop = document.getElementById('membership-modal-backdrop');
         var membershipModal = document.getElementById('membership-modal');
@@ -2036,12 +2041,7 @@
         var toastEl = document.getElementById('toast');
         var HELP_FEEDBACK_URL = 'https://t0zamvo8k09.feishu.cn/share/base/form/shrcn9AWNObwhAUnHxVzldd9mwh';
         function openLocalPage(path) {
-            try {
-                var win = window.open(path, '_blank');
-                if (!win) window.location.href = path;
-            } catch (e) {
-                window.location.href = path;
-            }
+            window.location.href = path;
         }
         var ENABLE_ANON_LOGIN = true;
         function createAnonAccountId() {
@@ -2087,14 +2087,30 @@
         }
         function performDrawerLogout() {
             if (!isLoggedIn()) return;
-            if (!confirm('确认退出？')) return;
-            localStorage.removeItem('account_id');
-            localStorage.removeItem('account_type');
-            window.account_id = '';
-            window.account_type = '';
-            ensureAnonLogin();
+            var now = Date.now();
+            if (!window.__logoutConfirmUntil || now > window.__logoutConfirmUntil) {
+                window.__logoutConfirmUntil = now + 2000;
+                showToast('再点一次确认');
+                return;
+            }
+            window.__logoutConfirmUntil = 0;
+            var type = getAccountType();
+            if (type === 'anon') {
+                var newAnonId = createAnonAccountId();
+                localStorage.setItem('account_id', newAnonId);
+                localStorage.setItem('account_type', 'anon');
+                window.account_id = newAnonId;
+                window.account_type = 'anon';
+                showToast('已重置匿名身份');
+            } else {
+                localStorage.removeItem('account_id');
+                localStorage.removeItem('account_type');
+                window.account_id = '';
+                window.account_type = '';
+                ensureAnonLogin();
+                showToast(getAccountType() === 'anon' ? '已退出登录，当前为匿名模式' : '已退出登录');
+            }
             updateDrawerLoginState();
-            showToast(getAccountType() === 'anon' ? '已退出，当前为匿名模式' : '已退出登录');
         }
         function updateDrawerLoginState() {
             ensureAnonLogin();
@@ -2105,7 +2121,7 @@
             if (logoutBtn) logoutBtn.classList.toggle('is-hidden', !loggedIn);
             if (logoutBtn) {
                 var textEl = logoutBtn.querySelector('span');
-                if (textEl) textEl.textContent = (getAccountType() === 'anon') ? '退出匿名模式' : '退出登录';
+                if (textEl) textEl.textContent = (getAccountType() === 'anon') ? '重置匿名身份' : '退出登录';
             }
         }
         window.__drawerLogout = performDrawerLogout;
