@@ -1832,7 +1832,7 @@
             <div class="menu-card" data-menu="about"><span>关于</span><span class="menu-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span></div>
         </div>
         <div class="drawer-footer">
-            <div class="menu-card menu-card-danger drawer-logout is-hidden" id="drawerLogoutBtn" data-menu="logout"><span>退出登录</span></div>
+            <div class="menu-card menu-card-danger drawer-logout" id="drawerLogoutBtn" data-menu="logout"><span>登录</span></div>
             <div class="drawer-version">v1.0.0</div>
         </div>
     </div>
@@ -2098,6 +2098,7 @@
             }
             localStorage.setItem('account_id', nextId);
             localStorage.setItem('account_type', 'phone');
+            localStorage.removeItem('debug_tier');
             window.account_id = nextId;
             window.account_type = 'phone';
             updateDrawerLoginState();
@@ -2118,8 +2119,18 @@
             return '已登录';
         }
         function isLoggedIn() {
-            ensureAnonLogin();
             return !!getAccountId();
+        }
+        function performDrawerLogin() {
+            if (isLoggedIn()) return;
+            if (!ENABLE_ANON_LOGIN) {
+                showToast('暂未开放登录');
+                return;
+            }
+            ensureAnonLogin();
+            updateDrawerLoginState();
+            if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
+            showToast('登录成功');
         }
         function performDrawerLogout() {
             if (!isLoggedIn()) return;
@@ -2130,34 +2141,23 @@
                 return;
             }
             window.__logoutConfirmUntil = 0;
-            var type = getAccountType();
-            if (type === 'anon') {
-                var newAnonId = createAnonAccountId();
-                localStorage.setItem('account_id', newAnonId);
-                localStorage.setItem('account_type', 'anon');
-                window.account_id = newAnonId;
-                window.account_type = 'anon';
-                showToast('已重置匿名身份');
-            } else {
-                localStorage.removeItem('account_id');
-                localStorage.removeItem('account_type');
-                window.account_id = '';
-                window.account_type = '';
-                ensureAnonLogin();
-                showToast(getAccountType() === 'anon' ? '已退出登录，当前为匿名模式' : '已退出登录');
-            }
+            localStorage.removeItem('account_id');
+            localStorage.removeItem('account_type');
+            localStorage.removeItem('debug_tier');
+            window.account_id = '';
+            window.account_type = '';
+            showToast('已退出登录');
             updateDrawerLoginState();
+            if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
         }
         function updateDrawerLoginState() {
-            ensureAnonLogin();
             var loggedIn = isLoggedIn();
             var accountText = document.getElementById('drawerAccountText');
             if (accountText) accountText.textContent = loggedIn ? getMaskedAccountText() : '未登录';
             var logoutBtn = document.getElementById('drawerLogoutBtn');
-            if (logoutBtn) logoutBtn.classList.toggle('is-hidden', !loggedIn);
             if (logoutBtn) {
                 var textEl = logoutBtn.querySelector('span');
-                if (textEl) textEl.textContent = (getAccountType() === 'anon') ? '重置匿名身份' : '退出登录';
+                if (textEl) textEl.textContent = loggedIn ? '退出登录' : '登录';
             }
         }
         window.__drawerLogout = performDrawerLogout;
@@ -2300,6 +2300,10 @@
             }
         }
         function getCurrentTier() {
+            if (getAccountType() === 'anon') {
+                var debugTier = (localStorage.getItem('debug_tier') || '').toLowerCase();
+                if (tier_config[debugTier]) return debugTier;
+            }
             if (USE_BACKEND_ENTITLEMENT) {
                 if (window._cachedEntitlement) {
                     var t = window._cachedEntitlement.effective_tier;
@@ -2317,6 +2321,9 @@
             return tier_config[ent.effective_tier] ? ent.effective_tier : 'free';
         }
         function getMembership() {
+            if (getAccountType() === 'anon') {
+                return { tier: getCurrentTier(), exp: 0, paused: [] };
+            }
             if (USE_BACKEND_ENTITLEMENT) {
                 if (window._cachedEntitlement) {
                     var e = window._cachedEntitlement;
@@ -2391,6 +2398,12 @@
         }
         function setCurrentTier(tier) {
             if (!tier_config[tier]) return;
+            if (getAccountType() === 'anon') {
+                localStorage.setItem('debug_tier', tier);
+                if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
+                if (typeof updateMembershipUI === 'function') updateMembershipUI();
+                return;
+            }
             if (tier === 'free') {
                 localStorage.setItem(STORAGE_KEY_TIER, 'free');
                 localStorage.setItem('membership_expire_at', '0');
@@ -2764,6 +2777,12 @@
                     showToast('功能开发中');
                     return;
                 }
+                if (getAccountType() === 'anon') {
+                    setCurrentTier(tier);
+                    closeMembershipModal();
+                    showToast('已切换档位');
+                    return;
+                }
                 var current = getCurrentTier();
                 var currentLevel = getTierLevel(current);
                 var cardLevel = getTierLevel(tier);
@@ -2784,7 +2803,11 @@
                 if (key === 'membership') {
                     openMembershipModal(false);
                 } else if (key === 'account-manage') {
-                    openLocalPage('account.html');
+                    if (!isLoggedIn()) {
+                        performDrawerLogin();
+                    } else {
+                        showToast('已登录');
+                    }
                 } else if (key === 'help') {
                     openLocalPage(HELP_FEEDBACK_URL);
                 } else if (key === 'privacy') {
@@ -2794,7 +2817,11 @@
                 } else if (key === 'about') {
                     openLocalPage('about.html');
                 } else if (key === 'logout') {
-                    performDrawerLogout();
+                    if (isLoggedIn()) {
+                        performDrawerLogout();
+                    } else {
+                        performDrawerLogin();
+                    }
                 } else {
                     if (typeof DEBUG !== 'undefined' && DEBUG) console.log(key);
                 }
