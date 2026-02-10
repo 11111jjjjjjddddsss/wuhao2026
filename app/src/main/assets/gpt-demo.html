@@ -2816,9 +2816,10 @@
         const lastFullBufferByStream = {};
         const watchdogTimerByStream = {}; // streamId -> setTimeout id，onComplete/onInterrupted 时 clear
         const terminatedStreamIds = {};   // 护栏：watchdog 触发后加入，onChunk/onComplete/onInterrupted 入口若已存在则直接 return
-        const pendingDeduct = {};          // streamId -> imgUploadCount(0|1)，按次扣；onComplete 时扣后 delete，interrupted 只 delete 不扣
-        const pendingRequest = {};         // streamId -> { text, imageUrls }，重试从此处取数不依赖 lastSent，连发不串单
-        const deducted = {};               // streamId -> true，同一 streamId 只扣一次；24h 后清理（P2a）
+        const pendingDeduct = {};          // client_msg_id -> imgUploadCount(0|1)，onComplete 扣后 delete
+        const pendingRequest = {};         // streamId -> { text, imageUrls, clientMsgId }，重试复用同一 client_msg_id
+        const clientMsgIdByStream = {};    // streamId -> client_msg_id，UI stream 与业务幂等键解耦
+        const deducted = {};               // client_msg_id -> true，同一 client_msg_id 只扣一次；24h 后清理
         const DEDUCTED_TTL_MS = 24 * 60 * 60 * 1000;
         const PENDING_MAX_AGE_MS = 15 * 60 * 1000;  // P2b：pending 悬挂超 15 分钟自动清
 
@@ -2836,14 +2837,18 @@
 
         // Android 接口对象（由 WebView 注入）；未注入时 no-op，DEBUG 时打日志
         var DEBUG = false;
+        const hasNativeAndroidSend = !!(window.AndroidInterface && typeof window.AndroidInterface.sendMessage === 'function');
         const AndroidInterface = window.AndroidInterface || {
             uploadImages: function(imageDataListJson) { if (DEBUG) console.log('uploadImages', imageDataListJson); },
             retryImage: function(imageId, requestId) { if (DEBUG) console.log('retryImage', imageId, requestId); },
-            sendMessage: function(text, imageUrlsJson, streamId, model, searchResult) { if (DEBUG) console.log('sendMessage', text, streamId); },
+            sendMessage: function(text, imageUrlsJson, streamId, model, clientMsgId, searchResult) { if (DEBUG) console.log('sendMessage', text, streamId, clientMsgId); },
             webSearch: function(streamId, query, freshness, countStr) { if (DEBUG) console.log('webSearch', streamId, query); },
             stopGeneration: function() { if (DEBUG) console.log('stopGeneration'); },
             requestResume: function(streamId) { if (DEBUG) console.log('requestResume', streamId); }
         };
+        function generateClientMsgId() {
+            return 'cmsg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 12);
+        }
 
         // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
@@ -3206,6 +3211,10 @@
         function sendMessage() {
             if (btnSend.disabled) return;
             if (isGenerating) return;
+            if (!hasNativeAndroidSend) {
+                showToastOncePerDay('preview_send', '预览模式无法发送');
+                return;
+            }
 
             const text = textInput.value.trim();
             const hasImages = imageState.size > 0;
@@ -3234,8 +3243,8 @@
                 return;
             }
 
-            var imgCount = imageUrls.length;
-            var quotaCheck = checkQuotaBeforeSend(1, imgCount);
+            var imgNeed = imageUrls.length > 0 ? 1 : 0;
+            var quotaCheck = checkQuotaBeforeSend(1, imgNeed);
             if (!quotaCheck.allowed) return;
 
             // 添加用户消息（右对齐，立即显示）
@@ -3254,6 +3263,7 @@
 
             // 创建AI回复占位并生成 streamId（取消时旧气泡按 streamId 落终态）
             const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const clientMsgId = generateClientMsgId();
             isGenerating = true;
             updateInputMode();
             updateScrollToBottomBtn();
@@ -3264,12 +3274,13 @@
             scrollToBottom();
             applyMessageWindow();
 
-            lastSent = { text: text, imageUrls: imageUrls.slice(), streamId: streamId };
-            pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), ts: Date.now() };
-            pendingDeduct[streamId] = (imageUrls.length > 0 ? 1 : 0);
+            lastSent = { text: text, imageUrls: imageUrls.slice(), streamId: streamId, clientMsgId: clientMsgId };
+            pendingRequest[streamId] = { text: text, imageUrls: imageUrls.slice(), clientMsgId: clientMsgId, ts: Date.now() };
+            clientMsgIdByStream[streamId] = clientMsgId;
+            pendingDeduct[clientMsgId] = (imageUrls.length > 0 ? 1 : 0);
 
             // 直接发送，由模型自行决策是否需要联网搜索
-            sendToAndroid(text, imageUrls, streamId);
+            sendToAndroid(text, imageUrls, streamId, clientMsgId);
             startWatchdog(streamId);
 
             // 清空输入和图片预览
@@ -3282,12 +3293,12 @@
         }
 
         // 发送到Android后端（streamId 写对应气泡；模型路由：专家=plus，其余=flash）
-        function sendToAndroid(text, imageUrls, streamId) {
+        function sendToAndroid(text, imageUrls, streamId, clientMsgId) {
             var imageUrlsJson = imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
             var tier = getCurrentTier();
             var model = tier === 'expert' ? 'plus' : 'flash';
             if (typeof AndroidInterface.sendMessage === 'function') {
-                AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model);
+                AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model, clientMsgId || '');
             }
         }
 
@@ -3311,8 +3322,10 @@
                 updateScrollToBottomBtn();
                 delete chunkBufferByStream[streamId];
                 delete lastFullBufferByStream[streamId];
+                var timeoutClientMsgId = clientMsgIdByStream[streamId];
                 delete pendingRequest[streamId];
-                delete pendingDeduct[streamId];
+                delete clientMsgIdByStream[streamId];
+                if (timeoutClientMsgId) delete pendingDeduct[timeoutClientMsgId];
                 // 前端 watchdog 仅做 UI 中断与本地 pending 清理，不推导/修改后端扣费结果；扣费以服务端 onComplete 规则为准。
                 applyInterruptedUI(streamId, 'timeout');
                 setTimeout(function() { delete terminatedStreamIds[streamId]; }, 2 * 60 * 1000);
@@ -3332,8 +3345,10 @@
             Object.keys(pendingRequest).forEach(function(sid) {
                 var req = pendingRequest[sid];
                 if (req && req.ts != null && (now - req.ts) > PENDING_MAX_AGE_MS) {
+                    var staleClientMsgId = req.clientMsgId || clientMsgIdByStream[sid];
                     delete pendingRequest[sid];
-                    delete pendingDeduct[sid];
+                    delete clientMsgIdByStream[sid];
+                    if (staleClientMsgId) delete pendingDeduct[staleClientMsgId];
                 }
             });
         }
@@ -3370,19 +3385,22 @@
                     AndroidInterface.stopGeneration && AndroidInterface.stopGeneration();
                     delete chunkBufferByStream[streamId];
                     delete lastFullBufferByStream[streamId];
+                    var oldClientMsgId = clientMsgIdByStream[streamId];
                     delete pendingRequest[streamId];
-                    delete pendingDeduct[streamId];
+                    delete clientMsgIdByStream[streamId];
                     contentDiv.innerHTML = '';
                     var newStreamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                     msg.dataset.streamId = newStreamId;
                     msg.classList.remove('message-interrupted');
                     var urls = data.imageUrls && data.imageUrls.slice ? data.imageUrls.slice() : (data.imageUrls || []);
-                    pendingRequest[newStreamId] = { text: data.text, imageUrls: urls, ts: Date.now() };
-                    pendingDeduct[newStreamId] = (urls.length > 0 ? 1 : 0);
-                    lastSent = { text: data.text, imageUrls: urls, streamId: newStreamId };
+                    var retryClientMsgId = data.clientMsgId || oldClientMsgId || generateClientMsgId();
+                    pendingRequest[newStreamId] = { text: data.text, imageUrls: urls, clientMsgId: retryClientMsgId, ts: Date.now() };
+                    clientMsgIdByStream[newStreamId] = retryClientMsgId;
+                    pendingDeduct[retryClientMsgId] = (urls.length > 0 ? 1 : 0);
+                    lastSent = { text: data.text, imageUrls: urls, streamId: newStreamId, clientMsgId: retryClientMsgId };
                     isGenerating = true;
                     updateInputMode();
-                    sendToAndroid(data.text, urls, newStreamId, '');
+                    sendToAndroid(data.text, urls, newStreamId, retryClientMsgId);
                     startWatchdog(newStreamId);
                 };
                 contentDiv.appendChild(retryBtn);
@@ -3466,17 +3484,19 @@
         };
 
         // 收到完成通知后：同一 streamId 只扣一次（deducted 防重）；再取 buffer 全文、打字机/直出、清理 pending、clear Watchdog
-        window.onCompleteReceived = function(streamId) {
+        window.onCompleteReceived = function(streamId, clientMsgId) {
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
-            if (deducted[streamId]) return;
+            var dedupeKey = clientMsgId || clientMsgIdByStream[streamId] || streamId;
+            if (deducted[dedupeKey]) return;
             clearWatchdog(streamId);
-            var imgUploadCount = (pendingDeduct[streamId] != null ? pendingDeduct[streamId] : 0);
+            var imgUploadCount = (pendingDeduct[dedupeKey] != null ? pendingDeduct[dedupeKey] : 0);
             delete pendingRequest[streamId];
-            delete pendingDeduct[streamId];
+            delete clientMsgIdByStream[streamId];
+            delete pendingDeduct[dedupeKey];
             incrementUsage(1, imgUploadCount);
-            deducted[streamId] = true;
-            setTimeout(function() { delete deducted[streamId]; }, DEDUCTED_TTL_MS);
+            deducted[dedupeKey] = true;
+            setTimeout(function() { delete deducted[dedupeKey]; }, DEDUCTED_TTL_MS);
             refreshQuotaUI();
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
@@ -3676,8 +3696,10 @@
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
             clearWatchdog(streamId);
+            var interruptedClientMsgId = clientMsgIdByStream[streamId];
             delete pendingRequest[streamId];
-            delete pendingDeduct[streamId];
+            delete clientMsgIdByStream[streamId];
+            if (interruptedClientMsgId) delete pendingDeduct[interruptedClientMsgId];
             if (typewriterState.streamId === streamId) stopTypewriter();
             isGenerating = false;
             updateInputMode();

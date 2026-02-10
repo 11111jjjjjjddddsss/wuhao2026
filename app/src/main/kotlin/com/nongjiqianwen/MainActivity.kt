@@ -44,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private val pendingUserByStreamId = mutableMapOf<String, String>()
     /** A/B 层：streamId -> 本轮 assistant 内容累积（完整轮次时用于 addRound） */
     private val pendingAssistantByStreamId = mutableMapOf<String, StringBuilder>()
+    private val clientMsgIdByStreamId = mutableMapOf<String, String>()
 
     /** 后台断流无感补全：待补全时非 null；3 秒节流用 lastFailAt */
     private data class ResumeState(
@@ -286,6 +287,11 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?) {
+            sendMessage(text, imageUrlsJson, streamId, model, null)
+        }
+
+        @JavascriptInterface
+        fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?, clientMsgId: String?) {
             runOnUiThread {
                 // 单飞：不挡连点；连点 = 取消旧流再开新流，getReply 内 cancelCurrentRequest
 
@@ -322,6 +328,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val sid = streamId?.takeIf { it.isNotBlank() } ?: "stream_${System.currentTimeMillis()}"
+                val cid = clientMsgId?.takeIf { it.isNotBlank() } ?: sid
                 // 发送前断网拦截：无网不转圈，直接在该条 assistant 显示「当前无网络，未发送。」+ 重试
                 if (!isNetworkAvailable()) {
                     val esc = escapeJs(sid)
@@ -329,6 +336,7 @@ class MainActivity : AppCompatActivity() {
                     webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
                     return@runOnUiThread
                 }
+                clientMsgIdByStreamId[sid] = cid
                 currentStreamId = sid
                 isRequesting = true
                 sendToModel(text, imageUrlList, sid, model?.takeIf { it.isNotBlank() })
@@ -497,7 +505,8 @@ class MainActivity : AppCompatActivity() {
                         ABLayerManager.onRoundComplete(userMsg, assistantMsg)
                     }
                     val esc = escapeJs(streamId)
-                    webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
+                    val escClientMsgId = escapeJs(clientMsgIdByStreamId.remove(streamId) ?: streamId)
+                    webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
                 }
             }
         }
@@ -608,6 +617,7 @@ class MainActivity : AppCompatActivity() {
         overflowed.forEach { streamId ->
             pendingUserByStreamId.remove(streamId)
             pendingAssistantByStreamId.remove(streamId)
+            clientMsgIdByStreamId.remove(streamId)
             val esc = escapeJs(streamId)
             webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', 'cache_overflow');", null)
         }
@@ -632,7 +642,8 @@ class MainActivity : AppCompatActivity() {
                             ABLayerManager.onRoundComplete(userMsg, assistantMsg)
                         }
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
-                        webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc');", null)
+                        val escClientMsgId = escapeJs(clientMsgIdByStreamId.remove(streamId) ?: streamId)
+                        webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
                     }
                     "interrupted" -> {
                         pendingUserByStreamId.remove(streamId)
