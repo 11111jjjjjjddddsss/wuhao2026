@@ -291,7 +291,7 @@
         }
         .menu-card.menu-card-danger {
             color: #D64A3A;
-            background: transparent;
+            background: #ECECEE;
             border: 0;
         }
         .menu-card.is-hidden {
@@ -625,39 +625,51 @@
             --border: rgba(0,0,0,.08);
             --shadow: 0 8px 30px rgba(0,0,0,.12);
             --radius: 16px;
-            --drawer-bg: #F7F7F8;
+            --drawer-bg: #F6F6F6;
             --drawer-card: #FFFFFF;
             --drawer-text: #111111;
             --drawer-muted: #8E8E93;
             --drawer-divider: rgba(0,0,0,.06);
         }
+        .drawer-content {
+            padding: 16px 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
         #drawer {
             background: var(--drawer-bg);
-            box-shadow: 8px 0 30px rgba(0,0,0,.10);
-            border-right: 1px solid var(--border);
+            box-shadow: 0 2px 10px rgba(0,0,0,.05);
+            border-right: 0;
             border-radius: 0;
         }
         .drawer-menu-group {
-            background: var(--drawer-card);
-            border-color: var(--drawer-divider);
-        }
-        .menu-card {
             background: transparent;
             border: 0;
             border-radius: 0;
+            box-shadow: none;
+            overflow: visible;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .menu-card {
+            background: #ECECEE;
+            border: 0;
+            border-radius: 16px;
             margin-bottom: 0;
             min-height: 58px;
             padding: 16px;
             box-shadow: none;
             transition: background 120ms ease, transform 120ms ease;
             font-size: 16px;
-            font-weight: 600;
+            font-weight: 400;
             color: var(--drawer-text);
         }
-        .menu-card:hover { background: transparent; }
+        .menu-card:hover { background: #ECECEE; }
         .menu-card:active {
-            transform: scale(0.996);
-            background: rgba(0,0,0,.04);
+            transform: scale(0.997);
+            background: #E5E5E7;
         }
         .menu-card .menu-card-right {
             font-size: 13px;
@@ -669,11 +681,12 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .drawer-menu-group .menu-card + .menu-card::before {
-            background: var(--drawer-divider);
-        }
+        .drawer-menu-group .menu-card + .menu-card::before { display: none; }
         .menu-card .menu-arrow {
             display: none !important;
+        }
+        .menu-card.menu-card-danger {
+            color: #D14B3A;
         }
         #drawer-mask {
             background: rgba(0,0,0,.28);
