@@ -678,7 +678,7 @@ object QwenClient {
                 return content
             }
         } catch (e: Exception) {
-            // Release 节流：60s 内只打一条简短错误，避免 A>=24 每轮失败时刷屏
+            // Release 节流：60s 内只打一条简短错误，避免 A>=30 每轮失败时刷屏
             val now = System.currentTimeMillis()
             if (BuildConfig.DEBUG) {
                 Log.e(TAG, "B提取异常，返回空字符串", e)

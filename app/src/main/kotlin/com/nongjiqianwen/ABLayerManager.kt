@@ -5,14 +5,14 @@ import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * A/B 层状态机：A 层累计完整轮次，达 24 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
+ * A/B 层状态机：A 层累计完整轮次，达 30 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
  * 两条线分离：USE_BACKEND_AB 时 A/B 真相在后端，仅通过 GET snapshot / append-a / update-b 同步。
  */
 object ABLayerManager {
     private const val TAG = "ABLayerManager"
     private const val PREFS_NAME = "ab_layer"
     private const val KEY_B_SUMMARY_PREFIX = "b_summary_"
-    private const val A_MIN_ROUNDS = 24
+    private const val A_MIN_ROUNDS = 30
     private const val B_SUMMARY_MAX_LENGTH = 600
 
     private var appContext: Context? = null
@@ -69,7 +69,7 @@ object ABLayerManager {
 
     /**
      * 完整轮次完成时调用（仅 done=true/onComplete；中断不写 A、不扣费）。
-     * 后端模式：先 POST append-a，成功则加入 serverARoundsCache，若 A>=24 再尝试 B 提取 → update-b 成功才清 A。
+     * 后端模式：先 POST append-a，成功则加入 serverARoundsCache，若 A>=30 再尝试 B 提取 → update-b 成功才清 A。
      */
     fun onRoundComplete(userMessage: String, assistantMessage: String) {
         val sessionId = IdManager.getSessionId()
