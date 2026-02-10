@@ -2041,6 +2041,20 @@
         var toastEl = document.getElementById('toast');
         var HELP_FEEDBACK_URL = 'https://t0zamvo8k09.feishu.cn/share/base/form/shrcn9AWNObwhAUnHxVzldd9mwh';
         function openLocalPage(path) {
+            if (/^https?:\/\//i.test(path)) {
+                try {
+                    if (window.AndroidInterface && typeof window.AndroidInterface.openUrl === 'function') {
+                        window.AndroidInterface.openUrl(path);
+                        return;
+                    }
+                } catch (e) {}
+                try {
+                    var popup = window.open(path, '_blank');
+                    if (popup) return;
+                } catch (e2) {}
+                window.location.href = path;
+                return;
+            }
             window.location.href = path;
         }
         var ENABLE_ANON_LOGIN = true;
