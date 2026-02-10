@@ -1903,7 +1903,7 @@
                     <div class="input-area-inner">
                         <div class="voice-input-hint" id="voiceInputHint">按住说话</div>
                         <div class="text-placeholder" id="textPlaceholder"></div>
-                        <textarea id="textInput" class="text-input" placeholder="" rows="1" maxlength="2000"></textarea>
+                        <textarea id="textInput" class="text-input" placeholder="" rows="1" maxlength="6000"></textarea>
                         <div class="voice-hold-overlay" id="voiceHoldOverlay" aria-label="按住说话"></div>
                     </div>
                     <button type="button" class="btn-mic-or-keyboard" id="btnMicOrKeyboard" title="语音/键盘">
@@ -1973,6 +1973,7 @@
     <script>
         const MAX_ROUNDS = 30;
         const MAX_MESSAGES = MAX_ROUNDS * 2;
+        const MAX_TEXT_LEN = 6000;
         const messagesWrapper = document.getElementById('messagesWrapper');
         const messagesContainer = document.getElementById('messagesContainer');
         const emptyState = document.getElementById('emptyState');
@@ -2933,6 +2934,16 @@
         }
         const SEND_DEBOUNCE_MS = 300;
         let lastSendTriggeredAt = 0;
+        let wasTextTooLong = false;
+
+        function checkTextTooLongAndToastOnEdge() {
+            const tooLong = (textInput.value || '').length > MAX_TEXT_LEN;
+            if (tooLong && !wasTextTooLong) {
+                showToastOncePerDay('text_too_long', '字数超限（最多6000字）');
+            }
+            wasTextTooLong = tooLong;
+            return tooLong;
+        }
 
         // 自动调整文本域高度（最多 5 行视觉）
         textInput.addEventListener('input', function() {
@@ -2944,6 +2955,7 @@
         /** C. 4 态状态机：更新右侧按钮 Mic / Send / Stop 显示与禁用；图片=必须配文字，有图无字时 placeholder 提示 */
         function updateInputMode() {
             const hasText = textInput.value.trim().length > 0;
+            const isTextTooLong = checkTextTooLongAndToastOnEdge();
             const voiceOpen = voicePanel.classList.contains('open');
             const inVoiceMode = inputContainer.classList.contains('voice-mode');
             const hasImages = imageState.size > 0;
@@ -2990,6 +3002,7 @@
                         }
                     }
                 }
+                if (isTextTooLong) sendDisabled = true;
                 btnSend.disabled = sendDisabled;
             } else {
                 inputMode = 'idle';
@@ -3001,6 +3014,7 @@
             }
 
             if (hasAnyImageUploadingOrFailed && !btnSend.classList.contains('btn-hidden')) btnSend.disabled = true;
+            if (isTextTooLong && !btnSend.classList.contains('btn-hidden')) btnSend.disabled = true;
             if (textPlaceholder) {
                 textPlaceholder.textContent = textInput.placeholder || '';
                 textPlaceholder.style.display = (!hasText && !!textInput.placeholder) ? 'block' : 'none';
@@ -3295,6 +3309,7 @@
         function sendMessage() {
             if (btnSend.disabled) return;
             if (isGenerating) return;
+            if (checkTextTooLongAndToastOnEdge()) return;
             var now = Date.now();
             if ((now - lastSendTriggeredAt) < SEND_DEBOUNCE_MS) return;
             lastSendTriggeredAt = now;
