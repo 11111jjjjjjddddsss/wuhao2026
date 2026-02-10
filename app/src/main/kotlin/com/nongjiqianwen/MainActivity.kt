@@ -101,10 +101,20 @@ class MainActivity : AppCompatActivity() {
         if (clientMsgIdByStreamId.size <= CLIENT_MSG_ID_CACHE_MAX) return
         val removeCount = (clientMsgIdByStreamId.size - CLIENT_MSG_ID_CACHE_TRIM_TO).coerceAtLeast(0)
         if (removeCount <= 0) return
+        val protectedKeys = mutableSetOf<String>()
+        currentStreamId?.takeIf { it.isNotBlank() }?.let { protectedKeys.add(it) }
+        protectedKeys.addAll(pendingUserByStreamId.keys)
+        protectedKeys.addAll(pendingAssistantByStreamId.keys)
+        synchronized(bufferedEventsByStreamId) {
+            protectedKeys.addAll(bufferedEventsByStreamId.keys)
+        }
         val staleKeys = clientMsgIdUpdatedAtByStreamId.entries
+            .asSequence()
+            .filter { (key, _) -> key !in protectedKeys }
             .sortedBy { it.value }
             .take(removeCount)
             .map { it.key }
+            .toList()
         staleKeys.forEach { key ->
             clientMsgIdByStreamId.remove(key)
             clientMsgIdUpdatedAtByStreamId.remove(key)
@@ -546,7 +556,7 @@ class MainActivity : AppCompatActivity() {
                         ABLayerManager.onRoundComplete(userMsg, assistantMsg)
                     }
                     val esc = escapeJs(streamId)
-                    val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: streamId)
+                    val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: "")
                     webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
                     markClientMsgIdCompleted(streamId)
                 }
@@ -685,7 +695,7 @@ class MainActivity : AppCompatActivity() {
                             ABLayerManager.onRoundComplete(userMsg, assistantMsg)
                         }
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
-                        val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: streamId)
+                        val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: "")
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
                         markClientMsgIdCompleted(streamId)
                     }

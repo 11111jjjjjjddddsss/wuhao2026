@@ -3619,12 +3619,16 @@
         window.onCompleteReceived = function(streamId, clientMsgId) {
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
-            var dedupeKey = clientMsgId || clientMsgIdByStream[streamId];
+            var dedupeKey = ((clientMsgId == null ? '' : String(clientMsgId))).trim();
             clearWatchdog(streamId);
             var shouldDeduct = !!dedupeKey && !deducted[dedupeKey];
             var imgUploadCount = (dedupeKey && pendingDeduct[dedupeKey] != null ? pendingDeduct[dedupeKey] : 0);
+            var mappedClientMsgId = clientMsgIdByStream[streamId];
             delete pendingRequest[streamId];
             delete clientMsgIdByStream[streamId];
+            if (!dedupeKey && mappedClientMsgId) {
+                delete pendingDeduct[mappedClientMsgId];
+            }
             if (shouldDeduct) {
                 delete pendingDeduct[dedupeKey];
                 incrementUsage(1, imgUploadCount);
