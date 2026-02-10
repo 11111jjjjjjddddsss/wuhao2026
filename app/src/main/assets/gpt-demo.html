@@ -409,21 +409,25 @@
         .card-top {
             display: flex;
             align-items: center;
-            justify-content: space-between;
             gap: 10px;
             padding-right: 96px;
             /* 兜底：系统字体放大也不挤 */
         }
         .card-name {
+            flex: 1;
+            min-width: 0;
             font-size: 16px;
             font-weight: 900;
             color: var(--text);
         }
         .card-price {
+            flex: 0 0 96px;
+            text-align: right;
             font-size: 16px;
             font-weight: 900;
             color: var(--text);
             white-space: nowrap;
+            font-variant-numeric: tabular-nums;
         }
         .card-badge {
             position: absolute;
