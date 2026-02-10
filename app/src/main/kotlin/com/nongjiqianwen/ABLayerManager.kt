@@ -119,7 +119,8 @@ object ABLayerManager {
                     if (ok) {
                         synchronized(serverLock) {
                             serverBSummary = normalizedSummary
-                            serverARoundsCache.clear()
+                            val removeCount = aRoundsSnapshot.size.coerceAtMost(serverARoundsCache.size)
+                            repeat(removeCount) { serverARoundsCache.removeAt(0) }
                         }
                         if (BuildConfig.DEBUG) Log.d(TAG, "updateB ok session=$sessionId b_len=${normalizedSummary.length} a_cleared")
                     }
@@ -146,7 +147,13 @@ object ABLayerManager {
                 val normalizedSummary = normalizeBSummaryForStore(newSummary) ?: return@Thread
                 val committed = prefs?.edit()?.putString(keyB, normalizedSummary)?.commit() ?: false
                 if (committed) {
-                    synchronized(aLock) { aRoundsBySession[sessionId]?.clear() }
+                    synchronized(aLock) {
+                        val list = aRoundsBySession[sessionId]
+                        if (list != null) {
+                            val removeCount = aRoundsSnapshot.size.coerceAtMost(list.size)
+                            repeat(removeCount) { list.removeAt(0) }
+                        }
+                    }
                     if (BuildConfig.DEBUG) Log.d(TAG, "B写入成功(session=$sessionId) 已清空A")
                 }
             } catch (e: Exception) {
