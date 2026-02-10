@@ -2949,13 +2949,14 @@
         textInput.addEventListener('input', function() {
             this.style.height = 'auto';
             this.style.height = Math.min(this.scrollHeight, 110) + 'px';
+            checkTextTooLongAndToastOnEdge();
             updateInputMode();
         });
 
         /** C. 4 态状态机：更新右侧按钮 Mic / Send / Stop 显示与禁用；图片=必须配文字，有图无字时 placeholder 提示 */
         function updateInputMode() {
             const hasText = textInput.value.trim().length > 0;
-            const isTextTooLong = checkTextTooLongAndToastOnEdge();
+            const isTextTooLong = (textInput.value || '').length > MAX_TEXT_LEN;
             const voiceOpen = voicePanel.classList.contains('open');
             const inVoiceMode = inputContainer.classList.contains('voice-mode');
             const hasImages = imageState.size > 0;
