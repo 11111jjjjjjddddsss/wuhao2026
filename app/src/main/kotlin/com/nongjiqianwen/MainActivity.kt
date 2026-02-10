@@ -505,7 +505,7 @@ class MainActivity : AppCompatActivity() {
                         ABLayerManager.onRoundComplete(userMsg, assistantMsg)
                     }
                     val esc = escapeJs(streamId)
-                    val escClientMsgId = escapeJs(clientMsgIdByStreamId.remove(streamId) ?: streamId)
+                    val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: streamId)
                     webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
                 }
             }
@@ -515,6 +515,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 pendingUserByStreamId.remove(streamId)
                 pendingAssistantByStreamId.remove(streamId)
+                clientMsgIdByStreamId.remove(streamId)
                 if (streamId == currentStreamId) {
                     isRequesting = false
                     currentStreamId = null
@@ -642,11 +643,12 @@ class MainActivity : AppCompatActivity() {
                             ABLayerManager.onRoundComplete(userMsg, assistantMsg)
                         }
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
-                        val escClientMsgId = escapeJs(clientMsgIdByStreamId.remove(streamId) ?: streamId)
+                        val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: streamId)
                         webView.evaluateJavascript("window.onCompleteReceived && window.onCompleteReceived('$esc', '$escClientMsgId');", null)
                     }
                     "interrupted" -> {
                         pendingUserByStreamId.remove(streamId)
+                        clientMsgIdByStreamId.remove(streamId)
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escReason = escapeJs(data ?: "")
                         webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)

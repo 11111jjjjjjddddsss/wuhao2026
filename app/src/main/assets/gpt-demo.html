@@ -3487,17 +3487,19 @@
         window.onCompleteReceived = function(streamId, clientMsgId) {
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
-            var dedupeKey = clientMsgId || clientMsgIdByStream[streamId] || streamId;
-            if (deducted[dedupeKey]) return;
+            var dedupeKey = clientMsgId || clientMsgIdByStream[streamId];
+            if (dedupeKey && deducted[dedupeKey]) return;
             clearWatchdog(streamId);
-            var imgUploadCount = (pendingDeduct[dedupeKey] != null ? pendingDeduct[dedupeKey] : 0);
+            var imgUploadCount = (dedupeKey && pendingDeduct[dedupeKey] != null ? pendingDeduct[dedupeKey] : 0);
             delete pendingRequest[streamId];
             delete clientMsgIdByStream[streamId];
-            delete pendingDeduct[dedupeKey];
-            incrementUsage(1, imgUploadCount);
-            deducted[dedupeKey] = true;
-            setTimeout(function() { delete deducted[dedupeKey]; }, DEDUCTED_TTL_MS);
-            refreshQuotaUI();
+            if (dedupeKey) {
+                delete pendingDeduct[dedupeKey];
+                incrementUsage(1, imgUploadCount);
+                deducted[dedupeKey] = true;
+                setTimeout(function() { delete deducted[dedupeKey]; }, DEDUCTED_TTL_MS);
+                refreshQuotaUI();
+            }
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
             if (!fullText) fullText = (lastFullBufferByStream[streamId] || '');
