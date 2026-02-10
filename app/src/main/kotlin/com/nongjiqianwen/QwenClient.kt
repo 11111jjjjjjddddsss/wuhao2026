@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -46,6 +47,7 @@ object QwenClient {
     private val currentCall = AtomicReference<Call?>(null)
     private val currentBochaCall = AtomicReference<Call?>(null)
     private val currentRequestId = AtomicReference<String?>(null)
+    private val clientMsgIdByStreamId = ConcurrentHashMap<String, String>()
     private val canceledFlag = AtomicBoolean(false)
     private val streamingRunnableRef = AtomicReference<Runnable?>(null)
     private val gson = Gson()
@@ -54,6 +56,20 @@ object QwenClient {
     private val modelFlash = "qwen3-vl-flash"
     private val modelPlus = "qwen3-vl-plus"
     private val handler = Handler(Looper.getMainLooper())
+
+    fun setClientMsgIdForStream(streamId: String, clientMsgId: String) {
+        if (streamId.isBlank() || clientMsgId.isBlank()) return
+        clientMsgIdByStreamId[streamId] = clientMsgId
+    }
+
+    fun clearClientMsgIdForStream(streamId: String) {
+        if (streamId.isBlank()) return
+        clientMsgIdByStreamId.remove(streamId)
+    }
+
+    private fun resolveClientMsgId(streamId: String, requestId: String): String {
+        return clientMsgIdByStreamId[streamId]?.takeIf { it.isNotBlank() } ?: requestId
+    }
 
     /** Flash 与 PLUS 共用同一份 tools schema（会员路由一致性） */
     private fun buildWebSearchTools(): JsonArray {
@@ -236,6 +252,7 @@ object QwenClient {
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         val model = if (chatModel == "plus") modelPlus else modelFlash
+        val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
         val startMs = System.currentTimeMillis()
         if (BuildConfig.DEBUG) {
             Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId model=$model 开始")
@@ -290,7 +307,7 @@ object QwenClient {
                     .addHeader("X-User-Id", userId)
                     .addHeader("X-Session-Id", sessionId)
                     .addHeader("X-Request-Id", requestId)
-                    .addHeader("X-Client-Msg-Id", requestId)
+                    .addHeader("X-Client-Msg-Id", effectiveClientMsgId)
                     .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
                     .build()
                 call = client.newCall(request1)
@@ -326,7 +343,7 @@ object QwenClient {
                             .addHeader("X-User-Id", userId)
                             .addHeader("X-Session-Id", sessionId)
                             .addHeader("X-Request-Id", requestId)
-                            .addHeader("X-Client-Msg-Id", requestId)
+                            .addHeader("X-Client-Msg-Id", effectiveClientMsgId)
                             .post(bodyRetry.toString().toRequestBody("application/json".toMediaType()))
                             .build()
                         val callRetry = client.newCall(reqRetry)
@@ -381,7 +398,7 @@ object QwenClient {
                 val toolCalls = message1.getAsJsonArray("tool_calls")?.takeIf { it.size() > 0 }
 
                 if (useTools && toolCalls != null) {
-                    val queries = mutableListOf<String>()
+                    var selectedQuery: String? = null
                     for (i in 0 until toolCalls.size()) {
                         val tc = toolCalls.get(i).asJsonObject
                         val fn = tc.getAsJsonObject("function") ?: continue
@@ -394,9 +411,12 @@ object QwenClient {
                             else -> { if (BuildConfig.DEBUG) Log.d(TAG, "tool_calls arguments unsupported type"); continue }
                         }
                         val q = argsObj.get("query")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: continue
-                        if (q.length >= 2) queries.add(q)
+                        if (q.length >= 2) {
+                            selectedQuery = q
+                            break
+                        }
                     }
-                    if (queries.isEmpty()) {
+                    if (selectedQuery == null) {
                         val contentFirst = message1.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
                         if (contentFirst.isNotBlank()) {
                             if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true parsed_queries_count=0 action=SKIP_TOOL_CALL show_tool_block=false cancelled=false")
@@ -418,7 +438,7 @@ object QwenClient {
                         }
                         val reqFb = Request.Builder().url(apiUrl)
                             .addHeader("Authorization", "Bearer $apiKey").addHeader("Content-Type", "application/json").addHeader("Accept", "application/json")
-                            .addHeader("X-User-Id", userId).addHeader("X-Session-Id", sessionId).addHeader("X-Request-Id", requestId).addHeader("X-Client-Msg-Id", requestId)
+                            .addHeader("X-User-Id", userId).addHeader("X-Session-Id", sessionId).addHeader("X-Request-Id", requestId).addHeader("X-Client-Msg-Id", effectiveClientMsgId)
                             .post(bodyFb.toString().toRequestBody("application/json".toMediaType())).build()
                         val callFb = client.newCall(reqFb)
                         currentCall.set(callFb)
@@ -453,7 +473,7 @@ object QwenClient {
                     phase = 1
                     currentBochaCall.set(null)
                     val bochaStartMs = System.currentTimeMillis()
-                    val results = if (queries.isEmpty()) emptyList() else queries.map { q -> BochaClient.webSearch(q, currentBochaCall) }
+                    val results = selectedQuery?.let { listOf(BochaClient.webSearch(it, currentBochaCall)) } ?: emptyList()
                     currentBochaCall.set(null)
                     bochaMs = System.currentTimeMillis() - bochaStartMs
                     val successTexts = results.filter { it.first && !it.second.isNullOrBlank() }.map { it.second!! }
@@ -480,7 +500,7 @@ object QwenClient {
                         .addHeader("X-User-Id", userId)
                         .addHeader("X-Session-Id", sessionId)
                         .addHeader("X-Request-Id", requestId)
-                        .addHeader("X-Client-Msg-Id", requestId)
+                        .addHeader("X-Client-Msg-Id", effectiveClientMsgId)
                         .post(body2.toString().toRequestBody("application/json".toMediaType()))
                         .build()
                     phase = 2

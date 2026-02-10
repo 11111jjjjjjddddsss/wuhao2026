@@ -337,6 +337,7 @@ class MainActivity : AppCompatActivity() {
                     return@runOnUiThread
                 }
                 clientMsgIdByStreamId[sid] = cid
+                QwenClient.setClientMsgIdForStream(sid, cid)
                 currentStreamId = sid
                 isRequesting = true
                 sendToModel(text, imageUrlList, sid, model?.takeIf { it.isNotBlank() })
@@ -516,6 +517,7 @@ class MainActivity : AppCompatActivity() {
                 pendingUserByStreamId.remove(streamId)
                 pendingAssistantByStreamId.remove(streamId)
                 clientMsgIdByStreamId.remove(streamId)
+                QwenClient.clearClientMsgIdForStream(streamId)
                 if (streamId == currentStreamId) {
                     isRequesting = false
                     currentStreamId = null
@@ -619,6 +621,7 @@ class MainActivity : AppCompatActivity() {
             pendingUserByStreamId.remove(streamId)
             pendingAssistantByStreamId.remove(streamId)
             clientMsgIdByStreamId.remove(streamId)
+            QwenClient.clearClientMsgIdForStream(streamId)
             val esc = escapeJs(streamId)
             webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', 'cache_overflow');", null)
         }
@@ -649,6 +652,7 @@ class MainActivity : AppCompatActivity() {
                     "interrupted" -> {
                         pendingUserByStreamId.remove(streamId)
                         clientMsgIdByStreamId.remove(streamId)
+                        QwenClient.clearClientMsgIdForStream(streamId)
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escReason = escapeJs(data ?: "")
                         webView.evaluateJavascript("window.onStreamInterrupted && window.onStreamInterrupted('$esc', '$escReason');", null)
