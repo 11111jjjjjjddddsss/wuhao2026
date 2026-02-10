@@ -73,7 +73,7 @@ object ABLayerManager {
      */
     fun onRoundComplete(userMessage: String, assistantMessage: String) {
         val sessionId = IdManager.getSessionId()
-        val userId = IdManager.getInstallId()
+        val userId = IdManager.getClientId()
         if (BuildConfig.USE_BACKEND_AB) {
             SessionApi.appendA(userId, sessionId, userMessage, assistantMessage) { ok ->
                 if (!ok) return@appendA

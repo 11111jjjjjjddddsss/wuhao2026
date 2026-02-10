@@ -23,7 +23,7 @@ object ModelService {
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         QwenClient.cancelCurrentRequest()
-        val userId = IdManager.getInstallId()
+        val userId = IdManager.getClientId()
         val sessionId = IdManager.getSessionId()
         val requestId = ApiConfig.nextRequestId()
         QwenClient.callApi(
@@ -54,7 +54,7 @@ object ModelService {
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         QwenClient.cancelCurrentRequest()
-        val userId = IdManager.getInstallId()
+        val userId = IdManager.getClientId()
         val sessionId = IdManager.getSessionId()
         val requestId = ApiConfig.nextRequestId()
         QwenClient.callApi(

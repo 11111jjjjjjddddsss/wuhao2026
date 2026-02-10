@@ -31,13 +31,32 @@ object SessionApi {
         return if (url.endsWith("/")) url.dropLast(1) else url
     }
 
+    private fun appendIdentityQuery(url: String, clientId: String): String {
+        val accountId = IdManager.getAccountId()
+        val cid = android.net.Uri.encode(clientId)
+        val aid = accountId?.let { android.net.Uri.encode(it) }
+        return if (aid.isNullOrBlank()) {
+            "$url&client_id=$cid"
+        } else {
+            "$url&client_id=$cid&account_id=$aid"
+        }
+    }
+
+    private fun identityBody(clientId: String): Map<String, String> {
+        val base = mutableMapOf("client_id" to clientId)
+        val accountId = IdManager.getAccountId()
+        if (!accountId.isNullOrBlank()) base["account_id"] = accountId
+        return base
+    }
+
     fun getEntitlement(userId: String, onResult: (String?) -> Unit) {
         val base = baseUrl()
         if (base.isEmpty()) {
             onResult(null)
             return
         }
-        val url = "$base/api/entitlement?user_id=${android.net.Uri.encode(userId)}"
+        val baseQuery = "$base/api/entitlement?user_id=${android.net.Uri.encode(userId)}"
+        val url = appendIdentityQuery(baseQuery, userId)
         val request = Request.Builder().url(url).get().build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -63,7 +82,8 @@ object SessionApi {
             onResult(null)
             return
         }
-        val url = "$base/api/session/snapshot?user_id=${android.net.Uri.encode(userId)}&session_id=${android.net.Uri.encode(sessionId)}"
+        val baseQuery = "$base/api/session/snapshot?user_id=${android.net.Uri.encode(userId)}&session_id=${android.net.Uri.encode(sessionId)}"
+        val url = appendIdentityQuery(baseQuery, userId)
         val request = Request.Builder().url(url).get().build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -102,12 +122,14 @@ object SessionApi {
             onResult(false)
             return
         }
-        val body = gson.toJson(mapOf(
+        val bodyMap = mutableMapOf(
             "user_id" to userId,
             "session_id" to sessionId,
             "user_message" to userMessage,
             "assistant_message" to assistantMessage
-        ))
+        )
+        bodyMap.putAll(identityBody(userId))
+        val body = gson.toJson(bodyMap)
         val request = Request.Builder()
             .url("$base/api/session/append-a")
             .post(body.toRequestBody("application/json".toMediaType()))
@@ -133,11 +155,13 @@ object SessionApi {
             onResult(false)
             return
         }
-        val body = gson.toJson(mapOf(
+        val bodyMap = mutableMapOf(
             "user_id" to userId,
             "session_id" to sessionId,
             "b_summary" to bSummary
-        ))
+        )
+        bodyMap.putAll(identityBody(userId))
+        val body = gson.toJson(bodyMap)
         val request = Request.Builder()
             .url("$base/api/session/update-b")
             .post(body.toRequestBody("application/json".toMediaType()))
