@@ -97,13 +97,7 @@
 
         /* A. 顶部 AppBar（背景透明，沿用 app-shell 底色） */
         .app-bar {
-            position: fixed;
-            top: 0;
-            left: calc((100vw - var(--shell-width)) / 2);
-            right: auto;
-            margin: 0;
-            width: var(--shell-width);
-            max-width: none;
+            position: relative;
             z-index: 120;
             flex-shrink: 0;
             height: 56px;
@@ -113,13 +107,32 @@
             justify-content: space-between;
             border-bottom: none;
             box-shadow: none;
-            background: rgba(246,246,246,0.06);
-            -webkit-backdrop-filter: saturate(170%) blur(22px);
-            backdrop-filter: saturate(170%) blur(22px);
-            transform: translateZ(0);
-            will-change: transform;
+            background: transparent !important;
         }
         .app-bar::after { display: none; }
+        .app-bar {
+            background: transparent !important;
+            border-bottom: none !important;
+            box-shadow: none !important;
+        }
+        .app-bar::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgba(246,246,246,0.18);
+            -webkit-backdrop-filter: saturate(170%) blur(22px);
+            backdrop-filter: saturate(170%) blur(22px);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .app-bar > * {
+            position: relative;
+            z-index: 1;
+        }
+        .app-bar::after {
+            display: none !important;
+            border: none !important;
+        }
         .app-bar-left {
             width: var(--btn-circle-size);
             height: var(--btn-circle-size);
@@ -178,14 +191,14 @@
         #drawer {
             position: fixed;
             top: 0;
-            left: 0;
-            width: 340px;
-            max-width: 360px;
+            left: calc((100vw - min(100vw, 430px)) / 2);
+            width: min(100vw, 430px);
+            max-width: none;
             height: 100%;
             background: #F7F7F8;
             box-shadow: 2px 0 12px rgba(0,0,0,0.12);
             z-index: 301;
-            transform: translateX(-100%);
+            transform: translateX(-200vw);
             transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
             display: flex;
             flex-direction: column;
@@ -211,8 +224,11 @@
         #drawer .menu-card:active {
             transform: scale(0.98);
         }
-        @media (max-width: 600px) {
-            #drawer { width: 80%; max-width: 360px; }
+        @media (orientation: landscape) {
+            #drawer {
+                left: calc((100vw - min(100vw, 520px)) / 2);
+                width: min(100vw, 520px);
+            }
         }
         #drawer.open {
             transform: translateX(0);
@@ -225,6 +241,33 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+        }
+        .drawer-back-row {
+            display: flex;
+            align-items: center;
+            min-height: 72px;
+        }
+        .drawer-back-btn {
+            width: 72px;
+            height: 72px;
+            border: 0;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #111;
+        }
+        .drawer-back-btn svg {
+            width: 30px;
+            height: 30px;
+            stroke: currentColor;
+            stroke-width: 2.6;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }
         .drawer-menu-group {
             background: #fff;
@@ -318,7 +361,10 @@
         .drawer-logout-strip { display: none; }
         #logoutConfirmMask {
             position: fixed;
-            inset: 0;
+            top: 0;
+            left: calc((100vw - min(100vw, 430px)) / 2);
+            width: min(100vw, 430px);
+            bottom: 0;
             background: rgba(0,0,0,.35);
             z-index: 920;
             opacity: 0;
@@ -333,8 +379,14 @@
             opacity: 1;
             visibility: visible;
         }
+        @media (orientation: landscape) {
+            #logoutConfirmMask {
+                left: calc((100vw - min(100vw, 520px)) / 2);
+                width: min(100vw, 520px);
+            }
+        }
         #logoutConfirmDialog {
-            width: min(320px, 86vw);
+            width: min(320px, calc(min(100vw, 430px) - 32px));
             background: #fff;
             border-radius: 16px;
             padding: 16px;
@@ -384,8 +436,8 @@
         #drawer-mask {
             position: fixed;
             top: 0;
-            left: 0;
-            width: 100%;
+            left: calc((100vw - min(100vw, 430px)) / 2);
+            width: min(100vw, 430px);
             height: 100%;
             background: rgba(0,0,0,0.35);
             cursor: pointer;
@@ -398,11 +450,20 @@
             pointer-events: auto;
             opacity: 1;
         }
+        @media (orientation: landscape) {
+            #drawer-mask {
+                left: calc((100vw - min(100vw, 520px)) / 2);
+                width: min(100vw, 520px);
+            }
+        }
 
         /* ========== 会员中心：一屏可见（默认无内部滚动条） ========== */
         #membership-modal-backdrop {
             position: fixed;
-            inset: 0;
+            top: 0;
+            left: calc((100vw - min(100vw, 430px)) / 2);
+            width: min(100vw, 430px);
+            bottom: 0;
             background: rgba(0,0,0,.35);
             z-index: 900;
             display: flex;
@@ -414,12 +475,18 @@
             transition: opacity .22s ease, visibility .22s ease;
             writing-mode: horizontal-tb;
         }
+        @media (orientation: landscape) {
+            #membership-modal-backdrop {
+                left: calc((100vw - min(100vw, 520px)) / 2);
+                width: min(100vw, 520px);
+            }
+        }
         #membership-modal-backdrop.open {
             opacity: 1;
             visibility: visible;
         }
         #membership-modal {
-            width: min(560px, calc(100vw - 24px));
+            width: min(560px, calc(min(100vw, 430px) - 24px));
             height: min(720px, calc(100vh - 24px));
             background: #fff;
             border-radius: 18px;
@@ -741,6 +808,7 @@
             padding: 16px;
             padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
             min-height: 100%;
+            overflow: visible;
             scrollbar-width: none;
             -ms-overflow-style: none;
         }
@@ -750,7 +818,7 @@
             position: absolute;
             left: 0;
             right: 0;
-            top: 56px;
+            top: 0;
             display: flex;
             flex-direction: column;
             align-items: flex-start;
@@ -966,7 +1034,20 @@
         .message-content.md-rendered { overflow-wrap: break-word; word-break: break-word; }
         .message-content.md-rendered a { word-break: break-all; }
         .message-content { line-height: 1.72; font-size: 16px; font-weight: 400; letter-spacing: 0.01em; text-align: left; }
-        .message.user .message-content { text-align: left; }
+        .message.user .message-content {
+            text-align: left;
+            background: #ffffff;
+            border: 0;
+            border-radius: 18px;
+            padding: 12px 14px;
+            box-shadow: none;
+        }
+        .message.assistant .message-content {
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+            box-shadow: none;
+        }
         .message-content p { margin: 0 0 12px; }
         .message-content p:last-child { margin-bottom: 0; }
         .message-content ul, .message-content ol { margin: 8px 0 12px 24px; }
@@ -1002,8 +1083,9 @@
 
         .copy-sheet-mask {
             position: fixed;
-            left: 0;
-            right: 0;
+            left: calc((100vw - min(100vw, 430px)) / 2);
+            right: auto;
+            width: min(100vw, 430px);
             top: 0;
             bottom: 0;
             z-index: 9998;
@@ -1013,17 +1095,29 @@
         .copy-sheet-mask.open { display: block; }
         .copy-sheet {
             position: fixed;
-            left: 0;
-            right: 0;
+            left: calc((100vw - min(100vw, 430px)) / 2);
+            right: auto;
             bottom: 0;
             z-index: 9999;
-            max-height: 55vh;
+            width: min(100vw, 430px);
+            --copy-sheet-max-h: min(64vh, 620px);
+            max-height: var(--copy-sheet-max-h);
             background: #fff;
             border-radius: 16px 16px 0 0;
             box-shadow: 0 -4px 24px rgba(0,0,0,0.12);
             transform: translateY(110%);
             transition: transform 0.25s ease;
             display: block;
+        }
+        @media (orientation: landscape) {
+            .copy-sheet-mask {
+                left: calc((100vw - min(100vw, 520px)) / 2);
+                width: min(100vw, 520px);
+            }
+            .copy-sheet {
+                left: calc((100vw - min(100vw, 520px)) / 2);
+                width: min(100vw, 520px);
+            }
         }
         .copy-sheet.open { transform: translateY(0); }
         .copy-sheet-handle {
@@ -1058,7 +1152,7 @@
             white-space: pre-wrap;
             font-size: 14px;
             line-height: 1.5;
-            max-height: calc(55vh - 120px);
+            max-height: calc(var(--copy-sheet-max-h) - 120px);
         }
         body.copy-ui-open { overflow: hidden; }
         .copy-sheet-body { -webkit-user-select: text; user-select: text; }
@@ -1944,6 +2038,7 @@
 
         /* P0：会员中心空白再收紧一点（只动间距/内边距，不改结构） */
         #membership-modal {
+            width: calc(min(100vw, 430px) - 24px) !important;
             padding: 12px !important;
             height: min(680px, calc(100vh - 32px)) !important;
             max-height: calc(100vh - 24px) !important;
@@ -1952,12 +2047,17 @@
             -webkit-overflow-scrolling: touch;
             overscroll-behavior: contain;
         }
+        @media (orientation: landscape) {
+            #membership-modal {
+                width: calc(min(100vw, 520px) - 24px) !important;
+            }
+        }
         #membership-modal .membership-header {
-            padding: 0 2px 6px !important;
+            padding: 0 56px 6px 2px !important;
         }
         #membership-modal .membership-sub {
             margin: 4px 0 6px !important;
-            padding: 0 2px !important;
+            padding: 0 56px 0 2px !important;
         }
         #membership-modal .membership-cards {
             padding-top: 6px !important;
@@ -2002,6 +2102,11 @@
     <div id="drawer-mask" aria-hidden="true"></div>
     <div id="drawer" aria-hidden="true">
         <div class="drawer-content">
+            <div class="drawer-back-row">
+                <button type="button" class="drawer-back-btn" id="drawerBackBtn" aria-label="返回">
+                    <svg viewBox="0 0 24 24"><path d="M19 12H7"/><path d="M12 7L7 12 12 17"/></svg>
+                </button>
+            </div>
             <div class="drawer-menu-group">
                 <div class="menu-card" data-menu="account-manage">
                     <span class="menu-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
@@ -2208,6 +2313,7 @@
         const plusSheetCamera = document.getElementById('plusSheetCamera');
         const drawer = document.getElementById('drawer');
         const drawerMask = document.getElementById('drawer-mask');
+        const drawerBackBtn = document.getElementById('drawerBackBtn');
         const logoutConfirmMask = document.getElementById('logoutConfirmMask');
         const logoutConfirmCancel = document.getElementById('logoutConfirmCancel');
         const logoutConfirmOk = document.getElementById('logoutConfirmOk');
@@ -2243,6 +2349,7 @@
         closeDrawer();
         appBarLeft.addEventListener('click', toggleDrawer);
         drawerMask.addEventListener('click', closeDrawer);
+        if (drawerBackBtn) drawerBackBtn.addEventListener('click', closeDrawer);
         function closeLogoutConfirm() {
             if (!logoutConfirmMask) return;
             logoutConfirmMask.classList.remove('open');
@@ -2275,7 +2382,7 @@
         var membershipModal = document.getElementById('membership-modal');
         var membershipCloseBtn = document.querySelector('[data-close-membership]');
         var toastEl = document.getElementById('toast');
-        var HELP_FEEDBACK_URL = 'https://t0zamvo8k09.feishu.cn/share/base/form/shrcn9AWNObwhAUnHxVzldd9mwh';
+        var HELP_FEEDBACK_URL = 'help.html';
         function openLocalPage(path) {
             if (/^https?:\/\//i.test(path)) {
                 try {

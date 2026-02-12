@@ -19,11 +19,22 @@
       color: var(--text);
       min-height: 100vh;
       min-height: 100svh;
+      display: flex;
+      justify-content: center;
     }
     .wrap {
-      max-width: 720px;
+      width: min(100vw, 430px);
+      max-width: 430px;
       margin: 0 auto;
       padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 20px);
+      min-height: 100vh;
+      min-height: 100svh;
+    }
+    @media (orientation: landscape) {
+      .wrap {
+        width: min(100vw, 520px);
+        max-width: 520px;
+      }
     }
     .topbar {
       display: flex;
