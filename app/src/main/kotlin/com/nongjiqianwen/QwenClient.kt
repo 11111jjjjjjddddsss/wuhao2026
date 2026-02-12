@@ -87,7 +87,7 @@ object QwenClient {
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     private val modelFlash = "qwen3-vl-flash"
-    private val modelPlus = "qwen3-vl-plus"
+    private const val EXPERT_THINKING_BUDGET = 1024
     private val handler = Handler(Looper.getMainLooper())
 
     fun setClientMsgIdForStream(streamId: String, clientMsgId: String) {
@@ -206,6 +206,21 @@ object QwenClient {
     }
 
     /** Flash 与 PLUS 共用同一份 tools schema（会员路由一致性） */
+    private fun appendThinkingExtraBody(body: JsonObject, isExpertThinking: Boolean) {
+        if (!isExpertThinking) return
+        body.add("extra_body", JsonObject().apply {
+            addProperty("enable_thinking", true)
+            addProperty("thinking_budget", EXPERT_THINKING_BUDGET)
+        })
+    }
+
+    private fun logThinkingRoute(route: String, isExpertThinking: Boolean) {
+        if (!BuildConfig.DEBUG) return
+        val tierText = if (isExpertThinking) "专家" else "非专家"
+        val budgetText = if (isExpertThinking) EXPERT_THINKING_BUDGET.toString() else "-"
+        Log.d(TAG, "thinking_route route=$route tier=$tierText model=$modelFlash thinking=$isExpertThinking budget=$budgetText")
+    }
+
     private fun buildWebSearchTools(): JsonArray {
         return JsonArray().apply {
             add(JsonObject().apply {
@@ -385,7 +400,8 @@ object QwenClient {
         onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null,
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
-        val model = if (chatModel == "plus") modelPlus else modelFlash
+        val isExpertThinking = (chatModel == "plus")
+        val model = modelFlash
         val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
         val startMs = System.currentTimeMillis()
         if (BuildConfig.DEBUG) {
@@ -431,7 +447,9 @@ object QwenClient {
                     addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                     add("messages", messagesFirst)
                     if (useTools) add("tools", buildWebSearchTools())
+                    appendThinkingExtraBody(this, isExpertThinking)
                 }
+                logThinkingRoute("main_request", isExpertThinking)
                 val request1 = Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
@@ -466,7 +484,9 @@ object QwenClient {
                             addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                             addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                             add("messages", messagesFirst)
+                            appendThinkingExtraBody(this, isExpertThinking)
                         }
+                        logThinkingRoute("tools_unsupported_retry", isExpertThinking)
                         val reqRetry = Request.Builder()
                             .url(apiUrl)
                             .addHeader("Authorization", "Bearer $apiKey")
@@ -568,7 +588,9 @@ object QwenClient {
                             addProperty("temperature", ModelParams.TEMPERATURE); addProperty("top_p", ModelParams.TOP_P)
                             addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY); addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                             add("messages", msgFb)
+                            appendThinkingExtraBody(this, isExpertThinking)
                         }
+                        logThinkingRoute("skip_tool_fallback", isExpertThinking)
                         val reqFb = Request.Builder().url(apiUrl)
                             .addHeader("Authorization", "Bearer $apiKey").addHeader("Content-Type", "application/json").addHeader("Accept", "application/json")
                             .addHeader("X-User-Id", userId).addHeader("X-Session-Id", sessionId).addHeader("X-Request-Id", requestId).addHeader("X-Client-Msg-Id", effectiveClientMsgId)
@@ -630,7 +652,9 @@ object QwenClient {
                         addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                         addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                         add("messages", messagesSecond)
+                        appendThinkingExtraBody(this, isExpertThinking)
                     }
+                    logThinkingRoute("tool_second_request", isExpertThinking)
                     val request2 = Request.Builder()
                         .url(apiUrl)
                         .addHeader("Authorization", "Bearer $apiKey")
