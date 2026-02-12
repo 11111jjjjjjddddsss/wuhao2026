@@ -3037,6 +3037,7 @@
         const clientMsgIdByStream = {};    // streamId -> client_msg_id，UI stream 与业务幂等键解耦
         const assistantMsgByStream = {};   // streamId -> assistant message element，减少高频 DOM 查询
         const deducted = {};               // client_msg_id -> true，同一 client_msg_id 只扣一次；24h 后清理
+        const previewTimerByStream = {};   // streamId -> setInterval id (preview fake stream)
         const DEDUCTED_TTL_MS = 24 * 60 * 60 * 1000;
         const PENDING_MAX_AGE_MS = 15 * 60 * 1000;  // P2b：pending 悬挂超 15 分钟自动清
 
@@ -3448,7 +3449,7 @@
             var now = Date.now();
             if ((now - lastSendTriggeredAt) < SEND_DEBOUNCE_MS) return;
             lastSendTriggeredAt = now;
-            if (!hasNativeAndroidSend) {
+            if (!hasNativeAndroidSend && false) {
                 showToastOncePerDay('preview_send', '预览模式无法发送');
                 return;
             }
@@ -3518,8 +3519,12 @@
             pendingDeduct[clientMsgId] = (imageUrls.length > 0 ? 1 : 0);
 
             // 直接发送，由模型自行决策是否需要联网搜索
-            sendToAndroid(text, imageUrls, streamId, clientMsgId);
-            startWatchdog(streamId);
+            if (!hasNativeAndroidSend) {
+                startPreviewMockResponse(streamId, text);
+            } else {
+                sendToAndroid(text, imageUrls, streamId, clientMsgId);
+                startWatchdog(streamId);
+            }
 
             // 清空输入和图片预览
             textInput.value = '';
@@ -3538,6 +3543,45 @@
             if (typeof AndroidInterface.sendMessage === 'function') {
                 AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model, clientMsgId || '');
             }
+        }
+
+        function buildPreviewMockReply(userText) {
+            var clean = (userText || '').replace(/\s+/g, ' ').trim();
+            var topic = clean ? ('你提到“' + clean.slice(0, 22) + '”') : '你当前的问题';
+            return [
+                '### 本地预览回复（动画联调）',
+                topic + '，下面这段是本地假流式文本，用于测试打字动画、段落间距和长文滚动表现。',
+                '先给一个简化判断：当前最重要的是先明确目标，再按小步验证推进。不要一次改太多参数，否则很难知道哪一步真正有效。',
+                '建议分三段执行：第一段先做基础观察，记录两到三个核心指标；第二段做小范围调整，观察24到48小时变化；第三段只放大已验证有效的动作，未验证的不动。',
+                '在记录维度上，可以固定时间点与观察角度，保证前后可比；在决策节奏上，建议“三天一小结、七天一复盘”，把主观感受转成可复核的数据。',
+                '如果后续你接入真实模型，这里会替换成正式回答。当前这条消息仅用于UI效果验证：包含标题、长段落、换行、以及连续阅读时的视觉稳定性。'
+            ].join('\n\n');
+        }
+
+        function startPreviewMockResponse(streamId, userText) {
+            if (!streamId) return;
+            if (previewTimerByStream[streamId]) {
+                clearInterval(previewTimerByStream[streamId]);
+                delete previewTimerByStream[streamId];
+            }
+            var full = buildPreviewMockReply(userText);
+            var index = 0;
+            previewTimerByStream[streamId] = setInterval(function() {
+                if (terminatedStreamIds[streamId] || !isGenerating) {
+                    clearInterval(previewTimerByStream[streamId]);
+                    delete previewTimerByStream[streamId];
+                    return;
+                }
+                var step = Math.max(3, Math.floor(Math.random() * 10));
+                var chunk = full.slice(index, index + step);
+                if (chunk) window.onChunkReceived && window.onChunkReceived(streamId, chunk);
+                index += step;
+                if (index >= full.length) {
+                    clearInterval(previewTimerByStream[streamId]);
+                    delete previewTimerByStream[streamId];
+                    window.onCompleteReceived && window.onCompleteReceived(streamId, '');
+                }
+            }, 28);
         }
 
         // 全局 Watchdog：65s 内该 streamId 未收到 onComplete/onInterrupted 则强制中断收尾（永不无限转圈）
@@ -4138,6 +4182,11 @@
         // C. Stop：只停前端（stopTypewriter + 状态）；stopGeneration 保留调用但不依赖其中断后端
         btnStop.addEventListener('click', function() {
             stopTypewriter();
+            Object.keys(previewTimerByStream).forEach(function(sid) {
+                clearInterval(previewTimerByStream[sid]);
+                delete previewTimerByStream[sid];
+                terminatedStreamIds[sid] = true;
+            });
             // 确保结束流式态：移除所有 assistant 的 .streaming，dot 只在「正在流式的那一条」显示
             if (messagesContainer) {
                 messagesContainer.querySelectorAll('.message.assistant.streaming').forEach(function(m) { m.classList.remove('streaming'); });
