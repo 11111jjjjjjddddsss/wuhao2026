@@ -113,9 +113,9 @@
             justify-content: space-between;
             border-bottom: none;
             box-shadow: none;
-            background: rgba(246,246,246,0.28);
-            -webkit-backdrop-filter: saturate(160%) blur(18px);
-            backdrop-filter: saturate(160%) blur(18px);
+            background: rgba(246,246,246,0.16);
+            -webkit-backdrop-filter: saturate(170%) blur(22px);
+            backdrop-filter: saturate(170%) blur(22px);
             transform: translateZ(0);
             will-change: transform;
         }
@@ -128,7 +128,7 @@
             height: 16px;
             pointer-events: none;
             background: linear-gradient(to bottom,
-                rgba(246,246,246,0.28) 0%,
+                rgba(246,246,246,0.18) 0%,
                 rgba(246,246,246,0.00) 100%);
         }
         .app-bar-left {
@@ -739,17 +739,7 @@
             padding-top: 56px;
         }
 
-        .messages-wrapper::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 56px;
-            background: linear-gradient(to bottom, rgba(246,246,246,0.96) 0%, rgba(246,246,246,0.82) 28%, rgba(246,246,246,0.46) 62%, rgba(246,246,246,0) 100%);
-            pointer-events: none;
-            z-index: 1;
-        }
+        .messages-wrapper::before { display: none; }
 
         .messages-wrapper::-webkit-scrollbar {
             width: 0;
