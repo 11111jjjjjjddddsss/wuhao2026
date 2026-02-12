@@ -3449,10 +3449,6 @@
             var now = Date.now();
             if ((now - lastSendTriggeredAt) < SEND_DEBOUNCE_MS) return;
             lastSendTriggeredAt = now;
-            if (!hasNativeAndroidSend && false) {
-                showToastOncePerDay('preview_send', '预览模式无法发送');
-                return;
-            }
 
             const text = textInput.value.trim();
             const hasImages = imageState.size > 0;
@@ -3519,6 +3515,7 @@
             pendingDeduct[clientMsgId] = (imageUrls.length > 0 ? 1 : 0);
 
             // 直接发送，由模型自行决策是否需要联网搜索
+            // hasNativeAndroidSend=false 代表浏览器/无桥环境，自动走本地 mock；否则走 Android 原生发送
             if (!hasNativeAndroidSend) {
                 startPreviewMockResponse(streamId, text);
             } else {
