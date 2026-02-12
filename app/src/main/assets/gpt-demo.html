@@ -34,6 +34,18 @@
             box-sizing: border-box;
         }
 
+        html,
+        body {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        html::-webkit-scrollbar,
+        body::-webkit-scrollbar {
+            width: 0;
+            height: 0;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             font-size: 16px;
@@ -705,6 +717,13 @@
             flex: 1;
             overflow-y: auto;
             position: relative;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        .messages-wrapper::-webkit-scrollbar {
+            width: 0;
+            height: 0;
         }
 
         .messages-container {
@@ -1402,11 +1421,11 @@
         }
 
         .messages-container::-webkit-scrollbar-track {
-            display: none;
+            background: transparent;
         }
 
         .messages-container::-webkit-scrollbar-thumb {
-            display: none;
+            background: transparent;
         }
 
         /* GPT 风格：回到底部居中圆形箭头（生成中且用户离开底部时显示） */
