@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -51,6 +52,8 @@ object QwenClient {
     // P0: search daily cap (5/day), silent degrade
     private const val SEARCH_USED_TODAY_KEY = "search_used_today"
     // P0: search daily cap (5/day), silent degrade
+    private const val SEARCH_STARTED_TODAY_KEY = "search_started_today"
+    // P0: search daily cap (5/day), silent degrade
     private const val SEARCH_TRIGGERED_CACHE_MAX = 2000
     @Volatile private var lastBExtractErrorLogMs = 0L
     private val client = OkHttpClient.Builder()
@@ -75,6 +78,10 @@ object QwenClient {
     private val lastSearchDateMem = AtomicReference("")
     // P0: search daily cap (5/day), silent degrade
     private val searchUsedTodayMem = AtomicInteger(0)
+    // P0: search daily cap (5/day), silent degrade
+    private val searchStartedTodayMem = AtomicInteger(0)
+    // P0: search daily cap (5/day), silent degrade
+    private val searchInFlightMem = AtomicInteger(0)
     private val canceledFlag = AtomicBoolean(false)
     private val streamingRunnableRef = AtomicReference<Runnable?>(null)
     private val gson = Gson()
@@ -95,7 +102,10 @@ object QwenClient {
     }
 
     private fun resolveClientMsgId(streamId: String, requestId: String): String {
-        return clientMsgIdByStreamId[streamId]?.takeIf { it.isNotBlank() } ?: requestId
+        if (requestId.isBlank()) {
+            // requestId intentionally ignored for search idempotency; keep signature stable.
+        }
+        return clientMsgIdByStreamId[streamId]?.takeIf { it.isNotBlank() } ?: ""
     }
 
     // P0: search daily cap (5/day), silent degrade
@@ -111,68 +121,88 @@ object QwenClient {
 
     // P0: search daily cap (5/day), silent degrade
     private fun currentDateKey(): String {
+        // Uses local device date; can be bypassed by manual clock change.
+        // Server-side date gating should replace this in production.
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
 
     // P0: search daily cap (5/day), silent degrade
-    private fun resetDailyIfNeededLocked() {
+    private fun getSearchPrefsLocked(): SharedPreferences? {
+        val ctx = getApplicationContextSafely()?.applicationContext ?: return null
+        return ctx.getSharedPreferences(SEARCH_PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    // P0: search daily cap (5/day), silent degrade
+    private fun resetDailyIfNeededLocked(prefs: SharedPreferences) {
         val today = currentDateKey()
-        val ctx = getApplicationContextSafely()
-        val prefs = ctx?.getSharedPreferences(SEARCH_PREFS_NAME, Context.MODE_PRIVATE)
-        val savedDate = prefs?.getString(SEARCH_USAGE_DATE_KEY, null)
+        val savedDate = prefs.getString(SEARCH_USAGE_DATE_KEY, null)
         if (savedDate == null) {
-            if (lastSearchDateMem.get() != today) {
-                lastSearchDateMem.set(today)
-                searchUsedTodayMem.set(0)
-            }
-            prefs?.edit()
-                ?.putString(SEARCH_USAGE_DATE_KEY, today)
-                ?.putInt(SEARCH_USED_TODAY_KEY, searchUsedTodayMem.get())
-                ?.apply()
+            lastSearchDateMem.set(today)
+            searchUsedTodayMem.set(0)
+            searchStartedTodayMem.set(0)
+            searchInFlightMem.set(0)
+            prefs.edit()
+                .putString(SEARCH_USAGE_DATE_KEY, today)
+                .putInt(SEARCH_USED_TODAY_KEY, 0)
+                .putInt(SEARCH_STARTED_TODAY_KEY, 0)
+                .apply()
             return
         }
         if (savedDate != today) {
-            prefs.edit().putString(SEARCH_USAGE_DATE_KEY, today).putInt(SEARCH_USED_TODAY_KEY, 0).apply()
+            prefs.edit()
+                .putString(SEARCH_USAGE_DATE_KEY, today)
+                .putInt(SEARCH_USED_TODAY_KEY, 0)
+                .putInt(SEARCH_STARTED_TODAY_KEY, 0)
+                .apply()
             lastSearchDateMem.set(today)
             searchUsedTodayMem.set(0)
+            searchStartedTodayMem.set(0)
+            searchInFlightMem.set(0)
             return
         }
         if (lastSearchDateMem.get() != today) {
             lastSearchDateMem.set(today)
             searchUsedTodayMem.set(prefs.getInt(SEARCH_USED_TODAY_KEY, 0))
+            searchStartedTodayMem.set(prefs.getInt(SEARCH_STARTED_TODAY_KEY, 0))
         }
     }
 
     // P0: search daily cap (5/day), silent degrade
-    private fun canSearchToday(): Boolean {
+    private fun tryStartSearchForClientMsgId(clientMsgId: String): Boolean {
+        val normalizedClientMsgId = clientMsgId.trim()
+        if (normalizedClientMsgId.isEmpty()) return false
         synchronized(searchUsageLock) {
-            resetDailyIfNeededLocked()
-            return searchUsedTodayMem.get() < SEARCH_DAILY_CAP
-        }
-    }
-
-    // P0: search daily cap (5/day), silent degrade
-    private fun incSearchUsedToday() {
-        synchronized(searchUsageLock) {
-            resetDailyIfNeededLocked()
-            val next = (searchUsedTodayMem.get() + 1).coerceAtMost(SEARCH_DAILY_CAP)
-            searchUsedTodayMem.set(next)
-            getApplicationContextSafely()
-                ?.getSharedPreferences(SEARCH_PREFS_NAME, Context.MODE_PRIVATE)
-                ?.edit()
-                ?.putString(SEARCH_USAGE_DATE_KEY, currentDateKey())
-                ?.putInt(SEARCH_USED_TODAY_KEY, next)
-                ?.apply()
-        }
-    }
-
-    // P0: search daily cap (5/day), silent degrade
-    private fun markSearchTriggeredForClientMsgId(clientMsgId: String): Boolean {
-        if (clientMsgId.isBlank()) return false
-        synchronized(searchTriggeredClientMsgIds) {
-            if (searchTriggeredClientMsgIds.containsKey(clientMsgId)) return false
-            searchTriggeredClientMsgIds[clientMsgId] = true
+            val prefs = getSearchPrefsLocked() ?: return false
+            resetDailyIfNeededLocked(prefs)
+            if (searchTriggeredClientMsgIds.containsKey(normalizedClientMsgId)) return false
+            if (searchStartedTodayMem.get() >= SEARCH_DAILY_CAP) return false
+            searchTriggeredClientMsgIds[normalizedClientMsgId] = true
+            searchStartedTodayMem.incrementAndGet()
+            searchInFlightMem.incrementAndGet()
+            prefs.edit()
+                .putString(SEARCH_USAGE_DATE_KEY, lastSearchDateMem.get())
+                .putInt(SEARCH_USED_TODAY_KEY, searchUsedTodayMem.get())
+                .putInt(SEARCH_STARTED_TODAY_KEY, searchStartedTodayMem.get())
+                .apply()
             return true
+        }
+    }
+
+    // P0: search daily cap (5/day), silent degrade
+    private fun finishSearchAttempt(hasEffectiveResult: Boolean) {
+        synchronized(searchUsageLock) {
+            if (searchInFlightMem.get() > 0) searchInFlightMem.decrementAndGet()
+            if (hasEffectiveResult) {
+                val bounded = (searchUsedTodayMem.get() + 1).coerceAtMost(SEARCH_DAILY_CAP)
+                searchUsedTodayMem.set(bounded)
+            }
+            val prefs = getSearchPrefsLocked() ?: return
+            resetDailyIfNeededLocked(prefs)
+            prefs.edit()
+                .putString(SEARCH_USAGE_DATE_KEY, lastSearchDateMem.get())
+                .putInt(SEARCH_USED_TODAY_KEY, searchUsedTodayMem.get())
+                .putInt(SEARCH_STARTED_TODAY_KEY, searchStartedTodayMem.get())
+                .apply()
         }
     }
 
@@ -503,7 +533,6 @@ object QwenClient {
                 val toolCalls = message1.getAsJsonArray("tool_calls")?.takeIf { it.size() > 0 }
 
                 if (useTools && toolCalls != null) {
-                    val canSearchByDailyCap = canSearchToday()
                     var selectedQuery: String? = null
                     for (i in 0 until toolCalls.size()) {
                         val tc = toolCalls.get(i).asJsonObject
@@ -518,7 +547,7 @@ object QwenClient {
                         }
                         val q = argsObj.get("query")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: continue
                         if (q.length >= 2) {
-                            if (canSearchByDailyCap && markSearchTriggeredForClientMsgId(effectiveClientMsgId)) {
+                            if (tryStartSearchForClientMsgId(effectiveClientMsgId)) {
                                 selectedQuery = q
                             }
                             break
@@ -581,15 +610,18 @@ object QwenClient {
                     phase = 1
                     currentBochaCall.set(null)
                     val bochaStartMs = System.currentTimeMillis()
-                    val results = selectedQuery?.let { listOf(BochaClient.webSearch(it, currentBochaCall)) } ?: emptyList()
-                    currentBochaCall.set(null)
+                    val results = try {
+                        selectedQuery?.let { listOf(BochaClient.webSearch(it, currentBochaCall)) } ?: emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    } finally {
+                        currentBochaCall.set(null)
+                    }
                     bochaMs = System.currentTimeMillis() - bochaStartMs
                     val successTexts = results.filter { it.first && !it.second.isNullOrBlank() }.map { it.second!! }
                     val hasEffectiveResult = successTexts.isNotEmpty()
-                    if (hasEffectiveResult) {
-                        // P0: search daily cap (5/day), silent degrade
-                        incSearchUsedToday()
-                    }
+                    // P0: search daily cap (5/day), silent degrade
+                    finishSearchAttempt(hasEffectiveResult)
                     val normalizedText = if (hasEffectiveResult) normalizeToolInfo(successTexts) else ""
                     val toolInfoFormatted = if (hasEffectiveResult) normalizedText else "联网搜索失败/未命中（仅供参考）"
                     val showToolBlock = hasEffectiveResult && normalizedText.isNotBlank()
