@@ -78,7 +78,7 @@
             left: 0;
             right: 0;
             height: 64px;
-            background: linear-gradient(to bottom, rgba(0,0,0,0.025), transparent);
+            background: linear-gradient(to bottom, rgba(246,246,246,0.96), rgba(246,246,246,0));
             pointer-events: none;
             z-index: 0;
         }
@@ -720,6 +720,19 @@
             position: relative;
             scrollbar-width: none;
             -ms-overflow-style: none;
+        }
+
+        .messages-wrapper::before {
+            content: '';
+            position: sticky;
+            top: 0;
+            left: 0;
+            right: 0;
+            display: block;
+            height: 22px;
+            background: linear-gradient(to bottom, rgba(246,246,246,0.98), rgba(246,246,246,0));
+            pointer-events: none;
+            z-index: 2;
         }
 
         .messages-wrapper::-webkit-scrollbar {
