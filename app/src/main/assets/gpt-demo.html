@@ -3528,6 +3528,7 @@
             // 创建AI回复占位并生成 streamId（取消时旧气泡按 streamId 落终态）
             const streamId = 'stream_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             const clientMsgId = generateClientMsgId();
+            startAutoFollowForGeneration();
             isGenerating = true;
             updateInputMode();
             updateScrollToBottomBtn();
@@ -3732,6 +3733,7 @@
                     clientMsgIdByStream[newStreamId] = retryClientMsgId;
                     pendingDeduct[retryClientMsgId] = (urls.length > 0 ? 1 : 0);
                     lastSent = { text: data.text, imageUrls: urls, streamId: newStreamId, clientMsgId: retryClientMsgId };
+                    startAutoFollowForGeneration();
                     isGenerating = true;
                     updateInputMode();
                     sendToAndroid(data.text, urls, newStreamId, retryClientMsgId);
@@ -4161,6 +4163,11 @@
             } else {
                 if (stickToBottom) scheduleScrollToBottom();
             }
+        }
+        function startAutoFollowForGeneration() {
+            stickToBottom = true;
+            scrollToBottom(true);
+            requestAnimationFrame(function() { scrollToBottom(true); });
         }
         function updateScrollToBottomBtn() {
             var btn = document.getElementById('scrollToBottomBtn');
