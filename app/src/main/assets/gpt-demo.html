@@ -95,8 +95,11 @@
 
         /* A. 顶部 AppBar（背景透明，沿用 app-shell 底色） */
         .app-bar {
-            position: sticky;
+            position: fixed;
             top: 0;
+            left: 0;
+            right: 0;
+            width: 100%;
             z-index: 1;
             flex-shrink: 0;
             height: 56px;
@@ -106,9 +109,11 @@
             justify-content: space-between;
             border-bottom: none;
             box-shadow: none;
-            background: rgba(246,246,246,0.55);
-            -webkit-backdrop-filter: saturate(150%) blur(14px);
-            backdrop-filter: saturate(150%) blur(14px);
+            background: rgba(246,246,246,0.28);
+            -webkit-backdrop-filter: saturate(160%) blur(18px);
+            backdrop-filter: saturate(160%) blur(18px);
+            transform: translateZ(0);
+            will-change: transform;
         }
         .app-bar::after {
             content: "";
@@ -119,7 +124,7 @@
             height: 16px;
             pointer-events: none;
             background: linear-gradient(to bottom,
-                rgba(246,246,246,0.55) 0%,
+                rgba(246,246,246,0.28) 0%,
                 rgba(246,246,246,0.00) 100%);
         }
         .app-bar-left {
@@ -727,6 +732,7 @@
             position: relative;
             scrollbar-width: none;
             -ms-overflow-style: none;
+            padding-top: 56px;
         }
 
         .messages-wrapper::before {
