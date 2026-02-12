@@ -819,14 +819,24 @@
             background: #202123;
             opacity: 0;
             pointer-events: none;
+            transform-origin: center;
+            will-change: transform, opacity;
         }
         .message.assistant.streaming .streaming-dot {
             opacity: 1;
-            animation: dot-breathe 1.25s ease-in-out infinite;
+            animation: dot-breathe 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         }
         @keyframes dot-breathe {
-            0%, 100% { transform: scale(1); opacity: 0.78; }
-            50% { transform: scale(1.12); opacity: 0.95; }
+            0%, 100% { transform: scale(0.94); opacity: 0.48; }
+            48% { transform: scale(1.12); opacity: 0.92; }
+            62% { transform: scale(1.06); opacity: 0.84; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .message.assistant.streaming .streaming-dot {
+                animation: none;
+                transform: scale(1);
+                opacity: 0.75;
+            }
         }
 
         .message-content {
