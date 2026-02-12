@@ -400,7 +400,7 @@ object QwenClient {
         onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null,
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
-        val isExpertThinking = (chatModel == "plus")
+        val isExpertThinking = (chatModel == "expert")
         val model = modelFlash
         val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
         val startMs = System.currentTimeMillis()

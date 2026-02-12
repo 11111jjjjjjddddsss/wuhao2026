@@ -2367,7 +2367,7 @@
             free:   { label: '免费版', chatPerDay: 10, imgPerDay: 1,  model: 'flash' },
             plus:   { label: 'Plus',   chatPerDay: 30, imgPerDay: 5,  model: 'flash' },
             pro:    { label: 'Pro',    chatPerDay: 60, imgPerDay: 10, model: 'flash' },
-            expert: { label: '专家模式', chatPerDay: 80, imgPerDay: 20, model: 'plus' }
+            expert: { label: '专家模式', chatPerDay: 80, imgPerDay: 20, model: 'expert' }
         };
         var COPY_REFRESH_FAIL = '权益状态暂未更新，请稍后重试';
         function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
@@ -3530,11 +3530,11 @@
             updateInputMode();
         }
 
-        // 发送到Android后端（streamId 写对应气泡；模型路由：专家=plus，其余=flash）
+        // 发送到Android后端（streamId 写对应气泡；模型路由：专家=expert，其余=flash）
         function sendToAndroid(text, imageUrls, streamId, clientMsgId) {
             var imageUrlsJson = imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
             var tier = getCurrentTier();
-            var model = tier === 'expert' ? 'plus' : 'flash';
+            var model = tier === 'expert' ? 'expert' : 'flash';
             if (typeof AndroidInterface.sendMessage === 'function') {
                 AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model, clientMsgId || '');
             }
