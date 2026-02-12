@@ -95,7 +95,8 @@
 
         /* A. 顶部 AppBar（背景透明，沿用 app-shell 底色） */
         .app-bar {
-            position: relative;
+            position: sticky;
+            top: 0;
             z-index: 1;
             flex-shrink: 0;
             height: 56px;
@@ -105,9 +106,21 @@
             justify-content: space-between;
             border-bottom: none;
             box-shadow: none;
-            background: rgba(246,246,246,0.22);
-            -webkit-backdrop-filter: saturate(150%) blur(12px);
-            backdrop-filter: saturate(150%) blur(12px);
+            background: rgba(255,255,255,0.72);
+            -webkit-backdrop-filter: blur(14px);
+            backdrop-filter: blur(14px);
+        }
+        .app-bar::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: -1px;
+            height: 16px;
+            pointer-events: none;
+            background: linear-gradient(to bottom,
+                rgba(255,255,255,0.72) 0%,
+                rgba(255,255,255,0.00) 100%);
         }
         .app-bar-left {
             width: var(--btn-circle-size);
