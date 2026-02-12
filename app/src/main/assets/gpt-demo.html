@@ -912,24 +912,29 @@
 
         /* ===== GPT-ish message spacing (override only) ===== */
         /* 1) 每条消息的垂直间距：别挤、别太散 */
-        .message { margin: 10px 0; }
+        .message { margin: 12px 0; }
         /* 2) 消息行内部：头像与正文的距离、对齐更稳 */
-        .message-row { gap: 10px; align-items: flex-start; }
+        .message-row { gap: 12px; align-items: flex-start; }
         /* 3) 内容块内边距：GPT 更“纸张感”，但别变成气泡 */
-        .message-content { padding: 6px 12px; }
+        .message-content { padding: 4px 10px; }
         /* 4) 用户消息块：右侧靠边但别贴死（不改你现有右对齐策略） */
-        .message.user .message-content { padding: 6px 12px; }
+        .message.user .message-content { padding: 4px 10px; }
         /* 5) 如果你有 message-wrapper/ container 的 padding，确保上下留白 */
-        .messages-container { padding-top: 6px; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+        .messages-container { padding-top: 8px; padding-bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 
         /* ===== 完成态 GPT 观感最小风险收口（仅追加覆盖） ===== */
         .message-content.md-rendered { overflow-wrap: break-word; word-break: break-word; }
         .message-content.md-rendered a { word-break: break-all; }
-        .message-content { line-height: 1.62; }
-        .message-content p { margin: 0 0 8px; }
+        .message-content { line-height: 1.72; font-size: 16px; font-weight: 400; letter-spacing: 0.01em; }
+        .message-content p { margin: 0 0 12px; }
         .message-content p:last-child { margin-bottom: 0; }
-        .message-content ul, .message-content ol { margin: 6px 0 8px 22px; }
-        .message-content li { margin: 3px 0; }
+        .message-content ul, .message-content ol { margin: 8px 0 12px 24px; }
+        .message-content li { margin: 5px 0; }
+        .message-content h1 { font-size: 24px; line-height: 1.35; font-weight: 600; margin: 14px 0 10px; }
+        .message-content h2 { font-size: 21px; line-height: 1.4; font-weight: 600; margin: 13px 0 9px; }
+        .message-content h3 { font-size: 18px; line-height: 1.45; font-weight: 600; margin: 12px 0 8px; }
+        .message-content h4 { font-size: 16px; line-height: 1.5; font-weight: 600; margin: 10px 0 8px; }
+        .message-content strong { font-weight: 600; }
         .message-content { -webkit-user-select: text; user-select: text; }
         .copy-popover {
             position: fixed;
@@ -3544,17 +3549,19 @@
 
         function buildPreviewMockReply(userText) {
             var clean = (userText || '').replace(/\s+/g, ' ').trim();
-            var topic = clean ? ('你提到“' + clean.slice(0, 22) + '”') : '你当前的问题';
+            var topic = clean ? ('你提到“' + clean.slice(0, 28) + '”') : '你当前关心的问题';
             return [
                 '### 本地预览回复（动画联调）',
-                topic + '，下面这段是本地假流式文本，用于测试打字动画、段落间距和长文滚动表现。',
-                '先给一个简化判断：当前最重要的是先明确目标，再按小步验证推进。不要一次改太多参数，否则很难知道哪一步真正有效。',
-                '建议分三段执行：第一段先做基础观察，记录两到三个核心指标；第二段做小范围调整，观察24到48小时变化；第三段只放大已验证有效的动作，未验证的不动。',
-                '在记录维度上，可以固定时间点与观察角度，保证前后可比；在决策节奏上，建议“三天一小结、七天一复盘”，把主观感受转成可复核的数据。',
-                '如果后续你接入真实模型，这里会替换成正式回答。当前这条消息仅用于UI效果验证：包含标题、长段落、换行、以及连续阅读时的视觉稳定性。'
+                topic + '，下面这段是本地假流式文本，用于测试打字动画、段落间距、长文滚动、连续阅读和回到底部的稳定表现。',
+                '先给一个简化判断：当前最重要的是把目标拆成可验证的小步骤，再按固定节奏推进。不要一次改太多变量，否则很难判断到底是哪一处动作带来了效果，也难以在后续复盘时复用。',
+                '可以用“三段式观察法”。第一段做基线记录，至少留三项指标：响应时延、可读性主观评分、操作完成率；第二段只改一到两个关键变量，观察 24 到 48 小时变化；第三段只保留已验证有效动作，未验证动作暂缓，避免把系统带入不可解释状态。',
+                '在内容组织上，建议固定同一结构：先结论、再依据、后行动边界。结论要短，依据要可核验，边界要写清楚“什么情况下不适用”。这样不仅能提高用户阅读效率，也能降低长消息造成的理解偏差，尤其适合移动端场景。',
+                '在交互体验上，重点盯四件事：第一，长段落是否保持稳定行高与换行；第二，连续流式输出时是否出现跳动和闪烁；第三，滚动到中段后继续输出是否打断阅读；第四，消息很长时输入区与发送区是否仍保持可预期对齐。',
+                '如果你要做压力预演，可以连续发送多轮不同长度文本：200 字、800 字、1500 字各两轮，记录页面滚动、渲染速度、按钮状态切换是否一致；再混合一次“带图片 + 文字”输入，检查布局是否维持统一节奏。',
+                '另外建议在验证期间固定一个最小记录模板：问题场景、触发动作、期望表现、实际表现、截图编号、复现概率。模板简短但持续执行，后续接入真实模型和服务端时，能直接复用并快速定位回归问题。',
+                '当前这条消息仅用于 UI 效果联调，不代表正式业务回复。它包含标题、较长段落、换行、术语混排与连续阅读场景，目的是让你一次性观察字体渲染、段落密度、动效节奏和视觉稳定性。后续你接入真实模型后，这里会自动切换为正式回答。'
             ].join('\n\n');
         }
-
         function startPreviewMockResponse(streamId, userText) {
             if (!streamId) return;
             if (previewTimerByStream[streamId]) {
