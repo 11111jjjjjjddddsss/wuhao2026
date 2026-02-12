@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicReference
  * 使用阿里云百炼 DashScope API
  *
  * 会员路由（P0 冻结）：
- * - Free/Plus/Pro 主对话 → Flash；专家模式主对话 → PLUS；B 层摘要固定 Flash。
- * - Flash 与 PLUS 走同一套 callApi：同一 tools、同一 messages 拼接、同一 tool-call 闭环与兜底，仅 model 不同。
+ * - Free/Plus/Pro/专家 主对话 → Flash；B 层摘要固定 Flash。
+ * - 专家档仅通过 extra_body 开启 thinking，其他请求链路保持一致。
  */
 object QwenClient {
     private val TAG = "QwenClient"
@@ -205,7 +205,7 @@ object QwenClient {
         }
     }
 
-    /** Flash 与 PLUS 共用同一份 tools schema（会员路由一致性） */
+    /** Flash 主对话共用同一份 tools schema（会员路由一致性） */
     private fun appendThinkingExtraBody(body: JsonObject, isExpertThinking: Boolean) {
         if (!isExpertThinking) return
         body.add("extra_body", JsonObject().apply {
@@ -382,7 +382,7 @@ object QwenClient {
     }
 
     /**
-     * 调用通义千问 API（非流式）。会员路由：Flash/Plus/Pro 主对话=Flash，专家=PLUS；B 摘要固定 Flash。
+     * 调用通义千问 API（非流式）。会员路由：所有档位主对话=Flash；专家仅开启 thinking；B 摘要固定 Flash。
      * 工具闭环：首次请求带 tools=web_search；若模型返回 tool_calls 则执行 web_search、二次请求带【工具信息】；否则直接返回首次内容。
      */
     fun callApi(
