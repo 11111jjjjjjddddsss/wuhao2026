@@ -92,7 +92,7 @@
                 width: min(100vw, 520px);
             }
             .app-bar {
-                width: min(100vw, 520px);
+                width: 100%;
                 max-width: 520px;
             }
         }
@@ -101,9 +101,10 @@
         .app-bar {
             position: fixed;
             top: 0;
-            left: 50%;
-            right: auto;
-            width: min(100vw, 430px);
+            left: 0;
+            right: 0;
+            margin: 0 auto;
+            width: 100%;
             max-width: 430px;
             z-index: 120;
             flex-shrink: 0;
@@ -117,7 +118,7 @@
             background: rgba(246,246,246,0.28);
             -webkit-backdrop-filter: saturate(160%) blur(18px);
             backdrop-filter: saturate(160%) blur(18px);
-            transform: translateX(-50%) translateZ(0);
+            transform: translateZ(0);
             will-change: transform;
         }
         .app-bar::after {
