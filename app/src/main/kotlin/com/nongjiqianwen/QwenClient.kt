@@ -428,7 +428,6 @@ object QwenClient {
                     addProperty("stream", false)
                     addProperty("temperature", ModelParams.TEMPERATURE)
                     addProperty("top_p", ModelParams.TOP_P)
-                    addProperty("max_tokens", ModelParams.MAX_TOKENS)
                     addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                     addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                     add("messages", messagesFirst)
@@ -465,7 +464,6 @@ object QwenClient {
                             addProperty("stream", false)
                             addProperty("temperature", ModelParams.TEMPERATURE)
                             addProperty("top_p", ModelParams.TOP_P)
-                            addProperty("max_tokens", ModelParams.MAX_TOKENS)
                             addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                             addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                             add("messages", messagesFirst)
@@ -569,7 +567,6 @@ object QwenClient {
                         val bodyFb = JsonObject().apply {
                             addProperty("model", model); addProperty("stream", false)
                             addProperty("temperature", ModelParams.TEMPERATURE); addProperty("top_p", ModelParams.TOP_P)
-                            addProperty("max_tokens", ModelParams.MAX_TOKENS)
                             addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY); addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                             add("messages", msgFb)
                         }
@@ -631,7 +628,6 @@ object QwenClient {
                         addProperty("stream", false)
                         addProperty("temperature", ModelParams.TEMPERATURE)
                         addProperty("top_p", ModelParams.TOP_P)
-                        addProperty("max_tokens", ModelParams.MAX_TOKENS)
                         addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                         addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                         add("messages", messagesSecond)
@@ -773,7 +769,7 @@ object QwenClient {
 
     /**
      * B 层摘要提取：非流式，同步返回摘要文本。
-     * 参数冻结：temperature=0.85, top_p=0.9, max_tokens=4000, frequency_penalty=0, presence_penalty=0
+     * 参数冻结：temperature=0.85, top_p=0.9, frequency_penalty=0, presence_penalty=0
      */
     fun extractBSummary(oldB: String, dialogueText: String, systemPrompt: String): String {
         return try {
@@ -799,7 +795,6 @@ object QwenClient {
                 addProperty("stream", false)
                 addProperty("temperature", B_EXTRACT_TEMPERATURE)
                 addProperty("top_p", B_EXTRACT_TOP_P)
-                addProperty("max_tokens", B_EXTRACT_MAX_TOKENS)
                 addProperty("frequency_penalty", B_EXTRACT_FREQUENCY_PENALTY)
                 addProperty("presence_penalty", B_EXTRACT_PRESENCE_PENALTY)
                 add("messages", messagesArray)
