@@ -808,7 +808,7 @@
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            background: var(--green);
+            background: #000000;
             opacity: 0;
             pointer-events: none;
         }
@@ -3768,6 +3768,7 @@
             if (!msg) return;
             const contentDiv = msg.querySelector('.message-content');
             if (!contentDiv) return;
+            msg.classList.remove('streaming');
             var typewriterStartMs = Date.now();
             var dynamicChars = TYPEWRITER_CHARS;
             if (fullText.length > 1200) dynamicChars = 6;
