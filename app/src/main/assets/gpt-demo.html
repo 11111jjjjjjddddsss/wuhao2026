@@ -91,15 +91,20 @@
                 max-width: 520px;
                 width: min(100vw, 520px);
             }
+            .app-bar {
+                width: min(100vw, 520px);
+                max-width: 520px;
+            }
         }
 
         /* A. 顶部 AppBar（背景透明，沿用 app-shell 底色） */
         .app-bar {
             position: fixed;
             top: 0;
-            left: 0;
-            right: 0;
-            width: 100%;
+            left: 50%;
+            right: auto;
+            width: min(100vw, 430px);
+            max-width: 430px;
             z-index: 1;
             flex-shrink: 0;
             height: 56px;
@@ -112,7 +117,7 @@
             background: rgba(246,246,246,0.28);
             -webkit-backdrop-filter: saturate(160%) blur(18px);
             backdrop-filter: saturate(160%) blur(18px);
-            transform: translateZ(0);
+            transform: translateX(-50%) translateZ(0);
             will-change: transform;
         }
         .app-bar::after {
