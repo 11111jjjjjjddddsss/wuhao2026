@@ -40,7 +40,6 @@ object QwenClient {
     private const val TOOL_INFO_MAX_CHARS = 1500
     private const val B_EXTRACT_TEMPERATURE = 0.85
     private const val B_EXTRACT_TOP_P = 0.9
-    private const val B_EXTRACT_MAX_TOKENS = 4000
     private const val B_EXTRACT_FREQUENCY_PENALTY = 0.0
     private const val B_EXTRACT_PRESENCE_PENALTY = 0.0
     // P0: search daily cap (5/day), silent degrade

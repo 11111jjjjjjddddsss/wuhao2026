@@ -7,7 +7,6 @@ package com.nongjiqianwen
 object ModelParams {
     const val TEMPERATURE = 0.85
     const val TOP_P = 0.9
-    const val MAX_TOKENS = 4000
     const val FREQUENCY_PENALTY = 0.0
     const val PRESENCE_PENALTY = 0.0
 }
