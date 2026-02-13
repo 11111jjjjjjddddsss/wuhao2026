@@ -3989,10 +3989,11 @@
                 delete terminatedStreamIds[streamId];
                 return;
             }
+            var cleanText = removeAssistantEmojiSafe(fullText);
             var msg = findAssistantMessageByStreamId(streamId);
             if (msg && !msg.classList.contains('streaming')) {
                 var contentDiv = msg.querySelector('.message-content');
-                if (contentDiv) applyMarkdownToElement(contentDiv, fullText);
+                if (contentDiv) applyMarkdownToElement(contentDiv, cleanText);
                 msg.classList.remove('streaming');
                 scrollToBottom();
                 isGenerating = false;
@@ -4006,12 +4007,12 @@
                 return;
             }
             if (hadBuffer) {
-                runTypewriter(streamId, fullText);
+                runTypewriter(streamId, cleanText);
             } else {
                 var msg = findAssistantMessageByStreamId(streamId);
                 if (msg) {
                     var contentDiv = msg.querySelector('.message-content');
-                    if (contentDiv) applyMarkdownToElement(contentDiv, fullText);
+                    if (contentDiv) applyMarkdownToElement(contentDiv, cleanText);
                     msg.classList.remove('streaming');
                 }
                 scrollToBottom();
@@ -4029,6 +4030,24 @@
             if (s == null) return '';
             var t = (s + '');
             return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function removeAssistantEmojiSafe(text) {
+            if (text == null) return '';
+            var s = String(text);
+            var out = [];
+            for (var ch of Array.from(s)) {
+                var cp = ch.codePointAt(0);
+                var isEmoji =
+                    (cp >= 0x1F1E6 && cp <= 0x1F1FF) ||
+                    (cp >= 0x1F300 && cp <= 0x1FAFF) ||
+                    (cp >= 0x2600 && cp <= 0x27BF) ||
+                    (cp >= 0x2300 && cp <= 0x23FF) ||
+                    (cp >= 0x2B00 && cp <= 0x2BFF) ||
+                    cp === 0x200D ||
+                    cp === 0xFE0F;
+                if (!isEmoji) out.push(ch);
+            }
+            return out.join('');
         }
         function renderMarkdownSafe(text) {
             if (text == null) text = '';
@@ -4264,7 +4283,7 @@
                 messagesContainer.appendChild(userMsg);
                 var astMsg = createMessage({ role: 'assistant', text: '', stream: false });
                 var contentDiv = astMsg.querySelector('.message-content');
-                if (contentDiv) contentDiv.textContent = (r && r.assistant) || '';
+                if (contentDiv) contentDiv.textContent = removeAssistantEmojiSafe((r && r.assistant) || '');
                 messagesContainer.appendChild(astMsg);
             }
             refreshEmptyState();
