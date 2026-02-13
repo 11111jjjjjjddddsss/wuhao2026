@@ -61,9 +61,9 @@
         }
 
         .app-shell {
-            --shell-width: min(100vw, 430px);
-            width: min(100vw, 430px);
-            max-width: 430px;
+            --shell-width: 100vw;
+            width: var(--shell-width);
+            max-width: none;
             height: 100vh;
             margin: 0 auto;
             background: #F6F6F6;
@@ -89,9 +89,9 @@
 
         @media (orientation: landscape) {
             .app-shell {
-                --shell-width: min(100vw, 520px);
-                max-width: 520px;
-                width: min(100vw, 520px);
+                --shell-width: 100vw;
+                max-width: none;
+                width: var(--shell-width);
             }
         }
 
@@ -191,8 +191,8 @@
         #drawer {
             position: fixed;
             top: 0;
-            left: calc((100vw - min(100vw, 430px)) / 2);
-            width: min(100vw, 430px);
+            left: calc((100vw - var(--shell-width)) / 2);
+            width: var(--shell-width);
             max-width: none;
             height: 100%;
             background: #F7F7F8;
@@ -226,8 +226,8 @@
         }
         @media (orientation: landscape) {
             #drawer {
-                left: calc((100vw - min(100vw, 520px)) / 2);
-                width: min(100vw, 520px);
+                left: calc((100vw - var(--shell-width)) / 2);
+                width: var(--shell-width);
             }
         }
         #drawer.open {
@@ -362,8 +362,8 @@
         #logoutConfirmMask {
             position: fixed;
             top: 0;
-            left: calc((100vw - min(100vw, 430px)) / 2);
-            width: min(100vw, 430px);
+            left: calc((100vw - var(--shell-width)) / 2);
+            width: var(--shell-width);
             bottom: 0;
             background: rgba(0,0,0,.35);
             z-index: 920;
@@ -381,12 +381,12 @@
         }
         @media (orientation: landscape) {
             #logoutConfirmMask {
-                left: calc((100vw - min(100vw, 520px)) / 2);
-                width: min(100vw, 520px);
+                left: calc((100vw - var(--shell-width)) / 2);
+                width: var(--shell-width);
             }
         }
         #logoutConfirmDialog {
-            width: min(320px, calc(min(100vw, 430px) - 32px));
+            width: min(320px, calc(var(--shell-width) - 32px));
             background: #fff;
             border-radius: 16px;
             padding: 16px;
@@ -436,8 +436,8 @@
         #drawer-mask {
             position: fixed;
             top: 0;
-            left: calc((100vw - min(100vw, 430px)) / 2);
-            width: min(100vw, 430px);
+            left: calc((100vw - var(--shell-width)) / 2);
+            width: var(--shell-width);
             height: 100%;
             background: rgba(0,0,0,0.35);
             cursor: pointer;
@@ -452,8 +452,8 @@
         }
         @media (orientation: landscape) {
             #drawer-mask {
-                left: calc((100vw - min(100vw, 520px)) / 2);
-                width: min(100vw, 520px);
+                left: calc((100vw - var(--shell-width)) / 2);
+                width: var(--shell-width);
             }
         }
 
@@ -461,8 +461,8 @@
         #membership-modal-backdrop {
             position: fixed;
             top: 0;
-            left: calc((100vw - min(100vw, 430px)) / 2);
-            width: min(100vw, 430px);
+            left: calc((100vw - var(--shell-width)) / 2);
+            width: var(--shell-width);
             bottom: 0;
             background: rgba(0,0,0,.35);
             z-index: 900;
@@ -477,8 +477,8 @@
         }
         @media (orientation: landscape) {
             #membership-modal-backdrop {
-                left: calc((100vw - min(100vw, 520px)) / 2);
-                width: min(100vw, 520px);
+                left: calc((100vw - var(--shell-width)) / 2);
+                width: var(--shell-width);
             }
         }
         #membership-modal-backdrop.open {
@@ -486,7 +486,7 @@
             visibility: visible;
         }
         #membership-modal {
-            width: min(560px, calc(min(100vw, 430px) - 24px));
+            width: min(560px, calc(var(--shell-width) - 24px));
             height: min(720px, calc(100vh - 24px));
             background: #fff;
             border-radius: 18px;
@@ -1084,9 +1084,9 @@
 
         .copy-sheet-mask {
             position: fixed;
-            left: calc((100vw - min(100vw, 430px)) / 2);
+            left: calc((100vw - var(--shell-width)) / 2);
             right: auto;
-            width: min(100vw, 430px);
+            width: var(--shell-width);
             top: 0;
             bottom: 0;
             z-index: 9998;
@@ -1096,11 +1096,11 @@
         .copy-sheet-mask.open { display: block; }
         .copy-sheet {
             position: fixed;
-            left: calc((100vw - min(100vw, 430px)) / 2);
+            left: calc((100vw - var(--shell-width)) / 2);
             right: auto;
             bottom: 0;
             z-index: 9999;
-            width: min(100vw, 430px);
+            width: var(--shell-width);
             --copy-sheet-max-h: min(64vh, 620px);
             max-height: var(--copy-sheet-max-h);
             background: #fff;
@@ -1112,12 +1112,12 @@
         }
         @media (orientation: landscape) {
             .copy-sheet-mask {
-                left: calc((100vw - min(100vw, 520px)) / 2);
-                width: min(100vw, 520px);
+                left: calc((100vw - var(--shell-width)) / 2);
+                width: var(--shell-width);
             }
             .copy-sheet {
-                left: calc((100vw - min(100vw, 520px)) / 2);
-                width: min(100vw, 520px);
+                left: calc((100vw - var(--shell-width)) / 2);
+                width: var(--shell-width);
             }
         }
         .copy-sheet.open { transform: translateY(0); }
@@ -2039,7 +2039,7 @@
 
         /* P0：会员中心空白再收紧一点（只动间距/内边距，不改结构） */
         #membership-modal {
-            width: calc(min(100vw, 430px) - 24px) !important;
+            width: calc(var(--shell-width) - 24px) !important;
             padding: 12px !important;
             height: min(680px, calc(100vh - 32px)) !important;
             max-height: calc(100vh - 24px) !important;
@@ -2050,7 +2050,7 @@
         }
         @media (orientation: landscape) {
             #membership-modal {
-                width: calc(min(100vw, 520px) - 24px) !important;
+                width: calc(var(--shell-width) - 24px) !important;
             }
         }
         #membership-modal .membership-header {
