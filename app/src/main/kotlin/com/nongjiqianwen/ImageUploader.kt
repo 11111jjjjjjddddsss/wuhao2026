@@ -29,11 +29,14 @@ object ImageUploader {
     private const val FALLBACK_LONG_EDGE_1 = 896
     private const val FALLBACK_LONG_EDGE_2 = 768
     private const val FALLBACK_LONG_EDGE_3 = 640
+    private const val FALLBACK_LONG_EDGE_4 = 512
     private const val MAX_SIZE_BYTES = 1024 * 1024
     private const val JPEG_QUALITY_DEFAULT = 82
     private const val JPEG_QUALITY_80 = 80
     private const val JPEG_QUALITY_75 = 75
     private const val JPEG_QUALITY_70 = 70
+    private const val JPEG_QUALITY_60 = 60
+    private const val MAX_DECODE_LONG_EDGE = 4096
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -41,11 +44,13 @@ object ImageUploader {
         .build()
     
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
-    const val DECODE_FAIL_MESSAGE = "该图片格式暂不支持，请转为JPG/PNG后重试"
+    const val DECODE_FAIL_MESSAGE = "仅支持 JPEG / PNG 格式"
+    /** 极端场景：固定序列后仍超限时提示 */
+    const val SIZE_LIMIT_FAIL_MESSAGE = "图片压缩后仍超过 1MB，请更换更清晰主体、减少无关背景后重试"
 
     /**
      * 压缩图片（输入规则最终版·冻结）：
-     * 固定降级序列（直到 ≤1MB）：1024@82 -> 1024@80 -> 1024@75 -> 1024@70 -> 896@70 -> 768@70 -> 640@70。
+     * 固定降级序列（直到 ≤1MB）：1024@82 -> 1024@80 -> 1024@75 -> 1024@70 -> 896@70 -> 768@70 -> 640@70 -> 640@60 -> 512@60。
      * 等比缩放，不拉伸不裁剪，仅输出 JPEG。
      * 能解码则转 JPEG 后上传；解码失败返回 null，由调用方提示 DECODE_FAIL_MESSAGE，不调用模型、不扣费、不计轮次。
      */
@@ -70,8 +75,12 @@ object ImageUploader {
             } catch (_: Exception) {
                 ExifInterface.ORIENTATION_NORMAL
             }
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = calculateInSampleSize(originalWidth, originalHeight, MAX_DECODE_LONG_EDGE)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
             val inputStream3 = ByteArrayInputStream(imageBytes)
-            val originalBitmap = BitmapFactory.decodeStream(inputStream3)
+            val originalBitmap = BitmapFactory.decodeStream(inputStream3, null, decodeOptions)
             inputStream3.close()
             if (originalBitmap == null) {
                 Log.e(TAG, "无法解码图片(bitmap=null)")
@@ -112,7 +121,9 @@ object ImageUploader {
                 MAX_LONG_EDGE to JPEG_QUALITY_70,
                 FALLBACK_LONG_EDGE_1 to JPEG_QUALITY_70,
                 FALLBACK_LONG_EDGE_2 to JPEG_QUALITY_70,
-                FALLBACK_LONG_EDGE_3 to JPEG_QUALITY_70
+                FALLBACK_LONG_EDGE_3 to JPEG_QUALITY_70,
+                FALLBACK_LONG_EDGE_3 to JPEG_QUALITY_60,
+                FALLBACK_LONG_EDGE_4 to JPEG_QUALITY_60
             )
             for ((targetLongEdge, quality) in sequence) {
                 val candidateBitmap = scaleBitmapByLongEdge(correctedBitmap, targetLongEdge)
@@ -130,13 +141,13 @@ object ImageUploader {
                 }
             }
 
-            if (compressedBytes.size > MAX_SIZE_BYTES) {
-                Log.e(TAG, "压缩后仍超1MB: ${compressedBytes.size} bytes (longEdge=${maxOf(finalWidth, finalHeight)}, quality=$usedQuality)")
-            }
             val longEdge = maxOf(finalWidth, finalHeight)
             if (BuildConfig.DEBUG) {
                 Log.d(TAG, "P0验收: 长边=${longEdge}px(≤${MAX_LONG_EDGE}) size=${compressedBytes.size}bytes(≤${MAX_SIZE_BYTES}) format=JPEG quality=${usedQuality}")
                 Log.d(TAG, "原图: ${originalWidth}x${originalHeight} -> 压缩: ${finalWidth}x${finalHeight} ${compressedBytes.size}bytes")
+            }
+            if (compressedBytes.size > MAX_SIZE_BYTES) {
+                Log.e(TAG, "压缩后仍超1MB: ${compressedBytes.size} bytes (longEdge=${longEdge}, quality=$usedQuality)")
             }
 
             if (resultBitmap != null && resultBitmap !== correctedBitmap) {
@@ -175,6 +186,16 @@ object ImageUploader {
         val newWidth = (bitmap.width * scale).toInt().coerceAtLeast(1)
         val newHeight = (bitmap.height * scale).toInt().coerceAtLeast(1)
         return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+    }
+
+    private fun calculateInSampleSize(width: Int, height: Int, maxLongEdge: Int): Int {
+        val longEdge = maxOf(width, height)
+        if (longEdge <= maxLongEdge) return 1
+        var sample = 1
+        while ((longEdge / sample) > maxLongEdge) {
+            sample *= 2
+        }
+        return sample.coerceAtLeast(1)
     }
     
     /**

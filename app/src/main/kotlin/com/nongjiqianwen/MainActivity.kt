@@ -22,7 +22,6 @@ import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var webView: WebView
     private var isRequesting = false
     /** 单飞：同会话只允许一个流在飞；当前在飞的 streamId，仅其 complete 时清 isRequesting */
@@ -64,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         private const val CONTINUATION_PREFIX_MAX = 800
         private const val CACHE_TTL_MS = 60_000L
         private const val CACHE_MAX_SIZE = 4
+        private const val MAX_IMAGE_UPLOAD_BYTES = 1024 * 1024
         private const val BACKGROUND_CACHE_MAX_CHARS = 20_000
         private const val BACKGROUND_CACHE_MAX_STREAMS = 3
         private const val BACKGROUND_CACHE_MAX_MS = 60_000L
@@ -425,7 +425,7 @@ class MainActivity : AppCompatActivity() {
                     // base64 解码后即用，不长期驻留
                     val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // 压缩：EXIF 矫正 → 固定序列 1024@82→1024@80→1024@75→1024@70→896@70→768@70→640@70（目标≤1MB）
+                    // 压缩：EXIF 矫正 → 固定序列 1024@82→1024@80→1024@75→1024@70→896@70→768@70→640@70→640@60→512@60（目标≤1MB）
                     val compressResult = ImageUploader.compressImage(imageBytes)
                     
                     if (compressResult == null) {
@@ -434,6 +434,16 @@ class MainActivity : AppCompatActivity() {
                             val escapedImageId = escapeJs(imageId)
                             val escapedRequestId = escapeJs(requestId)
                             val escapedErr = escapeJs(ImageUploader.DECODE_FAIL_MESSAGE)
+                            webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedErr');", null)
+                        }
+                        return@Thread
+                    }
+                    if (compressResult.compressedSize > MAX_IMAGE_UPLOAD_BYTES) {
+                        Log.e("MainActivity", "图片[$imageId] 压缩后仍超1MB，不调用模型/不扣费/不计轮次")
+                        runOnUiThread {
+                            val escapedImageId = escapeJs(imageId)
+                            val escapedRequestId = escapeJs(requestId)
+                            val escapedErr = escapeJs(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE)
                             webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'fail', null, '$escapedRequestId', '$escapedErr');", null)
                         }
                         return@Thread
