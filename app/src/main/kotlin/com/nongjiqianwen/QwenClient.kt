@@ -43,7 +43,8 @@ object QwenClient {
     private const val B_EXTRACT_FREQUENCY_PENALTY = 0.0
     private const val B_EXTRACT_PRESENCE_PENALTY = 0.0
     // P0: search daily cap (5/day), silent degrade
-    private const val SEARCH_DAILY_CAP = 5
+    private const val SEARCH_DAILY_CAP_DEFAULT = 5
+    private const val SEARCH_DAILY_CAP_LOW_TIER = 3
     // P0: search daily cap (5/day), silent degrade
     private const val SEARCH_PREFS_NAME = "search_usage_prefs"
     // P0: search daily cap (5/day), silent degrade
@@ -167,14 +168,21 @@ object QwenClient {
     }
 
     // P0: search daily cap (5/day), silent degrade
-    private fun tryStartSearchForClientMsgId(clientMsgId: String): Boolean {
+    private fun resolveSearchDailyCap(chatModel: String?): Int {
+        return when (chatModel?.trim()?.lowercase(Locale.ROOT)) {
+            "free", "plus" -> SEARCH_DAILY_CAP_LOW_TIER
+            else -> SEARCH_DAILY_CAP_DEFAULT
+        }
+    }
+
+    private fun tryStartSearchForClientMsgId(clientMsgId: String, dailyCap: Int): Boolean {
         val normalizedClientMsgId = clientMsgId.trim()
         if (normalizedClientMsgId.isEmpty()) return false
         synchronized(searchUsageLock) {
             val prefs = getSearchPrefsLocked() ?: return false
             resetDailyIfNeededLocked(prefs)
             if (searchTriggeredClientMsgIds.containsKey(normalizedClientMsgId)) return false
-            if (searchStartedTodayMem.get() >= SEARCH_DAILY_CAP) return false
+            if (searchStartedTodayMem.get() >= dailyCap) return false
             searchTriggeredClientMsgIds[normalizedClientMsgId] = true
             searchStartedTodayMem.incrementAndGet()
             searchInFlightMem.incrementAndGet()
@@ -188,11 +196,11 @@ object QwenClient {
     }
 
     // P0: search daily cap (5/day), silent degrade
-    private fun finishSearchAttempt(hasEffectiveResult: Boolean) {
+    private fun finishSearchAttempt(hasEffectiveResult: Boolean, dailyCap: Int) {
         synchronized(searchUsageLock) {
             if (searchInFlightMem.get() > 0) searchInFlightMem.decrementAndGet()
             if (hasEffectiveResult) {
-                val bounded = (searchUsedTodayMem.get() + 1).coerceAtMost(SEARCH_DAILY_CAP)
+                val bounded = (searchUsedTodayMem.get() + 1).coerceAtMost(dailyCap)
                 searchUsedTodayMem.set(bounded)
             }
             val prefs = getSearchPrefsLocked() ?: return
@@ -403,6 +411,7 @@ object QwenClient {
         val isExpertThinking = (chatModel == "expert")
         val model = modelFlash
         val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
+        val searchDailyCap = resolveSearchDailyCap(chatModel)
         val startMs = System.currentTimeMillis()
         if (BuildConfig.DEBUG) {
             Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId model=$model 开始")
@@ -564,7 +573,7 @@ object QwenClient {
                         }
                         val q = argsObj.get("query")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: continue
                         if (q.length >= 2) {
-                            if (tryStartSearchForClientMsgId(effectiveClientMsgId)) {
+                            if (tryStartSearchForClientMsgId(effectiveClientMsgId, searchDailyCap)) {
                                 selectedQuery = q
                             }
                             break
@@ -639,7 +648,7 @@ object QwenClient {
                     val successTexts = results.filter { it.first && !it.second.isNullOrBlank() }.map { it.second!! }
                     val hasEffectiveResult = successTexts.isNotEmpty()
                     // P0: search daily cap (5/day), silent degrade
-                    finishSearchAttempt(hasEffectiveResult)
+                    finishSearchAttempt(hasEffectiveResult, searchDailyCap)
                     val normalizedText = if (hasEffectiveResult) normalizeToolInfo(successTexts) else ""
                     val toolInfoFormatted = if (hasEffectiveResult) normalizedText else "联网搜索失败/未命中（仅供参考）"
                     val showToolBlock = hasEffectiveResult && normalizedText.isNotBlank()
