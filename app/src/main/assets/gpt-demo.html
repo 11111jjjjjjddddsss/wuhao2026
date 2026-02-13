@@ -2219,7 +2219,7 @@
                     <div class="input-area-inner">
                         <div class="voice-input-hint" id="voiceInputHint">按住说话</div>
                         <div class="text-placeholder" id="textPlaceholder"></div>
-                        <textarea id="textInput" class="text-input" placeholder="" rows="1" maxlength="6000"></textarea>
+                        <textarea id="textInput" class="text-input" placeholder="" rows="1" maxlength="5000"></textarea>
                         <div class="voice-hold-overlay" id="voiceHoldOverlay" aria-label="按住说话"></div>
                     </div>
                     <button type="button" class="btn-mic-or-keyboard" id="btnMicOrKeyboard" title="语音/键盘">
@@ -2289,7 +2289,7 @@
     <script>
         const MAX_ROUNDS = 30;
         const MAX_MESSAGES = MAX_ROUNDS * 2;
-        const MAX_TEXT_LEN = 6000;
+        const MAX_TEXT_LEN = 5000;
         const messagesWrapper = document.getElementById('messagesWrapper');
         const messagesContainer = document.getElementById('messagesContainer');
         const emptyState = document.getElementById('emptyState');
@@ -3230,7 +3230,7 @@
         function checkTextTooLongAndToastOnEdge() {
             const tooLong = (textInput.value || '').length > MAX_TEXT_LEN;
             if (tooLong && !wasTextTooLong) {
-                showToastOncePerDay('text_too_long', '字数超限（最多6000字）');
+                showToastOncePerDay('text_too_long', '字数超限（最多5000字）');
             }
             wasTextTooLong = tooLong;
             return tooLong;
