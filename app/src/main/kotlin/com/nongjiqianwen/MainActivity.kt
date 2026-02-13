@@ -425,7 +425,7 @@ class MainActivity : AppCompatActivity() {
                     // base64 解码后即用，不长期驻留
                     val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // 压缩：EXIF 矫正 → 长边≤1536px、≤1MB、JPEG 质量 80–85（输入规则最终版·冻结）
+                    // 压缩：EXIF 矫正 → 长边≤1024px、≤1MB、JPEG 质量 82（超限降到80；仍超限依次降到896/768）
                     val compressResult = ImageUploader.compressImage(imageBytes)
                     
                     if (compressResult == null) {
