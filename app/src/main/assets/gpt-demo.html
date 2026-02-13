@@ -852,7 +852,7 @@
         /* 全对话无气泡：GPT 纯净文本块 */
         .message {
             margin-bottom: 20px;
-            max-width: 85%;
+            max-width: 100%;
             background: transparent;
             border: none;
             box-shadow: none;
@@ -980,8 +980,8 @@
         .message-content.md-rendered { white-space: normal; }
         /* ===== 追加覆盖：收口成 GPT 观感（不删旧规则，仅后写覆盖） ===== */
         /* 1) 内容宽度与贴边：assistant 靠左、user 靠右，但都别铺满 */
-        .message-content { max-width: 680px; width: 100%; box-sizing: border-box; margin-right: auto; margin-left: 0; }
-        .message.user .message-content { margin-left: auto; margin-right: 0; max-width: 680px; }
+        .message-content { max-width: 100%; width: 100%; box-sizing: border-box; margin-right: auto; margin-left: 0; }
+        .message.user .message-content { margin-left: auto; margin-right: 0; max-width: 100%; }
 
         /* 2) 节奏更像 GPT：段落/列表间距略收紧 */
         .message-content p { margin: 0 0 8px; }
@@ -1018,7 +1018,7 @@
             color: var(--text);
             margin-left: auto;
             margin-right: 0;
-            max-width: 680px;
+            max-width: 100%;
         }
 
         .message.assistant .message-content {
