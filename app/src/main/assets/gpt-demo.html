@@ -876,16 +876,17 @@
         .message.assistant .message-row {
             display: flex;
             align-items: flex-start;
-            gap: 10px;
+            gap: 0;
         }
         .message.assistant .avatar-slot {
             flex-shrink: 0;
-            width: 18px;
+            width: 0;
             height: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-top: 14px;
+            overflow: visible;
         }
         /* ChatGPT 风格：生成中仅显示小尺寸黑白三点 loading，无彩色 */
         .message.assistant .streaming-dot {
