@@ -2,6 +2,8 @@ package com.nongjiqianwen
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Matrix
 import android.util.Log
 import androidx.exifinterface.media.ExifInterface
@@ -174,9 +176,23 @@ object ImageUploader {
     
     /** 输出 JPEG 字节数组（按固定降级序列质量），用于 ≤1MB 控制 */
     private fun compressToJpeg(bitmap: Bitmap, quality: Int): ByteArray {
-        val out = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
-        return out.toByteArray()
+        val jpegSource = if (bitmap.hasAlpha()) {
+            Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.RGB_565).also { flattened ->
+                val canvas = Canvas(flattened)
+                canvas.drawColor(Color.WHITE)
+                canvas.drawBitmap(bitmap, 0f, 0f, null)
+            }
+        } else {
+            bitmap
+        }
+        return ByteArrayOutputStream().use { out ->
+            jpegSource.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            out.toByteArray()
+        }.also {
+            if (jpegSource !== bitmap && !jpegSource.isRecycled) {
+                jpegSource.recycle()
+            }
+        }
     }
 
     private fun scaleBitmapByLongEdge(bitmap: Bitmap, targetLongEdge: Int): Bitmap {
