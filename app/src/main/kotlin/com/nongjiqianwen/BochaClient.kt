@@ -20,6 +20,21 @@ import java.util.concurrent.atomic.AtomicReference
  * 超时：connect 10s / read 30s / call 40s。
  */
 object BochaClient {
+    data class SearchMemoResult(
+        val success: Boolean,
+        val memo: String?,
+        val fetchedCount: Int,
+        val selectedCount: Int,
+        val hasSummaryField: Boolean,
+        val memoChars: Int
+    )
+
+    private data class Candidate(
+        val title: String,
+        val site: String,
+        val summary: String
+    )
+
     private const val TAG = "BochaClient"
     private const val CONNECT_TIMEOUT_SEC = 10L
     private const val READ_TIMEOUT_SEC = 30L
@@ -39,7 +54,12 @@ object BochaClient {
      * 取消时抛出 IOException。
      */
     fun webSearch(query: String, callRef: AtomicReference<Call?>? = null): Pair<Boolean, String?> {
-        if (query.isBlank()) return Pair(false, null)
+        val result = webSearchMemo(query, callRef)
+        return Pair(result.success, result.memo)
+    }
+
+    fun webSearchMemo(query: String, callRef: AtomicReference<Call?>? = null): SearchMemoResult {
+        if (query.isBlank()) return SearchMemoResult(false, null, 0, 0, false, 0)
         val body = JsonObject().apply {
             addProperty("query", query.trim())
             addProperty("freshness", "noLimit")
@@ -56,21 +76,21 @@ object BochaClient {
         callRef?.set(call)
         return try {
             call.execute().use { response ->
-                if (!response.isSuccessful) return Pair(false, null)
+                if (!response.isSuccessful) return SearchMemoResult(false, null, 0, 0, false, 0)
                 val bodyStr = response.body?.string() ?: ""
-                if (parseBodyCode(bodyStr) != null) return Pair(false, null)
-                parseResult(bodyStr)
+                if (parseBodyCode(bodyStr) != null) return SearchMemoResult(false, null, 0, 0, false, 0)
+                parseResultAsMemo(bodyStr)
             }
         } catch (e: SocketTimeoutException) {
             if (BuildConfig.DEBUG) Log.w(TAG, "web-search timeout")
-            Pair(false, null)
+            SearchMemoResult(false, null, 0, 0, false, 0)
         } catch (e: IOException) {
             if (e.message?.contains("Canceled", ignoreCase = true) == true) throw e
             if (BuildConfig.DEBUG) Log.w(TAG, "web-search network", e)
-            Pair(false, null)
+            SearchMemoResult(false, null, 0, 0, false, 0)
         } catch (e: Exception) {
             if (BuildConfig.DEBUG) Log.w(TAG, "web-search error", e)
-            Pair(false, null)
+            SearchMemoResult(false, null, 0, 0, false, 0)
         }
     }
 
@@ -99,30 +119,67 @@ object BochaClient {
         }
     }
 
-    /** 规范格式：顶部「联网搜索（仅供参考）」；最多 5 条「- 标题 | 域名 | URL」；标题截断 60 字；URL 纯文本。返回 (true,text) 仅当有结果。 */
-    private fun parseResult(bodyStr: String): Pair<Boolean, String?> {
+    private fun parseResultAsMemo(bodyStr: String): SearchMemoResult {
         return try {
-            val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return Pair(false, null)
-            val data = root.getAsJsonObject("data") ?: return Pair(false, null)
-            val webPages = data.getAsJsonObject("webPages") ?: return Pair(false, null)
-            val value = webPages.getAsJsonArray("value") ?: return Pair(false, null)
-            if (value.size() == 0) return Pair(false, null)
-            val header = "联网搜索（仅供参考）"
-            val lines = mutableListOf<String>()
-            val limit = value.size().coerceAtMost(5)
-            for (i in 0 until limit) {
-                val item = value.get(i).asJsonObject
-                val name = item.get("name")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
-                val url = item.get("url")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
-                val title = name.take(60)
-                val domain = try { URL(url).host ?: "-" } catch (_: Exception) { "-" }
-                lines.add("- $title | $domain | $url")
+            val root = gson.fromJson(bodyStr, JsonObject::class.java) ?: return SearchMemoResult(false, null, 0, 0, false, 0)
+            val data = root.getAsJsonObject("data") ?: return SearchMemoResult(false, null, 0, 0, false, 0)
+            val webPages = data.getAsJsonObject("webPages") ?: return SearchMemoResult(false, null, 0, 0, false, 0)
+            val value = webPages.getAsJsonArray("value") ?: return SearchMemoResult(false, null, 0, 0, false, 0)
+            val fetchedCount = value.size().coerceAtMost(5)
+            if (fetchedCount <= 0) return SearchMemoResult(false, null, 0, 0, false, 0)
+
+            val selected = mutableListOf<Candidate>()
+            var hasSummaryField = false
+            val seenSites = LinkedHashSet<String>()
+
+            fun buildCandidate(item: JsonObject, index: Int): Candidate? {
+                val title = item.get("name")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty().take(40)
+                val url = item.get("url")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+                val siteName = item.get("siteName")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+                val domain = try {
+                    URL(url).host?.removePrefix("www.").orEmpty()
+                } catch (_: Exception) {
+                    ""
+                }
+                val site = (siteName.ifBlank { domain }).ifBlank { "未知来源" }.take(24)
+                val summary = item.get("summary")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+                if (summary.isNotBlank()) hasSummaryField = true
+                val snippet = item.get("snippet")?.takeIf { it.isJsonPrimitive }?.asString?.trim().orEmpty()
+                val text = summary.ifBlank { snippet }.trim().take(150)
+                if (text.isBlank()) return null
+                return Candidate(
+                    title = title.ifBlank { "结果${index + 1}" },
+                    site = site,
+                    summary = text
+                )
             }
-            val body = lines.joinToString("\n")
-            val full = "$header\n$body".trim()
-            Pair(true, full)
+
+            for (i in 0 until fetchedCount) {
+                val candidate = buildCandidate(value.get(i).asJsonObject, i) ?: continue
+                val siteKey = candidate.site.lowercase()
+                if (!seenSites.add(siteKey)) continue
+                selected.add(candidate)
+                if (selected.size >= 3) break
+            }
+            if (selected.size < 3) {
+                for (i in 0 until fetchedCount) {
+                    val candidate = buildCandidate(value.get(i).asJsonObject, i) ?: continue
+                    if (selected.any { it.title == candidate.title && it.site == candidate.site && it.summary == candidate.summary }) continue
+                    selected.add(candidate)
+                    if (selected.size >= 3) break
+                }
+            }
+
+            if (selected.isEmpty()) return SearchMemoResult(false, null, fetchedCount, 0, hasSummaryField, 0)
+
+            val body = selected.mapIndexed { index, c ->
+                "${index + 1}) ${c.title}（${c.site}）：${c.summary}"
+            }.joinToString("\n")
+            var memo = "【联网搜索备忘录｜低权重】\n$body".trim()
+            if (memo.length > 700) memo = memo.take(700)
+            SearchMemoResult(true, memo, fetchedCount, selected.size, hasSummaryField, memo.length)
         } catch (_: Exception) {
-            Pair(false, null)
+            SearchMemoResult(false, null, 0, 0, false, 0)
         }
     }
 }

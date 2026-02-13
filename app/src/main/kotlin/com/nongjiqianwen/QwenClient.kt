@@ -55,6 +55,7 @@ object QwenClient {
     private const val SEARCH_STARTED_TODAY_KEY = "search_started_today"
     // P0: search daily cap (5/day), silent degrade
     private const val SEARCH_TRIGGERED_CACHE_MAX = 2000
+    private const val SEARCH_MEMO_MAX_KEEP = 3
     @Volatile private var lastBExtractErrorLogMs = 0L
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
@@ -82,6 +83,8 @@ object QwenClient {
     private val searchStartedTodayMem = AtomicInteger(0)
     // P0: search daily cap (5/day), silent degrade
     private val searchInFlightMem = AtomicInteger(0)
+    private val searchMemoLock = Any()
+    private val recentSearchMemos: ArrayDeque<String> = ArrayDeque()
     private val canceledFlag = AtomicBoolean(false)
     private val streamingRunnableRef = AtomicReference<Runnable?>(null)
     private val gson = Gson()
@@ -211,6 +214,23 @@ object QwenClient {
                 .putInt(SEARCH_STARTED_TODAY_KEY, searchStartedTodayMem.get())
                 .apply()
         }
+    }
+
+    private fun appendSearchMemoForA(memo: String) {
+        val clean = memo.trim()
+        if (clean.isBlank()) return
+        synchronized(searchMemoLock) {
+            recentSearchMemos.addLast(clean)
+            while (recentSearchMemos.size > SEARCH_MEMO_MAX_KEEP) {
+                recentSearchMemos.removeFirst()
+            }
+        }
+    }
+
+    private fun buildSearchMemoASection(): String {
+        val memos = synchronized(searchMemoLock) { recentSearchMemos.toList() }
+        if (memos.isEmpty()) return ""
+        return memos.joinToString("\n\n")
     }
 
     /** Flash 主对话共用同一份 tools schema（会员路由一致性） */
@@ -352,6 +372,7 @@ object QwenClient {
     /** 构建主对话 messages（四层在 user；system 仅锚点）。toolInfo 为 null 时不含【工具信息】段。 */
     private fun buildMainDialogueMessages(userMessage: String, imageUrlList: List<String>, toolInfo: String?): JsonArray {
         val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
+        val searchMemoA = buildSearchMemoASection()
         val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
         val messagesArray = JsonArray()
         messagesArray.add(JsonObject().apply {
@@ -362,6 +383,7 @@ object QwenClient {
         val parts = mutableListOf<String>()
         parts.add(layer1.trim())
         if (aText.isNotBlank()) parts.add("【A层历史对话（中等参考性）】\n$aText")
+        if (searchMemoA.isNotBlank()) parts.add("【A层搜索备忘录（低参考性）】\n$searchMemoA")
         if (bSum.isNotBlank()) parts.add("【B层累计摘要（低参考性）】\n$bSum")
         if (toolInfo != null && toolInfo.isNotBlank()) parts.add("【工具信息（极低参考性）】\n${toolInfo.trim()}")
         val userTextContent = parts.joinToString("\n\n").trim()
@@ -637,21 +659,32 @@ object QwenClient {
                     phase = 1
                     currentBochaCall.set(null)
                     val bochaStartMs = System.currentTimeMillis()
-                    val results = try {
-                        selectedQuery?.let { listOf(BochaClient.webSearch(it, currentBochaCall)) } ?: emptyList()
+                    val memoResult = try {
+                        selectedQuery?.let { BochaClient.webSearchMemo(it, currentBochaCall) }
+                            ?: BochaClient.SearchMemoResult(false, null, 0, 0, false, 0)
                     } catch (_: Exception) {
-                        emptyList()
+                        BochaClient.SearchMemoResult(false, null, 0, 0, false, 0)
                     } finally {
                         currentBochaCall.set(null)
                     }
                     bochaMs = System.currentTimeMillis() - bochaStartMs
-                    val successTexts = results.filter { it.first && !it.second.isNullOrBlank() }.map { it.second!! }
-                    val hasEffectiveResult = successTexts.isNotEmpty()
+                    val hasEffectiveResult = memoResult.success && !memoResult.memo.isNullOrBlank()
                     // P0: search daily cap (5/day), silent degrade
                     finishSearchAttempt(hasEffectiveResult, searchDailyCap)
-                    val normalizedText = if (hasEffectiveResult) normalizeToolInfo(successTexts) else ""
-                    val toolInfoFormatted = if (hasEffectiveResult) normalizedText else "联网搜索失败/未命中（仅供参考）"
-                    val showToolBlock = hasEffectiveResult && normalizedText.isNotBlank()
+                    val toolInfoFormatted = if (hasEffectiveResult) {
+                        val memo = memoResult.memo!!.trim()
+                        appendSearchMemoForA(memo)
+                        memo
+                    } else {
+                        "联网搜索未命中（低权重）"
+                    }
+                    val showToolBlock = hasEffectiveResult
+                    if (BuildConfig.DEBUG) {
+                        Log.d(
+                            TAG,
+                            "search_memo search_triggered=true fetched_count=${memoResult.fetchedCount} selected_count=${memoResult.selectedCount.coerceAtMost(3)} has_summary_field=${memoResult.hasSummaryField} memo_chars=${memoResult.memoChars}"
+                        )
+                    }
                     val messagesSecond = buildMainDialogueMessages(userMessage, imageUrlList, toolInfoFormatted)
                     val body2 = JsonObject().apply {
                         addProperty("model", model)
