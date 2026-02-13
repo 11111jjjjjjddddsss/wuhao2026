@@ -61,9 +61,9 @@
         }
 
         .app-shell {
-            --shell-width: 100vw;
+            --shell-width: min(100vw, 430px);
             width: var(--shell-width);
-            max-width: none;
+            max-width: 430px;
             height: 100vh;
             margin: 0 auto;
             background: #F6F6F6;
@@ -89,9 +89,16 @@
 
         @media (orientation: landscape) {
             .app-shell {
-                --shell-width: 100vw;
-                max-width: none;
+                --shell-width: min(100vw, 520px);
+                max-width: 520px;
                 width: var(--shell-width);
+            }
+        }
+        @media (max-width: 768px) {
+            .app-shell {
+                --shell-width: 100vw;
+                width: 100vw;
+                max-width: none;
             }
         }
 
