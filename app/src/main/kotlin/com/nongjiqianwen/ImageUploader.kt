@@ -24,13 +24,16 @@ import java.util.concurrent.atomic.AtomicReference
 object ImageUploader {
     private const val TAG = "ImageUploader"
     private const val MAX_IMAGE_COUNT = 4
-    /** 输入规则（最终版·冻结）：最长边 1024px，单张 ≤1MB，JPEG 质量 82（超限降到80） */
+    /** 输入规则（最终版·冻结）：最长边 1024px，固定降级序列，目标单张 ≤1MB */
     private const val MAX_LONG_EDGE = 1024
     private const val FALLBACK_LONG_EDGE_1 = 896
     private const val FALLBACK_LONG_EDGE_2 = 768
+    private const val FALLBACK_LONG_EDGE_3 = 640
     private const val MAX_SIZE_BYTES = 1024 * 1024
     private const val JPEG_QUALITY_DEFAULT = 82
-    private const val JPEG_QUALITY_LOW = 80
+    private const val JPEG_QUALITY_80 = 80
+    private const val JPEG_QUALITY_75 = 75
+    private const val JPEG_QUALITY_70 = 70
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -42,8 +45,8 @@ object ImageUploader {
 
     /**
      * 压缩图片（输入规则最终版·冻结）：
-     * 长边≤1024，单张≤1MB，默认 JPEG 质量 82，超限降到 80；
-     * 若仍超限，依次降分辨率到 896 / 768（等比缩放，不拉伸不裁剪），仅输出 JPEG。
+     * 固定降级序列（直到 ≤1MB）：1024@82 -> 1024@80 -> 1024@75 -> 1024@70 -> 896@70 -> 768@70 -> 640@70。
+     * 等比缩放，不拉伸不裁剪，仅输出 JPEG。
      * 能解码则转 JPEG 后上传；解码失败返回 null，由调用方提示 DECODE_FAIL_MESSAGE，不调用模型、不扣费、不计轮次。
      */
     fun compressImage(imageBytes: ByteArray): CompressResult? {
@@ -96,34 +99,30 @@ object ImageUploader {
             val correctedWidth = correctedBitmap.width
             val correctedHeight = correctedBitmap.height
             
-            val originalLongEdge = maxOf(correctedWidth, correctedHeight)
-            val edgeCandidates = linkedSetOf(
-                minOf(MAX_LONG_EDGE, originalLongEdge),
-                minOf(FALLBACK_LONG_EDGE_1, originalLongEdge),
-                minOf(FALLBACK_LONG_EDGE_2, originalLongEdge)
-            ).toList()
-
             var compressedBytes = ByteArray(0)
             var usedQuality = JPEG_QUALITY_DEFAULT
             var resultBitmap: Bitmap? = null
             var finalWidth = correctedWidth
             var finalHeight = correctedHeight
 
-            for ((index, targetLongEdge) in edgeCandidates.withIndex()) {
+            val sequence = listOf(
+                MAX_LONG_EDGE to JPEG_QUALITY_DEFAULT,
+                MAX_LONG_EDGE to JPEG_QUALITY_80,
+                MAX_LONG_EDGE to JPEG_QUALITY_75,
+                MAX_LONG_EDGE to JPEG_QUALITY_70,
+                FALLBACK_LONG_EDGE_1 to JPEG_QUALITY_70,
+                FALLBACK_LONG_EDGE_2 to JPEG_QUALITY_70,
+                FALLBACK_LONG_EDGE_3 to JPEG_QUALITY_70
+            )
+            for ((targetLongEdge, quality) in sequence) {
                 val candidateBitmap = scaleBitmapByLongEdge(correctedBitmap, targetLongEdge)
-                val firstQuality = if (index == 0) JPEG_QUALITY_DEFAULT else JPEG_QUALITY_LOW
-                var candidateBytes = compressToJpeg(candidateBitmap, firstQuality)
-                var candidateQuality = firstQuality
-                if (candidateBytes.size > MAX_SIZE_BYTES && firstQuality != JPEG_QUALITY_LOW) {
-                    candidateBytes = compressToJpeg(candidateBitmap, JPEG_QUALITY_LOW)
-                    candidateQuality = JPEG_QUALITY_LOW
-                }
+                val candidateBytes = compressToJpeg(candidateBitmap, quality)
                 if (resultBitmap != null && resultBitmap !== correctedBitmap) {
                     resultBitmap!!.recycle()
                 }
                 resultBitmap = candidateBitmap
                 compressedBytes = candidateBytes
-                usedQuality = candidateQuality
+                usedQuality = quality
                 finalWidth = candidateBitmap.width
                 finalHeight = candidateBitmap.height
                 if (compressedBytes.size <= MAX_SIZE_BYTES) {
@@ -162,7 +161,7 @@ object ImageUploader {
         }
     }
     
-    /** 输出 JPEG 字节数组（质量 82/80），用于 ≤1MB 控制 */
+    /** 输出 JPEG 字节数组（按固定降级序列质量），用于 ≤1MB 控制 */
     private fun compressToJpeg(bitmap: Bitmap, quality: Int): ByteArray {
         val out = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, quality, out)
