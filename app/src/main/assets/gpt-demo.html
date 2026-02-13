@@ -4051,7 +4051,9 @@
                 if (inSymbolBlocks && nextCp === 0xFE0F) continue;
                 out.push(ch);
             }
-            return out.join('');
+            return out.join('')
+                .replace(/[ \t]+\n/g, '\n')
+                .replace(/\n{3,}/g, '\n\n');
         }
         function renderMarkdownSafe(text) {
             if (text == null) text = '';
