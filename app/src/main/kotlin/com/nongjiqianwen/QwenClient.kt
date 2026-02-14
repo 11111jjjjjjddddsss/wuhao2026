@@ -602,16 +602,6 @@ object QwenClient {
                         }
                     }
                     if (selectedQuery == null) {
-                        val contentFirst = message1.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: ""
-                        if (contentFirst.isNotBlank()) {
-                            if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true parsed_queries_count=0 action=SKIP_TOOL_CALL show_tool_block=false cancelled=false")
-                            outputCharCount = contentFirst.length
-                            handler.post {
-                                if (!phaseEnded.compareAndSet(false, true)) return@post
-                                emitFakeStream(contentFirst, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
-                            }
-                            return@Thread
-                        }
                         if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=true parsed_queries_count=0 action=SKIP_TOOL_CALL_FALLBACK_DIRECT_ANSWER show_tool_block=false cancelled=false")
                         val msgFb = buildMainDialogueMessages(userMessage, imageUrlList, null)
                         val bodyFb = JsonObject().apply {
