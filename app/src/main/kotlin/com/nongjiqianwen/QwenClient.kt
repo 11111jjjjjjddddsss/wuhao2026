@@ -545,8 +545,11 @@ object QwenClient {
                             } else ""
                             outputCharCount = contentRetry.length
                             handler.post {
-                                if (!phaseEnded.compareAndSet(false, true)) return@post
-                                if (contentRetry.isNotBlank()) emitFakeStream(contentRetry, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
+                                if (phaseEnded.get()) return@post
+                                if (contentRetry.isNotBlank()) emitFakeStream(contentRetry, onChunk, { canceledFlag.get() || phaseEnded.get() }, {
+                                    if (!phaseEnded.compareAndSet(false, true)) return@emitFakeStream
+                                    fireComplete()
+                                })
                                 else { onInterrupted("error"); fireComplete() }
                             }
                         } catch (e: Exception) {
@@ -630,8 +633,11 @@ object QwenClient {
                             val contentFb = if (choicesFb != null && choicesFb.size() > 0) choicesFb.get(0).asJsonObject.getAsJsonObject("message")?.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: "" else ""
                             outputCharCount = contentFb.length
                             handler.post {
-                                if (!phaseEnded.compareAndSet(false, true)) return@post
-                                if (contentFb.isNotBlank()) emitFakeStream(contentFb, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
+                                if (phaseEnded.get()) return@post
+                                if (contentFb.isNotBlank()) emitFakeStream(contentFb, onChunk, { canceledFlag.get() || phaseEnded.get() }, {
+                                    if (!phaseEnded.compareAndSet(false, true)) return@emitFakeStream
+                                    fireComplete()
+                                })
                                 else { onInterrupted("error"); fireComplete() }
                             }
                         } catch (e: Exception) {
@@ -742,8 +748,9 @@ object QwenClient {
                     outputCharCount = content.length
                     if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
                     handler.post {
-                        if (!phaseEnded.compareAndSet(false, true)) return@post
+                        if (phaseEnded.get()) return@post
                         emitFakeStream(content, onChunk, { canceledFlag.get() || phaseEnded.get() }, {
+                            if (!phaseEnded.compareAndSet(false, true)) return@emitFakeStream
                             if (showToolBlock) onToolInfo?.invoke(streamId, "web_search", toolInfoFormatted)
                             fireComplete()
                         })
@@ -756,8 +763,11 @@ object QwenClient {
                 val elapsed = System.currentTimeMillis() - startMs
                 if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=0 tool_calls=false bocha_ms=0 second_ms=0 show_tool_block=false cancelled=false")
                 handler.post {
-                    if (!phaseEnded.compareAndSet(false, true)) return@post
-                    emitFakeStream(content, onChunk, { canceledFlag.get() || phaseEnded.get() }, { fireComplete() })
+                    if (phaseEnded.get()) return@post
+                    emitFakeStream(content, onChunk, { canceledFlag.get() || phaseEnded.get() }, {
+                        if (!phaseEnded.compareAndSet(false, true)) return@emitFakeStream
+                        fireComplete()
+                    })
                 }
             } catch (e: Exception) {
                 val elapsed = System.currentTimeMillis() - startMs
