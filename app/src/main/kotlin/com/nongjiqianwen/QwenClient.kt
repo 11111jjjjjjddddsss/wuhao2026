@@ -36,6 +36,9 @@ object QwenClient {
     private const val READ_TIMEOUT_SEC = 60L
     private const val WRITE_TIMEOUT_SEC = 10L
     private const val CALL_TIMEOUT_SEC = 60L   // 单次请求总时长上限（1 分钟体验）
+    private const val SSE_TTFT_TIMEOUT_MS = 8_000L
+    private const val SSE_TOTAL_TIMEOUT_MS = 25_000L
+    private const val SSE_CHUNK_THROTTLE_MS = 24L
     private const val B_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
     private const val TOOL_INFO_MAX_CHARS = 1500
     private const val B_EXTRACT_TEMPERATURE = 0.85
@@ -369,7 +372,8 @@ object QwenClient {
     private fun readMainDialogueStreamOrFallback(
         response: Response,
         onChunk: (String) -> Unit,
-        isCanceled: () -> Boolean
+        isCanceled: () -> Boolean,
+        onTimeoutCancel: () -> Unit = {}
     ): StreamReadResult {
         val contentType = response.header("Content-Type")?.lowercase(Locale.ROOT).orEmpty()
         val isEventStream = contentType.contains("text/event-stream")
@@ -396,14 +400,77 @@ object QwenClient {
         val source = body.source()
         val buffer = StringBuilder()
         val raw = StringBuilder()
+        val pending = StringBuilder()
+        val pendingLock = Any()
+        var flushScheduled = false
+        var lastDispatchMs = 0L
+        val startedAtMs = System.currentTimeMillis()
         var seenDataLine = false
+        var seenValidChunk = false
+
+        fun flushPendingNow() {
+            val text = synchronized(pendingLock) {
+                if (pending.isEmpty()) return
+                val out = pending.toString()
+                pending.setLength(0)
+                lastDispatchMs = System.currentTimeMillis()
+                out
+            }
+            handler.post { onChunk(text) }
+        }
+
+        fun appendChunk(piece: String) {
+            if (piece.isBlank()) return
+            synchronized(pendingLock) {
+                pending.append(piece)
+                val elapsed = System.currentTimeMillis() - lastDispatchMs
+                if (elapsed >= SSE_CHUNK_THROTTLE_MS && !flushScheduled) {
+                    val out = pending.toString()
+                    pending.setLength(0)
+                    lastDispatchMs = System.currentTimeMillis()
+                    handler.post { onChunk(out) }
+                    return
+                }
+                if (!flushScheduled) {
+                    flushScheduled = true
+                    val delay = (SSE_CHUNK_THROTTLE_MS - elapsed).coerceAtLeast(1L)
+                    handler.postDelayed({
+                        val out: String? = synchronized(pendingLock) {
+                            flushScheduled = false
+                            if (pending.isEmpty()) {
+                                null
+                            } else {
+                                val text = pending.toString()
+                                pending.setLength(0)
+                                lastDispatchMs = System.currentTimeMillis()
+                                text
+                            }
+                        }
+                        if (!out.isNullOrEmpty()) onChunk(out)
+                    }, delay)
+                }
+            }
+        }
+
         while (!source.exhausted()) {
+            val elapsed = System.currentTimeMillis() - startedAtMs
+            if (!seenValidChunk && elapsed > SSE_TTFT_TIMEOUT_MS) {
+                onTimeoutCancel()
+                try { body.close() } catch (_: Exception) {}
+                return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
+            }
+            if (elapsed > SSE_TOTAL_TIMEOUT_MS) {
+                onTimeoutCancel()
+                try { body.close() } catch (_: Exception) {}
+                return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
+            }
             if (isCanceled()) {
                 try { body.close() } catch (_: Exception) {}
                 return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
             }
             val line = source.readUtf8Line() ?: continue
             raw.append(line).append('\n')
+            if (line.isBlank() || line.startsWith(":") || line.startsWith("event:")) continue
             if (!line.startsWith("data:")) continue
             seenDataLine = true
             val data = line.removePrefix("data:").trim()
@@ -413,18 +480,30 @@ object QwenClient {
                 val json = gson.fromJson(data, JsonObject::class.java)
                 val choices = json.getAsJsonArray("choices") ?: continue
                 if (choices.size() == 0) continue
-                val delta = choices.get(0).asJsonObject.getAsJsonObject("delta") ?: continue
-                val piece = delta.get("content")
-                    ?.takeIf { it.isJsonPrimitive }
-                    ?.asString
-                    .orEmpty()
+                val choice0 = choices.get(0).asJsonObject
+                val delta = choice0.getAsJsonObject("delta")
+                val piece = when {
+                    delta != null -> delta.get("content")
+                        ?.takeIf { it.isJsonPrimitive }
+                        ?.asString
+                        .orEmpty()
+                    else -> choice0.getAsJsonObject("message")
+                        ?.get("content")
+                        ?.takeIf { it.isJsonPrimitive }
+                        ?.asString
+                        .orEmpty()
+                }
                 if (piece.isBlank()) continue
+                seenValidChunk = true
                 buffer.append(piece)
-                handler.post { onChunk(piece) }
-            } catch (_: Exception) {
+                appendChunk(piece)
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) Log.d(TAG, "SSE parse skip: ${e.message}")
             }
         }
-        if (!seenDataLine) {
+
+        flushPendingNow()
+        if (!seenDataLine || !seenValidChunk) {
             val fallbackText = try {
                 val json = gson.fromJson(raw.toString().trim(), JsonObject::class.java)
                 val choices = json?.getAsJsonArray("choices")
@@ -578,21 +657,28 @@ object QwenClient {
                     .addHeader("X-Client-Msg-Id", effectiveClientMsgId)
                     .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
                     .build()
+                    .let { builderReady ->
+                        if (streamFirst) builderReady.newBuilder().addHeader("Accept-Encoding", "identity").build() else builderReady
+                    }
                 call = client.newCall(request1)
                 currentCall.set(call)
                 currentRequestId.set(requestId)
-                val response1 = call!!.execute()
-                val code1 = response1.code
-                val streamResult1 = if (streamFirst && code1 == 200) {
-                    readMainDialogueStreamOrFallback(
-                        response = response1,
-                        onChunk = onChunk,
-                        isCanceled = { canceledFlag.get() || phaseEnded.get() || call?.isCanceled() == true }
-                    )
-                } else StreamReadResult("", false)
-                val body1 = if (!streamResult1.usedEventStream && !streamFirst) {
-                    response1.body?.string() ?: ""
-                } else ""
+                var code1 = 0
+                var body1 = ""
+                var streamResult1 = StreamReadResult("", false)
+                call!!.execute().use { response1 ->
+                    code1 = response1.code
+                    if (streamFirst && code1 == 200) {
+                        streamResult1 = readMainDialogueStreamOrFallback(
+                            response = response1,
+                            onChunk = onChunk,
+                            isCanceled = { canceledFlag.get() || phaseEnded.get() || call?.isCanceled() == true },
+                            onTimeoutCancel = { call?.cancel() }
+                        )
+                    } else {
+                        body1 = response1.body?.string() ?: ""
+                    }
+                }
                 currentCall.set(null)
                 currentRequestId.set(null)
 
@@ -619,6 +705,7 @@ object QwenClient {
                             .addHeader("Content-Type", "application/json")
                             .addHeader("Accept", "text/event-stream")
                             .addHeader("Cache-Control", "no-cache")
+                            .addHeader("Accept-Encoding", "identity")
                             .addHeader("X-User-Id", userId)
                             .addHeader("X-Session-Id", sessionId)
                             .addHeader("X-Request-Id", requestId)
@@ -628,17 +715,27 @@ object QwenClient {
                         val callRetry = client.newCall(reqRetry)
                         currentCall.set(callRetry)
                         try {
-                            val rspRetry = callRetry.execute()
+                            var retryCode = 0
+                            var retryBody = ""
+                            var streamRetry = StreamReadResult("", false)
+                            callRetry.execute().use { rspRetry ->
+                                retryCode = rspRetry.code
+                                if (retryCode == 200) {
+                                    streamRetry = readMainDialogueStreamOrFallback(
+                                        response = rspRetry,
+                                        onChunk = onChunk,
+                                        isCanceled = { canceledFlag.get() || phaseEnded.get() || callRetry.isCanceled() },
+                                        onTimeoutCancel = { callRetry.cancel() }
+                                    )
+                                } else {
+                                    retryBody = rspRetry.body?.string() ?: ""
+                                }
+                            }
                             currentCall.set(null)
-                            if (rspRetry.code != 200) {
-                                handleErrorResponse(userId, sessionId, requestId, streamId, rspRetry.code, rspRetry.body?.string() ?: "", inLen, imgCount, outputCharCount, onInterrupted, fireComplete, onInterruptedResumable)
+                            if (retryCode != 200) {
+                                handleErrorResponse(userId, sessionId, requestId, streamId, retryCode, retryBody, inLen, imgCount, outputCharCount, onInterrupted, fireComplete, onInterruptedResumable)
                                 return@Thread
                             }
-                            val streamRetry = readMainDialogueStreamOrFallback(
-                                response = rspRetry,
-                                onChunk = onChunk,
-                                isCanceled = { canceledFlag.get() || phaseEnded.get() || callRetry.isCanceled() }
-                            )
                             val contentRetry = streamRetry.fullText.trim()
                             outputCharCount = contentRetry.length
                             handler.post {
@@ -752,22 +849,34 @@ object QwenClient {
                         val reqFb = Request.Builder().url(apiUrl)
                             .addHeader("Authorization", "Bearer $apiKey").addHeader("Content-Type", "application/json").addHeader("Accept", "text/event-stream")
                             .addHeader("Cache-Control", "no-cache")
+                            .addHeader("Accept-Encoding", "identity")
                             .addHeader("X-User-Id", userId).addHeader("X-Session-Id", sessionId).addHeader("X-Request-Id", requestId).addHeader("X-Client-Msg-Id", effectiveClientMsgId)
                             .post(bodyFb.toString().toRequestBody("application/json".toMediaType())).build()
                         val callFb = client.newCall(reqFb)
                         currentCall.set(callFb)
                         try {
-                            val rspFb = callFb.execute()
+                            var fbCode = 0
+                            var fbBody = ""
+                            var streamFb = StreamReadResult("", false)
+                            callFb.execute().use { rspFb ->
+                                fbCode = rspFb.code
+                                if (fbCode == 200) {
+                                    streamFb = readMainDialogueStreamOrFallback(
+                                        response = rspFb,
+                                        onChunk = onChunk,
+                                        isCanceled = { canceledFlag.get() || phaseEnded.get() || callFb.isCanceled() },
+                                        onTimeoutCancel = { callFb.cancel() }
+                                    )
+                                } else {
+                                    fbBody = rspFb.body?.string() ?: ""
+                                }
+                            }
                             currentCall.set(null)
-                            if (rspFb.code != 200) {
+                            if (fbCode != 200) {
+                                if (BuildConfig.DEBUG) Log.d(TAG, "skip_tool_fallback non-200 body=$fbBody")
                                 handler.post { if (!phaseEnded.compareAndSet(false, true)) return@post; if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onInterrupted("server"); fireComplete() } }
                                 return@Thread
                             }
-                            val streamFb = readMainDialogueStreamOrFallback(
-                                response = rspFb,
-                                onChunk = onChunk,
-                                isCanceled = { canceledFlag.get() || phaseEnded.get() || callFb.isCanceled() }
-                            )
                             val contentFb = streamFb.fullText.trim()
                             outputCharCount = contentFb.length
                             handler.post {
@@ -844,6 +953,7 @@ object QwenClient {
                         .addHeader("Content-Type", "application/json")
                         .addHeader("Accept", "text/event-stream")
                         .addHeader("Cache-Control", "no-cache")
+                        .addHeader("Accept-Encoding", "identity")
                         .addHeader("X-User-Id", userId)
                         .addHeader("X-Session-Id", sessionId)
                         .addHeader("X-Request-Id", requestId)
@@ -854,13 +964,26 @@ object QwenClient {
                     val secondStartMs = System.currentTimeMillis()
                     val call2 = client.newCall(request2)
                     currentCall.set(call2)
-                    val response2 = call2.execute()
+                    var code2 = 0
+                    var body2Str = ""
+                    var stream2 = StreamReadResult("", false)
+                    call2.execute().use { response2 ->
+                        code2 = response2.code
+                        if (code2 == 200) {
+                            stream2 = readMainDialogueStreamOrFallback(
+                                response = response2,
+                                onChunk = onChunk,
+                                isCanceled = { canceledFlag.get() || phaseEnded.get() || call2.isCanceled() },
+                                onTimeoutCancel = { call2.cancel() }
+                            )
+                        } else {
+                            body2Str = response2.body?.string() ?: ""
+                        }
+                    }
                     currentCall.set(null)
                     secondMs = System.currentTimeMillis() - secondStartMs
-                    val code2 = response2.code
                     if (code2 != 200) {
-                        val body2Str = response2.body?.string() ?: ""
-                        Log.e(TAG, "callApi 二次请求 HTTP error status=$code2")
+                        Log.e(TAG, "callApi second request HTTP error status=$code2 body=$body2Str")
                         if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
                         handler.post {
                             if (!phaseEnded.compareAndSet(false, true)) return@post
@@ -868,11 +991,6 @@ object QwenClient {
                         }
                         return@Thread
                     }
-                    val stream2 = readMainDialogueStreamOrFallback(
-                        response = response2,
-                        onChunk = onChunk,
-                        isCanceled = { canceledFlag.get() || phaseEnded.get() || call2.isCanceled() }
-                    )
                     val content = stream2.fullText.trim()
                     outputCharCount = content.length
                     if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: phase=2 tool_calls=true bocha_ms=${bochaMs} second_ms=${secondMs} show_tool_block=$showToolBlock cancelled=false")
