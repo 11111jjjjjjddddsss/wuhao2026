@@ -400,6 +400,7 @@ object QwenClient {
         val source = body.source()
         val buffer = StringBuilder()
         val raw = StringBuilder()
+        val dataPayloads = mutableListOf<String>()
         val pending = StringBuilder()
         val pendingLock = Any()
         var flushScheduled = false
@@ -452,75 +453,83 @@ object QwenClient {
             }
         }
 
-        while (!source.exhausted()) {
-            val elapsed = System.currentTimeMillis() - startedAtMs
-            if (!seenValidChunk && elapsed > SSE_TTFT_TIMEOUT_MS) {
-                onTimeoutCancel()
-                try { body.close() } catch (_: Exception) {}
-                return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
-            }
-            if (elapsed > SSE_TOTAL_TIMEOUT_MS) {
-                onTimeoutCancel()
-                try { body.close() } catch (_: Exception) {}
-                return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
-            }
-            if (isCanceled()) {
-                try { body.close() } catch (_: Exception) {}
-                return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
-            }
-            val line = source.readUtf8Line() ?: continue
-            raw.append(line).append('\n')
-            if (line.isBlank() || line.startsWith(":") || line.startsWith("event:")) continue
-            if (!line.startsWith("data:")) continue
-            seenDataLine = true
-            val data = line.removePrefix("data:").trim()
-            if (data == "[DONE]") break
-            if (data.isBlank()) continue
-            try {
-                val json = gson.fromJson(data, JsonObject::class.java)
-                val choices = json.getAsJsonArray("choices") ?: continue
-                if (choices.size() == 0) continue
-                val choice0 = choices.get(0).asJsonObject
-                val delta = choice0.getAsJsonObject("delta")
-                val piece = when {
-                    delta != null -> delta.get("content")
-                        ?.takeIf { it.isJsonPrimitive }
-                        ?.asString
-                        .orEmpty()
-                    else -> choice0.getAsJsonObject("message")
-                        ?.get("content")
-                        ?.takeIf { it.isJsonPrimitive }
-                        ?.asString
-                        .orEmpty()
+        return try {
+            while (!source.exhausted()) {
+                val elapsed = System.currentTimeMillis() - startedAtMs
+                if (!seenValidChunk && elapsed > SSE_TTFT_TIMEOUT_MS) {
+                    onTimeoutCancel()
+                    return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
                 }
-                if (piece.isBlank()) continue
-                seenValidChunk = true
-                buffer.append(piece)
-                appendChunk(piece)
-            } catch (e: Exception) {
-                if (BuildConfig.DEBUG) Log.d(TAG, "SSE parse skip: ${e.message}")
+                if (elapsed > SSE_TOTAL_TIMEOUT_MS) {
+                    onTimeoutCancel()
+                    return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
+                }
+                if (isCanceled()) {
+                    return StreamReadResult(buffer.toString(), true, interruptedByCancel = true)
+                }
+                val line = source.readUtf8Line() ?: continue
+                raw.append(line).append('\n')
+                val normalized = line.trimStart()
+                if (normalized.isBlank() || normalized.startsWith(":") || normalized.startsWith("event:")) continue
+                if (!normalized.startsWith("data:")) continue
+                seenDataLine = true
+                val data = normalized.removePrefix("data:").trim()
+                if (data == "[DONE]") break
+                if (data.isBlank()) continue
+                dataPayloads.add(data)
+                try {
+                    val json = gson.fromJson(data, JsonObject::class.java)
+                    val choices = json.getAsJsonArray("choices") ?: continue
+                    if (choices.size() == 0) continue
+                    val choice0 = choices.get(0).asJsonObject
+                    val delta = choice0.getAsJsonObject("delta")
+                    val piece = when {
+                        delta != null -> delta.get("content")
+                            ?.takeIf { it.isJsonPrimitive }
+                            ?.asString
+                            .orEmpty()
+                        else -> choice0.getAsJsonObject("message")
+                            ?.get("content")
+                            ?.takeIf { it.isJsonPrimitive }
+                            ?.asString
+                            .orEmpty()
+                    }
+                    if (piece.isBlank()) continue
+                    seenValidChunk = true
+                    buffer.append(piece)
+                    appendChunk(piece)
+                } catch (e: Exception) {
+                    if (BuildConfig.DEBUG) Log.d(TAG, "SSE parse skip: ${e.message}")
+                }
             }
-        }
 
-        flushPendingNow()
-        if (!seenDataLine || !seenValidChunk) {
-            val fallbackText = try {
-                val json = gson.fromJson(raw.toString().trim(), JsonObject::class.java)
-                val choices = json?.getAsJsonArray("choices")
-                if (choices != null && choices.size() > 0) {
-                    choices.get(0).asJsonObject.getAsJsonObject("message")
-                        ?.get("content")
-                        ?.takeIf { it.isJsonPrimitive }
-                        ?.asString
-                        ?.trim()
-                        ?: ""
-                } else ""
-            } catch (_: Exception) {
-                ""
+            flushPendingNow()
+            if (!seenDataLine || !seenValidChunk) {
+                val fallbackText = try {
+                    val jsonCandidate = when {
+                        dataPayloads.isNotEmpty() -> dataPayloads.last()
+                        else -> raw.toString().trim()
+                    }
+                    val json = gson.fromJson(jsonCandidate, JsonObject::class.java)
+                    val choices = json?.getAsJsonArray("choices")
+                    if (choices != null && choices.size() > 0) {
+                        choices.get(0).asJsonObject.getAsJsonObject("message")
+                            ?.get("content")
+                            ?.takeIf { it.isJsonPrimitive }
+                            ?.asString
+                            ?.trim()
+                            ?: ""
+                    } else ""
+                } catch (_: Exception) {
+                    ""
+                }
+                return StreamReadResult(fallbackText, false)
             }
-            return StreamReadResult(fallbackText, false)
+            StreamReadResult(buffer.toString(), true)
+        } finally {
+            try { source.close() } catch (_: Exception) {}
+            try { body.close() } catch (_: Exception) {}
         }
-        return StreamReadResult(buffer.toString(), true)
     }
 
     /** 合并多条 Bocha 成功文本：单标题行 + 最多 5 条「- 标题 | 域名 | URL」，总长 <= TOOL_INFO_MAX_CHARS。 */
