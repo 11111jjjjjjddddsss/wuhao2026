@@ -64,7 +64,7 @@ app.use('/uploads', express.static(UPLOADS_DIR, { index: false }));
 
 // ---------- 会员 entitlement（与前端规则一致；后端为唯一真相时可替换前端 computeEntitlement） ----------
 const TIER_ORDER = { free: 0, plus: 1, pro: 2 };
-const TIER_QUOTA = { free: { chat: 6, img: null }, plus: { chat: 20, img: null }, pro: { chat: 35, img: null } };
+const TIER_QUOTA = { free: { chat: 6 }, plus: { chat: 20 }, pro: { chat: 35 } };
 function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
 const subscriptionsByUser = {}; // user_id -> [ { user_id, tier, start_at, end_at, status, pause_at, remaining_seconds, order_id, created_at } ]
 
@@ -119,8 +119,7 @@ app.get('/api/entitlement', (req, res) => {
     effective_tier: ent.effective_tier,
     effective_end_at: ent.effective_end_at,
     paused_list: ent.paused_list,
-    chat_remaining: quota.chat,
-    img_remaining: quota.img
+    chat_remaining: quota.chat
   });
 });
 
