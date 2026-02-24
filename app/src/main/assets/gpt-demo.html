@@ -2193,16 +2193,6 @@
                     <div class="card-desc">适合：高频使用、额度更稳、更多图片诊断</div>
                     <button type="button" class="card-btn" data-tier="pro">开通 Pro</button>
                 </div>
-                <div class="membership-card" data-tier="expert">
-                    <div class="card-badge">推理/图片更强</div>
-                    <div class="card-top">
-                        <div class="card-name">专家模式</div>
-                        <div class="card-price">¥49.9/月</div>
-                    </div>
-                    <div class="card-desc">80 次对话/天 <span class="dot">•</span> 20 次图片上传/天（MAX）</div>
-                    <div class="card-desc">适合：复杂问题、多图综合判断、推理更强</div>
-                    <button type="button" class="card-btn" data-tier="expert">开通 专家模式</button>
-                </div>
             </div>
             <div class="membership-footnote">注：1 次图片上传最多 4 张图（系统默认中等压缩，不限制用户文件大小）。</div>
         </div>
@@ -2436,7 +2426,6 @@
             }
             localStorage.setItem('account_id', nextId);
             localStorage.setItem('account_type', 'phone');
-            localStorage.removeItem('debug_tier');
             window.account_id = nextId;
             window.account_type = 'phone';
             updateDrawerLoginState();
@@ -2462,7 +2451,6 @@
         function performLogoutToLogin() {
             localStorage.removeItem('account_id');
             localStorage.removeItem('account_type');
-            localStorage.removeItem('debug_tier');
             window.account_id = '';
             window.account_type = '';
             location.replace('login.html');
@@ -2530,12 +2518,11 @@
         }
 
         // ==================== Domain 层：会员裁决、扣减口径、输入规则（只调 Data，不直接改 DOM） ====================
-        var TIER_ORDER = { free: 0, plus: 1, pro: 2, expert: 3 };
+        var TIER_ORDER = { free: 0, plus: 1, pro: 2 };
         var tier_config = {
             free:   { label: '免费版', chatPerDay: 10, imgPerDay: 1,  model: 'flash' },
             plus:   { label: 'Plus',   chatPerDay: 30, imgPerDay: 5,  model: 'flash' },
-            pro:    { label: 'Pro',    chatPerDay: 60, imgPerDay: 10, model: 'flash' },
-            expert: { label: '专家模式', chatPerDay: 80, imgPerDay: 20, model: 'expert' }
+            pro:    { label: 'Pro',    chatPerDay: 60, imgPerDay: 10, model: 'flash' }
         };
         var COPY_REFRESH_FAIL = '权益状态暂未更新，请稍后重试';
         function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
@@ -2611,10 +2598,6 @@
             }
         }
         function getCurrentTier() {
-            if (getAccountType() === 'anon') {
-                var debugTier = (localStorage.getItem('debug_tier') || '').toLowerCase();
-                if (tier_config[debugTier]) return debugTier;
-            }
             if (USE_BACKEND_ENTITLEMENT) {
                 if (window._cachedEntitlement) {
                     var t = window._cachedEntitlement.effective_tier;
@@ -2709,12 +2692,6 @@
         }
         function setCurrentTier(tier) {
             if (!tier_config[tier]) return;
-            if (getAccountType() === 'anon') {
-                localStorage.setItem('debug_tier', tier);
-                if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
-                if (typeof updateMembershipUI === 'function') updateMembershipUI();
-                return;
-            }
             if (tier === 'free') {
                 localStorage.setItem(STORAGE_KEY_TIER, 'free');
                 localStorage.setItem('membership_expire_at', '0');
@@ -2744,11 +2721,11 @@
             updateDrawerFromTierAndUsage();
         }
         function getTierLabel(tier) {
-            var map = { free: '免费版', plus: 'Plus', pro: 'Pro', expert: '专家模式' };
+            var map = { free: '免费版', plus: 'Plus', pro: 'Pro' };
             return map[tier] || tier;
         }
         function getTierDrawerLabel(tier) {
-            var map = { free: '免费', plus: 'Plus', pro: 'Pro', expert: '专家模式' };
+            var map = { free: '免费', plus: 'Plus', pro: 'Pro' };
             return map[tier] || getTierLabel(tier);
         }
         function updateTierUIEverywhere() {
@@ -2844,7 +2821,6 @@
                     btn.disabled = false;
                     if (t === 'plus') btn.textContent = '开通 Plus';
                     else if (t === 'pro') btn.textContent = '开通 Pro';
-                    else if (t === 'expert') btn.textContent = '开通 专家模式';
                 }
             });
         }
@@ -3357,7 +3333,7 @@
             return localStorage.getItem('membership_tier') || 'free';
         }
         function tierLabel(tier) {
-            return ({ free: '免费版', plus: 'Plus', pro: 'Pro', expert: '专家模式' })[tier] || '免费版';
+            return ({ free: '免费版', plus: 'Plus', pro: 'Pro' })[tier] || '免费版';
         }
         function updatePlusSheetTier() {
             var tierEl = document.getElementById('tier-tier');
@@ -3701,11 +3677,10 @@
             updateInputMode();
         }
 
-        // 发送到Android后端（streamId 写对应气泡；模型路由：专家=expert，其余=flash）
+        // 发送到Android后端（streamId 写对应气泡；model 参数传档位标识）
         function sendToAndroid(text, imageUrls, streamId, clientMsgId) {
             var imageUrlsJson = imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
-            var tier = getCurrentTier();
-            var model = tier === 'expert' ? 'expert' : 'flash';
+            var model = getCurrentTier();
             if (typeof AndroidInterface.sendMessage === 'function') {
                 AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model, clientMsgId || '');
             }

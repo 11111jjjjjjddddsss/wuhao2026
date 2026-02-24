@@ -27,8 +27,7 @@ import java.util.concurrent.atomic.AtomicReference
  * 使用阿里云百炼 DashScope API
  *
  * 会员路由（P0 冻结）：
- * - Free/Plus/Pro/专家 主对话 → Flash；B 层摘要固定 Flash。
- * - 专家档仅通过 extra_body 开启 thinking，其他请求链路保持一致。
+ * - Free/Plus/Pro 主对话固定主模型；B 层摘要固定 qwen-flash。
  */
 object QwenClient {
     private val TAG = "QwenClient"
@@ -95,7 +94,6 @@ object QwenClient {
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     private const val MODEL_MAIN = "qwen3.5-plus"
     private const val MODEL_B_SUMMARY = "qwen-flash"
-    private const val EXPERT_THINKING_BUDGET = 1024
     private val handler = Handler(Looper.getMainLooper())
 
     fun setClientMsgIdForStream(streamId: String, clientMsgId: String) {
@@ -174,11 +172,15 @@ object QwenClient {
         }
     }
 
+    private fun getCurrentPlan(chatModel: String?): PlanConfig {
+        return PlanConfig.fromChatModel(chatModel)
+    }
+
     // P0: search daily cap (5/day), silent degrade
     private fun resolveSearchDailyCap(chatModel: String?): Int {
-        return when (chatModel?.trim()?.lowercase(Locale.ROOT)) {
-            "free", "plus" -> SEARCH_DAILY_CAP_LOW_TIER
-            else -> SEARCH_DAILY_CAP_DEFAULT
+        return when (getCurrentPlan(chatModel).id) {
+            PlanId.FREE, PlanId.PLUS -> SEARCH_DAILY_CAP_LOW_TIER
+            PlanId.PRO -> SEARCH_DAILY_CAP_DEFAULT
         }
     }
 
@@ -237,21 +239,7 @@ object QwenClient {
         return memos.joinToString("\n\n")
     }
 
-    /** Flash 主对话共用同一份 tools schema（会员路由一致性） */
-    private fun appendThinkingExtraBody(body: JsonObject, isExpertThinking: Boolean) {
-        if (!isExpertThinking) return
-        body.add("extra_body", JsonObject().apply {
-            addProperty("enable_thinking", true)
-            addProperty("thinking_budget", EXPERT_THINKING_BUDGET)
-        })
-    }
-
-    private fun logThinkingRoute(route: String, isExpertThinking: Boolean) {
-        if (!BuildConfig.DEBUG) return
-        val tierText = if (isExpertThinking) "专家" else "非专家"
-        val budgetText = if (isExpertThinking) EXPERT_THINKING_BUDGET.toString() else "-"
-        Log.d(TAG, "thinking_route route=$route tier=$tierText model=$MODEL_MAIN thinking=$isExpertThinking budget=$budgetText")
-    }
+    /** 主对话共用同一份 tools schema */
 
     private fun buildWebSearchTools(): JsonArray {
         return JsonArray().apply {
@@ -292,7 +280,7 @@ object QwenClient {
             val keyLength = apiKey.length
             Log.d(TAG, "=== DashScope API 初始化 ===")
             Log.d(TAG, "BAILIAN_API_KEY 读取状态: ${if (keyLength > 0) "成功" else "失败"} (长度: $keyLength)")
-            Log.d(TAG, "API URL: $apiUrl (主对话 model 按专家/非专家路由)")
+            Log.d(TAG, "API URL: $apiUrl")
         }
     }
     
@@ -631,7 +619,7 @@ object QwenClient {
     }
 
     /**
-     * 调用通义千问 API（非流式）。会员路由：所有档位主对话=Flash；专家仅开启 thinking；B 摘要固定 Flash。
+     * 调用通义千问 API。会员路由：Free/Plus/Pro 主对话固定主模型；B 摘要固定 qwen-flash。
      * 工具闭环：首次请求带 tools=web_search；若模型返回 tool_calls 则执行 web_search、二次请求带【工具信息】；否则直接返回首次内容。
      */
     fun callApi(
@@ -649,7 +637,6 @@ object QwenClient {
         onToolInfo: ((streamId: String, toolName: String, text: String) -> Unit)? = null,
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
-        val isExpertThinking = (chatModel == "expert")
         val model = MODEL_MAIN
         val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
         val searchDailyCap = resolveSearchDailyCap(chatModel)
@@ -698,9 +685,7 @@ object QwenClient {
                     addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                     add("messages", messagesFirst)
                     if (useTools) add("tools", buildWebSearchTools())
-                    appendThinkingExtraBody(this, isExpertThinking)
                 }
-                logThinkingRoute("main_request", isExpertThinking)
                 val request1 = Request.Builder()
                     .url(apiUrl)
                     .addHeader("Authorization", "Bearer $apiKey")
@@ -752,9 +737,7 @@ object QwenClient {
                             addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                             addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                             add("messages", messagesFirst)
-                            appendThinkingExtraBody(this, isExpertThinking)
                         }
-                        logThinkingRoute("tools_unsupported_retry", isExpertThinking)
                         val reqRetry = Request.Builder()
                             .url(apiUrl)
                             .addHeader("Authorization", "Bearer $apiKey")
@@ -899,9 +882,7 @@ object QwenClient {
                             addProperty("temperature", ModelParams.TEMPERATURE); addProperty("top_p", ModelParams.TOP_P)
                             addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY); addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                             add("messages", msgFb)
-                            appendThinkingExtraBody(this, isExpertThinking)
                         }
-                        logThinkingRoute("skip_tool_fallback", isExpertThinking)
                         val reqFb = Request.Builder().url(apiUrl)
                             .addHeader("Authorization", "Bearer $apiKey").addHeader("Content-Type", "application/json").addHeader("Accept", "text/event-stream")
                             .addHeader("Cache-Control", "no-cache")
@@ -1000,9 +981,7 @@ object QwenClient {
                         addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                         addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                         add("messages", messagesSecond)
-                        appendThinkingExtraBody(this, isExpertThinking)
                     }
-                    logThinkingRoute("tool_second_request", isExpertThinking)
                     val request2 = Request.Builder()
                         .url(apiUrl)
                         .addHeader("Authorization", "Bearer $apiKey")

@@ -8,7 +8,7 @@ object ModelService {
 
     /**
      * 获取模型回复（非流式，一次 onChunk(完整文本) + onComplete）
-     * @param chatModel 传 "expert" 为专家模式（flash+thinking），否则 qwen3-vl-flash
+     * @param chatModel 主对话档位标识（当前统一 flash 路由）
      * @param onInterrupted 错误时调用，仅用于 UI badge
      */
     fun getReply(

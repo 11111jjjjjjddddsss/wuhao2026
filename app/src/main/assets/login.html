@@ -158,7 +158,6 @@
                 anonBtn.addEventListener('click', function () {
                     localStorage.setItem('account_id', createAnonAccountId());
                     localStorage.setItem('account_type', 'anon');
-                    localStorage.removeItem('debug_tier');
                     location.replace('gpt-demo.html');
                 });
             }
