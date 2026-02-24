@@ -63,8 +63,8 @@ app.post('/upload', (req, res, next) => {
 app.use('/uploads', express.static(UPLOADS_DIR, { index: false }));
 
 // ---------- 会员 entitlement（与前端规则一致；后端为唯一真相时可替换前端 computeEntitlement） ----------
-const TIER_ORDER = { free: 0, plus: 1, pro: 2, expert: 3 };
-const TIER_QUOTA = { free: { chat: 10, img: 1 }, plus: { chat: 30, img: 5 }, pro: { chat: 60, img: 10 }, expert: { chat: 80, img: 20 } };
+const TIER_ORDER = { free: 0, plus: 1, pro: 2 };
+const TIER_QUOTA = { free: { chat: 6, img: null }, plus: { chat: 20, img: null }, pro: { chat: 35, img: null } };
 function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
 const subscriptionsByUser = {}; // user_id -> [ { user_id, tier, start_at, end_at, status, pause_at, remaining_seconds, order_id, created_at } ]
 
