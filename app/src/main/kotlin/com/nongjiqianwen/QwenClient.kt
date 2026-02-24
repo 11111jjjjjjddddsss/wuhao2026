@@ -93,7 +93,8 @@ object QwenClient {
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
-    private val modelFlash = "qwen3-vl-flash"
+    private const val MODEL_MAIN = "qwen3.5-plus"
+    private const val MODEL_B_SUMMARY = "qwen-flash"
     private const val EXPERT_THINKING_BUDGET = 1024
     private val handler = Handler(Looper.getMainLooper())
 
@@ -249,7 +250,7 @@ object QwenClient {
         if (!BuildConfig.DEBUG) return
         val tierText = if (isExpertThinking) "专家" else "非专家"
         val budgetText = if (isExpertThinking) EXPERT_THINKING_BUDGET.toString() else "-"
-        Log.d(TAG, "thinking_route route=$route tier=$tierText model=$modelFlash thinking=$isExpertThinking budget=$budgetText")
+        Log.d(TAG, "thinking_route route=$route tier=$tierText model=$MODEL_MAIN thinking=$isExpertThinking budget=$budgetText")
     }
 
     private fun buildWebSearchTools(): JsonArray {
@@ -649,7 +650,7 @@ object QwenClient {
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         val isExpertThinking = (chatModel == "expert")
-        val model = modelFlash
+        val model = MODEL_MAIN
         val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
         val searchDailyCap = resolveSearchDailyCap(chatModel)
         val startMs = System.currentTimeMillis()
@@ -1169,7 +1170,7 @@ object QwenClient {
                 })
             }
             val body = JsonObject().apply {
-                addProperty("model", modelFlash)  // B 层摘要固定 Flash，不随专家切换
+                addProperty("model", MODEL_B_SUMMARY)  // B 层摘要固定模型
                 addProperty("stream", false)
                 addProperty("temperature", B_EXTRACT_TEMPERATURE)
                 addProperty("top_p", B_EXTRACT_TOP_P)
