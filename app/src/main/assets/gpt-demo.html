@@ -2194,7 +2194,7 @@
                     <button type="button" class="card-btn" data-tier="pro">开通 Pro</button>
                 </div>
             </div>
-            <div class="membership-footnote">注：1 次图片上传最多 4 张图（系统默认中等压缩，不限制用户文件大小）。</div>
+            <div class="membership-footnote">注：图片数限制、次数限制与扣次规则以后端为准（前端仅做展示与输入体验）。</div>
         </div>
     </div>
     <div id="toast">功能开发中</div>
@@ -2501,21 +2501,8 @@
             var d = new Date();
             return 'usage_' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         }
-        function getUsage() {
-            var key = getTodayKey();
-            try {
-                var raw = localStorage.getItem(key);
-                if (raw) {
-                    var o = JSON.parse(raw);
-                    return { chat: (o.chat || 0) | 0, img: (o.img || 0) | 0 };
-                }
-            } catch (e) {}
-            return { chat: 0, img: 0 };
-        }
-        function setUsage(chat, img) {
-            var key = getTodayKey();
-            localStorage.setItem(key, JSON.stringify({ chat: chat, img: img }));
-        }
+        function getUsage() { return { chat: 0, img: 0 }; }
+        function setUsage(chat, img) {}
 
         // ==================== Domain 层：会员裁决、扣减口径、输入规则（只调 Data，不直接改 DOM） ====================
         var TIER_ORDER = { free: 0, plus: 1, pro: 2 };
@@ -2526,77 +2513,12 @@
         };
         var COPY_REFRESH_FAIL = '权益状态暂未更新，请稍后重试';
         function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
-        // 状态机 (a)(b)(c)；仅读 Data 层 getSubscriptions/saveSubscriptions
+        // 前端仅保留展示层：额度/扣次/到期/升级合并由后端控制（当前不在前端生效）
         function computeEntitlement() {
-            var now = Date.now();
-            var list = getSubscriptions();
-            for (var i = 0; i < list.length; i++) {
-                var s = list[i];
-                if (s.status !== 'active' && s.status !== 'paused') continue;
-                var endMs = s.end_at || 0;
-                if (s.status === 'active' && endMs <= now) {
-                    s.status = 'expired';
-                    var pausedSubs = list.filter(function(x) { return x.status === 'paused' && (x.remaining_seconds > 0 || (x.end_at && x.end_at > now)); });
-                    var best = null;
-                    for (var j = 0; j < pausedSubs.length; j++) {
-                        if (!best || getTierLevel(pausedSubs[j].tier) > getTierLevel(best.tier)) best = pausedSubs[j];
-                    }
-                    if (best) {
-                        best.status = 'active';
-                        best.resume_at = now;
-                        best.end_at = now + (best.remaining_seconds || 0) * 1000;
-                        best.remaining_seconds = 0;
-                    }
-                }
-            }
-            var activeList = list.filter(function(s) { return s.status === 'active' && s.end_at > now; });
-            var effective = null;
-            for (var i = 0; i < activeList.length; i++) {
-                if (!effective || getTierLevel(activeList[i].tier) > getTierLevel(effective.tier)) effective = activeList[i];
-            }
-            for (var i = 0; i < list.length; i++) {
-                var s = list[i];
-                if (s.status !== 'active' && s.status !== 'paused') continue;
-                if (effective && getTierLevel(s.tier) < getTierLevel(effective.tier)) {
-                    if (s.status !== 'paused') {
-                        s.status = 'paused';
-                        s.pause_at = now;
-                        s.remaining_seconds = Math.max(0, Math.floor((s.end_at - now) / 1000));
-                    }
-                }
-            }
-            var pausedList = list.filter(function(s) { return s.status === 'paused'; });
-            var effectiveTier = effective ? effective.tier : 'free';
-            var effectiveEndAt = effective ? effective.end_at : 0;
-            var pausedForShow = pausedList.map(function(p) {
-                var sec = p.remaining_seconds != null ? p.remaining_seconds : Math.max(0, Math.floor((p.end_at - now) / 1000));
-                return { tier: p.tier, remaining_days: Math.ceil(sec / 86400) };
-            });
-            saveSubscriptions(list);
-            var out = { effective_tier: effectiveTier, effective_end_at: effectiveEndAt, paused_list: pausedForShow };
-            if (typeof console !== 'undefined' && console.log) console.log('[ENT] entitlement:', JSON.stringify(out));
-            return out;
+            return { effective_tier: getCurrentTier(), effective_end_at: 0, paused_list: [] };
         }
-        function resetUsageIfNewDay() {
-            var key = getTodayKey();
-            var stored = localStorage.getItem('usage_date');
-            if (stored !== key) {
-                localStorage.setItem('usage_date', key);
-                setUsage(0, 0);
-                if (typeof refreshQuotaUI === 'function') refreshQuotaUI();
-            }
-        }
-        function migrateLegacyToSubscriptions() {
-            var list = getSubscriptions();
-            if (list.length > 0) return;
-            var tier = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
-            var exp = Number(localStorage.getItem('membership_expire_at') || 0);
-            if (tier !== 'free' && tier_config[tier] && exp > Date.now()) {
-                var now = Date.now();
-                list.push({ user_id: 'local_user', tier: tier, start_at: exp - SUBSCRIPTION_DAYS * 86400000, end_at: exp, status: 'active', order_id: 'legacy_1', created_at: now });
-                saveSubscriptions(list);
-            }
-        }
+        function resetUsageIfNewDay() {}
+        function migrateLegacyToSubscriptions() {}
         function getCurrentTier() {
             if (USE_BACKEND_ENTITLEMENT) {
                 if (window._cachedEntitlement) {
@@ -2605,42 +2527,15 @@
                 }
                 return 'free'; // 后端不可用时不回退本地，不污染会员状态，避免两套真相打架
             }
-            migrateLegacyToSubscriptions();
-            var list = getSubscriptions();
-            if (list.length === 0) {
-                var t = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
-                return tier_config[t] ? t : 'free';
-            }
-            var ent = computeEntitlement();
-            return tier_config[ent.effective_tier] ? ent.effective_tier : 'free';
+            var t = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
+            return tier_config[t] ? t : 'free';
         }
         function getMembership() {
-            if (getAccountType() === 'anon') {
-                return { tier: getCurrentTier(), exp: 0, paused: [] };
+            if (USE_BACKEND_ENTITLEMENT && window._cachedEntitlement) {
+                var e = window._cachedEntitlement;
+                return { tier: e.effective_tier || 'free', exp: 0, paused: [] };
             }
-            if (USE_BACKEND_ENTITLEMENT) {
-                if (window._cachedEntitlement) {
-                    var e = window._cachedEntitlement;
-                    return { tier: e.effective_tier || 'free', exp: e.effective_end_at || 0, paused: e.paused_list || [] };
-                }
-                return { tier: 'free', exp: 0, paused: [] }; // 后端不可用时不回退本地
-            }
-            migrateLegacyToSubscriptions();
-            var list = getSubscriptions();
-            if (list.length === 0) {
-                var tier = localStorage.getItem(STORAGE_KEY_TIER) || 'free';
-                var exp = Number(localStorage.getItem('membership_expire_at') || 0);
-                if (tier !== 'free' && exp && Date.now() > exp) {
-                    localStorage.setItem(STORAGE_KEY_TIER, 'free');
-                    localStorage.setItem('membership_expire_at', '0');
-                    return { tier: 'free', exp: 0, paused: [] };
-                }
-                return { tier: tier, exp: exp, paused: [] };
-            }
-            var ent = computeEntitlement();
-            localStorage.setItem(STORAGE_KEY_TIER, ent.effective_tier);
-            localStorage.setItem('membership_expire_at', String(ent.effective_end_at));
-            return { tier: ent.effective_tier, exp: ent.effective_end_at, paused: ent.paused_list };
+            return { tier: getCurrentTier(), exp: 0, paused: [] };
         }
         function formatDate(ts) {
             if (!ts) return '';
@@ -2654,72 +2549,21 @@
             if (!ts) return 0;
             return Math.max(0, Math.ceil((ts - Date.now()) / 86400000));
         }
-        // 幂等：同一 order_id 只允许写一次订阅变更
-        function hasOrderId(orderId) {
-            var list = getSubscriptions();
-            for (var i = 0; i < list.length; i++) if (list[i].order_id === orderId) return true;
-            return false;
-        }
-        function applyPurchase(orderId, tier) {
-            if (!tier_config[tier] || tier === 'free') return;
-            if (hasOrderId(orderId)) return;
-            var list = getSubscriptions();
-            var now = Date.now();
-            var effectiveTier = (computeEntitlement()).effective_tier;
-            var effectiveLevel = getTierLevel(effectiveTier);
-            var reqLevel = getTierLevel(tier);
-            if (reqLevel < effectiveLevel) return;
-            if (reqLevel === effectiveLevel) {
-                for (var i = 0; i < list.length; i++) {
-                    if (list[i].status === 'active' && list[i].tier === tier && list[i].end_at > now) {
-                        list[i].end_at += SUBSCRIPTION_DAYS * 86400000;
-                        saveSubscriptions(list);
-                        computeEntitlement();
-                        if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
-                        if (typeof updateMembershipUI === 'function') updateMembershipUI();
-                        return;
-                    }
-                }
-            }
-            var newSub = { user_id: 'local_user', tier: tier, start_at: now, end_at: now + SUBSCRIPTION_DAYS * 86400000, status: 'active', order_id: orderId, created_at: now };
-            list.push(newSub);
-            saveSubscriptions(list);
-            var ent = computeEntitlement();
-            localStorage.setItem(STORAGE_KEY_TIER, ent.effective_tier);
-            localStorage.setItem('membership_expire_at', String(ent.effective_end_at));
+        function hasOrderId(orderId) { return false; }
+        function applyPurchase(orderId, tier) { setCurrentTier(tier); }
+        function setCurrentTier(tier) {
+            if (!tier_config[tier]) return;
+            localStorage.setItem(STORAGE_KEY_TIER, tier);
             if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
             if (typeof updateMembershipUI === 'function') updateMembershipUI();
         }
-        function setCurrentTier(tier) {
-            if (!tier_config[tier]) return;
-            if (tier === 'free') {
-                localStorage.setItem(STORAGE_KEY_TIER, 'free');
-                localStorage.setItem('membership_expire_at', '0');
-                if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
-                if (typeof updateMembershipUI === 'function') updateMembershipUI();
-                return;
-            }
-            var orderId = 'local_' + Date.now();
-            applyPurchase(orderId, tier);
-        }
         function getQuota() {
-            var c = tier_config[getCurrentTier()];
-            return c ? { chat: c.chatPerDay, img: c.imgPerDay } : { chat: 10, img: 1 };
+            return { chat: Number.MAX_SAFE_INTEGER, img: Number.MAX_SAFE_INTEGER };
         }
         function checkQuotaBeforeSend(chatNeed, imgNeed) {
-            resetUsageIfNewDay();
-            var usage = getUsage();
-            var quota = getQuota();
-            var chatOk = (usage.chat + chatNeed) <= quota.chat;
-            var imgOk = (usage.img + imgNeed) <= quota.img;
-            return { allowed: chatOk && imgOk, chatOk: chatOk, imgOk: imgOk };
+            return { allowed: true, chatOk: true, imgOk: true };
         }
-        function incrementUsage(chatDelta, imgDelta) {
-            resetUsageIfNewDay();
-            var u = getUsage();
-            setUsage(u.chat + (chatDelta || 0), u.img + (imgDelta || 0));
-            updateDrawerFromTierAndUsage();
-        }
+        function incrementUsage(chatDelta, imgDelta) {}
         function getTierLabel(tier) {
             var map = { free: '免费版', plus: 'Plus', pro: 'Pro' };
             return map[tier] || tier;
@@ -2730,17 +2574,12 @@
         }
         function updateTierUIEverywhere() {
             var tier = getCurrentTier();
-            var usage = getUsage();
-            var quota = getQuota();
-            var chatLeft = Math.max(0, quota.chat - usage.chat);
-            var imgLeft = Math.max(0, quota.img - usage.img);
             var fullText = '当前生效档位：' + getTierLabel(tier) + ' · 查看套餐与额度';
             var labelOnly = '当前：' + getTierDrawerLabel(tier);
             var drawerTierText = document.getElementById('drawerTierText');
             if (drawerTierText) drawerTierText.textContent = labelOnly;
         }
         function updateDrawerFromTierAndUsage() {
-            resetUsageIfNewDay();
             updateTierUIEverywhere();
             updateDrawerLoginState();
         }
@@ -2752,18 +2591,10 @@
             el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
         }
         function refreshQuotaUI() {
-            resetUsageIfNewDay();
-            var tier = getCurrentTier();
-            var usage = getUsage();
-            var quota = getQuota();
-            var chatLeft = quota.chat - usage.chat;
-            var imgLeft = quota.img - usage.img;
-            var canChat = chatLeft > 0;
-            var canImg = imgLeft > 0;
-            setDisabled('#btnSend', !canChat);
-            setDisabled('#btnMicOrKeyboard', !canChat);
-            setDisabled('#plusSheetGallery', !canImg);
-            setDisabled('#plusSheetCamera', !canImg);
+            setDisabled('#btnSend', false);
+            setDisabled('#btnMicOrKeyboard', false);
+            setDisabled('#plusSheetGallery', false);
+            setDisabled('#plusSheetCamera', false);
             if (typeof updateDrawerFromTierAndUsage === 'function') updateDrawerFromTierAndUsage();
         }
         function showToastOncePerDay(key, msg) {
@@ -2780,17 +2611,7 @@
             var currentLevel = getTierLevel(tier);
             var sub = document.getElementById('membershipSub');
             if (sub) {
-                var parts = [];
-                if (tier === 'free') {
-                    parts.push('当前生效档位：免费版');
-                } else {
-                    parts.push('当前生效档位：' + getTierLabel(tier) + '（以最高档位计） · 到期：' + formatDate(exp) + '（剩余 ' + daysLeft(exp) + ' 天）');
-                }
-                var paused = (m.paused && m.paused.length) ? m.paused : [];
-                for (var i = 0; i < paused.length; i++) {
-                    parts.push('已冻结：' + getTierLabel(paused[i].tier) + '（剩余' + (paused[i].remaining_days || 0) + '天）');
-                }
-                sub.innerHTML = parts.join('<br>');
+                sub.textContent = '当前生效档位：' + getTierLabel(tier) + '（额度/扣次规则以后端为准）';
             }
             document.querySelectorAll('#membership-modal .membership-card').forEach(function(card) {
                 var t = card.getAttribute('data-tier');
@@ -3299,26 +3120,14 @@
                 textPlaceholder.textContent = textInput.placeholder || '';
                 textPlaceholder.style.display = (!hasText && !!textInput.placeholder) ? 'block' : 'none';
             }
-            addButton.disabled = imageState.size >= 4;
-            addButton.style.opacity = imageState.size >= 4 ? '0.5' : '1';
+            addButton.disabled = false;
+            addButton.style.opacity = '1';
             if (inputMode === 'generating') document.body.classList.add('generating');
             else document.body.classList.remove('generating');
         }
 
         // E. + 面板：点击 + 打开 BottomSheet
         addButton.addEventListener('click', () => {
-            if (imageState.size >= 4) {
-                // 显示最多4张图片提示
-                const tip = document.createElement('div');
-                tip.className = 'image-limit-tip';
-                tip.textContent = '最多可上传4张图片';
-                tip.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 8px 16px; border-radius: 4px; font-size: 14px; z-index: 1000;';
-                document.body.appendChild(tip);
-                setTimeout(() => {
-                    tip.remove();
-                }, 1000);
-                return;
-            }
             refreshQuotaUI();
             updatePlusSheetTier();
             plusSheet.classList.add('open');
@@ -3359,9 +3168,7 @@
 
         function handleFileSelect(fileList) {
             const imageFiles = Array.from(fileList || []).filter(file => file.type.startsWith('image/'));
-            const currentImageCount = imageState.size;
-            const remainingSlots = Math.max(0, 4 - currentImageCount);
-            const toAdd = imageFiles.slice(0, remainingSlots);
+            const toAdd = imageFiles;
             toAdd.forEach((file) => {
                 const imageId = 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                 addImagePreview(imageId, file);
@@ -3616,14 +3423,7 @@
             for (const [imageId, state] of imageState) {
                 if (state.status === 'success' && state.url) imageUrls.push(state.url);
             }
-            if (imageUrls.length > 4) {
-                showToast('最多4张图片');
-                return;
-            }
-
-            var imgNeed = imageUrls.length > 0 ? 1 : 0;
-            var quotaCheck = checkQuotaBeforeSend(1, imgNeed);
-            if (!quotaCheck.allowed) return;
+            // 图片数限制、次数限制、扣次规则以后端为准；前端仅保留基础输入体验
 
             // 添加用户消息（右对齐，立即显示）
             const userMessage = createMessage({ 
@@ -3945,7 +3745,6 @@
             var dedupeKey = ((clientMsgId == null ? '' : String(clientMsgId))).trim();
             clearWatchdog(streamId);
             var shouldDeduct = !!dedupeKey && !deducted[dedupeKey];
-            var imgUploadCount = (dedupeKey && pendingDeduct[dedupeKey] != null ? pendingDeduct[dedupeKey] : 0);
             var mappedClientMsgId = clientMsgIdByStream[streamId];
             delete pendingRequest[streamId];
             delete clientMsgIdByStream[streamId];
@@ -3954,10 +3753,8 @@
             }
             if (shouldDeduct) {
                 delete pendingDeduct[dedupeKey];
-                incrementUsage(1, imgUploadCount);
                 deducted[dedupeKey] = true;
                 setTimeout(function() { delete deducted[dedupeKey]; }, DEDUCTED_TTL_MS);
-                refreshQuotaUI();
             }
             var hadBuffer = !!(chunkBufferByStream[streamId]);
             var fullText = (chunkBufferByStream[streamId] || '');
