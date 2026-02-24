@@ -674,7 +674,7 @@ object QwenClient {
                 if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
                 if (imgCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
 
-                val useTools = (toolInfo == null)
+                val useTools = false
                 val messagesFirst = buildMainDialogueMessages(userMessage, imageUrlList, toolInfo)
                 if (BuildConfig.DEBUG) {
                     val first = if (messagesFirst.size() > 0 && messagesFirst.get(0).isJsonObject) messagesFirst.get(0).asJsonObject else null
@@ -687,7 +687,7 @@ object QwenClient {
                     if (toolInfo != null && toolInfo.isNotBlank()) Log.d(TAG, "P0_SMOKE: 联网成功 工具信息（极低参考性）已注入本轮")
                     else Log.d(TAG, "P0_SMOKE: 主对话 ${if (useTools) "首次带 tools" else "未联网"}")
                 }
-                val streamFirst = !useTools // TODO: tool_calls streaming parser
+                val streamFirst = true
                 val requestBody = JsonObject().apply {
                     addProperty("model", model)
                     addProperty("stream", streamFirst)
