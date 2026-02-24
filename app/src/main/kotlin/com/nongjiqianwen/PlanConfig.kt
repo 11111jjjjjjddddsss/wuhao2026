@@ -17,9 +17,10 @@ data class PlanConfig(
         private val PRO = PlanConfig(PlanId.PRO, 35, 9, 9, 4)
 
         fun fromChatModel(chatModel: String?): PlanConfig {
-            return when (chatModel?.trim()?.lowercase()) {
-                "plus" -> PLUS
-                "pro" -> PRO
+            val normalized = chatModel?.trim()?.lowercase().orEmpty()
+            return when (normalized) {
+                "plus", "29", "29.9", "vip", "member", "membership_plus" -> PLUS
+                "pro", "59", "59.9", "proplus", "membership_pro" -> PRO
                 else -> FREE
             }
         }

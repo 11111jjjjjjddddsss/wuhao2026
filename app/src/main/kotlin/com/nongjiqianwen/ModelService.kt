@@ -8,7 +8,7 @@ object ModelService {
 
     /**
      * 获取模型回复（非流式，一次 onChunk(完整文本) + onComplete）
-     * @param chatModel 主对话档位标识（当前统一 flash 路由）
+     * @param chatModel 主对话档位标识（free/plus/pro）；主对话模型固定 MODEL_MAIN(qwen3.5-plus)，B 摘要固定 MODEL_B_SUMMARY(qwen-flash)
      * @param onInterrupted 错误时调用，仅用于 UI badge
      */
     fun getReply(

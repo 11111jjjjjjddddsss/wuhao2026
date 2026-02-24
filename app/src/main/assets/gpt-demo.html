@@ -3677,12 +3677,12 @@
             updateInputMode();
         }
 
-        // 发送到Android后端（streamId 写对应气泡；model 参数传档位标识）
+        // 发送到Android后端（streamId 写对应气泡；前端传 tier 档位标识）
         function sendToAndroid(text, imageUrls, streamId, clientMsgId) {
             var imageUrlsJson = imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
-            var model = getCurrentTier();
+            var tier = getCurrentTier();
             if (typeof AndroidInterface.sendMessage === 'function') {
-                AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', model, clientMsgId || '');
+                AndroidInterface.sendMessage(text || '', imageUrlsJson, streamId || '', tier, clientMsgId || '');
             }
         }
 

@@ -334,7 +334,7 @@ class MainActivity : AppCompatActivity() {
          * @param text 用户文字
          * @param imageUrlsJson JSON数组：["https://...", ...] 或 "null"
          * @param streamId 前端生成的流ID，回调时写对应气泡（取消时旧气泡落终态）
-         * @param model 可选，当前主对话统一使用 flash 路由
+         * @param model 可选，前端传入档位标识（free/plus/pro）；主对话模型固定 MODEL_MAIN(qwen3.5-plus)
          */
         @JavascriptInterface
         fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?) {
@@ -594,7 +594,7 @@ class MainActivity : AppCompatActivity() {
 
         /**
          * 发送模型请求（streamId 贯穿；仅新请求时 cancel 旧请求，切后台不断网、缓存补发）
-         * @param chatModel 主对话档位标识（当前统一 flash 路由）
+         * @param chatModel 主对话档位标识（free/plus/pro）；主对话模型固定 MODEL_MAIN(qwen3.5-plus)，B 摘要固定 MODEL_B_SUMMARY(qwen-flash)
          */
         private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String, chatModel: String? = null) {
             pendingUserByStreamId[streamId] = text
