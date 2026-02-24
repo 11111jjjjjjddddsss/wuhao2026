@@ -516,9 +516,34 @@ object QwenClient {
                     )
                 }
                 val fallbackText = try {
-                    val jsonCandidate = when {
-                        dataPayloads.isNotEmpty() -> dataPayloads.last()
-                        else -> raw.toString().trim()
+                    val jsonCandidate = run {
+                        var candidate: String? = null
+                        for (payload in dataPayloads.asReversed()) {
+                            try {
+                                val payloadJson = gson.fromJson(payload, JsonObject::class.java) ?: continue
+                                val payloadChoices = payloadJson.getAsJsonArray("choices") ?: continue
+                                if (payloadChoices.size() == 0) continue
+                                val choice0 = payloadChoices.get(0).asJsonObject
+                                val hasDeltaContent = choice0.getAsJsonObject("delta")
+                                    ?.get("content")
+                                    ?.takeIf { it.isJsonPrimitive }
+                                    ?.asString
+                                    ?.trim()
+                                    ?.isNotBlank() == true
+                                val hasMessageContent = choice0.getAsJsonObject("message")
+                                    ?.get("content")
+                                    ?.takeIf { it.isJsonPrimitive }
+                                    ?.asString
+                                    ?.trim()
+                                    ?.isNotBlank() == true
+                                if (hasDeltaContent || hasMessageContent) {
+                                    candidate = payload
+                                    break
+                                }
+                            } catch (_: Exception) {
+                            }
+                        }
+                        candidate ?: raw.toString().trim()
                     }
                     val json = gson.fromJson(jsonCandidate, JsonObject::class.java)
                     val choices = json?.getAsJsonArray("choices")
