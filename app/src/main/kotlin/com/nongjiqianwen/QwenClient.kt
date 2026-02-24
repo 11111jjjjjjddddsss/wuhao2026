@@ -504,7 +504,17 @@ object QwenClient {
             }
 
             flushPendingNow()
+            if (buffer.isNotEmpty()) {
+                return StreamReadResult(buffer.toString(), true)
+            }
             if (!seenDataLine || !seenValidChunk) {
+                if (BuildConfig.DEBUG) {
+                    Log.d(
+                        TAG,
+                        "SSE fallback triggered: seenDataLine=$seenDataLine, seenValidChunk=$seenValidChunk, " +
+                            "bufferLen=${buffer.length}, payloads=${dataPayloads.size}"
+                    )
+                }
                 val fallbackText = try {
                     val jsonCandidate = when {
                         dataPayloads.isNotEmpty() -> dataPayloads.last()
@@ -513,17 +523,28 @@ object QwenClient {
                     val json = gson.fromJson(jsonCandidate, JsonObject::class.java)
                     val choices = json?.getAsJsonArray("choices")
                     if (choices != null && choices.size() > 0) {
-                        choices.get(0).asJsonObject.getAsJsonObject("message")
+                        val choice0 = choices.get(0).asJsonObject
+                        val deltaContent = choice0.getAsJsonObject("delta")
                             ?.get("content")
                             ?.takeIf { it.isJsonPrimitive }
                             ?.asString
                             ?.trim()
-                            ?: ""
+                            .orEmpty()
+                        if (deltaContent.isNotBlank()) {
+                            deltaContent
+                        } else {
+                            choice0.getAsJsonObject("message")
+                                ?.get("content")
+                                ?.takeIf { it.isJsonPrimitive }
+                                ?.asString
+                                ?.trim()
+                                .orEmpty()
+                        }
                     } else ""
                 } catch (_: Exception) {
                     ""
                 }
-                return StreamReadResult(fallbackText, false)
+                return StreamReadResult(fallbackText.ifBlank { buffer.toString() }, false)
             }
             StreamReadResult(buffer.toString(), true)
         } finally {
