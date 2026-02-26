@@ -4,9 +4,20 @@ import { openBailianStream } from './bailian.js';
 import { ensureUser, getDailyStatus, getTodayKeyCN, parseTier, wasProcessed, consumeOnDone } from './quota.js';
 import type { ChatStreamRequest } from './types.js';
 
+if (!process.env.TZ) {
+  process.env.TZ = 'Asia/Shanghai';
+}
+
 const app = Fastify({ logger: true });
+if (!process.env.DASHSCOPE_API_KEY) {
+  app.log.error('DASHSCOPE_API_KEY is missing; /healthz will report missing_key');
+}
 
 app.get('/health', async () => ({ ok: true }));
+app.get('/healthz', async () => ({
+  ok: true,
+  bailian: process.env.DASHSCOPE_API_KEY ? 'ok' : 'missing_key',
+}));
 
 app.get('/api/me', async (request, reply) => {
   const query = request.query as Record<string, string | undefined>;
