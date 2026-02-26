@@ -1,4 +1,4 @@
-﻿import 'dotenv/config';
+import 'dotenv/config';
 import Fastify from 'fastify';
 import { openBailianStream } from './bailian.js';
 import { ensureUser, getDailyStatus, getTodayKeyCN, parseTier, wasProcessed, consumeOnDone } from './quota.js';
