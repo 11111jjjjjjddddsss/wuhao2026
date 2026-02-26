@@ -33,10 +33,6 @@ export async function openBailianStream({ payload, signal }: OpenBailianStreamAr
       search_options: {
         search_strategy: 'turbo',
         forced_search: false,
-        enable_source: true,
-        enable_citation: true,
-        citation_format: '[<number>]',
-        prepend_search_result: false,
       },
     },
     messages: [
