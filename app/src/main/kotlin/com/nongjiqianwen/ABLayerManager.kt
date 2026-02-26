@@ -23,6 +23,11 @@ object ABLayerManager {
 
     private val extractLock = Any()
     private val inFlightSessions = mutableSetOf<String>()
+    @Volatile private var testSessionIdOverride: String? = null
+    @Volatile private var testUserIdOverride: String? = null
+    @Volatile private var testBackendModeOverride: Boolean? = null
+    @Volatile private var testExtractExecutor: ((oldB: String, dialogueText: String, prompt: String) -> Result<String>)? = null
+    @Volatile private var testBackendSnapshotProvider: ((userId: String, sessionId: String) -> SessionSnapshot?)? = null
 
     fun init(context: Context) {
         if (appContext == null) {
@@ -67,11 +72,11 @@ object ABLayerManager {
     }
 
     fun onRoundComplete(userMessage: String, assistantMessage: String, chatModel: String? = null) {
-        val sessionId = IdManager.getSessionId()
-        val userId = IdManager.getClientId()
+        val sessionId = currentSessionId()
+        val userId = currentUserId()
         val config = getABConfig(chatModel)
 
-        if (BuildConfig.USE_BACKEND_AB) {
+        if (isBackendMode()) {
             onRoundCompleteBackend(sessionId, userId, userMessage, assistantMessage, config, chatModel)
             return
         }
@@ -109,6 +114,31 @@ object ABLayerManager {
         config: ABConfig,
         chatModel: String?,
     ) {
+        val testSnapshotProvider = testBackendSnapshotProvider
+        if (testSnapshotProvider != null) {
+            val trigger = synchronized(serverLock) {
+                serverARoundsCache.add(userMessage to assistantMessage)
+                trimRounds(serverARoundsCache, config.aWindowRounds)
+                logTrimState(sessionId, "backend", serverARoundsCache.size, config.aWindowRounds)
+                val roundTotal = incrementRoundTotal(sessionId)
+                val periodicEligible = (roundTotal % config.bEveryRounds == 0)
+                if (periodicEligible) {
+                    setPendingRetry(sessionId, true)
+                }
+                val pendingRetry = getPendingRetry(sessionId)
+                logRoundState(chatModel, sessionId, roundTotal, config.bEveryRounds, periodicEligible, pendingRetry, isInFlight(sessionId), "backend")
+                if (pendingRetry) {
+                    val reason = if (periodicEligible) "periodic" else "retry"
+                    TriggerPlan(true, reason, emptyList(), roundTotal)
+                } else {
+                    TriggerPlan(false, "", emptyList(), roundTotal)
+                }
+            }
+            if (trigger.shouldTrigger) {
+                tryUpdateBFromBackend(sessionId, userId, trigger.reason)
+            }
+            return
+        }
         SessionApi.appendA(userId, sessionId, userMessage, assistantMessage) { ok ->
             if (!ok) {
                 setPendingRetry(sessionId, true)
@@ -141,7 +171,7 @@ object ABLayerManager {
     }
 
     private fun tryExtractAndUpdateBLocal(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>, triggerReason: String) {
-        if (BuildConfig.USE_BACKEND_AB) {
+        if (isBackendMode()) {
             if (BuildConfig.DEBUG) {
                 Log.w(TAG, "B local extract blocked(session=$sessionId): backend mode is enabled")
             }
@@ -153,7 +183,7 @@ object ABLayerManager {
             return
         }
 
-        Thread {
+        val runBlock = runBlock@{
             var result = "fail"
             var failReason = "unknown"
             try {
@@ -161,23 +191,29 @@ object ABLayerManager {
                 if (prompt.isBlank()) {
                     setPendingRetry(sessionId, true)
                     failReason = "prompt_blank"
-                    return@Thread
+                    return@runBlock
                 }
                 val prefs = prefs()
                 val oldB = prefs?.getString(KEY_B_SUMMARY_PREFIX + sessionId, "") ?: ""
                 val dialogueText = buildDialogueText(aRoundsSnapshot)
-                val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
+                val testExecutor = testExtractExecutor
+                val summaryResult = if (testExecutor != null) {
+                    testExecutor.invoke(oldB, dialogueText, prompt)
+                } else {
+                    runCatching { QwenClient.extractBSummary(oldB, dialogueText, prompt) }
+                }
+                val newSummary = summaryResult.getOrElse { throw it }
                 val normalizedSummary = normalizeBSummaryForStore(newSummary)
                 if (normalizedSummary == null) {
                     setPendingRetry(sessionId, true)
                     failReason = "empty_summary"
-                    return@Thread
+                    return@runBlock
                 }
                 val committed = prefs?.edit()?.putString(KEY_B_SUMMARY_PREFIX + sessionId, normalizedSummary)?.commit() ?: false
                 if (!committed) {
                     setPendingRetry(sessionId, true)
                     failReason = "commit_failed"
-                    return@Thread
+                    return@runBlock
                 }
                 setPendingRetry(sessionId, false)
                 result = "success"
@@ -192,7 +228,12 @@ object ABLayerManager {
                 }
                 releaseInFlight(sessionId)
             }
-        }.start()
+        }
+        if (testExtractExecutor != null) {
+            runBlock()
+        } else {
+            Thread { runBlock() }.start()
+        }
     }
 
     private fun tryUpdateBFromBackend(sessionId: String, userId: String, triggerReason: String) {
@@ -203,6 +244,23 @@ object ABLayerManager {
         }
         if (BuildConfig.DEBUG) {
             Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason mode=backend result=request_snapshot")
+        }
+        val testSnapshotProvider = testBackendSnapshotProvider
+        if (testSnapshotProvider != null) {
+            val snapshot = testSnapshotProvider.invoke(userId, sessionId)
+            try {
+                if (snapshot != null && snapshot.b_summary.isNotBlank()) {
+                    loadSnapshot(snapshot)
+                    setPendingRetry(sessionId, false)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=success")
+                } else {
+                    setPendingRetry(sessionId, true)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=fail failReason=backend_unavailable")
+                }
+            } finally {
+                releaseInFlight(sessionId)
+            }
+            return
         }
         SessionApi.getSnapshot(userId, sessionId) { snapshot ->
             try {
@@ -265,6 +323,12 @@ object ABLayerManager {
 
     private fun prefs() = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private fun currentSessionId(): String = testSessionIdOverride ?: IdManager.getSessionId()
+
+    private fun currentUserId(): String = testUserIdOverride ?: IdManager.getClientId()
+
+    private fun isBackendMode(): Boolean = testBackendModeOverride ?: BuildConfig.USE_BACKEND_AB
+
     private fun incrementRoundTotal(sessionId: String): Int {
         val prefs = prefs() ?: return 0
         val key = KEY_ROUND_TOTAL_PREFIX + sessionId
@@ -323,4 +387,60 @@ object ABLayerManager {
         val snapshot: List<Pair<String, String>>,
         val roundTotal: Int,
     )
+
+    fun setTestHooks(
+        sessionId: String? = null,
+        userId: String? = null,
+        backendMode: Boolean? = null,
+        extractExecutor: ((oldB: String, dialogueText: String, prompt: String) -> Result<String>)? = null,
+        backendSnapshotProvider: ((userId: String, sessionId: String) -> SessionSnapshot?)? = null,
+    ) {
+        testSessionIdOverride = sessionId
+        testUserIdOverride = userId
+        testBackendModeOverride = backendMode
+        testExtractExecutor = extractExecutor
+        testBackendSnapshotProvider = backendSnapshotProvider
+    }
+
+    fun clearTestHooks() {
+        testSessionIdOverride = null
+        testUserIdOverride = null
+        testBackendModeOverride = null
+        testExtractExecutor = null
+        testBackendSnapshotProvider = null
+    }
+
+    fun debugGetRoundTotal(sessionId: String): Int {
+        val prefs = prefs() ?: return 0
+        return prefs.getInt(KEY_ROUND_TOTAL_PREFIX + sessionId, 0)
+    }
+
+    fun debugGetPendingRetry(sessionId: String): Boolean {
+        val prefs = prefs() ?: return false
+        return prefs.getBoolean(KEY_PENDING_RETRY_PREFIX + sessionId, false)
+    }
+
+    fun resetForTest(sessionId: String) {
+        synchronized(aLock) { aRoundsBySession.remove(sessionId) }
+        synchronized(serverLock) {
+            serverARoundsCache.clear()
+            serverBSummary = ""
+        }
+        synchronized(extractLock) { inFlightSessions.remove(sessionId) }
+        val prefs = prefs() ?: return
+        prefs.edit()
+            .remove(KEY_B_SUMMARY_PREFIX + sessionId)
+            .remove(KEY_ROUND_TOTAL_PREFIX + sessionId)
+            .remove(KEY_PENDING_RETRY_PREFIX + sessionId)
+            .commit()
+    }
+
+    fun dropInMemoryStateForTest(sessionId: String) {
+        synchronized(aLock) { aRoundsBySession.remove(sessionId) }
+        synchronized(serverLock) {
+            serverARoundsCache.clear()
+            serverBSummary = ""
+        }
+        synchronized(extractLock) { inFlightSessions.remove(sessionId) }
+    }
 }
