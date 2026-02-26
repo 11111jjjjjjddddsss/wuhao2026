@@ -80,6 +80,7 @@ object ABLayerManager {
             val list = aRoundsBySession.getOrPut(sessionId) { mutableListOf() }
             list.add(userMessage to assistantMessage)
             trimRounds(list, config.aWindowRounds)
+            logTrimState(sessionId, "local", list.size, config.aWindowRounds)
             val roundTotal = incrementRoundTotal(sessionId)
             val periodicEligible = (roundTotal % config.bEveryRounds == 0)
             if (periodicEligible) {
@@ -117,6 +118,7 @@ object ABLayerManager {
             val trigger = synchronized(serverLock) {
                 serverARoundsCache.add(userMessage to assistantMessage)
                 trimRounds(serverARoundsCache, config.aWindowRounds)
+                logTrimState(sessionId, "backend", serverARoundsCache.size, config.aWindowRounds)
                 val roundTotal = incrementRoundTotal(sessionId)
                 val periodicEligible = (roundTotal % config.bEveryRounds == 0)
                 if (periodicEligible) {
@@ -139,6 +141,12 @@ object ABLayerManager {
     }
 
     private fun tryExtractAndUpdateBLocal(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>, triggerReason: String) {
+        if (BuildConfig.USE_BACKEND_AB) {
+            if (BuildConfig.DEBUG) {
+                Log.w(TAG, "B local extract blocked(session=$sessionId): backend mode is enabled")
+            }
+            return
+        }
         if (!acquireInFlight(sessionId)) {
             setPendingRetry(sessionId, true)
             if (BuildConfig.DEBUG) Log.d(TAG, "B trigger skipped(session=$sessionId): inFlight=true reason=$triggerReason")
@@ -260,8 +268,12 @@ object ABLayerManager {
     private fun incrementRoundTotal(sessionId: String): Int {
         val prefs = prefs() ?: return 0
         val key = KEY_ROUND_TOTAL_PREFIX + sessionId
-        val next = prefs.getInt(key, 0) + 1
+        val prev = prefs.getInt(key, 0)
+        val next = prev + 1
         prefs.edit().putInt(key, next).apply()
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "round_total(session=$sessionId): prev=$prev next=$next")
+        }
         return next
     }
 
@@ -289,6 +301,19 @@ object ABLayerManager {
         Log.d(
             TAG,
             "tier=${chatModel ?: "free"}, session_id=$sessionId, roundCount_total=$roundTotal, bEveryRounds=$bEveryRounds, eligible=$eligible, pendingRetry=$pendingRetry, inFlight=$inFlight, mode=$mode",
+        )
+    }
+
+    private fun logTrimState(
+        sessionId: String,
+        mode: String,
+        currentSize: Int,
+        maxRounds: Int,
+    ) {
+        if (!BuildConfig.DEBUG) return
+        Log.d(
+            TAG,
+            "a_window_check session_id=$sessionId mode=$mode size=$currentSize max=$maxRounds pass=${currentSize <= maxRounds}",
         )
     }
 
