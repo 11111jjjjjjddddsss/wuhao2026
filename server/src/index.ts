@@ -1,4 +1,4 @@
-import 'dotenv/config';
+锘縤mport 'dotenv/config';
 import Fastify from 'fastify';
 import { openBailianStream } from './bailian.js';
 import { ensureUser, getDailyStatus, getTodayKeyCN, parseTier, wasProcessed, consumeOnDone } from './quota.js';
@@ -55,7 +55,7 @@ app.post('/api/chat/stream', async (request, reply) => {
   const todayKey = getTodayKeyCN();
   const quota = getDailyStatus(userId, tier, todayKey);
   if (quota.used >= quota.limit) {
-    return reply.code(402).send({ error: '今日次数用完' });
+    return reply.code(402).send({ error: '浠婃棩娆℃暟鐢ㄥ畬' });
   }
 
   const abortController = new AbortController();
@@ -76,6 +76,11 @@ app.post('/api/chat/stream', async (request, reply) => {
     return reply.code(upstream.status).send({ error: errorBody || 'upstream error' });
   }
 
+  const requestId =
+    upstream.headers.get('x-request-id') ||
+    upstream.headers.get('x-dashscope-request-id') ||
+    '';
+
   const contentType = upstream.headers.get('content-type') || '';
   if (!contentType.includes('text/event-stream')) {
     const fallbackBody = await upstream.text().catch(() => '');
@@ -92,6 +97,8 @@ app.post('/api/chat/stream', async (request, reply) => {
 
   let clientDisconnected = false;
   let doneReceived = false;
+  let hasCitation = false;
+  let hasSource = false;
 
   const onClientClose = () => {
     clientDisconnected = true;
@@ -124,6 +131,8 @@ app.post('/api/chat/stream', async (request, reply) => {
         if (!line.startsWith('data:')) continue;
 
         const data = line.slice(5).trimStart();
+        if (!hasCitation && /\[\d+\]/.test(data)) hasCitation = true;
+        if (!hasSource && /"source"|sources|reference|references/i.test(data)) hasSource = true;
         reply.raw.write(`data: ${data}\n\n`);
 
         if (data === '[DONE]') {
@@ -138,6 +147,16 @@ app.post('/api/chat/stream', async (request, reply) => {
     if (!clientDisconnected && doneReceived) {
       consumeOnDone({ userId, tier, clientMsgId, yyyymmdd: todayKey });
     }
+    request.log.info(
+      {
+        request_id: requestId,
+        enable_search: true,
+        strategy: 'turbo',
+        forced_search: false,
+        has_citations_or_source: hasCitation || hasSource,
+      },
+      'search turbo telemetry',
+    );
   } catch (error) {
     if (!clientDisconnected) {
       request.log.error({ error }, 'sse relay failed');

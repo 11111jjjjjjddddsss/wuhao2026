@@ -28,6 +28,17 @@ export async function openBailianStream({ payload, signal }: OpenBailianStreamAr
   const body = {
     model: 'qwen3.5-plus',
     stream: true,
+    extra_body: {
+      enable_search: true,
+      search_options: {
+        search_strategy: 'turbo',
+        forced_search: false,
+        enable_source: true,
+        enable_citation: true,
+        citation_format: '[<number>]',
+        prepend_search_result: false,
+      },
+    },
     messages: [
       {
         role: 'user',
