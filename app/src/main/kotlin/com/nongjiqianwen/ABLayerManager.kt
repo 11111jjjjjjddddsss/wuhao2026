@@ -2,28 +2,27 @@ package com.nongjiqianwen
 
 import android.content.Context
 import android.util.Log
-import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * A/B 层状态机：A 层累计完整轮次，达 30 轮后每轮尝试 B 提取；成功后原子清空 A 并写入 B。
- * 两条线分离：USE_BACKEND_AB 时 A/B 真相在后端，仅通过 GET snapshot / append-a / update-b 同步。
- */
+data class ABConfig(val aWindowRounds: Int, val bEveryRounds: Int)
+
 object ABLayerManager {
     private const val TAG = "ABLayerManager"
     private const val PREFS_NAME = "ab_layer"
     private const val KEY_B_SUMMARY_PREFIX = "b_summary_"
-    private const val A_MIN_ROUNDS = 30
-    private const val B_SUMMARY_MAX_LENGTH = 600
+    private const val KEY_ROUND_TOTAL_PREFIX = "round_total_"
+    private const val KEY_PENDING_RETRY_PREFIX = "pending_retry_"
 
     private var appContext: Context? = null
+
     private val aRoundsBySession = mutableMapOf<String, MutableList<Pair<String, String>>>()
     private val aLock = Any()
-    private val extracting = AtomicBoolean(false)
 
-    /** 后端模式：GET snapshot 后写入；update-b 成功后续写 */
     private var serverBSummary: String = ""
     private val serverARoundsCache = mutableListOf<Pair<String, String>>()
     private val serverLock = Any()
+
+    private val extractLock = Any()
+    private val inFlightSessions = mutableSetOf<String>()
 
     fun init(context: Context) {
         if (appContext == null) {
@@ -34,7 +33,6 @@ object ABLayerManager {
         }
     }
 
-    /** 后端模式：拉取 snapshot 后调用。B 提取用 a_rounds_full（全量）；UI 注入只用 a_rounds_for_ui（最近 24） */
     fun loadSnapshot(snapshot: SessionSnapshot?) {
         if (snapshot == null) return
         synchronized(serverLock) {
@@ -43,132 +41,180 @@ object ABLayerManager {
             serverARoundsCache.addAll(snapshot.a_rounds_full.map { it.user to it.assistant })
         }
         if (BuildConfig.DEBUG) {
-            Log.d(TAG, "loadSnapshot b_len=${serverBSummary.length} a_rounds_full=${snapshot.a_rounds_full.size} a_rounds_for_ui=${snapshot.a_rounds_for_ui.size}")
+            Log.d(
+                TAG,
+                "loadSnapshot b_len=${serverBSummary.length} a_rounds_full=${snapshot.a_rounds_full.size} a_rounds_for_ui=${snapshot.a_rounds_for_ui.size}",
+            )
         }
     }
 
-    /** 当前会话 B 摘要 */
     fun getBSummary(): String {
         if (BuildConfig.USE_BACKEND_AB) {
             synchronized(serverLock) { return serverBSummary }
         }
-        val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) ?: return ""
+        val prefs = prefs() ?: return ""
         return prefs.getString(KEY_B_SUMMARY_PREFIX + IdManager.getSessionId(), "") ?: ""
     }
 
-    /** 当前会话 A 层历史对话文本（供主对话注入） */
     fun getARoundsTextForMainDialogue(): String {
         val snapshot = if (BuildConfig.USE_BACKEND_AB) {
             synchronized(serverLock) { serverARoundsCache.toList() }
         } else {
             synchronized(aLock) { aRoundsBySession[IdManager.getSessionId()]?.toList() ?: emptyList() }
         }
-                if (snapshot.isEmpty()) return ""
+        if (snapshot.isEmpty()) return ""
         return buildDialogueText(snapshot)
     }
 
-    /**
-     * 完整轮次完成时调用（仅 done=true/onComplete；中断不写 A、不扣费）。
-     * 后端模式：先 POST append-a，成功则加入 serverARoundsCache，若 A>=30 再尝试 B 提取 → update-b 成功才清 A。
-     */
-    fun onRoundComplete(userMessage: String, assistantMessage: String) {
+    fun onRoundComplete(userMessage: String, assistantMessage: String, chatModel: String? = null) {
         val sessionId = IdManager.getSessionId()
         val userId = IdManager.getClientId()
+        val config = getABConfig(chatModel)
+
         if (BuildConfig.USE_BACKEND_AB) {
-            SessionApi.appendA(userId, sessionId, userMessage, assistantMessage) { ok ->
-                if (!ok) return@appendA
-                synchronized(serverLock) {
-                    serverARoundsCache.add(userMessage to assistantMessage)
-                    val size = serverARoundsCache.size
-                    if (BuildConfig.DEBUG) Log.d(TAG, "appendA ok session=$sessionId a_rounds=$size")
-                    if (size >= A_MIN_ROUNDS) {
-                        tryExtractAndUpdateBBackend(userId, sessionId, serverARoundsCache.toList())
-                    }
-                }
-            }
+            onRoundCompleteBackend(sessionId, userId, userMessage, assistantMessage, config, chatModel)
             return
         }
-        val (shouldExtract, snapshot) = synchronized(aLock) {
+
+        val trigger = synchronized(aLock) {
             val list = aRoundsBySession.getOrPut(sessionId) { mutableListOf() }
             list.add(userMessage to assistantMessage)
-            val size = list.size
-            if (BuildConfig.DEBUG) Log.d(TAG, "A层+1轮(session=$sessionId)，当前$size 轮")
-            val doExtract = size >= A_MIN_ROUNDS
-            (doExtract to if (doExtract) list.map { it } else emptyList())
+            trimRounds(list, config.aWindowRounds)
+            val roundTotal = incrementRoundTotal(sessionId)
+            val periodicEligible = (roundTotal % config.bEveryRounds == 0)
+            if (periodicEligible) {
+                setPendingRetry(sessionId, true)
+            }
+            val pendingRetry = getPendingRetry(sessionId)
+            logRoundState(chatModel, sessionId, roundTotal, config.bEveryRounds, periodicEligible, pendingRetry, isInFlight(sessionId), "local")
+            if (pendingRetry) {
+                val reason = if (periodicEligible) "periodic" else "retry"
+                TriggerPlan(true, reason, list.toList(), roundTotal)
+            } else {
+                TriggerPlan(false, "", emptyList(), roundTotal)
+            }
         }
-        if (shouldExtract && snapshot.isNotEmpty()) {
-            tryExtractAndUpdateBLocal(sessionId, snapshot)
+
+        if (trigger.shouldTrigger) {
+            tryExtractAndUpdateBLocal(sessionId, trigger.snapshot, trigger.reason)
         }
     }
 
-    private fun tryExtractAndUpdateBBackend(userId: String, sessionId: String, aRoundsSnapshot: List<Pair<String, String>>) {
-        if (!extracting.compareAndSet(false, true)) return
+    private fun onRoundCompleteBackend(
+        sessionId: String,
+        userId: String,
+        userMessage: String,
+        assistantMessage: String,
+        config: ABConfig,
+        chatModel: String?,
+    ) {
+        SessionApi.appendA(userId, sessionId, userMessage, assistantMessage) { ok ->
+            if (!ok) {
+                setPendingRetry(sessionId, true)
+                return@appendA
+            }
+
+            val trigger = synchronized(serverLock) {
+                serverARoundsCache.add(userMessage to assistantMessage)
+                trimRounds(serverARoundsCache, config.aWindowRounds)
+                val roundTotal = incrementRoundTotal(sessionId)
+                val periodicEligible = (roundTotal % config.bEveryRounds == 0)
+                if (periodicEligible) {
+                    setPendingRetry(sessionId, true)
+                }
+                val pendingRetry = getPendingRetry(sessionId)
+                logRoundState(chatModel, sessionId, roundTotal, config.bEveryRounds, periodicEligible, pendingRetry, isInFlight(sessionId), "backend")
+                if (pendingRetry) {
+                    val reason = if (periodicEligible) "periodic" else "retry"
+                    TriggerPlan(true, reason, emptyList(), roundTotal)
+                } else {
+                    TriggerPlan(false, "", emptyList(), roundTotal)
+                }
+            }
+
+            if (trigger.shouldTrigger) {
+                tryUpdateBFromBackend(sessionId, userId, trigger.reason)
+            }
+        }
+    }
+
+    private fun tryExtractAndUpdateBLocal(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>, triggerReason: String) {
+        if (!acquireInFlight(sessionId)) {
+            setPendingRetry(sessionId, true)
+            if (BuildConfig.DEBUG) Log.d(TAG, "B trigger skipped(session=$sessionId): inFlight=true reason=$triggerReason")
+            return
+        }
+
         Thread {
+            var result = "fail"
+            var failReason = "unknown"
             try {
-                val oldB = synchronized(serverLock) { serverBSummary }
-                val dialogueText = buildDialogueText(aRoundsSnapshot)
                 val prompt = BExtractionPrompt.getText()
-                if (prompt.isBlank()) { return@Thread }
+                if (prompt.isBlank()) {
+                    setPendingRetry(sessionId, true)
+                    failReason = "prompt_blank"
+                    return@Thread
+                }
+                val prefs = prefs()
+                val oldB = prefs?.getString(KEY_B_SUMMARY_PREFIX + sessionId, "") ?: ""
+                val dialogueText = buildDialogueText(aRoundsSnapshot)
                 val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
                 val normalizedSummary = normalizeBSummaryForStore(newSummary)
                 if (normalizedSummary == null) {
-                    Log.w(TAG, "B摘要校验不通过，不写B不清A")
+                    setPendingRetry(sessionId, true)
+                    failReason = "empty_summary"
                     return@Thread
                 }
-                SessionApi.updateB(userId, sessionId, normalizedSummary) { ok ->
-                    if (ok) {
-                        synchronized(serverLock) {
-                            serverBSummary = normalizedSummary
-                            val removeCount = aRoundsSnapshot.size.coerceAtMost(serverARoundsCache.size)
-                            repeat(removeCount) { serverARoundsCache.removeAt(0) }
-                        }
-                        if (BuildConfig.DEBUG) Log.d(TAG, "updateB ok session=$sessionId b_len=${normalizedSummary.length} a_cleared")
-                    }
+                val committed = prefs?.edit()?.putString(KEY_B_SUMMARY_PREFIX + sessionId, normalizedSummary)?.commit() ?: false
+                if (!committed) {
+                    setPendingRetry(sessionId, true)
+                    failReason = "commit_failed"
+                    return@Thread
                 }
+                setPendingRetry(sessionId, false)
+                result = "success"
+                failReason = ""
             } catch (e: Exception) {
-                Log.e(TAG, "B提取失败", e)
+                setPendingRetry(sessionId, true)
+                failReason = "exception"
+                Log.e(TAG, "B extract failed(session=$sessionId)", e)
             } finally {
-                extracting.set(false)
+                if (BuildConfig.DEBUG) {
+                    Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=$result failReason=$failReason")
+                }
+                releaseInFlight(sessionId)
             }
         }.start()
     }
 
-    private fun tryExtractAndUpdateBLocal(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>) {
-        if (!extracting.compareAndSet(false, true)) return
-        Thread {
+    private fun tryUpdateBFromBackend(sessionId: String, userId: String, triggerReason: String) {
+        if (!acquireInFlight(sessionId)) {
+            setPendingRetry(sessionId, true)
+            if (BuildConfig.DEBUG) Log.d(TAG, "B backend trigger skipped(session=$sessionId): inFlight=true reason=$triggerReason")
+            return
+        }
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason mode=backend result=request_snapshot")
+        }
+        SessionApi.getSnapshot(userId, sessionId) { snapshot ->
             try {
-                val prefs = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-                val keyB = KEY_B_SUMMARY_PREFIX + sessionId
-                val oldB = prefs?.getString(keyB, "") ?: ""
-                val dialogueText = buildDialogueText(aRoundsSnapshot)
-                val prompt = BExtractionPrompt.getText()
-                if (prompt.isBlank()) return@Thread
-                val newSummary = QwenClient.extractBSummary(oldB, dialogueText, prompt)
-                val normalizedSummary = normalizeBSummaryForStore(newSummary) ?: return@Thread
-                val committed = prefs?.edit()?.putString(keyB, normalizedSummary)?.commit() ?: false
-                if (committed) {
-                    synchronized(aLock) {
-                        val list = aRoundsBySession[sessionId]
-                        if (list != null) {
-                            val removeCount = aRoundsSnapshot.size.coerceAtMost(list.size)
-                            repeat(removeCount) { list.removeAt(0) }
-                        }
-                    }
-                    if (BuildConfig.DEBUG) Log.d(TAG, "B写入成功(session=$sessionId) 已清空A")
+                if (snapshot != null && snapshot.b_summary.isNotBlank()) {
+                    loadSnapshot(snapshot)
+                    setPendingRetry(sessionId, false)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=success")
+                } else {
+                    setPendingRetry(sessionId, true)
+                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=fail failReason=backend_unavailable")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "B提取失败", e)
             } finally {
-                extracting.set(false)
+                releaseInFlight(sessionId)
             }
-        }.start()
+        }
     }
 
-    /** 校验 B 摘要：仅要求非空（长度由提示词约束），避免因硬编码长度导致提取失败 */
     private fun normalizeBSummaryForStore(summary: String?): String? {
         val trimmed = summary?.trim() ?: return null
-        if (trimmed.isEmpty()) return null
-        return if (trimmed.length <= B_SUMMARY_MAX_LENGTH) trimmed else trimmed.substring(0, B_SUMMARY_MAX_LENGTH)
+        return trimmed.takeIf { it.isNotEmpty() }
     }
 
     private fun buildDialogueText(rounds: List<Pair<String, String>>): String {
@@ -176,4 +222,80 @@ object ABLayerManager {
             "user: $user\nassistant: $assistant"
         }
     }
+
+    private fun trimRounds(rounds: MutableList<Pair<String, String>>, maxRounds: Int) {
+        if (maxRounds <= 0) {
+            rounds.clear()
+            return
+        }
+        while (rounds.size > maxRounds) {
+            rounds.removeAt(0)
+        }
+    }
+
+    private fun getABConfig(chatModel: String?): ABConfig {
+        val plan = PlanConfig.fromChatModel(chatModel)
+        return ABConfig(
+            aWindowRounds = plan.aWindow,
+            bEveryRounds = plan.bExtractRounds,
+        )
+    }
+
+    private fun acquireInFlight(sessionId: String): Boolean = synchronized(extractLock) {
+        if (inFlightSessions.contains(sessionId)) return@synchronized false
+        inFlightSessions.add(sessionId)
+        true
+    }
+
+    private fun releaseInFlight(sessionId: String) = synchronized(extractLock) {
+        inFlightSessions.remove(sessionId)
+    }
+
+    private fun isInFlight(sessionId: String): Boolean = synchronized(extractLock) {
+        inFlightSessions.contains(sessionId)
+    }
+
+    private fun prefs() = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun incrementRoundTotal(sessionId: String): Int {
+        val prefs = prefs() ?: return 0
+        val key = KEY_ROUND_TOTAL_PREFIX + sessionId
+        val next = prefs.getInt(key, 0) + 1
+        prefs.edit().putInt(key, next).apply()
+        return next
+    }
+
+    private fun getPendingRetry(sessionId: String): Boolean {
+        val prefs = prefs() ?: return false
+        return prefs.getBoolean(KEY_PENDING_RETRY_PREFIX + sessionId, false)
+    }
+
+    private fun setPendingRetry(sessionId: String, value: Boolean) {
+        val prefs = prefs() ?: return
+        prefs.edit().putBoolean(KEY_PENDING_RETRY_PREFIX + sessionId, value).apply()
+    }
+
+    private fun logRoundState(
+        chatModel: String?,
+        sessionId: String,
+        roundTotal: Int,
+        bEveryRounds: Int,
+        eligible: Boolean,
+        pendingRetry: Boolean,
+        inFlight: Boolean,
+        mode: String,
+    ) {
+        if (!BuildConfig.DEBUG) return
+        Log.d(
+            TAG,
+            "tier=${chatModel ?: "free"}, session_id=$sessionId, roundCount_total=$roundTotal, bEveryRounds=$bEveryRounds, eligible=$eligible, pendingRetry=$pendingRetry, inFlight=$inFlight, mode=$mode",
+        )
+    }
+
+    private data class TriggerPlan(
+        val shouldTrigger: Boolean,
+        val reason: String,
+        val snapshot: List<Pair<String, String>>,
+        val roundTotal: Int,
+    )
 }

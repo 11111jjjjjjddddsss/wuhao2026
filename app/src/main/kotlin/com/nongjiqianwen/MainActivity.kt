@@ -43,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private val pendingUserByStreamId = mutableMapOf<String, String>()
     /** A/B 灞傦細streamId -> 鏈疆 assistant 鍐呭绱Н锛堝畬鏁磋疆娆℃椂鐢ㄤ簬 addRound锛?*/
     private val pendingAssistantByStreamId = mutableMapOf<String, StringBuilder>()
+    private val pendingChatModelByStreamId = mutableMapOf<String, String?>()
     private val clientMsgIdByStreamId = mutableMapOf<String, String>()
     private val clientMsgIdUpdatedAtByStreamId = mutableMapOf<String, Long>()
 
@@ -545,8 +546,9 @@ class MainActivity : AppCompatActivity() {
                     if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                     val userMsg = pendingUserByStreamId.remove(streamId) ?: ""
                     val assistantMsg = pendingAssistantByStreamId.remove(streamId)?.toString() ?: ""
+                    val chatModel = pendingChatModelByStreamId.remove(streamId)
                     if (userMsg.isNotBlank() || assistantMsg.isNotBlank()) {
-                        ABLayerManager.onRoundComplete(userMsg, assistantMsg)
+                        ABLayerManager.onRoundComplete(userMsg, assistantMsg, chatModel)
                     }
                     val esc = escapeJs(streamId)
                     val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: "")
@@ -560,6 +562,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 pendingUserByStreamId.remove(streamId)
                 pendingAssistantByStreamId.remove(streamId)
+                pendingChatModelByStreamId.remove(streamId)
                 removeClientMsgId(streamId)
                 if (streamId == currentStreamId) {
                     isRequesting = false
@@ -581,6 +584,7 @@ class MainActivity : AppCompatActivity() {
          */
         private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String, chatModel: String? = null) {
             pendingUserByStreamId[streamId] = text
+            pendingChatModelByStreamId[streamId] = chatModel
             currentChatModelForResume = chatModel
             ModelService.getReply(
                 userMessage = text,
@@ -677,8 +681,9 @@ class MainActivity : AppCompatActivity() {
                     "complete" -> {
                         val userMsg = pendingUserByStreamId.remove(streamId) ?: ""
                         val assistantMsg = assistantAccum.toString()
+                        val chatModel = pendingChatModelByStreamId.remove(streamId)
                         if (userMsg.isNotBlank() || assistantMsg.isNotBlank()) {
-                            ABLayerManager.onRoundComplete(userMsg, assistantMsg)
+                            ABLayerManager.onRoundComplete(userMsg, assistantMsg, chatModel)
                         }
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escClientMsgId = escapeJs(clientMsgIdByStreamId[streamId] ?: "")
@@ -687,6 +692,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     "interrupted" -> {
                         pendingUserByStreamId.remove(streamId)
+                        pendingChatModelByStreamId.remove(streamId)
                         removeClientMsgId(streamId)
                         if (streamId == currentStreamId) { isRequesting = false; currentStreamId = null }
                         val escReason = escapeJs(data ?: "")
