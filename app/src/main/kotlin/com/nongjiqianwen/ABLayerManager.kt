@@ -2,6 +2,7 @@ package com.nongjiqianwen
 
 import android.content.Context
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 
 data class ABConfig(val aWindowRounds: Int, val bEveryRounds: Int)
 
@@ -388,13 +389,16 @@ object ABLayerManager {
         val roundTotal: Int,
     )
 
-    fun setTestHooks(
+    @VisibleForTesting(otherwise = VisibleForTesting.NONE)
+    @JvmSynthetic
+    internal fun setTestHooks(
         sessionId: String? = null,
         userId: String? = null,
         backendMode: Boolean? = null,
         extractExecutor: ((oldB: String, dialogueText: String, prompt: String) -> Result<String>)? = null,
         backendSnapshotProvider: ((userId: String, sessionId: String) -> SessionSnapshot?)? = null,
     ) {
+        requireDebugTestHook("setTestHooks")
         testSessionIdOverride = sessionId
         testUserIdOverride = userId
         testBackendModeOverride = backendMode
@@ -402,7 +406,10 @@ object ABLayerManager {
         testBackendSnapshotProvider = backendSnapshotProvider
     }
 
-    fun clearTestHooks() {
+    @VisibleForTesting(otherwise = VisibleForTesting.NONE)
+    @JvmSynthetic
+    internal fun clearTestHooks() {
+        requireDebugTestHook("clearTestHooks")
         testSessionIdOverride = null
         testUserIdOverride = null
         testBackendModeOverride = null
@@ -410,17 +417,26 @@ object ABLayerManager {
         testBackendSnapshotProvider = null
     }
 
-    fun debugGetRoundTotal(sessionId: String): Int {
+    @VisibleForTesting(otherwise = VisibleForTesting.NONE)
+    @JvmSynthetic
+    internal fun debugGetRoundTotal(sessionId: String): Int {
+        requireDebugTestHook("debugGetRoundTotal")
         val prefs = prefs() ?: return 0
         return prefs.getInt(KEY_ROUND_TOTAL_PREFIX + sessionId, 0)
     }
 
-    fun debugGetPendingRetry(sessionId: String): Boolean {
+    @VisibleForTesting(otherwise = VisibleForTesting.NONE)
+    @JvmSynthetic
+    internal fun debugGetPendingRetry(sessionId: String): Boolean {
+        requireDebugTestHook("debugGetPendingRetry")
         val prefs = prefs() ?: return false
         return prefs.getBoolean(KEY_PENDING_RETRY_PREFIX + sessionId, false)
     }
 
-    fun resetForTest(sessionId: String) {
+    @VisibleForTesting(otherwise = VisibleForTesting.NONE)
+    @JvmSynthetic
+    internal fun resetForTest(sessionId: String) {
+        requireDebugTestHook("resetForTest")
         synchronized(aLock) { aRoundsBySession.remove(sessionId) }
         synchronized(serverLock) {
             serverARoundsCache.clear()
@@ -435,12 +451,21 @@ object ABLayerManager {
             .commit()
     }
 
-    fun dropInMemoryStateForTest(sessionId: String) {
+    @VisibleForTesting(otherwise = VisibleForTesting.NONE)
+    @JvmSynthetic
+    internal fun dropInMemoryStateForTest(sessionId: String) {
+        requireDebugTestHook("dropInMemoryStateForTest")
         synchronized(aLock) { aRoundsBySession.remove(sessionId) }
         synchronized(serverLock) {
             serverARoundsCache.clear()
             serverBSummary = ""
         }
         synchronized(extractLock) { inFlightSessions.remove(sessionId) }
+    }
+
+    private fun requireDebugTestHook(apiName: String) {
+        if (!BuildConfig.DEBUG) {
+            throw IllegalStateException("$apiName is debug-only")
+        }
     }
 }
