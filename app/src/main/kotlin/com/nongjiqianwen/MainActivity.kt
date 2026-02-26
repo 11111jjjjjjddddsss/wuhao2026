@@ -1,4 +1,4 @@
-package com.nongjiqianwen
+﻿package com.nongjiqianwen
 
 import android.annotation.SuppressLint
 import android.content.ContentResolver
@@ -24,29 +24,29 @@ import java.util.concurrent.ConcurrentHashMap
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
     private var isRequesting = false
-    /** 单飞：同会话只允许一个流在飞；当前在飞的 streamId，仅其 complete 时清 isRequesting */
+    /** 鍗曢锛氬悓浼氳瘽鍙厑璁镐竴涓祦鍦ㄩ锛涘綋鍓嶅湪椋炵殑 streamId锛屼粎鍏?complete 鏃舵竻 isRequesting */
     private var currentStreamId: String? = null
-    /** 切后台时 true，onResume 清空并补发缓存；不在此 cancel 请求 */
+    /** 鍒囧悗鍙版椂 true锛宱nResume 娓呯┖骞惰ˉ鍙戠紦瀛橈紱涓嶅湪姝?cancel 璇锋眰 */
     private var isInBackground = false
 
-    /** streamId -> [(type, data)]：切后台时缓存 chunk/complete/interrupted，onResume 按序补发 */
+    /** streamId -> [(type, data)]锛氬垏鍚庡彴鏃剁紦瀛?chunk/complete/interrupted锛宱nResume 鎸夊簭琛ュ彂 */
     private val bufferedEventsByStreamId = mutableMapOf<String, MutableList<Pair<String, String?>>>()
-    /** 后台缓存上限：字数、流数、时间(ms)；超限丢弃并用 badge 提示 */
+    /** 鍚庡彴缂撳瓨涓婇檺锛氬瓧鏁般€佹祦鏁般€佹椂闂?ms)锛涜秴闄愪涪寮冨苟鐢?badge 鎻愮ず */
     private var backgroundBufferStartMs: Long = 0L
-    /** 因流数超限被丢弃的 streamId，onResume 时补发 cache_overflow badge */
+    /** 鍥犳祦鏁拌秴闄愯涓㈠純鐨?streamId锛宱nResume 鏃惰ˉ鍙?cache_overflow badge */
     private val overflowedStreamIds = mutableSetOf<String>()
 
-    /** 压缩后 bytes 短期缓存，供重试使用：imageId -> (bytes, 写入时间戳)。TTL 60s，LRU 最多 4 条 */
+    /** 鍘嬬缉鍚?bytes 鐭湡缂撳瓨锛屼緵閲嶈瘯浣跨敤锛歩mageId -> (bytes, 鍐欏叆鏃堕棿鎴?銆俆TL 60s锛孡RU 鏈€澶?4 鏉?*/
     private val compressedBytesCache = ConcurrentHashMap<String, Pair<ByteArray, Long>>()
 
-    /** A/B 层：streamId -> 本轮 user 消息（完整轮次时用于 addRound） */
+    /** A/B 灞傦細streamId -> 鏈疆 user 娑堟伅锛堝畬鏁磋疆娆℃椂鐢ㄤ簬 addRound锛?*/
     private val pendingUserByStreamId = mutableMapOf<String, String>()
-    /** A/B 层：streamId -> 本轮 assistant 内容累积（完整轮次时用于 addRound） */
+    /** A/B 灞傦細streamId -> 鏈疆 assistant 鍐呭绱Н锛堝畬鏁磋疆娆℃椂鐢ㄤ簬 addRound锛?*/
     private val pendingAssistantByStreamId = mutableMapOf<String, StringBuilder>()
     private val clientMsgIdByStreamId = mutableMapOf<String, String>()
     private val clientMsgIdUpdatedAtByStreamId = mutableMapOf<String, Long>()
 
-    /** 后台断流无感补全：待补全时非 null；3 秒节流用 lastFailAt */
+    /** 鍚庡彴鏂祦鏃犳劅琛ュ叏锛氬緟琛ュ叏鏃堕潪 null锛? 绉掕妭娴佺敤 lastFailAt */
     private data class ResumeState(
         val streamId: String,
         val lastUserInputText: String,
@@ -71,7 +71,7 @@ class MainActivity : AppCompatActivity() {
         private const val CLIENT_MSG_ID_CACHE_TRIM_TO = 1500
     }
 
-    /** JS 字符串安全：反斜杠/单引号 + U+2028/U+2029（否则断串） */
+    /** JS 瀛楃涓插畨鍏細鍙嶆枩鏉?鍗曞紩鍙?+ U+2028/U+2029锛堝惁鍒欐柇涓诧級 */
     private fun escapeJs(s: String): String = s.replace("\\", "\\\\").replace("'", "\\'").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
 
     private fun putClientMsgId(streamId: String, clientMsgId: String) {
@@ -133,7 +133,7 @@ class MainActivity : AppCompatActivity() {
         webView = WebView(this)
         setContentView(webView)
 
-        // Debug：长按 WebView 5 秒弹出“重置 install_id”（仅用于测试）
+        // Debug锛氶暱鎸?WebView 5 绉掑脊鍑衡€滈噸缃?install_id鈥濓紙浠呯敤浜庢祴璇曪級
         if (BuildConfig.DEBUG) {
             setupResetInstallIdOnLongPress()
         }
@@ -145,7 +145,7 @@ class MainActivity : AppCompatActivity() {
             allowContentAccess = true
         }
         
-        // 注入JavaScript接口
+        // 娉ㄥ叆JavaScript鎺ュ彛
         androidJSInterface = AndroidJSInterface()
         webView.addJavascriptInterface(androidJSInterface!!, "AndroidInterface")
         
@@ -163,8 +163,8 @@ class MainActivity : AppCompatActivity() {
                                 webView.evaluateJavascript("if(window.setInitialHistory) window.setInitialHistory(JSON.parse(\"$escaped\"));", null)
                                 if (BuildConfig.DEBUG) Log.d("MainActivity", "snapshot loaded a_rounds_full=${snapshot.a_rounds_full.size} injected for_ui=${snapshot.a_rounds_for_ui.size}")
                             } else {
-                                if (BuildConfig.DEBUG) Log.w("MainActivity", "GET snapshot 失败(503/timeout/网络)，不回退本地、不注入；降级策略：仅本次不展示历史")
-                                webView.evaluateJavascript("if(typeof showToast==='function')showToast('会话同步失败，请稍后重试');", null)
+                                if (BuildConfig.DEBUG) Log.w("MainActivity", "GET snapshot 澶辫触(503/timeout/缃戠粶)锛屼笉鍥為€€鏈湴銆佷笉娉ㄥ叆锛涢檷绾х瓥鐣ワ細浠呮湰娆′笉灞曠ず鍘嗗彶")
+                                webView.evaluateJavascript("if(typeof showToast==='function')showToast('浼氳瘽鍚屾澶辫触锛岃绋嶅悗閲嶈瘯');", null)
                             }
                         }
                     }
@@ -172,7 +172,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 加载HTML文件（唯一模板）
+        // 鍔犺浇HTML鏂囦欢锛堝敮涓€妯℃澘锛?
         val loadUrl = "file:///android_asset/gpt-demo.html"
         if (BuildConfig.DEBUG) {
             Log.d("MainActivity", "WebView loadUrl=$loadUrl")
@@ -181,18 +181,18 @@ class MainActivity : AppCompatActivity() {
     }
     
     /**
-     * JavaScript接口，用于WebView与Android通信
+     * JavaScript鎺ュ彛锛岀敤浜嶹ebView涓嶢ndroid閫氫俊
      */
     inner class AndroidJSInterface {
         /**
-         * 上传图片（逐张上传，回传状态）
-         * @param imageDataListJson JSON数组：[{imageId: "img_xxx", base64: "..."}, ...]
+         * 涓婁紶鍥剧墖锛堥€愬紶涓婁紶锛屽洖浼犵姸鎬侊級
+         * @param imageDataListJson JSON鏁扮粍锛歔{imageId: "img_xxx", base64: "..."}, ...]
          */
         @JavascriptInterface
         fun uploadImages(imageDataListJson: String) {
             Thread {
                 try {
-                    // 解析图片数据列表（含 requestId，用于回调去重）
+                    // 瑙ｆ瀽鍥剧墖鏁版嵁鍒楄〃锛堝惈 requestId锛岀敤浜庡洖璋冨幓閲嶏級
                     val imageDataList = try {
                         val jsonElement = com.google.gson.JsonParser().parse(imageDataListJson)
                         if (jsonElement.isJsonNull) {
@@ -212,29 +212,29 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("MainActivity", "解析图片数据列表失败", e)
+                        Log.e("MainActivity", "瑙ｆ瀽鍥剧墖鏁版嵁鍒楄〃澶辫触", e)
                         emptyList()
                     }
                     
                     if (imageDataList.size > 4) {
                         runOnUiThread {
-                            webView.evaluateJavascript("if(typeof showToast==='function')showToast('最多4张图片');else alert('最多4张图片');", null)
+                            webView.evaluateJavascript("if(typeof showToast==='function')showToast('鏈€澶?寮犲浘鐗?);else alert('鏈€澶?寮犲浘鐗?);", null)
                         }
                         return@Thread
                     }
                     
-                    // 逐张上传
+                    // 閫愬紶涓婁紶
                     imageDataList.forEach { (imageId, base64, requestId) ->
                         uploadSingleImage(imageId, base64, requestId)
                     }
                 } catch (e: Exception) {
-                    Log.e("MainActivity", "上传图片失败", e)
+                    Log.e("MainActivity", "涓婁紶鍥剧墖澶辫触", e)
                 }
             }.start()
         }
         
         /**
-         * 停止当前流式生成（用户点击 Stop 时调用）
+         * 鍋滄褰撳墠娴佸紡鐢熸垚锛堢敤鎴风偣鍑?Stop 鏃惰皟鐢級
          */
         @JavascriptInterface
         fun stopGeneration() {
@@ -243,26 +243,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        /**
-         * 博查联网搜索；纯工具函数，返回结果或null
-         */
-        @JavascriptInterface
-        fun webSearch(streamId: String, query: String, freshness: String?, countStr: String?) {
-            Thread {
-                val (success, resultText) = BochaClient.webSearch(query)
-                runOnUiThread {
-                    if (success && resultText != null) {
-                        val escStreamId = escapeJs(streamId)
-                        val escResult = escapeJs(resultText).replace("\n", "\\n").replace("\r", "\\r")
-                        webView.evaluateJavascript("window.onSearchResult && window.onSearchResult('$escStreamId', '$escResult');", null)
-                    }
-                    // 搜索失败/超时/空结果 → 返回null，前端静默处理
-                }
-            }.start()
-        }
 
         /**
-         * 返回设备本地时间字符串：YYYY-MM-DD HH:mm（周X） 时区名
+         * 杩斿洖璁惧鏈湴鏃堕棿瀛楃涓诧細YYYY-MM-DD HH:mm锛堝懆X锛?鏃跺尯鍚?
          */
         @JavascriptInterface
         fun getEntitlement(callbackId: String) {
@@ -286,7 +269,7 @@ class MainActivity : AppCompatActivity() {
                 val zone = java.time.ZoneId.of("Asia/Taipei")
                 val now = java.time.ZonedDateTime.now(zone)
                 val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[now.dayOfWeek.value % 7]
-                String.format("%04d-%02d-%02d %02d:%02d（周%s） %s",
+                String.format("%04d-%02d-%02d %02d:%02d锛堝懆%s锛?%s",
                     now.year, now.monthValue, now.dayOfMonth,
                     now.hour, now.minute, week, zone.id)
             } catch (_: Exception) {
@@ -294,7 +277,7 @@ class MainActivity : AppCompatActivity() {
                     val now = java.util.Calendar.getInstance()
                     val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[now.get(java.util.Calendar.DAY_OF_WEEK) - 1]
                     val zoneName = now.timeZone.id
-                    String.format("%04d-%02d-%02d %02d:%02d（周%s） %s",
+                    String.format("%04d-%02d-%02d %02d:%02d锛堝懆%s锛?%s",
                         now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH) + 1, now.get(java.util.Calendar.DAY_OF_MONTH),
                         now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE), week, zoneName)
                 } catch (_: Exception) {
@@ -304,15 +287,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * 重试单张图片上传（不传 base64，用缓存 bytes 重传；缓存缺失则回传 fail + 请重新选择该图片）
-         * @param imageId 图片ID
-         * @param requestId 本次尝试ID（回传前端用于去重）
+         * 閲嶈瘯鍗曞紶鍥剧墖涓婁紶锛堜笉浼?base64锛岀敤缂撳瓨 bytes 閲嶄紶锛涚紦瀛樼己澶卞垯鍥炰紶 fail + 璇烽噸鏂伴€夋嫨璇ュ浘鐗囷級
+         * @param imageId 鍥剧墖ID
+         * @param requestId 鏈灏濊瘯ID锛堝洖浼犲墠绔敤浜庡幓閲嶏級
          */
         @JavascriptInterface
         fun retryImage(imageId: String, requestId: String) {
             Thread {
                 if (BuildConfig.DEBUG) {
-                    Log.d("MainActivity", "重试图片上传: $imageId, requestId=$requestId")
+                    Log.d("MainActivity", "閲嶈瘯鍥剧墖涓婁紶: $imageId, requestId=$requestId")
                 }
                 val cached = compressedBytesCache[imageId]
                 val now = System.currentTimeMillis()
@@ -330,11 +313,11 @@ class MainActivity : AppCompatActivity() {
         }
         
         /**
-         * 发送消息（此时图片已上传成功，传入的是URL列表）
-         * @param text 用户文字
-         * @param imageUrlsJson JSON数组：["https://...", ...] 或 "null"
-         * @param streamId 前端生成的流ID，回调时写对应气泡（取消时旧气泡落终态）
-         * @param model 可选，前端传入档位标识（free/plus/pro）；主对话模型固定 MODEL_MAIN(qwen3.5-plus)
+         * 鍙戦€佹秷鎭紙姝ゆ椂鍥剧墖宸蹭笂浼犳垚鍔燂紝浼犲叆鐨勬槸URL鍒楄〃锛?
+         * @param text 鐢ㄦ埛鏂囧瓧
+         * @param imageUrlsJson JSON鏁扮粍锛歔"https://...", ...] 鎴?"null"
+         * @param streamId 鍓嶇鐢熸垚鐨勬祦ID锛屽洖璋冩椂鍐欏搴旀皵娉★紙鍙栨秷鏃舵棫姘旀场钀界粓鎬侊級
+         * @param model 鍙€夛紝鍓嶇浼犲叆妗ｄ綅鏍囪瘑锛坒ree/plus/pro锛夛紱涓诲璇濇ā鍨嬪浐瀹?MODEL_MAIN(qwen3.5-plus)
          */
         @JavascriptInterface
         fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?) {
@@ -344,7 +327,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?, clientMsgId: String?) {
             runOnUiThread {
-                // 单飞：不挡连点；连点 = 取消旧流再开新流，getReply 内 cancelCurrentRequest
+                // 鍗曢锛氫笉鎸¤繛鐐癸紱杩炵偣 = 鍙栨秷鏃ф祦鍐嶅紑鏂版祦锛実etReply 鍐?cancelCurrentRequest
 
                 val hasText = text.isNotBlank()
                 val hasImages = imageUrlsJson != "null" && imageUrlsJson.isNotBlank()
@@ -367,20 +350,20 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("MainActivity", "解析图片URL列表失败", e)
+                        Log.e("MainActivity", "瑙ｆ瀽鍥剧墖URL鍒楄〃澶辫触", e)
                         emptyList()
                     }
                 } else emptyList()
 
                 if (imageUrlList.size > 4) {
                     if (BuildConfig.DEBUG) Log.d("MainActivity", "图片超过4张，阻止发送")
-                    webView.evaluateJavascript("if(typeof showToast==='function')showToast('最多4张图片');", null)
+                    webView.evaluateJavascript("if(typeof showToast==='function')showToast('单次最多4张');", null)
                     return@runOnUiThread
                 }
 
                 val sid = streamId?.takeIf { it.isNotBlank() } ?: "stream_${System.currentTimeMillis()}"
                 val cid = clientMsgId?.takeIf { it.isNotBlank() } ?: sid
-                // 发送前断网拦截：无网不转圈，直接在该条 assistant 显示「当前无网络，未发送。」+ 重试
+                // 鍙戦€佸墠鏂綉鎷︽埅锛氭棤缃戜笉杞湀锛岀洿鎺ュ湪璇ユ潯 assistant 鏄剧ず銆屽綋鍓嶆棤缃戠粶锛屾湭鍙戦€併€傘€? 閲嶈瘯
                 if (!isNetworkAvailable()) {
                     val esc = escapeJs(sid)
                     val escReason = escapeJs("no_network")
@@ -394,7 +377,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        /** 灰字「已中断 · 点击继续」点击时由前端调用，触发补全请求（无 tools） */
+        /** 鐏板瓧銆屽凡涓柇 路 鐐瑰嚮缁х画銆嶇偣鍑绘椂鐢卞墠绔皟鐢紝瑙﹀彂琛ュ叏璇锋眰锛堟棤 tools锛?*/
         @JavascriptInterface
         fun requestResume(streamId: String?) {
             runOnUiThread {
@@ -410,26 +393,26 @@ class MainActivity : AppCompatActivity() {
         }
         
         /**
-         * 上传单张图片（逐张处理；回传 requestId 供前端去重）
+         * 涓婁紶鍗曞紶鍥剧墖锛堥€愬紶澶勭悊锛涘洖浼?requestId 渚涘墠绔幓閲嶏級
          */
         private fun uploadSingleImage(imageId: String, base64: String, requestId: String) {
             Thread {
                 try {
-                    // 回传：开始上传（带 requestId）
+                    // 鍥炰紶锛氬紑濮嬩笂浼狅紙甯?requestId锛?
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
                         webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null, '$escapedRequestId', null);", null)
                     }
                     
-                    // base64 解码后即用，不长期驻留
+                    // base64 瑙ｇ爜鍚庡嵆鐢紝涓嶉暱鏈熼┗鐣?
                     val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // 压缩：EXIF 矫正 → 固定序列 1024@82→1024@80→1024@75→1024@70→896@70→768@70→640@70→640@60→512@60（目标≤1MB）
+                    // 鍘嬬缉锛欵XIF 鐭 鈫?鍥哄畾搴忓垪 1024@82鈫?024@80鈫?024@75鈫?024@70鈫?96@70鈫?68@70鈫?40@70鈫?40@60鈫?12@60锛堢洰鏍団墹1MB锛?
                     val compressResult = ImageUploader.compressImage(imageBytes)
                     
                     if (compressResult == null) {
-                        Log.e("MainActivity", "图片[$imageId] 解码失败，不调用模型/不扣费/不计轮次")
+                        Log.e("MainActivity", "鍥剧墖[$imageId] 瑙ｇ爜澶辫触锛屼笉璋冪敤妯″瀷/涓嶆墸璐?涓嶈杞")
                         runOnUiThread {
                             val escapedImageId = escapeJs(imageId)
                             val escapedRequestId = escapeJs(requestId)
@@ -439,7 +422,7 @@ class MainActivity : AppCompatActivity() {
                         return@Thread
                     }
                     if (compressResult.compressedSize > MAX_IMAGE_UPLOAD_BYTES) {
-                        Log.e("MainActivity", "图片[$imageId] 压缩后仍超1MB，不调用模型/不扣费/不计轮次")
+                        Log.e("MainActivity", "鍥剧墖[$imageId] 鍘嬬缉鍚庝粛瓒?MB锛屼笉璋冪敤妯″瀷/涓嶆墸璐?涓嶈杞")
                         runOnUiThread {
                             val escapedImageId = escapeJs(imageId)
                             val escapedRequestId = escapeJs(requestId)
@@ -450,17 +433,17 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                     if (BuildConfig.DEBUG) {
-                        Log.d("MainActivity", "=== 图片[$imageId] 处理完成 ===")
-                        Log.d("MainActivity", "原图尺寸: ${compressResult.originalWidth}x${compressResult.originalHeight}")
-                        Log.d("MainActivity", "压缩后尺寸: ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
-                        Log.d("MainActivity", "压缩后字节数: ${compressResult.compressedSize} bytes")
+                        Log.d("MainActivity", "=== 鍥剧墖[$imageId] 澶勭悊瀹屾垚 ===")
+                        Log.d("MainActivity", "鍘熷浘灏哄: ${compressResult.originalWidth}x${compressResult.originalHeight}")
+                        Log.d("MainActivity", "鍘嬬缉鍚庡昂瀵? ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
+                        Log.d("MainActivity", "鍘嬬缉鍚庡瓧鑺傛暟: ${compressResult.compressedSize} bytes")
                     }
                     
                     putCompressedCache(imageId, compressResult.bytes)
                     uploadSingleImageWithBytes(imageId, compressResult.bytes, requestId)
                     
                 } catch (e: Exception) {
-                    Log.e("MainActivity", "处理图片[$imageId]失败", e)
+                    Log.e("MainActivity", "澶勭悊鍥剧墖[$imageId]澶辫触", e)
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
@@ -471,7 +454,7 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
         
-        /** 用已压缩 bytes 上传（首次或重试共用）；失败回调不带 errorMessage，由调用方决定 */
+        /** 鐢ㄥ凡鍘嬬缉 bytes 涓婁紶锛堥娆℃垨閲嶈瘯鍏辩敤锛夛紱澶辫触鍥炶皟涓嶅甫 errorMessage锛岀敱璋冪敤鏂瑰喅瀹?*/
         private fun uploadSingleImageWithBytes(imageId: String, imageBytes: ByteArray, requestId: String) {
             runOnUiThread {
                 val escapedImageId = escapeJs(imageId)
@@ -482,9 +465,9 @@ class MainActivity : AppCompatActivity() {
                 imageBytes = imageBytes,
             onSuccess = { url ->
                 if (BuildConfig.DEBUG) {
-                    Log.d("MainActivity", "=== 图片[$imageId] 上传成功 ===")
+                    Log.d("MainActivity", "=== 鍥剧墖[$imageId] 涓婁紶鎴愬姛 ===")
                     val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
-                    Log.d("MainActivity", "上传URL（脱敏）: $maskedUrl")
+                    Log.d("MainActivity", "涓婁紶URL锛堣劚鏁忥級: $maskedUrl")
                 }
                 runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
@@ -494,8 +477,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 },
                 onError = { error ->
-                    Log.e("MainActivity", "=== 图片[$imageId] 上传失败 ===")
-                    Log.e("MainActivity", "错误原因: $error")
+                    Log.e("MainActivity", "=== 鍥剧墖[$imageId] 涓婁紶澶辫触 ===")
+                    Log.e("MainActivity", "閿欒鍘熷洜: $error")
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
@@ -518,7 +501,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        /** 切后台时按 streamId 缓存事件，受字数/流数/时间三上限；超限丢弃并记 cache_overflow */
+        /** 鍒囧悗鍙版椂鎸?streamId 缂撳瓨浜嬩欢锛屽彈瀛楁暟/娴佹暟/鏃堕棿涓変笂闄愶紱瓒呴檺涓㈠純骞惰 cache_overflow */
         private fun dispatchChunk(streamId: String, chunk: String) {
             runOnUiThread {
                 if (isInBackground) {
@@ -593,8 +576,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * 发送模型请求（streamId 贯穿；仅新请求时 cancel 旧请求，切后台不断网、缓存补发）
-         * @param chatModel 主对话档位标识（free/plus/pro）；主对话模型固定 MODEL_MAIN(qwen3.5-plus)，B 摘要固定 MODEL_B_SUMMARY(qwen-flash)
+         * 鍙戦€佹ā鍨嬭姹傦紙streamId 璐┛锛涗粎鏂拌姹傛椂 cancel 鏃ц姹傦紝鍒囧悗鍙颁笉鏂綉銆佺紦瀛樿ˉ鍙戯級
+         * @param chatModel 涓诲璇濇。浣嶆爣璇嗭紙free/plus/pro锛夛紱涓诲璇濇ā鍨嬪浐瀹?MODEL_MAIN(qwen3.5-plus)锛孊 鎽樿鍥哄畾 MODEL_B_SUMMARY(qwen-flash)
          */
         private fun sendToModel(text: String, imageUrlList: List<String>, streamId: String, chatModel: String? = null) {
             pendingUserByStreamId[streamId] = text
@@ -610,13 +593,6 @@ class MainActivity : AppCompatActivity() {
                     dispatchComplete(streamId)
                 },
                 onInterrupted = { reason -> dispatchInterrupted(streamId, reason) },
-                onToolInfo = { sid, toolName, toolText ->
-                    runOnUiThread {
-                        val escStreamId = escapeJs(sid)
-                        val escText = toolText.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "\\r").replace("\u2028", "\\u2028").replace("\u2029", "\\u2029")
-                        webView.evaluateJavascript("renderToolResult('$escStreamId','$toolName','$escText');", null)
-                    }
-                },
                 onInterruptedResumable = { sid, _ ->
                     runOnUiThread {
                         val userMsg = pendingUserByStreamId[sid] ?: ""
@@ -630,7 +606,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        /** 补全请求：无 tools，同一 streamId 续写；成功则 dispatchComplete 写 A，失败保持灰字 */
+        /** 琛ュ叏璇锋眰锛氭棤 tools锛屽悓涓€ streamId 缁啓锛涙垚鍔熷垯 dispatchComplete 鍐?A锛屽け璐ヤ繚鎸佺伆瀛?*/
         fun triggerResume(streamId: String?) {
             val state = resumeState ?: return
             val sid = streamId ?: state.streamId
@@ -638,7 +614,7 @@ class MainActivity : AppCompatActivity() {
             val now = System.currentTimeMillis()
             if (now - state.lastFailAt < RESUME_THROTTLE_MS) return
             state.lastFailAt = now
-            val continuationUserMessage = state.lastUserInputText + "\n请从我已输出的内容继续，避免重复。已输出前缀如下：\n" + state.assistantPrefix.take(CONTINUATION_PREFIX_MAX)
+            val continuationUserMessage = state.lastUserInputText + "\n璇蜂粠鎴戝凡杈撳嚭鐨勫唴瀹圭户缁紝閬垮厤閲嶅銆傚凡杈撳嚭鍓嶇紑濡備笅锛歕n" + state.assistantPrefix.take(CONTINUATION_PREFIX_MAX)
             pendingUserByStreamId[sid] = state.lastUserInputText
             pendingAssistantByStreamId[sid] = StringBuilder(state.assistantPrefix)
             currentStreamId = sid
@@ -667,7 +643,7 @@ class MainActivity : AppCompatActivity() {
 
     private var androidJSInterface: AndroidJSInterface? = null
 
-    /** onResume 时补发切后台期间缓存的 chunk/complete/interrupted；合并连续 chunk 并按 stream 分批 post 避免 UI 卡顿 */
+    /** onResume 鏃惰ˉ鍙戝垏鍚庡彴鏈熼棿缂撳瓨鐨?chunk/complete/interrupted锛涘悎骞惰繛缁?chunk 骞舵寜 stream 鍒嗘壒 post 閬垮厤 UI 鍗￠】 */
     private fun flushBufferedEventsToWebView() {
         val copy: Map<String, List<Pair<String, String?>>>
         val overflowed: Set<String>
@@ -723,7 +699,7 @@ class MainActivity : AppCompatActivity() {
         webView.post { replayStreamAt(0) }
     }
 
-    /** 将同一流内连续 chunk 合并为一条，保持 complete/interrupted 顺序，减少 JS 调用次数 */
+    /** 灏嗗悓涓€娴佸唴杩炵画 chunk 鍚堝苟涓轰竴鏉★紝淇濇寔 complete/interrupted 椤哄簭锛屽噺灏?JS 璋冪敤娆℃暟 */
     private fun mergeChunksAndReplayOrder(events: List<Pair<String, String?>>): List<Pair<String, String?>> {
         val out = mutableListOf<Pair<String, String?>>()
         var chunkAcc = StringBuilder()
@@ -764,7 +740,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        // 不在此 cancel：仅新请求或用户点停止时 cancel，切后台不断网
+        // 涓嶅湪姝?cancel锛氫粎鏂拌姹傛垨鐢ㄦ埛鐐瑰仠姝㈡椂 cancel锛屽垏鍚庡彴涓嶆柇缃?
     }
 
     private var resetInstallIdRunnable: Runnable? = null
@@ -774,15 +750,15 @@ class MainActivity : AppCompatActivity() {
         resetInstallIdRunnable = Runnable {
             AlertDialog.Builder(this)
                 .setTitle("Debug")
-                .setMessage("重置 install_id？仅用于测试")
-                .setPositiveButton("重置") { _, _ ->
+                .setMessage("閲嶇疆 install_id锛熶粎鐢ㄤ簬娴嬭瘯")
+                .setPositiveButton("閲嶇疆") { _, _ ->
                     val newId = IdManager.resetInstallId()
                     Toast.makeText(this, "install_id 已重置", Toast.LENGTH_SHORT).show()
                     if (BuildConfig.DEBUG) {
                         Log.d("MainActivity", "resetInstallId: $newId")
                     }
                 }
-                .setNegativeButton("取消", null)
+                .setNegativeButton("鍙栨秷", null)
                 .show()
         }
         webView.setOnTouchListener { _, event ->
