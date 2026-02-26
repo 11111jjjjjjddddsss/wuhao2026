@@ -8,15 +8,24 @@ if (!process.env.TZ) {
   process.env.TZ = 'Asia/Shanghai';
 }
 
+function hasBailianKey(): boolean {
+  const single = (process.env.DASHSCOPE_API_KEY || '').trim();
+  const pool = (process.env.DASHSCOPE_API_KEYS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return Boolean(single) || pool.length > 0;
+}
+
 const app = Fastify({ logger: true });
-if (!process.env.DASHSCOPE_API_KEY) {
-  app.log.error('DASHSCOPE_API_KEY is missing; /healthz will report missing_key');
+if (!hasBailianKey()) {
+  app.log.error('DASHSCOPE_API_KEY(S) is missing; /healthz will report missing_key');
 }
 
 app.get('/health', async () => ({ ok: true }));
 app.get('/healthz', async () => ({
   ok: true,
-  bailian: process.env.DASHSCOPE_API_KEY ? 'ok' : 'missing_key',
+  bailian: hasBailianKey() ? 'ok' : 'missing_key',
 }));
 
 app.get('/api/me', async (request, reply) => {

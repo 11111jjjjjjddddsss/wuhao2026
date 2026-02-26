@@ -5,6 +5,30 @@ interface OpenBailianStreamArgs {
   signal?: AbortSignal;
 }
 
+let keyCursor = 0;
+
+function getBailianKeys(): string[] {
+  const pool = (process.env.DASHSCOPE_API_KEYS || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const single = (process.env.DASHSCOPE_API_KEY || '').trim();
+  if (single) {
+    pool.unshift(single);
+  }
+  return Array.from(new Set(pool));
+}
+
+function pickNextKey(): string {
+  const keys = getBailianKeys();
+  if (keys.length === 0) {
+    throw new Error('DASHSCOPE_API_KEY(S) is missing');
+  }
+  const index = keyCursor % keys.length;
+  keyCursor = (keyCursor + 1) % keys.length;
+  return keys[index];
+}
+
 function buildUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [{ type: 'text', text }];
   for (const image of images) {
@@ -17,10 +41,7 @@ function buildUserContent(text: string, images: string[]): Array<Record<string, 
 }
 
 export async function openBailianStream({ payload, signal }: OpenBailianStreamArgs): Promise<Response> {
-  const apiKey = process.env.DASHSCOPE_API_KEY;
-  if (!apiKey) {
-    throw new Error('DASHSCOPE_API_KEY is missing');
-  }
+  const apiKey = pickNextKey();
 
   const baseUrl = process.env.BAILIAN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
   const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
