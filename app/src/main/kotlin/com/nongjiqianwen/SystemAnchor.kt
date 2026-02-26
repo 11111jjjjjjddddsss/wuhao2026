@@ -27,7 +27,8 @@ object SystemAnchor {
     private var lastWarnTimeMs: Long = 0L
 
     /** 兜底短锚点：Step1/Step2 都失败时使用，一字不改 */
-    private const val FALLBACK_ANCHOR = """【系统前置锚点】
+    private const val FALLBACK_ANCHOR = """
+【系统前置锚点】
 你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。
 
 A. 定位与处理方式
