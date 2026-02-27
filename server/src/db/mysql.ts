@@ -13,10 +13,14 @@ function getMysqlUrl(): string {
   return url;
 }
 
-function migrationSql(): string {
+function migrationSqlFiles(): string[] {
   const currentDir = path.dirname(fileURLToPath(import.meta.url));
-  const file = path.resolve(currentDir, '../../migrations/001_init.sql');
-  return fs.readFileSync(file, 'utf8');
+  const dir = path.resolve(currentDir, '../../migrations');
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name.endsWith('.sql'))
+    .sort()
+    .map((name) => path.join(dir, name));
 }
 
 export async function getPool(): Promise<Pool> {
@@ -44,9 +48,11 @@ export async function withConnection<T>(fn: (conn: PoolConnection) => Promise<T>
 }
 
 export async function initMySql(): Promise<void> {
-  const sql = migrationSql();
+  const files = migrationSqlFiles();
   await withConnection(async (conn) => {
-    await conn.query(sql);
+    for (const file of files) {
+      const sql = fs.readFileSync(file, 'utf8');
+      await conn.query(sql);
+    }
   });
 }
-

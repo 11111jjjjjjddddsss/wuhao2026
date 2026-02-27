@@ -26,6 +26,7 @@ export interface ConsumeResult {
 
 export interface SessionRound {
   user: string;
+  user_images?: string[];
   assistant: string;
 }
 

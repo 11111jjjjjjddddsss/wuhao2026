@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import { openBailianStream } from './bailian.js';
-import { appendSessionRound, getSessionSnapshot, writeSessionBSummary } from './db.js';
+import { appendSessionRoundComplete, getSessionSnapshot, writeSessionBSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
 import {
   consumeOnDone,
@@ -11,7 +11,6 @@ import {
   getTodayKeyCN,
   getTopupStatus,
   getUpgradeRemaining,
-  parseTier,
   wasProcessed,
 } from './quota.js';
 import type { ChatStreamRequest, Tier } from './types.js';
@@ -61,19 +60,6 @@ app.get('/api/me', async (request, reply) => {
   });
 });
 
-app.post('/api/session/round', async (request, reply) => {
-  const body = (request.body || {}) as Record<string, string>;
-  const userId = (body.user_id || '').trim();
-  const sessionId = (body.session_id || '').trim();
-  const tier = parseTier(body.tier);
-  const user = (body.user || '').trim();
-  const assistant = (body.assistant || '').trim();
-  if (!userId || !sessionId || !tier) return reply.code(400).send({ error: 'user_id/session_id/tier required' });
-  if (!user || !assistant) return reply.code(400).send({ error: 'user and assistant required' });
-  const snapshot = await appendSessionRound(userId, sessionId, { user, assistant }, getAWindowByTier(tier));
-  return reply.send(snapshot);
-});
-
 app.post('/api/session/b', async (request, reply) => {
   const body = (request.body || {}) as Record<string, string>;
   const userId = (body.user_id || '').trim();
@@ -91,7 +77,65 @@ app.get('/api/session/snapshot', async (request, reply) => {
   const sessionId = (query.session_id || '').trim();
   if (!userId || !sessionId) return reply.code(400).send({ error: 'user_id/session_id required' });
   const snapshot = await getSessionSnapshot(userId, sessionId);
-  return reply.send(snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', round_total: 0 });
+  const safe = snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', round_total: 0, updated_at: Date.now() };
+  return reply.send({
+    user_id: safe.user_id,
+    session_id: safe.session_id,
+    a_json: safe.a_rounds_full,
+    b_summary: safe.b_summary,
+    round_total: safe.round_total,
+    updated_at: safe.updated_at,
+  });
+});
+
+app.post('/api/session/round_complete', async (request, reply) => {
+  const body = (request.body || {}) as Record<string, unknown>;
+  const userId = String(body.user_id || '').trim();
+  const sessionId = String(body.session_id || '').trim();
+  const clientMsgId = String(body.client_msg_id || '').trim();
+  const userText = String(body.user_text || '').trim();
+  const assistantText = String(body.assistant_text || '').trim();
+  const userImages = Array.isArray(body.user_images) ? body.user_images.filter((item): item is string => typeof item === 'string') : [];
+
+  if (!userId || !sessionId || !clientMsgId) {
+    return reply.code(400).send({ error: 'user_id/session_id/client_msg_id required' });
+  }
+  if (!userText || !assistantText) {
+    return reply.code(400).send({ error: 'user_text/assistant_text required' });
+  }
+
+  await ensureUser(userId, 'free');
+  const entitlement = await getTierForUser(userId, 'free');
+  const aWindowRounds = getAWindowByTier(entitlement.tier);
+
+  const result = await appendSessionRoundComplete(
+    userId,
+    sessionId,
+    clientMsgId,
+    { user: userText, user_images: userImages, assistant: assistantText },
+    aWindowRounds,
+  );
+
+  request.log.info(
+    {
+      userId,
+      sessionId,
+      clientMsgId,
+      replay: result.replay,
+      tier: entitlement.tier,
+      a_size: result.snapshot.a_rounds_full.length,
+      round_total: result.snapshot.round_total,
+    },
+    'session round_complete',
+  );
+
+  return reply.send({
+    ok: true,
+    replay: result.replay,
+    a_json: result.snapshot.a_rounds_full,
+    round_total: result.snapshot.round_total,
+    updated_at: result.snapshot.updated_at,
+  });
 });
 
 app.post('/api/chat/stream', async (request, reply) => {
@@ -103,9 +147,9 @@ app.post('/api/chat/stream', async (request, reply) => {
 
   if (!userId) return reply.code(400).send({ error: 'user_id required' });
   if (!clientMsgId) return reply.code(400).send({ error: 'client_msg_id required' });
-  if (!text) return reply.code(400).send({ error: 'text required' });
   if (images.length > 4) return reply.code(400).send({ error: 'single request supports up to 4 images' });
-  if (images.length > 0 && !text) return reply.code(400).send({ error: 'images require text' });
+  if (!text) return reply.code(400).send({ error: 'text required' });
+  if (images.length > 0 && text.trim().length === 0) return reply.code(400).send({ error: 'images require text' });
 
   await ensureUser(userId, 'free');
   const entitlement = await getTierForUser(userId, 'free');
