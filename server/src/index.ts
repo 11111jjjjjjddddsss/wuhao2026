@@ -53,10 +53,7 @@ function buildVisionUserContent(text: string, images: string[]): Array<Record<st
 }
 
 function roundToUserContent(round: SessionRound): string | Array<Record<string, unknown>> {
-  const images = Array.isArray(round.user_images) ? round.user_images.filter(Boolean) : [];
-  if (images.length === 0) return round.user;
-  const text = `${round.user}\n（历史图片数：${images.length}）`;
-  return buildVisionUserContent(text, images);
+  return round.user;
 }
 
 function buildPromptMessages(
@@ -162,7 +159,7 @@ app.post('/api/session/round_complete', async (request, reply) => {
   const clientMsgId = String(body.client_msg_id || '').trim();
   const userText = String(body.user_text || '').trim();
   const assistantText = String(body.assistant_text || '').trim();
-  const userImages = Array.isArray(body.user_images) ? body.user_images.filter((item): item is string => typeof item === 'string') : [];
+  const userImages: string[] = [];
 
   if (!sessionId || !clientMsgId) {
     return reply.code(400).send({ error: 'session_id/client_msg_id required' });
