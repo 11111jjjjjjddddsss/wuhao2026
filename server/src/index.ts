@@ -43,13 +43,10 @@ app.get('/healthz', async () => ({
 app.get('/api/me', async (request, reply) => {
   const query = request.query as Record<string, string | undefined>;
   const userId = (query.user_id || '').trim();
-  const tierInput = parseTier(query.tier);
-
   if (!userId) return reply.code(400).send({ error: 'user_id required' });
-  if (!tierInput) return reply.code(400).send({ error: 'tier invalid, expected free|plus|pro' });
 
-  await ensureUser(userId, tierInput);
-  const entitlement = await getTierForUser(userId, tierInput);
+  await ensureUser(userId, 'free');
+  const entitlement = await getTierForUser(userId, 'free');
   const status = await getDailyStatus(userId, entitlement.tier, getTodayKeyCN());
   const topup = await getTopupStatus(userId);
   const upgradeRemaining = await getUpgradeRemaining(userId);
@@ -57,8 +54,6 @@ app.get('/api/me', async (request, reply) => {
   return reply.send({
     tier: entitlement.tier,
     tier_expire_at: entitlement.tier_expire_at,
-    daily_limit: status.limit,
-    daily_used: status.used,
     daily_remaining: status.remaining,
     topup_remaining: topup.remaining,
     topup_earliest_expire_at: topup.earliestExpireAt,
@@ -102,25 +97,23 @@ app.get('/api/session/snapshot', async (request, reply) => {
 app.post('/api/chat/stream', async (request, reply) => {
   const body = (request.body || {}) as Partial<ChatStreamRequest>;
   const userId = (body.user_id || '').trim();
-  const tierInput = parseTier(body.tier);
   const clientMsgId = (body.client_msg_id || '').trim();
   const text = (body.text || '').trim();
   const images = Array.isArray(body.images) ? body.images.filter((url) => typeof url === 'string') : [];
 
   if (!userId) return reply.code(400).send({ error: 'user_id required' });
-  if (!tierInput) return reply.code(400).send({ error: 'tier invalid, expected free|plus|pro' });
   if (!clientMsgId) return reply.code(400).send({ error: 'client_msg_id required' });
   if (!text) return reply.code(400).send({ error: 'text required' });
   if (images.length > 4) return reply.code(400).send({ error: 'single request supports up to 4 images' });
   if (images.length > 0 && !text) return reply.code(400).send({ error: 'images require text' });
 
-  await ensureUser(userId, tierInput);
-  const entitlement = await getTierForUser(userId, tierInput);
+  await ensureUser(userId, 'free');
+  const entitlement = await getTierForUser(userId, 'free');
   const tier = entitlement.tier;
   const dayCN = getTodayKeyCN();
 
   if (await wasProcessed(userId, clientMsgId)) {
-    return reply.code(409).send({ error: 'duplicate client_msg_id' });
+    return reply.code(200).send({ ok: true, replay: true, client_msg_id: clientMsgId });
   }
 
   const before = await getDailyStatus(userId, tier, dayCN);
@@ -231,4 +224,3 @@ bootstrap().catch((error) => {
   app.log.error(error);
   process.exit(1);
 });
-
