@@ -13,7 +13,7 @@ import {
   getUpgradeRemaining,
   wasProcessed,
 } from './quota.js';
-import type { ChatStreamRequest, Tier } from './types.js';
+import type { BailianMessage, ChatStreamRequest, SessionRound, Tier } from './types.js';
 
 if (!process.env.TZ) {
   process.env.TZ = 'Asia/Shanghai';
@@ -33,6 +33,45 @@ function getAWindowByTier(tier: Tier): number {
 }
 
 const app = Fastify({ logger: true });
+const SYSTEM_ANCHOR = process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
+
+function buildVisionUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [{ type: 'text', text }];
+  for (const image of images) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: image },
+    });
+  }
+  return content;
+}
+
+function roundToUserContent(round: SessionRound): string | Array<Record<string, unknown>> {
+  const images = Array.isArray(round.user_images) ? round.user_images.filter(Boolean) : [];
+  if (images.length === 0) return round.user;
+  const text = `${round.user}\n（历史图片数：${images.length}）`;
+  return buildVisionUserContent(text, images);
+}
+
+function buildPromptMessages(
+  snapshot: Awaited<ReturnType<typeof getSessionSnapshot>>,
+  aWindowRounds: number,
+  currentText: string,
+  currentImages: string[],
+): { messages: BailianMessage[]; usedARoundsCount: number; hasBSummary: boolean } {
+  const rounds = (snapshot?.a_rounds_full || []).slice(-aWindowRounds);
+  const hasBSummary = Boolean(snapshot?.b_summary?.trim());
+  const messages: BailianMessage[] = [{ role: 'system', content: SYSTEM_ANCHOR }];
+  if (hasBSummary) {
+    messages.push({ role: 'system', content: snapshot!.b_summary.trim() });
+  }
+  for (const round of rounds) {
+    messages.push({ role: 'user', content: roundToUserContent(round) });
+    messages.push({ role: 'assistant', content: round.assistant });
+  }
+  messages.push({ role: 'user', content: buildVisionUserContent(currentText, currentImages) });
+  return { messages, usedARoundsCount: rounds.length, hasBSummary };
+}
 
 app.get('/healthz', async () => ({
   ok: true,
@@ -141,11 +180,13 @@ app.post('/api/session/round_complete', async (request, reply) => {
 app.post('/api/chat/stream', async (request, reply) => {
   const body = (request.body || {}) as Partial<ChatStreamRequest>;
   const userId = (body.user_id || '').trim();
+  const sessionId = (body.session_id || '').trim();
   const clientMsgId = (body.client_msg_id || '').trim();
   const text = (body.text || '').trim();
   const images = Array.isArray(body.images) ? body.images.filter((url) => typeof url === 'string') : [];
 
   if (!userId) return reply.code(400).send({ error: 'user_id required' });
+  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   if (!clientMsgId) return reply.code(400).send({ error: 'client_msg_id required' });
   if (images.length > 4) return reply.code(400).send({ error: 'single request supports up to 4 images' });
   if (!text) return reply.code(400).send({ error: 'text required' });
@@ -154,7 +195,21 @@ app.post('/api/chat/stream', async (request, reply) => {
   await ensureUser(userId, 'free');
   const entitlement = await getTierForUser(userId, 'free');
   const tier = entitlement.tier;
+  const aWindowRounds = getAWindowByTier(tier);
+  const snapshot = await getSessionSnapshot(userId, sessionId);
+  const prompt = buildPromptMessages(snapshot, aWindowRounds, text, images);
   const dayCN = getTodayKeyCN();
+
+  request.log.info(
+    {
+      userId,
+      sessionId,
+      tier,
+      used_a_rounds_count: prompt.usedARoundsCount,
+      has_b_summary: prompt.hasBSummary,
+    },
+    'chat prompt assembly',
+  );
 
   if (await wasProcessed(userId, clientMsgId)) {
     return reply.code(200).send({ ok: true, replay: true, client_msg_id: clientMsgId });
@@ -171,7 +226,8 @@ app.post('/api/chat/stream', async (request, reply) => {
   let upstream: Response;
   try {
     upstream = await openBailianStream({
-      payload: { user_id: userId, tier, client_msg_id: clientMsgId, text, images },
+      payload: { user_id: userId, session_id: sessionId, client_msg_id: clientMsgId, text, images },
+      messages: prompt.messages,
       signal: abortController.signal,
     });
   } catch (error) {

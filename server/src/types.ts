@@ -2,10 +2,17 @@ export type Tier = 'free' | 'plus' | 'pro';
 
 export interface ChatStreamRequest {
   user_id: string;
-  tier: Tier;
+  session_id: string;
   client_msg_id: string;
   text: string;
   images?: string[];
+}
+
+export type BailianMessageContent = string | Array<Record<string, unknown>>;
+
+export interface BailianMessage {
+  role: 'system' | 'user' | 'assistant' | 'developer';
+  content: BailianMessageContent;
 }
 
 export interface DailyQuotaStatus {
