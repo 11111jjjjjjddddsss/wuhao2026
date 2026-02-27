@@ -39,6 +39,8 @@ android {
 
         val uploadBaseUrl = project.findProperty("UPLOAD_BASE_URL") as String? ?: ""
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
+        val sessionApiToken = (project.findProperty("SESSION_API_TOKEN") as String?) ?: ""
+        buildConfigField("String", "SESSION_API_TOKEN", "\"$sessionApiToken\"")
 
         val useBackendAb = (project.findProperty("USE_BACKEND_AB") as String?)?.toBooleanStrictOrNull() ?: true
         val useBackendEntitlement =

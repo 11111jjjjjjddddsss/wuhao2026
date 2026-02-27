@@ -141,7 +141,7 @@ object ABLayerManager {
             return
         }
         val clientMsgId = "ab_${sessionId}_${System.currentTimeMillis()}"
-        SessionApi.appendA(userId, sessionId, clientMsgId, userMessage, assistantMessage) { ok ->
+        SessionApi.appendA(sessionId, clientMsgId, userMessage, assistantMessage) { ok ->
             if (!ok) {
                 setPendingRetry(sessionId, true)
                 return@appendA
@@ -264,7 +264,7 @@ object ABLayerManager {
             }
             return
         }
-        SessionApi.getSnapshot(userId, sessionId) { snapshot ->
+        SessionApi.getSnapshot(sessionId) { snapshot ->
             try {
                 if (snapshot != null && snapshot.b_summary.isNotBlank()) {
                     loadSnapshot(snapshot)

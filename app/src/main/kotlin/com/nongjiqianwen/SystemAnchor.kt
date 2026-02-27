@@ -152,6 +152,10 @@ F. 商业中立、联网搜索与证件查询
             addProperty("role", "system")
             addProperty("content", content)
         }
+        messagesArray.remove(0)
+        while (messagesArray.size() > 0) {
+            messagesArray.remove(0)
+        }
         messagesArray.add(replacement)
         nonSystemRefs.forEach { messagesArray.add(it) }
     }

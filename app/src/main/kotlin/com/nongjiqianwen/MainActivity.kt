@@ -164,7 +164,7 @@ class MainActivity : AppCompatActivity() {
                     null,
                 )
                 if (BuildConfig.USE_BACKEND_AB && (BuildConfig.UPLOAD_BASE_URL?.trim() ?: "").isNotEmpty()) {
-                    SessionApi.getSnapshot(IdManager.getClientId(), IdManager.getSessionId()) { snapshot ->
+                    SessionApi.getSnapshot(IdManager.getSessionId()) { snapshot ->
                         runOnUiThread {
                             if (snapshot != null) {
                                 ABLayerManager.loadSnapshot(snapshot)
@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun getEntitlement(callbackId: String) {
-            SessionApi.getEntitlement(IdManager.getClientId()) { json ->
+            SessionApi.getEntitlement() { json ->
                 runOnUiThread {
                     val escId = escapeJs(callbackId)
                     val js = if (json != null) {
