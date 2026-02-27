@@ -33,7 +33,7 @@ object QwenClient {
     private const val SSE_TOTAL_TIMEOUT_MS = 25_000L
     private const val SSE_CHUNK_THROTTLE_MS = 24L
     private const val B_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
-    private const val B_EXTRACT_TEMPERATURE = 0.85
+    private const val B_EXTRACT_TEMPERATURE = 0.8
     private const val B_EXTRACT_TOP_P = 0.9
     private const val B_EXTRACT_FREQUENCY_PENALTY = 0.0
     private const val B_EXTRACT_PRESENCE_PENALTY = 0.0
