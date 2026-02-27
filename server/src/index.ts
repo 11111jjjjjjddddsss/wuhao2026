@@ -4,6 +4,7 @@ import { openBailianStream } from './bailian.js';
 import { appendSessionRoundComplete, getSessionSnapshot, writeSessionBSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
 import {
+  buyTopupPack,
   consumeOnDone,
   ensureUser,
   getDailyStatus,
@@ -11,6 +12,7 @@ import {
   getTodayKeyCN,
   getTopupStatus,
   getUpgradeRemaining,
+  upgradePlusToPro,
   wasProcessed,
 } from './quota.js';
 import type { BailianMessage, ChatStreamRequest, SessionRound, Tier } from './types.js';
@@ -175,6 +177,49 @@ app.post('/api/session/round_complete', async (request, reply) => {
     round_total: result.snapshot.round_total,
     updated_at: result.snapshot.updated_at,
   });
+});
+
+app.post('/api/topup/buy', async (request, reply) => {
+  const body = (request.body || {}) as Record<string, unknown>;
+  const userId = String(body.user_id || '').trim();
+  const orderId = String(body.order_id || '').trim();
+  if (!userId || !orderId) return reply.code(400).send({ error: 'user_id/order_id required' });
+
+  await ensureUser(userId, 'free');
+  try {
+    const result = await buyTopupPack(userId, orderId);
+    request.log.info({ userId, orderId, replay: result.replay, packId: result.pack_id }, 'topup buy');
+    return reply.send({ ok: true, replay: result.replay, pack_id: result.pack_id, expire_at: result.expire_at, remaining: result.remaining });
+  } catch (error) {
+    const code = error instanceof Error && error.message === 'FORBIDDEN_TIER' ? 403 : error instanceof Error && error.message === 'TOPUP_LIMIT_REACHED' ? 409 : 500;
+    const msg = error instanceof Error ? error.message : 'internal_error';
+    return reply.code(code).send({ error: msg });
+  }
+});
+
+app.post('/api/tier/upgrade_plus_to_pro', async (request, reply) => {
+  const body = (request.body || {}) as Record<string, unknown>;
+  const userId = String(body.user_id || '').trim();
+  const orderId = String(body.order_id || '').trim();
+  if (!userId || !orderId) return reply.code(400).send({ error: 'user_id/order_id required' });
+
+  await ensureUser(userId, 'free');
+  try {
+    const result = await upgradePlusToPro(userId, orderId);
+    request.log.info({ userId, orderId, replay: result.replay, compensation: result.compensation }, 'tier upgrade plus->pro');
+    return reply.send({
+      ok: true,
+      replay: result.replay,
+      compensation: result.compensation,
+      tier: result.tier,
+      tier_expire_at: result.tier_expire_at,
+      upgrade_remaining: result.upgrade_remaining,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'internal_error';
+    const code = msg === 'ALREADY_PRO' ? 409 : msg === 'FORBIDDEN_TIER' ? 403 : 500;
+    return reply.code(code).send({ error: msg });
+  }
 });
 
 app.post('/api/chat/stream', async (request, reply) => {
