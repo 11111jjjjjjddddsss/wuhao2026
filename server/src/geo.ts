@@ -10,7 +10,11 @@ export interface RegionContext {
 }
 
 function normalizeRegion(raw: string): string {
-  return raw.replace(/\s+/g, ' ').trim();
+  const replaced = raw
+    .replace(/[^\p{Script=Han}A-Za-z0-9\s\-\/]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return replaced.slice(0, 64);
 }
 
 export function parseRegionFromHeaders(headers: Record<string, unknown>): RegionContext | null {
@@ -30,14 +34,8 @@ export function parseRegionFromHeaders(headers: Record<string, unknown>): Region
   };
 }
 
-function pickClientIp(headers: Record<string, unknown>, fallbackIp: string): string {
-  const forwarded = String(headers['x-forwarded-for'] || '').split(',').map((v) => v.trim()).filter(Boolean);
-  if (forwarded.length > 0) return forwarded[0];
-  return fallbackIp;
-}
-
-export function resolveRegionByIp(headers: Record<string, unknown>, fallbackIp: string): RegionContext {
-  const ip = pickClientIp(headers, fallbackIp).replace(/^::ffff:/, '');
+export function resolveRegionByIp(clientIp: string): RegionContext {
+  const ip = String(clientIp || '').replace(/^::ffff:/, '');
   const hit = geoip.lookup(ip);
   if (!hit) {
     return { region: '未知', source: 'ip', reliability: 'unreliable' };
@@ -61,4 +59,3 @@ export function formatShanghaiNowToSecond(date = new Date()): string {
   const pick = (type: string) => parts.find((p) => p.type === type)?.value ?? '00';
   return `${pick('year')}-${pick('month')}-${pick('day')} ${pick('hour')}:${pick('minute')}:${pick('second')}`;
 }
-

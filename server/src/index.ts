@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
+import { getClientIp, resolveAuthUserId } from './auth.js';
 import { openBailianStream } from './bailian.js';
 import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
@@ -35,7 +36,7 @@ function getAWindowByTier(tier: Tier): number {
   return tier === 'pro' ? 9 : 6;
 }
 
-const app = Fastify({ logger: true });
+const app = Fastify({ logger: true, trustProxy: true });
 const SYSTEM_ANCHOR = process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
 
 function buildVisionUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
@@ -84,9 +85,11 @@ app.get('/healthz', async () => ({
 }));
 
 app.get('/api/me', async (request, reply) => {
-  const query = request.query as Record<string, string | undefined>;
-  const userId = (query.user_id || '').trim();
-  if (!userId) return reply.code(400).send({ error: 'user_id required' });
+  const auth = resolveAuthUserId(request);
+  const userId = auth.userId;
+  if (auth.authMode === 'guest') {
+    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
+  }
 
   await ensureUser(userId, 'free');
   const entitlement = await getTierForUser(userId, 'free');
@@ -105,21 +108,29 @@ app.get('/api/me', async (request, reply) => {
 });
 
 app.post('/api/session/b', async (request, reply) => {
+  const auth = resolveAuthUserId(request);
+  const userId = auth.userId;
   const body = (request.body || {}) as Record<string, string>;
-  const userId = (body.user_id || '').trim();
   const sessionId = (body.session_id || '').trim();
   const bSummary = (body.b_summary || '').trim();
-  if (!userId || !sessionId) return reply.code(400).send({ error: 'user_id/session_id required' });
+  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   if (!bSummary) return reply.code(400).send({ error: 'b_summary required' });
+  if (auth.authMode === 'guest') {
+    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
+  }
   await writeSessionBSummary(userId, sessionId, bSummary);
   return reply.send({ ok: true });
 });
 
 app.get('/api/session/snapshot', async (request, reply) => {
+  const auth = resolveAuthUserId(request);
+  const userId = auth.userId;
   const query = request.query as Record<string, string | undefined>;
-  const userId = (query.user_id || '').trim();
   const sessionId = (query.session_id || '').trim();
-  if (!userId || !sessionId) return reply.code(400).send({ error: 'user_id/session_id required' });
+  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
+  if (auth.authMode === 'guest') {
+    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
+  }
   const snapshot = await getSessionSnapshot(userId, sessionId);
   const safe = snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', round_total: 0, updated_at: Date.now() };
   return reply.send({
@@ -133,19 +144,24 @@ app.get('/api/session/snapshot', async (request, reply) => {
 });
 
 app.post('/api/session/round_complete', async (request, reply) => {
+  const auth = resolveAuthUserId(request);
+  const userId = auth.userId;
   const body = (request.body || {}) as Record<string, unknown>;
-  const userId = String(body.user_id || '').trim();
   const sessionId = String(body.session_id || '').trim();
   const clientMsgId = String(body.client_msg_id || '').trim();
   const userText = String(body.user_text || '').trim();
   const assistantText = String(body.assistant_text || '').trim();
   const userImages = Array.isArray(body.user_images) ? body.user_images.filter((item): item is string => typeof item === 'string') : [];
 
-  if (!userId || !sessionId || !clientMsgId) {
-    return reply.code(400).send({ error: 'user_id/session_id/client_msg_id required' });
+  if (!sessionId || !clientMsgId) {
+    return reply.code(400).send({ error: 'session_id/client_msg_id required' });
   }
   if (!userText || !assistantText) {
     return reply.code(400).send({ error: 'user_text/assistant_text required' });
+  }
+
+  if (auth.authMode === 'guest') {
+    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
   }
 
   await ensureUser(userId, 'free');
@@ -183,10 +199,14 @@ app.post('/api/session/round_complete', async (request, reply) => {
 });
 
 app.post('/api/topup/buy', async (request, reply) => {
+  const auth = resolveAuthUserId(request);
+  const userId = auth.userId;
   const body = (request.body || {}) as Record<string, unknown>;
-  const userId = String(body.user_id || '').trim();
   const orderId = String(body.order_id || '').trim();
-  if (!userId || !orderId) return reply.code(400).send({ error: 'user_id/order_id required' });
+  if (!orderId) return reply.code(400).send({ error: 'order_id required' });
+  if (auth.authMode === 'guest') {
+    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
+  }
 
   await ensureUser(userId, 'free');
   try {
@@ -201,10 +221,14 @@ app.post('/api/topup/buy', async (request, reply) => {
 });
 
 app.post('/api/tier/upgrade_plus_to_pro', async (request, reply) => {
+  const auth = resolveAuthUserId(request);
+  const userId = auth.userId;
   const body = (request.body || {}) as Record<string, unknown>;
-  const userId = String(body.user_id || '').trim();
   const orderId = String(body.order_id || '').trim();
-  if (!userId || !orderId) return reply.code(400).send({ error: 'user_id/order_id required' });
+  if (!orderId) return reply.code(400).send({ error: 'order_id required' });
+  if (auth.authMode === 'guest') {
+    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
+  }
 
   await ensureUser(userId, 'free');
   try {
@@ -226,14 +250,14 @@ app.post('/api/tier/upgrade_plus_to_pro', async (request, reply) => {
 });
 
 app.post('/api/chat/stream', async (request, reply) => {
+  const auth = resolveAuthUserId(request);
+  const userId = auth.userId;
   const body = (request.body || {}) as Partial<ChatStreamRequest>;
-  const userId = (body.user_id || '').trim();
   const sessionId = (body.session_id || '').trim();
   const clientMsgId = (body.client_msg_id || '').trim();
   const text = (body.text || '').trim();
   const images = Array.isArray(body.images) ? body.images.filter((url) => typeof url === 'string') : [];
 
-  if (!userId) return reply.code(400).send({ error: 'user_id required' });
   if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   if (!clientMsgId) return reply.code(400).send({ error: 'client_msg_id required' });
   if (images.length > 4) return reply.code(400).send({ error: 'single request supports up to 4 images' });
@@ -245,8 +269,9 @@ app.post('/api/chat/stream', async (request, reply) => {
   const tier = entitlement.tier;
   const aWindowRounds = getAWindowByTier(tier);
   const snapshot = await getSessionSnapshot(userId, sessionId);
+  const clientIp = getClientIp(request);
   const regionFromHeaders = parseRegionFromHeaders(request.headers as Record<string, unknown>);
-  const resolvedRegion = regionFromHeaders ?? resolveRegionByIp(request.headers as Record<string, unknown>, request.ip);
+  const resolvedRegion = regionFromHeaders ?? resolveRegionByIp(clientIp);
   const injectedTime = formatShanghaiNowToSecond();
   const contextHeader = `当前时间：${injectedTime}（Asia/Shanghai）；用户地点：${resolvedRegion.region}；地点可信度：${resolvedRegion.reliability}`;
   const prompt = buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader);
@@ -258,6 +283,8 @@ app.post('/api/chat/stream', async (request, reply) => {
     {
       userId,
       sessionId,
+      auth_mode: auth.authMode,
+      masked_ip: auth.maskedIp,
       tier,
       used_a_rounds_count: prompt.usedARoundsCount,
       has_b_summary: prompt.hasBSummary,
