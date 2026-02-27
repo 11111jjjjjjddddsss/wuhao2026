@@ -153,6 +153,16 @@ class MainActivity : AppCompatActivity() {
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: android.webkit.WebView?, url: String?) {
                 super.onPageFinished(view, url)
+                if (BuildConfig.DEBUG) {
+                    Log.d(
+                        "MainActivity",
+                        "backend switches: USE_BACKEND_AB=${BuildConfig.USE_BACKEND_AB}, USE_BACKEND_ENTITLEMENT=${BuildConfig.USE_BACKEND_ENTITLEMENT}",
+                    )
+                }
+                webView.evaluateJavascript(
+                    "if(typeof USE_BACKEND_AB!=='undefined'){USE_BACKEND_AB=${BuildConfig.USE_BACKEND_AB};}window.USE_BACKEND_AB=${BuildConfig.USE_BACKEND_AB};if(typeof USE_BACKEND_ENTITLEMENT!=='undefined'){USE_BACKEND_ENTITLEMENT=${BuildConfig.USE_BACKEND_ENTITLEMENT};}window.USE_BACKEND_ENTITLEMENT=${BuildConfig.USE_BACKEND_ENTITLEMENT};",
+                    null,
+                )
                 if (BuildConfig.USE_BACKEND_AB && (BuildConfig.UPLOAD_BASE_URL?.trim() ?: "").isNotEmpty()) {
                     SessionApi.getSnapshot(IdManager.getClientId(), IdManager.getSessionId()) { snapshot ->
                         runOnUiThread {

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
-import { getClientIp, resolveAuthUserId } from './auth.js';
+import type { FastifyReply, FastifyRequest } from 'fastify';
+import { getClientIp, isAuthStrict, resolveAuthUserId } from './auth.js';
 import { openBailianStream } from './bailian.js';
 import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
@@ -82,14 +83,26 @@ function buildPromptMessages(
 app.get('/healthz', async () => ({
   ok: true,
   bailian: hasBailianKey() ? 'ok' : 'missing_key',
+  auth_strict: isAuthStrict(),
 }));
 
-app.get('/api/me', async (request, reply) => {
+function requireAuthOrReply(request: FastifyRequest, reply: FastifyReply) {
   const auth = resolveAuthUserId(request);
-  const userId = auth.userId;
+  if (auth.authMode === 'unauthorized') {
+    request.log.warn({ masked_ip: auth.maskedIp }, 'auth unauthorized');
+    reply.code(401).send({ error: 'unauthorized' });
+    return null;
+  }
   if (auth.authMode === 'guest') {
     request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
   }
+  return auth;
+}
+
+app.get('/api/me', async (request, reply) => {
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
+  const userId = auth.userId;
 
   await ensureUser(userId, 'free');
   const entitlement = await getTierForUser(userId, 'free');
@@ -108,29 +121,25 @@ app.get('/api/me', async (request, reply) => {
 });
 
 app.post('/api/session/b', async (request, reply) => {
-  const auth = resolveAuthUserId(request);
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Record<string, string>;
   const sessionId = (body.session_id || '').trim();
   const bSummary = (body.b_summary || '').trim();
   if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   if (!bSummary) return reply.code(400).send({ error: 'b_summary required' });
-  if (auth.authMode === 'guest') {
-    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
-  }
   await writeSessionBSummary(userId, sessionId, bSummary);
   return reply.send({ ok: true });
 });
 
 app.get('/api/session/snapshot', async (request, reply) => {
-  const auth = resolveAuthUserId(request);
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
   const userId = auth.userId;
   const query = request.query as Record<string, string | undefined>;
   const sessionId = (query.session_id || '').trim();
   if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
-  if (auth.authMode === 'guest') {
-    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
-  }
   const snapshot = await getSessionSnapshot(userId, sessionId);
   const safe = snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', round_total: 0, updated_at: Date.now() };
   return reply.send({
@@ -144,7 +153,8 @@ app.get('/api/session/snapshot', async (request, reply) => {
 });
 
 app.post('/api/session/round_complete', async (request, reply) => {
-  const auth = resolveAuthUserId(request);
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Record<string, unknown>;
   const sessionId = String(body.session_id || '').trim();
@@ -158,10 +168,6 @@ app.post('/api/session/round_complete', async (request, reply) => {
   }
   if (!userText || !assistantText) {
     return reply.code(400).send({ error: 'user_text/assistant_text required' });
-  }
-
-  if (auth.authMode === 'guest') {
-    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
   }
 
   await ensureUser(userId, 'free');
@@ -199,15 +205,12 @@ app.post('/api/session/round_complete', async (request, reply) => {
 });
 
 app.post('/api/topup/buy', async (request, reply) => {
-  const auth = resolveAuthUserId(request);
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Record<string, unknown>;
   const orderId = String(body.order_id || '').trim();
   if (!orderId) return reply.code(400).send({ error: 'order_id required' });
-  if (auth.authMode === 'guest') {
-    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
-  }
-
   await ensureUser(userId, 'free');
   try {
     const result = await buyTopupPack(userId, orderId);
@@ -221,15 +224,12 @@ app.post('/api/topup/buy', async (request, reply) => {
 });
 
 app.post('/api/tier/upgrade_plus_to_pro', async (request, reply) => {
-  const auth = resolveAuthUserId(request);
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Record<string, unknown>;
   const orderId = String(body.order_id || '').trim();
   if (!orderId) return reply.code(400).send({ error: 'order_id required' });
-  if (auth.authMode === 'guest') {
-    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
-  }
-
   await ensureUser(userId, 'free');
   try {
     const result = await upgradePlusToPro(userId, orderId);
@@ -250,7 +250,8 @@ app.post('/api/tier/upgrade_plus_to_pro', async (request, reply) => {
 });
 
 app.post('/api/chat/stream', async (request, reply) => {
-  const auth = resolveAuthUserId(request);
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Partial<ChatStreamRequest>;
   const sessionId = (body.session_id || '').trim();

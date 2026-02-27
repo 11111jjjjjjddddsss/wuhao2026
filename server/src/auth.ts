@@ -1,6 +1,8 @@
 import crypto from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 
+export type AuthMode = 'token' | 'guest' | 'unauthorized';
+
 function isPrivateIpv4(ip: string): boolean {
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return false;
   const parts = ip.split('.').map((v) => Number(v));
@@ -18,8 +20,7 @@ export function getClientIp(request: FastifyRequest): string {
     .filter(Boolean);
   const publicIp = xff.find((ip) => !isPrivateIpv4(ip));
   if (publicIp) return publicIp;
-  const first = xff[0];
-  if (first) return first;
+  if (xff[0]) return xff[0];
   return String(request.ip || '').replace(/^::ffff:/, '');
 }
 
@@ -29,7 +30,7 @@ export function maskIp(ip: string): string {
     return `${p[0]}.${p[1]}.*.*`;
   }
   if (ip.includes(':')) {
-    return ip.split(':').slice(0, 2).join(':') + ':*';
+    return `${ip.split(':').slice(0, 2).join(':')}:*`;
   }
   return 'unknown';
 }
@@ -42,32 +43,41 @@ function verifyToken(token: string, appSecret: string): { ok: boolean; userId?: 
     const ts = Number(tsRaw);
     if (!Number.isFinite(ts)) return { ok: false };
     const nowSec = Math.floor(Date.now() / 1000);
-    const skew = Math.abs(nowSec - ts);
-    if (skew > 7 * 24 * 60 * 60) return { ok: false };
-    const expect = crypto.createHmac('sha256', appSecret).update(`${userId}:${tsRaw}`).digest('hex');
-    if (expect !== sig) return { ok: false };
+    if (Math.abs(nowSec - ts) > 7 * 24 * 60 * 60) return { ok: false };
+    const expected = crypto.createHmac('sha256', appSecret).update(`${userId}:${tsRaw}`).digest('hex');
+    if (expected !== sig) return { ok: false };
     return { ok: true, userId };
   } catch {
     return { ok: false };
   }
 }
 
+export function isAuthStrict(): boolean {
+  const raw = (process.env.AUTH_STRICT || 'true').trim().toLowerCase();
+  return raw !== 'false';
+}
+
 export function resolveAuthUserId(request: FastifyRequest): {
   userId: string;
-  authMode: 'token' | 'guest';
+  authMode: AuthMode;
   maskedIp: string;
 } {
   const ip = getClientIp(request);
   const maskedIp = maskIp(ip);
+  const strict = isAuthStrict();
   const authHeader = String(request.headers.authorization || '');
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
   const secret = (process.env.APP_SECRET || '').trim();
+
   if (token && secret) {
     const verified = verifyToken(token, secret);
     if (verified.ok && verified.userId) {
       return { userId: verified.userId, authMode: 'token', maskedIp };
     }
   }
+
+  if (strict) {
+    return { userId: '', authMode: 'unauthorized', maskedIp };
+  }
   return { userId: `guest:${ip || 'unknown'}`, authMode: 'guest', maskedIp };
 }
-
