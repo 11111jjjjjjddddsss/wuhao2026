@@ -1,8 +1,9 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import { openBailianStream } from './bailian.js';
-import { appendSessionRoundComplete, getSessionSnapshot, writeSessionBSummary } from './db.js';
+import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
+import { formatShanghaiNowToSecond, parseRegionFromHeaders, resolveRegionByIp } from './geo.js';
 import {
   buyTopupPack,
   consumeOnDone,
@@ -60,10 +61,12 @@ function buildPromptMessages(
   aWindowRounds: number,
   currentText: string,
   currentImages: string[],
+  contextHeader: string,
 ): { messages: BailianMessage[]; usedARoundsCount: number; hasBSummary: boolean } {
   const rounds = (snapshot?.a_rounds_full || []).slice(-aWindowRounds);
   const hasBSummary = Boolean(snapshot?.b_summary?.trim());
   const messages: BailianMessage[] = [{ role: 'system', content: SYSTEM_ANCHOR }];
+  messages.push({ role: 'system', content: contextHeader });
   if (hasBSummary) {
     messages.push({ role: 'system', content: snapshot!.b_summary.trim() });
   }
@@ -242,8 +245,14 @@ app.post('/api/chat/stream', async (request, reply) => {
   const tier = entitlement.tier;
   const aWindowRounds = getAWindowByTier(tier);
   const snapshot = await getSessionSnapshot(userId, sessionId);
-  const prompt = buildPromptMessages(snapshot, aWindowRounds, text, images);
+  const regionFromHeaders = parseRegionFromHeaders(request.headers as Record<string, unknown>);
+  const resolvedRegion = regionFromHeaders ?? resolveRegionByIp(request.headers as Record<string, unknown>, request.ip);
+  const injectedTime = formatShanghaiNowToSecond();
+  const contextHeader = `当前时间：${injectedTime}（Asia/Shanghai）；用户地点：${resolvedRegion.region}；地点可信度：${resolvedRegion.reliability}`;
+  const prompt = buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader);
   const dayCN = getTodayKeyCN();
+
+  await touchSessionContext(userId, sessionId, resolvedRegion.region, resolvedRegion.source, resolvedRegion.reliability, Date.now());
 
   request.log.info(
     {
@@ -252,6 +261,10 @@ app.post('/api/chat/stream', async (request, reply) => {
       tier,
       used_a_rounds_count: prompt.usedARoundsCount,
       has_b_summary: prompt.hasBSummary,
+      injected_time: injectedTime,
+      region: resolvedRegion.region,
+      region_source: resolvedRegion.source,
+      region_reliability: resolvedRegion.reliability,
     },
     'chat prompt assembly',
   );

@@ -1,5 +1,6 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { withConnection } from './db/mysql.js';
+import type { RegionReliability, RegionSource } from './geo.js';
 import type { SessionRound, SessionSnapshot } from './types.js';
 
 function nowTs(): number {
@@ -110,6 +111,29 @@ export async function writeSessionBSummary(userId: string, sessionId: string, su
 export async function getSessionSnapshot(userId: string, sessionId: string): Promise<SessionSnapshot | null> {
   return withConnection(async (conn) => {
     return readSnapshotOptional(conn, userId, sessionId);
+  });
+}
+
+export async function touchSessionContext(
+  userId: string,
+  sessionId: string,
+  region: string,
+  source: RegionSource,
+  reliability: RegionReliability,
+  seenAt: number,
+): Promise<void> {
+  await withConnection(async (conn) => {
+    await conn.execute(
+      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, round_total, updated_at, last_region, last_region_source, last_region_reliability, last_seen_at)
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         last_region = VALUES(last_region),
+         last_region_source = VALUES(last_region_source),
+         last_region_reliability = VALUES(last_region_reliability),
+         last_seen_at = VALUES(last_seen_at),
+         updated_at = VALUES(updated_at)`,
+      [userId, sessionId, JSON.stringify([]), '', seenAt, region, source, reliability, seenAt],
+    );
   });
 }
 
