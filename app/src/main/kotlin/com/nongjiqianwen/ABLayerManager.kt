@@ -140,7 +140,8 @@ object ABLayerManager {
             }
             return
         }
-        SessionApi.appendA(userId, sessionId, userMessage, assistantMessage) { ok ->
+        val clientMsgId = "ab_${sessionId}_${System.currentTimeMillis()}"
+        SessionApi.appendA(userId, sessionId, clientMsgId, userMessage, assistantMessage) { ok ->
             if (!ok) {
                 setPendingRetry(sessionId, true)
                 return@appendA

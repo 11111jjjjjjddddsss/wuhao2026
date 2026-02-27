@@ -14,7 +14,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * 会话两条线：GET snapshot / POST append-a / POST update-b。
+ * 会话两条线：GET snapshot / POST round_complete / POST b。
  * 仅当 BuildConfig.USE_BACKEND_AB 且 baseUrl 非空时真正请求；否则回调 onFailure。
  */
 object SessionApi {
@@ -112,7 +112,14 @@ object SessionApi {
         })
     }
 
-    fun appendA(userId: String, sessionId: String, userMessage: String, assistantMessage: String, onResult: (Boolean) -> Unit) {
+    fun appendA(
+        userId: String,
+        sessionId: String,
+        clientMsgId: String,
+        userMessage: String,
+        assistantMessage: String,
+        onResult: (Boolean) -> Unit
+    ) {
         if (!BuildConfig.USE_BACKEND_AB) {
             onResult(false)
             return
@@ -125,13 +132,14 @@ object SessionApi {
         val bodyMap = mutableMapOf(
             "user_id" to userId,
             "session_id" to sessionId,
-            "user_message" to userMessage,
-            "assistant_message" to assistantMessage
+            "client_msg_id" to clientMsgId,
+            "user_text" to userMessage,
+            "assistant_text" to assistantMessage
         )
         bodyMap.putAll(identityBody(userId))
         val body = gson.toJson(bodyMap)
         val request = Request.Builder()
-            .url("$base/api/session/append-a")
+            .url("$base/api/session/round_complete")
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
         client.newCall(request).enqueue(object : Callback {
@@ -163,7 +171,7 @@ object SessionApi {
         bodyMap.putAll(identityBody(userId))
         val body = gson.toJson(bodyMap)
         val request = Request.Builder()
-            .url("$base/api/session/update-b")
+            .url("$base/api/session/b")
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
         client.newCall(request).enqueue(object : Callback {

@@ -38,7 +38,8 @@ function getAWindowByTier(tier: Tier): number {
 }
 
 const app = Fastify({ logger: true, trustProxy: true });
-const SYSTEM_ANCHOR = process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
+const SYSTEM_ANCHOR =
+  process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
 
 function buildVisionUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [{ type: 'text', text }];
