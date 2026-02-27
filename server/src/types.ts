@@ -9,17 +9,31 @@ export interface ChatStreamRequest {
 }
 
 export interface DailyQuotaStatus {
-  yyyymmdd: string;
+  day_cn: string;
   tier: Tier;
   used: number;
   limit: number;
   remaining: number;
 }
 
-export interface SearchResult {
-  title?: string;
-  summary?: string;
-  snippet?: string;
-  url?: string;
-  siteName?: string;
+export type QuotaSource = 'daily' | 'topup' | 'upgrade';
+
+export interface ConsumeResult {
+  deducted: boolean;
+  source?: QuotaSource;
+  status: DailyQuotaStatus;
+}
+
+export interface SessionRound {
+  user: string;
+  assistant: string;
+}
+
+export interface SessionSnapshot {
+  user_id: string;
+  session_id: string;
+  a_rounds_full: SessionRound[];
+  b_summary: string;
+  round_total: number;
+  updated_at: number;
 }

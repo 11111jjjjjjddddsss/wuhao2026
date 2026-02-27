@@ -1,8 +1,20 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import { openBailianStream } from './bailian.js';
-import { ensureUser, getDailyStatus, getTodayKeyCN, parseTier, wasProcessed, consumeOnDone } from './quota.js';
-import type { ChatStreamRequest } from './types.js';
+import { appendSessionRound, getSessionSnapshot, writeSessionBSummary } from './db.js';
+import { initMySql } from './db/mysql.js';
+import {
+  consumeOnDone,
+  ensureUser,
+  getDailyStatus,
+  getTierForUser,
+  getTodayKeyCN,
+  getTopupStatus,
+  getUpgradeRemaining,
+  parseTier,
+  wasProcessed,
+} from './quota.js';
+import type { ChatStreamRequest, Tier } from './types.js';
 
 if (!process.env.TZ) {
   process.env.TZ = 'Asia/Shanghai';
@@ -17,12 +29,12 @@ function hasBailianKey(): boolean {
   return Boolean(single) || pool.length > 0;
 }
 
-const app = Fastify({ logger: true });
-if (!hasBailianKey()) {
-  app.log.error('DASHSCOPE_API_KEY(S) is missing; /healthz will report missing_key');
+function getAWindowByTier(tier: Tier): number {
+  return tier === 'pro' ? 9 : 6;
 }
 
-app.get('/health', async () => ({ ok: true }));
+const app = Fastify({ logger: true });
+
 app.get('/healthz', async () => ({
   ok: true,
   bailian: hasBailianKey() ? 'ok' : 'missing_key',
@@ -31,50 +43,90 @@ app.get('/healthz', async () => ({
 app.get('/api/me', async (request, reply) => {
   const query = request.query as Record<string, string | undefined>;
   const userId = (query.user_id || '').trim();
-  const tier = parseTier(query.tier);
+  const tierInput = parseTier(query.tier);
 
-  if (!userId) {
-    return reply.code(400).send({ error: 'user_id required' });
-  }
-  if (!tier) {
-    return reply.code(400).send({ error: 'tier invalid, expected free|plus|pro' });
-  }
+  if (!userId) return reply.code(400).send({ error: 'user_id required' });
+  if (!tierInput) return reply.code(400).send({ error: 'tier invalid, expected free|plus|pro' });
 
-  ensureUser(userId);
-  const status = getDailyStatus(userId, tier, getTodayKeyCN());
+  await ensureUser(userId, tierInput);
+  const entitlement = await getTierForUser(userId, tierInput);
+  const status = await getDailyStatus(userId, entitlement.tier, getTodayKeyCN());
+  const topup = await getTopupStatus(userId);
+  const upgradeRemaining = await getUpgradeRemaining(userId);
+
   return reply.send({
-    tier,
-    yyyymmdd: status.yyyymmdd,
+    tier: entitlement.tier,
+    tier_expire_at: entitlement.tier_expire_at,
     daily_limit: status.limit,
     daily_used: status.used,
     daily_remaining: status.remaining,
+    topup_remaining: topup.remaining,
+    topup_earliest_expire_at: topup.earliestExpireAt,
+    upgrade_remaining: upgradeRemaining,
   });
+});
+
+app.post('/api/session/round', async (request, reply) => {
+  const body = (request.body || {}) as Record<string, string>;
+  const userId = (body.user_id || '').trim();
+  const sessionId = (body.session_id || '').trim();
+  const tier = parseTier(body.tier);
+  const user = (body.user || '').trim();
+  const assistant = (body.assistant || '').trim();
+  if (!userId || !sessionId || !tier) return reply.code(400).send({ error: 'user_id/session_id/tier required' });
+  if (!user || !assistant) return reply.code(400).send({ error: 'user and assistant required' });
+  const snapshot = await appendSessionRound(userId, sessionId, { user, assistant }, getAWindowByTier(tier));
+  return reply.send(snapshot);
+});
+
+app.post('/api/session/b', async (request, reply) => {
+  const body = (request.body || {}) as Record<string, string>;
+  const userId = (body.user_id || '').trim();
+  const sessionId = (body.session_id || '').trim();
+  const bSummary = (body.b_summary || '').trim();
+  if (!userId || !sessionId) return reply.code(400).send({ error: 'user_id/session_id required' });
+  if (!bSummary) return reply.code(400).send({ error: 'b_summary required' });
+  await writeSessionBSummary(userId, sessionId, bSummary);
+  return reply.send({ ok: true });
+});
+
+app.get('/api/session/snapshot', async (request, reply) => {
+  const query = request.query as Record<string, string | undefined>;
+  const userId = (query.user_id || '').trim();
+  const sessionId = (query.session_id || '').trim();
+  if (!userId || !sessionId) return reply.code(400).send({ error: 'user_id/session_id required' });
+  const snapshot = await getSessionSnapshot(userId, sessionId);
+  return reply.send(snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', round_total: 0 });
 });
 
 app.post('/api/chat/stream', async (request, reply) => {
   const body = (request.body || {}) as Partial<ChatStreamRequest>;
   const userId = (body.user_id || '').trim();
-  const tier = parseTier(body.tier);
+  const tierInput = parseTier(body.tier);
   const clientMsgId = (body.client_msg_id || '').trim();
   const text = (body.text || '').trim();
   const images = Array.isArray(body.images) ? body.images.filter((url) => typeof url === 'string') : [];
 
   if (!userId) return reply.code(400).send({ error: 'user_id required' });
-  if (!tier) return reply.code(400).send({ error: 'tier invalid, expected free|plus|pro' });
+  if (!tierInput) return reply.code(400).send({ error: 'tier invalid, expected free|plus|pro' });
   if (!clientMsgId) return reply.code(400).send({ error: 'client_msg_id required' });
-  if (images.length > 4) return reply.code(400).send({ error: 'images up to 4' });
   if (!text) return reply.code(400).send({ error: 'text required' });
+  if (images.length > 4) return reply.code(400).send({ error: 'single request supports up to 4 images' });
   if (images.length > 0 && !text) return reply.code(400).send({ error: 'images require text' });
 
-  ensureUser(userId);
+  await ensureUser(userId, tierInput);
+  const entitlement = await getTierForUser(userId, tierInput);
+  const tier = entitlement.tier;
+  const dayCN = getTodayKeyCN();
 
-  if (wasProcessed(clientMsgId)) {
+  if (await wasProcessed(userId, clientMsgId)) {
     return reply.code(409).send({ error: 'duplicate client_msg_id' });
   }
 
-  const todayKey = getTodayKeyCN();
-  const quota = getDailyStatus(userId, tier, todayKey);
-  if (quota.used >= quota.limit) {
+  const before = await getDailyStatus(userId, tier, dayCN);
+  const topupBefore = await getTopupStatus(userId);
+  const upgradeBefore = await getUpgradeRemaining(userId);
+  if (before.remaining <= 0 && topupBefore.remaining <= 0 && upgradeBefore <= 0) {
     return reply.code(402).send({ error: '今日次数用完' });
   }
 
@@ -96,11 +148,6 @@ app.post('/api/chat/stream', async (request, reply) => {
     return reply.code(upstream.status).send({ error: errorBody || 'upstream error' });
   }
 
-  const requestId =
-    upstream.headers.get('x-request-id') ||
-    upstream.headers.get('x-dashscope-request-id') ||
-    '';
-
   const contentType = upstream.headers.get('content-type') || '';
   if (!contentType.includes('text/event-stream')) {
     const fallbackBody = await upstream.text().catch(() => '');
@@ -117,8 +164,6 @@ app.post('/api/chat/stream', async (request, reply) => {
 
   let clientDisconnected = false;
   let doneReceived = false;
-  let hasCitation = false;
-  let hasSource = false;
 
   const onClientClose = () => {
     clientDisconnected = true;
@@ -128,9 +173,7 @@ app.post('/api/chat/stream', async (request, reply) => {
 
   try {
     const reader = upstream.body?.getReader();
-    if (!reader) {
-      throw new Error('empty upstream body');
-    }
+    if (!reader) throw new Error('empty upstream body');
 
     const decoder = new TextDecoder();
     let lineBuffer = '';
@@ -145,16 +188,11 @@ app.post('/api/chat/stream', async (request, reply) => {
 
       for (const rawLine of lines) {
         const line = rawLine.trimEnd();
-        if (!line) continue;
-        if (line.startsWith(':')) continue;
-        if (line.startsWith('event:')) continue;
-        if (!line.startsWith('data:')) continue;
-
+        if (!line || line.startsWith(':') || line.startsWith('event:') || !line.startsWith('data:')) continue;
         const data = line.slice(5).trimStart();
-        if (!hasCitation && /\[\d+\]/.test(data)) hasCitation = true;
-        if (!hasSource && /"source"|sources|reference|references/i.test(data)) hasSource = true;
-        reply.raw.write(`data: ${data}\n\n`);
-
+        if (!reply.raw.write(`data: ${data}\n\n`)) {
+          await new Promise<void>((resolve) => reply.raw.once('drain', resolve));
+        }
         if (data === '[DONE]') {
           doneReceived = true;
           break;
@@ -165,18 +203,9 @@ app.post('/api/chat/stream', async (request, reply) => {
     }
 
     if (!clientDisconnected && doneReceived) {
-      consumeOnDone({ userId, tier, clientMsgId, yyyymmdd: todayKey });
+      const consume = await consumeOnDone({ userId, tier, clientMsgId, dayCN });
+      request.log.info({ userId, clientMsgId, deducted: consume.deducted, source: consume.source }, 'quota consume on DONE');
     }
-    request.log.info(
-      {
-        request_id: requestId,
-        enable_search: true,
-        strategy: 'turbo',
-        forced_search: false,
-        has_citations_or_source: hasCitation || hasSource,
-      },
-      'search turbo telemetry',
-    );
   } catch (error) {
     if (!clientDisconnected) {
       request.log.error({ error }, 'sse relay failed');
@@ -192,8 +221,14 @@ app.post('/api/chat/stream', async (request, reply) => {
   }
 });
 
-const port = Number(process.env.PORT || 3000);
-app.listen({ port, host: '0.0.0.0' }).catch((error) => {
+async function bootstrap() {
+  await initMySql();
+  const port = Number(process.env.PORT || 3000);
+  await app.listen({ port, host: '0.0.0.0' });
+}
+
+bootstrap().catch((error) => {
   app.log.error(error);
   process.exit(1);
 });
+
