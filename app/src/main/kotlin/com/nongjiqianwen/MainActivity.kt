@@ -597,8 +597,11 @@ class MainActivity : AppCompatActivity() {
             pendingUserByStreamId[streamId] = text
             pendingChatModelByStreamId[streamId] = chatModel
             currentChatModelForResume = chatModel
-            val useBackendChat = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
-            if (useBackendChat) {
+            if (BuildConfig.USE_BACKEND_AB) {
+                if (!SessionApi.hasBackendConfigured()) {
+                    dispatchInterrupted(streamId, "backend_unavailable")
+                    return
+                }
                 val clientMsgId = clientMsgIdByStreamId[streamId] ?: streamId
                 SessionApi.streamChat(
                     options = SessionApi.StreamOptions(
@@ -654,8 +657,11 @@ class MainActivity : AppCompatActivity() {
             pendingAssistantByStreamId[sid] = StringBuilder(state.assistantPrefix)
             currentStreamId = sid
             isRequesting = true
-            val useBackendChat = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
-            if (useBackendChat) {
+            if (BuildConfig.USE_BACKEND_AB) {
+                if (!SessionApi.hasBackendConfigured()) {
+                    dispatchInterrupted(sid, "backend_unavailable")
+                    return
+                }
                 val resumeClientMsgId = "resume_${System.currentTimeMillis()}_${sid}"
                 putClientMsgId(sid, resumeClientMsgId)
                 SessionApi.streamChat(
