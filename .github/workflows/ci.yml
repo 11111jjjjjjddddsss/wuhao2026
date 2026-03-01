@@ -31,7 +31,9 @@ jobs:
         run: python3 scripts/check_mojibake.py
 
       - name: Android compile
-        run: ./gradlew :app:compileDebugKotlin
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:compileDebugKotlin
 
       - name: Server build
         run: |
