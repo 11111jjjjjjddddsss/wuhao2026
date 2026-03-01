@@ -24,8 +24,22 @@ jobs:
 
       - name: Install Android SDK components
         run: |
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Command failed after ${attempt} attempts: $*"
+                return 1
+              fi
+              attempt=$((attempt + 1))
+              echo "Retry ${attempt}/${max_attempts}: $*"
+              sleep 5
+            done
+          }
           yes | sdkmanager --licenses
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          retry 3 sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -40,7 +54,21 @@ jobs:
           BAILIAN_API_KEY: ci_dummy_key
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Command failed after ${attempt} attempts: $*"
+                return 1
+              fi
+              attempt=$((attempt + 1))
+              echo "Retry ${attempt}/${max_attempts}: $*"
+              sleep 5
+            done
+          }
+          retry 2 ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Server build
         run: |
