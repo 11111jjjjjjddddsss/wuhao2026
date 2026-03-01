@@ -1,7 +1,10 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import Fastify from 'fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { fileURLToPath } from 'node:url';
 import { getClientIp, isAuthStrict, issueToken, resolveAuthUserId } from './auth.js';
 import { openBailianStream } from './bailian.js';
 import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary } from './db.js';
@@ -40,7 +43,28 @@ function getAWindowByTier(tier: Tier): number {
 
 const app = Fastify({ logger: true, trustProxy: true });
 const SSE_HEARTBEAT_MS = 20_000;
-const SYSTEM_ANCHOR = process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ANCHOR_FILE_PATH = path.resolve(__dirname, '../assets/system_anchor.txt');
+
+function resolveSystemAnchor(): { text: string; source: 'env' | 'file' } {
+  const envAnchor = (process.env.SYSTEM_ANCHOR || '').trim();
+  let fileAnchor = '';
+  try {
+    fileAnchor = fs.readFileSync(ANCHOR_FILE_PATH, 'utf8').trim();
+  } catch {
+    fileAnchor = '';
+  }
+  if (envAnchor && fileAnchor && envAnchor !== fileAnchor) {
+    throw new Error('SYSTEM_ANCHOR mismatch between env and file');
+  }
+  if (envAnchor) return { text: envAnchor, source: 'env' };
+  if (fileAnchor) return { text: fileAnchor, source: 'file' };
+  throw new Error('SYSTEM_ANCHOR missing in both env and server/assets/system_anchor.txt');
+}
+
+const resolvedAnchor = resolveSystemAnchor();
+const SYSTEM_ANCHOR = resolvedAnchor.text;
+app.log.info({ anchor_source: resolvedAnchor.source, anchor_chars: SYSTEM_ANCHOR.length }, 'system anchor loaded');
 
 function buildVisionUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [{ type: 'text', text }];

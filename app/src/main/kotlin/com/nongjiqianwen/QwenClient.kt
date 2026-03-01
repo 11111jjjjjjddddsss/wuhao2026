@@ -372,10 +372,6 @@ object QwenClient {
         val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
         val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
         val messagesArray = JsonArray()
-        messagesArray.add(JsonObject().apply {
-            addProperty("role", "system")
-            addProperty("content", com.nongjiqianwen.SystemAnchor.getAnchorForPreFill())
-        })
         val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
         val parts = mutableListOf<String>()
         parts.add(layer1.trim())
@@ -402,7 +398,6 @@ object QwenClient {
             add("content", contentArray)
         }
         messagesArray.add(userMessageObj)
-        com.nongjiqianwen.SystemAnchor.ensureSystemRole(messagesArray)
         return messagesArray
     }
 
