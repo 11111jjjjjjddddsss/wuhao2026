@@ -277,7 +277,7 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getLocalDateTime(): String {
             return try {
-                val zone = java.time.ZoneId.of("Asia/Taipei")
+                val zone = java.time.ZoneId.of("Asia/Shanghai")
                 val now = java.time.ZonedDateTime.now(zone)
                 val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[now.dayOfWeek.value % 7]
                 String.format("%04d-%02d-%02d %02d:%02d锛堝懆%s锛?%s",

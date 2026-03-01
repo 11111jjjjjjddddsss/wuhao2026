@@ -375,11 +375,11 @@ object QwenClient {
             addProperty("role", "system")
             addProperty("content", com.nongjiqianwen.SystemAnchor.getAnchorForPreFill())
         })
-        val layer1 = "銆愬綋鍓嶄紭鍏堝鐞嗙殑闂銆慭n${userMessage.ifBlank { "" }}"
+        val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
         val parts = mutableListOf<String>()
         parts.add(layer1.trim())
-        if (aText.isNotBlank()) parts.add("銆怉灞傚巻鍙插璇濓紙涓瓑鍙傝€冩€э級銆慭n$aText")
-        if (bSum.isNotBlank()) parts.add("銆怋灞傜疮璁℃憳瑕侊紙浣庡弬鑰冩€э級銆慭n$bSum")
+        if (aText.isNotBlank()) parts.add("【A层历史对话（中等参考性）】\n$aText")
+        if (bSum.isNotBlank()) parts.add("【B层累计摘要（低参考性）】\n$bSum")
         val userTextContent = parts.joinToString("\n\n").trim()
         val userMessageObj = JsonObject().apply {
             addProperty("role", "user")

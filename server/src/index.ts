@@ -38,6 +38,7 @@ function getAWindowByTier(tier: Tier): number {
 }
 
 const app = Fastify({ logger: true, trustProxy: true });
+const SSE_HEARTBEAT_MS = 20_000;
 const SYSTEM_ANCHOR =
   process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
 
@@ -338,17 +339,45 @@ app.post('/api/chat/stream', async (request, reply) => {
   reply.raw.setHeader('Cache-Control', 'no-cache');
   reply.raw.setHeader('Connection', 'keep-alive');
   reply.raw.flushHeaders?.();
+  const upstreamRequestId = upstream.headers.get('x-request-id') || upstream.headers.get('request-id') || '';
 
   let clientDisconnected = false;
   let doneReceived = false;
+  let heartbeatTimer: NodeJS.Timeout | null = null;
+  let hasCitations = false;
+  let hasSources = false;
+
+  request.log.info(
+    {
+      request_id: upstreamRequestId,
+      enable_search: true,
+      strategy: 'turbo',
+      forced_search: false,
+      single_call_search: true,
+    },
+    'bailian search config',
+  );
 
   const onClientClose = () => {
     clientDisconnected = true;
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
     abortController.abort();
   };
   request.raw.on('close', onClientClose);
 
   try {
+    heartbeatTimer = setInterval(() => {
+      if (clientDisconnected || reply.raw.destroyed || reply.raw.writableEnded) return;
+      try {
+        reply.raw.write(': ping\n\n');
+      } catch {
+        // ignore heartbeat write errors; normal relay path handles disconnect/abort.
+      }
+    }, SSE_HEARTBEAT_MS);
+
     const reader = upstream.body?.getReader();
     if (!reader) throw new Error('empty upstream body');
 
@@ -367,6 +396,29 @@ app.post('/api/chat/stream', async (request, reply) => {
         const line = rawLine.trimEnd();
         if (!line || line.startsWith(':') || line.startsWith('event:') || !line.startsWith('data:')) continue;
         const data = line.slice(5).trimStart();
+        if (data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+            if ('citations' in parsed) hasCitations = true;
+            if ('sources' in parsed) hasSources = true;
+            const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+            if (choices.length > 0 && typeof choices[0] === 'object' && choices[0] !== null) {
+              const first = choices[0] as Record<string, unknown>;
+              const delta = typeof first.delta === 'object' && first.delta !== null ? (first.delta as Record<string, unknown>) : null;
+              const message = typeof first.message === 'object' && first.message !== null ? (first.message as Record<string, unknown>) : null;
+              if (delta && ('citations' in delta || 'sources' in delta)) {
+                hasCitations = hasCitations || 'citations' in delta;
+                hasSources = hasSources || 'sources' in delta;
+              }
+              if (message && ('citations' in message || 'sources' in message)) {
+                hasCitations = hasCitations || 'citations' in message;
+                hasSources = hasSources || 'sources' in message;
+              }
+            }
+          } catch {
+            // ignore chunk parse failure; relay should continue.
+          }
+        }
         if (!reply.raw.write(`data: ${data}\n\n`)) {
           await new Promise<void>((resolve) => reply.raw.once('drain', resolve));
         }
@@ -388,8 +440,25 @@ app.post('/api/chat/stream', async (request, reply) => {
       request.log.error({ error }, 'sse relay failed');
     }
   } finally {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
     request.raw.off('close', onClientClose);
     abortController.abort();
+    request.log.info(
+      {
+        request_id: upstreamRequestId,
+        enable_search: true,
+        strategy: 'turbo',
+        forced_search: false,
+        has_citations: hasCitations,
+        has_sources: hasSources,
+        done_received: doneReceived,
+        client_disconnected: clientDisconnected,
+      },
+      'bailian stream finished',
+    );
     try {
       reply.raw.end();
     } catch {
