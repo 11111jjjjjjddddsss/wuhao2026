@@ -1,7 +1,8 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import Fastify from 'fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { getClientIp, isAuthStrict, resolveAuthUserId } from './auth.js';
+import { getClientIp, isAuthStrict, issueToken, resolveAuthUserId } from './auth.js';
 import { openBailianStream } from './bailian.js';
 import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
@@ -39,8 +40,7 @@ function getAWindowByTier(tier: Tier): number {
 
 const app = Fastify({ logger: true, trustProxy: true });
 const SSE_HEARTBEAT_MS = 20_000;
-const SYSTEM_ANCHOR =
-  process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
+const SYSTEM_ANCHOR = process.env.SYSTEM_ANCHOR || '你是高级农业技术顾问，对外称呼“农技千问”，专注解决农业相关问题。';
 
 function buildVisionUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [{ type: 'text', text }];
@@ -78,6 +78,24 @@ function buildPromptMessages(
   messages.push({ role: 'user', content: buildVisionUserContent(currentText, currentImages) });
   return { messages, usedARoundsCount: rounds.length, hasBSummary };
 }
+
+function buildAnonymousUserId(installId: string, ip: string): string {
+  const source = installId.trim() || ip || 'unknown';
+  const digest = crypto.createHash('sha1').update(source).digest('hex').slice(0, 24);
+  return `anon:${digest}`;
+}
+
+app.post('/api/auth/anonymous', async (request, reply) => {
+  const secret = (process.env.APP_SECRET || '').trim();
+  if (!secret) {
+    return reply.code(500).send({ error: 'APP_SECRET missing' });
+  }
+  const body = (request.body || {}) as Record<string, unknown>;
+  const installId = String(body.install_id || '').trim().slice(0, 128);
+  const userId = buildAnonymousUserId(installId, getClientIp(request));
+  const token = issueToken(userId, secret);
+  return reply.send({ ok: true, user_id: userId, token });
+});
 
 app.get('/healthz', async () => ({
   ok: true,
@@ -477,3 +495,4 @@ bootstrap().catch((error) => {
   app.log.error(error);
   process.exit(1);
 });
+

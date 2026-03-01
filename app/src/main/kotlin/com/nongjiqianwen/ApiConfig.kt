@@ -12,7 +12,7 @@ object ApiConfig {
 
     /** 服务端常驻 API 接口形态（占位，当前未使用） */
     const val PATH_CHAT = "/chat"
-    const val PATH_CHAT_STREAM = "/chat/stream"
+    const val PATH_CHAT_STREAM = "/api/chat/stream"
     const val PATH_USAGE = "/usage"
     const val PATH_AUTH = "/auth"
 }

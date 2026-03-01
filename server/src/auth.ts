@@ -52,6 +52,12 @@ function verifyToken(token: string, appSecret: string): { ok: boolean; userId?: 
   }
 }
 
+export function issueToken(userId: string, appSecret: string, nowSec = Math.floor(Date.now() / 1000)): string {
+  const ts = String(nowSec);
+  const sig = crypto.createHmac('sha256', appSecret).update(`${userId}:${ts}`).digest('hex');
+  return Buffer.from(`${userId}:${ts}:${sig}`, 'utf8').toString('base64');
+}
+
 export function isAuthStrict(): boolean {
   const raw = (process.env.AUTH_STRICT || 'true').trim().toLowerCase();
   return raw !== 'false';

@@ -251,6 +251,7 @@ class MainActivity : AppCompatActivity() {
         fun stopGeneration() {
             runOnUiThread {
                 QwenClient.cancelCurrentRequest()
+                SessionApi.cancelCurrentStream()
             }
         }
 
@@ -596,6 +597,26 @@ class MainActivity : AppCompatActivity() {
             pendingUserByStreamId[streamId] = text
             pendingChatModelByStreamId[streamId] = chatModel
             currentChatModelForResume = chatModel
+            val useBackendChat = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
+            if (useBackendChat) {
+                val clientMsgId = clientMsgIdByStreamId[streamId] ?: streamId
+                SessionApi.streamChat(
+                    options = SessionApi.StreamOptions(
+                        sessionId = IdManager.getSessionId(),
+                        clientMsgId = clientMsgId,
+                        text = text,
+                        images = imageUrlList
+                    ),
+                    onChunk = { chunk -> dispatchChunk(streamId, chunk) },
+                    onComplete = {
+                        resumeState?.takeIf { it.streamId == streamId }?.let { it.isWaitingResume = false }
+                        dispatchComplete(streamId)
+                    },
+                    onInterrupted = { reason -> dispatchInterrupted(streamId, reason) }
+                )
+                return
+            }
+
             ModelService.getReply(
                 userMessage = text,
                 imageUrlList = imageUrlList,
@@ -633,6 +654,33 @@ class MainActivity : AppCompatActivity() {
             pendingAssistantByStreamId[sid] = StringBuilder(state.assistantPrefix)
             currentStreamId = sid
             isRequesting = true
+            val useBackendChat = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
+            if (useBackendChat) {
+                val resumeClientMsgId = "resume_${System.currentTimeMillis()}_${sid}"
+                putClientMsgId(sid, resumeClientMsgId)
+                SessionApi.streamChat(
+                    options = SessionApi.StreamOptions(
+                        sessionId = IdManager.getSessionId(),
+                        clientMsgId = resumeClientMsgId,
+                        text = continuationUserMessage,
+                        images = emptyList()
+                    ),
+                    onChunk = { chunk -> dispatchChunk(sid, chunk) },
+                    onComplete = {
+                        state.isWaitingResume = false
+                        resumeState = null
+                        dispatchComplete(sid)
+                    },
+                    onInterrupted = { _ ->
+                        runOnUiThread {
+                            val prefix = pendingAssistantByStreamId[sid]?.toString() ?: state.assistantPrefix
+                            resumeState = ResumeState(sid, state.lastUserInputText, prefix, true, System.currentTimeMillis(), state.lastChatModel)
+                            dispatchInterrupted(sid, "resumable")
+                        }
+                    }
+                )
+                return
+            }
             ModelService.getReplyContinuation(
                 streamId = sid,
                 continuationUserMessage = continuationUserMessage,
