@@ -450,6 +450,9 @@ object QwenClient {
                     addProperty("top_p", ModelParams.TOP_P)
                     addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
                     addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
+                    add("extra_body", JsonObject().apply {
+                        addProperty("enable_thinking", false)
+                    })
                     add("messages", messages)
                 }
                 val request = Request.Builder()
@@ -624,6 +627,9 @@ object QwenClient {
                 addProperty("top_p", B_EXTRACT_TOP_P)
                 addProperty("frequency_penalty", B_EXTRACT_FREQUENCY_PENALTY)
                 addProperty("presence_penalty", B_EXTRACT_PRESENCE_PENALTY)
+                add("extra_body", JsonObject().apply {
+                    addProperty("enable_thinking", false)
+                })
                 add("messages", messagesArray)
             }
             val request = Request.Builder()

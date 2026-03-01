@@ -40,6 +40,7 @@ export async function openBailianStream({ payload, messages, signal }: OpenBaili
     model: 'qwen3.5-plus',
     stream: true,
     extra_body: {
+      enable_thinking: false,
       enable_search: true,
       search_options: {
         search_strategy: 'turbo',
