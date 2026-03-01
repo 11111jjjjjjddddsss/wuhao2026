@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,44 +22,42 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
-import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT, SYSTEM }
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen() {
     val input = remember { mutableStateOf("") }
@@ -177,27 +176,41 @@ fun ChatScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF6F6F6)),
+            .background(Color(0xFFF5F5F5)),
     ) {
-        TopAppBar(
-            title = {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        text = "农技千问",
-                        modifier = Modifier.align(Alignment.CenterEnd),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                }
-            },
-            navigationIcon = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color.White,
+                tonalElevation = 1.dp,
+                shadowElevation = 1.dp,
+                modifier = Modifier.size(46.dp)
+            ) {
                 IconButton(onClick = {}) {
-                    Icon(Icons.Default.Menu, contentDescription = "菜单")
+                    Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-            ),
-        )
+            }
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White,
+                tonalElevation = 1.dp,
+                shadowElevation = 1.dp
+            ) {
+                Text(
+                    text = "农技千问",
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                    color = Color(0xFF111111),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -211,12 +224,14 @@ fun ChatScreen() {
                     Box(
                         modifier = Modifier
                             .fillParentMaxSize()
-                            .padding(bottom = 48.dp),
-                        contentAlignment = Alignment.Center,
+                            .padding(top = 130.dp),
+                        contentAlignment = Alignment.TopStart,
                     ) {
                         Text(
                             text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                             style = MaterialTheme.typography.titleMedium,
+                            color = Color(0xFF141414),
+                            lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
                             textAlign = TextAlign.Start,
                         )
                     }
@@ -224,9 +239,9 @@ fun ChatScreen() {
             } else {
                 items(messages, key = { it.id }) { msg ->
                     val bubbleColor = when (msg.role) {
-                        ChatRole.USER -> Color(0xFFF0F0F2)
+                        ChatRole.USER -> Color(0xFFECECEF)
                         ChatRole.ASSISTANT -> Color.Transparent
-                        ChatRole.SYSTEM -> Color(0xFFF7F7F8)
+                        ChatRole.SYSTEM -> Color(0xFFF1F1F2)
                     }
                     val align = if (msg.role == ChatRole.USER) Alignment.CenterEnd else Alignment.CenterStart
                     Box(
@@ -241,7 +256,8 @@ fun ChatScreen() {
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(bubbleColor)
                                 .padding(horizontal = 14.dp, vertical = 10.dp),
-                            style = MaterialTheme.typography.bodyLarge
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color(0xFF161616)
                         )
                     }
                 }
@@ -257,45 +273,91 @@ fun ChatScreen() {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            IconButton(
-                onClick = {},
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(Color.White),
+            Surface(
+                shape = CircleShape,
+                color = Color.White,
+                tonalElevation = 1.dp,
+                shadowElevation = 1.dp,
+                modifier = Modifier.size(48.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "添加")
+                IconButton(onClick = {}) {
+                    Icon(Icons.Default.Add, contentDescription = "添加", tint = Color(0xFF5A5A5A))
+                }
             }
-            OutlinedTextField(
-                value = input.value,
-                onValueChange = {
-                    if (it.length <= 3000) input.value = it
-                },
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("描述作物/地区/问题，我来帮你分析") },
-                shape = RoundedCornerShape(24.dp),
-                singleLine = true,
-            )
 
-            val canSend = input.value.trim().isNotEmpty()
-            Button(
-                onClick = {
-                    if (isStreaming) {
-                        userStopped = true
-                        SessionApi.cancelCurrentStream()
-                        finishStreaming()
-                    } else {
-                        sendMessage()
-                    }
-                },
-                enabled = isStreaming || canSend,
-                modifier = Modifier.height(44.dp),
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = Color.White,
+                tonalElevation = 1.dp,
+                shadowElevation = 1.dp,
+                modifier = Modifier.weight(1f)
             ) {
-                Icon(
-                    imageVector = if (isStreaming) Icons.Default.Close else Icons.Default.Send,
-                    contentDescription = if (isStreaming) "停止" else "发送"
-                )
-                Spacer(modifier = Modifier.padding(horizontal = 3.dp))
-                Text(if (isStreaming) "停止" else "发送")
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                ) {
+                    TextField(
+                        value = input.value,
+                        onValueChange = {
+                            if (it.length <= 3000) input.value = it
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.CenterStart)
+                            .padding(end = 52.dp),
+                        placeholder = { Text("描述作物/地区/问题，我来帮你分析", color = Color(0xFF9A9A9A)) },
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent
+                        )
+                    )
+
+                    val canSend = input.value.trim().isNotEmpty()
+                    val actionEnabled = isStreaming || canSend
+                    val actionBg = when {
+                        isStreaming -> Color(0xFF101010)
+                        canSend -> Color(0xFF101010)
+                        else -> Color.Transparent
+                    }
+                    val actionTint = if (actionEnabled) Color.White else Color(0xFF1A1A1A)
+                    IconButton(
+                        onClick = {
+                            if (isStreaming) {
+                                userStopped = true
+                                SessionApi.cancelCurrentStream()
+                                finishStreaming()
+                            } else if (canSend) {
+                                sendMessage()
+                            }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 6.dp)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(actionBg)
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                isStreaming -> Icons.Default.Close
+                                canSend -> Icons.Default.Send
+                                else -> Icons.Default.Send
+                            },
+                            contentDescription = when {
+                                isStreaming -> "停止"
+                                canSend -> "发送"
+                                else -> "发送"
+                            },
+                            tint = actionTint
+                        )
+                    }
+                }
             }
         }
 
