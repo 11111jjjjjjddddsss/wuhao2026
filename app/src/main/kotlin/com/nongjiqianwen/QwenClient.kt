@@ -21,8 +21,8 @@ import java.util.concurrent.atomic.AtomicReference
  * 闈炴祦寮忥細涓€娆℃€ц繑鍥炲畬鏁寸瓟妗堬紱鍙栨秷/鍋滄浠呭崰浣嶏紝涓嶈姹傜湡姝ｄ腑鏂€?
  * 浣跨敤闃块噷浜戠櫨鐐?DashScope API
  *
- * 浼氬憳璺敱锛圥0 鍐荤粨锛夛細
- * - Free/Plus/Pro 涓诲璇濆浐瀹氫富妯″瀷锛汢 灞傛憳瑕佸浐瀹?qwen-flash銆? */
+ * 会员路由（P0 冻结）：
+ * - Free/Plus/Pro 主对话固定主模型；B 层摘要固?qwen-flash? */
 object QwenClient {
     private val TAG = "QwenClient"
     private const val CONNECT_TIMEOUT_SEC = 10L
@@ -85,7 +85,7 @@ object QwenClient {
     }
     
     /**
-     * 鍙栨秷褰撳墠杩涜涓殑璇锋眰锛堜粎鍦ㄦ柊璇锋眰寮€濮嬪墠鎴栫敤鎴风偣鍋滄鏃惰皟鐢紱鍒囧悗鍙颁笉 cancel锛夈€?
+     * 取消当前进行中的请求（仅在新请求弢始前或用户点停止时调用；切后台不 cancel）?
      */
     fun cancelCurrentRequest() {
         canceledFlag.set(true)
@@ -97,7 +97,7 @@ object QwenClient {
         }
     }
 
-    /** 鏈湴鍋囨祦寮忥細棣栨绔嬪埢鍚愶紝浣欎笅鍒嗘壒 postDelayed锛沬sCanceled 涓?true 鎴?phaseEnded 鏃跺仠姝€?*/
+    /** 本地假流式：首段立刻吐，余下分批 postDelayed；isCanceled ?true ?phaseEnded 时停歃69?*/
     private fun emitFakeStream(fullText: String, onChunk: (String) -> Unit, isCanceled: () -> Boolean, onDone: () -> Unit) {
         if (fullText.isBlank()) { onDone(); return }
         if (fullText.length <= 160) {
@@ -598,8 +598,8 @@ object QwenClient {
     }
 
     /**
-     * B 灞傛憳瑕佹彁鍙栵細闈炴祦寮忥紝鍚屾杩斿洖鎽樿鏂囨湰銆?
-     * 鍙傛暟鍐荤粨锛歵emperature=0.85, top_p=0.9, frequency_penalty=0, presence_penalty=0
+     * B 层摘要提取：非流式，同步返回摘要文本?
+     * 参数冻结：temperature=0.85, top_p=0.9, frequency_penalty=0, presence_penalty=0
      */
     fun extractBSummary(oldB: String, dialogueText: String, systemPrompt: String): String {
         return try {
@@ -608,7 +608,7 @@ object QwenClient {
             } else {
                 "[瀵硅瘽]\n$dialogueText"
             }
-            // B 灞傛彁鍙栧繀椤讳繚鐣?system role锛歴ystem = b_extraction_prompt.txt锛涢敋鐐瑰墧鏃т粎浣滅敤浜庝富瀵硅瘽锛屼笉绾︽潫姝ゅ
+            // B 层提取必须保?system role：system = b_extraction_prompt.txt；锚点剔旧仅作用于主对话，不约束此处
             if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: B extract system=b_extraction_prompt")
             val messagesArray = com.google.gson.JsonArray().apply {
                 add(JsonObject().apply {

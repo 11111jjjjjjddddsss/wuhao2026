@@ -102,7 +102,7 @@
             }
         }
 
-        /* A. 椤堕儴 AppBar锛堣儗鏅€忔槑锛屾部鐢?app-shell 搴曡壊锛?*/
+        /* A. 顶部 AppBar（背景明，沿?app-shell 底色?*/
         .app-bar {
             position: relative;
             z-index: 120;
@@ -194,7 +194,7 @@
             stroke-linejoin: round;
             fill: none;
         }
-        /* 宸︿晶鎶藉眽锛?40px 鏈€澶?360px锛岀Щ鍔ㄧ 80% 鏈€澶?360px锛涘乏婊戝叆 220ms锛涚姝㈢珫鎺?鏃嬭浆鏂囧瓧 */
+        /* 左侧抽屉?40px 朢?360px，移动端 80% 朢?360px；左滑入 220ms；禁止竖?旋转文字 */
         #drawer {
             position: fixed;
             top: 0;
@@ -439,7 +439,7 @@
             background: #111;
             color: #fff;
         }
-        /* 閬僵锛歳gba(0,0,0,0.35)锛岀偣鍑诲叧闂娊灞?*/
+        /* 遮罩：rgba(0,0,0,0.35)，点击关闭抽?*/
         #drawer-mask {
             position: fixed;
             top: 0;
@@ -464,7 +464,7 @@
             }
         }
 
-        /* ========== 浼氬憳涓績锛氫竴灞忓彲瑙侊紙榛樿鏃犲唴閮ㄦ粴鍔ㄦ潯锛?========== */
+        /* ========== 会员中心：一屏可见（默认无内部滚动条?========== */
         #membership-modal-backdrop {
             position: fixed;
             top: 0;
@@ -581,7 +581,7 @@
             align-items: center;
             gap: 10px;
             padding-right: 96px;
-            /* 鍏滃簳锛氱郴缁熷瓧浣撴斁澶т篃涓嶆尋 */
+            /* 兜底：系统字体放大也不挤 */
         }
         .card-name {
             flex: 1;
@@ -708,7 +708,7 @@
             transform: translateX(-50%) translateY(0);
         }
 
-        /* ===== ChatGPT-ish neutral theme锛堣鐩?drawer + modal 涓洪粦鐧界伆鏋佺畝锛?===== */
+        /* ===== ChatGPT-ish neutral theme（覆?drawer + modal 为黑白灰极简?===== */
         :root {
             --bg: #f7f7f8;
             --surface: #ffffff;
@@ -821,7 +821,7 @@
             -ms-overflow-style: none;
         }
 
-        /* G. 绌烘€侊紙P0-2锛氭棤澶х悆锛屾枃瀛楀乏瀵归綈锛?*/
+        /* G. 空（P0-2：无大球，文字左对齐?*/
         .empty-state {
             position: absolute;
             left: 0;
@@ -849,7 +849,7 @@
             max-width: 340px;
             letter-spacing: 0.2px;
         }
-        /* 鍏ㄥ璇濇棤姘旀场锛欸PT 绾噣鏂囨湰鍧?*/
+        /* 全对话无气泡：GPT 纯净文本?*/
         .message {
             margin-bottom: 20px;
             max-width: 100%;
@@ -889,7 +889,7 @@
             margin-right: -18px;
             overflow: visible;
         }
-        /* ChatGPT 椋庢牸锛氱敓鎴愪腑浠呮樉绀哄皬灏哄榛戠櫧涓夌偣 loading锛屾棤褰╄壊 */
+        /* ChatGPT 风格：生成中仅显示小尺寸黑白三点 loading，无彩色 */
         .message.assistant .streaming-dot {
             width: 14px;
             height: 14px;
@@ -980,8 +980,8 @@
         .message-content a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
         .message-content hr { border: 0; border-top: 1px solid rgba(0,0,0,0.08); margin: 10px 0; }
         .message-content.md-rendered { white-space: normal; }
-        /* ===== 杩藉姞瑕嗙洊锛氭敹鍙ｆ垚 GPT 瑙傛劅锛堜笉鍒犳棫瑙勫垯锛屼粎鍚庡啓瑕嗙洊锛?===== */
-        /* 1) 鍐呭瀹藉害涓庤创杈癸細assistant 闈犲乏銆乽ser 闈犲彸锛屼絾閮藉埆閾烘弧 */
+        /* ===== 追加覆盖：收口成 GPT 观感（不删旧规则，仅后写覆盖?===== */
+        /* 1) 内容宽度与贴边：assistant 靠左、user 靠右，但都别铺满 */
         .message-content { max-width: 100%; width: 100%; box-sizing: border-box; margin-right: auto; margin-left: 0; }
         .message.user .message-content { margin-left: auto; margin-right: 0; max-width: 100%; }
 
@@ -991,7 +991,7 @@
         .message-content ul, .message-content ol { margin: 6px 0 8px 22px; }
         .message-content li { margin: 3px 0; }
 
-        /* 3) 寮曠敤鍧楋細娣″簳 + 鍦嗚锛岄伩鍏嶁€滅‖妗嗏€?*/
+        /* 3) 引用块：淡底 + 圆角，避免硬框?*/
         .message-content blockquote { padding: 8px 10px; background: rgba(0,0,0,0.02); border-left-color: rgba(0,0,0,0.12); border-radius: 10px; }
 
         /* 4) 浠ｇ爜鍧楋細鏇撮『婊戞嫋鍔ㄣ€佹洿绋崇殑瀛楀彿涓庤楂?*/
@@ -1001,7 +1001,7 @@
         /* 5) 閾炬帴锛氬埆澶€滅‖鈥濓紝涓嬪垝绾挎贰涓€鐐?*/
         .message-content a { text-decoration-thickness: 1px; text-decoration-color: rgba(0,0,0,0.35); }
 
-        /* 6) 鐢ㄦ埛娑堟伅锛氬鍣ㄩ潬鍙筹紝鍧楃骇涓庢钀藉乏瀵归綈鍙 */
+        /* 6) 用户消息：容器靠右，块级与段落左对齐可读 */
         .message.user .message-content ul,
         .message.user .message-content ol,
         .message.user .message-content blockquote,
@@ -1029,18 +1029,18 @@
         }
 
         /* ===== GPT-ish message spacing (override only) ===== */
-        /* 1) 姣忔潯娑堟伅鐨勫瀭鐩撮棿璺濓細鍒尋銆佸埆澶暎 */
+        /* 1) 每条消息的垂直间距：别挤、别太散 */
         .message { margin: 12px 0; }
         /* 2) 娑堟伅琛屽唴閮細澶村儚涓庢鏂囩殑璺濈銆佸榻愭洿绋?*/
         .message-row { gap: 12px; align-items: flex-start; }
-        /* 3) 鍐呭鍧楀唴杈硅窛锛欸PT 鏇粹€滅焊寮犳劅鈥濓紝浣嗗埆鍙樻垚姘旀场 */
+        /* 3) 内容块内边距：GPT 更纸张感”，但别变成气泡 */
         .message-content { padding: 4px 10px; }
-        /* 4) 鐢ㄦ埛娑堟伅鍧楋細鍙充晶闈犺竟浣嗗埆璐存锛堜笉鏀逛綘鐜版湁鍙冲榻愮瓥鐣ワ級 */
+        /* 4) 用户消息块：右侧靠边但别贴死（不改你现有右对齐策略） */
         .message.user .message-content { padding: 4px 10px; }
-        /* 5) 濡傛灉浣犳湁 message-wrapper/ container 鐨?padding锛岀‘淇濅笂涓嬬暀鐧?*/
+        /* 5) 如果你有 message-wrapper/ container ?padding，确保上下留?*/
         .messages-container { padding-top: 8px; padding-bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 
-        /* ===== 瀹屾垚鎬?GPT 瑙傛劅鏈€灏忛闄╂敹鍙ｏ紙浠呰拷鍔犺鐩栵級 ===== */
+        /* ===== 完成?GPT 观感朢小风险收口（仅追加覆盖） ===== */
         .message-content.md-rendered { overflow-wrap: break-word; word-break: break-word; }
         .message-content.md-rendered a { word-break: break-all; }
         .message-content { line-height: 1.72; font-size: 16px; font-weight: 400; letter-spacing: 0.01em; text-align: left; }
@@ -1301,7 +1301,7 @@
             border-radius: 4px;
         }
 
-        /* F. 搴曢儴杈撳叆鍖猴紙鑳屾櫙閫忔槑锛屾部鐢?app-shell 鏁撮〉娓愬彉锛?*/
+        /* F. 底部输入区（背景透明，沿?app-shell 整页渐变?*/
         .input-container {
             flex-shrink: 0;
             min-height: calc(var(--input-min-height) - 2px);
@@ -1349,7 +1349,7 @@
             transform: scale(0.98);
         }
 
-        /* 鍔犲彿鎸夐挳锛氬渾鐞冪櫧鑹诧紝搴曟爮娴呯伆锛岀櫧鐞冨湪鐏板簳涓婃樉鐪硷紱鍗佸瓧鏋舵祬鐏?*/
+        /* 加号按钮：圆球白色，底栏浅灰，白球在灰底上显眼；十字架浅?*/
         .add-button {
             border: 1px solid rgba(0,0,0,0.06);
             align-self: center;
@@ -1581,7 +1581,7 @@
             height: 24px;
         }
 
-        /* D. VoicePanel锛堣创搴曠洊浣忓姞鍙?楹﹀厠椋庯紱闆捐挋钂欐瘺鐜荤拑 + 绮捐嚧鎰燂紱鏈墦寮€鏃跺畬鍏ㄤ笉鍙锛?*/
+        /* D. VoicePanel（贴底盖住加?麦克风；雾蒙蒙毛玻璃 + 精致感；未打弢时完全不可见?*/
         .voice-panel {
             position: absolute;
             left: 0;
@@ -1680,14 +1680,14 @@
         .input-container.voice-mode .voice-input-hint {
             display: block;
         }
-        /* 璇煶闈㈡澘鎵撳紑鏃讹細绂佹椤甸潰婊氬姩锛屼繚璇佷笂婊戝彇娑堟墜鍔跨ǔ瀹?*/
+        /* 语音面板打开时：禁止页面滚动，保证上滑取消手势稳?*/
         body.voice-panel-open {
             overflow-y: hidden;
         }
         body.voice-panel-open .voice-input-hint {
             display: none !important;
         }
-        /* 璇煶妯″紡涓嬶紝杈撳叆妗嗗唴鎸変綇鍖哄煙锛堢偣/鎸変綇姝ゅ鎵嶅綍闊筹紝楹﹀厠椋庨敭鍙仛鍒囨崲锛?*/
+        /* 语音模式下，输入框内按住区域（点/按住此处才录音，麦克风键只做切换?*/
         .voice-hold-overlay {
             display: none;
             position: absolute;
@@ -1714,7 +1714,7 @@
             height: 48px;
             background: transparent;
         }
-        /* 褰曢煶鐢辨寜浣忚緭鍏ユ瑙﹀彂锛岄潰鏉垮唴涓嶅啀鏄剧ず楹﹀厠椋庢寜閽紙楹﹀厠椋庨敭浠呬綔璇煶/閿洏鍒囨崲锛?*/
+        /* 录音由按住输入框触发，面板内不再显示麦克风按钮（麦克风键仅作语音/键盘切换?*/
         .voice-panel .voice-mic-btn {
             display: none;
         }
@@ -1753,7 +1753,7 @@
             fill: none;
         }
 
-        /* E. + 闈㈡澘 BottomSheet锛坺-index 楂樹簬 input-container:100锛岀‘淇濆脊鍑哄湪杈撳叆鏍忎笂鏂癸級 */
+        /* E. + 面板 BottomSheet（z-index 高于 input-container:100，确保弹出在输入栏上方） */
         .plus-sheet-backdrop {
             position: absolute;
             inset: 0;
@@ -1767,7 +1767,7 @@
             opacity: 1;
             visibility: visible;
         }
-        /* 鏈墦寮€鏃跺畬鍏ㄤ笉鍙銆佷笉鍗犺绾匡紝閬垮厤鍒锋柊鍚庡簳閮ㄤ竴鐩寸湅鍒版柟妗?*/
+        /* 未打弢时完全不可见、不占视线，避免刷新后底部一直看到方?*/
         .plus-sheet {
             position: absolute;
             left: 0;
@@ -1838,7 +1838,7 @@
             stroke-linejoin: round;
             fill: none;
         }
-        /* + 闈㈡澘锛氬綋鍓嶄細鍛樻。浣嶆潯锛堥粦鐧藉共鍑€锛?*/
+        /* + 面板：当前会员档位条（黑白干凢?*/
         .plus-sheet-tier {
             margin-top: 14px;
             padding: 13px 14px;
@@ -1943,7 +1943,7 @@
         .plus-sheet-tier {
             margin-top: 0;
         }
-        /* + 闈㈡澘锛氫細鍛樹腑蹇冨崱鐗囷紙鐪熷疄 DOM锛屼袱琛屾枃妗堬級 */
+        /* + 面板：会员中心卡片（真实 DOM，两行文案） */
         #tier-card { margin-top: 42px; }
         #tier-card .tier-left {
             width: 100%;
@@ -1985,14 +1985,14 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        /* 棰濆害鐢ㄥ敖锛氱伆鎸夐挳锛堝彲鐐瑰嚮浠ユ彁绀轰竴娆★級 */
+        /* 额度用尽：灰按钮（可点击以提示一次） */
         .disabled, button:disabled {
             opacity: .38;
             cursor: not-allowed;
             pointer-events: auto;
         }
 
-        /* ===== 浼氬憳涓績锛氭敹绱х┖鐧?+ 鍙栨秷 flex 鍧囧垎鎾戦珮锛堟渶缁堢増瑕嗙洊锛?===== */
+        /* ===== 会员中心：收紧空?+ 取消 flex 均分撑高（最终版覆盖?===== */
         #membership-modal-backdrop {
             overflow: hidden !important;
         }
@@ -2049,7 +2049,7 @@
             border-radius: 12px !important;
         }
 
-        /* P0锛氫細鍛樹腑蹇冪┖鐧藉啀鏀剁揣涓€鐐癸紙鍙姩闂磋窛/鍐呰竟璺濓紝涓嶆敼缁撴瀯锛?*/
+        /* P0：会员中心空白再收紧丢点（只动间距/内边距，不改结构?*/
         #membership-modal {
             width: calc(var(--shell-width) - 24px) !important;
             padding: 12px !important;
@@ -2111,7 +2111,7 @@
         <span class="app-bar-title-wrap"><span class="app-bar-title">鍐滄妧鍗冮棶</span></span>
     </header>
 
-    <!-- 鏍囧噯渚ц竟鎶藉眽锛氫富鍐呭浠嶅湪锛屾娊灞?#drawer + 閬僵 #drawer-mask -->
+    <!-- 标准侧边抽屉：主内容仍在，抽?#drawer + 遮罩 #drawer-mask -->
     <div id="drawer-mask" aria-hidden="true"></div>
     <div id="drawer" aria-hidden="true">
         <div class="drawer-content">
@@ -2165,7 +2165,7 @@
         </div>
     </div>
 
-    <!-- 浼氬憳涓績锛氫竴灞忓彲瑙侊紙榛樿鏃犲唴閮ㄦ粴鍔ㄦ潯锛?-->
+    <!-- 会员中心：一屏可见（默认无内部滚动条?-->
     <div id="membership-modal-backdrop" aria-hidden="true">
         <div id="membership-modal" onclick="event.stopPropagation()">
             <div class="membership-header">
@@ -2192,18 +2192,18 @@
                     <button type="button" class="card-btn" data-tier="pro">寮€閫?Pro</button>
                 </div>
             </div>
-            <div class="membership-footnote">鏈〉闈粎婕旂ず锛岄搴?鎵ｆ浠ユ湇鍔＄涓哄噯</div>
+            <div class="membership-footnote">本页面仅演示，额?扣次以服务端为准</div>
         </div>
     </div>
-    <div id="toast">鍔熻兘寮€鍙戜腑</div>
+    <div id="toast">功能弢发中</div>
 
     <main class="main">
         <div class="messages-wrapper" id="messagesWrapper">
             <div class="empty-state" id="emptyState">
                 <div class="logo"></div>
                 <p class="empty-state-hint">
-                    娆㈣繋鍜ㄨ绉嶆銆佺梾铏闃叉不銆佹柦鑲ョ瓑闂銆?br>
-                    鎻忚堪浣滅墿/鍦板尯/鐜拌薄锛屽繀瑕佹椂鍙笂浼犵収鐗囥€?
+                    欢迎咨询种植、病虫害防治、施肥等问题?br>
+                    描述作物/地区/现象，必要时可上传照片?
                 </p>
             </div>
             <div class="messages-container" id="messagesContainer"></div>
@@ -2467,7 +2467,7 @@
         var USE_BACKEND_AB = true;            // 线上口径：后端 AB 唯一真相
         var USE_BACKEND_ENTITLEMENT = true;  // 线上口径：后端权益唯一真相
 
-        // ==================== Data 灞傦細瀛樺偍 + 鍚庣 HTTP锛堜笉鐩存帴缁?UI锛岀粡 Domain锛?====================
+        // ==================== Data 层：存储 + 后端 HTTP（不直接?UI，经 Domain?====================
         var STORAGE_KEY_TIER = 'membership_tier';
         var STORAGE_KEY_SUBSCRIPTIONS = 'membership_subscriptions';
         var SUBSCRIPTION_DAYS = 30;
@@ -2502,7 +2502,7 @@
         function getUsage() { return { chat: 0 }; }
         function setUsage(chat) {}
 
-        // ==================== Domain 灞傦細浼氬憳瑁佸喅銆佹墸鍑忓彛寰勩€佽緭鍏ヨ鍒欙紙鍙皟 Data锛屼笉鐩存帴鏀?DOM锛?====================
+        // ==================== Domain 层：会员裁决、扣减口径输入规则（只调 Data，不直接?DOM?====================
         var TIER_ORDER = { free: 0, plus: 1, pro: 2 };
         var tier_config = {
             free:   { label: '鍏嶈垂鐗?, model: 'main' },
@@ -2511,7 +2511,7 @@
         };
         var COPY_REFRESH_FAIL = '鏉冪泭鐘舵€佹殏鏈洿鏂帮紝璇风◢鍚庨噸璇?;
         function getTierLevel(tier) { return TIER_ORDER[tier] != null ? TIER_ORDER[tier] : -1; }
-        // 鍓嶇浠呬繚鐣欏睍绀哄眰锛氶搴?鎵ｆ/鍒版湡/鍗囩骇鍚堝苟鐢卞悗绔帶鍒讹紙褰撳墠涓嶅湪鍓嶇鐢熸晥锛?        function computeEntitlement() {
+        // 前端仅保留展示层：额?扣次/到期/升级合并由后端控制（当前不在前端生效?        function computeEntitlement() {
             return { effective_tier: getCurrentTier(), effective_end_at: 0, paused_list: [] };
         }
         function resetUsageIfNewDay() {}
@@ -2522,7 +2522,7 @@
                     var t = window._cachedEntitlement.effective_tier;
                     return tier_config[t] ? t : 'free';
                 }
-                return 'free'; // 鍚庣涓嶅彲鐢ㄦ椂涓嶅洖閫€鏈湴锛屼笉姹℃煋浼氬憳鐘舵€侊紝閬垮厤涓ゅ鐪熺浉鎵撴灦
+                return 'free'; // 后端不可用时不回逢本地，不污染会员状，避免两套真相打架
             }
             var t = (localStorage.getItem(STORAGE_KEY_TIER) || 'free').toLowerCase();
             return tier_config[t] ? t : 'free';
@@ -2580,7 +2580,7 @@
             updateTierUIEverywhere();
             updateDrawerLoginState();
         }
-        // ==================== UI 灞傦細鍙礋璐ｆ覆鏌?鍔ㄧ敾/鐏板潡/缃伆/Toast锛屼笉鐩存帴鏀硅闃呫€佷笉鐩存帴鏀?A/B ====================
+        // ==================== UI 层：只负责渲?动画/灰块/置灰/Toast，不直接改订阅不直接?A/B ====================
         function setDisabled(selector, disabled) {
             var el = document.querySelector(selector);
             if (!el) return;
@@ -2608,7 +2608,7 @@
             var currentLevel = getTierLevel(tier);
             var sub = document.getElementById('membershipSub');
             if (sub) {
-                sub.textContent = '褰撳墠鐢熸晥妗ｄ綅锛? + getTierLabel(tier) + '锛堥搴?鎵ｆ瑙勫垯浠ュ悗绔负鍑嗭級';
+                sub.textContent = '当前生效档位? + getTierLabel(tier) + '（额?扣次规则以后端为准）';
             }
             document.querySelectorAll('#membership-modal .membership-card').forEach(function(card) {
                 var t = card.getAttribute('data-tier');
@@ -2659,7 +2659,7 @@
             document.body.style.overflow = '';
         }
         function showToast(msg) {
-            toastEl.textContent = msg != null ? msg : '鍔熻兘寮€鍙戜腑';
+            toastEl.textContent = msg != null ? msg : '功能弢发中';
             toastEl.classList.add('show');
             setTimeout(function() {
                 toastEl.classList.remove('show');
@@ -2879,7 +2879,7 @@
             btn.addEventListener('click', function() {
                 var tier = this.getAttribute('data-tier');
                 if (!tier || !tier_config[tier]) {
-                    showToast('鍔熻兘寮€鍙戜腑');
+                    showToast('功能弢发中');
                     return;
                 }
                 if (getAccountType() === 'anon') {
@@ -2979,30 +2979,30 @@
         let voicePendingTimeout = null;
 
         // 闀胯亰涓嶅崱椤匡細绐楀彛鍖?+ 鍓嶇鍋囨祦寮忥紙鎵撳瓧鏈猴級
-        // 銆愪袱鏉＄嚎鍒嗙銆慠ENDER_WINDOW 涓虹函灞曠ず瑁佸壀锛屼笉鍙備笌 A/B 鎺ㄥ锛汚/B 鍙潵鑷悗绔媺鍙栨垨 onComplete/updateB 鍐欏叆
+        // 【两条线分离】RENDER_WINDOW 为纯展示裁剪，不参与 A/B 推导；A/B 只来自后端拉取或 onComplete/updateB 写入
         const RENDER_WINDOW = 80;      // 浠呮覆鏌撴渶杩?N 鏉?
         const LOAD_MORE_BATCH = 20;    // 姣忔銆屽姞杞芥洿澶氥€嶅睍寮€鏉℃暟
         const TYPEWRITER_MS = 50;     // 鎵撳瓧鏈烘瘡鐗囬棿闅旓紙ms锛夛紝閬垮厤 DOM 棰戠箒閲嶆帓
         const TYPEWRITER_CHARS = 2;   // 姣忕墖杩藉姞瀛楃鏁?
         const TYPEWRITER_MAX_MS = 60000; // 鎵撳瓧鏈烘渶澶ф椂闀垮厹搴曪紙ms锛夛紝瓒呮椂鐩存帴琛ュ叏鍓╀綑
-        const MAX_WAIT_MS = 65000;       // 鍏ㄥ眬 Watchdog锛氳 streamId 鏈湪 65s 鍐呮敹鍒?onComplete/onInterrupted 鍒欏己鍒朵腑鏂敹灏?
+        const MAX_WAIT_MS = 65000;       // 全局 Watchdog：该 streamId 未在 65s 内收?onComplete/onInterrupted 则强制中断收?
         const chunkBufferByStream = {};
-        // streamId -> 璇?stream 褰撳墠绱鐨?buffer 鍏ㄦ枃锛堜笌 chunkBufferByStream 鍚屾锛夛紝渚?onComplete 鏃?buffer 涓虹┖闄嶇骇鐩村嚭锛涜涔夋槸銆屾渶鍚庝竴娆″彲瑙佺殑鍏ㄦ枃銆嶉潪銆屾渶鍚庝竴涓?chunk銆?
+        // streamId -> ?stream 当前累计?buffer 全文（与 chunkBufferByStream 同步），?onComplete ?buffer 为空降级直出；语义是「最后一次可见的全文」非「最后一?chunk?
         const lastFullBufferByStream = {};
         const watchdogTimerByStream = {}; // streamId -> setTimeout id锛宱nComplete/onInterrupted 鏃?clear
-        const terminatedStreamIds = {};   // 鎶ゆ爮锛歸atchdog 瑙﹀彂鍚庡姞鍏ワ紝onChunk/onComplete/onInterrupted 鍏ュ彛鑻ュ凡瀛樺湪鍒欑洿鎺?return
+        const terminatedStreamIds = {};   // 护栏：watchdog 触发后加入，onChunk/onComplete/onInterrupted 入口若已存在则直?return
         const pendingDeduct = {};          // client_msg_id -> imgUploadCount(0|1)锛宱nComplete 鎵ｅ悗 delete
         const pendingRequest = {};         // streamId -> { text, imageUrls, clientMsgId }锛岄噸璇曞鐢ㄥ悓涓€ client_msg_id
-        const clientMsgIdByStream = {};    // streamId -> client_msg_id锛孶I stream 涓庝笟鍔″箓绛夐敭瑙ｈ€?
+        const clientMsgIdByStream = {};    // streamId -> client_msg_id，UI stream 与业务幂等键解?
         const assistantMsgByStream = {};   // streamId -> assistant message element锛屽噺灏戦珮棰?DOM 鏌ヨ
-        const deducted = {};               // client_msg_id -> true锛屽悓涓€ client_msg_id 鍙墸涓€娆★紱24h 鍚庢竻鐞?
+        const deducted = {};               // client_msg_id -> true，同丢 client_msg_id 只扣丢次；24h 后清?
         const previewTimerByStream = {};   // streamId -> setInterval id (preview fake stream)
         const DEDUCTED_TTL_MS = 24 * 60 * 60 * 1000;
         const PENDING_MAX_AGE_MS = 15 * 60 * 1000;  // P2b锛歱ending 鎮寕瓒?15 鍒嗛挓鑷姩娓?
 
-        // 鍓嶇鍋囨祦寮忥細鏀跺埌瀹屾暣 response 鍚庢墦瀛楁満鍒嗙墖杩藉姞锛涘仠姝粎鍋滃畾鏃跺櫒
+        // 前端假流式：收到完整 response 后打字机分片追加；停止仅停定时器
         let typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
-        // 缁熶竴澶辫触鎻愮ず锛堝急鎻愮ず銆佹棤鎸囦护鎰燂級锛涢櫎 canceled/resumable 澶栧潎鐢?default
+        // 统一失败提示（弱提示、无指令感）；除 canceled/resumable 外均?default
         var reasonToCopy = {
             canceled: '宸插仠姝?,
             resumable: '宸蹭腑鏂?路 鐐瑰嚮缁х画',
@@ -3012,7 +3012,7 @@
         // 鍥剧墖鐘舵€佺鐞嗭紙Map 淇濇寔鎻掑叆椤哄簭锛屽彂閫佹椂 URL 椤哄簭涓庣敤鎴烽€夋嫨涓€鑷达級
         const imageState = new Map(); // imageId -> {file, base64, status, url, element, currentRequestId}
 
-        // Android 鎺ュ彛瀵硅薄锛堢敱 WebView 娉ㄥ叆锛夛紱鏈敞鍏ユ椂 no-op锛孌EBUG 鏃舵墦鏃ュ織
+        // Android 接口对象（由 WebView 注入）；未注入时 no-op，DEBUG 时打日志
         var DEBUG = false;
         const hasNativeAndroidSend = !!(window.AndroidInterface && typeof window.AndroidInterface.sendMessage === 'function');
         const AndroidInterface = window.AndroidInterface || {
@@ -3104,7 +3104,7 @@
                 btnMicOrKeyboard.classList.remove('voice-mode');
                 btnSend.classList.add('btn-hidden');
                 btnStop.classList.add('btn-hidden');
-                textInput.placeholder = (hasImages && !hasText) ? '璇疯ˉ鍏呭浘鐗囨弿杩板悗鍐嶅彂閫? : '鎻忚堪浣滅墿/鍦板尯/闂锛屾垜鏉ュ府浣犲垎鏋?;
+                textInput.placeholder = (hasImages && !hasText) ? '请补充图片描述后再发? : '描述作物/地区/问题，我来帮你分?;
             }
 
             if (hasAnyImageUploadingOrFailed && !btnSend.classList.contains('btn-hidden')) btnSend.disabled = true;
@@ -3135,7 +3135,7 @@
             return localStorage.getItem('membership_tier') || 'free';
         }
         function tierLabel(tier) {
-            return ({ free: '鍏嶈垂鐗?, plus: 'Plus', pro: 'Pro' })[tier] || '鍏嶈垂鐗?;
+            return ({ free: '免费?, plus: 'Plus', pro: 'Pro' })[tier] || '免费?;
         }
         function updatePlusSheetTier() {
             var tierEl = document.getElementById('tier-tier');
@@ -3183,7 +3183,7 @@
         fileInput.addEventListener('change', function() { handleFileSelect(this.files); });
         cameraInput.addEventListener('change', function() { handleFileSelect(this.files); });
         
-        // 娣诲姞鍥剧墖棰勮锛堢缉鐣ュ浘鐢?objectURL 鍑忓皯鍐呭瓨锛宐ase64 浠呯敤浜庡彂缁?Android锛?
+        // 添加图片预览（缩略图?objectURL 减少内存，base64 仅用于发?Android?
         function addImagePreview(imageId, file) {
             const previewItem = document.createElement('div');
             previewItem.className = 'image-preview-item';
@@ -3224,7 +3224,7 @@
                 currentRequestId: requestId
             });
             
-            // base64 浠呯敤浜庨娆″彂缁?Android 涓婁紶锛屽彂瀹屽嵆涓紝涓嶉暱鏈熶繚瀛橈紙閲嶈瘯璧?Android 缂撳瓨锛?
+            // base64 仅用于首次发?Android 上传，发完即丢，不长期保存（重试?Android 缓存?
             const reader = new FileReader();
             reader.onload = function(e) {
                 const state = imageState.get(imageId);
@@ -3237,7 +3237,7 @@
             reader.readAsDataURL(file);
         }
         
-        // 涓婁紶鍥剧墖锛堝甫 requestId锛沚ase64 浠呴娆′娇鐢級
+        // 上传图片（带 requestId；base64 仅首次使用）
         function uploadImage(imageId, base64, requestId) {
             const imageData = {
                 imageId: imageId,
@@ -3304,7 +3304,7 @@
             updateInputMode();
         }
         
-        // 閲嶈瘯锛氬彧鍙?imageId + requestId锛屼笉浼?base64锛汚ndroid 鐢ㄧ紦瀛?bytes 閲嶄紶
+        // 重试：只?imageId + requestId，不?base64；Android 用缓?bytes 重传
         function retryImage(imageId) {
             const state = imageState.get(imageId);
             if (!state) return;
@@ -3315,7 +3315,7 @@
             AndroidInterface.retryImage(imageId, requestId);
         }
         
-        // 鍒犻櫎鍥剧墖锛歎I 绔嬪嵆绉婚櫎锛屽凡鍒犻櫎鍥句笉鍙備笌鍙戦€侊紝鍚庣画璇ュ浘鍥炶皟蹇界暐
+        // 删除图片：UI 立即移除，已删除图不参与发，后续该图回调忽略
         function removeImage(imageId) {
             const state = imageState.get(imageId);
             if (state && state.element) {
@@ -3338,7 +3338,7 @@
             updateImageStatus(imageId, status, url || null, requestId || null, errorMessage || null);
         };
 
-        // 娑堟伅绐楀彛鍖栵細浠呮覆鏌撴渶杩?RENDER_WINDOW 鏉★紝鏇磋€佹姌鍙犱负銆屽姞杞芥洿澶氥€?
+        // 消息窗口化：仅渲染最?RENDER_WINDOW 条，更折叠为「加载更多?
         function applyMessageWindow() {
             const messages = messagesContainer.querySelectorAll('.message');
             const total = messages.length;
@@ -3364,7 +3364,7 @@
             if (!loadMoreEl) {
                 loadMoreEl = document.createElement('div');
                 loadMoreEl.className = 'load-more-placeholder';
-                loadMoreEl.textContent = '鍔犺浇鏇村锛? + toFold + ' 鏉★級';
+                loadMoreEl.textContent = '加载更多? + toFold + ' 条）';
                 loadMoreEl.onclick = function() {
                     const oldScrollHeight = messagesWrapper.scrollHeight;
                     const oldScrollTop = messagesWrapper.scrollTop;
@@ -3378,13 +3378,13 @@
                     });
                     const remaining = messagesContainer.querySelectorAll('.message-folded').length;
                     if (remaining === 0) loadMoreEl.remove();
-                    else loadMoreEl.textContent = '鍔犺浇鏇村锛? + remaining + ' 鏉★級';
+                    else loadMoreEl.textContent = '加载更多? + remaining + ' 条）';
                 };
                 messagesContainer.insertBefore(loadMoreEl, messagesContainer.firstChild);
             }
             const remaining = messagesContainer.querySelectorAll('.message-folded').length;
             if (remaining === 0) loadMoreEl.remove();
-            else loadMoreEl.textContent = '鍔犺浇鏇村锛? + remaining + ' 鏉★級';
+            else loadMoreEl.textContent = '加载更多? + remaining + ' 条）';
             requestAnimationFrame(function() {
                 const distFromBottom = oldScrollHeight - oldScrollTop;
                 if (distFromBottom <= 120) {
@@ -3395,7 +3395,7 @@
             });
         }
 
-        // 鍙戦€佹秷鎭紙P0锛氭暟閲忊墹4銆佹湁鍥惧繀椤绘湁鏂囧瓧锛屽弻灞傛嫤鎴級
+        // 发消息（P0：数量≤4、有图必须有文字，双层拦截）
         function sendMessage() {
             if (btnSend.disabled) return;
             if (isGenerating) return;
@@ -3430,9 +3430,9 @@
                 showToast('鍗曟鏈€澶?寮?);
                 return;
             }
-            // 鍥剧墖鏁伴檺鍒躲€佹鏁伴檺鍒躲€佹墸娆¤鍒欎互鍚庣涓哄噯锛涘墠绔粎淇濈暀鍩虹杈撳叆浣撻獙
+            // 图片数限制次数限制扣次规则以后端为准；前端仅保留基础输入体验
 
-            // 娣诲姞鐢ㄦ埛娑堟伅锛堝彸瀵归綈锛岀珛鍗虫樉绀猴級
+            // 添加用户消息（右对齐，立即显示）
             const userMessage = createMessage({ 
                 role: "user", 
                 text: text, 
@@ -3466,8 +3466,8 @@
             clientMsgIdByStream[streamId] = clientMsgId;
             pendingDeduct[clientMsgId] = (imageUrls.length > 0 ? 1 : 0);
 
-            // 鐩存帴鍙戦€侊紝鐢辨ā鍨嬭嚜琛屽喅绛栨槸鍚﹂渶瑕佽仈缃戞悳绱?
-            // hasNativeAndroidSend=false 浠ｈ〃娴忚鍣?鏃犳ˉ鐜锛岃嚜鍔ㄨ蛋鏈湴 mock锛涘惁鍒欒蛋 Android 鍘熺敓鍙戦€?
+            // 直接发，由模型自行决策是否需要联网搜?
+            // hasNativeAndroidSend=false 代表浏览?无桥环境，自动走本地 mock；否则走 Android 原生发?
             if (!hasNativeAndroidSend) {
                 startPreviewMockResponse(streamId, text);
             } else {
@@ -3484,7 +3484,7 @@
             updateInputMode();
         }
 
-        // 鍙戦€佸埌Android鍚庣锛坰treamId 鍐欏搴旀皵娉★紱鍓嶇浼?tier 妗ｄ綅鏍囪瘑锛?        function sendToAndroid(text, imageUrls, streamId, clientMsgId) {
+        // 发到Android后端（streamId 写对应气泡；前端?tier 档位标识?        function sendToAndroid(text, imageUrls, streamId, clientMsgId) {
             var imageUrlsJson = imageUrls && imageUrls.length > 0 ? JSON.stringify(imageUrls) : 'null';
             var tier = getCurrentTier();
             if (typeof AndroidInterface.sendMessage === 'function') {
@@ -3497,14 +3497,14 @@
             var topic = clean ? ('浣犳彁鍒扳€? + clean.slice(0, 28) + '鈥?) : '浣犲綋鍓嶅叧蹇冪殑闂';
             return [
                 '### 鏈湴棰勮鍥炲锛堝姩鐢昏仈璋冿級',
-                topic + '锛屼笅闈㈣繖娈垫槸鏈湴鍋囨祦寮忔枃鏈紝鐢ㄤ簬娴嬭瘯鎵撳瓧鍔ㄧ敾銆佹钀介棿璺濄€侀暱鏂囨粴鍔ㄣ€佽繛缁槄璇诲拰鍥炲埌搴曢儴鐨勭ǔ瀹氳〃鐜般€?,
-                '鍏堢粰涓€涓畝鍖栧垽鏂細褰撳墠鏈€閲嶈鐨勬槸鎶婄洰鏍囨媶鎴愬彲楠岃瘉鐨勫皬姝ラ锛屽啀鎸夊浐瀹氳妭濂忔帹杩涖€備笉瑕佷竴娆℃敼澶鍙橀噺锛屽惁鍒欏緢闅惧垽鏂埌搴曟槸鍝竴澶勫姩浣滃甫鏉ヤ簡鏁堟灉锛屼篃闅句互鍦ㄥ悗缁鐩樻椂澶嶇敤銆?,
-                '鍙互鐢ㄢ€滀笁娈靛紡瑙傚療娉曗€濄€傜涓€娈靛仛鍩虹嚎璁板綍锛岃嚦灏戠暀涓夐」鎸囨爣锛氬搷搴旀椂寤躲€佸彲璇绘€т富瑙傝瘎鍒嗐€佹搷浣滃畬鎴愮巼锛涚浜屾鍙敼涓€鍒颁袱涓叧閿彉閲忥紝瑙傚療 24 鍒?48 灏忔椂鍙樺寲锛涚涓夋鍙繚鐣欏凡楠岃瘉鏈夋晥鍔ㄤ綔锛屾湭楠岃瘉鍔ㄤ綔鏆傜紦锛岄伩鍏嶆妸绯荤粺甯﹀叆涓嶅彲瑙ｉ噴鐘舵€併€?,
-                '鍦ㄥ唴瀹圭粍缁囦笂锛屽缓璁浐瀹氬悓涓€缁撴瀯锛氬厛缁撹銆佸啀渚濇嵁銆佸悗琛屽姩杈圭晫銆傜粨璁鸿鐭紝渚濇嵁瑕佸彲鏍搁獙锛岃竟鐣岃鍐欐竻妤氣€滀粈涔堟儏鍐典笅涓嶉€傜敤鈥濄€傝繖鏍蜂笉浠呰兘鎻愰珮鐢ㄦ埛闃呰鏁堢巼锛屼篃鑳介檷浣庨暱娑堟伅閫犳垚鐨勭悊瑙ｅ亸宸紝灏ゅ叾閫傚悎绉诲姩绔満鏅€?,
-                '鍦ㄤ氦浜掍綋楠屼笂锛岄噸鐐圭洴鍥涗欢浜嬶細绗竴锛岄暱娈佃惤鏄惁淇濇寔绋冲畾琛岄珮涓庢崲琛岋紱绗簩锛岃繛缁祦寮忚緭鍑烘椂鏄惁鍑虹幇璺冲姩鍜岄棯鐑侊紱绗笁锛屾粴鍔ㄥ埌涓鍚庣户缁緭鍑烘槸鍚︽墦鏂槄璇伙紱绗洓锛屾秷鎭緢闀挎椂杈撳叆鍖轰笌鍙戦€佸尯鏄惁浠嶄繚鎸佸彲棰勬湡瀵归綈銆?,
-                '濡傛灉浣犺鍋氬帇鍔涢婕旓紝鍙互杩炵画鍙戦€佸杞笉鍚岄暱搴︽枃鏈細200 瀛椼€?00 瀛椼€?500 瀛楀悇涓よ疆锛岃褰曢〉闈㈡粴鍔ㄣ€佹覆鏌撻€熷害銆佹寜閽姸鎬佸垏鎹㈡槸鍚︿竴鑷达紱鍐嶆贩鍚堜竴娆♀€滃甫鍥剧墖 + 鏂囧瓧鈥濊緭鍏ワ紝妫€鏌ュ竷灞€鏄惁缁存寔缁熶竴鑺傚銆?,
-                '鍙﹀寤鸿鍦ㄩ獙璇佹湡闂村浐瀹氫竴涓渶灏忚褰曟ā鏉匡細闂鍦烘櫙銆佽Е鍙戝姩浣溿€佹湡鏈涜〃鐜般€佸疄闄呰〃鐜般€佹埅鍥剧紪鍙枫€佸鐜版鐜囥€傛ā鏉跨畝鐭絾鎸佺画鎵ц锛屽悗缁帴鍏ョ湡瀹炴ā鍨嬪拰鏈嶅姟绔椂锛岃兘鐩存帴澶嶇敤骞跺揩閫熷畾浣嶅洖褰掗棶棰樸€?,
-                '褰撳墠杩欐潯娑堟伅浠呯敤浜?UI 鏁堟灉鑱旇皟锛屼笉浠ｈ〃姝ｅ紡涓氬姟鍥炲銆傚畠鍖呭惈鏍囬銆佽緝闀挎钀姐€佹崲琛屻€佹湳璇贩鎺掍笌杩炵画闃呰鍦烘櫙锛岀洰鐨勬槸璁╀綘涓€娆℃€ц瀵熷瓧浣撴覆鏌撱€佹钀藉瘑搴︺€佸姩鏁堣妭濂忓拰瑙嗚绋冲畾鎬с€傚悗缁綘鎺ュ叆鐪熷疄妯″瀷鍚庯紝杩欓噷浼氳嚜鍔ㄥ垏鎹负姝ｅ紡鍥炵瓟銆?
+                topic + '，下面这段是本地假流式文本，用于测试打字动画、段落间距长文滚动连续阅读和回到底部的稳定表现?,
+                '先给丢个简化判断：当前朢重要的是把目标拆成可验证的小步骤，再按固定节奏推进不要一次改太多变量，否则很难判断到底是哪一处动作带来了效果，也难以在后续复盘时复用?,
+                '可以用三段式观察法第丢段做基线记录，至少留三项指标：响应时延可读主观评分操作完成率；第二段只改丢到两个关键变量，观察 24 ?48 小时变化；第三段只保留已验证有效动作，未验证动作暂缓，避免把系统带入不可解释状?,
+                '在内容组织上，建议固定同丢结构：先结论、再依据、后行动边界。结论要短，依据要可核验，边界要写清楚什么情况下不用”这样不仅能提高用户阅读效率，也能降低长消息造成的理解偏差，尤其适合移动端场景?,
+                '在交互体验上，重点盯四件事：第一，长段落是否保持稳定行高与换行；第二，连续流式输出时是否出现跳动和闪烁；第三，滚动到中段后继续输出是否打断阅读；第四，消息很长时输入区与发区是否仍保持可预期对齐?,
+                '如果你要做压力预演，可以连续发多轮不同长度文本：200 字?00 字?500 字各两轮，记录页面滚动渲染度、按钮状态切换是否一致；再混合一次带图片 + 文字”输入，棢查布屢是否维持统一节奏?,
+                '另外建议在验证期间固定一个最小记录模板：问题场景、触发动作期望表现实际表现截图编号复现概率模板简短但持续执行，后续接入真实模型和服务端时，能直接复用并快速定位回归问题?,
+                '当前这条消息仅用?UI 效果联调，不代表正式业务回复。它包含标题、较长段落换行术语混排与连续阅读场景，目的是让你丢次观察字体渲染段落密度动效节奏和视觉稳定性后续你接入真实模型后，这里会自动切换为正式回答?
             ].join('\n\n');
         }
         function startPreviewMockResponse(streamId, userText) {
@@ -3533,7 +3533,7 @@
             }, 28);
         }
 
-        // 鍏ㄥ眬 Watchdog锛?5s 鍐呰 streamId 鏈敹鍒?onComplete/onInterrupted 鍒欏己鍒朵腑鏂敹灏撅紙姘镐笉鏃犻檺杞湀锛?
+        // 全局 Watchdog?5s 内该 streamId 未收?onComplete/onInterrupted 则强制中断收尾（永不无限转圈?
         function startWatchdog(streamId) {
             if (!streamId) return;
             if (watchdogTimerByStream[streamId]) {
@@ -3558,7 +3558,7 @@
                 delete clientMsgIdByStream[streamId];
                 unbindAssistantMessage(streamId);
                 if (timeoutClientMsgId) delete pendingDeduct[timeoutClientMsgId];
-                // 鍓嶇 watchdog 浠呭仛 UI 涓柇涓庢湰鍦?pending 娓呯悊锛屼笉鎺ㄥ/淇敼鍚庣鎵ｈ垂缁撴灉锛涙墸璐逛互鏈嶅姟绔?onComplete 瑙勫垯涓哄噯銆?
+                // 前端 watchdog 仅做 UI 中断与本?pending 清理，不推导/修改后端扣费结果；扣费以服务?onComplete 规则为准?
                 applyInterruptedUI(streamId, 'timeout');
                 setTimeout(function() { delete terminatedStreamIds[streamId]; }, 2 * 60 * 1000);
             }, MAX_WAIT_MS);
@@ -3602,7 +3602,7 @@
             delete assistantMsgByStream[streamId];
         }
 
-        // 缁熶竴涓柇 UI锛氳鏉℃秷鎭簳閮ㄤ竴琛岀伆瀛?+銆岄噸璇曘€嶆寜閽紙ChatGPT 椋庢牸锛屼笉寮圭獥锛?
+        // 统一中断 UI：该条消息底部一行灰?+「重试按钮（ChatGPT 风格，不弹窗?
         function applyInterruptedUI(streamId, reason) {
             if (!streamId) return;
             var msg = findAssistantMessageByStreamId(streamId);
@@ -3662,7 +3662,7 @@
             }
         }
 
-        // 鍋滄鎵撳瓧鏈猴紙鐢ㄦ埛鐐广€屽仠姝€嶆椂锛夛細浠呭仠瀹氭椂鍣紝鍙€変竴娆℃€цˉ鍏ㄥ墿浣欐枃瀛?
+        // 停止打字机（用户点停歃69时）：仅停定时器，可一次补全剩余文?
         function stopTypewriter() {
             if (typewriterState.timerId) {
                 clearInterval(typewriterState.timerId);
@@ -3679,7 +3679,7 @@
             typewriterState = { timerId: null, streamId: null, fullText: '', index: 0 };
         }
 
-        // 鍓嶇鍋囨祦寮忥細鐢ㄥ畾鏃跺櫒鍒嗙墖杩藉姞 fullText锛涘厛鍋滄棫鎵撳瓧鏈猴紙闃叉棫鍐欏埌鏂版秷鎭級锛涜秴鏃跺厹搴曠洿鎺ヨˉ鍏?
+        // 前端假流式：用定时器分片追加 fullText；先停旧打字机（防旧写到新消息）；超时兜底直接补?
         function runTypewriter(streamId, fullText) {
             stopTypewriter();
             if (!streamId || !fullText) return;
@@ -3736,7 +3736,7 @@
             }, TYPEWRITER_MS);
         }
 
-        // 鎺ユ敹鍚庣涓€娆℃€ц繑鍥炵殑瀹屾暣鍐呭锛堜粎绱Н鍒?buffer锛屼笉鐩存帴鍐?DOM锛?
+        // 接收后端丢次返回的完整内容（仅累积?buffer，不直接?DOM?
         window.onChunkReceived = function(streamId, chunk) {
             if (!streamId || !chunk) return;
             if (terminatedStreamIds[streamId]) return;
@@ -3744,7 +3744,7 @@
             lastFullBufferByStream[streamId] = chunkBufferByStream[streamId];
         };
 
-        // 鏀跺埌瀹屾垚閫氱煡鍚庯細鍚屼竴 streamId 鍙墸涓€娆★紙deducted 闃查噸锛夛紱鍐嶅彇 buffer 鍏ㄦ枃銆佹墦瀛楁満/鐩村嚭銆佹竻鐞?pending銆乧lear Watchdog
+        // 收到完成通知后：同一 streamId 只扣丢次（deducted 防重）；再取 buffer 全文、打字机/直出、清?pending、clear Watchdog
         window.onCompleteReceived = function(streamId, clientMsgId) {
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
@@ -3943,7 +3943,7 @@
             el.classList.add('md-rendered');
         }
 
-        // 鐏板潡鍐?URL 鍙偣鍑伙細灏嗘枃鏈腑鐨?http(s) URL 杞负 <a target="_blank">锛屽叾浣欒浆涔夐槻 XSS
+        // 灰块?URL 可点击：将文本中?http(s) URL 转为 <a target="_blank">，其余转义防 XSS
         // 瀹夊崜鏈湴鏃堕棿锛氫緵閿氱偣/涓氬姟鎸夐渶璋冪敤
         window.getLocalDateTimeFromAndroid = function() {
             if (typeof AndroidInterface !== 'undefined' && typeof AndroidInterface.getLocalDateTime === 'function') {
@@ -3952,7 +3952,7 @@
             return '';
         };
 
-        // 缁堟€佷粎 badge/鐏板瓧 + 閲嶈瘯锛涘紑澶?clear Watchdog銆佹竻鐞?buffer锛屽啀缁熶竴 applyInterruptedUI
+        // 终仅 badge/灰字 + 重试；开?clear Watchdog、清?buffer，再统一 applyInterruptedUI
         window.onStreamInterrupted = function(streamId, reason) {
             if (!streamId) return;
             if (terminatedStreamIds[streamId]) return;
@@ -3972,7 +3972,7 @@
             delete terminatedStreamIds[streamId];
         };
 
-        // 缁熶竴娑堟伅娓叉煋鍑芥暟锛堢敤鎴?AI鍏辩敤锛?
+        // 统一消息渲染函数（用?AI共用?
         function createMessage({ role, text, files, imageUrls, stream }) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
@@ -3999,7 +3999,7 @@
                 messageDiv.appendChild(contentDiv);
             }
 
-            // 娣诲姞鍥剧墖锛堜粎鐢ㄦ埛娑堟伅鏀寔锛?
+            // 添加图片（仅用户消息支持?
             if (imageUrls && imageUrls.length > 0 && role === 'user') {
                 for (let url of imageUrls) {
                     const img = document.createElement('img');
@@ -4008,7 +4008,7 @@
                     contentDiv.appendChild(img);
                 }
             } else if (files && files.length > 0 && role === 'user') {
-                // 鍏煎鏃ч€昏緫锛堝鏋滀紶鍏iles锛?
+                // 兼容旧辑（如果传入files?
                 for (let file of files) {
                     if (file.type.startsWith('image/')) {
                         const reader = new FileReader();
@@ -4025,7 +4025,7 @@
 
             // 娣诲姞鏂囨湰
             if (text && role === 'user') {
-                // 鐢ㄦ埛娑堟伅锛氱珛鍗冲畬鏁存樉绀猴紙鍚屾锛?
+                // 用户消息：立即完整显示（同步?
                 const textNode = document.createTextNode(text);
                 contentDiv.appendChild(textNode);
             } else if (role === 'assistant') {
@@ -4039,7 +4039,7 @@
             return messageDiv;
         }
 
-        // 涓ゆ潯绾垮垎绂伙細Android 鎷夊彇 snapshot 鍚庢敞鍏ユ渶杩?N 杞粎鍋?UI 灞曠ず锛屼笉鍙備笌 A/B 瀛樺偍
+        // 两条线分离：Android 拉取 snapshot 后注入最?N 轮仅?UI 展示，不参与 A/B 存储
         function setInitialHistory(rounds) {
             if (!messagesContainer || !Array.isArray(rounds) || rounds.length === 0) return;
             for (var i = 0; i < rounds.length; i++) {
@@ -4057,7 +4057,7 @@
         }
         window.setInitialHistory = setInitialHistory;
 
-        // 婊氬姩鍒板簳閮細浠呭綋 stickToBottom 鏃惰嚜鍔ㄨ窡锛沠orce=true 鏃朵竴閿洖搴曞苟鎭㈠璺熼殢
+        // 滚动到底部：仅当 stickToBottom 时自动跟；force=true 时一键回底并恢复跟随
         var scrollToBottomRaf = null;
         function scheduleScrollToBottom() {
             if (scrollToBottomRaf) return;
@@ -4096,7 +4096,7 @@
             if (btn) btn.addEventListener('click', function() { scrollToBottom(true); });
         })();
 
-        // 绾睍绀鸿鍓細鍒犻櫎瓒呭嚭 MAX_MESSAGES 鐨?DOM锛屼笉寰楃敤瑁佸壀缁撴灉鏇存柊鎴栨帹瀵?A/B
+        // 纯展示裁剪：删除超出 MAX_MESSAGES ?DOM，不得用裁剪结果更新或推?A/B
         function hardTrimMessages() {
             if (!messagesContainer) return;
             var nodes = Array.from(messagesContainer.querySelectorAll('.message'));
@@ -4111,7 +4111,7 @@
             emptyState.classList.toggle('hidden', hasMessages);
         }
 
-        // 鍚屼竴浣嶇疆鍒囨崲锛氳闊抽敭/閿洏閿紙楹﹀厠椋庨敭鍙仛鍒囨崲锛屼笉鎵撳紑闈㈡澘锛涘綍闊崇敱鎸変綇杈撳叆妗嗚Е鍙戯級
+        // 同一位置切换：语音键/键盘键（麦克风键只做切换，不打开面板；录音由按住输入框触发）
         btnMicOrKeyboard.addEventListener('click', function() {
             if (voicePanel.classList.contains('open')) {
                 stopVoice();
@@ -4128,7 +4128,7 @@
             }
         });
 
-        // C. Stop锛氬彧鍋滃墠绔紙stopTypewriter + 鐘舵€侊級锛泂topGeneration 淇濈暀璋冪敤浣嗕笉渚濊禆鍏朵腑鏂悗绔?
+        // C. Stop：只停前端（stopTypewriter + 状）；stopGeneration 保留调用但不依赖其中断后?
         btnStop.addEventListener('click', function() {
             stopTypewriter();
             Object.keys(previewTimerByStream).forEach(function(sid) {
@@ -4136,7 +4136,7 @@
                 delete previewTimerByStream[sid];
                 terminatedStreamIds[sid] = true;
             });
-            // 纭繚缁撴潫娴佸紡鎬侊細绉婚櫎鎵€鏈?assistant 鐨?.streaming锛宒ot 鍙湪銆屾鍦ㄦ祦寮忕殑閭ｄ竴鏉°€嶆樉绀?
+            // 确保结束流式态：移除扢?assistant ?.streaming，dot 只在「正在流式的那一条显?
             if (messagesContainer) {
                 messagesContainer.querySelectorAll('.message.assistant.streaming').forEach(function(m) { m.classList.remove('streaming'); });
             }
@@ -4184,7 +4184,7 @@
         }
         function _onVoiceExitHidden() { if (document.hidden) stopVoice(); }
 
-        // D. VoicePanel锛氭寜浣忚緭鍏ユ鎵嶅綍闊筹紝寮瑰嚭闈㈡澘鏄剧ず钃濇€?绾㈡€佹彁绀猴紙鏉炬墜鍙戦€佷笂婊戝彇娑?/ 鏉炬墜鍙栨秷锛?
+        // D. VoicePanel：按住输入框才录音，弹出面板显示蓝?红提示（松手发上滑取?/ 松手取消?
         function getTouchY(e) {
             if (e.touches && e.touches.length) return e.touches[0].clientY;
             return e.clientY;
@@ -4222,7 +4222,7 @@
             voiceRecording = true;
             voiceCancelArmed = false;
             voicePanel.classList.remove('cancel-armed');
-            voiceHint.textContent = '鏉炬墜鍙戦€侊紝涓婃粦鍙栨秷';
+            voiceHint.textContent = '松手发，上滑取消';
             voicePanel.classList.add('open');
             document.body.classList.add('voice-panel-open');
             addVoiceExitListeners();
@@ -4285,7 +4285,7 @@
             sendMessage();
         }
 
-        // D4. 娉㈠舰 Canvas锛堢粏鏉°€佽交寰诞鍔紝涓嶆姠娉ㄦ剰鍔涳級
+        // D4. 波形 Canvas（细条轻微浮动，不抢注意力）
         const WAVE_BARS = 32;
         let waveBarsHeights = Array(WAVE_BARS).fill(0.35);
         let wavePhase = 0;
