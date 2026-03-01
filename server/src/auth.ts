@@ -3,6 +3,12 @@ import type { FastifyRequest } from 'fastify';
 
 export type AuthMode = 'token' | 'guest' | 'unauthorized';
 
+function getAnonTokenTtlDays(): number {
+  const raw = Number(process.env.ANON_TOKEN_TTL_DAYS || '30');
+  if (!Number.isFinite(raw) || raw <= 0) return 30;
+  return Math.floor(raw);
+}
+
 function isPrivateIpv4(ip: string): boolean {
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return false;
   const parts = ip.split('.').map((v) => Number(v));
@@ -43,7 +49,8 @@ function verifyToken(token: string, appSecret: string): { ok: boolean; userId?: 
     const ts = Number(tsRaw);
     if (!Number.isFinite(ts)) return { ok: false };
     const nowSec = Math.floor(Date.now() / 1000);
-    if (Math.abs(nowSec - ts) > 7 * 24 * 60 * 60) return { ok: false };
+    const maxAgeSec = getAnonTokenTtlDays() * 24 * 60 * 60;
+    if (Math.abs(nowSec - ts) > maxAgeSec) return { ok: false };
     const expected = crypto.createHmac('sha256', appSecret).update(`${userId}:${tsRaw}`).digest('hex');
     if (expected !== sig) return { ok: false };
     return { ok: true, userId };
