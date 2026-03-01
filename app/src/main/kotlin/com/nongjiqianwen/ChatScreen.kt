@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,24 +21,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +49,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT, SYSTEM }
@@ -56,9 +65,24 @@ fun ChatScreen() {
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
     val sessionId = remember { IdManager.getSessionId() }
+
     var isStreaming by remember { mutableStateOf(false) }
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
+    var shouldStickToBottom by remember { mutableStateOf(true) }
+    var userStopped by remember { mutableStateOf(false) }
+
+    fun showErrorMessage(reason: String) {
+        val message = when (reason) {
+            "auth" -> "登录失效，请重新进入后重试"
+            "quota" -> "今日次数已用完，请在会员中心查看剩余次数"
+            "network", "server", "timeout" -> "网络或服务异常，请稍后重试"
+            else -> "请求中断，请重试"
+        }
+        snackbarScope.launch { snackbarHostState.showSnackbar(message) }
+    }
 
     fun appendAssistantChunk(piece: String) {
         if (piece.isBlank()) return
@@ -84,18 +108,21 @@ fun ChatScreen() {
         mainHandler.post {
             isStreaming = false
             assistantMessageId = null
+            userStopped = false
         }
     }
 
     fun sendMessage() {
         val text = input.value.trim()
         if (text.isEmpty() || isStreaming) return
+
         val userMsgId = "user_${UUID.randomUUID()}"
         val clientMsgId = "cm_${UUID.randomUUID()}"
         messages.add(ChatMessage(userMsgId, ChatRole.USER, text))
         input.value = ""
         isStreaming = true
         assistantMessageId = null
+        userStopped = false
 
         SessionApi.streamChat(
             options = SessionApi.StreamOptions(
@@ -108,19 +135,21 @@ fun ChatScreen() {
             onComplete = { finishStreaming() },
             onInterrupted = { reason ->
                 mainHandler.post {
-                    if (assistantMessageId == null) {
+                    if (!userStopped && reason != "replay" && reason != "canceled" && assistantMessageId == null) {
                         messages.add(
                             ChatMessage(
                                 id = "system_${UUID.randomUUID()}",
                                 role = ChatRole.SYSTEM,
                                 content = when (reason) {
-                                    "quota" -> "今日次数已用完，请在会员中心查看当前档位与剩余次数。"
-                                    "auth" -> "登录状态失效，请稍后重试。"
-                                    "canceled" -> "已停止生成。"
-                                    else -> "网络异常，请稍后重试。"
+                                    "quota" -> "今日次数已用完，请在会员中心查看剩余次数。"
+                                    "auth" -> "登录失效，请重新进入后重试。"
+                                    else -> "网络或服务异常，请稍后重试。"
                                 }
                             )
                         )
+                    }
+                    if (!userStopped && reason != "replay" && reason != "canceled") {
+                        showErrorMessage(reason)
                     }
                     finishStreaming()
                 }
@@ -129,9 +158,20 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
+        if (messages.isNotEmpty() && shouldStickToBottom) {
             listState.animateScrollToItem(messages.lastIndex)
         }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo }
+            .map { info ->
+                val total = info.totalItemsCount
+                if (total == 0) return@map true
+                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
+                lastVisible >= total - 2
+            }
+            .collectLatest { shouldStickToBottom = it }
     }
 
     Column(
@@ -211,7 +251,9 @@ fun ChatScreen() {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .navigationBarsPadding()
+                .imePadding(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -233,23 +275,37 @@ fun ChatScreen() {
                 shape = RoundedCornerShape(24.dp),
                 singleLine = true,
             )
-            TextButton(
+
+            val canSend = input.value.trim().isNotEmpty()
+            Button(
                 onClick = {
                     if (isStreaming) {
+                        userStopped = true
                         SessionApi.cancelCurrentStream()
                         finishStreaming()
                     } else {
                         sendMessage()
                     }
                 },
+                enabled = isStreaming || canSend,
                 modifier = Modifier.height(44.dp),
             ) {
                 Icon(
                     imageVector = if (isStreaming) Icons.Default.Close else Icons.Default.Send,
                     contentDescription = if (isStreaming) "停止" else "发送"
                 )
+                Spacer(modifier = Modifier.padding(horizontal = 3.dp))
+                Text(if (isStreaming) "停止" else "发送")
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+        )
+
         Spacer(modifier = Modifier.height(6.dp))
     }
 }
