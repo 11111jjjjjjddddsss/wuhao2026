@@ -17,18 +17,19 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * 閫氫箟鍗冮棶瀹㈡埛绔?
- * 闈炴祦寮忥細涓€娆℃€ц繑鍥炲畬鏁寸瓟妗堬紱鍙栨秷/鍋滄浠呭崰浣嶏紝涓嶈姹傜湡姝ｄ腑鏂€?
- * 浣跨敤闃块噷浜戠櫨鐐?DashScope API
+ * 通义千问客户端
+ * 主对话使用真 SSE 流式输出；支持取消与中断恢复。
+ * 使用阿里云百炼 DashScope API。
  *
  * 会员路由（P0 冻结）：
- * - Free/Plus/Pro 主对话固定主模型；B 层摘要固?qwen-flash? */
+ * - Free/Plus/Pro 主对话固定主模型；B 层摘要固定 qwen-flash。
+ */
 object QwenClient {
     private val TAG = "QwenClient"
     private const val CONNECT_TIMEOUT_SEC = 10L
     private const val READ_TIMEOUT_SEC = 60L
     private const val WRITE_TIMEOUT_SEC = 10L
-    private const val CALL_TIMEOUT_SEC = 60L   // 鍗曟璇锋眰鎬绘椂闀夸笂闄愶紙1 鍒嗛挓浣撻獙锛?
+    private const val CALL_TIMEOUT_SEC = 60L   // 单次请求总时长上限（1 分钟）
     private const val SSE_TTFT_TIMEOUT_MS = 8_000L
     private const val SSE_TOTAL_TIMEOUT_MS = 25_000L
     private const val SSE_CHUNK_THROTTLE_MS = 24L
@@ -78,14 +79,14 @@ object QwenClient {
     init {
         if (BuildConfig.DEBUG) {
             val keyLength = apiKey.length
-            Log.d(TAG, "=== DashScope API 鍒濆鍖?===")
-            Log.d(TAG, "BAILIAN_API_KEY 璇诲彇鐘舵€? ${if (keyLength > 0) "鎴愬姛" else "澶辫触"} (闀垮害: $keyLength)")
+            Log.d(TAG, "=== DashScope API 初始化 ===")
+            Log.d(TAG, "BAILIAN_API_KEY 读取状态: ${if (keyLength > 0) "成功" else "失败"} (长度: $keyLength)")
             Log.d(TAG, "API URL: $apiUrl")
         }
     }
     
     /**
-     * 取消当前进行中的请求（仅在新请求弢始前或用户点停止时调用；切后台不 cancel）?
+     * 取消当前进行中的请求（仅在新请求开始前或用户点停止时调用；切后台不 cancel）
      */
     fun cancelCurrentRequest() {
         canceledFlag.set(true)
@@ -97,7 +98,7 @@ object QwenClient {
         }
     }
 
-    /** 本地假流式：首段立刻吐，余下分批 postDelayed；isCanceled ?true ?phaseEnded 时停歃69?*/
+    /** 本地假流式：首段立刻吐，余下分批 postDelayed；取消或 phaseEnded 时停止。 */
     private fun emitFakeStream(fullText: String, onChunk: (String) -> Unit, isCanceled: () -> Boolean, onDone: () -> Unit) {
         if (fullText.isBlank()) { onDone(); return }
         if (fullText.length <= 160) {
@@ -588,9 +589,9 @@ object QwenClient {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
             val errorCode = jsonResponse.get("code")?.asString ?: ""
             @Suppress("UNUSED_VARIABLE") val errorMessage = jsonResponse.get("message")?.asString ?: responseBody
-            // 浠呮棩蹇楃敤锛屼笉鍐欐鏂?
+            // 仅日志用，不写正式字段
         } catch (_: Exception) {
-            Log.e(TAG, "callApi 鏃犳硶瑙ｆ瀽閿欒鍝嶅簲 statusCode=$statusCode")
+            Log.e(TAG, "callApi 无法解析错误响应 statusCode=$statusCode")
         }
         handler.post {
             if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onInterrupted("server"); fireComplete() }
@@ -598,17 +599,17 @@ object QwenClient {
     }
 
     /**
-     * B 层摘要提取：非流式，同步返回摘要文本?
+     * B 层摘要提取：非流式，同步返回摘要文本
      * 参数冻结：temperature=0.85, top_p=0.9, frequency_penalty=0, presence_penalty=0
      */
     fun extractBSummary(oldB: String, dialogueText: String, systemPrompt: String): String {
         return try {
             val userContent = if (oldB.isNotBlank()) {
-                "[鍘嗗彶鎽樿]\n$oldB\n\n[瀵硅瘽]\n$dialogueText"
+                "[历史摘要]\n$oldB\n\n[对话]\n$dialogueText"
             } else {
-                "[瀵硅瘽]\n$dialogueText"
+                "[对话]\n$dialogueText"
             }
-            // B 层提取必须保?system role：system = b_extraction_prompt.txt；锚点剔旧仅作用于主对话，不约束此处
+            // B 层提取必须保留 system role：system = b_extraction_prompt.txt；锚点剔旧仅作用于主对话，不约束此处
             if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: B extract system=b_extraction_prompt")
             val messagesArray = com.google.gson.JsonArray().apply {
                 add(JsonObject().apply {
@@ -640,7 +641,7 @@ object QwenClient {
                 .build()
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    throw IOException("B鎻愬彇 HTTP ${response.code}")
+                    throw IOException("B提取 HTTP ${response.code}")
                 }
                 val json = gson.fromJson(response.body?.string() ?: "", JsonObject::class.java)
                 val choices = json.getAsJsonArray("choices") ?: return ""
@@ -650,13 +651,13 @@ object QwenClient {
                 return content
             }
         } catch (e: Exception) {
-            // Release 鑺傛祦锛?0s 鍐呭彧鎵撲竴鏉＄畝鐭敊璇紝閬垮厤 A>=30 姣忚疆澶辫触鏃跺埛灞?
+            // Release 节流：60s 内只打一条简短错误，避免高频刷屏
             val now = System.currentTimeMillis()
             if (BuildConfig.DEBUG) {
                 Log.e(TAG, "B summary extract failed, return empty", e)
             } else if (now - lastBExtractErrorLogMs > B_EXTRACT_ERROR_LOG_INTERVAL_MS) {
                 lastBExtractErrorLogMs = now
-                Log.e(TAG, "B鎻愬彇澶辫触", e)
+                Log.e(TAG, "B提取失败", e)
             }
             ""
         }

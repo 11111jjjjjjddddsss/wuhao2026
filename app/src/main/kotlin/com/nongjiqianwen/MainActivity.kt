@@ -134,7 +134,7 @@ class MainActivity : AppCompatActivity() {
         webView = WebView(this)
         setContentView(webView)
 
-        // Debug锛氶暱鎸?WebView 5 绉掑脊鍑衡€滈噸缃?install_id鈥濓紙浠呯敤浜庢祴璇曪級
+        // Debug：长按 WebView 5 秒弹出“重置 install_id”（仅用于测试）
         if (BuildConfig.DEBUG) {
             setupResetInstallIdOnLongPress()
         }
@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity() {
             allowContentAccess = true
         }
         
-        // 娉ㄥ叆JavaScript鎺ュ彛
+        // 注入 JavaScript 接口
         androidJSInterface = AndroidJSInterface()
         webView.addJavascriptInterface(androidJSInterface!!, "AndroidInterface")
         
@@ -183,7 +183,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 加载HTML文件（唯丢模板?
+        // 加载 HTML 模板
         val loadUrl = "file:///android_asset/gpt-demo.html"
         if (BuildConfig.DEBUG) {
             Log.d("MainActivity", "WebView loadUrl=$loadUrl")
@@ -192,12 +192,12 @@ class MainActivity : AppCompatActivity() {
     }
     
     /**
-     * JavaScript鎺ュ彛锛岀敤浜嶹ebView涓嶢ndroid閫氫俊
+     * JavaScript 接口，用于 WebView 与 Android 通信
      */
     inner class AndroidJSInterface {
         /**
          * 上传图片（张上传，回传状态）
-         * @param imageDataListJson JSON鏁扮粍锛歔{imageId: "img_xxx", base64: "..."}, ...]
+         * @param imageDataListJson JSON 数组：[{imageId: "img_xxx", base64: "..."}, ...]
          */
         @JavascriptInterface
         fun uploadImages(imageDataListJson: String) {
@@ -223,29 +223,29 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("MainActivity", "瑙ｆ瀽鍥剧墖鏁版嵁鍒楄〃澶辫触", e)
+                        Log.e("MainActivity", "解析图片数据列表失败", e)
                         emptyList()
                     }
                     
                     if (imageDataList.size > 4) {
                         runOnUiThread {
-                            webView.evaluateJavascript("if(typeof showToast==='function')showToast('鏈€澶?寮犲浘鐗?);else alert('鏈€澶?寮犲浘鐗?);", null)
+                            webView.evaluateJavascript("if(typeof showToast==='function')showToast('单次最多4张图片');else alert('单次最多4张图片');", null)
                         }
                         return@Thread
                     }
                     
-                    // 閫愬紶涓婁紶
+                    // 逐张上传
                     imageDataList.forEach { (imageId, base64, requestId) ->
                         uploadSingleImage(imageId, base64, requestId)
                     }
                 } catch (e: Exception) {
-                    Log.e("MainActivity", "涓婁紶鍥剧墖澶辫触", e)
+                    Log.e("MainActivity", "上传图片失败", e)
                 }
             }.start()
         }
         
         /**
-         * 鍋滄褰撳墠娴佸紡鐢熸垚锛堢敤鎴风偣鍑?Stop 鏃惰皟鐢級
+         * 停止当前流式生成（用户点击 Stop 时调用）
          */
         @JavascriptInterface
         fun stopGeneration() {
@@ -257,7 +257,7 @@ class MainActivity : AppCompatActivity() {
 
 
         /**
-         * 返回设备本地时间字符串：YYYY-MM-DD HH:mm（周X?时区?
+         * 返回设备本地时间字符串：YYYY-MM-DD HH:mm（周X，时区）
          */
         @JavascriptInterface
         fun getEntitlement(callbackId: String) {
@@ -281,7 +281,7 @@ class MainActivity : AppCompatActivity() {
                 val zone = java.time.ZoneId.of("Asia/Shanghai")
                 val now = java.time.ZonedDateTime.now(zone)
                 val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[now.dayOfWeek.value % 7]
-                String.format("%04d-%02d-%02d %02d:%02d（周%s?%s",
+                String.format("%04d-%02d-%02d %02d:%02d（周%s，%s）",
                     now.year, now.monthValue, now.dayOfMonth,
                     now.hour, now.minute, week, zone.id)
             } catch (_: Exception) {
@@ -289,7 +289,7 @@ class MainActivity : AppCompatActivity() {
                     val now = java.util.Calendar.getInstance()
                     val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[now.get(java.util.Calendar.DAY_OF_WEEK) - 1]
                     val zoneName = now.timeZone.id
-                    String.format("%04d-%02d-%02d %02d:%02d（周%s?%s",
+                    String.format("%04d-%02d-%02d %02d:%02d（周%s，%s）",
                         now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH) + 1, now.get(java.util.Calendar.DAY_OF_MONTH),
                         now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE), week, zoneName)
                 } catch (_: Exception) {
@@ -299,15 +299,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         /**
-         * 重试单张图片上传（不?base64，用缓存 bytes 重传；缓存缺失则回传 fail + 请重新择该图片）
-         * @param imageId 鍥剧墖ID
-         * @param requestId 鏈灏濊瘯ID锛堝洖浼犲墠绔敤浜庡幓閲嶏級
+         * 重试单张图片上传（不传 base64，用缓存 bytes 重传；缓存缺失则回传 fail + 请重新选择该图片）
+         * @param imageId 图片 ID
+         * @param requestId 本次尝试 ID（回传前端用于去重）
          */
         @JavascriptInterface
         fun retryImage(imageId: String, requestId: String) {
             Thread {
                 if (BuildConfig.DEBUG) {
-                    Log.d("MainActivity", "閲嶈瘯鍥剧墖涓婁紶: $imageId, requestId=$requestId")
+                    Log.d("MainActivity", "重试图片上传: $imageId, requestId=$requestId")
                 }
                 val cached = compressedBytesCache[imageId]
                 val now = System.currentTimeMillis()
@@ -325,11 +325,11 @@ class MainActivity : AppCompatActivity() {
         }
         
         /**
-         * 发消息（此时图片已上传成功，传入的是URL列表?
-         * @param text 鐢ㄦ埛鏂囧瓧
-         * @param imageUrlsJson JSON鏁扮粍锛歔"https://...", ...] 鎴?"null"
+         * 发消息（此时图片已上传成功，传入的是 URL 列表）
+         * @param text 用户文字
+         * @param imageUrlsJson JSON 数组：["https://...", ...] 或 "null"
          * @param streamId 前端生成的流ID，回调时写对应气泡（取消时旧气泡落终态）
-         * @param model 可，前端传入档位标识（free/plus/pro）；主对话模型固?MODEL_MAIN(qwen3.5-plus)
+          * @param model 可选，前端传入档位标识（free/plus/pro）；主对话模型固定 MODEL_MAIN(qwen3.5-plus)
          */
         @JavascriptInterface
         fun sendMessage(text: String, imageUrlsJson: String, streamId: String?, model: String?) {
@@ -362,7 +362,7 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                     } catch (e: Exception) {
-                        Log.e("MainActivity", "瑙ｆ瀽鍥剧墖URL鍒楄〃澶辫触", e)
+                        Log.e("MainActivity", "解析图片URL列表失败", e)
                         emptyList()
                     }
                 } else emptyList()
@@ -410,21 +410,21 @@ class MainActivity : AppCompatActivity() {
         private fun uploadSingleImage(imageId: String, base64: String, requestId: String) {
             Thread {
                 try {
-                    // 回传：开始上传（?requestId?
+                    // 回传：开始上传（带 requestId）
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
                         webView.evaluateJavascript("window.onImageUploadStatus('$escapedImageId', 'uploading', null, '$escapedRequestId', null);", null)
                     }
                     
-                    // base64 瑙ｇ爜鍚庡嵆鐢紝涓嶉暱鏈熼┗鐣?
+                    // base64 解码后即用，不长期驻留
                     val imageBytes = Base64.decode(base64, Base64.DEFAULT)
                     
-                    // 压缩：EXIF 矫正 ?固定序列 1024@82?024@80?024@75?024@70?96@70?68@70?40@70?40@60?12@60（目标≤1MB?
+                    // 压缩：EXIF 矫正 + 固定序列（目标 ≤1MB）
                     val compressResult = ImageUploader.compressImage(imageBytes)
                     
                     if (compressResult == null) {
-                        Log.e("MainActivity", "鍥剧墖[$imageId] 瑙ｇ爜澶辫触锛屼笉璋冪敤妯″瀷/涓嶆墸璐?涓嶈杞")
+                        Log.e("MainActivity", "图片[$imageId] 解码失败，不调用模型/不扣次/不计轮次")
                         runOnUiThread {
                             val escapedImageId = escapeJs(imageId)
                             val escapedRequestId = escapeJs(requestId)
@@ -445,17 +445,17 @@ class MainActivity : AppCompatActivity() {
                     }
                     
                     if (BuildConfig.DEBUG) {
-                        Log.d("MainActivity", "=== 鍥剧墖[$imageId] 澶勭悊瀹屾垚 ===")
-                        Log.d("MainActivity", "鍘熷浘灏哄: ${compressResult.originalWidth}x${compressResult.originalHeight}")
-                        Log.d("MainActivity", "鍘嬬缉鍚庡昂瀵? ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
-                        Log.d("MainActivity", "鍘嬬缉鍚庡瓧鑺傛暟: ${compressResult.compressedSize} bytes")
+                        Log.d("MainActivity", "=== 图片[$imageId] 处理完成 ===")
+                        Log.d("MainActivity", "原图尺寸: ${compressResult.originalWidth}x${compressResult.originalHeight}")
+                        Log.d("MainActivity", "压缩后尺寸: ${compressResult.compressedWidth}x${compressResult.compressedHeight}")
+                        Log.d("MainActivity", "压缩后字节数: ${compressResult.compressedSize} bytes")
                     }
                     
                     putCompressedCache(imageId, compressResult.bytes)
                     uploadSingleImageWithBytes(imageId, compressResult.bytes, requestId)
                     
                 } catch (e: Exception) {
-                    Log.e("MainActivity", "澶勭悊鍥剧墖[$imageId]澶辫触", e)
+                    Log.e("MainActivity", "处理图片[$imageId]失败", e)
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
@@ -466,7 +466,7 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
         
-        /** 用已压缩 bytes 上传（首次或重试共用）；失败回调不带 errorMessage，由调用方决?*/
+        /** 用已压缩 bytes 上传（首次或重试共用）；失败回调不带 errorMessage，由调用方决定 */
         private fun uploadSingleImageWithBytes(imageId: String, imageBytes: ByteArray, requestId: String) {
             runOnUiThread {
                 val escapedImageId = escapeJs(imageId)
@@ -477,9 +477,9 @@ class MainActivity : AppCompatActivity() {
                 imageBytes = imageBytes,
             onSuccess = { url ->
                 if (BuildConfig.DEBUG) {
-                    Log.d("MainActivity", "=== 鍥剧墖[$imageId] 涓婁紶鎴愬姛 ===")
+                    Log.d("MainActivity", "=== 图片[$imageId] 上传成功 ===")
                     val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
-                    Log.d("MainActivity", "涓婁紶URL锛堣劚鏁忥級: $maskedUrl")
+                    Log.d("MainActivity", "上传URL（脱敏）: $maskedUrl")
                 }
                 runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
@@ -489,8 +489,8 @@ class MainActivity : AppCompatActivity() {
                     }
                 },
                 onError = { error ->
-                    Log.e("MainActivity", "=== 鍥剧墖[$imageId] 涓婁紶澶辫触 ===")
-                    Log.e("MainActivity", "閿欒鍘熷洜: $error")
+                    Log.e("MainActivity", "=== 图片[$imageId] 上传失败 ===")
+                    Log.e("MainActivity", "错误原因: $error")
                     runOnUiThread {
                         val escapedImageId = escapeJs(imageId)
                         val escapedRequestId = escapeJs(requestId)
@@ -810,7 +810,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        // 不在?cancel：仅新请求或用户点停止时 cancel，切后台不断?
+        // 不在 onStop 自动 cancel：仅新请求或用户点停止时 cancel，切后台不断流
     }
 
     private var resetInstallIdRunnable: Runnable? = null
@@ -820,15 +820,15 @@ class MainActivity : AppCompatActivity() {
         resetInstallIdRunnable = Runnable {
             AlertDialog.Builder(this)
                 .setTitle("Debug")
-                .setMessage("閲嶇疆 install_id锛熶粎鐢ㄤ簬娴嬭瘯")
-                .setPositiveButton("閲嶇疆") { _, _ ->
+                .setMessage("重置 install_id？仅用于测试")
+                .setPositiveButton("重置") { _, _ ->
                     val newId = IdManager.resetInstallId()
                     Toast.makeText(this, "install_id 已重置", Toast.LENGTH_SHORT).show()
                     if (BuildConfig.DEBUG) {
                         Log.d("MainActivity", "resetInstallId: $newId")
                     }
                 }
-                .setNegativeButton("鍙栨秷", null)
+                .setNegativeButton("取消", null)
                 .show()
         }
         webView.setOnTouchListener { _, event ->
