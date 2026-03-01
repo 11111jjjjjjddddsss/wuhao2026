@@ -315,7 +315,16 @@ app.post('/api/chat/stream', async (request, reply) => {
   );
 
   if (await wasProcessed(userId, clientMsgId)) {
-    return reply.code(200).send({ ok: true, replay: true, client_msg_id: clientMsgId });
+    reply.hijack();
+    reply.raw.statusCode = 200;
+    reply.raw.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.flushHeaders?.();
+    reply.raw.write(`data: ${JSON.stringify({ ok: true, replay: true, client_msg_id: clientMsgId })}\n\n`);
+    reply.raw.write('data: [DONE]\n\n');
+    reply.raw.end();
+    return;
   }
 
   const before = await getDailyStatus(userId, tier, dayCN);
