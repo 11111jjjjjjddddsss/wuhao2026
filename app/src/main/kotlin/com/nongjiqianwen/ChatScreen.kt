@@ -1,5 +1,7 @@
 package com.nongjiqianwen
 
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,33 +14,126 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import java.util.UUID
+
+private enum class ChatRole { USER, ASSISTANT, SYSTEM }
+private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen() {
     val input = remember { mutableStateOf("") }
+    val messages = remember { mutableStateListOf<ChatMessage>() }
+    val listState = rememberLazyListState()
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val sessionId = remember { IdManager.getSessionId() }
+    var isStreaming by remember { mutableStateOf(false) }
+    var assistantMessageId by remember { mutableStateOf<String?>(null) }
+
+    fun appendAssistantChunk(piece: String) {
+        if (piece.isBlank()) return
+        mainHandler.post {
+            val currentId = assistantMessageId
+            if (currentId.isNullOrBlank()) {
+                val newId = "assistant_${UUID.randomUUID()}"
+                assistantMessageId = newId
+                messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
+                return@post
+            }
+            val index = messages.indexOfLast { it.id == currentId }
+            if (index >= 0) {
+                val old = messages[index]
+                messages[index] = old.copy(content = old.content + piece)
+            } else {
+                messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
+            }
+        }
+    }
+
+    fun finishStreaming() {
+        mainHandler.post {
+            isStreaming = false
+            assistantMessageId = null
+        }
+    }
+
+    fun sendMessage() {
+        val text = input.value.trim()
+        if (text.isEmpty() || isStreaming) return
+        val userMsgId = "user_${UUID.randomUUID()}"
+        val clientMsgId = "cm_${UUID.randomUUID()}"
+        messages.add(ChatMessage(userMsgId, ChatRole.USER, text))
+        input.value = ""
+        isStreaming = true
+        assistantMessageId = null
+
+        SessionApi.streamChat(
+            options = SessionApi.StreamOptions(
+                sessionId = sessionId,
+                clientMsgId = clientMsgId,
+                text = text,
+                images = emptyList()
+            ),
+            onChunk = { piece -> appendAssistantChunk(piece) },
+            onComplete = { finishStreaming() },
+            onInterrupted = { reason ->
+                mainHandler.post {
+                    if (assistantMessageId == null) {
+                        messages.add(
+                            ChatMessage(
+                                id = "system_${UUID.randomUUID()}",
+                                role = ChatRole.SYSTEM,
+                                content = when (reason) {
+                                    "quota" -> "今日次数已用完，请在会员中心查看当前档位与剩余次数。"
+                                    "auth" -> "登录状态失效，请稍后重试。"
+                                    "canceled" -> "已停止生成。"
+                                    else -> "网络异常，请稍后重试。"
+                                }
+                            )
+                        )
+                    }
+                    finishStreaming()
+                }
+            }
+        )
+    }
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -64,18 +159,53 @@ fun ChatScreen() {
             ),
         )
 
-        Box(
+        LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
-            contentAlignment = Alignment.Center,
+            state = listState,
         ) {
-            Text(
-                text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Start,
-            )
+            if (messages.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxSize()
+                            .padding(bottom = 48.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Start,
+                        )
+                    }
+                }
+            } else {
+                items(messages, key = { it.id }) { msg ->
+                    val bubbleColor = when (msg.role) {
+                        ChatRole.USER -> Color(0xFFF0F0F2)
+                        ChatRole.ASSISTANT -> Color.Transparent
+                        ChatRole.SYSTEM -> Color(0xFFF7F7F8)
+                    }
+                    val align = if (msg.role == ChatRole.USER) Alignment.CenterEnd else Alignment.CenterStart
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        contentAlignment = align
+                    ) {
+                        Text(
+                            text = msg.content,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(bubbleColor)
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                    }
+                }
+            }
         }
 
         Row(
@@ -95,17 +225,29 @@ fun ChatScreen() {
             }
             OutlinedTextField(
                 value = input.value,
-                onValueChange = { input.value = it },
+                onValueChange = {
+                    if (it.length <= 3000) input.value = it
+                },
                 modifier = Modifier.weight(1f),
                 placeholder = { Text("描述作物/地区/问题，我来帮你分析") },
                 shape = RoundedCornerShape(24.dp),
                 singleLine = true,
             )
             TextButton(
-                onClick = {},
+                onClick = {
+                    if (isStreaming) {
+                        SessionApi.cancelCurrentStream()
+                        finishStreaming()
+                    } else {
+                        sendMessage()
+                    }
+                },
                 modifier = Modifier.height(44.dp),
             ) {
-                Icon(Icons.Default.Send, contentDescription = "发送")
+                Icon(
+                    imageVector = if (isStreaming) Icons.Default.Close else Icons.Default.Send,
+                    contentDescription = if (isStreaming) "停止" else "发送"
+                )
             }
         }
         Spacer(modifier = Modifier.height(6.dp))

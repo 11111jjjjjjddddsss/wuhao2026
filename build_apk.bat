@@ -3,7 +3,7 @@ echo =========================
 echo Android APK Builder
 echo =========================
 cd /d %~dp0
-echo 使用的模板路径=app/src/main/assets/gpt-demo.html
+echo 已切换为原生 Compose 入口（无 Web 模板依赖）
 call gradlew clean
 call gradlew assembleDebug
 if %errorlevel% neq 0 (
