@@ -52,7 +52,6 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -228,22 +228,33 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun TypingBlackDot(modifier: Modifier = Modifier) {
+private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
     val alpha by transition.animateFloat(
-        initialValue = 0.6f,
+        initialValue = 0.75f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1000),
+            animation = tween(durationMillis = 1200),
             repeatMode = RepeatMode.Reverse
         ),
         label = "assistantBreathingDotAlpha"
     )
+    val scale by transition.animateFloat(
+        initialValue = 0.92f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "assistantBreathingDotScale"
+    )
     Box(
         modifier = modifier
-            .size(8.dp)
+            .size(12.dp)
             .graphicsLayer {
                 this.alpha = alpha
+                scaleX = scale
+                scaleY = scale
             }
             .clip(CircleShape)
             .background(Color(0xFF111111))
@@ -262,7 +273,8 @@ fun ChatScreen() {
 
     var isStreaming by remember { mutableStateOf(false) }
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
-    var autoFollow by remember { mutableStateOf(true) }
+    var shouldStickToBottom by remember { mutableStateOf(true) }
+    var streamTick by remember { mutableStateOf(0) }
     var userStopped by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -293,6 +305,9 @@ fun ChatScreen() {
             if (index >= 0) {
                 val old = messages[index]
                 messages[index] = old.copy(content = old.content + piece)
+                if (currentId == assistantMessageId) {
+                    streamTick++
+                }
             } else {
                 messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
             }
@@ -325,7 +340,7 @@ fun ChatScreen() {
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         isStreaming = true
         userStopped = false
-        autoFollow = true
+        shouldStickToBottom = true
         assistantMessageId = assistantId
 
         fakeStreamJob?.cancel()
@@ -350,46 +365,27 @@ fun ChatScreen() {
         }
     }
 
-    val atBottom by remember(listState) {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val total = info.totalItemsCount
-            if (total == 0) {
-                true
-            } else {
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo }
+            .map { info ->
+                val total = info.totalItemsCount
+                if (total == 0) return@map true
                 val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
                 lastVisible >= total - 2
             }
-        }
+            .collectLatest { shouldStickToBottom = it }
     }
 
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress to atBottom }
-            .collectLatest { (inScroll, nearBottom) ->
-                if (inScroll && !nearBottom) {
-                    autoFollow = false
-                }
-                if (inScroll && nearBottom) {
-                    autoFollow = true
-                }
-            }
-    }
-
-    val lastContentSignature = remember(messages.size, messages.lastOrNull()?.content?.length) {
-        val last = messages.lastOrNull()
-        if (last == null) "empty" else "${last.id}:${last.content.length}"
-    }
-
-    LaunchedEffect(lastContentSignature, autoFollow) {
-        if (messages.isNotEmpty() && autoFollow) {
-            listState.animateScrollToItem(messages.lastIndex)
+    LaunchedEffect(streamTick) {
+        if (messages.isNotEmpty() && shouldStickToBottom) {
+            listState.scrollToItem(messages.lastIndex)
         }
     }
 
     fun jumpToBottom() {
         snackbarScope.launch {
             if (messages.isEmpty()) return@launch
-            autoFollow = true
+            shouldStickToBottom = true
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
@@ -557,8 +553,8 @@ fun ChatScreen() {
                                             .padding(top = 8.dp),
                                         contentAlignment = Alignment.CenterStart
                                     ) {
-                                        if (isStreaming && msg.id == assistantMessageId) {
-                                            TypingBlackDot()
+                                        if (isStreaming && msg.id == assistantMessageId && msg.content.isBlank()) {
+                                            GPTBreathingBall()
                                         }
                                     }
                                     if (msg.content.isBlank() && isStreaming && msg.id == assistantMessageId) {
@@ -590,15 +586,15 @@ fun ChatScreen() {
                 }
             }
 
-            if (!atBottom && messages.isNotEmpty()) {
+            if (!shouldStickToBottom && messages.isNotEmpty()) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
                     color = Color.White,
-                    shadowElevation = 6.dp,
+                    shadowElevation = 2.dp,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 20.dp, bottom = 88.dp)
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 72.dp)
                         .navigationBarsPadding()
                         .imePadding()
                         .size(44.dp)
