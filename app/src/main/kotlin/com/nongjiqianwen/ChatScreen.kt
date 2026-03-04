@@ -63,6 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -284,6 +285,7 @@ fun ChatScreen() {
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    var lastUserScrollPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
 
     val focusManager = LocalFocusManager.current
@@ -347,6 +349,8 @@ fun ChatScreen() {
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
         input.value = ""
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
 
         val assistantId = "assistant_${UUID.randomUUID()}"
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
@@ -389,9 +393,32 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            Triple(
+                listState.isScrollInProgress,
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
+            )
+        }.collect { (scrolling, idx, off) ->
+            if (scrolling && !programmaticScroll) {
+                val current = idx to off
+                val last = lastUserScrollPos
+                if (last != null && last != current) {
+                    autoFollowEnabled = false
+                    userInteracting = true
+                }
+                lastUserScrollPos = current
+            } else {
+                lastUserScrollPos = null
+            }
+        }
+    }
+
     LaunchedEffect(streamTick) {
         if (!autoFollowEnabled) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
+        if (!atBottom) return@LaunchedEffect
         if (listState.isScrollInProgress) return@LaunchedEffect
         if (messages.isEmpty()) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
