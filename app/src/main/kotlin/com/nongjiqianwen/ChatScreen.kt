@@ -283,6 +283,8 @@ fun ChatScreen() {
     var userInteracting by remember { mutableStateOf(false) }
     var touchPausedFollow by remember { mutableStateOf(false) }
     var lastObservedScrollPos by remember { mutableStateOf(0 to 0) }
+    var bufferedAssistantId by remember { mutableStateOf<String?>(null) }
+    var bufferedAssistantText by remember { mutableStateOf("") }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     val atBottom by remember {
@@ -316,14 +318,49 @@ fun ChatScreen() {
                 messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
                 return@post
             }
+
+            if (touchPausedFollow && !autoFollowEnabled) {
+                if (bufferedAssistantId != currentId) {
+                    bufferedAssistantId = currentId
+                    bufferedAssistantText = ""
+                }
+                bufferedAssistantText += piece
+                return@post
+            }
+
+            val toAppend = if (bufferedAssistantId == currentId && bufferedAssistantText.isNotEmpty()) {
+                val merged = bufferedAssistantText + piece
+                bufferedAssistantId = null
+                bufferedAssistantText = ""
+                merged
+            } else {
+                piece
+            }
+
             val index = messages.indexOfLast { it.id == currentId }
             if (index >= 0) {
                 val old = messages[index]
-                messages[index] = old.copy(content = old.content + piece)
+                messages[index] = old.copy(content = old.content + toAppend)
             } else {
-                messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
+                messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, toAppend))
             }
         }
+    }
+
+    fun flushBufferedAssistantChunk() {
+        val currentId = assistantMessageId
+        if (currentId.isNullOrBlank()) return
+        if (bufferedAssistantId != currentId || bufferedAssistantText.isBlank()) return
+
+        val index = messages.indexOfLast { it.id == currentId }
+        if (index >= 0) {
+            val old = messages[index]
+            messages[index] = old.copy(content = old.content + bufferedAssistantText)
+        } else {
+            messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, bufferedAssistantText))
+        }
+        bufferedAssistantId = null
+        bufferedAssistantText = ""
     }
 
     fun finishStreaming() {
@@ -335,6 +372,7 @@ fun ChatScreen() {
                     messages.removeAt(index)
                 }
             }
+            flushBufferedAssistantChunk()
             fakeStreamJob = null
             isStreaming = false
             assistantMessageId = null
@@ -357,6 +395,8 @@ fun ChatScreen() {
         autoFollowEnabled = true
         userInteracting = false
         touchPausedFollow = false
+        bufferedAssistantId = null
+        bufferedAssistantText = ""
         sendTick++
 
         fakeStreamJob?.cancel()
@@ -428,6 +468,7 @@ fun ChatScreen() {
             autoFollowEnabled = true
             userInteracting = false
             touchPausedFollow = false
+            flushBufferedAssistantChunk()
             programmaticScroll = true
             try {
                 listState.animateScrollToItem(0)
