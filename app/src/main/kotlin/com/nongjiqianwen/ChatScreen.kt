@@ -251,7 +251,7 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     )
     Box(
         modifier = modifier
-            .size(12.dp)
+            .size(16.dp)
             .graphicsLayer {
                 this.alpha = alpha
                 scaleX = scale
@@ -277,6 +277,7 @@ fun ChatScreen() {
     var shouldStickToBottom by remember { mutableStateOf(true) }
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
+    var lastAutoScrollMs by remember { mutableStateOf(0L) }
     var userStopped by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -355,7 +356,7 @@ fun ChatScreen() {
             val ballStartTime = SystemClock.uptimeMillis()
             val initialDelayMs = Random.nextLong(600, 901)
             delay(initialDelayMs)
-            val minBallMs = 1200L
+            val minBallMs = 2200L
             val elapsed = SystemClock.uptimeMillis() - ballStartTime
             if (elapsed < minBallMs) {
                 delay(minBallMs - elapsed)
@@ -392,15 +393,18 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(streamTick) {
-        if (messages.isNotEmpty() && shouldStickToBottom) {
-            listState.scrollToItem(messages.lastIndex)
-        }
+        if (messages.isEmpty() || !shouldStickToBottom) return@LaunchedEffect
+        if (listState.isScrollInProgress) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAutoScrollMs < 100L) return@LaunchedEffect
+        lastAutoScrollMs = now
+        listState.scrollToItem(messages.lastIndex)
     }
 
     LaunchedEffect(sendTick) {
-        if (messages.isNotEmpty() && shouldStickToBottom) {
-            listState.scrollToItem(messages.lastIndex)
-        }
+        if (messages.isEmpty() || !shouldStickToBottom) return@LaunchedEffect
+        if (listState.isScrollInProgress) return@LaunchedEffect
+        listState.scrollToItem(messages.lastIndex)
     }
 
     fun jumpToBottom() {
