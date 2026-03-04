@@ -286,18 +286,6 @@ fun ChatScreen() {
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
     val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
 
-    fun onMessageTouch(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                userInteracting = true
-                autoFollowEnabled = false
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                userInteracting = false
-            }
-        }
-        return false
-    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -559,7 +547,19 @@ fun ChatScreen() {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp),
+                    .padding(horizontal = 20.dp)
+                    .pointerInteropFilter { event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                userInteracting = true
+                                autoFollowEnabled = false
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                userInteracting = false
+                            }
+                        }
+                        false
+                    },
                 state = listState,
                 reverseLayout = isReverse,
                 contentPadding = PaddingValues(
@@ -596,14 +596,12 @@ fun ChatScreen() {
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(24.dp)
-                                                .pointerInteropFilter { event -> onMessageTouch(event) }
                                         )
                                     } else {
                                         AssistantMarkdownContent(
                                             content = msg.content,
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .pointerInteropFilter { event -> onMessageTouch(event) }
                                         )
                                     }
                                 }
@@ -611,7 +609,6 @@ fun ChatScreen() {
                                 Text(
                                     text = msg.content,
                                     modifier = Modifier
-                                        .pointerInteropFilter { event -> onMessageTouch(event) }
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(Color(0xFFECECEF))
                                         .padding(horizontal = 14.dp, vertical = 10.dp),
