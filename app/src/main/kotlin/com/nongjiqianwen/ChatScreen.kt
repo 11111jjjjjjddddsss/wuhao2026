@@ -479,14 +479,17 @@ fun ChatScreen() {
                     .fillMaxSize()
                     .padding(horizontal = 20.dp),
                 state = listState,
-                contentPadding = PaddingValues(top = 96.dp, bottom = 8.dp)
+                contentPadding = PaddingValues(
+                    top = if (messages.isEmpty()) 80.dp else 120.dp,
+                    bottom = 8.dp
+                )
             ) {
                 if (messages.isEmpty()) {
                     item {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 168.dp, end = 4.dp)
+                                .padding(top = 132.dp, end = 4.dp)
                         ) {
                             Text(
                                 text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
