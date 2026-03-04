@@ -285,8 +285,11 @@ fun ChatScreen() {
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
-    var lastUserScrollPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-    val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
+    val atBottom by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+        }
+    }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -394,25 +397,15 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(listState) {
-        snapshotFlow {
-            Triple(
-                listState.isScrollInProgress,
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset
-            )
-        }.collect { (scrolling, idx, off) ->
-            if (scrolling && !programmaticScroll) {
-                val current = idx to off
-                val last = lastUserScrollPos
-                if (last != null && last != current) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (scrolling && !programmaticScroll) {
                     autoFollowEnabled = false
                     userInteracting = true
+                } else if (!scrolling) {
+                    userInteracting = false
                 }
-                lastUserScrollPos = current
-            } else {
-                lastUserScrollPos = null
             }
-        }
     }
 
     LaunchedEffect(streamTick) {
@@ -575,6 +568,7 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 20.dp)
+                    .padding(top = 92.dp)
                     .pointerInteropFilter { event ->
                         when (event.actionMasked) {
                             MotionEvent.ACTION_DOWN -> {
