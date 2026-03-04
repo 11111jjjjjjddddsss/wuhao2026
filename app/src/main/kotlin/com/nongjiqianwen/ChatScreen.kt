@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -37,6 +38,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
@@ -231,17 +233,17 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 @Composable
 private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
-    val alpha by transition.animateFloat(
-        initialValue = 0.75f,
-        targetValue = 1f,
+    val ballColor by transition.animateColor(
+        initialValue = Color(0xFF111111),
+        targetValue = Color(0xFF5A5A5A),
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1200),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "assistantBreathingDotAlpha"
+        label = "assistantBreathingDotColor"
     )
     val scale by transition.animateFloat(
-        initialValue = 0.92f,
+        initialValue = 0.94f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1200),
@@ -251,14 +253,13 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     )
     Box(
         modifier = modifier
-            .size(16.dp)
+            .size(18.dp)
             .graphicsLayer {
-                this.alpha = alpha
                 scaleX = scale
                 scaleY = scale
             }
             .clip(CircleShape)
-            .background(Color(0xFF111111))
+            .background(ballColor)
     )
 }
 
@@ -346,7 +347,7 @@ fun ChatScreen() {
         val shouldAutoScrollOnSend = shouldStickToBottom
         shouldStickToBottom = true
         assistantMessageId = assistantId
-        if (shouldAutoScrollOnSend) {
+        if (shouldAutoScrollOnSend && !listState.isScrollInProgress) {
             sendTick++
         }
 
@@ -356,7 +357,7 @@ fun ChatScreen() {
             val ballStartTime = SystemClock.uptimeMillis()
             val initialDelayMs = Random.nextLong(600, 901)
             delay(initialDelayMs)
-            val minBallMs = 2200L
+            val minBallMs = 2600L
             val elapsed = SystemClock.uptimeMillis() - ballStartTime
             if (elapsed < minBallMs) {
                 delay(minBallMs - elapsed)
@@ -396,7 +397,7 @@ fun ChatScreen() {
         if (messages.isEmpty() || !shouldStickToBottom) return@LaunchedEffect
         if (listState.isScrollInProgress) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
-        if (now - lastAutoScrollMs < 100L) return@LaunchedEffect
+        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
         lastAutoScrollMs = now
         listState.scrollToItem(messages.lastIndex)
     }
@@ -574,7 +575,7 @@ fun ChatScreen() {
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .width(12.dp)
+                                            .width(20.dp)
                                             .padding(top = 8.dp),
                                         contentAlignment = Alignment.CenterStart
                                     ) {
@@ -625,11 +626,11 @@ fun ChatScreen() {
                         .size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "\u2193",
-                            color = Color(0xFF111111),
-                            fontSize = 20.sp,
-                            lineHeight = 20.sp
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "回到底部",
+                            tint = Color(0xFF111111),
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
