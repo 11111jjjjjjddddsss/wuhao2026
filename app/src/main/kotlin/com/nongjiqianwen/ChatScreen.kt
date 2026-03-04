@@ -269,6 +269,8 @@ fun ChatScreen() {
     val input = remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
+    val isReverse = true
+    fun bottomIndex(total: Int): Int = if (isReverse) 0 else (total - 1).coerceAtLeast(0)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -280,7 +282,7 @@ fun ChatScreen() {
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
-    val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
     val shouldStickToBottom = atBottom
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -386,14 +388,14 @@ fun ChatScreen() {
     }
 
     suspend fun scrollToBottom(animated: Boolean) {
-        val last = messages.lastIndex
-        if (last < 0) return
+        if (messages.isEmpty()) return
+        val bottom = bottomIndex(messages.size)
         programmaticScroll = true
         try {
             withFrameNanos { }
-            if (animated) listState.animateScrollToItem(last) else listState.scrollToItem(last)
+            if (animated) listState.animateScrollToItem(bottom) else listState.scrollToItem(bottom)
             withFrameNanos { }
-            if (animated) listState.animateScrollToItem(last) else listState.scrollToItem(last)
+            if (animated) listState.animateScrollToItem(bottom) else listState.scrollToItem(bottom)
         } finally {
             programmaticScroll = false
         }
@@ -414,7 +416,7 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(streamTick) {
-        if (autoFollowEnabled) {
+        if (autoFollowEnabled && !listState.isScrollInProgress) {
             scrollToBottom(animated = false)
         }
     }
@@ -553,9 +555,10 @@ fun ChatScreen() {
                     .fillMaxSize()
                     .padding(horizontal = 20.dp),
                 state = listState,
+                reverseLayout = isReverse,
                 contentPadding = PaddingValues(
-                    top = if (messages.isEmpty()) 80.dp else 120.dp,
-                    bottom = 8.dp
+                    top = 8.dp,
+                    bottom = if (messages.isEmpty()) 80.dp else 8.dp
                 )
             ) {
                 if (messages.isEmpty()) {
@@ -575,7 +578,7 @@ fun ChatScreen() {
                         }
                     }
                 } else {
-                    items(messages, key = { it.id }) { msg ->
+                    items(if (isReverse) messages.asReversed() else messages, key = { it.id }) { msg ->
                         val align = if (msg.role == ChatRole.USER) Alignment.CenterEnd else Alignment.CenterStart
                         Box(
                             modifier = Modifier
@@ -628,7 +631,7 @@ fun ChatScreen() {
                 }
             }
 
-            if (messages.isNotEmpty() && (!atBottom || !autoFollowEnabled)) {
+            if (messages.isNotEmpty() && (!shouldStickToBottom || !autoFollowEnabled)) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
