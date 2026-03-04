@@ -314,9 +314,16 @@ fun ChatScreen() {
         if (text.isEmpty()) return
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
+        input.value = ""
+
+        if (BuildConfig.DEBUG) {
+            val assistantId = "assistant_${UUID.randomUUID()}"
+            messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, MARKDOWN_DEMO_TEXT))
+            return
+        }
+
         val assistantId = "assistant_${UUID.randomUUID()}"
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
-        input.value = ""
         isStreaming = true
         userStopped = false
         assistantMessageId = assistantId
@@ -493,16 +500,6 @@ fun ChatScreen() {
                                 color = Color(0xFF141414),
                                 lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
                                 textAlign = TextAlign.Start
-                            )
-                        }
-                    }
-                    if (BuildConfig.DEBUG) {
-                        item {
-                            AssistantMarkdownContent(
-                                content = MARKDOWN_DEMO_TEXT,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 26.dp, end = 4.dp)
                             )
                         }
                     }
