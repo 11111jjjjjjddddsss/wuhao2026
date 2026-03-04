@@ -61,11 +61,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -83,7 +83,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -273,7 +272,6 @@ fun ChatScreen() {
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
     val isReverse = true
-    fun bottomIndex(total: Int): Int = if (isReverse) 0 else (total - 1).coerceAtLeast(0)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -282,18 +280,25 @@ fun ChatScreen() {
     var isStreaming by remember { mutableStateOf(false) }
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
     var autoFollowEnabled by remember { mutableStateOf(true) }
+    var userInteracting by remember { mutableStateOf(false) }
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
-    var pendingJumpToBottom by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
     val nestedScrollConnection = remember {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source == NestedScrollSource.Drag) {
+                    userInteracting = true
                     autoFollowEnabled = false
                 }
                 return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                userInteracting = false
+                return Velocity.Zero
             }
         }
     }
@@ -364,12 +369,8 @@ fun ChatScreen() {
         isStreaming = true
         assistantMessageId = assistantId
         autoFollowEnabled = true
-        if (!listState.isScrollInProgress) {
-            pendingJumpToBottom = false
-            sendTick++
-        } else {
-            pendingJumpToBottom = true
-        }
+        userInteracting = false
+        sendTick++
 
         fakeStreamJob?.cancel()
         val fullText = FAKE_STREAM_TEXT
@@ -404,50 +405,42 @@ fun ChatScreen() {
         }
     }
 
-    suspend fun scrollToBottom(animated: Boolean) {
-        if (messages.isEmpty()) return
-        val bottom = bottomIndex(messages.size)
+    LaunchedEffect(streamTick) {
+        if (!autoFollowEnabled) return@LaunchedEffect
+        if (userInteracting) return@LaunchedEffect
+        if (messages.isEmpty()) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
+        lastAutoScrollMs = now
         programmaticScroll = true
         try {
-            withFrameNanos { }
-            if (animated) listState.animateScrollToItem(bottom) else listState.scrollToItem(bottom)
-            withFrameNanos { }
-            if (animated) listState.animateScrollToItem(bottom) else listState.scrollToItem(bottom)
+            listState.scrollToItem(0)
         } finally {
             programmaticScroll = false
         }
     }
 
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }
-            .collectLatest { isScrolling ->
-                if (!isScrolling && pendingJumpToBottom) {
-                    pendingJumpToBottom = false
-                    sendTick++
-                }
-            }
-    }
-
-    LaunchedEffect(streamTick) {
-        if (!autoFollowEnabled) return@LaunchedEffect
-        if (listState.isScrollInProgress) return@LaunchedEffect
-        val now = SystemClock.uptimeMillis()
-        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
-        lastAutoScrollMs = now
-        scrollToBottom(animated = false)
-    }
-
     LaunchedEffect(sendTick) {
-        if (!autoFollowEnabled) return@LaunchedEffect
-        if (listState.isScrollInProgress) return@LaunchedEffect
-        scrollToBottom(animated = false)
+        if (messages.isEmpty()) return@LaunchedEffect
+        programmaticScroll = true
+        try {
+            listState.scrollToItem(0)
+        } finally {
+            programmaticScroll = false
+        }
     }
 
     fun jumpToBottom() {
         snackbarScope.launch {
             if (messages.isEmpty()) return@launch
             autoFollowEnabled = true
-            scrollToBottom(animated = true)
+            userInteracting = false
+            programmaticScroll = true
+            try {
+                listState.animateScrollToItem(0)
+            } finally {
+                programmaticScroll = false
+            }
         }
     }
 
@@ -574,8 +567,8 @@ fun ChatScreen() {
                 state = listState,
                 reverseLayout = isReverse,
                 contentPadding = PaddingValues(
-                    top = 8.dp,
-                    bottom = if (messages.isEmpty()) 80.dp else 8.dp
+                    top = 12.dp,
+                    bottom = 12.dp
                 )
             ) {
                     items(if (isReverse) messages.asReversed() else messages, key = { it.id }) { msg ->
@@ -643,7 +636,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (messages.isNotEmpty() && !autoFollowEnabled) {
+            if (messages.isNotEmpty() && (!autoFollowEnabled || !atBottom)) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
