@@ -76,7 +76,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.min
+import kotlin.random.Random
 import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT }
@@ -263,7 +268,7 @@ fun ChatScreen() {
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
-    val sessionId = remember { IdManager.getSessionId() }
+    var fakeStreamJob by remember { mutableStateOf<Job?>(null) }
 
     var isStreaming by remember { mutableStateOf(false) }
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
@@ -282,16 +287,6 @@ fun ChatScreen() {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    fun showErrorMessage(reason: String) {
-        val message = when (reason) {
-            "auth" -> "登录失效，请重新进入后重试"
-            "quota" -> "今日次数已用完，请在会员中心查看剩余次数"
-            "network", "server", "timeout" -> "网络或服务异常，请稍后重试"
-            else -> "请求中断，请重试"
-        }
-        snackbarScope.launch { snackbarHostState.showSnackbar(message) }
     }
 
     fun appendAssistantChunk(piece: String) {
@@ -342,23 +337,26 @@ fun ChatScreen() {
         userStopped = false
         assistantMessageId = assistantId
 
-        val options = SessionApi.StreamOptions(
-            sessionId = sessionId,
-            clientMsgId = UUID.randomUUID().toString(),
-            text = text,
-            images = emptyList()
-        )
-
-        SessionApi.streamChat(
-            options = options,
-            onChunk = { piece -> appendAssistantChunk(piece) },
-            onComplete = { finishStreaming() },
-            onInterrupted = { reason ->
-                finishStreaming()
-                if (userStopped && (reason == "canceled" || reason == "interrupted")) return@streamChat
-                showErrorMessage(reason)
+        fakeStreamJob?.cancel()
+        val fullText = FAKE_STREAM_TEXT
+        fakeStreamJob = snackbarScope.launch {
+            var cursor = 0
+            var emitted = 0
+            while (isActive && cursor < fullText.length) {
+                val chunkSize = Random.nextInt(6, 21)
+                val next = min(cursor + chunkSize, fullText.length)
+                val piece = fullText.substring(cursor, next)
+                appendAssistantChunk(piece)
+                emitted += piece.length
+                cursor = next
+                delay(Random.nextLong(20, 41))
+                if (emitted >= 140 && cursor < fullText.length) {
+                    emitted = 0
+                    delay(Random.nextLong(220, 421))
+                }
             }
-        )
+            if (isActive) finishStreaming()
+        }
     }
 
     LaunchedEffect(messages.size) {
@@ -457,7 +455,7 @@ fun ChatScreen() {
                             onClick = {
                                 if (isStreaming) {
                                     userStopped = true
-                                    SessionApi.cancelCurrentStream()
+                                    fakeStreamJob?.cancel()
                                     finishStreaming()
                                 } else if (canSend) {
                                     sendMessage()
@@ -605,37 +603,80 @@ fun ChatScreen() {
     }
 }
 
-private val MARKDOWN_DEMO_TEXT = """
-### 本地渲染演示
-下面这段是用于排版验收的示例文本，目的是观察长文滚动、标题层级、列表密度和连续阅读体验在移动端是否稳定。它不会参与线上业务，只用于 UI 联调。你可以把它当成“流式回答完成后的最终排版样本”，重点看每段行高是否均匀、段落间是否有呼吸感、列表是否不会挤成一团、长句换行是否顺滑。
+private val FAKE_STREAM_TEXT = """
+### 农业问诊演示长文（本地假流式）
+这是一段用于前端联调和排版验收的示例回复，目的是模拟真实问诊场景下的连续输出体验。以下内容不连接后端、不触发检索、不调用模型，仅用于观察聊天界面的可读性、滚动稳定性、段落节奏和逐段追加的视觉反馈。你可以把它看成一次完整的农业问诊答复模板：先做范围收敛，再给判断路径，最后给观察与复核建议。全篇避免给出任何具体药方定量，重点是流程和方法，确保展示时既像真实对话，又不会被误用为直接处置方案。
 
-在农业问诊场景里，真正有价值的回答不是堆知识点，而是先缩小判断范围，再给可执行动作。建议采用三段结构：先结论、再依据、最后下一步。这样用户读完可以立刻行动，而不是继续反复追问。尤其是移动端屏幕小，用户通常是在田间、路上、仓库等场景快速查看内容，如果首段不能迅速给出方向，后续再详细也会被跳过。因此，渲染层要先保证“读得下去”，再谈“信息很多”。
+## 一、先把问题描述收敛清楚
+在农业问诊里，最怕信息多但关键条件缺失。如果没有把作物、阶段、环境和变化节奏描述清楚，再多经验也只能停留在猜测层面。建议先按下面的结构整理信息：
 
-## 一、先看信息结构
-1. 作物与阶段：作物种类、栽培方式、当前生育阶段。
-2. 变化特征：是突发还是渐变，是局部还是成片。
-3. 环境条件：近三天温湿度、灌溉节奏、近期施肥和用药。
-4. 关键证据：图片里最早异常的部位和颜色变化。
+1. 作物与生育阶段：是苗期、营养生长期、开花坐果期，还是成熟采收前。
+2. 异常起点：最早从哪个部位出现变化，是新叶、老叶、茎部还是根际表现先异常。
+3. 变化速度：两天内快速扩展，还是一周内缓慢累积。
+4. 分布范围：零散点状、片区集中，还是整棚、整田普遍出现。
+5. 管理记录：近期是否有浇水节奏变化、棚内通风变化、天气突变或机械扰动。
 
-- 如果新叶先异常，优先考虑吸收和微量元素问题。
-- 如果老叶先异常，优先排查基础营养和根区环境。
-- 如果有扩展斑点，优先排查病原性风险。
+这些信息的价值在于：它能把病害、虫害、生理性失衡、环境胁迫四类方向先分开，而不是一开始就陷入细枝末节。
 
-## 二、把结论写成可执行信息
-建议把回答写成“结论一句话 + 依据两三条 + 下一步两步法”。这样不仅能降低误解，还能显著减少用户反复追问“那我现在具体该干什么”。在你当前这个产品阶段，最应该优先优化的是“结构一致性”，因为只要结构稳定，后续换模型、换后端、加联网，都不需要大改前端排版。
+## 二、先判断风险级别，再决定回应节奏
+问诊不只是回答是什么，更要回答现在该不该马上做动作。如果风险级别判断错误，要么耽误窗口期，要么过度处置。建议按三层分级：
 
-结论示例：当前更像吸收障碍，不像单一病害暴发。依据示例：新叶失绿明显，叶片边缘无典型病斑扩展，且近期连续阴雨导致根区含氧下降。下一步示例：先做低风险稳根处理，24小时后复看新叶状态，再决定是否上更强干预。这种写法的好处在于，用户可以先做第一步，不需要一次性理解全部机理。
+- 低风险：症状轻、范围小、变化慢，可先观察记录，再做低干预调整。
+- 中风险：范围在扩大但尚可控，需要建立日观察点并同步管理微调。
+- 高风险：短时扩展明显、关联条件恶化，需要立即组织复核并优先做可逆措施。
 
-## 三、长文可读性检查
-请重点观察四个点：第一，行高是否稳定不压迫；第二，段间距是否统一；第三，滚动时是否跳动；第四，键盘弹起后输入栏和正文关系是否自然。如果其中任意一项表现不稳，用户会主观觉得“回答质量差”，哪怕文本本身是对的。这是典型的人机体验问题，不是农业知识问题。
+注意：高风险不等于立刻重处置。真正稳健的做法是先止损、再确认、后升级，避免在证据不足时一步走到不可逆动作。
 
-为了压力演示，再给一段连续正文：在连续追问场景中，系统需要保持判断连续性，不能每轮都从零开始。理想状态是，每一轮都能承接上一轮确定的信息，同时对新增证据做增量修正。这样既能控制答复长度，也能稳定结论方向，避免一会儿像营养缺失、一会儿又跳到病害暴发。若用户补充了环境变化，例如突遇降温、持续阴雨、灌溉频率变化，应该优先把这些高影响因素放在判断前面，而不是继续沿用旧结论。对于高风险动作，比如清园、重度用药、拔除整株等，回答要给出不确定性和验证路径，避免一次性把结论说死。对于图片证据，建议先描述客观可见现象，再进入归因，减少先入为主的偏差。最后，给出的动作建议应当有顺序：先低风险、可逆操作，再高风险、不可逆操作，这样用户执行成本更低，也更容易回看和复盘。
+## 三、把回答写成可执行结构
+为了让一线用户看完就能行动，建议固定三段式：
 
-另外从渲染角度看，正文字号过小会让用户频繁放大，字号过大又会导致一屏信息过少。你当前采用的 17sp 正文字号和 30sp 行高，在中等尺寸手机上属于“偏舒适阅读”的区间，适合长回答。段间距如果过窄，用户会把两段误读成一段；过宽又会产生断裂感。你现在使用 10dp 的段间距，实际观感接近 GPT 移动端，属于可继续沿用的参数。
+1. 结论一句话：当前更像哪一类问题，暂不支持哪一类。
+2. 依据两到四条：只写看得见、可复核的事实，不写玄学判断。
+3. 下一步两件事：一个是当日可做，一个是次日复核，形成闭环。
 
-在交互层面，最关键的是“新增消息时自动滚到底，但用户手动上滑时不抢滚动”。这个规则在聊天产品里是硬需求，因为用户常常需要回看上一段操作建议。你当前实现里已经按“接近底部才自动跟随”的思路处理，这在体验上是正确方向。后续若再优化，可以加一个“回到底部”小按钮，仅在用户离底部较远且有新内容时显示。
+示例表达方式：
+目前更像环境胁迫叠加管理波动，暂不支持单一病害爆发。依据是异常先出现在边缘区、症状随时段波动明显、同地块差异与通风条件相关。下一步先做低风险稳定处理，并在次日同一时段复查新叶状态与扩展边界。
 
-再补充一段用于观察列表稳定性：当用户连续发送短句、再发送长段、再插入图片说明时，列表高度会快速变化，若 item key 不稳定或重组逻辑有误，就会出现跳动、错位、重复渲染。现在你用消息 id 做 key，这能避免大部分重组抖动。后续如果加入“流式增量段落”，记得只更新最后一条 assistant 消息，不要每个 chunk 新建一条，否则性能和观感都会明显下降。
+## 四、如何观察图片与现场描述
+图片常见问题是拍得多但证据弱。建议引导用户补充以下要点：
 
-最后作为演示收尾，这段文字本身没有业务意义，仅用于检查排版和滚动稳定性：标题、段落、列表、连续长文、不同长度句子混排、中文标点密度、数字与单位混排（如 24 小时、6–9 轮、3000 字）在同一页面中的显示是否一致。只要这些基础渲染稳定，后面接入真实后端流式输出时，你就不会再因为 UI 层“看起来像故障”而误判模型质量。
+- 近景：异常组织的纹理、边界、色泽过渡。
+- 中景：整株上下部位差异，不同叶位对比。
+- 远景：同区域内健康株与异常株对照。
+- 时间轴：同一位置隔天复拍，验证变化方向。
+
+当证据来自图片时，回答顺序最好是先客观描述，再解释可能机制，最后给验证动作。这样可以显著降低先入为主导致的误判。
+
+## 五、常见误区提醒
+下面这些误区在移动端咨询里非常常见，会直接影响判断质量：
+
+- 误区一：把结果当原因。看到黄化就直接归因某单一因素，忽略多因叠加。
+- 误区二：忽略时间维度。只看一张图，不看连续变化，容易把暂态波动当趋势。
+- 误区三：过早下最终结论。证据不足时应给条件化判断，并说明复核节点。
+- 误区四：动作顺序颠倒。应先可逆、低风险，再考虑高成本或不可逆动作。
+
+## 六、移动端阅读友好的表达规则
+长文不是问题，难读才是问题。为了保证在手机上连续阅读不卡顿，建议：
+
+1. 每段表达一个中心，不要把多个结论塞进同一长句。
+2. 关键句前置，解释放后面，先让用户知道现在做什么。
+3. 条目密度适中，连续列表后要有过渡句，避免视觉疲劳。
+4. 对不确定结论必须标注条件，减少误解和反复追问。
+
+这套规则对任何屏幕尺寸都有效，因为它降低的是认知负担，而不是单纯依赖字号或留白。
+
+## 七、现场执行与复盘建议
+问诊价值最终体现在能否落地。建议每次回答都附带一个轻量复盘框架：
+
+- 今日目标：先稳住扩展，确认是否继续恶化。
+- 观察点位：固定三到五个点，保持同角度、同时间记录。
+- 复核时间：次日同一时段进行对比，避免时段偏差干扰判断。
+- 升级条件：出现哪些信号才进入更高等级处置。
+
+这样做的好处是：即使首次判断不是最优，也能通过连续证据快速修正，而不是在模糊状态下反复摇摆。
+
+## 八、演示结语
+以上内容仅用于 UI 假流式演示，重点是观察以下体验是否稳定：
+一是呼吸指示点是否在流式阶段持续出现；二是正文是否按同一条消息持续追加；三是滚动是否平滑且不会跳动；四是结束时状态是否正确收口。
+如果这些都稳定，后续切回真实 SSE 时，用户侧感知会基本一致，排版和交互风险也会明显降低。
 """.trimIndent()
