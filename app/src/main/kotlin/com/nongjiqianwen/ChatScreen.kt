@@ -63,17 +63,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -89,8 +83,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.min
@@ -293,21 +285,18 @@ fun ChatScreen() {
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
     val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
-    val nestedScrollConnection = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.Drag) {
-                    userInteracting = true
-                    autoFollowEnabled = false
-                }
-                return Offset.Zero
-            }
 
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+    fun onMessageTouch(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                userInteracting = true
+                autoFollowEnabled = false
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 userInteracting = false
-                return available
             }
         }
+        return false
     }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -436,19 +425,6 @@ fun ChatScreen() {
         } finally {
             programmaticScroll = false
         }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress to programmaticScroll }
-            .distinctUntilChanged()
-            .collectLatest { (isScrolling, isProgrammatic) ->
-                if (isScrolling && !isProgrammatic) {
-                    userInteracting = true
-                    autoFollowEnabled = false
-                } else if (!isScrolling) {
-                    userInteracting = false
-                }
-            }
     }
 
     fun jumpToBottom() {
@@ -583,19 +559,6 @@ fun ChatScreen() {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .nestedScroll(nestedScrollConnection)
-                    .pointerInteropFilter { event ->
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
-                                userInteracting = true
-                                autoFollowEnabled = false
-                            }
-                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                userInteracting = false
-                            }
-                        }
-                        false
-                    }
                     .padding(horizontal = 20.dp),
                 state = listState,
                 reverseLayout = isReverse,
@@ -633,11 +596,14 @@ fun ChatScreen() {
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .height(24.dp)
+                                                .pointerInteropFilter { event -> onMessageTouch(event) }
                                         )
                                     } else {
                                         AssistantMarkdownContent(
                                             content = msg.content,
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .pointerInteropFilter { event -> onMessageTouch(event) }
                                         )
                                     }
                                 }
@@ -645,6 +611,7 @@ fun ChatScreen() {
                                 Text(
                                     text = msg.content,
                                     modifier = Modifier
+                                        .pointerInteropFilter { event -> onMessageTouch(event) }
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(Color(0xFFECECEF))
                                         .padding(horizontal = 14.dp, vertical = 10.dp),
