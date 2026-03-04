@@ -547,7 +547,7 @@ fun ChatScreen() {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 132.dp, end = 4.dp)
+                                .padding(top = 112.dp, end = 4.dp)
                         ) {
                             Text(
                                 text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
