@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.content.Context
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -71,6 +72,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -91,6 +93,8 @@ import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT }
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
+private const val UI_PREFS_NAME = "ui_prefs"
+private const val KEY_WELCOME_SEEN = "welcome_seen"
 
 private sealed interface MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock
@@ -266,6 +270,7 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
 
 @Composable
 fun ChatScreen() {
+    val ctx = LocalContext.current
     val input = remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
@@ -286,6 +291,12 @@ fun ChatScreen() {
     var lastUserScrollPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
     val shouldStickToBottom = atBottom
+    var welcomeSeen by remember {
+        mutableStateOf(
+            ctx.getSharedPreferences(UI_PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_WELCOME_SEEN, false)
+        )
+    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -346,6 +357,13 @@ fun ChatScreen() {
         if (text.isEmpty()) return
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
+        if (!welcomeSeen) {
+            ctx.getSharedPreferences(UI_PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_WELCOME_SEEN, true)
+                .apply()
+            welcomeSeen = true
+        }
         input.value = ""
 
         val assistantId = "assistant_${UUID.randomUUID()}"
@@ -578,23 +596,6 @@ fun ChatScreen() {
                     bottom = if (messages.isEmpty()) 80.dp else 8.dp
                 )
             ) {
-                if (messages.isEmpty()) {
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 112.dp, end = 4.dp)
-                        ) {
-                            Text(
-                                text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = Color(0xFF141414),
-                                lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
-                                textAlign = TextAlign.Start
-                            )
-                        }
-                    }
-                } else {
                     items(if (isReverse) messages.asReversed() else messages, key = { it.id }) { msg ->
                         val align = if (msg.role == ChatRole.USER) Alignment.CenterEnd else Alignment.CenterStart
                         Box(
@@ -645,7 +646,19 @@ fun ChatScreen() {
                             }
                         }
                     }
-                }
+            }
+
+            if (messages.isEmpty() && !welcomeSeen) {
+                Text(
+                    text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 104.dp, start = 24.dp, end = 24.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color(0xFF141414),
+                    lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
+                    textAlign = TextAlign.Start
+                )
             }
 
             if (messages.isNotEmpty() && (!shouldStickToBottom || !autoFollowEnabled)) {
