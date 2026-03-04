@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.MotionEvent
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -63,6 +64,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Velocity
@@ -71,7 +73,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -268,6 +270,7 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
 }
 
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 fun ChatScreen() {
     val input = remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
@@ -409,6 +412,7 @@ fun ChatScreen() {
     LaunchedEffect(streamTick) {
         if (!autoFollowEnabled) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
+        if (listState.isScrollInProgress) return@LaunchedEffect
         if (messages.isEmpty()) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
         if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
@@ -564,22 +568,17 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .nestedScroll(nestedScrollConnection)
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                var isDown = false
-                                while (!isDown) {
-                                    val downEvent = awaitPointerEvent()
-                                    isDown = downEvent.changes.any { it.pressed }
-                                }
+                    .pointerInteropFilter { event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
                                 userInteracting = true
                                 autoFollowEnabled = false
-                                do {
-                                    val event = awaitPointerEvent()
-                                } while (event.changes.any { it.pressed })
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                                 userInteracting = false
                             }
                         }
+                        false
                     }
                     .padding(horizontal = 20.dp),
                 state = listState,
