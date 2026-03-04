@@ -282,6 +282,7 @@ fun ChatScreen() {
     var autoFollowEnabled by remember { mutableStateOf(true) }
     var userInteracting by remember { mutableStateOf(false) }
     var touchPausedFollow by remember { mutableStateOf(false) }
+    var lastObservedScrollPos by remember { mutableStateOf(0 to 0) }
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
@@ -399,16 +400,23 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }
-            .collect { scrolling ->
-                if (scrolling && !programmaticScroll) {
-                    userInteracting = true
-                    autoFollowEnabled = false
-                    touchPausedFollow = true
-                } else if (!scrolling) {
-                    userInteracting = false
-                }
+        snapshotFlow {
+            Triple(
+                listState.isScrollInProgress,
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
+            )
+        }.collect { (scrolling, idx, off) ->
+            val currentPos = idx to off
+            if (scrolling && !programmaticScroll && currentPos != lastObservedScrollPos) {
+                userInteracting = true
+                autoFollowEnabled = false
+                touchPausedFollow = true
+            } else if (!scrolling) {
+                userInteracting = false
             }
+            lastObservedScrollPos = currentPos
+        }
     }
 
     LaunchedEffect(streamTick) {
@@ -568,6 +576,19 @@ fun ChatScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .pointerInteropFilter { event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                            userInteracting = true
+                            autoFollowEnabled = false
+                            touchPausedFollow = true
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            userInteracting = false
+                        }
+                    }
+                    false
+                }
         ) {
             LazyColumn(
                 modifier = Modifier
