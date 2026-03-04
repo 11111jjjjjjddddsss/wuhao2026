@@ -316,12 +316,6 @@ fun ChatScreen() {
         messages.add(ChatMessage(userId, ChatRole.USER, text))
         input.value = ""
 
-        if (BuildConfig.DEBUG) {
-            val assistantId = "assistant_${UUID.randomUUID()}"
-            messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, MARKDOWN_DEMO_TEXT))
-            return
-        }
-
         val assistantId = "assistant_${UUID.randomUUID()}"
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         isStreaming = true
