@@ -283,10 +283,8 @@ fun ChatScreen() {
     var userInteracting by remember { mutableStateOf(false) }
     var touchPausedFollow by remember { mutableStateOf(false) }
     var lastObservedScrollPos by remember { mutableStateOf(0 to 0) }
-    var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
-    var lastAutoScrollMs by remember { mutableStateOf(0L) }
     val atBottom by remember {
         derivedStateOf {
             listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
@@ -316,19 +314,14 @@ fun ChatScreen() {
                 val newId = "assistant_${UUID.randomUUID()}"
                 assistantMessageId = newId
                 messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
-                streamTick++
                 return@post
             }
             val index = messages.indexOfLast { it.id == currentId }
             if (index >= 0) {
                 val old = messages[index]
                 messages[index] = old.copy(content = old.content + piece)
-                if (currentId == assistantMessageId) {
-                    streamTick++
-                }
             } else {
                 messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
-                streamTick++
             }
         }
     }
@@ -416,24 +409,6 @@ fun ChatScreen() {
                 userInteracting = false
             }
             lastObservedScrollPos = currentPos
-        }
-    }
-
-    LaunchedEffect(streamTick) {
-        if (!autoFollowEnabled) return@LaunchedEffect
-        if (touchPausedFollow) return@LaunchedEffect
-        if (userInteracting) return@LaunchedEffect
-        if (!atBottom) return@LaunchedEffect
-        if (listState.isScrollInProgress) return@LaunchedEffect
-        if (messages.isEmpty()) return@LaunchedEffect
-        val now = SystemClock.uptimeMillis()
-        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
-        lastAutoScrollMs = now
-        programmaticScroll = true
-        try {
-            listState.scrollToItem(0)
-        } finally {
-            programmaticScroll = false
         }
     }
 
