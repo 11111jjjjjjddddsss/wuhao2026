@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -298,7 +299,7 @@ fun ChatScreen() {
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
                 userInteracting = false
-                return Velocity.Zero
+                return available
             }
         }
     }
@@ -563,6 +564,23 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .nestedScroll(nestedScrollConnection)
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                var isDown = false
+                                while (!isDown) {
+                                    val downEvent = awaitPointerEvent()
+                                    isDown = downEvent.changes.any { it.pressed }
+                                }
+                                userInteracting = true
+                                autoFollowEnabled = false
+                                do {
+                                    val event = awaitPointerEvent()
+                                } while (event.changes.any { it.pressed })
+                                userInteracting = false
+                            }
+                        }
+                    }
                     .padding(horizontal = 20.dp),
                 state = listState,
                 reverseLayout = isReverse,
