@@ -2,6 +2,7 @@ package com.nongjiqianwen
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -275,6 +276,7 @@ fun ChatScreen() {
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
     var shouldStickToBottom by remember { mutableStateOf(true) }
     var streamTick by remember { mutableStateOf(0) }
+    var sendTick by remember { mutableStateOf(0) }
     var userStopped by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -340,25 +342,38 @@ fun ChatScreen() {
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         isStreaming = true
         userStopped = false
+        val shouldAutoScrollOnSend = shouldStickToBottom
         shouldStickToBottom = true
         assistantMessageId = assistantId
+        if (shouldAutoScrollOnSend) {
+            sendTick++
+        }
 
         fakeStreamJob?.cancel()
         val fullText = FAKE_STREAM_TEXT
         fakeStreamJob = snackbarScope.launch {
+            val ballStartTime = SystemClock.uptimeMillis()
+            val initialDelayMs = Random.nextLong(600, 901)
+            delay(initialDelayMs)
+            val minBallMs = 1200L
+            val elapsed = SystemClock.uptimeMillis() - ballStartTime
+            if (elapsed < minBallMs) {
+                delay(minBallMs - elapsed)
+            }
+
             var cursor = 0
             var emitted = 0
             while (isActive && cursor < fullText.length) {
-                val chunkSize = Random.nextInt(6, 21)
+                val chunkSize = Random.nextInt(3, 11)
                 val next = min(cursor + chunkSize, fullText.length)
                 val piece = fullText.substring(cursor, next)
                 appendAssistantChunk(piece)
                 emitted += piece.length
                 cursor = next
-                delay(Random.nextLong(20, 41))
-                if (emitted >= 140 && cursor < fullText.length) {
+                delay(Random.nextLong(35, 71))
+                if (emitted >= Random.nextInt(120, 221) && cursor < fullText.length) {
                     emitted = 0
-                    delay(Random.nextLong(220, 421))
+                    delay(Random.nextLong(180, 421))
                 }
             }
             if (isActive) finishStreaming()
@@ -377,6 +392,12 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(streamTick) {
+        if (messages.isNotEmpty() && shouldStickToBottom) {
+            listState.scrollToItem(messages.lastIndex)
+        }
+    }
+
+    LaunchedEffect(sendTick) {
         if (messages.isNotEmpty() && shouldStickToBottom) {
             listState.scrollToItem(messages.lastIndex)
         }
