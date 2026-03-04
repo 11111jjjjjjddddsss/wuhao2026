@@ -375,19 +375,23 @@ fun ChatScreen() {
 
             var cursor = 0
             var emittedSincePause = 0
-            var pauseThreshold = Random.nextInt(120, 221)
+            var pauseThreshold = Random.nextInt(90, 161)
             while (isActive && cursor < fullText.length) {
-                val chunkSize = Random.nextInt(3, 11)
+                val chunkSize = Random.nextInt(2, 6)
                 val next = min(cursor + chunkSize, fullText.length)
                 val piece = fullText.substring(cursor, next)
                 appendAssistantChunk(piece)
                 emittedSincePause += piece.length
                 cursor = next
-                delay(Random.nextLong(35, 71))
+                delay(Random.nextLong(48, 96))
+                val tail = piece.lastOrNull()
+                if (tail == '。' || tail == '！' || tail == '？' || tail == '，' || tail == '；' || tail == '：' || tail == '\n') {
+                    delay(Random.nextLong(70, 151))
+                }
                 if (emittedSincePause >= pauseThreshold && cursor < fullText.length) {
                     emittedSincePause = 0
-                    pauseThreshold = Random.nextInt(120, 221)
-                    delay(Random.nextLong(180, 421))
+                    pauseThreshold = Random.nextInt(90, 161)
+                    delay(Random.nextLong(130, 281))
                 }
             }
             if (isActive) finishStreaming()
