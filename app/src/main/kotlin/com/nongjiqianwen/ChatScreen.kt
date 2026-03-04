@@ -63,6 +63,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -88,6 +89,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.min
@@ -412,6 +415,7 @@ fun ChatScreen() {
     LaunchedEffect(streamTick) {
         if (!autoFollowEnabled) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
+        if (!atBottom) return@LaunchedEffect
         if (listState.isScrollInProgress) return@LaunchedEffect
         if (messages.isEmpty()) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
@@ -433,6 +437,16 @@ fun ChatScreen() {
         } finally {
             programmaticScroll = false
         }
+    }
+
+    LaunchedEffect(listState, programmaticScroll) {
+        snapshotFlow { listState.isScrollInProgress && !programmaticScroll }
+            .distinctUntilChanged()
+            .collectLatest { userScrolling: Boolean ->
+                if (userScrolling) {
+                    autoFollowEnabled = false
+                }
+            }
     }
 
     fun jumpToBottom() {
