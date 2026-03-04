@@ -282,6 +282,8 @@ fun ChatScreen() {
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
+    var pendingJumpToBottom by remember { mutableStateOf(false) }
+    var lastUserScrollPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
     val shouldStickToBottom = atBottom
     val focusManager = LocalFocusManager.current
@@ -350,8 +352,12 @@ fun ChatScreen() {
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         isStreaming = true
         assistantMessageId = assistantId
-        if (autoFollowEnabled) {
+        autoFollowEnabled = true
+        if (!listState.isScrollInProgress) {
+            pendingJumpToBottom = false
             sendTick++
+        } else {
+            pendingJumpToBottom = true
         }
 
         fakeStreamJob?.cancel()
@@ -405,12 +411,23 @@ fun ChatScreen() {
         snapshotFlow {
             Triple(
                 listState.isScrollInProgress,
-                programmaticScroll,
-                atBottom
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset
             )
-        }.collectLatest { (isScrolling, isProgrammatic, isAtBottom) ->
-            if (isScrolling && !isProgrammatic && !isAtBottom) {
-                autoFollowEnabled = false
+        }.collectLatest { (isScrolling, idx, off) ->
+            if (isScrolling && !programmaticScroll) {
+                val cur = idx to off
+                val last = lastUserScrollPos
+                if (last != null && last != cur) {
+                    autoFollowEnabled = false
+                }
+                lastUserScrollPos = cur
+            } else {
+                lastUserScrollPos = null
+                if (!isScrolling && pendingJumpToBottom) {
+                    pendingJumpToBottom = false
+                    sendTick++
+                }
             }
         }
     }
