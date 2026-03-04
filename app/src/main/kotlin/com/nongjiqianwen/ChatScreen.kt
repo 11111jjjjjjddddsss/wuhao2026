@@ -79,7 +79,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -204,7 +203,7 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 
                 is MdBlock.Bullet -> {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                        Text(text = "•", fontSize = 17.sp, lineHeight = 30.sp, color = Color(0xFF181818))
+                        Text(text = "-", fontSize = 17.sp, lineHeight = 30.sp, color = Color(0xFF181818))
                         Text(text = block.text, style = paragraphStyle, modifier = Modifier.weight(1f))
                     }
                 }
@@ -253,7 +252,7 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     )
     Box(
         modifier = modifier
-            .size(18.dp)
+            .size(16.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -276,10 +275,10 @@ fun ChatScreen() {
     var isStreaming by remember { mutableStateOf(false) }
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
     var shouldStickToBottom by remember { mutableStateOf(true) }
+    var autoFollowEnabled by remember { mutableStateOf(true) }
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
-    var userStopped by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -303,6 +302,7 @@ fun ChatScreen() {
                 val newId = "assistant_${UUID.randomUUID()}"
                 assistantMessageId = newId
                 messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
+                streamTick++
                 return@post
             }
             val index = messages.indexOfLast { it.id == currentId }
@@ -314,6 +314,7 @@ fun ChatScreen() {
                 }
             } else {
                 messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
+                streamTick++
             }
         }
     }
@@ -327,9 +328,9 @@ fun ChatScreen() {
                     messages.removeAt(index)
                 }
             }
+            fakeStreamJob = null
             isStreaming = false
             assistantMessageId = null
-            userStopped = false
         }
     }
 
@@ -343,11 +344,8 @@ fun ChatScreen() {
         val assistantId = "assistant_${UUID.randomUUID()}"
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         isStreaming = true
-        userStopped = false
-        val shouldAutoScrollOnSend = shouldStickToBottom
-        shouldStickToBottom = true
         assistantMessageId = assistantId
-        if (shouldAutoScrollOnSend && !listState.isScrollInProgress) {
+        if (shouldStickToBottom && !listState.isScrollInProgress) {
             sendTick++
         }
 
@@ -356,25 +354,27 @@ fun ChatScreen() {
         fakeStreamJob = snackbarScope.launch {
             val ballStartTime = SystemClock.uptimeMillis()
             val initialDelayMs = Random.nextLong(600, 901)
-            delay(initialDelayMs)
-            val minBallMs = 2600L
+            val minBallMs = 2200L
             val elapsed = SystemClock.uptimeMillis() - ballStartTime
-            if (elapsed < minBallMs) {
-                delay(minBallMs - elapsed)
+            val firstTokenWait = maxOf(initialDelayMs, minBallMs - elapsed)
+            if (firstTokenWait > 0) {
+                delay(firstTokenWait)
             }
 
             var cursor = 0
-            var emitted = 0
+            var emittedSincePause = 0
+            var pauseThreshold = Random.nextInt(120, 221)
             while (isActive && cursor < fullText.length) {
                 val chunkSize = Random.nextInt(3, 11)
                 val next = min(cursor + chunkSize, fullText.length)
                 val piece = fullText.substring(cursor, next)
                 appendAssistantChunk(piece)
-                emitted += piece.length
+                emittedSincePause += piece.length
                 cursor = next
                 delay(Random.nextLong(35, 71))
-                if (emitted >= Random.nextInt(120, 221) && cursor < fullText.length) {
-                    emitted = 0
+                if (emittedSincePause >= pauseThreshold && cursor < fullText.length) {
+                    emittedSincePause = 0
+                    pauseThreshold = Random.nextInt(120, 221)
                     delay(Random.nextLong(180, 421))
                 }
             }
@@ -382,36 +382,48 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo }
-            .map { info ->
-                val total = info.totalItemsCount
-                if (total == 0) return@map true
-                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-                lastVisible >= total - 2
-            }
-            .collectLatest { shouldStickToBottom = it }
-    }
-
-    LaunchedEffect(streamTick) {
-        if (messages.isEmpty() || !shouldStickToBottom) return@LaunchedEffect
-        if (listState.isScrollInProgress) return@LaunchedEffect
+    suspend fun tryAutoScrollToBottom() {
+        if (messages.isEmpty()) return
+        if (!autoFollowEnabled) return
+        if (!shouldStickToBottom) return
+        if (listState.isScrollInProgress) return
         val now = SystemClock.uptimeMillis()
-        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
+        if (now - lastAutoScrollMs < 120L) return
         lastAutoScrollMs = now
         listState.scrollToItem(messages.lastIndex)
     }
 
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            val atBottom = if (total == 0) {
+                true
+            } else {
+                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                lastVisible >= total - 2
+            }
+            atBottom to listState.isScrollInProgress
+        }.collectLatest { (atBottom, isScrolling) ->
+            shouldStickToBottom = atBottom
+            if (!atBottom && isScrolling) {
+                autoFollowEnabled = false
+            }
+        }
+    }
+
+    LaunchedEffect(streamTick) {
+        tryAutoScrollToBottom()
+    }
+
     LaunchedEffect(sendTick) {
-        if (messages.isEmpty() || !shouldStickToBottom) return@LaunchedEffect
-        if (listState.isScrollInProgress) return@LaunchedEffect
-        listState.scrollToItem(messages.lastIndex)
+        tryAutoScrollToBottom()
     }
 
     fun jumpToBottom() {
         snackbarScope.launch {
             if (messages.isEmpty()) return@launch
-            shouldStickToBottom = true
+            autoFollowEnabled = true
             listState.animateScrollToItem(messages.lastIndex)
         }
     }
@@ -494,7 +506,6 @@ fun ChatScreen() {
                         IconButton(
                             onClick = {
                                 if (isStreaming) {
-                                    userStopped = true
                                     fakeStreamJob?.cancel()
                                     finishStreaming()
                                 } else if (canSend) {
@@ -676,79 +687,28 @@ fun ChatScreen() {
 }
 
 private val FAKE_STREAM_TEXT = """
-### 农业问诊演示长文（本地假流式）
-这是一段用于前端联调和排版验收的示例回复，目的是模拟真实问诊场景下的连续输出体验。以下内容不连接后端、不触发检索、不调用模型，仅用于观察聊天界面的可读性、滚动稳定性、段落节奏和逐段追加的视觉反馈。你可以把它看成一次完整的农业问诊答复模板：先做范围收敛，再给判断路径，最后给观察与复核建议。全篇避免给出任何具体药方定量，重点是流程和方法，确保展示时既像真实对话，又不会被误用为直接处置方案。
+初步判断：你描述的叶片失绿、午后萎蔫和局部长势不齐，更像环境波动叠加管理节奏不稳导致的综合性问题，暂时不能直接归因为单一病虫害。先按下面的问诊路径收敛信息，目标是先控风险，再在两到三天内把结论做实。
 
-## 一、先把问题描述收敛清楚
-在农业问诊里，最怕信息多但关键条件缺失。如果没有把作物、阶段、环境和变化节奏描述清楚，再多经验也只能停留在猜测层面。建议先按下面的结构整理信息：
+## 一、补充信息
+1. 作物与阶段：品种、定植时间、当前在营养生长还是开花坐果期，不同阶段对温湿和水分波动的耐受差异明显。
+2. 异常起点：最早出现在新叶、老叶、叶缘、叶脉还是茎基部，起点位置通常比最终症状更有诊断价值。
+3. 变化速度：一天内突然加重，还是三到五天缓慢扩展，速度直接影响排查优先级。
+4. 空间分布：零星点状、行间成片、还是整棚同步，分布特征可区分管理扰动与扩展性问题。
+5. 近期操作：近七天是否有浇水节奏改变、通风调整、阴雨转晴或机械扰动，这些都可能触发连锁反应。
 
-1. 作物与生育阶段：是苗期、营养生长期、开花坐果期，还是成熟采收前。
-2. 异常起点：最早从哪个部位出现变化，是新叶、老叶、茎部还是根际表现先异常。
-3. 变化速度：两天内快速扩展，还是一周内缓慢累积。
-4. 分布范围：零散点状、片区集中，还是整棚、整田普遍出现。
-5. 管理记录：近期是否有浇水节奏变化、棚内通风变化、天气突变或机械扰动。
+## 二、可能原因 Top3
+1. 根际供需短时失衡：含水和通气在短周期反复波动，常见表现是白天萎蔫、夜间缓解、边缘轻失绿。
+2. 小气候胁迫叠加：同棚温湿差偏大，边角位和风口位起伏明显，症状随时段变化而变化。
+3. 管理节奏与生育期错位：不同阶段沿用同一强度管理，造成部分株体负担过高，出现长势分化。
 
-这些信息的价值在于：它能把病害、虫害、生理性失衡、环境胁迫四类方向先分开，而不是一开始就陷入细枝末节。
+## 三、观察与复查
+当天先做可回退动作：浇水、通风、遮阴都采用小幅、连续、可追踪的调整，不做一次性大幅改变。设置三到五个固定观测点，覆盖重、中、轻三类株体，同一时间拍近景与中景，记录叶色、挺度、边缘和新叶状态。
 
-## 二、先判断风险级别，再决定回应节奏
-问诊不只是回答是什么，更要回答现在该不该马上做动作。如果风险级别判断错误，要么耽误窗口期，要么过度处置。建议按三层分级：
+次日复查只看四件事：症状边界是否继续外扩，异常株与健康株差距是否拉大，新叶是否持续变差，午后和傍晚差异是否缩小。若出现范围趋稳、恢复变快、差距收敛，可继续稳态观察；若扩展加快、萎蔫提前、差异放大，则进入升级复核。
 
-- 低风险：症状轻、范围小、变化慢，可先观察记录，再做低干预调整。
-- 中风险：范围在扩大但尚可控，需要建立日观察点并同步管理微调。
-- 高风险：短时扩展明显、关联条件恶化，需要立即组织复核并优先做可逆措施。
+## 四、风险提示
+避免三个误区：一是看到表象就立刻定因，忽略多因素叠加；二是只看单次照片，不看连续时序；三是在证据不足时频繁大动作调整，造成二次扰动。建议执行顺序为先止损、再验证、后升级，每个判断都附带条件和复查节点。
 
-注意：高风险不等于立刻重处置。真正稳健的做法是先止损、再确认、后升级，避免在证据不足时一步走到不可逆动作。
-
-## 三、把回答写成可执行结构
-为了让一线用户看完就能行动，建议固定三段式：
-
-1. 结论一句话：当前更像哪一类问题，暂不支持哪一类。
-2. 依据两到四条：只写看得见、可复核的事实，不写玄学判断。
-3. 下一步两件事：一个是当日可做，一个是次日复核，形成闭环。
-
-示例表达方式：
-目前更像环境胁迫叠加管理波动，暂不支持单一病害爆发。依据是异常先出现在边缘区、症状随时段波动明显、同地块差异与通风条件相关。下一步先做低风险稳定处理，并在次日同一时段复查新叶状态与扩展边界。
-
-## 四、如何观察图片与现场描述
-图片常见问题是拍得多但证据弱。建议引导用户补充以下要点：
-
-- 近景：异常组织的纹理、边界、色泽过渡。
-- 中景：整株上下部位差异，不同叶位对比。
-- 远景：同区域内健康株与异常株对照。
-- 时间轴：同一位置隔天复拍，验证变化方向。
-
-当证据来自图片时，回答顺序最好是先客观描述，再解释可能机制，最后给验证动作。这样可以显著降低先入为主导致的误判。
-
-## 五、常见误区提醒
-下面这些误区在移动端咨询里非常常见，会直接影响判断质量：
-
-- 误区一：把结果当原因。看到黄化就直接归因某单一因素，忽略多因叠加。
-- 误区二：忽略时间维度。只看一张图，不看连续变化，容易把暂态波动当趋势。
-- 误区三：过早下最终结论。证据不足时应给条件化判断，并说明复核节点。
-- 误区四：动作顺序颠倒。应先可逆、低风险，再考虑高成本或不可逆动作。
-
-## 六、移动端阅读友好的表达规则
-长文不是问题，难读才是问题。为了保证在手机上连续阅读不卡顿，建议：
-
-1. 每段表达一个中心，不要把多个结论塞进同一长句。
-2. 关键句前置，解释放后面，先让用户知道现在做什么。
-3. 条目密度适中，连续列表后要有过渡句，避免视觉疲劳。
-4. 对不确定结论必须标注条件，减少误解和反复追问。
-
-这套规则对任何屏幕尺寸都有效，因为它降低的是认知负担，而不是单纯依赖字号或留白。
-
-## 七、现场执行与复盘建议
-问诊价值最终体现在能否落地。建议每次回答都附带一个轻量复盘框架：
-
-- 今日目标：先稳住扩展，确认是否继续恶化。
-- 观察点位：固定三到五个点，保持同角度、同时间记录。
-- 复核时间：次日同一时段进行对比，避免时段偏差干扰判断。
-- 升级条件：出现哪些信号才进入更高等级处置。
-
-这样做的好处是：即使首次判断不是最优，也能通过连续证据快速修正，而不是在模糊状态下反复摇摆。
-
-## 八、演示结语
-以上内容仅用于 UI 假流式演示，重点是观察以下体验是否稳定：
-一是呼吸指示点是否在流式阶段持续出现；二是正文是否按同一条消息持续追加；三是滚动是否平滑且不会跳动；四是结束时状态是否正确收口。
-如果这些都稳定，后续切回真实 SSE 时，用户侧感知会基本一致，排版和交互风险也会明显降低。
+## 五、执行结论
+今天先稳定管理并完成定点记录，明天同一时段复查关键指标，再决定是否升级处理。这样做不是一次性终判，而是建立可落地、可复核、可回退的问诊闭环，能在移动端持续跟进并降低误判成本。
 """.trimIndent()
