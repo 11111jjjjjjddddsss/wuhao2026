@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +52,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -75,7 +77,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -227,33 +228,22 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 }
 
 @Composable
-private fun StreamingBreathingDot(modifier: Modifier = Modifier) {
+private fun TypingBlackDot(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
     val alpha by transition.animateFloat(
-        initialValue = 0.35f,
+        initialValue = 0.6f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 760),
+            animation = tween(durationMillis = 1000),
             repeatMode = RepeatMode.Reverse
         ),
         label = "assistantBreathingDotAlpha"
     )
-    val scale by transition.animateFloat(
-        initialValue = 0.82f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 760),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "assistantBreathingDotScale"
-    )
     Box(
         modifier = modifier
-            .size(10.dp)
+            .size(8.dp)
             .graphicsLayer {
                 this.alpha = alpha
-                scaleX = scale
-                scaleY = scale
             }
             .clip(CircleShape)
             .background(Color(0xFF111111))
@@ -272,7 +262,7 @@ fun ChatScreen() {
 
     var isStreaming by remember { mutableStateOf(false) }
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
-    var shouldStickToBottom by remember { mutableStateOf(true) }
+    var autoFollow by remember { mutableStateOf(true) }
     var userStopped by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -335,6 +325,7 @@ fun ChatScreen() {
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         isStreaming = true
         userStopped = false
+        autoFollow = true
         assistantMessageId = assistantId
 
         fakeStreamJob?.cancel()
@@ -359,21 +350,48 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty() && shouldStickToBottom) {
-            listState.animateScrollToItem(messages.lastIndex)
+    val atBottom by remember(listState) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            if (total == 0) {
+                true
+            } else {
+                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                lastVisible >= total - 2
+            }
         }
     }
 
     LaunchedEffect(listState) {
-        snapshotFlow { listState.layoutInfo }
-            .map { info ->
-                val total = info.totalItemsCount
-                if (total == 0) return@map true
-                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: 0
-                lastVisible >= total - 2
+        snapshotFlow { listState.isScrollInProgress to atBottom }
+            .collectLatest { (inScroll, nearBottom) ->
+                if (inScroll && !nearBottom) {
+                    autoFollow = false
+                }
+                if (inScroll && nearBottom) {
+                    autoFollow = true
+                }
             }
-            .collectLatest { shouldStickToBottom = it }
+    }
+
+    val lastContentSignature = remember(messages.size, messages.lastOrNull()?.content?.length) {
+        val last = messages.lastOrNull()
+        if (last == null) "empty" else "${last.id}:${last.content.length}"
+    }
+
+    LaunchedEffect(lastContentSignature, autoFollow) {
+        if (messages.isNotEmpty() && autoFollow) {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
+    }
+
+    fun jumpToBottom() {
+        snackbarScope.launch {
+            if (messages.isEmpty()) return@launch
+            autoFollow = true
+            listState.animateScrollToItem(messages.lastIndex)
+        }
     }
 
     Scaffold(
@@ -540,13 +558,21 @@ fun ChatScreen() {
                                         contentAlignment = Alignment.CenterStart
                                     ) {
                                         if (isStreaming && msg.id == assistantMessageId) {
-                                            StreamingBreathingDot()
+                                            TypingBlackDot()
                                         }
                                     }
-                                    AssistantMarkdownContent(
-                                        content = msg.content,
-                                        modifier = Modifier.weight(1f)
-                                    )
+                                    if (msg.content.isBlank() && isStreaming && msg.id == assistantMessageId) {
+                                        Spacer(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(24.dp)
+                                        )
+                                    } else {
+                                        AssistantMarkdownContent(
+                                            content = msg.content,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
                                 }
                             } else {
                                 Text(
@@ -560,6 +586,30 @@ fun ChatScreen() {
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            if (!atBottom && messages.isNotEmpty()) {
+                Surface(
+                    onClick = { jumpToBottom() },
+                    shape = CircleShape,
+                    color = Color.White,
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 20.dp, bottom = 88.dp)
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "\u2193",
+                            color = Color(0xFF111111),
+                            fontSize = 20.sp,
+                            lineHeight = 20.sp
+                        )
                     }
                 }
             }
