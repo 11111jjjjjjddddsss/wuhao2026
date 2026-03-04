@@ -281,6 +281,7 @@ fun ChatScreen() {
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
     var autoFollowEnabled by remember { mutableStateOf(true) }
     var userInteracting by remember { mutableStateOf(false) }
+    var touchPausedFollow by remember { mutableStateOf(false) }
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
@@ -361,6 +362,7 @@ fun ChatScreen() {
         assistantMessageId = assistantId
         autoFollowEnabled = true
         userInteracting = false
+        touchPausedFollow = false
         sendTick++
 
         fakeStreamJob?.cancel()
@@ -400,8 +402,9 @@ fun ChatScreen() {
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling ->
                 if (scrolling && !programmaticScroll) {
-                    autoFollowEnabled = false
                     userInteracting = true
+                    autoFollowEnabled = false
+                    touchPausedFollow = true
                 } else if (!scrolling) {
                     userInteracting = false
                 }
@@ -410,6 +413,7 @@ fun ChatScreen() {
 
     LaunchedEffect(streamTick) {
         if (!autoFollowEnabled) return@LaunchedEffect
+        if (touchPausedFollow) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
         if (!atBottom) return@LaunchedEffect
         if (listState.isScrollInProgress) return@LaunchedEffect
@@ -440,6 +444,7 @@ fun ChatScreen() {
             if (messages.isEmpty()) return@launch
             autoFollowEnabled = true
             userInteracting = false
+            touchPausedFollow = false
             programmaticScroll = true
             try {
                 listState.animateScrollToItem(0)
@@ -574,6 +579,7 @@ fun ChatScreen() {
                             MotionEvent.ACTION_DOWN -> {
                                 userInteracting = true
                                 autoFollowEnabled = false
+                                touchPausedFollow = true
                             }
                             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                                 userInteracting = false
