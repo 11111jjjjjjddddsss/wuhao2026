@@ -415,7 +415,6 @@ fun ChatScreen() {
     LaunchedEffect(streamTick) {
         if (!autoFollowEnabled) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
-        if (!atBottom) return@LaunchedEffect
         if (listState.isScrollInProgress) return@LaunchedEffect
         if (messages.isEmpty()) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
@@ -439,12 +438,15 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(listState, programmaticScroll) {
-        snapshotFlow { listState.isScrollInProgress && !programmaticScroll }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress to programmaticScroll }
             .distinctUntilChanged()
-            .collectLatest { userScrolling: Boolean ->
-                if (userScrolling) {
+            .collectLatest { (isScrolling, isProgrammatic) ->
+                if (isScrolling && !isProgrammatic) {
+                    userInteracting = true
                     autoFollowEnabled = false
+                } else if (!isScrolling) {
+                    userInteracting = false
                 }
             }
     }
