@@ -3,7 +3,6 @@ package com.nongjiqianwen
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.content.Context
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -63,16 +62,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -93,8 +94,6 @@ import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT }
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
-private const val UI_PREFS_NAME = "ui_prefs"
-private const val KEY_WELCOME_SEEN = "welcome_seen"
 
 private sealed interface MdBlock {
     data class Heading(val level: Int, val text: String) : MdBlock
@@ -270,7 +269,6 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
 
 @Composable
 fun ChatScreen() {
-    val ctx = LocalContext.current
     val input = remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
@@ -288,14 +286,16 @@ fun ChatScreen() {
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var pendingJumpToBottom by remember { mutableStateOf(false) }
-    var lastUserScrollPos by remember { mutableStateOf<Pair<Int, Int>?>(null) }
-    val atBottom by remember { derivedStateOf { !listState.canScrollBackward } }
-    val shouldStickToBottom = atBottom
-    var welcomeSeen by remember {
-        mutableStateOf(
-            ctx.getSharedPreferences(UI_PREFS_NAME, Context.MODE_PRIVATE)
-                .getBoolean(KEY_WELCOME_SEEN, false)
-        )
+    var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    val nestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.Drag) {
+                    autoFollowEnabled = false
+                }
+                return Offset.Zero
+            }
+        }
     }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -357,13 +357,6 @@ fun ChatScreen() {
         if (text.isEmpty()) return
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
-        if (!welcomeSeen) {
-            ctx.getSharedPreferences(UI_PREFS_NAME, Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean(KEY_WELCOME_SEEN, true)
-                .apply()
-            welcomeSeen = true
-        }
         input.value = ""
 
         val assistantId = "assistant_${UUID.randomUUID()}"
@@ -426,40 +419,28 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(listState) {
-        snapshotFlow {
-            Triple(
-                listState.isScrollInProgress,
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset
-            )
-        }.collectLatest { (isScrolling, idx, off) ->
-            if (isScrolling && !programmaticScroll) {
-                val cur = idx to off
-                val last = lastUserScrollPos
-                if (last != null && last != cur) {
-                    autoFollowEnabled = false
-                }
-                lastUserScrollPos = cur
-            } else {
-                lastUserScrollPos = null
+        snapshotFlow { listState.isScrollInProgress }
+            .collectLatest { isScrolling ->
                 if (!isScrolling && pendingJumpToBottom) {
                     pendingJumpToBottom = false
                     sendTick++
                 }
             }
-        }
     }
 
     LaunchedEffect(streamTick) {
-        if (autoFollowEnabled && !listState.isScrollInProgress) {
-            scrollToBottom(animated = false)
-        }
+        if (!autoFollowEnabled) return@LaunchedEffect
+        if (listState.isScrollInProgress) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
+        lastAutoScrollMs = now
+        scrollToBottom(animated = false)
     }
 
     LaunchedEffect(sendTick) {
-        if (autoFollowEnabled) {
-            scrollToBottom(animated = false)
-        }
+        if (!autoFollowEnabled) return@LaunchedEffect
+        if (listState.isScrollInProgress) return@LaunchedEffect
+        scrollToBottom(animated = false)
     }
 
     fun jumpToBottom() {
@@ -588,6 +569,7 @@ fun ChatScreen() {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
+                    .nestedScroll(nestedScrollConnection)
                     .padding(horizontal = 20.dp),
                 state = listState,
                 reverseLayout = isReverse,
@@ -648,7 +630,7 @@ fun ChatScreen() {
                     }
             }
 
-            if (messages.isEmpty() && !welcomeSeen) {
+            if (messages.isEmpty()) {
                 Text(
                     text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                     modifier = Modifier
@@ -661,7 +643,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (messages.isNotEmpty() && (!shouldStickToBottom || !autoFollowEnabled)) {
+            if (messages.isNotEmpty() && !autoFollowEnabled) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
