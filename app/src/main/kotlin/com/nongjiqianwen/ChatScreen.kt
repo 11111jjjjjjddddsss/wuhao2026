@@ -62,6 +62,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -274,11 +276,12 @@ fun ChatScreen() {
 
     var isStreaming by remember { mutableStateOf(false) }
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
-    var shouldStickToBottom by remember { mutableStateOf(true) }
     var autoFollowEnabled by remember { mutableStateOf(true) }
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
-    var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    var programmaticScroll by remember { mutableStateOf(false) }
+    val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    val shouldStickToBottom = atBottom
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -345,7 +348,7 @@ fun ChatScreen() {
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         isStreaming = true
         assistantMessageId = assistantId
-        if (shouldStickToBottom && !listState.isScrollInProgress) {
+        if (autoFollowEnabled) {
             sendTick++
         }
 
@@ -382,49 +385,51 @@ fun ChatScreen() {
         }
     }
 
-    suspend fun tryAutoScrollToBottom() {
-        if (messages.isEmpty()) return
-        if (!autoFollowEnabled) return
-        if (!shouldStickToBottom) return
-        if (listState.isScrollInProgress) return
-        val now = SystemClock.uptimeMillis()
-        if (now - lastAutoScrollMs < 120L) return
-        lastAutoScrollMs = now
-        listState.scrollToItem(messages.lastIndex)
+    suspend fun scrollToBottom(animated: Boolean) {
+        val last = messages.lastIndex
+        if (last < 0) return
+        programmaticScroll = true
+        try {
+            withFrameNanos { }
+            if (animated) listState.animateScrollToItem(last) else listState.scrollToItem(last)
+            withFrameNanos { }
+            if (animated) listState.animateScrollToItem(last) else listState.scrollToItem(last)
+        } finally {
+            programmaticScroll = false
+        }
     }
 
     LaunchedEffect(listState) {
         snapshotFlow {
-            val info = listState.layoutInfo
-            val total = info.totalItemsCount
-            val atBottom = if (total == 0) {
-                true
-            } else {
-                val lastVisible = info.visibleItemsInfo.lastOrNull()?.index ?: -1
-                lastVisible >= total - 2
-            }
-            atBottom to listState.isScrollInProgress
-        }.collectLatest { (atBottom, isScrolling) ->
-            shouldStickToBottom = atBottom
-            if (!atBottom && isScrolling) {
+            Triple(
+                listState.isScrollInProgress,
+                programmaticScroll,
+                atBottom
+            )
+        }.collectLatest { (isScrolling, isProgrammatic, isAtBottom) ->
+            if (isScrolling && !isProgrammatic && !isAtBottom) {
                 autoFollowEnabled = false
             }
         }
     }
 
     LaunchedEffect(streamTick) {
-        tryAutoScrollToBottom()
+        if (autoFollowEnabled) {
+            scrollToBottom(animated = false)
+        }
     }
 
     LaunchedEffect(sendTick) {
-        tryAutoScrollToBottom()
+        if (autoFollowEnabled) {
+            scrollToBottom(animated = false)
+        }
     }
 
     fun jumpToBottom() {
         snackbarScope.launch {
             if (messages.isEmpty()) return@launch
             autoFollowEnabled = true
-            listState.animateScrollToItem(messages.lastIndex)
+            scrollToBottom(animated = true)
         }
     }
 
@@ -623,7 +628,7 @@ fun ChatScreen() {
                 }
             }
 
-            if (!shouldStickToBottom && messages.isNotEmpty()) {
+            if (messages.isNotEmpty() && (!atBottom || !autoFollowEnabled)) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
