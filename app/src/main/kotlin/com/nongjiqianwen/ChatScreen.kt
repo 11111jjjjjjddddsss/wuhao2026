@@ -271,7 +271,7 @@ fun ChatScreen() {
     val input = remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
-    val isReverse = true
+    val isReverse = false
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -281,15 +281,14 @@ fun ChatScreen() {
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
     var autoFollowEnabled by remember { mutableStateOf(true) }
     var userInteracting by remember { mutableStateOf(false) }
-    var touchPausedFollow by remember { mutableStateOf(false) }
     var lastObservedScrollPos by remember { mutableStateOf(0 to 0) }
-    var bufferedAssistantId by remember { mutableStateOf<String?>(null) }
-    var bufferedAssistantText by remember { mutableStateOf("") }
+    var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
+    var lastAutoScrollMs by remember { mutableStateOf(0L) }
     val atBottom by remember {
         derivedStateOf {
-            listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            !listState.canScrollForward
         }
     }
 
@@ -316,51 +315,18 @@ fun ChatScreen() {
                 val newId = "assistant_${UUID.randomUUID()}"
                 assistantMessageId = newId
                 messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
+                streamTick++
                 return@post
             }
-
-            if (touchPausedFollow && !autoFollowEnabled) {
-                if (bufferedAssistantId != currentId) {
-                    bufferedAssistantId = currentId
-                    bufferedAssistantText = ""
-                }
-                bufferedAssistantText += piece
-                return@post
-            }
-
-            val toAppend = if (bufferedAssistantId == currentId && bufferedAssistantText.isNotEmpty()) {
-                val merged = bufferedAssistantText + piece
-                bufferedAssistantId = null
-                bufferedAssistantText = ""
-                merged
-            } else {
-                piece
-            }
-
             val index = messages.indexOfLast { it.id == currentId }
             if (index >= 0) {
                 val old = messages[index]
-                messages[index] = old.copy(content = old.content + toAppend)
+                messages[index] = old.copy(content = old.content + piece)
             } else {
-                messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, toAppend))
+                messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
             }
+            streamTick++
         }
-    }
-
-    fun flushBufferedAssistantChunk() {
-        val currentId = assistantMessageId
-        if (currentId.isNullOrBlank()) return
-        if (bufferedAssistantId != currentId || bufferedAssistantText.isBlank()) return
-
-        val index = messages.indexOfLast { it.id == currentId }
-        if (index >= 0) {
-            val old = messages[index]
-            messages[index] = old.copy(content = old.content + bufferedAssistantText)
-        } else {
-            messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, bufferedAssistantText))
-        }
-        bufferedAssistantId = null
-        bufferedAssistantText = ""
     }
 
     fun finishStreaming() {
@@ -372,7 +338,6 @@ fun ChatScreen() {
                     messages.removeAt(index)
                 }
             }
-            flushBufferedAssistantChunk()
             fakeStreamJob = null
             isStreaming = false
             assistantMessageId = null
@@ -394,9 +359,6 @@ fun ChatScreen() {
         assistantMessageId = assistantId
         autoFollowEnabled = true
         userInteracting = false
-        touchPausedFollow = false
-        bufferedAssistantId = null
-        bufferedAssistantText = ""
         sendTick++
 
         fakeStreamJob?.cancel()
@@ -444,7 +406,6 @@ fun ChatScreen() {
             if (scrolling && !programmaticScroll && currentPos != lastObservedScrollPos) {
                 userInteracting = true
                 autoFollowEnabled = false
-                touchPausedFollow = true
             } else if (!scrolling) {
                 userInteracting = false
             }
@@ -452,11 +413,27 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(streamTick) {
+        if (!autoFollowEnabled) return@LaunchedEffect
+        if (userInteracting) return@LaunchedEffect
+        if (listState.isScrollInProgress) return@LaunchedEffect
+        if (messages.isEmpty()) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
+        lastAutoScrollMs = now
+        programmaticScroll = true
+        try {
+            listState.scrollToItem(messages.lastIndex)
+        } finally {
+            programmaticScroll = false
+        }
+    }
+
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
         programmaticScroll = true
         try {
-            listState.scrollToItem(0)
+            listState.scrollToItem(messages.lastIndex)
         } finally {
             programmaticScroll = false
         }
@@ -467,11 +444,9 @@ fun ChatScreen() {
             if (messages.isEmpty()) return@launch
             autoFollowEnabled = true
             userInteracting = false
-            touchPausedFollow = false
-            flushBufferedAssistantChunk()
             programmaticScroll = true
             try {
-                listState.animateScrollToItem(0)
+                listState.animateScrollToItem(messages.lastIndex)
             } finally {
                 programmaticScroll = false
             }
@@ -592,31 +567,17 @@ fun ChatScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .pointerInteropFilter { event ->
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                            userInteracting = true
-                            autoFollowEnabled = false
-                            touchPausedFollow = true
-                        }
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            userInteracting = false
-                        }
-                    }
-                    false
-                }
         ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 20.dp)
-                    .padding(top = 92.dp)
+                    .padding(top = 12.dp)
                     .pointerInteropFilter { event ->
                         when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
+                            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
                                 userInteracting = true
                                 autoFollowEnabled = false
-                                touchPausedFollow = true
                             }
                             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                                 userInteracting = false
@@ -627,11 +588,11 @@ fun ChatScreen() {
                 state = listState,
                 reverseLayout = isReverse,
                 contentPadding = PaddingValues(
-                    top = 12.dp,
+                    top = 100.dp,
                     bottom = 12.dp
                 )
             ) {
-                    items(if (isReverse) messages.asReversed() else messages, key = { it.id }) { msg ->
+                    items(messages, key = { it.id }) { msg ->
                         val align = if (msg.role == ChatRole.USER) Alignment.CenterEnd else Alignment.CenterStart
                         Box(
                             modifier = Modifier
