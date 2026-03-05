@@ -11,6 +11,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,7 +64,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -281,7 +282,6 @@ fun ChatScreen() {
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
     var autoFollowEnabled by remember { mutableStateOf(true) }
     var userInteracting by remember { mutableStateOf(false) }
-    var lastObservedScrollPos by remember { mutableStateOf(0 to 0) }
     var streamTick by remember { mutableStateOf(0) }
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
@@ -398,22 +398,23 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(listState) {
-        snapshotFlow {
-            Triple(
-                listState.isScrollInProgress,
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset
-            )
-        }.collect { (scrolling, idx, off) ->
-            val currentPos = idx to off
-            if (scrolling && !programmaticScroll && currentPos != lastObservedScrollPos) {
-                userInteracting = true
-                autoFollowEnabled = false
-            } else if (!scrolling) {
-                userInteracting = false
+    suspend fun scrollToBottom(animated: Boolean) {
+        val lastIndex = messages.lastIndex
+        if (lastIndex < 0) return
+        programmaticScroll = true
+        try {
+            if (animated) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
+            withFrameNanos { }
+            val info = listState.layoutInfo
+            val lastItem = info.visibleItemsInfo.firstOrNull { it.index == lastIndex }
+            if (lastItem != null) {
+                val overflow = (lastItem.offset + lastItem.size) - info.viewportEndOffset
+                if (overflow > 0) {
+                    listState.scrollBy(overflow.toFloat())
+                }
             }
-            lastObservedScrollPos = currentPos
+        } finally {
+            programmaticScroll = false
         }
     }
 
@@ -425,22 +426,12 @@ fun ChatScreen() {
         val now = SystemClock.uptimeMillis()
         if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
         lastAutoScrollMs = now
-        programmaticScroll = true
-        try {
-            listState.scrollToItem(messages.lastIndex)
-        } finally {
-            programmaticScroll = false
-        }
+        scrollToBottom(animated = false)
     }
 
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
-        programmaticScroll = true
-        try {
-            listState.scrollToItem(messages.lastIndex)
-        } finally {
-            programmaticScroll = false
-        }
+        scrollToBottom(animated = false)
     }
 
     fun jumpToBottom() {
@@ -448,12 +439,7 @@ fun ChatScreen() {
             if (messages.isEmpty()) return@launch
             autoFollowEnabled = true
             userInteracting = false
-            programmaticScroll = true
-            try {
-                listState.animateScrollToItem(messages.lastIndex)
-            } finally {
-                programmaticScroll = false
-            }
+            scrollToBottom(animated = true)
         }
     }
 
