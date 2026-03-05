@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
@@ -13,14 +13,19 @@ BASELINE = ROOT / ".mojibake-baseline.txt"
 INCLUDE_EXT = {
     ".kt",
     ".kts",
+    ".java",
     ".ts",
     ".js",
     ".html",
     ".css",
+    ".xml",
     ".md",
+    ".txt",
     ".json",
     ".yml",
     ".yaml",
+    ".properties",
+    ".sql",
 }
 
 EXCLUDED_DIRS = {
@@ -31,18 +36,31 @@ EXCLUDED_DIRS = {
     "dist",
 }
 
+# Common mojibake glyphs seen in UTF-8/GBK or UTF-8/Latin-1 corruption.
 SUSPECT_CODEPOINTS = {
-    0x9286,  # 銆
-    0x951b,  # 锛
     0x9359,  # 鍙
-    0x9428,  # 鐨
-    0x935D,  # 鍝
-    0x934F,  # 鍏
-    0x935A,  # 鍚
-    0x9354,  # 鍔
+    0x9286,  # 銆
+    0x951B,  # 锛
+    0x951F,  # 锟
+    0x9225,  # 鈥
+    0x9229,  # 鈩
 }
 
 REPLACEMENT_CHAR = chr(0xFFFD)
+SUSPECT_TOKENS = (
+    "锟斤拷",
+    "鍙",
+    "銆",
+    "锛",
+    "锟",
+    "鈥",
+    "鈩",
+    "Ã",
+    "Â",
+    "â€",
+    "â€™",
+    "â€œ",
+)
 
 
 @dataclass(frozen=True)
@@ -79,8 +97,12 @@ def scan_file(path: pathlib.Path) -> list[Issue]:
         return issues
 
     for idx, line in enumerate(text.splitlines(), start=1):
-        if REPLACEMENT_CHAR in line or "��" in line:
+        if REPLACEMENT_CHAR in line or "锟斤拷" in line:
             issues.append(Issue(rel, idx, "replacement_char", clean_snippet(line)))
+            continue
+
+        if any(token in line for token in SUSPECT_TOKENS):
+            issues.append(Issue(rel, idx, "suspect_token", clean_snippet(line)))
             continue
 
         suspect_hits = sum(1 for ch in line if ord(ch) in SUSPECT_CODEPOINTS)
@@ -145,4 +167,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
