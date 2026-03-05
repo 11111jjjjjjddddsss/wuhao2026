@@ -3,7 +3,6 @@ package com.nongjiqianwen
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.view.MotionEvent
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -11,7 +10,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -62,14 +64,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -285,11 +286,11 @@ fun ChatScreen() {
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
-    val atBottom by remember {
-        derivedStateOf {
-            !listState.canScrollForward
-        }
-    }
+    val topInset = WindowInsets.safeDrawing
+        .only(WindowInsetsSides.Top)
+        .asPaddingValues()
+        .calculateTopPadding()
+    val topBarReservedHeight = topInset + 68.dp
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -402,16 +403,10 @@ fun ChatScreen() {
         if (lastIndex < 0) return
         programmaticScroll = true
         try {
+            withFrameNanos { }
             if (animated) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
             withFrameNanos { }
-            val info = listState.layoutInfo
-            val lastItem = info.visibleItemsInfo.firstOrNull { it.index == lastIndex }
-            if (lastItem != null) {
-                val overflow = (lastItem.offset + lastItem.size) - info.viewportEndOffset
-                if (overflow > 0) {
-                    listState.scrollBy(overflow.toFloat())
-                }
-            }
+            if (animated) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
         } finally {
             programmaticScroll = false
         }
@@ -420,7 +415,6 @@ fun ChatScreen() {
     LaunchedEffect(streamTick) {
         if (!autoFollowEnabled) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
-        if (listState.isScrollInProgress) return@LaunchedEffect
         if (messages.isEmpty()) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
         if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
@@ -447,7 +441,7 @@ fun ChatScreen() {
             .fillMaxSize()
             .background(Color(0xFFF5F5F5)),
         containerColor = Color(0xFFF5F5F5),
-        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             Row(
                 modifier = Modifier
@@ -557,24 +551,21 @@ fun ChatScreen() {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .padding(horizontal = 20.dp)
-                    .padding(top = 12.dp)
-                    .pointerInteropFilter { event ->
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                                userInteracting = true
-                                autoFollowEnabled = false
-                            }
-                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                userInteracting = false
-                            }
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            userInteracting = true
+                            autoFollowEnabled = false
+                            waitForUpOrCancellation()
+                            userInteracting = false
                         }
-                        false
                     },
                 state = listState,
                 reverseLayout = isReverse,
                 contentPadding = PaddingValues(
-                    top = 100.dp,
+                    top = topBarReservedHeight,
                     bottom = 12.dp
                 )
             ) {
@@ -644,7 +635,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (messages.isNotEmpty() && (!autoFollowEnabled || !atBottom)) {
+            if (messages.isNotEmpty() && !autoFollowEnabled) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
@@ -652,9 +643,8 @@ fun ChatScreen() {
                     shadowElevation = 2.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 72.dp)
+                        .padding(bottom = 80.dp)
                         .navigationBarsPadding()
-                        .imePadding()
                         .size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -671,6 +661,7 @@ fun ChatScreen() {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .statusBarsPadding()
                     .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
                     .align(Alignment.TopCenter),
