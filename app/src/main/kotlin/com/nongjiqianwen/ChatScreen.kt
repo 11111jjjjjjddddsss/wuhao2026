@@ -1,4 +1,4 @@
-package com.nongjiqianwen
+﻿package com.nongjiqianwen
 
 import android.os.Handler
 import android.os.Looper
@@ -40,9 +40,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,6 +63,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -286,6 +286,7 @@ fun ChatScreen() {
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -385,7 +386,7 @@ fun ChatScreen() {
                 cursor = next
                 delay(Random.nextLong(48, 96))
                 val tail = piece.lastOrNull()
-                if (tail == '。' || tail == '！' || tail == '？' || tail == '，' || tail == '；' || tail == '：' || tail == '\n') {
+                if (tail == '。' || tail == '，' || tail == '；' || tail == '：' || tail == '！' || tail == '？' || tail == '\n') {
                     delay(Random.nextLong(70, 151))
                 }
                 if (emittedSincePause >= pauseThreshold && cursor < fullText.length) {
@@ -466,7 +467,7 @@ fun ChatScreen() {
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
-                            contentDescription = "添加",
+                            contentDescription = "娣诲姞",
                             modifier = Modifier.size(30.dp),
                             tint = Color(0xFF252525)
                         )
@@ -494,7 +495,7 @@ fun ChatScreen() {
                                 .fillMaxWidth()
                                 .align(Alignment.CenterStart)
                                 .padding(end = 52.dp),
-                            placeholder = { Text("描述作物/地区/问题", color = Color(0xFF9A9A9A)) },
+                            placeholder = { Text("鎻忚堪浣滅墿/鍦板尯/闂", color = Color(0xFF9A9A9A)) },
                             singleLine = true,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -525,9 +526,12 @@ fun ChatScreen() {
                                 .background(actionBg)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Send",
-                                tint = actionTint
+                                tint = actionTint,
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .graphicsLayer { rotationZ = 90f }
                             )
                         }
                     }
@@ -636,7 +640,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (messages.isNotEmpty() && !autoFollowEnabled) {
+            if (messages.isNotEmpty() && !atBottom) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
@@ -650,10 +654,12 @@ fun ChatScreen() {
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "回到底部",
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "鍥炲埌搴曢儴",
                             tint = Color(0xFF111111),
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier
+                                .size(22.dp)
+                                .graphicsLayer { rotationZ = -90f }
                         )
                     }
                 }
@@ -677,7 +683,7 @@ fun ChatScreen() {
                     modifier = Modifier.size(46.dp)
                 ) {
                     IconButton(onClick = {}) {
-                        Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
+                        Icon(Icons.Default.Menu, contentDescription = "鑿滃崟", tint = Color(0xFF222222))
                     }
                 }
                 Surface(
@@ -687,7 +693,7 @@ fun ChatScreen() {
                     shadowElevation = 1.dp
                 ) {
                     Text(
-                        text = "农技千问",
+                        text = "鍐滄妧鍗冮棶",
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                         color = Color(0xFF111111),
                         style = MaterialTheme.typography.titleMedium,
@@ -700,28 +706,29 @@ fun ChatScreen() {
 }
 
 private val FAKE_STREAM_TEXT = """
-初步判断：你描述的叶片失绿、午后萎蔫和局部长势不齐，更像环境波动叠加管理节奏不稳导致的综合性问题，暂时不能直接归因为单一病虫害。先按下面的问诊路径收敛信息，目标是先控风险，再在两到三天内把结论做实。
+鍒濇鍒ゆ柇锛氫綘鎻忚堪鐨勫彾鐗囧け缁裤€佸崍鍚庤悗钄拰灞€閮ㄩ暱鍔夸笉榻愶紝鏇村儚鐜娉㈠姩鍙犲姞绠＄悊鑺傚涓嶇ǔ瀵艰嚧鐨勭患鍚堟€ч棶棰橈紝鏆傛椂涓嶈兘鐩存帴褰掑洜涓哄崟涓€鐥呰櫕瀹炽€傚厛鎸変笅闈㈢殑闂瘖璺緞鏀舵暃淇℃伅锛岀洰鏍囨槸鍏堟帶椋庨櫓锛屽啀鍦ㄤ袱鍒颁笁澶╁唴鎶婄粨璁哄仛瀹炪€?
 
-## 一、补充信息
-1. 作物与阶段：品种、定植时间、当前在营养生长还是开花坐果期，不同阶段对温湿和水分波动的耐受差异明显。
-2. 异常起点：最早出现在新叶、老叶、叶缘、叶脉还是茎基部，起点位置通常比最终症状更有诊断价值。
-3. 变化速度：一天内突然加重，还是三到五天缓慢扩展，速度直接影响排查优先级。
-4. 空间分布：零星点状、行间成片、还是整棚同步，分布特征可区分管理扰动与扩展性问题。
-5. 近期操作：近七天是否有浇水节奏改变、通风调整、阴雨转晴或机械扰动，这些都可能触发连锁反应。
+## 涓€銆佽ˉ鍏呬俊鎭?
+1. 浣滅墿涓庨樁娈碉細鍝佺銆佸畾妞嶆椂闂淬€佸綋鍓嶅湪钀ュ吇鐢熼暱杩樻槸寮€鑺卞潗鏋滄湡锛屼笉鍚岄樁娈靛娓╂箍鍜屾按鍒嗘尝鍔ㄧ殑鑰愬彈宸紓鏄庢樉銆?
+2. 寮傚父璧风偣锛氭渶鏃╁嚭鐜板湪鏂板彾銆佽€佸彾銆佸彾缂樸€佸彾鑴夎繕鏄寧鍩洪儴锛岃捣鐐逛綅缃€氬父姣旀渶缁堢棁鐘舵洿鏈夎瘖鏂环鍊笺€?
+3. 鍙樺寲閫熷害锛氫竴澶╁唴绐佺劧鍔犻噸锛岃繕鏄笁鍒颁簲澶╃紦鎱㈡墿灞曪紝閫熷害鐩存帴褰卞搷鎺掓煡浼樺厛绾с€?
+4. 绌洪棿鍒嗗竷锛氶浂鏄熺偣鐘躲€佽闂存垚鐗囥€佽繕鏄暣妫氬悓姝ワ紝鍒嗗竷鐗瑰緛鍙尯鍒嗙鐞嗘壈鍔ㄤ笌鎵╁睍鎬ч棶棰樸€?
+5. 杩戞湡鎿嶄綔锛氳繎涓冨ぉ鏄惁鏈夋祰姘磋妭濂忔敼鍙樸€侀€氶璋冩暣銆侀槾闆ㄨ浆鏅存垨鏈烘鎵板姩锛岃繖浜涢兘鍙兘瑙﹀彂杩為攣鍙嶅簲銆?
 
-## 二、可能原因 Top3
-1. 根际供需短时失衡：含水和通气在短周期反复波动，常见表现是白天萎蔫、夜间缓解、边缘轻失绿。
-2. 小气候胁迫叠加：同棚温湿差偏大，边角位和风口位起伏明显，症状随时段变化而变化。
-3. 管理节奏与生育期错位：不同阶段沿用同一强度管理，造成部分株体负担过高，出现长势分化。
+## 浜屻€佸彲鑳藉師鍥?Top3
+1. 鏍归檯渚涢渶鐭椂澶辫　锛氬惈姘村拰閫氭皵鍦ㄧ煭鍛ㄦ湡鍙嶅娉㈠姩锛屽父瑙佽〃鐜版槸鐧藉ぉ钀庤敨銆佸闂寸紦瑙ｃ€佽竟缂樿交澶辩豢銆?
+2. 灏忔皵鍊欒儊杩彔鍔狅細鍚屾娓╂箍宸亸澶э紝杈硅浣嶅拰椋庡彛浣嶈捣浼忔槑鏄撅紝鐥囩姸闅忔椂娈靛彉鍖栬€屽彉鍖栥€?
+3. 绠＄悊鑺傚涓庣敓鑲叉湡閿欎綅锛氫笉鍚岄樁娈垫部鐢ㄥ悓涓€寮哄害绠＄悊锛岄€犳垚閮ㄥ垎鏍綋璐熸媴杩囬珮锛屽嚭鐜伴暱鍔垮垎鍖栥€?
 
-## 三、观察与复查
-当天先做可回退动作：浇水、通风、遮阴都采用小幅、连续、可追踪的调整，不做一次性大幅改变。设置三到五个固定观测点，覆盖重、中、轻三类株体，同一时间拍近景与中景，记录叶色、挺度、边缘和新叶状态。
+## 涓夈€佽瀵熶笌澶嶆煡
+褰撳ぉ鍏堝仛鍙洖閫€鍔ㄤ綔锛氭祰姘淬€侀€氶銆侀伄闃撮兘閲囩敤灏忓箙銆佽繛缁€佸彲杩借釜鐨勮皟鏁达紝涓嶅仛涓€娆℃€уぇ骞呮敼鍙樸€傝缃笁鍒颁簲涓浐瀹氳娴嬬偣锛岃鐩栭噸銆佷腑銆佽交涓夌被鏍綋锛屽悓涓€鏃堕棿鎷嶈繎鏅笌涓櫙锛岃褰曞彾鑹层€佹尯搴︺€佽竟缂樺拰鏂板彾鐘舵€併€?
 
-次日复查只看四件事：症状边界是否继续外扩，异常株与健康株差距是否拉大，新叶是否持续变差，午后和傍晚差异是否缩小。若出现范围趋稳、恢复变快、差距收敛，可继续稳态观察；若扩展加快、萎蔫提前、差异放大，则进入升级复核。
+娆℃棩澶嶆煡鍙湅鍥涗欢浜嬶細鐥囩姸杈圭晫鏄惁缁х画澶栨墿锛屽紓甯告牚涓庡仴搴锋牚宸窛鏄惁鎷夊ぇ锛屾柊鍙舵槸鍚︽寔缁彉宸紝鍗堝悗鍜屽倣鏅氬樊寮傛槸鍚︾缉灏忋€傝嫢鍑虹幇鑼冨洿瓒嬬ǔ銆佹仮澶嶅彉蹇€佸樊璺濇敹鏁涳紝鍙户缁ǔ鎬佽瀵燂紱鑻ユ墿灞曞姞蹇€佽悗钄彁鍓嶃€佸樊寮傛斁澶э紝鍒欒繘鍏ュ崌绾у鏍搞€?
 
-## 四、风险提示
-避免三个误区：一是看到表象就立刻定因，忽略多因素叠加；二是只看单次照片，不看连续时序；三是在证据不足时频繁大动作调整，造成二次扰动。建议执行顺序为先止损、再验证、后升级，每个判断都附带条件和复查节点。
+## 鍥涖€侀闄╂彁绀?
+閬垮厤涓変釜璇尯锛氫竴鏄湅鍒拌〃璞″氨绔嬪埢瀹氬洜锛屽拷鐣ュ鍥犵礌鍙犲姞锛涗簩鏄彧鐪嬪崟娆＄収鐗囷紝涓嶇湅杩炵画鏃跺簭锛涗笁鏄湪璇佹嵁涓嶈冻鏃堕绻佸ぇ鍔ㄤ綔璋冩暣锛岄€犳垚浜屾鎵板姩銆傚缓璁墽琛岄『搴忎负鍏堟鎹熴€佸啀楠岃瘉銆佸悗鍗囩骇锛屾瘡涓垽鏂兘闄勫甫鏉′欢鍜屽鏌ヨ妭鐐广€?
 
-## 五、执行结论
-今天先稳定管理并完成定点记录，明天同一时段复查关键指标，再决定是否升级处理。这样做不是一次性终判，而是建立可落地、可复核、可回退的问诊闭环，能在移动端持续跟进并降低误判成本。
+## 浜斻€佹墽琛岀粨璁?
+浠婂ぉ鍏堢ǔ瀹氱鐞嗗苟瀹屾垚瀹氱偣璁板綍锛屾槑澶╁悓涓€鏃舵澶嶆煡鍏抽敭鎸囨爣锛屽啀鍐冲畾鏄惁鍗囩骇澶勭悊銆傝繖鏍峰仛涓嶆槸涓€娆℃€х粓鍒わ紝鑰屾槸寤虹珛鍙惤鍦般€佸彲澶嶆牳銆佸彲鍥為€€鐨勯棶璇婇棴鐜紝鑳藉湪绉诲姩绔寔缁窡杩涘苟闄嶄綆璇垽鎴愭湰銆?
 """.trimIndent()
+
