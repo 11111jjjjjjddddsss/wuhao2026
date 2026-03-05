@@ -39,10 +39,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -513,20 +512,17 @@ fun ChatScreen() {
                             )
                         )
 
-                        val canSend = input.value.trim().isNotEmpty()
-                        val actionEnabled = isStreaming || canSend
-                        val actionBg = if (actionEnabled) Color(0xFF101010) else Color.Transparent
-                        val actionTint = if (actionEnabled) Color.White else Color(0xFF1A1A1A)
+                        val canSend = input.value.trim().isNotEmpty() && !isStreaming
+                        val actionBg = if (canSend) Color(0xFF101010) else Color(0xFFD9D9D9)
+                        val actionTint = if (canSend) Color.White else Color(0xFF7A7A7A)
 
                         IconButton(
                             onClick = {
-                                if (isStreaming) {
-                                    fakeStreamJob?.cancel()
-                                    finishStreaming()
-                                } else if (canSend) {
+                                if (canSend) {
                                     sendMessage()
                                 }
                             },
+                            enabled = canSend,
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
                                 .padding(end = 6.dp)
@@ -535,8 +531,8 @@ fun ChatScreen() {
                                 .background(actionBg)
                         ) {
                             Icon(
-                                imageVector = if (isStreaming) Icons.Default.Close else Icons.Default.Send,
-                                contentDescription = if (isStreaming) "停止" else "发送",
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Send",
                                 tint = actionTint
                             )
                         }
