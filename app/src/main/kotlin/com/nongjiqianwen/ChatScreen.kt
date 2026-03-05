@@ -413,6 +413,24 @@ fun ChatScreen() {
         }
     }
 
+    suspend fun scrollAfterSendAnchor() {
+        val userIndex = messages.indexOfLast { it.role == ChatRole.USER }
+        if (userIndex < 0) return
+        programmaticScroll = true
+        try {
+            withFrameNanos { }
+            val viewportHeight =
+                (listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset)
+                    .coerceAtLeast(1)
+            val anchorOffset = (viewportHeight * 0.42f).toInt().coerceAtLeast(0)
+            listState.scrollToItem(userIndex, anchorOffset)
+            withFrameNanos { }
+            listState.scrollToItem(userIndex, anchorOffset)
+        } finally {
+            programmaticScroll = false
+        }
+    }
+
     LaunchedEffect(streamTick) {
         if (!autoFollowEnabled) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
@@ -425,7 +443,7 @@ fun ChatScreen() {
 
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
-        scrollToBottom(animated = false)
+        scrollAfterSendAnchor()
     }
 
     fun jumpToBottom() {
@@ -602,7 +620,7 @@ fun ChatScreen() {
                                         Spacer(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(24.dp)
+                                                .height(56.dp)
                                         )
                                     } else {
                                         AssistantMarkdownContent(
