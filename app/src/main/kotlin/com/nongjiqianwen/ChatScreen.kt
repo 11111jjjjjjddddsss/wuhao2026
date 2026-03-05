@@ -552,7 +552,7 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                    .padding(horizontal = 20.dp)
+                    .padding(horizontal = 10.dp)
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
@@ -578,22 +578,23 @@ fun ChatScreen() {
                             contentAlignment = align
                         ) {
                             if (msg.role == ChatRole.ASSISTANT) {
+                                val showBreathingBall = isStreaming && msg.id == assistantMessageId && msg.content.isBlank()
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.Top
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(20.dp)
-                                            .padding(top = 8.dp),
-                                        contentAlignment = Alignment.CenterStart
-                                    ) {
-                                        if (isStreaming && msg.id == assistantMessageId && msg.content.isBlank()) {
+                                    if (showBreathingBall) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(20.dp)
+                                                .padding(top = 8.dp),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
                                             GPTBreathingBall()
                                         }
+                                        Spacer(modifier = Modifier.width(8.dp))
                                     }
-                                    if (msg.content.isBlank() && isStreaming && msg.id == assistantMessageId) {
+                                    if (msg.content.isBlank() && showBreathingBall) {
                                         Spacer(
                                             modifier = Modifier
                                                 .weight(1f)
