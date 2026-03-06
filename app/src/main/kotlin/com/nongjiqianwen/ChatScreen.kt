@@ -212,19 +212,19 @@ private fun MenuBarsIcon(
 ) {
     Canvas(modifier = modifier) {
         val stroke = size.minDimension * 0.11f
-        val y1 = size.height * 0.37f
+        val y1 = size.height * 0.36f
         val y2 = size.height * 0.64f
         drawLine(
             color = tint,
-            start = Offset(size.width * 0.26f, y1),
-            end = Offset(size.width * 0.74f, y1),
+            start = Offset(size.width * 0.18f, y1),
+            end = Offset(size.width * 0.82f, y1),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = tint,
-            start = Offset(size.width * 0.26f, y2),
-            end = Offset(size.width * 0.62f, y2),
+            start = Offset(size.width * 0.18f, y2),
+            end = Offset(size.width * 0.68f, y2),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
@@ -782,13 +782,13 @@ fun ChatScreen() {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(topBarReservedHeight + 28.dp)
+                    .height(topBarReservedHeight + 40.dp)
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFFFFFFFF).copy(alpha = 0.98f),
-                                Color(0xFFFFFFFF).copy(alpha = 0.94f),
-                                appCenterTint.copy(alpha = 0.82f),
+                                Color(0xFFF4F4F2).copy(alpha = 0.98f),
+                                Color(0xFFFAFAF9).copy(alpha = 0.94f),
+                                appCenterTint.copy(alpha = 0.7f),
                                 Color.Transparent
                             )
                         )
@@ -823,27 +823,18 @@ fun ChatScreen() {
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                    Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = chromeSurface,
-                        border = BorderStroke(0.55.dp, chromeBorder),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.22.dp,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text(
-                            text = "农技千问",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
-                            color = Color(0xFF111111),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center
-                        )
-                    }
+                    Text(
+                        text = "农技千问",
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        color = Color(0xFF111111),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
                     FrostedCircleButton(
                         size = chromeButtonSize,
                         surfaceColor = chromeSurface,
