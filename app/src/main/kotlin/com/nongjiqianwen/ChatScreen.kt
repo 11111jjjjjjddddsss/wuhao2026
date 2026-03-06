@@ -76,7 +76,6 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -94,143 +93,28 @@ import java.util.UUID
 private enum class ChatRole { USER, ASSISTANT }
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 
-private sealed interface MdBlock {
-    data class Heading(val level: Int, val text: String) : MdBlock
-    data class Paragraph(val text: String) : MdBlock
-    data class Bullet(val text: String) : MdBlock
-    data class Numbered(val index: String, val text: String) : MdBlock
-    data class Code(val text: String) : MdBlock
-}
-
-private val numberedRegex = Regex("""^(\d+)[.)]\s+(.*)$""")
-
-private fun parseMarkdownLikeBlocks(content: String): List<MdBlock> {
-    val blocks = mutableListOf<MdBlock>()
-    val paragraph = mutableListOf<String>()
-    val lines = content.replace("\r\n", "\n").split('\n')
-    var inCode = false
-    val code = mutableListOf<String>()
-
-    fun flushParagraph() {
-        if (paragraph.isNotEmpty()) {
-            blocks += MdBlock.Paragraph(paragraph.joinToString("\n").trim())
-            paragraph.clear()
-        }
-    }
-
-    lines.forEach { raw ->
-        val trimmed = raw.trim()
-
-        if (trimmed.startsWith("```")) {
-            if (inCode) {
-                blocks += MdBlock.Code(code.joinToString("\n"))
-                code.clear()
-                inCode = false
-            } else {
-                flushParagraph()
-                inCode = true
-            }
-            return@forEach
-        }
-
-        if (inCode) {
-            code += raw
-            return@forEach
-        }
-
-        if (trimmed.isBlank()) {
-            flushParagraph()
-            return@forEach
-        }
-
-        val headingLevel = when {
-            trimmed.startsWith("### ") -> 3
-            trimmed.startsWith("## ") -> 2
-            trimmed.startsWith("# ") -> 1
-            else -> 0
-        }
-        if (headingLevel > 0) {
-            flushParagraph()
-            blocks += MdBlock.Heading(headingLevel, trimmed.substring(headingLevel + 1).trim())
-            return@forEach
-        }
-
-        if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-            flushParagraph()
-            blocks += MdBlock.Bullet(trimmed.substring(2).trim())
-            return@forEach
-        }
-
-        val numbered = numberedRegex.matchEntire(trimmed)
-        if (numbered != null) {
-            flushParagraph()
-            blocks += MdBlock.Numbered(numbered.groupValues[1], numbered.groupValues[2].trim())
-            return@forEach
-        }
-
-        paragraph += trimmed
-    }
-
-    flushParagraph()
-    if (inCode && code.isNotEmpty()) blocks += MdBlock.Code(code.joinToString("\n"))
-    return blocks
+private fun normalizeAssistantText(content: String): String {
+    return content
+        .replace("\r\n", "\n")
+        .replace(Regex("(?m)^#{1,6}\\s+"), "")
+        .replace(Regex("(?m)^```.*$"), "")
+        .replace(Regex("\n{3,}"), "\n\n")
+        .trim()
 }
 
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
-    val blocks = remember(content) { parseMarkdownLikeBlocks(content) }
-    val paragraphStyle = TextStyle(
-        fontSize = 17.sp,
-        lineHeight = 30.sp,
-        color = Color(0xFF181818)
+    val displayText = remember(content) { normalizeAssistantText(content) }
+    Text(
+        text = displayText,
+        modifier = modifier.fillMaxWidth(),
+        style = TextStyle(
+            fontSize = 17.sp,
+            lineHeight = 31.sp,
+            color = Color(0xFF171717)
+        ),
+        textAlign = TextAlign.Start
     )
-
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        blocks.forEach { block ->
-            when (block) {
-                is MdBlock.Heading -> {
-                    val size = when (block.level) {
-                        1 -> 22.sp
-                        2 -> 20.sp
-                        else -> 18.sp
-                    }
-                    Text(
-                        text = block.text,
-                        fontSize = size,
-                        lineHeight = (size.value + 8).sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFF141414)
-                    )
-                }
-
-                is MdBlock.Paragraph -> Text(text = block.text, style = paragraphStyle)
-
-                is MdBlock.Bullet -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                        Text(text = "-", fontSize = 17.sp, lineHeight = 30.sp, color = Color(0xFF181818))
-                        Text(text = block.text, style = paragraphStyle, modifier = Modifier.weight(1f))
-                    }
-                }
-
-                is MdBlock.Numbered -> {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
-                        Text(text = "${block.index}.", fontSize = 17.sp, lineHeight = 30.sp, color = Color(0xFF181818))
-                        Text(text = block.text, style = paragraphStyle, modifier = Modifier.weight(1f))
-                    }
-                }
-
-                is MdBlock.Code -> {
-                    Text(
-                        text = block.text,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 15.sp,
-                        lineHeight = 26.sp,
-                        color = Color(0xFF1C1C1C)
-                    )
-                }
-            }
-        }
-    }
 }
 
 @Composable
@@ -485,7 +369,7 @@ fun ChatScreen() {
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
-                            contentDescription = "娣诲姞",
+                            contentDescription = "添加",
                             modifier = Modifier.size(30.dp),
                             tint = Color(0xFF252525)
                         )
@@ -513,7 +397,7 @@ fun ChatScreen() {
                                 .fillMaxWidth()
                                 .align(Alignment.CenterStart)
                                 .padding(end = 52.dp),
-                            placeholder = { Text("鎻忚堪浣滅墿/鍦板尯/闂", color = Color(0xFF9A9A9A)) },
+                            placeholder = { Text("描述作物/地区/问题", color = Color(0xFF9A9A9A)) },
                             singleLine = true,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = Color.Transparent,
@@ -596,13 +480,15 @@ fun ChatScreen() {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 6.dp),
+                                .padding(vertical = 8.dp),
                             contentAlignment = align
                         ) {
                             if (msg.role == ChatRole.ASSISTANT) {
                                 val showBreathingBall = isStreaming && msg.id == assistantMessageId && msg.content.isBlank()
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(end = 4.dp),
                                     verticalAlignment = Alignment.Top
                                 ) {
                                     if (showBreathingBall) {
@@ -673,7 +559,7 @@ fun ChatScreen() {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "鍥炲埌搴曢儴",
+                            contentDescription = "回到底部",
                             tint = Color(0xFF111111),
                             modifier = Modifier
                                 .size(22.dp)
@@ -701,7 +587,7 @@ fun ChatScreen() {
                     modifier = Modifier.size(46.dp)
                 ) {
                     IconButton(onClick = {}) {
-                        Icon(Icons.Default.Menu, contentDescription = "鑿滃崟", tint = Color(0xFF222222))
+                        Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
                     }
                 }
                 Surface(
@@ -711,7 +597,7 @@ fun ChatScreen() {
                     shadowElevation = 1.dp
                 ) {
                     Text(
-                        text = "鍐滄妧鍗冮棶",
+                        text = "农技千问",
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                         color = Color(0xFF111111),
                         style = MaterialTheme.typography.titleMedium,
@@ -749,4 +635,3 @@ private val FAKE_STREAM_TEXT = """
 ## 五、执行建议
 今天先把管理稳定下来，完成定点记录；明天同一时段回看关键指标，再决定是否需要升级处理。这样做不是拖，而是建立一套可落地、可复核、可回退的移动端问诊闭环，后面即使接入 SAE 和真实模型流式输出，这套消息插入、流式追加、结束收敛的 UI 逻辑也可以直接沿用，只需要把假流式文本源替换成后端流数据。
 """.trimIndent()
-
