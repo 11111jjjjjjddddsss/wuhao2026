@@ -46,10 +46,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -209,17 +206,62 @@ private fun LongArrowIcon(
 }
 
 @Composable
+private fun MenuBarsIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.11f
+        val y1 = size.height * 0.37f
+        val y2 = size.height * 0.64f
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.26f, y1),
+            end = Offset(size.width * 0.74f, y1),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.26f, y2),
+            end = Offset(size.width * 0.62f, y2),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun DiamondOutlineIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.095f
+        val top = Offset(size.width * 0.5f, size.height * 0.14f)
+        val right = Offset(size.width * 0.82f, size.height * 0.5f)
+        val bottom = Offset(size.width * 0.5f, size.height * 0.86f)
+        val left = Offset(size.width * 0.18f, size.height * 0.5f)
+        drawLine(tint, top, right, strokeWidth = stroke, cap = StrokeCap.Round)
+        drawLine(tint, right, bottom, strokeWidth = stroke, cap = StrokeCap.Round)
+        drawLine(tint, bottom, left, strokeWidth = stroke, cap = StrokeCap.Round)
+        drawLine(tint, left, top, strokeWidth = stroke, cap = StrokeCap.Round)
+    }
+}
+
+@Composable
 private fun FrostedCircleButton(
-    contentDescription: String,
     size: Dp,
+    surfaceColor: Color,
+    borderColor: Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     icon: @Composable BoxScope.() -> Unit
 ) {
     Surface(
         shape = CircleShape,
-        color = Color.White.copy(alpha = 0.98f),
-        border = BorderStroke(1.dp, Color(0xFFE7E5DF)),
+        color = surfaceColor,
+        border = BorderStroke(1.dp, borderColor),
         shadowElevation = 0.8.dp,
         tonalElevation = 0.dp,
         modifier = modifier.size(size)
@@ -257,11 +299,11 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appBackground = Color(0xFFF7F7F4)
-    val chromeSurface = Color.White.copy(alpha = 0.98f)
-    val chromeBorder = Color(0xFFE7E5DF)
-    val inputSurface = Color.White.copy(alpha = 0.99f)
-    val inputBorder = Color(0xFFE7E5DF)
+    val appBackground = Color(0xFFF6F5F2)
+    val chromeSurface = Color(0xFFF3F2EE)
+    val chromeBorder = Color(0xFFE7E4DE)
+    val inputSurface = Color(0xFFF8F7F4)
+    val inputBorder = Color(0xFFE7E4DE)
     val userBubbleColor = Color(0xFFEDEDF1)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -493,8 +535,9 @@ fun ChatScreen() {
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FrostedCircleButton(
-                            contentDescription = "添加",
                             size = addButtonSize,
+                            surfaceColor = chromeSurface,
+                            borderColor = chromeBorder,
                             onClick = {}
                         ) {
                             Icon(
@@ -690,7 +733,7 @@ fun ChatScreen() {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.94f),
+                    color = chromeSurface,
                     border = BorderStroke(1.dp, chromeBorder),
                     shadowElevation = 1.5.dp,
                     modifier = Modifier
@@ -744,14 +787,13 @@ fun ChatScreen() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FrostedCircleButton(
-                        contentDescription = "返回",
                         size = chromeButtonSize,
+                        surfaceColor = chromeSurface,
+                        borderColor = chromeBorder,
                         onClick = {}
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
-                            tint = Color(0xFF222222),
+                        MenuBarsIcon(
+                            tint = Color(0xFF1E1E1E),
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -777,11 +819,15 @@ fun ChatScreen() {
                         )
                     }
                     FrostedCircleButton(
-                        contentDescription = "更多",
                         size = chromeButtonSize,
+                        surfaceColor = chromeSurface,
+                        borderColor = chromeBorder,
                         onClick = {}
                     ) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "更多", tint = Color(0xFF222222))
+                        DiamondOutlineIcon(
+                            tint = Color(0xFF1E1E1E),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
