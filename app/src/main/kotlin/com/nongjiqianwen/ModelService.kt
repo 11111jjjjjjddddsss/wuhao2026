@@ -1,15 +1,15 @@
 ﻿package com.nongjiqianwen
 
 /**
- * 模型服务接口：非流式丢次返回；错误兜底；stop/cancel 占位保留?
+ * 模型服务接口：非流式单次返回；错误兜底；保留 stop/cancel 扩展位。
  * 当前仅走主对话调用链，不包含外部联网工具注入。
  */
 object ModelService {
 
     /**
-     * 获取模型回复（非流式，一?onChunk(完整文本) + onComplete?
-     * @param chatModel 主对话档位标识（free/plus/pro）；主对话模型固?MODEL_MAIN(qwen3.5-plus)，B 摘要固定 MODEL_B_SUMMARY(qwen-flash)
-     * @param onInterrupted 閿欒鏃惰皟鐢紝浠呯敤浜?UI badge
+     * 获取模型回复：非流式返回完整文本，回调 onChunk(完整文本) 后进入 onComplete。
+     * @param chatModel 主对话档位标识（free/plus/pro）；主对话模型固定 MODEL_MAIN(qwen3.5-plus)
+     * @param onInterrupted 错误时调用，仅用于 UI 状态提示
      */
     fun getReply(
         userMessage: String,
@@ -40,7 +40,7 @@ object ModelService {
         )
     }
 
-    /** 补全请求：无 tools，userMessage 为请从我已输出的内容继续…? prefix；同丢轮继续生成，成功?onComplete ?A?*/
+    /** 补全请求：无 tools，userMessage 为“请从我已输出的内容继续”一类前缀；成功后进入 onComplete。 */
     fun getReplyContinuation(
         streamId: String,
         continuationUserMessage: String,
@@ -69,4 +69,3 @@ object ModelService {
         )
     }
 }
-
