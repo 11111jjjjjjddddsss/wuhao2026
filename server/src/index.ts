@@ -52,6 +52,9 @@ const chatRateLimitBuckets = new Map<string, number[]>();
 function consumeChatRateLimit(userId: string, now = Date.now()): { allowed: boolean; retryAfterSec: number } {
   const bucket = chatRateLimitBuckets.get(userId) ?? [];
   const validHits = bucket.filter((ts) => now - ts < CHAT_RATE_LIMIT_WINDOW_MS);
+  if (validHits.length == 0) {
+    chatRateLimitBuckets.delete(userId);
+  }
   if (validHits.length >= CHAT_RATE_LIMIT_MAX_REQUESTS) {
     const retryAfterMs = CHAT_RATE_LIMIT_WINDOW_MS - (now - validHits[0]);
     chatRateLimitBuckets.set(userId, validHits);

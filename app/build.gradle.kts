@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val generateSystemAnchorAsset by tasks.registering(Copy::class) {
+    from(rootProject.file("server/assets/system_anchor.txt"))
+    into(layout.buildDirectory.dir("generated/assets/systemAnchor"))
+    rename { "system_anchor.txt" }
+}
+
 android {
     namespace = "com.nongjiqianwen"
     compileSdk = 35
@@ -71,6 +77,13 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
+    sourceSets.named("main") {
+        assets.srcDir(layout.buildDirectory.dir("generated/assets/systemAnchor"))
+    }
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(generateSystemAnchorAsset)
 }
 
 dependencies {
