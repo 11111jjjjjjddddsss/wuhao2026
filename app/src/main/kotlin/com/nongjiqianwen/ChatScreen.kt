@@ -3,7 +3,7 @@
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -120,33 +120,40 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 @Composable
 private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
-    val ballColor by transition.animateColor(
-        initialValue = Color(0xFF111111),
-        targetValue = Color(0xFF5A5A5A),
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "assistantBreathingDotColor"
-    )
-    val scale by transition.animateFloat(
-        initialValue = 0.94f,
+    val alpha by transition.animateFloat(
+        initialValue = 0.72f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200),
+            animation = tween(
+                durationMillis = 920,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "assistantBreathingDotAlpha"
+    )
+    val scale by transition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 920,
+                easing = FastOutSlowInEasing
+            ),
             repeatMode = RepeatMode.Reverse
         ),
         label = "assistantBreathingDotScale"
     )
     Box(
         modifier = modifier
-            .size(16.dp)
+            .size(13.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                this.alpha = alpha
             }
             .clip(CircleShape)
-            .background(ballColor)
+            .background(Color(0xFF111111))
     )
 }
 
