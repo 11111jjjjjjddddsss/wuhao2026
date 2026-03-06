@@ -303,8 +303,8 @@ fun ChatScreen() {
     val appCenterTint = Color(0xFFFFFFFF)
     val chromeSurface = Color(0xFFFFFFFF)
     val chromeBorder = Color(0xFFE7E4DE).copy(alpha = 0.42f)
-    val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFE7E4DE).copy(alpha = 0.42f)
+    val inputSurface = Color(0xFFF7F7F5)
+    val inputBorder = Color(0xFFE2DFD9).copy(alpha = 0.72f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -577,9 +577,9 @@ fun ChatScreen() {
                         Surface(
                             shape = RoundedCornerShape(30.dp),
                             color = inputSurface,
-                            border = BorderStroke(0.55.dp, inputBorder),
+                            border = BorderStroke(0.75.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.22.dp,
+                            shadowElevation = 0.55.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
