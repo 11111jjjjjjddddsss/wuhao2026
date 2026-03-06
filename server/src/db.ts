@@ -142,15 +142,27 @@ export async function touchSessionContext(
 ): Promise<void> {
   await withConnection(async (conn) => {
     await conn.execute(
-      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, round_total, updated_at, last_region, last_region_source, last_region_reliability, last_seen_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+      `INSERT INTO session_ab(
+         user_id,
+         session_id,
+         a_json,
+         b_summary,
+         c_summary,
+         round_total,
+         updated_at,
+         last_region,
+         last_region_source,
+         last_region_reliability,
+         last_seen_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          last_region = VALUES(last_region),
          last_region_source = VALUES(last_region_source),
          last_region_reliability = VALUES(last_region_reliability),
          last_seen_at = VALUES(last_seen_at),
          updated_at = VALUES(updated_at)`,
-      [userId, sessionId, JSON.stringify([]), '', '', seenAt, region, source, reliability, seenAt],
+      [userId, sessionId, JSON.stringify([]), '', '', 0, seenAt, region, source, reliability, seenAt],
     );
   });
 }
