@@ -454,12 +454,12 @@ fun ChatScreen() {
     val density = LocalDensity.current
     val context = LocalContext.current
     val sessionId = remember { IdManager.getSessionId() }
-    val appTopBottomTint = Color(0xFFF4F4F2)
-    val appCenterTint = Color(0xFFF7F7F6)
-    val chromeSurface = Color.White.copy(alpha = 0.96f)
-    val chromeBorder = Color(0xFFEAE7E1).copy(alpha = 0.16f)
+    val appTopBottomTint = Color(0xFFF7F7F5)
+    val appCenterTint = Color(0xFFFFFEFD)
+    val chromeSurface = Color.White.copy(alpha = 0.985f)
+    val chromeBorder = Color(0xFFECE9E3).copy(alpha = 0.12f)
     val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFE4E1DA).copy(alpha = 0.42f)
+    val inputBorder = Color(0xFFE7E4DE).copy(alpha = 0.34f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -716,14 +716,14 @@ fun ChatScreen() {
             else -> maxWidth
         }
         val chromeHorizontalPadding = when {
-            maxWidth < 360.dp -> 12.dp
-            maxWidth < 600.dp -> 16.dp
-            else -> 22.dp
+            maxWidth < 360.dp -> 14.dp
+            maxWidth < 600.dp -> 18.dp
+            else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 12.dp
-            maxWidth < 600.dp -> 16.dp
-            else -> 22.dp
+            maxWidth < 360.dp -> 16.dp
+            maxWidth < 600.dp -> 20.dp
+            else -> 26.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
@@ -752,8 +752,8 @@ fun ChatScreen() {
                                 Brush.verticalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        Color(0xFFFAFAF9).copy(alpha = 0.94f),
-                                        Color(0xFFEFEEE9).copy(alpha = 0.98f)
+                                        Color(0xFFFFFEFC).copy(alpha = 0.94f),
+                                        Color(0xFFF4F3EF).copy(alpha = 0.98f)
                                     )
                                 )
                             )
@@ -787,9 +787,9 @@ fun ChatScreen() {
                         Surface(
                             shape = RoundedCornerShape(30.dp),
                             color = inputSurface,
-                            border = BorderStroke(0.72.dp, inputBorder),
+                            border = BorderStroke(0.68.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.86.dp,
+                            shadowElevation = 1.08.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -994,9 +994,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFFF0F0ED).copy(alpha = 0.98f),
-                                Color(0xFFF5F5F2).copy(alpha = 0.94f),
-                                appCenterTint.copy(alpha = 0.72f),
+                                Color(0xFFF6F6F3).copy(alpha = 0.96f),
+                                Color(0xFFFBFBF8).copy(alpha = 0.9f),
+                                appCenterTint.copy(alpha = 0.68f),
                                 Color.Transparent
                             )
                         )
@@ -1037,10 +1037,10 @@ fun ChatScreen() {
                     ) {
                         Surface(
                             shape = RoundedCornerShape(18.dp),
-                            color = Color.White.copy(alpha = 0.96f),
+                            color = Color.White.copy(alpha = 0.985f),
                             border = BorderStroke(0.38.dp, chromeBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.56.dp
+                            shadowElevation = 0.72.dp
                         ) {
                             Text(
                                 text = "农技千问",
