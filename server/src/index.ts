@@ -43,8 +43,27 @@ function getAWindowByTier(tier: Tier): number {
 
 const app = Fastify({ logger: true, trustProxy: true });
 const SSE_HEARTBEAT_MS = 20_000;
+const CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
+const CHAT_RATE_LIMIT_MAX_REQUESTS = 20;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ANCHOR_FILE_PATH = path.resolve(__dirname, '../assets/system_anchor.txt');
+const chatRateLimitBuckets = new Map<string, number[]>();
+
+function consumeChatRateLimit(userId: string, now = Date.now()): { allowed: boolean; retryAfterSec: number } {
+  const bucket = chatRateLimitBuckets.get(userId) ?? [];
+  const validHits = bucket.filter((ts) => now - ts < CHAT_RATE_LIMIT_WINDOW_MS);
+  if (validHits.length >= CHAT_RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterMs = CHAT_RATE_LIMIT_WINDOW_MS - (now - validHits[0]);
+    chatRateLimitBuckets.set(userId, validHits);
+    return {
+      allowed: false,
+      retryAfterSec: Math.max(1, Math.ceil(retryAfterMs / 1000)),
+    };
+  }
+  validHits.push(now);
+  chatRateLimitBuckets.set(userId, validHits);
+  return { allowed: true, retryAfterSec: 0 };
+}
 
 function resolveSystemAnchor(): { text: string; source: 'env' | 'file' } {
   const envAnchor = (process.env.SYSTEM_ANCHOR || '').trim();
@@ -368,6 +387,16 @@ app.post('/api/chat/stream', async (request, reply) => {
     reply.raw.write('data: [DONE]\n\n');
     reply.raw.end();
     return;
+  }
+
+  const rateLimit = consumeChatRateLimit(userId);
+  if (!rateLimit.allowed) {
+    reply.header('Retry-After', String(rateLimit.retryAfterSec));
+    return reply.code(429).send({
+      error: 'RATE_LIMITED',
+      message: '请求过于频繁，请稍后再试',
+      retry_after_sec: rateLimit.retryAfterSec,
+    });
   }
 
   const before = await getDailyStatus(userId, tier, dayCN);
