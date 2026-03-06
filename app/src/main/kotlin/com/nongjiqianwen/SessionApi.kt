@@ -376,6 +376,7 @@ object SessionApi {
                             }
                             if (!res.isSuccessful) {
                                 val reason = when (res.code) {
+                                    429 -> "rate_limit"
                                     402 -> "quota"
                                     else -> "server"
                                 }

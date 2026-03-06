@@ -583,16 +583,27 @@ object QwenClient {
         }.start()
     }
     private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit, onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null) {
+        var reason = "server"
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
             val errorCode = jsonResponse.get("code")?.asString ?: ""
             @Suppress("UNUSED_VARIABLE") val errorMessage = jsonResponse.get("message")?.asString ?: responseBody
             // 仅日志用，不写正式字段
+            reason = when {
+                statusCode == 429 || errorCode.equals("RATE_LIMITED", ignoreCase = true) -> "rate_limit"
+                statusCode == 402 -> "quota"
+                else -> "server"
+            }
         } catch (_: Exception) {
             Log.e(TAG, "callApi 无法解析错误响应 statusCode=$statusCode")
+            reason = when (statusCode) {
+                429 -> "rate_limit"
+                402 -> "quota"
+                else -> "server"
+            }
         }
         handler.post {
-            if (onInterruptedResumable != null) onInterruptedResumable(streamId, "server") else { onInterrupted("server"); fireComplete() }
+            if (onInterruptedResumable != null) onInterruptedResumable(streamId, reason) else { onInterrupted(reason); fireComplete() }
         }
     }
 
