@@ -261,8 +261,8 @@ private fun FrostedCircleButton(
     Surface(
         shape = CircleShape,
         color = surfaceColor,
-        border = BorderStroke(1.dp, borderColor),
-        shadowElevation = 0.8.dp,
+        border = BorderStroke(0.8.dp, borderColor),
+        shadowElevation = 0.4.dp,
         tonalElevation = 0.dp,
         modifier = modifier.size(size)
     ) {
@@ -299,13 +299,13 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appTopBottomTint = Color(0xFFF7F6F3)
+    val appTopBottomTint = Color(0xFFF8F8F6)
     val appCenterTint = Color(0xFFFFFFFF)
-    val chromeSurface = Color(0xFFFFFEFC)
-    val chromeBorder = Color(0xFFF0ECE6)
+    val chromeSurface = Color(0xFFFFFFFF)
+    val chromeBorder = Color(0xFFECEBE8)
     val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFF0ECE6)
-    val userBubbleColor = Color(0xFFF1F1F5)
+    val inputBorder = Color(0xFFECEBE8)
+    val userBubbleColor = Color(0xFFF3F3F6)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -492,9 +492,9 @@ fun ChatScreen() {
                 Brush.verticalGradient(
                     colorStops = arrayOf(
                         0.0f to appTopBottomTint,
-                        0.18f to Color(0xFFFBFAF7),
+                        0.14f to Color(0xFFFDFDFC),
                         0.5f to appCenterTint,
-                        0.82f to Color(0xFFFBFAF7),
+                        0.86f to Color(0xFFFDFDFC),
                         1.0f to appTopBottomTint
                     )
                 )
@@ -562,9 +562,9 @@ fun ChatScreen() {
                         Surface(
                             shape = RoundedCornerShape(30.dp),
                             color = inputSurface,
-                            border = BorderStroke(1.dp, inputBorder),
+                            border = BorderStroke(0.8.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.8.dp,
+                            shadowElevation = 0.4.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -745,8 +745,8 @@ fun ChatScreen() {
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
                     color = chromeSurface,
-                    border = BorderStroke(1.dp, chromeBorder),
-                    shadowElevation = 1.5.dp,
+                    border = BorderStroke(0.8.dp, chromeBorder),
+                    shadowElevation = 0.7.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = jumpButtonBottomPadding)
@@ -771,9 +771,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFFF8F7F4).copy(alpha = 0.98f),
-                                Color(0xFFFCFBF8).copy(alpha = 0.94f),
-                                appCenterTint.copy(alpha = 0.78f),
+                                Color(0xFFF9F9F7).copy(alpha = 0.98f),
+                                Color(0xFFFEFEFD).copy(alpha = 0.95f),
+                                appCenterTint.copy(alpha = 0.84f),
                                 Color.Transparent
                             )
                         )
@@ -811,9 +811,9 @@ fun ChatScreen() {
                     Surface(
                         shape = RoundedCornerShape(24.dp),
                         color = chromeSurface,
-                        border = BorderStroke(1.dp, chromeBorder),
+                        border = BorderStroke(0.8.dp, chromeBorder),
                         tonalElevation = 0.dp,
-                        shadowElevation = 0.8.dp,
+                        shadowElevation = 0.4.dp,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
