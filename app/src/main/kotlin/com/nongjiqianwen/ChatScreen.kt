@@ -299,12 +299,12 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appTopBottomTint = Color(0xFFF6F6F3)
-    val appCenterTint = Color(0xFFF9F9F7)
+    val appTopBottomTint = Color(0xFFF3F3F0)
+    val appCenterTint = Color(0xFFF7F7F5)
     val chromeSurface = Color(0xFFFFFFFF)
-    val chromeBorder = Color(0xFFE5E2DC).copy(alpha = 0.36f)
+    val chromeBorder = Color(0xFFE3E0DA).copy(alpha = 0.3f)
     val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFE1DED8).copy(alpha = 0.5f)
+    val inputBorder = Color(0xFFE1DED8).copy(alpha = 0.42f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -492,9 +492,9 @@ fun ChatScreen() {
                 Brush.verticalGradient(
                     colorStops = arrayOf(
                         0.0f to appTopBottomTint,
-                        0.14f to Color(0xFFF8F8F6),
+                        0.14f to Color(0xFFF5F5F2),
                         0.5f to appCenterTint,
-                        0.86f to Color(0xFFF8F8F6),
+                        0.86f to Color(0xFFF5F5F2),
                         1.0f to appTopBottomTint
                     )
                 )
@@ -542,8 +542,8 @@ fun ChatScreen() {
                                 Brush.verticalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        Color(0xFFF9F9F7).copy(alpha = 0.9f),
-                                        Color(0xFFF1F0EC).copy(alpha = 0.96f)
+                                        Color(0xFFFAFAF8).copy(alpha = 0.92f),
+                                        Color(0xFFF0EFEB).copy(alpha = 0.98f)
                                     )
                                 )
                             )
@@ -786,8 +786,8 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFFF4F4F1).copy(alpha = 0.98f),
-                                Color(0xFFF8F8F6).copy(alpha = 0.94f),
+                                Color(0xFFF1F1EE).copy(alpha = 0.98f),
+                                Color(0xFFF6F6F3).copy(alpha = 0.94f),
                                 appCenterTint.copy(alpha = 0.7f),
                                 Color.Transparent
                             )
@@ -829,10 +829,10 @@ fun ChatScreen() {
                     ) {
                         Surface(
                             shape = RoundedCornerShape(18.dp),
-                        color = Color.White.copy(alpha = 0.94f),
-                        border = BorderStroke(0.45.dp, chromeBorder),
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.18.dp
+                            color = Color.White,
+                            border = BorderStroke(0.45.dp, chromeBorder),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.22.dp
                         ) {
                             Text(
                                 text = "农技千问",
