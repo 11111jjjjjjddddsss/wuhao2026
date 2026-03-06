@@ -211,20 +211,20 @@ private fun MenuBarsIcon(
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.11f
-        val y1 = size.height * 0.36f
-        val y2 = size.height * 0.64f
+        val stroke = size.minDimension * 0.085f
+        val y1 = size.height * 0.38f
+        val y2 = size.height * 0.63f
         drawLine(
             color = tint,
-            start = Offset(size.width * 0.18f, y1),
-            end = Offset(size.width * 0.82f, y1),
+            start = Offset(size.width * 0.22f, y1),
+            end = Offset(size.width * 0.78f, y1),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = tint,
-            start = Offset(size.width * 0.18f, y2),
-            end = Offset(size.width * 0.68f, y2),
+            start = Offset(size.width * 0.22f, y2),
+            end = Offset(size.width * 0.58f, y2),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
