@@ -34,10 +34,6 @@ object QwenClient {
     private const val SSE_TOTAL_TIMEOUT_MS = 25_000L
     private const val SSE_CHUNK_THROTTLE_MS = 24L
     private const val SUMMARY_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
-    private const val SUMMARY_EXTRACT_TEMPERATURE = 0.8
-    private const val SUMMARY_EXTRACT_TOP_P = 0.9
-    private const val SUMMARY_EXTRACT_FREQUENCY_PENALTY = 0.0
-    private const val SUMMARY_EXTRACT_PRESENCE_PENALTY = 0.0
     @Volatile private var lastSummaryExtractErrorLogMs = 0L
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
@@ -602,7 +598,7 @@ object QwenClient {
 
     /**
      * B/C 摘要提取：非流式，同步返回摘要文本
-     * 参数冻结：temperature=0.8, top_p=0.9, frequency_penalty=0, presence_penalty=0
+     * 参数与主对话保持一致：复用 ModelParams。
      */
     fun extractBSummary(oldB: String, dialogueText: String, systemPrompt: String): String {
         return extractSummary("B", MODEL_B_SUMMARY, oldB, dialogueText, systemPrompt)
@@ -639,10 +635,10 @@ object QwenClient {
             val body = JsonObject().apply {
                 addProperty("model", model)
                 addProperty("stream", false)
-                addProperty("temperature", SUMMARY_EXTRACT_TEMPERATURE)
-                addProperty("top_p", SUMMARY_EXTRACT_TOP_P)
-                addProperty("frequency_penalty", SUMMARY_EXTRACT_FREQUENCY_PENALTY)
-                addProperty("presence_penalty", SUMMARY_EXTRACT_PRESENCE_PENALTY)
+                addProperty("temperature", ModelParams.TEMPERATURE)
+                addProperty("top_p", ModelParams.TOP_P)
+                addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
+                addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
                 add("extra_body", JsonObject().apply {
                     addProperty("enable_thinking", false)
                 })
@@ -677,4 +673,3 @@ object QwenClient {
         }
     }
 }
-
