@@ -6,6 +6,11 @@ interface OpenBailianStreamArgs {
   signal?: AbortSignal;
 }
 
+interface OpenBailianCompletionArgs {
+  body: Record<string, unknown>;
+  signal?: AbortSignal;
+}
+
 let keyCursor = 0;
 
 function getBailianKeys(): string[] {
@@ -30,11 +35,18 @@ function pickNextKey(): string {
   return keys[index];
 }
 
+export function hasBailianKeyConfigured(): boolean {
+  return getBailianKeys().length > 0;
+}
+
+function buildBailianUrl(): string {
+  const baseUrl = process.env.BAILIAN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  return `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+}
+
 export async function openBailianStream({ payload, messages, signal }: OpenBailianStreamArgs): Promise<Response> {
   const apiKey = pickNextKey();
-
-  const baseUrl = process.env.BAILIAN_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+  const url = buildBailianUrl();
 
   const body = {
     model: 'qwen3.5-plus',
@@ -56,6 +68,22 @@ export async function openBailianStream({ payload, messages, signal }: OpenBaili
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      'Cache-Control': 'no-cache',
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+}
+
+export async function openBailianCompletion({ body, signal }: OpenBailianCompletionArgs): Promise<Response> {
+  const apiKey = pickNextKey();
+  const url = buildBailianUrl();
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
       'Cache-Control': 'no-cache',
     },
     body: JSON.stringify(body),

@@ -43,6 +43,8 @@ export interface SessionSnapshot {
   a_rounds_full: SessionRound[];
   b_summary: string;
   c_summary: string;
+  pending_retry_b: boolean;
+  pending_retry_c: boolean;
   round_total: number;
   updated_at: number;
 }

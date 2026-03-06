@@ -1,0 +1,3 @@
+ALTER TABLE session_ab
+  ADD COLUMN IF NOT EXISTS pending_retry_b TINYINT(1) NOT NULL DEFAULT 0 AFTER c_summary,
+  ADD COLUMN IF NOT EXISTS pending_retry_c TINYINT(1) NOT NULL DEFAULT 0 AFTER pending_retry_b;

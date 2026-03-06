@@ -11,6 +11,8 @@ type SessionRow = RowDataPacket & {
   a_json: string | null;
   b_summary: string | null;
   c_summary: string | null;
+  pending_retry_b: number | null;
+  pending_retry_c: number | null;
   round_total: number;
   updated_at: number;
 };
@@ -25,6 +27,8 @@ export async function appendSessionRoundComplete(
   clientMsgId: string,
   round: SessionRound,
   aWindowRounds: number,
+  bEveryRounds: number,
+  cEveryRounds: number,
 ): Promise<{ replay: boolean; snapshot: SessionSnapshot }> {
   return withConnection(async (conn) => {
     await conn.beginTransaction();
@@ -45,7 +49,7 @@ export async function appendSessionRoundComplete(
         [userId, sessionId, clientMsgId, nowTs()],
       );
 
-      const snapshot = await appendRoundAndUpsertSnapshot(conn, userId, sessionId, round, aWindowRounds);
+      const snapshot = await appendRoundAndUpsertSnapshot(conn, userId, sessionId, round, aWindowRounds, bEveryRounds, cEveryRounds);
       await conn.commit();
       return { replay: false, snapshot };
     } catch (error) {
@@ -61,9 +65,11 @@ async function appendRoundAndUpsertSnapshot(
   sessionId: string,
   round: SessionRound,
   aWindowRounds: number,
+  bEveryRounds: number,
+  cEveryRounds: number,
 ): Promise<SessionSnapshot> {
   const [rows] = await conn.execute<SessionRow[]>(
-    'SELECT a_json, b_summary, c_summary, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1 FOR UPDATE',
+    'SELECT a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1 FOR UPDATE',
     [userId, sessionId],
   );
   const existing = rows[0];
@@ -74,15 +80,19 @@ async function appendRoundAndUpsertSnapshot(
   const updatedAt = nowTs();
   const bSummary = existing?.b_summary ?? '';
   const cSummary = existing?.c_summary ?? '';
+  const pendingRetryB = Boolean(existing?.pending_retry_b) || (bEveryRounds > 0 && roundTotal % bEveryRounds === 0);
+  const pendingRetryC = Boolean(existing?.pending_retry_c) || (cEveryRounds > 0 && roundTotal % cEveryRounds === 0);
 
   await conn.execute(
-    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        a_json = VALUES(a_json),
+       pending_retry_b = VALUES(pending_retry_b),
+       pending_retry_c = VALUES(pending_retry_c),
        round_total = VALUES(round_total),
        updated_at = VALUES(updated_at)`,
-    [userId, sessionId, JSON.stringify(rounds), bSummary, cSummary, roundTotal, updatedAt],
+    [userId, sessionId, JSON.stringify(rounds), bSummary, cSummary, pendingRetryB ? 1 : 0, pendingRetryC ? 1 : 0, roundTotal, updatedAt],
   );
 
   return {
@@ -91,6 +101,8 @@ async function appendRoundAndUpsertSnapshot(
     a_rounds_full: rounds,
     b_summary: bSummary,
     c_summary: cSummary,
+    pending_retry_b: pendingRetryB,
+    pending_retry_c: pendingRetryC,
     round_total: roundTotal,
     updated_at: updatedAt,
   };
@@ -105,7 +117,7 @@ export async function writeSessionBSummary(userId: string, sessionId: string, su
     await conn.execute(
       `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
        VALUES (?, ?, ?, ?, ?, 0, ?)
-       ON DUPLICATE KEY UPDATE b_summary = VALUES(b_summary), updated_at = VALUES(updated_at)`,
+       ON DUPLICATE KEY UPDATE b_summary = VALUES(b_summary), pending_retry_b = 0, updated_at = VALUES(updated_at)`,
       [userId, sessionId, JSON.stringify([]), normalized, '', nowTs()],
     );
   });
@@ -120,8 +132,22 @@ export async function writeSessionCSummary(userId: string, sessionId: string, su
     await conn.execute(
       `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
        VALUES (?, ?, ?, ?, ?, 0, ?)
-       ON DUPLICATE KEY UPDATE c_summary = VALUES(c_summary), updated_at = VALUES(updated_at)`,
+       ON DUPLICATE KEY UPDATE c_summary = VALUES(c_summary), pending_retry_c = 0, updated_at = VALUES(updated_at)`,
       [userId, sessionId, JSON.stringify([]), '', normalized, nowTs()],
+    );
+  });
+}
+
+export async function setSessionSummaryPending(userId: string, sessionId: string, layer: 'B' | 'C', pending: boolean): Promise<void> {
+  const pendingRetryB = layer === 'B' && pending ? 1 : 0;
+  const pendingRetryC = layer === 'C' && pending ? 1 : 0;
+  const column = layer === 'B' ? 'pending_retry_b' : 'pending_retry_c';
+  await withConnection(async (conn) => {
+    await conn.execute(
+      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+       ON DUPLICATE KEY UPDATE ${column} = VALUES(${column}), updated_at = VALUES(updated_at)`,
+      [userId, sessionId, JSON.stringify([]), '', '', pendingRetryB, pendingRetryC, nowTs()],
     );
   });
 }
@@ -173,7 +199,7 @@ async function readSnapshotOptional(
   sessionId: string,
 ): Promise<SessionSnapshot | null> {
   const [rows] = await conn.execute<SessionRow[]>(
-    'SELECT a_json, b_summary, c_summary, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1',
+    'SELECT a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1',
     [userId, sessionId],
   );
   if (rows.length === 0) return null;
@@ -185,6 +211,8 @@ async function readSnapshotOptional(
     a_rounds_full: rounds,
     b_summary: row.b_summary ?? '',
     c_summary: row.c_summary ?? '',
+    pending_retry_b: Boolean(row.pending_retry_b),
+    pending_retry_c: Boolean(row.pending_retry_c),
     round_total: row.round_total ?? 0,
     updated_at: row.updated_at ?? 0,
   };
@@ -203,12 +231,14 @@ async function readSnapshotForUpdate(
     a_rounds_full: [],
     b_summary: '',
     c_summary: '',
+    pending_retry_b: false,
+    pending_retry_c: false,
     round_total: 0,
     updated_at: nowTs(),
   };
   await conn.execute(
-    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?)
+    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?)
      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)`,
     [userId, sessionId, JSON.stringify([]), '', '', empty.updated_at],
   );

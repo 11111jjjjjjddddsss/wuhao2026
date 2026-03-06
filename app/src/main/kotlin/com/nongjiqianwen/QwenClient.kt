@@ -33,8 +33,6 @@ object QwenClient {
     private const val SSE_TTFT_TIMEOUT_MS = 8_000L
     private const val SSE_TOTAL_TIMEOUT_MS = 25_000L
     private const val SSE_CHUNK_THROTTLE_MS = 24L
-    private const val SUMMARY_EXTRACT_ERROR_LOG_INTERVAL_MS = 60_000L
-    @Volatile private var lastSummaryExtractErrorLogMs = 0L
     private val client = OkHttpClient.Builder()
         .connectTimeout(CONNECT_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(READ_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
@@ -50,8 +48,6 @@ object QwenClient {
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
     private const val MODEL_MAIN = "qwen3.5-plus"
-    private const val MODEL_B_SUMMARY = "qwen-flash"
-    private const val MODEL_C_SUMMARY = "qwen-flash"
     private val handler = Handler(Looper.getMainLooper())
 
     fun setClientMsgIdForStream(streamId: String, clientMsgId: String) {
@@ -364,19 +360,10 @@ object QwenClient {
         }
     }
 
-    /** 构建主对话 messages（四层在 user；system 仅锚点）。 */
+    /** 构建主对话 messages：历史/摘要/锚点以后端注入为准。 */
     private fun buildMainDialogueMessages(userMessage: String, imageUrlList: List<String>): JsonArray {
-        val aText = com.nongjiqianwen.ABLayerManager.getARoundsTextForMainDialogue()
-        val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
-        val cSum = com.nongjiqianwen.ABLayerManager.getCSummary()
         val messagesArray = JsonArray()
-        val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
-        val parts = mutableListOf<String>()
-        parts.add(layer1.trim())
-        if (aText.isNotBlank()) parts.add("【A层历史对话（中等参考性）】\n$aText")
-        if (bSum.isNotBlank()) parts.add("【B层累计摘要（仅供参考）】\n$bSum")
-        if (cSum.isNotBlank()) parts.add("【C层长期记忆（仅供参考）】\n$cSum")
-        val userTextContent = parts.joinToString("\n\n").trim()
+        val userTextContent = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}".trim()
         val userMessageObj = JsonObject().apply {
             addProperty("role", "user")
             val contentArray = JsonArray()
@@ -506,9 +493,6 @@ object QwenClient {
                             }
                         }
                         streamResult.usedEventStream -> {
-                            if (streamResult.fullText.trim().isNotBlank()) {
-                                ABLayerManager.onRoundComplete(userMessage, streamResult.fullText, chatModel)
-                            }
                             if (!phaseEnded.compareAndSet(false, true)) return@post
                             fireComplete()
                         }
@@ -516,7 +500,6 @@ object QwenClient {
                             val contentFallback = streamResult.fullText.trim()
                             emitFakeStream(contentFallback, onChunk, { canceledFlag.get() || phaseEnded.get() }, {
                                 if (!phaseEnded.compareAndSet(false, true)) return@emitFakeStream
-                                ABLayerManager.onRoundComplete(userMessage, contentFallback, chatModel)
                                 fireComplete()
                             })
                         }
@@ -609,80 +592,4 @@ object QwenClient {
         }
     }
 
-    /**
-     * B/C 摘要提取：非流式，同步返回摘要文本
-     * 参数与主对话保持一致：复用 ModelParams。
-     */
-    fun extractBSummary(oldB: String, dialogueText: String, systemPrompt: String): String {
-        return extractSummary("B", MODEL_B_SUMMARY, oldB, dialogueText, systemPrompt)
-    }
-
-    fun extractCSummary(oldC: String, dialogueText: String, systemPrompt: String): String {
-        return extractSummary("C", MODEL_C_SUMMARY, oldC, dialogueText, systemPrompt)
-    }
-
-    private fun extractSummary(
-        layerTag: String,
-        model: String,
-        oldSummary: String,
-        dialogueText: String,
-        systemPrompt: String,
-    ): String {
-        return try {
-            val userContent = if (oldSummary.isNotBlank()) {
-                "[历史摘要]\n$oldSummary\n\n[对话]\n$dialogueText"
-            } else {
-                "[对话]\n$dialogueText"
-            }
-            if (BuildConfig.DEBUG) Log.d(TAG, "P0_SMOKE: $layerTag extract start")
-            val messagesArray = com.google.gson.JsonArray().apply {
-                add(JsonObject().apply {
-                    addProperty("role", "system")
-                    addProperty("content", systemPrompt)
-                })
-                add(JsonObject().apply {
-                    addProperty("role", "user")
-                    addProperty("content", userContent)
-                })
-            }
-            val body = JsonObject().apply {
-                addProperty("model", model)
-                addProperty("stream", false)
-                addProperty("temperature", ModelParams.TEMPERATURE)
-                addProperty("top_p", ModelParams.TOP_P)
-                addProperty("frequency_penalty", ModelParams.FREQUENCY_PENALTY)
-                addProperty("presence_penalty", ModelParams.PRESENCE_PENALTY)
-                add("extra_body", JsonObject().apply {
-                    addProperty("enable_thinking", false)
-                })
-                add("messages", messagesArray)
-            }
-            val request = Request.Builder()
-                .url(apiUrl)
-                .addHeader("Authorization", "Bearer $apiKey")
-                .addHeader("Content-Type", "application/json")
-                .post(body.toString().toRequestBody("application/json".toMediaType()))
-                .build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    throw IOException("B提取 HTTP ${response.code}")
-                }
-                val json = gson.fromJson(response.body?.string() ?: "", JsonObject::class.java)
-                val choices = json.getAsJsonArray("choices") ?: return ""
-                if (choices.size() == 0) return ""
-                val msg = choices.get(0).asJsonObject.getAsJsonObject("message") ?: return ""
-                val content = msg.get("content")?.takeIf { it.isJsonPrimitive }?.asString?.trim() ?: return ""
-                return content
-            }
-        } catch (e: Exception) {
-            val now = System.currentTimeMillis()
-            if (BuildConfig.DEBUG) {
-                Log.e(TAG, "$layerTag summary extract failed, return empty", e)
-            } else if (now - lastSummaryExtractErrorLogMs > SUMMARY_EXTRACT_ERROR_LOG_INTERVAL_MS) {
-                lastSummaryExtractErrorLogMs = now
-                Log.e(TAG, "${layerTag}提取失败", e)
-            }
-            ""
-        }
-    }
 }

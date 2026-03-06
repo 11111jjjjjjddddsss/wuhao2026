@@ -10,6 +10,7 @@ import { openBailianStream } from './bailian.js';
 import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary, writeSessionCSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
 import { formatShanghaiNowToSecond, parseRegionFromHeaders, resolveRegionByIp } from './geo.js';
+import { getSummaryIntervals, processSessionSummaries } from './summary.js';
 import {
   buyTopupPack,
   consumeOnDone,
@@ -254,6 +255,7 @@ app.post('/api/session/round_complete', async (request, reply) => {
   await ensureUser(userId, 'free');
   const entitlement = await getTierForUser(userId, 'free');
   const aWindowRounds = getAWindowByTier(entitlement.tier);
+  const summaryIntervals = getSummaryIntervals(entitlement.tier);
 
   const result = await appendSessionRoundComplete(
     userId,
@@ -261,7 +263,10 @@ app.post('/api/session/round_complete', async (request, reply) => {
     clientMsgId,
     { user: userText, user_images: userImages, assistant: assistantText },
     aWindowRounds,
+    summaryIntervals.bEveryRounds,
+    summaryIntervals.cEveryRounds,
   );
+  void processSessionSummaries(userId, sessionId, result.snapshot, request.log);
 
   request.log.info(
     {
@@ -350,6 +355,7 @@ app.post('/api/chat/stream', async (request, reply) => {
   const entitlement = await getTierForUser(userId, 'free');
   const tier = entitlement.tier;
   const aWindowRounds = getAWindowByTier(tier);
+  const summaryIntervals = getSummaryIntervals(tier);
   const snapshot = await getSessionSnapshot(userId, sessionId);
   const clientIp = getClientIp(request);
   const regionFromHeaders = parseRegionFromHeaders(request.headers as Record<string, unknown>);
@@ -455,6 +461,7 @@ app.post('/api/chat/stream', async (request, reply) => {
   let heartbeatTimer: NodeJS.Timeout | null = null;
   let hasCitations = false;
   let hasSources = false;
+  let assistantText = '';
 
   request.log.info(
     {
@@ -523,6 +530,13 @@ app.post('/api/chat/stream', async (request, reply) => {
                 hasCitations = hasCitations || 'citations' in message;
                 hasSources = hasSources || 'sources' in message;
               }
+              const deltaPiece = typeof delta?.content === 'string' ? delta.content : '';
+              const messagePiece = typeof message?.content === 'string' ? message.content : '';
+              if (deltaPiece) {
+                assistantText += deltaPiece;
+              } else if (messagePiece) {
+                assistantText = messagePiece.startsWith(assistantText) ? messagePiece : `${assistantText}${messagePiece}`;
+              }
             }
           } catch {
             // ignore chunk parse failure; relay should continue.
@@ -543,6 +557,18 @@ app.post('/api/chat/stream', async (request, reply) => {
     if (!clientDisconnected && doneReceived) {
       const consume = await consumeOnDone({ userId, tier, clientMsgId, dayCN });
       request.log.info({ userId, clientMsgId, deducted: consume.deducted, source: consume.source }, 'quota consume on DONE');
+      if (assistantText.trim()) {
+        const result = await appendSessionRoundComplete(
+          userId,
+          sessionId,
+          clientMsgId,
+          { user: text, user_images: images, assistant: assistantText.trim() },
+          aWindowRounds,
+          summaryIntervals.bEveryRounds,
+          summaryIntervals.cEveryRounds,
+        );
+        void processSessionSummaries(userId, sessionId, result.snapshot, request.log);
+      }
     }
   } catch (error) {
     if (!clientDisconnected) {
