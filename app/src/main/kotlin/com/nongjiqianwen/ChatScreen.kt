@@ -299,13 +299,13 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appTopBottomTint = Color(0xFFF8F8F6)
+    val appTopBottomTint = Color(0xFFFFFFFF)
     val appCenterTint = Color(0xFFFFFFFF)
     val chromeSurface = Color(0xFFFFFFFF)
-    val chromeBorder = Color(0xFFECEBE8)
+    val chromeBorder = Color(0xFFEDEBE7)
     val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFECEBE8)
-    val userBubbleColor = Color(0xFFF3F3F6)
+    val inputBorder = Color(0xFFEDEBE7)
+    val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -492,9 +492,9 @@ fun ChatScreen() {
                 Brush.verticalGradient(
                     colorStops = arrayOf(
                         0.0f to appTopBottomTint,
-                        0.14f to Color(0xFFFDFDFC),
+                        0.14f to Color(0xFFFFFFFF),
                         0.5f to appCenterTint,
-                        0.86f to Color(0xFFFDFDFC),
+                        0.86f to Color(0xFFFFFFFF),
                         1.0f to appTopBottomTint
                     )
                 )
@@ -771,9 +771,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFFF9F9F7).copy(alpha = 0.98f),
-                                Color(0xFFFEFEFD).copy(alpha = 0.95f),
-                                appCenterTint.copy(alpha = 0.84f),
+                                Color(0xFFFFFFFF).copy(alpha = 0.98f),
+                                Color(0xFFFFFFFF).copy(alpha = 0.94f),
+                                appCenterTint.copy(alpha = 0.82f),
                                 Color.Transparent
                             )
                         )
