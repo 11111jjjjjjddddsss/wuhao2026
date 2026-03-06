@@ -1,5 +1,6 @@
 ﻿package com.nongjiqianwen
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -13,6 +14,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -79,21 +82,28 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -104,29 +114,171 @@ import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT }
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
+private sealed interface MarkdownBlock {
+    data class Heading(val level: Int, val text: String) : MarkdownBlock
+    data class Bullet(val text: String) : MarkdownBlock
+    data class Numbered(val number: String, val text: String) : MarkdownBlock
+    data class Paragraph(val text: String) : MarkdownBlock
+}
+
+private const val LOCAL_RENDER_ROUND_LIMIT = 30
+private const val CHAT_CACHE_PREFS = "chat_ui_cache"
+private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
+private val chatCacheGson = Gson()
+private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 
 private fun normalizeAssistantText(content: String): String {
     return content
         .replace("\r\n", "\n")
-        .replace(Regex("(?m)^#{1,6}\\s+"), "")
-        .replace(Regex("(?m)^```.*$"), "")
         .replace(Regex("\n{3,}"), "\n\n")
         .trim()
 }
 
+private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
+    val normalized = normalizeAssistantText(content)
+    if (normalized.isBlank()) return emptyList()
+    val blocks = mutableListOf<MarkdownBlock>()
+    val paragraph = StringBuilder()
+
+    fun flushParagraph() {
+        val text = paragraph.toString().trim()
+        if (text.isNotEmpty()) blocks += MarkdownBlock.Paragraph(text)
+        paragraph.clear()
+    }
+
+    normalized.lines().forEach { rawLine ->
+        val trimmed = rawLine.trim()
+        when {
+            trimmed.isBlank() -> flushParagraph()
+            trimmed.startsWith("```") -> Unit
+            trimmed.matches(Regex("^#{1,6}\\s+.*$")) -> {
+                flushParagraph()
+                val marker = trimmed.takeWhile { it == '#' }
+                blocks += MarkdownBlock.Heading(marker.length, trimmed.drop(marker.length).trim())
+            }
+            trimmed.matches(Regex("^[*-]\\s+.*$")) -> {
+                flushParagraph()
+                blocks += MarkdownBlock.Bullet(trimmed.drop(1).trim())
+            }
+            trimmed.matches(Regex("^\\d+\\.\\s+.*$")) -> {
+                flushParagraph()
+                blocks += MarkdownBlock.Numbered(trimmed.substringBefore('.'), trimmed.substringAfter('.').trim())
+            }
+            else -> {
+                if (paragraph.isNotEmpty()) paragraph.append('\n')
+                paragraph.append(trimmed)
+            }
+        }
+    }
+
+    flushParagraph()
+    return blocks
+}
+
+private fun buildMarkdownAnnotatedString(text: String): AnnotatedString {
+    val normalized = text.replace(Regex("\\[([^\\]]+)]\\(([^)]+)\\)"), "$1")
+    return buildAnnotatedString {
+        var cursor = 0
+        while (cursor < normalized.length) {
+            val boldStart = normalized.indexOf("**", cursor)
+            if (boldStart < 0) {
+                append(normalized.substring(cursor))
+                break
+            }
+            if (boldStart > cursor) append(normalized.substring(cursor, boldStart))
+            val boldEnd = normalized.indexOf("**", boldStart + 2)
+            if (boldEnd < 0) {
+                append(normalized.substring(boldStart))
+                break
+            }
+            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
+                append(normalized.substring(boldStart + 2, boldEnd))
+            }
+            cursor = boldEnd + 2
+        }
+    }
+}
+
+private fun trimMessageWindow(source: List<ChatMessage>): List<ChatMessage> {
+    val userIndexes = source.mapIndexedNotNull { index, message -> if (message.role == ChatRole.USER) index else null }
+    if (userIndexes.size <= LOCAL_RENDER_ROUND_LIMIT) return source
+    val startIndex = userIndexes[userIndexes.size - LOCAL_RENDER_ROUND_LIMIT]
+    return source.drop(startIndex)
+}
+
+private fun Context.loadLocalChatWindow(sessionId: String): List<ChatMessage> {
+    val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .getString("$CHAT_CACHE_KEY_PREFIX$sessionId", null)
+        .orEmpty()
+    if (raw.isBlank()) return emptyList()
+    return runCatching {
+        @Suppress("UNCHECKED_CAST")
+        (chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList())
+    }.getOrDefault(emptyList())
+}
+
+private fun Context.saveLocalChatWindow(sessionId: String, messages: List<ChatMessage>) {
+    val trimmed = trimMessageWindow(messages)
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString("$CHAT_CACHE_KEY_PREFIX$sessionId", chatCacheGson.toJson(trimmed))
+        .apply()
+}
+
+private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
+    return rounds.flatMapIndexed { index, round ->
+        buildList {
+            if (round.user.isNotBlank()) add(ChatMessage("remote_user_$index", ChatRole.USER, round.user))
+            if (round.assistant.isNotBlank()) add(ChatMessage("remote_assistant_$index", ChatRole.ASSISTANT, round.assistant))
+        }
+    }
+}
+
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
-    val displayText = remember(content) { normalizeAssistantText(content) }
-    Text(
-        text = displayText,
-        modifier = modifier.fillMaxWidth(),
-        style = TextStyle(
-            fontSize = 17.sp,
-            lineHeight = 31.sp,
-            color = Color(0xFF171717)
-        ),
-        textAlign = TextAlign.Start
-    )
+    val blocks = remember(content) { parseMarkdownBlocks(content) }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownBlock.Heading -> Text(
+                    text = buildMarkdownAnnotatedString(block.text),
+                    style = TextStyle(
+                        fontSize = if (block.level <= 2) 20.sp else 18.sp,
+                        lineHeight = if (block.level <= 2) 34.sp else 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF111111)
+                    )
+                )
+                is MarkdownBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "\u2022",
+                        style = TextStyle(fontSize = 18.sp, lineHeight = 31.sp, color = Color(0xFF171717)),
+                    )
+                    Text(
+                        text = buildMarkdownAnnotatedString(block.text),
+                        modifier = Modifier.weight(1f),
+                        style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717))
+                    )
+                }
+                is MarkdownBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "${block.number}.",
+                        style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF171717)),
+                    )
+                    Text(
+                        text = buildMarkdownAnnotatedString(block.text),
+                        modifier = Modifier.weight(1f),
+                        style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717))
+                    )
+                }
+                is MarkdownBlock.Paragraph -> Text(
+                    text = buildMarkdownAnnotatedString(block.text),
+                    style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717)),
+                    textAlign = TextAlign.Start
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -176,11 +328,11 @@ private fun LongArrowIcon(
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.1f
+        val stroke = size.minDimension * 0.12f
         val centerX = size.width / 2f
-        val headY = if (directionUp) size.height * 0.16f else size.height * 0.84f
-        val tailY = if (directionUp) size.height * 0.88f else size.height * 0.12f
-        val wingY = if (directionUp) size.height * 0.36f else size.height * 0.64f
+        val headY = if (directionUp) size.height * 0.14f else size.height * 0.86f
+        val tailY = if (directionUp) size.height * 0.9f else size.height * 0.1f
+        val wingY = if (directionUp) size.height * 0.38f else size.height * 0.62f
         drawLine(
             color = tint,
             start = Offset(centerX, tailY),
@@ -281,7 +433,6 @@ fun ChatScreen() {
     val input = remember { mutableStateOf("") }
     val messages = remember { mutableStateListOf<ChatMessage>() }
     val listState = rememberLazyListState()
-    val isReverse = false
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -295,10 +446,14 @@ fun ChatScreen() {
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    var persistTick by remember { mutableIntStateOf(0) }
     var topBarHeightPx by remember { mutableIntStateOf(0) }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    val showJumpButton by remember { derivedStateOf { messages.isNotEmpty() && !atBottom && !listState.isScrollInProgress } }
     val density = LocalDensity.current
+    val context = LocalContext.current
+    val sessionId = remember { IdManager.getSessionId() }
     val appTopBottomTint = Color(0xFFF4F4F2)
     val appCenterTint = Color(0xFFF7F7F6)
     val chromeSurface = Color.White.copy(alpha = 0.96f)
@@ -318,14 +473,28 @@ fun ChatScreen() {
         topInset + 72.dp
     }
     val jumpButtonBottomPadding = if (measuredBottomBarHeight > 0.dp) {
-        measuredBottomBarHeight + 18.dp
+        (measuredBottomBarHeight - 10.dp).coerceAtLeast(74.dp)
     } else {
-        96.dp
+        78.dp
     }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    fun replaceMessages(newMessages: List<ChatMessage>) {
+        val trimmed = trimMessageWindow(newMessages)
+        messages.clear()
+        messages.addAll(trimmed)
+    }
+
+    fun trimMessagesInPlace() {
+        val trimmed = trimMessageWindow(messages)
+        if (trimmed != messages.toList()) {
+            messages.clear()
+            messages.addAll(trimmed)
+        }
+    }
 
     DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
         val observer = LifecycleEventObserver { _, event ->
@@ -338,6 +507,32 @@ fun ChatScreen() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    LaunchedEffect(sessionId) {
+        val localMessages = context.loadLocalChatWindow(sessionId)
+        if (localMessages.isNotEmpty()) {
+            replaceMessages(localMessages)
+        }
+        if (BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()) {
+            SessionApi.getSnapshot(sessionId) { snapshot ->
+                val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
+                if (remoteMessages.isNotEmpty()) {
+                    mainHandler.post {
+                        if (!isStreaming && remoteMessages.size > messages.size) {
+                            replaceMessages(remoteMessages)
+                            persistTick++
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(persistTick) {
+        if (persistTick == 0) return@LaunchedEffect
+        delay(if (isStreaming) 220 else 80)
+        context.saveLocalChatWindow(sessionId, messages)
+    }
+
     fun appendAssistantChunk(piece: String) {
         if (piece.isBlank()) return
         mainHandler.post {
@@ -346,6 +541,8 @@ fun ChatScreen() {
                 val newId = "assistant_${UUID.randomUUID()}"
                 assistantMessageId = newId
                 messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
+                trimMessagesInPlace()
+                persistTick++
                 streamTick++
                 return@post
             }
@@ -356,6 +553,8 @@ fun ChatScreen() {
             } else {
                 messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
             }
+            trimMessagesInPlace()
+            persistTick++
             streamTick++
         }
     }
@@ -372,6 +571,8 @@ fun ChatScreen() {
             fakeStreamJob = null
             isStreaming = false
             assistantMessageId = null
+            trimMessagesInPlace()
+            persistTick++
         }
     }
 
@@ -386,6 +587,8 @@ fun ChatScreen() {
 
         val assistantId = "assistant_${UUID.randomUUID()}"
         messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
+        trimMessagesInPlace()
+        persistTick++
         isStreaming = true
         assistantMessageId = assistantId
         autoFollowEnabled = true
@@ -434,10 +637,17 @@ fun ChatScreen() {
         if (lastIndex < 0) return
         programmaticScroll = true
         try {
-            withFrameNanos { }
-            if (animated) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
-            withFrameNanos { }
-            if (animated) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
+            repeat(2) {
+                withFrameNanos { }
+                if (animated) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
+                withFrameNanos { }
+                val info = listState.layoutInfo
+                val lastItem = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return@repeat
+                val overflow = lastItem.offset + lastItem.size - info.viewportEndOffset
+                if (overflow > 0) {
+                    if (animated) listState.animateScrollBy(overflow.toFloat()) else listState.scrollBy(overflow.toFloat())
+                }
+            }
         } finally {
             programmaticScroll = false
         }
@@ -506,14 +716,14 @@ fun ChatScreen() {
             else -> maxWidth
         }
         val chromeHorizontalPadding = when {
-            maxWidth < 360.dp -> 10.dp
-            maxWidth < 600.dp -> 12.dp
-            else -> 20.dp
+            maxWidth < 360.dp -> 12.dp
+            maxWidth < 600.dp -> 16.dp
+            else -> 22.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 8.dp
-            maxWidth < 600.dp -> 12.dp
-            else -> 20.dp
+            maxWidth < 360.dp -> 12.dp
+            maxWidth < 600.dp -> 16.dp
+            else -> 22.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
@@ -674,7 +884,6 @@ fun ChatScreen() {
                         }
                     },
                 state = listState,
-                reverseLayout = isReverse,
                 contentPadding = PaddingValues(
                     top = topBarReservedHeight,
                     bottom = 12.dp
@@ -755,24 +964,23 @@ fun ChatScreen() {
                 )
             }
 
-            if (messages.isNotEmpty() && !atBottom) {
+            if (showJumpButton) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
                     color = chromeSurface,
-                    border = BorderStroke(0.55.dp, chromeBorder),
-                    shadowElevation = 0.48.dp,
+                    border = BorderStroke(0.48.dp, chromeBorder),
+                    shadowElevation = 0.7.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = jumpButtonBottomPadding)
-                        .navigationBarsPadding()
                         .size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         LongArrowIcon(
                             tint = Color(0xFF111111),
                             directionUp = false,
-                            modifier = Modifier.size(19.dp)
+                            modifier = Modifier.size(21.dp)
                         )
                     }
                 }
