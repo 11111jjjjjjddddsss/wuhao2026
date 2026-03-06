@@ -42,6 +42,7 @@ export interface SessionSnapshot {
   session_id: string;
   a_rounds_full: SessionRound[];
   b_summary: string;
+  c_summary: string;
   round_total: number;
   updated_at: number;
 }

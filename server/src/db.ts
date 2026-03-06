@@ -10,6 +10,7 @@ function nowTs(): number {
 type SessionRow = RowDataPacket & {
   a_json: string | null;
   b_summary: string | null;
+  c_summary: string | null;
   round_total: number;
   updated_at: number;
 };
@@ -62,7 +63,7 @@ async function appendRoundAndUpsertSnapshot(
   aWindowRounds: number,
 ): Promise<SessionSnapshot> {
   const [rows] = await conn.execute<SessionRow[]>(
-    'SELECT a_json, b_summary, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1 FOR UPDATE',
+    'SELECT a_json, b_summary, c_summary, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1 FOR UPDATE',
     [userId, sessionId],
   );
   const existing = rows[0];
@@ -72,15 +73,16 @@ async function appendRoundAndUpsertSnapshot(
   const roundTotal = (existing?.round_total ?? 0) + 1;
   const updatedAt = nowTs();
   const bSummary = existing?.b_summary ?? '';
+  const cSummary = existing?.c_summary ?? '';
 
   await conn.execute(
-    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, round_total, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        a_json = VALUES(a_json),
        round_total = VALUES(round_total),
        updated_at = VALUES(updated_at)`,
-    [userId, sessionId, JSON.stringify(rounds), bSummary, roundTotal, updatedAt],
+    [userId, sessionId, JSON.stringify(rounds), bSummary, cSummary, roundTotal, updatedAt],
   );
 
   return {
@@ -88,6 +90,7 @@ async function appendRoundAndUpsertSnapshot(
     session_id: sessionId,
     a_rounds_full: rounds,
     b_summary: bSummary,
+    c_summary: cSummary,
     round_total: roundTotal,
     updated_at: updatedAt,
   };
@@ -100,10 +103,25 @@ export async function writeSessionBSummary(userId: string, sessionId: string, su
   }
   await withConnection(async (conn) => {
     await conn.execute(
-      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, round_total, updated_at)
-       VALUES (?, ?, ?, ?, 0, ?)
+      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)
        ON DUPLICATE KEY UPDATE b_summary = VALUES(b_summary), updated_at = VALUES(updated_at)`,
-      [userId, sessionId, JSON.stringify([]), normalized, nowTs()],
+      [userId, sessionId, JSON.stringify([]), normalized, '', nowTs()],
+    );
+  });
+}
+
+export async function writeSessionCSummary(userId: string, sessionId: string, summary: string): Promise<void> {
+  const normalized = summary.trim();
+  if (!normalized) {
+    throw new Error('c_summary empty');
+  }
+  await withConnection(async (conn) => {
+    await conn.execute(
+      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
+       VALUES (?, ?, ?, ?, ?, 0, ?)
+       ON DUPLICATE KEY UPDATE c_summary = VALUES(c_summary), updated_at = VALUES(updated_at)`,
+      [userId, sessionId, JSON.stringify([]), '', normalized, nowTs()],
     );
   });
 }
@@ -125,14 +143,14 @@ export async function touchSessionContext(
   await withConnection(async (conn) => {
     await conn.execute(
       `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, round_total, updated_at, last_region, last_region_source, last_region_reliability, last_seen_at)
-       VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          last_region = VALUES(last_region),
          last_region_source = VALUES(last_region_source),
          last_region_reliability = VALUES(last_region_reliability),
          last_seen_at = VALUES(last_seen_at),
          updated_at = VALUES(updated_at)`,
-      [userId, sessionId, JSON.stringify([]), '', seenAt, region, source, reliability, seenAt],
+      [userId, sessionId, JSON.stringify([]), '', '', seenAt, region, source, reliability, seenAt],
     );
   });
 }
@@ -143,7 +161,7 @@ async function readSnapshotOptional(
   sessionId: string,
 ): Promise<SessionSnapshot | null> {
   const [rows] = await conn.execute<SessionRow[]>(
-    'SELECT a_json, b_summary, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1',
+    'SELECT a_json, b_summary, c_summary, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1',
     [userId, sessionId],
   );
   if (rows.length === 0) return null;
@@ -154,6 +172,7 @@ async function readSnapshotOptional(
     session_id: sessionId,
     a_rounds_full: rounds,
     b_summary: row.b_summary ?? '',
+    c_summary: row.c_summary ?? '',
     round_total: row.round_total ?? 0,
     updated_at: row.updated_at ?? 0,
   };
@@ -171,14 +190,15 @@ async function readSnapshotForUpdate(
     session_id: sessionId,
     a_rounds_full: [],
     b_summary: '',
+    c_summary: '',
     round_total: 0,
     updated_at: nowTs(),
   };
   await conn.execute(
-    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, round_total, updated_at)
-     VALUES (?, ?, ?, ?, 0, ?)
+    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?)
      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)`,
-    [userId, sessionId, JSON.stringify([]), '', empty.updated_at],
+    [userId, sessionId, JSON.stringify([]), '', '', empty.updated_at],
   );
   return empty;
 }

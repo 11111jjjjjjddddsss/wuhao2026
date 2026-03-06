@@ -9,12 +9,13 @@ data class PlanConfig(
     val chatPerDay: Int,
     val aWindow: Int,
     val bExtractRounds: Int,
+    val cExtractRounds: Int,
     val maxImages: Int
 ) {
     companion object {
-        private val FREE = PlanConfig(PlanId.FREE, 6, 6, 6, 4)
-        private val PLUS = PlanConfig(PlanId.PLUS, 20, 6, 6, 4)
-        private val PRO = PlanConfig(PlanId.PRO, 35, 9, 9, 4)
+        private val FREE = PlanConfig(PlanId.FREE, 6, 6, 6, 25, 4)
+        private val PLUS = PlanConfig(PlanId.PLUS, 20, 6, 6, 25, 4)
+        private val PRO = PlanConfig(PlanId.PRO, 35, 9, 9, 25, 4)
 
         fun fromChatModel(chatModel: String?): PlanConfig {
             val normalized = chatModel?.trim()?.lowercase().orEmpty()

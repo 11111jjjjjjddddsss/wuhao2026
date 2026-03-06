@@ -7,7 +7,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { fileURLToPath } from 'node:url';
 import { getClientIp, isAuthStrict, issueToken, resolveAuthUserId } from './auth.js';
 import { openBailianStream } from './bailian.js';
-import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary } from './db.js';
+import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary, writeSessionCSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
 import { formatShanghaiNowToSecond, parseRegionFromHeaders, resolveRegionByIp } from './geo.js';
 import {
@@ -87,20 +87,24 @@ function buildPromptMessages(
   currentText: string,
   currentImages: string[],
   contextHeader: string,
-): { messages: BailianMessage[]; usedARoundsCount: number; hasBSummary: boolean } {
+): { messages: BailianMessage[]; usedARoundsCount: number; hasBSummary: boolean; hasCSummary: boolean } {
   const rounds = (snapshot?.a_rounds_full || []).slice(-aWindowRounds);
   const hasBSummary = Boolean(snapshot?.b_summary?.trim());
+  const hasCSummary = Boolean(snapshot?.c_summary?.trim());
   const messages: BailianMessage[] = [{ role: 'system', content: SYSTEM_ANCHOR }];
   messages.push({ role: 'system', content: contextHeader });
   if (hasBSummary) {
-    messages.push({ role: 'system', content: snapshot!.b_summary.trim() });
+    messages.push({ role: 'system', content: `【B层累计摘要（仅供参考）】\n${snapshot!.b_summary.trim()}` });
+  }
+  if (hasCSummary) {
+    messages.push({ role: 'system', content: `【C层长期记忆（仅供参考）】\n${snapshot!.c_summary.trim()}` });
   }
   for (const round of rounds) {
     messages.push({ role: 'user', content: roundToUserContent(round) });
     messages.push({ role: 'assistant', content: round.assistant });
   }
   messages.push({ role: 'user', content: buildVisionUserContent(currentText, currentImages) });
-  return { messages, usedARoundsCount: rounds.length, hasBSummary };
+  return { messages, usedARoundsCount: rounds.length, hasBSummary, hasCSummary };
 }
 
 function buildAnonymousUserId(installId: string, ip: string): string {
@@ -174,6 +178,19 @@ app.post('/api/session/b', async (request, reply) => {
   return reply.send({ ok: true });
 });
 
+app.post('/api/session/c', async (request, reply) => {
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
+  const userId = auth.userId;
+  const body = (request.body || {}) as Record<string, string>;
+  const sessionId = (body.session_id || '').trim();
+  const cSummary = (body.c_summary || '').trim();
+  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
+  if (!cSummary) return reply.code(400).send({ error: 'c_summary required' });
+  await writeSessionCSummary(userId, sessionId, cSummary);
+  return reply.send({ ok: true });
+});
+
 app.get('/api/session/snapshot', async (request, reply) => {
   const auth = requireAuthOrReply(request, reply);
   if (!auth) return;
@@ -182,12 +199,13 @@ app.get('/api/session/snapshot', async (request, reply) => {
   const sessionId = (query.session_id || '').trim();
   if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   const snapshot = await getSessionSnapshot(userId, sessionId);
-  const safe = snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', round_total: 0, updated_at: Date.now() };
+  const safe = snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', c_summary: '', round_total: 0, updated_at: Date.now() };
   return reply.send({
     user_id: safe.user_id,
     session_id: safe.session_id,
     a_json: safe.a_rounds_full,
     b_summary: safe.b_summary,
+    c_summary: safe.c_summary,
     round_total: safe.round_total,
     updated_at: safe.updated_at,
   });
@@ -330,6 +348,7 @@ app.post('/api/chat/stream', async (request, reply) => {
       tier,
       used_a_rounds_count: prompt.usedARoundsCount,
       has_b_summary: prompt.hasBSummary,
+      has_c_summary: prompt.hasCSummary,
       injected_time: injectedTime,
       region: resolvedRegion.region,
       region_source: resolvedRegion.source,
@@ -528,4 +547,3 @@ bootstrap().catch((error) => {
   app.log.error(error);
   process.exit(1);
 });
-

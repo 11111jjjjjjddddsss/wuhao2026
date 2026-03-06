@@ -3,15 +3,48 @@ package com.nongjiqianwen
 import android.content.Context
 import android.util.Log
 import androidx.annotation.VisibleForTesting
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
-data class ABConfig(val aWindowRounds: Int, val bEveryRounds: Int)
+data class ABConfig(
+    val aWindowRounds: Int,
+    val bEveryRounds: Int,
+    val cEveryRounds: Int,
+)
 
 object ABLayerManager {
     private const val TAG = "ABLayerManager"
     private const val PREFS_NAME = "ab_layer"
     private const val KEY_B_SUMMARY_PREFIX = "b_summary_"
+    private const val KEY_C_SUMMARY_PREFIX = "c_summary_"
     private const val KEY_ROUND_TOTAL_PREFIX = "round_total_"
-    private const val KEY_PENDING_RETRY_PREFIX = "pending_retry_"
+    private const val KEY_PENDING_RETRY_LEGACY_PREFIX = "pending_retry_"
+    private const val KEY_PENDING_RETRY_B_PREFIX = "pending_retry_b_"
+    private const val KEY_PENDING_RETRY_C_PREFIX = "pending_retry_c_"
+    private const val BACKEND_WRITE_TIMEOUT_SEC = 30L
+
+    private enum class SummaryLayer(
+        val tag: String,
+        val summaryKeyPrefix: String,
+        val pendingRetryKeyPrefix: String,
+        val legacyPendingRetryKeyPrefix: String? = null,
+    ) {
+        B("B", KEY_B_SUMMARY_PREFIX, KEY_PENDING_RETRY_B_PREFIX, KEY_PENDING_RETRY_LEGACY_PREFIX),
+        C("C", KEY_C_SUMMARY_PREFIX, KEY_PENDING_RETRY_C_PREFIX),
+    }
+
+    private data class TriggerPlan(
+        val layer: SummaryLayer,
+        val shouldTrigger: Boolean,
+        val reason: String,
+        val roundTotal: Int,
+    )
+
+    private data class TriggerBatch(
+        val snapshot: List<Pair<String, String>>,
+        val plans: List<TriggerPlan>,
+    )
 
     private var appContext: Context? = null
 
@@ -19,23 +52,29 @@ object ABLayerManager {
     private val aLock = Any()
 
     private var serverBSummary: String = ""
+    private var serverCSummary: String = ""
     private val serverARoundsCache = mutableListOf<Pair<String, String>>()
     private val serverLock = Any()
 
     private val extractLock = Any()
-    private val inFlightSessions = mutableSetOf<String>()
+    private val inFlightKeys = mutableSetOf<String>()
+
     @Volatile private var testSessionIdOverride: String? = null
     @Volatile private var testUserIdOverride: String? = null
     @Volatile private var testBackendModeOverride: Boolean? = null
-    @Volatile private var testExtractExecutor: ((oldB: String, dialogueText: String, prompt: String) -> Result<String>)? = null
+    @Volatile private var testBExtractExecutor: ((oldB: String, dialogueText: String, prompt: String) -> Result<String>)? = null
+    @Volatile private var testCExtractExecutor: ((oldC: String, dialogueText: String, prompt: String) -> Result<String>)? = null
     @Volatile private var testBackendSnapshotProvider: ((userId: String, sessionId: String) -> SessionSnapshot?)? = null
 
     fun init(context: Context) {
+        val applicationContext = context.applicationContext
         if (appContext == null) {
-            appContext = context.applicationContext
-            if (BuildConfig.DEBUG) {
-                Log.d(TAG, "ABLayerManager init, USE_BACKEND_AB=${BuildConfig.USE_BACKEND_AB}")
-            }
+            appContext = applicationContext
+        }
+        BExtractionPrompt.init(applicationContext)
+        CExtractionPrompt.init(applicationContext)
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "ABLayerManager init, USE_BACKEND_AB=${BuildConfig.USE_BACKEND_AB}")
         }
     }
 
@@ -43,30 +82,27 @@ object ABLayerManager {
         if (snapshot == null) return
         synchronized(serverLock) {
             serverBSummary = snapshot.b_summary
+            serverCSummary = snapshot.c_summary
             serverARoundsCache.clear()
             serverARoundsCache.addAll(snapshot.a_rounds_full.map { it.user to it.assistant })
         }
         if (BuildConfig.DEBUG) {
             Log.d(
                 TAG,
-                "loadSnapshot b_len=${serverBSummary.length} a_rounds_full=${snapshot.a_rounds_full.size} a_rounds_for_ui=${snapshot.a_rounds_for_ui.size}",
+                "loadSnapshot b_len=${serverBSummary.length} c_len=${serverCSummary.length} a_rounds_full=${snapshot.a_rounds_full.size} a_rounds_for_ui=${snapshot.a_rounds_for_ui.size}",
             )
         }
     }
 
-    fun getBSummary(): String {
-        if (BuildConfig.USE_BACKEND_AB) {
-            synchronized(serverLock) { return serverBSummary }
-        }
-        val prefs = prefs() ?: return ""
-        return prefs.getString(KEY_B_SUMMARY_PREFIX + IdManager.getSessionId(), "") ?: ""
-    }
+    fun getBSummary(): String = getSummary(SummaryLayer.B)
+
+    fun getCSummary(): String = getSummary(SummaryLayer.C)
 
     fun getARoundsTextForMainDialogue(): String {
-        val snapshot = if (BuildConfig.USE_BACKEND_AB) {
+        val snapshot = if (isBackendMode()) {
             synchronized(serverLock) { serverARoundsCache.toList() }
         } else {
-            synchronized(aLock) { aRoundsBySession[IdManager.getSessionId()]?.toList() ?: emptyList() }
+            synchronized(aLock) { aRoundsBySession[currentSessionId()]?.toList() ?: emptyList() }
         }
         if (snapshot.isEmpty()) return ""
         return buildDialogueText(snapshot)
@@ -82,28 +118,24 @@ object ABLayerManager {
             return
         }
 
-        val trigger = synchronized(aLock) {
+        val batch = synchronized(aLock) {
             val list = aRoundsBySession.getOrPut(sessionId) { mutableListOf() }
             list.add(userMessage to assistantMessage)
             trimRounds(list, config.aWindowRounds)
             logTrimState(sessionId, "local", list.size, config.aWindowRounds)
             val roundTotal = incrementRoundTotal(sessionId)
-            val periodicEligible = (roundTotal % config.bEveryRounds == 0)
-            if (periodicEligible) {
-                setPendingRetry(sessionId, true)
-            }
-            val pendingRetry = getPendingRetry(sessionId)
-            logRoundState(chatModel, sessionId, roundTotal, config.bEveryRounds, periodicEligible, pendingRetry, isInFlight(sessionId), "local")
-            if (pendingRetry) {
-                val reason = if (periodicEligible) "periodic" else "retry"
-                TriggerPlan(true, reason, list.toList(), roundTotal)
-            } else {
-                TriggerPlan(false, "", emptyList(), roundTotal)
-            }
+            TriggerBatch(list.toList(), buildTriggerPlans(sessionId, roundTotal, config, chatModel, "local"))
         }
 
-        if (trigger.shouldTrigger) {
-            tryExtractAndUpdateBLocal(sessionId, trigger.snapshot, trigger.reason)
+        batch.plans.filter { it.shouldTrigger }.forEach { plan ->
+            tryExtractAndUpdateSummary(
+                sessionId = sessionId,
+                userId = userId,
+                aRoundsSnapshot = batch.snapshot,
+                layer = plan.layer,
+                triggerReason = plan.reason,
+                backendMode = false,
+            )
         }
     }
 
@@ -115,73 +147,48 @@ object ABLayerManager {
         config: ABConfig,
         chatModel: String?,
     ) {
-        val testSnapshotProvider = testBackendSnapshotProvider
-        if (testSnapshotProvider != null) {
-            val trigger = synchronized(serverLock) {
-                serverARoundsCache.add(userMessage to assistantMessage)
-                trimRounds(serverARoundsCache, config.aWindowRounds)
-                logTrimState(sessionId, "backend", serverARoundsCache.size, config.aWindowRounds)
-                val roundTotal = incrementRoundTotal(sessionId)
-                val periodicEligible = (roundTotal % config.bEveryRounds == 0)
-                if (periodicEligible) {
-                    setPendingRetry(sessionId, true)
-                }
-                val pendingRetry = getPendingRetry(sessionId)
-                logRoundState(chatModel, sessionId, roundTotal, config.bEveryRounds, periodicEligible, pendingRetry, isInFlight(sessionId), "backend")
-                if (pendingRetry) {
-                    val reason = if (periodicEligible) "periodic" else "retry"
-                    TriggerPlan(true, reason, emptyList(), roundTotal)
-                } else {
-                    TriggerPlan(false, "", emptyList(), roundTotal)
-                }
-            }
-            if (trigger.shouldTrigger) {
-                tryUpdateBFromBackend(sessionId, userId, trigger.reason)
-            }
-            return
-        }
         val clientMsgId = "ab_${sessionId}_${System.currentTimeMillis()}"
         SessionApi.appendA(sessionId, clientMsgId, userMessage, assistantMessage) { ok ->
             if (!ok) {
-                setPendingRetry(sessionId, true)
+                setPendingRetry(sessionId, SummaryLayer.B, true)
+                setPendingRetry(sessionId, SummaryLayer.C, true)
                 return@appendA
             }
 
-            val trigger = synchronized(serverLock) {
+            val batch = synchronized(serverLock) {
                 serverARoundsCache.add(userMessage to assistantMessage)
                 trimRounds(serverARoundsCache, config.aWindowRounds)
                 logTrimState(sessionId, "backend", serverARoundsCache.size, config.aWindowRounds)
                 val roundTotal = incrementRoundTotal(sessionId)
-                val periodicEligible = (roundTotal % config.bEveryRounds == 0)
-                if (periodicEligible) {
-                    setPendingRetry(sessionId, true)
-                }
-                val pendingRetry = getPendingRetry(sessionId)
-                logRoundState(chatModel, sessionId, roundTotal, config.bEveryRounds, periodicEligible, pendingRetry, isInFlight(sessionId), "backend")
-                if (pendingRetry) {
-                    val reason = if (periodicEligible) "periodic" else "retry"
-                    TriggerPlan(true, reason, emptyList(), roundTotal)
-                } else {
-                    TriggerPlan(false, "", emptyList(), roundTotal)
-                }
+                TriggerBatch(serverARoundsCache.toList(), buildTriggerPlans(sessionId, roundTotal, config, chatModel, "backend"))
             }
 
-            if (trigger.shouldTrigger) {
-                tryUpdateBFromBackend(sessionId, userId, trigger.reason)
+            batch.plans.filter { it.shouldTrigger }.forEach { plan ->
+                tryExtractAndUpdateSummary(
+                    sessionId = sessionId,
+                    userId = userId,
+                    aRoundsSnapshot = batch.snapshot,
+                    layer = plan.layer,
+                    triggerReason = plan.reason,
+                    backendMode = true,
+                )
             }
         }
     }
 
-    private fun tryExtractAndUpdateBLocal(sessionId: String, aRoundsSnapshot: List<Pair<String, String>>, triggerReason: String) {
-        if (isBackendMode()) {
+    private fun tryExtractAndUpdateSummary(
+        sessionId: String,
+        userId: String,
+        aRoundsSnapshot: List<Pair<String, String>>,
+        layer: SummaryLayer,
+        triggerReason: String,
+        backendMode: Boolean,
+    ) {
+        if (!acquireInFlight(sessionId, layer)) {
+            setPendingRetry(sessionId, layer, true)
             if (BuildConfig.DEBUG) {
-                Log.w(TAG, "B local extract blocked(session=$sessionId): backend mode is enabled")
+                Log.d(TAG, "${layer.tag} trigger skipped(session=$sessionId): inFlight=true reason=$triggerReason")
             }
-            return
-        }
-        if (!acquireInFlight(sessionId)) {
-            setPendingRetry(sessionId, true)
-            if (BuildConfig.DEBUG) Log.d(TAG, "B trigger skipped(session=$sessionId): inFlight=true reason=$triggerReason")
             return
         }
 
@@ -189,98 +196,142 @@ object ABLayerManager {
             var result = "fail"
             var failReason = "unknown"
             try {
-                val prompt = BExtractionPrompt.getText()
+                val prompt = getPromptText(layer)
                 if (prompt.isBlank()) {
-                    setPendingRetry(sessionId, true)
+                    setPendingRetry(sessionId, layer, true)
                     failReason = "prompt_blank"
                     return@runBlock
                 }
-                val prefs = prefs()
-                val oldB = prefs?.getString(KEY_B_SUMMARY_PREFIX + sessionId, "") ?: ""
+
+                val oldSummary = getStoredSummary(sessionId, layer)
                 val dialogueText = buildDialogueText(aRoundsSnapshot)
-                val testExecutor = testExtractExecutor
-                val summaryResult = if (testExecutor != null) {
-                    testExecutor.invoke(oldB, dialogueText, prompt)
-                } else {
-                    runCatching { QwenClient.extractBSummary(oldB, dialogueText, prompt) }
-                }
-                val newSummary = summaryResult.getOrElse { throw it }
-                val normalizedSummary = normalizeBSummaryForStore(newSummary)
+                val newSummary = executeExtract(layer, oldSummary, dialogueText, prompt)
+                val normalizedSummary = normalizeSummaryForStore(newSummary)
                 if (normalizedSummary == null) {
-                    setPendingRetry(sessionId, true)
+                    setPendingRetry(sessionId, layer, true)
                     failReason = "empty_summary"
                     return@runBlock
                 }
-                val committed = prefs?.edit()?.putString(KEY_B_SUMMARY_PREFIX + sessionId, normalizedSummary)?.commit() ?: false
-                if (!committed) {
-                    setPendingRetry(sessionId, true)
+
+                val committedLocal = writeSummaryToPrefs(sessionId, layer, normalizedSummary)
+                if (!committedLocal) {
+                    setPendingRetry(sessionId, layer, true)
                     failReason = "commit_failed"
                     return@runBlock
                 }
-                setPendingRetry(sessionId, false)
+
+                if (backendMode) {
+                    val remoteCommitted = writeSummaryToBackend(sessionId, normalizedSummary, layer)
+                    if (!remoteCommitted) {
+                        setPendingRetry(sessionId, layer, true)
+                        failReason = "remote_commit_failed"
+                        return@runBlock
+                    }
+                    updateServerSummary(layer, normalizedSummary)
+                }
+
+                setPendingRetry(sessionId, layer, false)
                 result = "success"
                 failReason = ""
             } catch (e: Exception) {
-                setPendingRetry(sessionId, true)
+                setPendingRetry(sessionId, layer, true)
                 failReason = "exception"
-                Log.e(TAG, "B extract failed(session=$sessionId)", e)
+                Log.e(TAG, "${layer.tag} extract failed(session=$sessionId)", e)
             } finally {
                 if (BuildConfig.DEBUG) {
-                    Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=$result failReason=$failReason")
+                    Log.d(TAG, "${layer.tag} trigger(session=$sessionId) reason=$triggerReason result=$result failReason=$failReason backend=$backendMode")
                 }
-                releaseInFlight(sessionId)
+                releaseInFlight(sessionId, layer)
             }
         }
-        if (testExtractExecutor != null) {
+
+        if (getTestExecutor(layer) != null) {
             runBlock()
         } else {
             Thread { runBlock() }.start()
         }
     }
 
-    private fun tryUpdateBFromBackend(sessionId: String, userId: String, triggerReason: String) {
-        if (!acquireInFlight(sessionId)) {
-            setPendingRetry(sessionId, true)
-            if (BuildConfig.DEBUG) Log.d(TAG, "B backend trigger skipped(session=$sessionId): inFlight=true reason=$triggerReason")
-            return
-        }
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason mode=backend result=request_snapshot")
-        }
-        val testSnapshotProvider = testBackendSnapshotProvider
-        if (testSnapshotProvider != null) {
-            val snapshot = testSnapshotProvider.invoke(userId, sessionId)
-            try {
-                if (snapshot != null && snapshot.b_summary.isNotBlank()) {
-                    loadSnapshot(snapshot)
-                    setPendingRetry(sessionId, false)
-                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=success")
-                } else {
-                    setPendingRetry(sessionId, true)
-                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=fail failReason=backend_unavailable")
-                }
-            } finally {
-                releaseInFlight(sessionId)
+    private fun executeExtract(layer: SummaryLayer, oldSummary: String, dialogueText: String, prompt: String): String {
+        val testExecutor = getTestExecutor(layer)
+        val result = if (testExecutor != null) {
+            testExecutor.invoke(oldSummary, dialogueText, prompt)
+        } else {
+            when (layer) {
+                SummaryLayer.B -> runCatching { QwenClient.extractBSummary(oldSummary, dialogueText, prompt) }
+                SummaryLayer.C -> runCatching { QwenClient.extractCSummary(oldSummary, dialogueText, prompt) }
             }
-            return
         }
-        SessionApi.getSnapshot(sessionId) { snapshot ->
-            try {
-                if (snapshot != null && snapshot.b_summary.isNotBlank()) {
-                    loadSnapshot(snapshot)
-                    setPendingRetry(sessionId, false)
-                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=success")
-                } else {
-                    setPendingRetry(sessionId, true)
-                    if (BuildConfig.DEBUG) Log.d(TAG, "B trigger(session=$sessionId) reason=$triggerReason result=fail failReason=backend_unavailable")
+        return result.getOrElse { throw it }
+    }
+
+    private fun writeSummaryToBackend(sessionId: String, summary: String, layer: SummaryLayer): Boolean {
+        val latch = CountDownLatch(1)
+        val success = AtomicBoolean(false)
+        when (layer) {
+            SummaryLayer.B -> SessionApi.updateB(sessionId, summary) {
+                success.set(it)
+                latch.countDown()
+            }
+            SummaryLayer.C -> SessionApi.updateC(sessionId, summary) {
+                success.set(it)
+                latch.countDown()
+            }
+        }
+        latch.await(BACKEND_WRITE_TIMEOUT_SEC, TimeUnit.SECONDS)
+        return success.get()
+    }
+
+    private fun getPromptText(layer: SummaryLayer): String = when (layer) {
+        SummaryLayer.B -> BExtractionPrompt.getText()
+        SummaryLayer.C -> CExtractionPrompt.getText()
+    }
+
+    private fun getSummary(layer: SummaryLayer): String {
+        val sessionId = currentSessionId()
+        if (isBackendMode()) {
+            val serverValue = synchronized(serverLock) {
+                when (layer) {
+                    SummaryLayer.B -> serverBSummary
+                    SummaryLayer.C -> serverCSummary
                 }
-            } finally {
-                releaseInFlight(sessionId)
+            }.trim()
+            if (serverValue.isNotEmpty()) return serverValue
+        }
+        return getSummaryFromPrefs(sessionId, layer)
+    }
+
+    private fun getStoredSummary(sessionId: String, layer: SummaryLayer): String {
+        val serverValue = synchronized(serverLock) {
+            when (layer) {
+                SummaryLayer.B -> serverBSummary
+                SummaryLayer.C -> serverCSummary
+            }
+        }.trim()
+        if (serverValue.isNotEmpty()) return serverValue
+        return getSummaryFromPrefs(sessionId, layer)
+    }
+
+    private fun getSummaryFromPrefs(sessionId: String, layer: SummaryLayer): String {
+        val prefs = prefs() ?: return ""
+        return prefs.getString(layer.summaryKeyPrefix + sessionId, "")?.trim().orEmpty()
+    }
+
+    private fun writeSummaryToPrefs(sessionId: String, layer: SummaryLayer, summary: String): Boolean {
+        val prefs = prefs() ?: return false
+        return prefs.edit().putString(layer.summaryKeyPrefix + sessionId, summary).commit()
+    }
+
+    private fun updateServerSummary(layer: SummaryLayer, summary: String) {
+        synchronized(serverLock) {
+            when (layer) {
+                SummaryLayer.B -> serverBSummary = summary
+                SummaryLayer.C -> serverCSummary = summary
             }
         }
     }
 
-    private fun normalizeBSummaryForStore(summary: String?): String? {
+    private fun normalizeSummaryForStore(summary: String?): String? {
         val trimmed = summary?.trim() ?: return null
         return trimmed.takeIf { it.isNotEmpty() }
     }
@@ -306,22 +357,59 @@ object ABLayerManager {
         return ABConfig(
             aWindowRounds = plan.aWindow,
             bEveryRounds = plan.bExtractRounds,
+            cEveryRounds = plan.cExtractRounds,
         )
     }
 
-    private fun acquireInFlight(sessionId: String): Boolean = synchronized(extractLock) {
-        if (inFlightSessions.contains(sessionId)) return@synchronized false
-        inFlightSessions.add(sessionId)
+    private fun buildTriggerPlans(
+        sessionId: String,
+        roundTotal: Int,
+        config: ABConfig,
+        chatModel: String?,
+        mode: String,
+    ): List<TriggerPlan> {
+        return SummaryLayer.values().map { layer ->
+            val everyRounds = getEveryRounds(layer, config)
+            val periodicEligible = everyRounds > 0 && roundTotal > 0 && roundTotal % everyRounds == 0
+            if (periodicEligible) {
+                setPendingRetry(sessionId, layer, true)
+            }
+            val pendingRetry = getPendingRetry(sessionId, layer)
+            logRoundState(layer, chatModel, sessionId, roundTotal, everyRounds, periodicEligible, pendingRetry, isInFlight(sessionId, layer), mode)
+            if (pendingRetry) {
+                TriggerPlan(
+                    layer = layer,
+                    shouldTrigger = true,
+                    reason = if (periodicEligible) "periodic" else "retry",
+                    roundTotal = roundTotal,
+                )
+            } else {
+                TriggerPlan(layer = layer, shouldTrigger = false, reason = "", roundTotal = roundTotal)
+            }
+        }
+    }
+
+    private fun getEveryRounds(layer: SummaryLayer, config: ABConfig): Int = when (layer) {
+        SummaryLayer.B -> config.bEveryRounds
+        SummaryLayer.C -> config.cEveryRounds
+    }
+
+    private fun acquireInFlight(sessionId: String, layer: SummaryLayer): Boolean = synchronized(extractLock) {
+        val key = inFlightKey(sessionId, layer)
+        if (inFlightKeys.contains(key)) return@synchronized false
+        inFlightKeys.add(key)
         true
     }
 
-    private fun releaseInFlight(sessionId: String) = synchronized(extractLock) {
-        inFlightSessions.remove(sessionId)
+    private fun releaseInFlight(sessionId: String, layer: SummaryLayer) = synchronized(extractLock) {
+        inFlightKeys.remove(inFlightKey(sessionId, layer))
     }
 
-    private fun isInFlight(sessionId: String): Boolean = synchronized(extractLock) {
-        inFlightSessions.contains(sessionId)
+    private fun isInFlight(sessionId: String, layer: SummaryLayer): Boolean = synchronized(extractLock) {
+        inFlightKeys.contains(inFlightKey(sessionId, layer))
     }
+
+    private fun inFlightKey(sessionId: String, layer: SummaryLayer): String = "${sessionId}_${layer.tag}"
 
     private fun prefs() = appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -343,21 +431,30 @@ object ABLayerManager {
         return next
     }
 
-    private fun getPendingRetry(sessionId: String): Boolean {
+    private fun getPendingRetry(sessionId: String, layer: SummaryLayer): Boolean {
         val prefs = prefs() ?: return false
-        return prefs.getBoolean(KEY_PENDING_RETRY_PREFIX + sessionId, false)
+        val current = prefs.getBoolean(layer.pendingRetryKeyPrefix + sessionId, false)
+        if (current) return true
+        val legacyKey = layer.legacyPendingRetryKeyPrefix ?: return false
+        return prefs.getBoolean(legacyKey + sessionId, false)
     }
 
-    private fun setPendingRetry(sessionId: String, value: Boolean) {
+    private fun setPendingRetry(sessionId: String, layer: SummaryLayer, value: Boolean) {
         val prefs = prefs() ?: return
-        prefs.edit().putBoolean(KEY_PENDING_RETRY_PREFIX + sessionId, value).apply()
+        prefs.edit().apply {
+            putBoolean(layer.pendingRetryKeyPrefix + sessionId, value)
+            if (layer.legacyPendingRetryKeyPrefix != null) {
+                putBoolean(layer.legacyPendingRetryKeyPrefix + sessionId, value)
+            }
+        }.apply()
     }
 
     private fun logRoundState(
+        layer: SummaryLayer,
         chatModel: String?,
         sessionId: String,
         roundTotal: Int,
-        bEveryRounds: Int,
+        everyRounds: Int,
         eligible: Boolean,
         pendingRetry: Boolean,
         inFlight: Boolean,
@@ -366,7 +463,7 @@ object ABLayerManager {
         if (!BuildConfig.DEBUG) return
         Log.d(
             TAG,
-            "tier=${chatModel ?: "free"}, session_id=$sessionId, roundCount_total=$roundTotal, bEveryRounds=$bEveryRounds, eligible=$eligible, pendingRetry=$pendingRetry, inFlight=$inFlight, mode=$mode",
+            "layer=${layer.tag}, tier=${chatModel ?: "free"}, session_id=$sessionId, roundCount_total=$roundTotal, everyRounds=$everyRounds, eligible=$eligible, pendingRetry=$pendingRetry, inFlight=$inFlight, mode=$mode",
         )
     }
 
@@ -383,12 +480,10 @@ object ABLayerManager {
         )
     }
 
-    private data class TriggerPlan(
-        val shouldTrigger: Boolean,
-        val reason: String,
-        val snapshot: List<Pair<String, String>>,
-        val roundTotal: Int,
-    )
+    private fun getTestExecutor(layer: SummaryLayer): ((String, String, String) -> Result<String>)? = when (layer) {
+        SummaryLayer.B -> testBExtractExecutor
+        SummaryLayer.C -> testCExtractExecutor
+    }
 
     @VisibleForTesting(otherwise = VisibleForTesting.NONE)
     @JvmSynthetic
@@ -397,14 +492,20 @@ object ABLayerManager {
         userId: String? = null,
         backendMode: Boolean? = null,
         extractExecutor: ((oldB: String, dialogueText: String, prompt: String) -> Result<String>)? = null,
+        cExtractExecutor: ((oldC: String, dialogueText: String, prompt: String) -> Result<String>)? = null,
         backendSnapshotProvider: ((userId: String, sessionId: String) -> SessionSnapshot?)? = null,
     ) {
         requireDebugTestHook("setTestHooks")
         testSessionIdOverride = sessionId
         testUserIdOverride = userId
         testBackendModeOverride = backendMode
-        testExtractExecutor = extractExecutor
+        testBExtractExecutor = extractExecutor
+        testCExtractExecutor = cExtractExecutor
         testBackendSnapshotProvider = backendSnapshotProvider
+        val snapshot = if (backendMode == true) backendSnapshotProvider?.invoke(userId ?: "", sessionId ?: "") else null
+        if (snapshot != null) {
+            loadSnapshot(snapshot)
+        }
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.NONE)
@@ -414,7 +515,8 @@ object ABLayerManager {
         testSessionIdOverride = null
         testUserIdOverride = null
         testBackendModeOverride = null
-        testExtractExecutor = null
+        testBExtractExecutor = null
+        testCExtractExecutor = null
         testBackendSnapshotProvider = null
     }
 
@@ -430,8 +532,14 @@ object ABLayerManager {
     @JvmSynthetic
     internal fun debugGetPendingRetry(sessionId: String): Boolean {
         requireDebugTestHook("debugGetPendingRetry")
-        val prefs = prefs() ?: return false
-        return prefs.getBoolean(KEY_PENDING_RETRY_PREFIX + sessionId, false)
+        return getPendingRetry(sessionId, SummaryLayer.B)
+    }
+
+    @VisibleForTesting(otherwise = VisibleForTesting.NONE)
+    @JvmSynthetic
+    internal fun debugGetPendingRetryC(sessionId: String): Boolean {
+        requireDebugTestHook("debugGetPendingRetryC")
+        return getPendingRetry(sessionId, SummaryLayer.C)
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.NONE)
@@ -442,13 +550,20 @@ object ABLayerManager {
         synchronized(serverLock) {
             serverARoundsCache.clear()
             serverBSummary = ""
+            serverCSummary = ""
         }
-        synchronized(extractLock) { inFlightSessions.remove(sessionId) }
+        synchronized(extractLock) {
+            inFlightKeys.remove(inFlightKey(sessionId, SummaryLayer.B))
+            inFlightKeys.remove(inFlightKey(sessionId, SummaryLayer.C))
+        }
         val prefs = prefs() ?: return
         prefs.edit()
             .remove(KEY_B_SUMMARY_PREFIX + sessionId)
+            .remove(KEY_C_SUMMARY_PREFIX + sessionId)
             .remove(KEY_ROUND_TOTAL_PREFIX + sessionId)
-            .remove(KEY_PENDING_RETRY_PREFIX + sessionId)
+            .remove(KEY_PENDING_RETRY_LEGACY_PREFIX + sessionId)
+            .remove(KEY_PENDING_RETRY_B_PREFIX + sessionId)
+            .remove(KEY_PENDING_RETRY_C_PREFIX + sessionId)
             .commit()
     }
 
@@ -460,8 +575,12 @@ object ABLayerManager {
         synchronized(serverLock) {
             serverARoundsCache.clear()
             serverBSummary = ""
+            serverCSummary = ""
         }
-        synchronized(extractLock) { inFlightSessions.remove(sessionId) }
+        synchronized(extractLock) {
+            inFlightKeys.remove(inFlightKey(sessionId, SummaryLayer.B))
+            inFlightKeys.remove(inFlightKey(sessionId, SummaryLayer.C))
+        }
     }
 
     private fun requireDebugTestHook(apiName: String) {

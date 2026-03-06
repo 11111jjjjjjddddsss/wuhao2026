@@ -4,10 +4,10 @@ import android.content.Context
 import android.util.Log
 import java.io.InputStreamReader
 
-/** B 层摘要提取提示词：从 assets/b_extraction_prompt.txt 加载。 */
-object BExtractionPrompt {
-    private const val TAG = "BExtractionPrompt"
-    private const val ASSET_PATH = "b_extraction_prompt.txt"
+/** C 层长期记忆提取提示词：从 assets/c_extraction_prompt.txt 加载。 */
+object CExtractionPrompt {
+    private const val TAG = "CExtractionPrompt"
+    private const val ASSET_PATH = "c_extraction_prompt.txt"
 
     @Volatile
     private var cachedText: String = ""
@@ -22,11 +22,11 @@ object BExtractionPrompt {
                     .joinToString("\n")
                     .trim()
                 if (BuildConfig.DEBUG) {
-                    Log.d(TAG, "B 提取提示词已加载，长度=${cachedText.length}")
+                    Log.d(TAG, "C 提取提示词已加载，长度=${cachedText.length}")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "加载 b_extraction_prompt.txt 失败", e)
+            Log.e(TAG, "加载 c_extraction_prompt.txt 失败", e)
             cachedText = ""
         }
     }

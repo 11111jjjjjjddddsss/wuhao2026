@@ -22,6 +22,7 @@ class MainActivity : ComponentActivity() {
             )
         )
         IdManager.init(this)
+        ABLayerManager.init(this)
         setContent {
             MaterialTheme {
                 Surface {

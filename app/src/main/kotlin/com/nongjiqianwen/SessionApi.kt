@@ -201,7 +201,7 @@ object SessionApi {
                         val forUiList = json.a_rounds_for_ui ?: fullList
                         val full = fullList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
                         val forUi = forUiList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
-                        onResult(SessionSnapshot(json.b_summary ?: "", full, forUi))
+                        onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi))
                     } catch (e: Exception) {
                         Log.e(TAG, "parse snapshot", e)
                         onResult(null)
@@ -282,6 +282,38 @@ object SessionApi {
             onResult = { response -> response.use { onResult(it.isSuccessful) } },
             onFailure = {
                 Log.w(TAG, "updateB failed", it)
+                onResult(false)
+            }
+        )
+    }
+
+    fun updateC(sessionId: String, cSummary: String, onResult: (Boolean) -> Unit) {
+        if (!BuildConfig.USE_BACKEND_AB) {
+            onResult(false)
+            return
+        }
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            onResult(false)
+            return
+        }
+        val body = gson.toJson(
+            mapOf(
+                "session_id" to sessionId,
+                "c_summary" to cSummary
+            )
+        )
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = Request.Builder()
+                    .url("$base/api/session/c")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response -> response.use { onResult(it.isSuccessful) } },
+            onFailure = {
+                Log.w(TAG, "updateC failed", it)
                 onResult(false)
             }
         )
@@ -421,6 +453,7 @@ object SessionApi {
 
     private data class SessionSnapshotJson(
         @SerializedName("b_summary") val b_summary: String?,
+        @SerializedName("c_summary") val c_summary: String? = null,
         @SerializedName("a_json") val a_json: List<ARoundJson>? = null,
         @SerializedName("a_rounds_full") val a_rounds_full: List<ARoundJson>?,
         @SerializedName("a_rounds_for_ui") val a_rounds_for_ui: List<ARoundJson>?,
@@ -432,4 +465,3 @@ object SessionApi {
         @SerializedName("assistant") val assistant: String?
     )
 }
-
