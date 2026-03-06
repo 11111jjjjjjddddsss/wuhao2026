@@ -820,7 +820,7 @@ fun ChatScreen() {
                     ) {
                         MenuBarsIcon(
                             tint = Color(0xFF1E1E1E),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                     Text(
