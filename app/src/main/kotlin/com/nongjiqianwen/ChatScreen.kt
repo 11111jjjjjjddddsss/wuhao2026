@@ -218,9 +218,9 @@ private fun FrostedCircleButton(
 ) {
     Surface(
         shape = CircleShape,
-        color = Color.White.copy(alpha = 0.82f),
-        border = BorderStroke(0.8.dp, Color(0xFFE7E6E1)),
-        shadowElevation = 1.dp,
+        color = Color.White.copy(alpha = 0.98f),
+        border = BorderStroke(1.dp, Color(0xFFE7E5DF)),
+        shadowElevation = 0.8.dp,
         tonalElevation = 0.dp,
         modifier = modifier.size(size)
     ) {
@@ -257,12 +257,12 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appBackground = Color(0xFFF4F4F0)
-    val chromeSurface = Color.White.copy(alpha = 0.84f)
-    val chromeBorder = Color(0xFFE7E6E1)
-    val inputSurface = Color.White.copy(alpha = 0.98f)
-    val inputBorder = Color(0xFFE3E2DD)
-    val userBubbleColor = Color(0xFFE9E9ED)
+    val appBackground = Color(0xFFF7F7F4)
+    val chromeSurface = Color.White.copy(alpha = 0.98f)
+    val chromeBorder = Color(0xFFE7E5DF)
+    val inputSurface = Color.White.copy(alpha = 0.99f)
+    val inputBorder = Color(0xFFE7E5DF)
+    val userBubbleColor = Color(0xFFEDEDF1)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -464,8 +464,8 @@ fun ChatScreen() {
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
-        val addButtonSize = if (maxWidth < 360.dp) 38.dp else 42.dp
-        val addIconSize = if (maxWidth < 360.dp) 26.dp else 30.dp
+        val addButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
+        val addIconSize = if (maxWidth < 360.dp) 24.dp else 26.dp
         val sendButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.78f else 420.dp
         val assistantLeadWidth = 18.dp
@@ -486,7 +486,7 @@ fun ChatScreen() {
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                            .padding(horizontal = chromeHorizontalPadding, vertical = 10.dp)
+                            .padding(horizontal = chromeHorizontalPadding, vertical = 8.dp)
                             .navigationBarsPadding()
                             .imePadding(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -510,7 +510,7 @@ fun ChatScreen() {
                             color = inputSurface,
                             border = BorderStroke(1.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 1.dp,
+                            shadowElevation = 0.8.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -527,11 +527,11 @@ fun ChatScreen() {
                                         .fillMaxWidth()
                                         .align(Alignment.CenterStart)
                                         .padding(end = 58.dp),
-                                    placeholder = { Text("描述作物/地区/问题", color = Color(0xFF9A9A9A)) },
+                                    placeholder = { Text("描述作物/地区/问题", color = Color(0xFFA4A19A)) },
                                     singleLine = true,
                                     textStyle = TextStyle(
-                                        fontSize = 17.sp,
-                                        lineHeight = 22.sp,
+                                        fontSize = 16.sp,
+                                        lineHeight = 21.sp,
                                         color = Color(0xFF111111)
                                     ),
                                     colors = TextFieldDefaults.colors(
@@ -692,7 +692,7 @@ fun ChatScreen() {
                     shape = CircleShape,
                     color = Color.White.copy(alpha = 0.94f),
                     border = BorderStroke(1.dp, chromeBorder),
-                    shadowElevation = 4.dp,
+                    shadowElevation = 1.5.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = jumpButtonBottomPadding)
@@ -717,9 +717,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                appBackground.copy(alpha = 0.94f),
-                                appBackground.copy(alpha = 0.84f),
-                                appBackground.copy(alpha = 0.52f),
+                                appBackground.copy(alpha = 0.99f),
+                                appBackground.copy(alpha = 0.95f),
+                                appBackground.copy(alpha = 0.76f),
                                 Color.Transparent
                             )
                         )
@@ -740,7 +740,7 @@ fun ChatScreen() {
                         .widthIn(max = chromeMaxWidth)
                         .fillMaxWidth()
                         .padding(horizontal = chromeHorizontalPadding),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FrostedCircleButton(
@@ -760,14 +760,14 @@ fun ChatScreen() {
                         color = chromeSurface,
                         border = BorderStroke(1.dp, chromeBorder),
                         tonalElevation = 0.dp,
-                        shadowElevation = 1.dp,
+                        shadowElevation = 0.8.dp,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
                             text = "农技千问",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 9.dp),
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
                             color = Color(0xFF111111),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
