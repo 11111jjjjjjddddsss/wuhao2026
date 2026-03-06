@@ -261,8 +261,8 @@ private fun FrostedCircleButton(
     Surface(
         shape = CircleShape,
         color = surfaceColor,
-        border = BorderStroke(0.8.dp, borderColor),
-        shadowElevation = 0.4.dp,
+        border = BorderStroke(0.55.dp, borderColor),
+        shadowElevation = 0.22.dp,
         tonalElevation = 0.dp,
         modifier = modifier.size(size)
     ) {
@@ -302,9 +302,9 @@ fun ChatScreen() {
     val appTopBottomTint = Color(0xFFFFFFFF)
     val appCenterTint = Color(0xFFFFFFFF)
     val chromeSurface = Color(0xFFFFFFFF)
-    val chromeBorder = Color(0xFFEDEBE7)
+    val chromeBorder = Color(0xFFE7E4DE).copy(alpha = 0.42f)
     val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFEDEBE7)
+    val inputBorder = Color(0xFFE7E4DE).copy(alpha = 0.42f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -533,6 +533,21 @@ fun ChatScreen() {
                         .fillMaxWidth()
                         .onSizeChanged { bottomBarHeightPx = it.height }
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(104.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color(0xFFFCFCFB).copy(alpha = 0.88f),
+                                        Color(0xFFF4F3EF).copy(alpha = 0.94f)
+                                    )
+                                )
+                            )
+                    )
                     Row(
                         modifier = Modifier
                             .align(Alignment.Center)
@@ -562,9 +577,9 @@ fun ChatScreen() {
                         Surface(
                             shape = RoundedCornerShape(30.dp),
                             color = inputSurface,
-                            border = BorderStroke(0.8.dp, inputBorder),
+                            border = BorderStroke(0.55.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.4.dp,
+                            shadowElevation = 0.22.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -745,8 +760,8 @@ fun ChatScreen() {
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
                     color = chromeSurface,
-                    border = BorderStroke(0.8.dp, chromeBorder),
-                    shadowElevation = 0.7.dp,
+                    border = BorderStroke(0.55.dp, chromeBorder),
+                    shadowElevation = 0.42.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = jumpButtonBottomPadding)
@@ -811,9 +826,9 @@ fun ChatScreen() {
                     Surface(
                         shape = RoundedCornerShape(24.dp),
                         color = chromeSurface,
-                        border = BorderStroke(0.8.dp, chromeBorder),
+                        border = BorderStroke(0.55.dp, chromeBorder),
                         tonalElevation = 0.dp,
-                        shadowElevation = 0.4.dp,
+                        shadowElevation = 0.22.dp,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
