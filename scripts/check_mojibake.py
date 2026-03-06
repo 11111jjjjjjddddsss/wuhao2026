@@ -4,11 +4,20 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASELINE = ROOT / ".mojibake-baseline.txt"
+BUSINESS_ROOTS = (
+    ROOT / "app/src",
+    ROOT / "server/src",
+    ROOT / "server/assets",
+    ROOT / "server/migrations",
+    ROOT / "upload-server/src",
+    ROOT / "scripts",
+)
 
 INCLUDE_EXT = {
     ".kt",
@@ -81,6 +90,20 @@ def should_scan(path: pathlib.Path) -> bool:
     return path.suffix.lower() in INCLUDE_EXT
 
 
+def is_in_business_roots(path: pathlib.Path) -> bool:
+    try:
+        resolved = path.resolve()
+    except FileNotFoundError:
+        return False
+    for root in BUSINESS_ROOTS:
+        try:
+            resolved.relative_to(root.resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def clean_snippet(line: str, width: int = 120) -> str:
     line = line.replace("\t", " ")
     line = re.sub(r"\s+", " ", line).strip()
@@ -135,13 +158,43 @@ def save_baseline(issues: list[Issue]) -> None:
     BASELINE.write_text("\n".join(lines), encoding="utf-8")
 
 
+def iter_files(scan_all: bool, staged_only: bool) -> list[pathlib.Path]:
+    candidates: list[pathlib.Path] = []
+    if staged_only:
+        result = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        for raw in result.stdout.splitlines():
+            rel = raw.strip()
+            if not rel:
+                continue
+            path = ROOT / rel
+            if path.is_file() and should_scan(path) and (scan_all or is_in_business_roots(path)):
+                candidates.append(path)
+        return candidates
+
+    roots = [ROOT] if scan_all else [root for root in BUSINESS_ROOTS if root.exists()]
+    for base in roots:
+        for path in base.rglob("*"):
+            if path.is_file() and should_scan(path):
+                candidates.append(path)
+    return candidates
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--strict", action="store_true", help="Fail on any issue, ignore baseline.")
     parser.add_argument("--update-baseline", action="store_true", help="Rewrite baseline from current scan.")
+    parser.add_argument("--all", action="store_true", help="Scan the full repository instead of business source roots.")
+    parser.add_argument("--staged", action="store_true", help="Scan only staged files.")
     args = parser.parse_args()
 
-    files = [p for p in ROOT.rglob("*") if p.is_file() and should_scan(p)]
+    files = iter_files(scan_all=args.all, staged_only=args.staged)
     all_issues: list[Issue] = []
     for file in files:
         all_issues.extend(scan_file(file))
