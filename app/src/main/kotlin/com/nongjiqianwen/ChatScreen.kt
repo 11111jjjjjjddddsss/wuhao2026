@@ -299,12 +299,13 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appBackground = Color(0xFFF6F5F2)
-    val chromeSurface = Color(0xFFF3F2EE)
-    val chromeBorder = Color(0xFFE7E4DE)
-    val inputSurface = Color(0xFFF8F7F4)
-    val inputBorder = Color(0xFFE7E4DE)
-    val userBubbleColor = Color(0xFFEDEDF1)
+    val appTopBottomTint = Color(0xFFF1F0EC)
+    val appCenterTint = Color(0xFFFDFDFC)
+    val chromeSurface = Color(0xFFFBFAF8)
+    val chromeBorder = Color(0xFFE9E6E0)
+    val inputSurface = Color(0xFFFCFBF9)
+    val inputBorder = Color(0xFFE9E6E0)
+    val userBubbleColor = Color(0xFFEFEFF3)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -487,7 +488,17 @@ fun ChatScreen() {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(appBackground)
+            .background(
+                Brush.verticalGradient(
+                    colorStops = arrayOf(
+                        0.0f to appTopBottomTint,
+                        0.18f to Color(0xFFF5F4F0),
+                        0.5f to appCenterTint,
+                        0.82f to Color(0xFFF5F4F0),
+                        1.0f to appTopBottomTint
+                    )
+                )
+            )
     ) {
         val chromeMaxWidth: Dp = when {
             maxWidth >= 900.dp -> 820.dp
@@ -514,7 +525,7 @@ fun ChatScreen() {
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = appBackground,
+            containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 Box(
@@ -760,9 +771,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                appBackground.copy(alpha = 0.99f),
-                                appBackground.copy(alpha = 0.95f),
-                                appBackground.copy(alpha = 0.76f),
+                                appTopBottomTint.copy(alpha = 0.97f),
+                                Color(0xFFF4F3EF).copy(alpha = 0.92f),
+                                appCenterTint.copy(alpha = 0.72f),
                                 Color.Transparent
                             )
                         )
