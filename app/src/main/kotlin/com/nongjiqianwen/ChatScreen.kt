@@ -46,6 +46,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
@@ -135,11 +136,11 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
     val alpha by transition.animateFloat(
-        initialValue = 0.72f,
+        initialValue = 0.8f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = 920,
+                durationMillis = 1180,
                 easing = FastOutSlowInEasing
             ),
             repeatMode = RepeatMode.Reverse
@@ -147,11 +148,11 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
         label = "assistantBreathingDotAlpha"
     )
     val scale by transition.animateFloat(
-        initialValue = 0.88f,
+        initialValue = 0.92f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
-                durationMillis = 920,
+                durationMillis = 1180,
                 easing = FastOutSlowInEasing
             ),
             repeatMode = RepeatMode.Reverse
@@ -160,7 +161,7 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     )
     Box(
         modifier = modifier
-            .size(13.dp)
+            .size(12.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -178,11 +179,11 @@ private fun LongArrowIcon(
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.12f
+        val stroke = size.minDimension * 0.1f
         val centerX = size.width / 2f
-        val headY = if (directionUp) size.height * 0.22f else size.height * 0.78f
-        val tailY = if (directionUp) size.height * 0.82f else size.height * 0.18f
-        val wingY = if (directionUp) size.height * 0.42f else size.height * 0.58f
+        val headY = if (directionUp) size.height * 0.16f else size.height * 0.84f
+        val tailY = if (directionUp) size.height * 0.88f else size.height * 0.12f
+        val wingY = if (directionUp) size.height * 0.36f else size.height * 0.64f
         drawLine(
             color = tint,
             start = Offset(centerX, tailY),
@@ -193,14 +194,14 @@ private fun LongArrowIcon(
         drawLine(
             color = tint,
             start = Offset(centerX, headY),
-            end = Offset(size.width * 0.29f, wingY),
+            end = Offset(size.width * 0.24f, wingY),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = tint,
             start = Offset(centerX, headY),
-            end = Offset(size.width * 0.71f, wingY),
+            end = Offset(size.width * 0.76f, wingY),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
@@ -217,9 +218,9 @@ private fun FrostedCircleButton(
 ) {
     Surface(
         shape = CircleShape,
-        color = Color.White.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.64f)),
-        shadowElevation = 1.5.dp,
+        color = Color.White.copy(alpha = 0.82f),
+        border = BorderStroke(0.8.dp, Color(0xFFE7E6E1)),
+        shadowElevation = 1.dp,
         tonalElevation = 0.dp,
         modifier = modifier.size(size)
     ) {
@@ -257,10 +258,10 @@ fun ChatScreen() {
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
     val appBackground = Color(0xFFF4F4F0)
-    val chromeSurface = Color.White.copy(alpha = 0.74f)
-    val chromeBorder = Color.White.copy(alpha = 0.66f)
-    val inputSurface = Color.White.copy(alpha = 0.92f)
-    val inputBorder = Color(0xFFE6E6E0)
+    val chromeSurface = Color.White.copy(alpha = 0.84f)
+    val chromeBorder = Color(0xFFE7E6E1)
+    val inputSurface = Color.White.copy(alpha = 0.98f)
+    val inputBorder = Color(0xFFE3E2DD)
     val userBubbleColor = Color(0xFFE9E9ED)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -352,8 +353,8 @@ fun ChatScreen() {
         val fullText = FAKE_STREAM_TEXT
         fakeStreamJob = snackbarScope.launch {
             val ballStartTime = SystemClock.uptimeMillis()
-            val initialDelayMs = Random.nextLong(420, 681)
-            val minBallMs = 1180L
+            val initialDelayMs = Random.nextLong(720, 1001)
+            val minBallMs = 1680L
             val elapsed = SystemClock.uptimeMillis() - ballStartTime
             val firstTokenWait = maxOf(initialDelayMs, minBallMs - elapsed)
             if (firstTokenWait > 0) {
@@ -462,10 +463,10 @@ fun ChatScreen() {
             else -> 20.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
-        val chromeButtonSize = if (maxWidth < 360.dp) 42.dp else 46.dp
+        val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
         val addButtonSize = if (maxWidth < 360.dp) 38.dp else 42.dp
         val addIconSize = if (maxWidth < 360.dp) 26.dp else 30.dp
-        val sendButtonSize = if (maxWidth < 360.dp) 38.dp else 40.dp
+        val sendButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.78f else 420.dp
         val assistantLeadWidth = 18.dp
 
@@ -568,7 +569,7 @@ fun ChatScreen() {
                                         LongArrowIcon(
                                             tint = actionTint,
                                             directionUp = true,
-                                            modifier = Modifier.size(19.dp)
+                                            modifier = Modifier.size(21.dp)
                                         )
                                     }
                                 }
@@ -702,7 +703,7 @@ fun ChatScreen() {
                         LongArrowIcon(
                             tint = Color(0xFF111111),
                             directionUp = false,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
@@ -716,9 +717,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                appBackground.copy(alpha = 0.96f),
-                                appBackground.copy(alpha = 0.88f),
-                                appBackground.copy(alpha = 0.58f),
+                                appBackground.copy(alpha = 0.94f),
+                                appBackground.copy(alpha = 0.84f),
+                                appBackground.copy(alpha = 0.52f),
                                 Color.Transparent
                             )
                         )
@@ -739,29 +740,34 @@ fun ChatScreen() {
                         .widthIn(max = chromeMaxWidth)
                         .fillMaxWidth()
                         .padding(horizontal = chromeHorizontalPadding),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FrostedCircleButton(
-                        contentDescription = "菜单",
+                        contentDescription = "返回",
                         size = chromeButtonSize,
                         onClick = {}
                     ) {
-                        Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = Color(0xFF222222),
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                     Surface(
-                        shape = RoundedCornerShape(26.dp),
+                        shape = RoundedCornerShape(24.dp),
                         color = chromeSurface,
                         border = BorderStroke(1.dp, chromeBorder),
                         tonalElevation = 0.dp,
-                        shadowElevation = 1.5.dp,
+                        shadowElevation = 1.dp,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
                             text = "农技千问",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 18.dp, vertical = 11.dp),
+                                .padding(horizontal = 18.dp, vertical = 9.dp),
                             color = Color(0xFF111111),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
