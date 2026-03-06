@@ -15,6 +15,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,12 +75,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -177,12 +183,26 @@ fun ChatScreen() {
     var sendTick by remember { mutableStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
+    var topBarHeightPx by remember { mutableIntStateOf(0) }
+    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    val density = LocalDensity.current
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
         .calculateTopPadding()
-    val topBarReservedHeight = topInset + 68.dp
+    val measuredTopBarHeight = with(density) { topBarHeightPx.toDp() }
+    val measuredBottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
+    val topBarReservedHeight = if (measuredTopBarHeight > 0.dp) {
+        measuredTopBarHeight + 12.dp
+    } else {
+        topInset + 72.dp
+    }
+    val jumpButtonBottomPadding = if (measuredBottomBarHeight > 0.dp) {
+        measuredBottomBarHeight + 18.dp
+    } else {
+        96.dp
+    }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -257,8 +277,8 @@ fun ChatScreen() {
         val fullText = FAKE_STREAM_TEXT
         fakeStreamJob = snackbarScope.launch {
             val ballStartTime = SystemClock.uptimeMillis()
-            val initialDelayMs = Random.nextLong(600, 901)
-            val minBallMs = 2200L
+            val initialDelayMs = Random.nextLong(420, 681)
+            val minBallMs = 1180L
             val elapsed = SystemClock.uptimeMillis() - ballStartTime
             val firstTokenWait = maxOf(initialDelayMs, minBallMs - elapsed)
             if (firstTokenWait > 0) {
@@ -346,126 +366,158 @@ fun ChatScreen() {
         }
     }
 
-    Scaffold(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5)),
-        containerColor = Color(0xFFF5F5F5),
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-                    .navigationBarsPadding()
-                    .imePadding(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White,
-                    tonalElevation = 1.dp,
-                    shadowElevation = 1.dp,
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    IconButton(
-                        onClick = {},
-                        colors = IconButtonDefaults.iconButtonColors(contentColor = Color(0xFF252525))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "添加",
-                            modifier = Modifier.size(30.dp),
-                            tint = Color(0xFF252525)
-                        )
-                    }
-                }
+            .background(Color(0xFFF5F5F5))
+    ) {
+        val chromeMaxWidth: Dp = when {
+            maxWidth >= 900.dp -> 820.dp
+            maxWidth >= 700.dp -> 680.dp
+            else -> maxWidth
+        }
+        val chromeHorizontalPadding = when {
+            maxWidth < 360.dp -> 10.dp
+            maxWidth < 600.dp -> 12.dp
+            else -> 20.dp
+        }
+        val listHorizontalPadding = when {
+            maxWidth < 360.dp -> 8.dp
+            maxWidth < 600.dp -> 12.dp
+            else -> 20.dp
+        }
+        val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
+        val chromeButtonSize = if (maxWidth < 360.dp) 42.dp else 46.dp
+        val addButtonSize = if (maxWidth < 360.dp) 38.dp else 42.dp
+        val addIconSize = if (maxWidth < 360.dp) 26.dp else 30.dp
+        val sendButtonSize = if (maxWidth < 360.dp) 38.dp else 40.dp
+        val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.78f else 420.dp
+        val assistantLeadWidth = 18.dp
 
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = Color.White,
-                    tonalElevation = 1.dp,
-                    shadowElevation = 1.dp,
-                    modifier = Modifier.weight(1f)
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color(0xFFF5F5F5),
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { bottomBarHeightPx = it.height }
                 ) {
-                    Box(
+                    Row(
                         modifier = Modifier
+                            .align(Alignment.Center)
+                            .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
-                            .height(56.dp)
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                            .padding(horizontal = chromeHorizontalPadding, vertical = 10.dp)
+                            .navigationBarsPadding()
+                            .imePadding(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        TextField(
-                            value = input.value,
-                            onValueChange = {
-                                if (it.length <= 3000) input.value = it
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.CenterStart)
-                                .padding(end = 52.dp),
-                            placeholder = { Text("描述作物/地区/问题", color = Color(0xFF9A9A9A)) },
-                            singleLine = true,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                disabledIndicatorColor = Color.Transparent
-                            )
-                        )
-
-                        val canSend = input.value.trim().isNotEmpty() && !isStreaming
-                        val actionBg = if (canSend) Color(0xFF101010) else Color(0xFFD9D9D9)
-                        val actionTint = if (canSend) Color.White else Color(0xFF7A7A7A)
-
-                        IconButton(
-                            onClick = {
-                                if (canSend) {
-                                    sendMessage()
-                                }
-                            },
-                            enabled = canSend,
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .padding(end = 6.dp)
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(actionBg)
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White,
+                            tonalElevation = 1.dp,
+                            shadowElevation = 1.dp,
+                            modifier = Modifier.size(addButtonSize)
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Send",
-                                tint = actionTint,
+                            IconButton(
+                                onClick = {},
+                                colors = IconButtonDefaults.iconButtonColors(contentColor = Color(0xFF252525))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = "添加",
+                                    modifier = Modifier.size(addIconSize),
+                                    tint = Color(0xFF252525)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(28.dp),
+                            color = Color.White,
+                            tonalElevation = 1.dp,
+                            shadowElevation = 1.dp,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
                                 modifier = Modifier
-                                    .size(22.dp)
-                                    .graphicsLayer { rotationZ = 90f }
-                            )
+                                    .fillMaxWidth()
+                                    .height(inputBarHeight)
+                            ) {
+                                TextField(
+                                    value = input.value,
+                                    onValueChange = {
+                                        if (it.length <= 3000) input.value = it
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.CenterStart)
+                                        .padding(end = 52.dp),
+                                    placeholder = { Text("描述作物/地区/问题", color = Color(0xFF9A9A9A)) },
+                                    singleLine = true,
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        disabledIndicatorColor = Color.Transparent
+                                    )
+                                )
+
+                                val canSend = input.value.trim().isNotEmpty() && !isStreaming
+                                val actionBg = if (canSend) Color(0xFF101010) else Color(0xFFD9D9D9)
+                                val actionTint = if (canSend) Color.White else Color(0xFF7A7A7A)
+
+                                IconButton(
+                                    onClick = {
+                                        if (canSend) {
+                                            sendMessage()
+                                        }
+                                    },
+                                    enabled = canSend,
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .padding(end = 6.dp)
+                                        .size(sendButtonSize)
+                                        .clip(CircleShape)
+                                        .background(actionBg)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "Send",
+                                        tint = actionTint,
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .graphicsLayer { rotationZ = 90f }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
+            },
+            snackbarHost = {
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp)
+                )
             }
-        },
-        snackbarHost = {
-            SnackbarHost(
-                hostState = snackbarHostState,
+        ) { innerPadding ->
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                    .padding(horizontal = 10.dp)
                     .pointerInput(Unit) {
                         awaitEachGesture {
                             awaitFirstDown(requireUnconsumed = false)
@@ -483,56 +535,62 @@ fun ChatScreen() {
                 )
             ) {
                     items(messages, key = { it.id }) { msg ->
-                        val align = if (msg.role == ChatRole.USER) Alignment.CenterEnd else Alignment.CenterStart
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            contentAlignment = align
+                                .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
                         ) {
-                            if (msg.role == ChatRole.ASSISTANT) {
-                                val showBreathingBall = isStreaming && msg.id == assistantMessageId && msg.content.isBlank()
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(end = 4.dp),
-                                    verticalAlignment = Alignment.Top
-                                ) {
-                                    if (showBreathingBall) {
-                                        Box(
-                                            modifier = Modifier
-                                                .width(20.dp)
-                                                .padding(top = 8.dp),
-                                            contentAlignment = Alignment.CenterStart
-                                        ) {
-                                            GPTBreathingBall()
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .widthIn(max = chromeMaxWidth)
+                                    .fillMaxWidth()
+                            ) {
+                                if (msg.role == ChatRole.ASSISTANT) {
+                                    val showBreathingBall = isStreaming && msg.id == assistantMessageId && msg.content.isBlank()
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(end = 4.dp),
+                                        verticalAlignment = Alignment.Top
+                                    ) {
+                                        if (showBreathingBall) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(assistantLeadWidth)
+                                                    .padding(top = 9.dp),
+                                                contentAlignment = Alignment.CenterStart
+                                            ) {
+                                                GPTBreathingBall()
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
                                         }
-                                        Spacer(modifier = Modifier.width(8.dp))
+                                        if (msg.content.isBlank() && showBreathingBall) {
+                                            Spacer(
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(48.dp)
+                                            )
+                                        } else {
+                                            AssistantMarkdownContent(
+                                                content = msg.content,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
                                     }
-                                    if (msg.content.isBlank() && showBreathingBall) {
-                                        Spacer(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(56.dp)
-                                        )
-                                    } else {
-                                        AssistantMarkdownContent(
-                                            content = msg.content,
-                                            modifier = Modifier
-                                                .weight(1f)
-                                        )
-                                    }
+                                } else {
+                                    Text(
+                                        text = msg.content,
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .widthIn(max = userBubbleMaxWidth)
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .background(Color(0xFFECECEF))
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = Color(0xFF161616)
+                                    )
                                 }
-                            } else {
-                                Text(
-                                    text = msg.content,
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(16.dp))
-                                        .background(Color(0xFFECECEF))
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = Color(0xFF161616)
-                                )
                             }
                         }
                     }
@@ -559,7 +617,7 @@ fun ChatScreen() {
                     shadowElevation = 2.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 80.dp)
+                        .padding(bottom = jumpButtonBottomPadding)
                         .navigationBarsPadding()
                         .size(44.dp)
                 ) {
@@ -576,44 +634,54 @@ fun ChatScreen() {
                 }
             }
 
-            Row(
+            Box(
                 modifier = Modifier
+                    .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    .onSizeChanged { topBarHeightPx = it.height }
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .statusBarsPadding()
-                    .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp)
-                    .align(Alignment.TopCenter),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(top = 8.dp, bottom = 8.dp)
             ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White,
-                    tonalElevation = 1.dp,
-                    shadowElevation = 1.dp,
-                    modifier = Modifier.size(46.dp)
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .widthIn(max = chromeMaxWidth)
+                        .fillMaxWidth()
+                        .padding(horizontal = chromeHorizontalPadding),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
+                    Surface(
+                        shape = CircleShape,
+                        color = Color.White,
+                        tonalElevation = 1.dp,
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.size(chromeButtonSize)
+                    ) {
+                        IconButton(onClick = {}) {
+                            Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
+                        }
                     }
-                }
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = Color.White,
-                    tonalElevation = 1.dp,
-                    shadowElevation = 1.dp
-                ) {
-                    Text(
-                        text = "农技千问",
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                        color = Color(0xFF111111),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color.White,
+                        tonalElevation = 1.dp,
+                        shadowElevation = 1.dp
+                    ) {
+                        Text(
+                            text = "农技千问",
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                            color = Color(0xFF111111),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
     }
+}
 }
 
 private val FAKE_STREAM_TEXT = """
