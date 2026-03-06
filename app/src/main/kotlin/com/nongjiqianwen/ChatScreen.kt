@@ -261,8 +261,8 @@ private fun FrostedCircleButton(
     Surface(
         shape = CircleShape,
         color = surfaceColor,
-        border = BorderStroke(0.55.dp, borderColor),
-        shadowElevation = 0.28.dp,
+        border = BorderStroke(0.45.dp, borderColor),
+        shadowElevation = 0.92.dp,
         tonalElevation = 0.dp,
         modifier = modifier.size(size)
     ) {
@@ -299,12 +299,12 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appTopBottomTint = Color(0xFFF3F3F0)
-    val appCenterTint = Color(0xFFF7F7F5)
-    val chromeSurface = Color(0xFFFFFFFF)
-    val chromeBorder = Color(0xFFE3E0DA).copy(alpha = 0.3f)
+    val appTopBottomTint = Color(0xFFF4F4F2)
+    val appCenterTint = Color(0xFFF7F7F6)
+    val chromeSurface = Color.White.copy(alpha = 0.96f)
+    val chromeBorder = Color(0xFFEAE7E1).copy(alpha = 0.16f)
     val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFE1DED8).copy(alpha = 0.42f)
+    val inputBorder = Color(0xFFE4E1DA).copy(alpha = 0.42f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -492,9 +492,9 @@ fun ChatScreen() {
                 Brush.verticalGradient(
                     colorStops = arrayOf(
                         0.0f to appTopBottomTint,
-                        0.14f to Color(0xFFF5F5F2),
+                        0.14f to Color(0xFFF5F5F3),
                         0.5f to appCenterTint,
-                        0.86f to Color(0xFFF5F5F2),
+                        0.86f to Color(0xFFF5F5F3),
                         1.0f to appTopBottomTint
                     )
                 )
@@ -542,8 +542,8 @@ fun ChatScreen() {
                                 Brush.verticalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        Color(0xFFFAFAF8).copy(alpha = 0.92f),
-                                        Color(0xFFF0EFEB).copy(alpha = 0.98f)
+                                        Color(0xFFFAFAF9).copy(alpha = 0.94f),
+                                        Color(0xFFEFEEE9).copy(alpha = 0.98f)
                                     )
                                 )
                             )
@@ -577,9 +577,9 @@ fun ChatScreen() {
                         Surface(
                             shape = RoundedCornerShape(30.dp),
                             color = inputSurface,
-                            border = BorderStroke(0.65.dp, inputBorder),
+                            border = BorderStroke(0.72.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.42.dp,
+                            shadowElevation = 0.86.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -786,9 +786,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFFF1F1EE).copy(alpha = 0.98f),
-                                Color(0xFFF6F6F3).copy(alpha = 0.94f),
-                                appCenterTint.copy(alpha = 0.7f),
+                                Color(0xFFF0F0ED).copy(alpha = 0.98f),
+                                Color(0xFFF5F5F2).copy(alpha = 0.94f),
+                                appCenterTint.copy(alpha = 0.72f),
                                 Color.Transparent
                             )
                         )
@@ -829,10 +829,10 @@ fun ChatScreen() {
                     ) {
                         Surface(
                             shape = RoundedCornerShape(18.dp),
-                            color = Color.White,
-                            border = BorderStroke(0.45.dp, chromeBorder),
+                            color = Color.White.copy(alpha = 0.96f),
+                            border = BorderStroke(0.38.dp, chromeBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.22.dp
+                            shadowElevation = 0.56.dp
                         ) {
                             Text(
                                 text = "农技千问",
