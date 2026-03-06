@@ -212,8 +212,8 @@ private fun MenuBarsIcon(
 ) {
     Canvas(modifier = modifier) {
         val stroke = size.minDimension * 0.085f
-        val y1 = size.height * 0.38f
-        val y2 = size.height * 0.63f
+        val y1 = size.height * 0.34f
+        val y2 = size.height * 0.66f
         drawLine(
             color = tint,
             start = Offset(size.width * 0.22f, y1),
@@ -820,21 +820,32 @@ fun ChatScreen() {
                     ) {
                         MenuBarsIcon(
                             tint = Color(0xFF1E1E1E),
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(26.dp)
                         )
                     }
-                    Text(
-                        text = "农技千问",
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                        color = Color(0xFF111111),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center
-                    )
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(18.dp),
+                            color = Color.White.copy(alpha = 0.94f),
+                            border = BorderStroke(0.45.dp, chromeBorder),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.12.dp
+                        ) {
+                            Text(
+                                text = "农技千问",
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                                color = Color(0xFF111111),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
                     FrostedCircleButton(
                         size = chromeButtonSize,
                         surfaceColor = chromeSurface,
