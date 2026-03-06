@@ -9,12 +9,16 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -42,9 +46,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -72,7 +76,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
@@ -83,6 +90,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -164,6 +172,67 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun LongArrowIcon(
+    tint: Color,
+    directionUp: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.12f
+        val centerX = size.width / 2f
+        val headY = if (directionUp) size.height * 0.22f else size.height * 0.78f
+        val tailY = if (directionUp) size.height * 0.82f else size.height * 0.18f
+        val wingY = if (directionUp) size.height * 0.42f else size.height * 0.58f
+        drawLine(
+            color = tint,
+            start = Offset(centerX, tailY),
+            end = Offset(centerX, headY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(centerX, headY),
+            end = Offset(size.width * 0.29f, wingY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(centerX, headY),
+            end = Offset(size.width * 0.71f, wingY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun FrostedCircleButton(
+    contentDescription: String,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    icon: @Composable BoxScope.() -> Unit
+) {
+    Surface(
+        shape = CircleShape,
+        color = Color.White.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.64f)),
+        shadowElevation = 1.5.dp,
+        tonalElevation = 0.dp,
+        modifier = modifier.size(size)
+    ) {
+        IconButton(
+            onClick = onClick,
+            colors = IconButtonDefaults.iconButtonColors(contentColor = Color(0xFF1A1A1A))
+        ) {
+            Box(contentAlignment = Alignment.Center, content = icon)
+        }
+    }
+}
+
+@Composable
 @OptIn(ExperimentalComposeUiApi::class)
 fun ChatScreen() {
     val input = remember { mutableStateOf("") }
@@ -187,6 +256,12 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
+    val appBackground = Color(0xFFF4F4F0)
+    val chromeSurface = Color.White.copy(alpha = 0.74f)
+    val chromeBorder = Color.White.copy(alpha = 0.66f)
+    val inputSurface = Color.White.copy(alpha = 0.92f)
+    val inputBorder = Color(0xFFE6E6E0)
+    val userBubbleColor = Color(0xFFE9E9ED)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -369,7 +444,7 @@ fun ChatScreen() {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF5F5F5))
+            .background(appBackground)
     ) {
         val chromeMaxWidth: Dp = when {
             maxWidth >= 900.dp -> 820.dp
@@ -396,7 +471,7 @@ fun ChatScreen() {
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Color(0xFFF5F5F5),
+            containerColor = appBackground,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 Box(
@@ -414,32 +489,26 @@ fun ChatScreen() {
                             .navigationBarsPadding()
                             .imePadding(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color.White,
-                            tonalElevation = 1.dp,
-                            shadowElevation = 1.dp,
-                            modifier = Modifier.size(addButtonSize)
+                        FrostedCircleButton(
+                            contentDescription = "添加",
+                            size = addButtonSize,
+                            onClick = {}
                         ) {
-                            IconButton(
-                                onClick = {},
-                                colors = IconButtonDefaults.iconButtonColors(contentColor = Color(0xFF252525))
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = "添加",
-                                    modifier = Modifier.size(addIconSize),
-                                    tint = Color(0xFF252525)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "添加",
+                                modifier = Modifier.size(addIconSize),
+                                tint = Color(0xFF252525)
+                            )
                         }
 
                         Surface(
-                            shape = RoundedCornerShape(28.dp),
-                            color = Color.White,
-                            tonalElevation = 1.dp,
+                            shape = RoundedCornerShape(30.dp),
+                            color = inputSurface,
+                            border = BorderStroke(1.dp, inputBorder),
+                            tonalElevation = 0.dp,
                             shadowElevation = 1.dp,
                             modifier = Modifier.weight(1f)
                         ) {
@@ -456,9 +525,14 @@ fun ChatScreen() {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .align(Alignment.CenterStart)
-                                        .padding(end = 52.dp),
+                                        .padding(end = 58.dp),
                                     placeholder = { Text("描述作物/地区/问题", color = Color(0xFF9A9A9A)) },
                                     singleLine = true,
+                                    textStyle = TextStyle(
+                                        fontSize = 17.sp,
+                                        lineHeight = 22.sp,
+                                        color = Color(0xFF111111)
+                                    ),
                                     colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
                                         unfocusedContainerColor = Color.Transparent,
@@ -470,31 +544,33 @@ fun ChatScreen() {
                                 )
 
                                 val canSend = input.value.trim().isNotEmpty() && !isStreaming
-                                val actionBg = if (canSend) Color(0xFF101010) else Color(0xFFD9D9D9)
-                                val actionTint = if (canSend) Color.White else Color(0xFF7A7A7A)
+                                val actionBg = if (canSend) Color(0xFF111111) else Color(0xFFD3D4D6)
+                                val actionTint = if (canSend) Color.White else Color(0xFF7F8083)
 
-                                IconButton(
-                                    onClick = {
-                                        if (canSend) {
-                                            sendMessage()
-                                        }
-                                    },
-                                    enabled = canSend,
+                                Box(
                                     modifier = Modifier
                                         .align(Alignment.CenterEnd)
-                                        .padding(end = 6.dp)
+                                        .padding(end = 7.dp)
                                         .size(sendButtonSize)
                                         .clip(CircleShape)
-                                        .background(actionBg)
+                                        .background(actionBg),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Send",
-                                        tint = actionTint,
-                                        modifier = Modifier
-                                            .size(22.dp)
-                                            .graphicsLayer { rotationZ = 90f }
-                                    )
+                                    IconButton(
+                                        onClick = {
+                                            if (canSend) {
+                                                sendMessage()
+                                            }
+                                        },
+                                        enabled = canSend,
+                                        modifier = Modifier.fillMaxSize()
+                                    ) {
+                                        LongArrowIcon(
+                                            tint = actionTint,
+                                            directionUp = true,
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -584,8 +660,8 @@ fun ChatScreen() {
                                         modifier = Modifier
                                             .align(Alignment.CenterEnd)
                                             .widthIn(max = userBubbleMaxWidth)
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .background(Color(0xFFECECEF))
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(userBubbleColor)
                                             .padding(horizontal = 14.dp, vertical = 10.dp),
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = Color(0xFF161616)
@@ -601,7 +677,7 @@ fun ChatScreen() {
                     text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 104.dp, start = 24.dp, end = 24.dp),
+                        .padding(top = topBarReservedHeight + 24.dp, start = 24.dp, end = 24.dp),
                     style = MaterialTheme.typography.titleMedium,
                     color = Color(0xFF141414),
                     lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
@@ -613,8 +689,9 @@ fun ChatScreen() {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
-                    color = Color.White,
-                    shadowElevation = 2.dp,
+                    color = Color.White.copy(alpha = 0.94f),
+                    border = BorderStroke(1.dp, chromeBorder),
+                    shadowElevation = 4.dp,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(bottom = jumpButtonBottomPadding)
@@ -622,13 +699,10 @@ fun ChatScreen() {
                         .size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "回到底部",
+                        LongArrowIcon(
                             tint = Color(0xFF111111),
-                            modifier = Modifier
-                                .size(22.dp)
-                                .graphicsLayer { rotationZ = -90f }
+                            directionUp = false,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -638,10 +712,26 @@ fun ChatScreen() {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    .height(topBarReservedHeight + 28.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                appBackground.copy(alpha = 0.96f),
+                                appBackground.copy(alpha = 0.88f),
+                                appBackground.copy(alpha = 0.58f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
                     .onSizeChanged { topBarHeightPx = it.height }
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, bottom = 8.dp)
+                    .padding(top = topInset + 8.dp, bottom = 8.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -649,33 +739,43 @@ fun ChatScreen() {
                         .widthIn(max = chromeMaxWidth)
                         .fillMaxWidth()
                         .padding(horizontal = chromeHorizontalPadding),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White,
-                        tonalElevation = 1.dp,
-                        shadowElevation = 1.dp,
-                        modifier = Modifier.size(chromeButtonSize)
+                    FrostedCircleButton(
+                        contentDescription = "菜单",
+                        size = chromeButtonSize,
+                        onClick = {}
                     ) {
-                        IconButton(onClick = {}) {
-                            Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
-                        }
+                        Icon(Icons.Default.Menu, contentDescription = "菜单", tint = Color(0xFF222222))
                     }
                     Surface(
-                        shape = RoundedCornerShape(24.dp),
-                        color = Color.White,
-                        tonalElevation = 1.dp,
-                        shadowElevation = 1.dp
+                        shape = RoundedCornerShape(26.dp),
+                        color = chromeSurface,
+                        border = BorderStroke(1.dp, chromeBorder),
+                        tonalElevation = 0.dp,
+                        shadowElevation = 1.5.dp,
+                        modifier = Modifier.weight(1f)
                     ) {
                         Text(
                             text = "农技千问",
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 11.dp),
                             color = Color(0xFF111111),
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
                         )
+                    }
+                    FrostedCircleButton(
+                        contentDescription = "更多",
+                        size = chromeButtonSize,
+                        onClick = {}
+                    ) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "更多", tint = Color(0xFF222222))
                     }
                 }
             }
