@@ -28,7 +28,6 @@ class MainActivity : ComponentActivity() {
         )
         IdManager.init(this)
         ABLayerManager.init(this)
-        SystemAnchorPrompt.init(this)
         preloadSessionSnapshot()
         setContent {
             MaterialTheme {

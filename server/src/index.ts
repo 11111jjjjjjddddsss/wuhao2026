@@ -379,6 +379,13 @@ app.post('/api/chat/stream', async (request, reply) => {
     'chat prompt assembly',
   );
 
+  if (!hasBailianKey()) {
+    return reply.code(503).send({
+      error: 'MODEL_BACKEND_NOT_CONFIGURED',
+      message: '后端未配置大模型服务，当前无法使用真实流式对话',
+    });
+  }
+
   if (await wasProcessed(userId, clientMsgId)) {
     reply.hijack();
     reply.raw.statusCode = 200;

@@ -370,13 +370,6 @@ object QwenClient {
         val bSum = com.nongjiqianwen.ABLayerManager.getBSummary()
         val cSum = com.nongjiqianwen.ABLayerManager.getCSummary()
         val messagesArray = JsonArray()
-        val systemAnchor = com.nongjiqianwen.SystemAnchorPrompt.getText()
-        if (systemAnchor.isNotBlank()) {
-            messagesArray.add(JsonObject().apply {
-                addProperty("role", "system")
-                addProperty("content", systemAnchor)
-            })
-        }
         val layer1 = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}"
         val parts = mutableListOf<String>()
         parts.add(layer1.trim())
@@ -597,6 +590,7 @@ object QwenClient {
             @Suppress("UNUSED_VARIABLE") val errorMessage = jsonResponse.get("message")?.asString ?: responseBody
             // 仅日志用，不写正式字段
             reason = when {
+                statusCode == 503 -> "model_unavailable"
                 statusCode == 429 || errorCode.equals("RATE_LIMITED", ignoreCase = true) -> "rate_limit"
                 statusCode == 402 -> "quota"
                 else -> "server"
@@ -604,6 +598,7 @@ object QwenClient {
         } catch (_: Exception) {
             Log.e(TAG, "callApi 无法解析错误响应 statusCode=$statusCode")
             reason = when (statusCode) {
+                503 -> "model_unavailable"
                 429 -> "rate_limit"
                 402 -> "quota"
                 else -> "server"
