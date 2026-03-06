@@ -299,13 +299,13 @@ fun ChatScreen() {
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
     val density = LocalDensity.current
-    val appTopBottomTint = Color(0xFFF1F0EC)
-    val appCenterTint = Color(0xFFFDFDFC)
-    val chromeSurface = Color(0xFFFBFAF8)
-    val chromeBorder = Color(0xFFE9E6E0)
-    val inputSurface = Color(0xFFFCFBF9)
-    val inputBorder = Color(0xFFE9E6E0)
-    val userBubbleColor = Color(0xFFEFEFF3)
+    val appTopBottomTint = Color(0xFFF7F6F3)
+    val appCenterTint = Color(0xFFFFFFFF)
+    val chromeSurface = Color(0xFFFFFEFC)
+    val chromeBorder = Color(0xFFF0ECE6)
+    val inputSurface = Color(0xFFFFFFFF)
+    val inputBorder = Color(0xFFF0ECE6)
+    val userBubbleColor = Color(0xFFF1F1F5)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -492,9 +492,9 @@ fun ChatScreen() {
                 Brush.verticalGradient(
                     colorStops = arrayOf(
                         0.0f to appTopBottomTint,
-                        0.18f to Color(0xFFF5F4F0),
+                        0.18f to Color(0xFFFBFAF7),
                         0.5f to appCenterTint,
-                        0.82f to Color(0xFFF5F4F0),
+                        0.82f to Color(0xFFFBFAF7),
                         1.0f to appTopBottomTint
                     )
                 )
@@ -771,9 +771,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                appTopBottomTint.copy(alpha = 0.97f),
-                                Color(0xFFF4F3EF).copy(alpha = 0.92f),
-                                appCenterTint.copy(alpha = 0.72f),
+                                Color(0xFFF8F7F4).copy(alpha = 0.98f),
+                                Color(0xFFFCFBF8).copy(alpha = 0.94f),
+                                appCenterTint.copy(alpha = 0.78f),
                                 Color.Transparent
                             )
                         )
