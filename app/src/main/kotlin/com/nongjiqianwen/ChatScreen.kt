@@ -124,6 +124,7 @@ private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
     data class Numbered(val number: String, val text: String) : MarkdownBlock
+    data class Quote(val text: String) : MarkdownBlock
     data class Paragraph(val text: String) : MarkdownBlock
 }
 
@@ -138,6 +139,7 @@ private val collapseBreakRegex = Regex("\n{3,}")
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
 private val bulletRegex = Regex("^[*-]\\s+.*$")
 private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
+private val quoteRegex = Regex("^>\\s+.*$")
 private val linkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
 private val inlineMarkdownCache = object : LinkedHashMap<String, AnnotatedString>(INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AnnotatedString>?): Boolean {
@@ -186,6 +188,10 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
             trimmed.matches(numberedRegex) -> {
                 flushParagraph()
                 blocks += MarkdownBlock.Numbered(trimmed.substringBefore('.'), trimmed.substringAfter('.').trim())
+            }
+            trimmed.matches(quoteRegex) -> {
+                flushParagraph()
+                blocks += MarkdownBlock.Quote(trimmed.drop(1).trim())
             }
             else -> {
                 if (paragraph.isNotEmpty()) paragraph.append('\n')
@@ -242,6 +248,7 @@ private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
             is MarkdownBlock.Heading -> MarkdownUiBlock.Heading(block.level, getCachedAnnotatedString(block.text))
             is MarkdownBlock.Bullet -> MarkdownUiBlock.Bullet(getCachedAnnotatedString(block.text))
             is MarkdownBlock.Numbered -> MarkdownUiBlock.Numbered(block.number, getCachedAnnotatedString(block.text))
+            is MarkdownBlock.Quote -> MarkdownUiBlock.Quote(getCachedAnnotatedString(block.text))
             is MarkdownBlock.Paragraph -> MarkdownUiBlock.Paragraph(getCachedAnnotatedString(block.text))
         }
     }
@@ -303,6 +310,7 @@ private sealed interface MarkdownUiBlock {
     data class Heading(val level: Int, val text: AnnotatedString) : MarkdownUiBlock
     data class Bullet(val text: AnnotatedString) : MarkdownUiBlock
     data class Numbered(val number: String, val text: AnnotatedString) : MarkdownUiBlock
+    data class Quote(val text: AnnotatedString) : MarkdownUiBlock
     data class Paragraph(val text: AnnotatedString) : MarkdownUiBlock
 }
 
@@ -314,7 +322,7 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
         modifier = modifier.fillMaxWidth(),
         style = TextStyle(
             fontSize = 17.sp,
-            lineHeight = 30.sp,
+            lineHeight = 31.sp,
             color = Color(0xFF171717)
         ),
         textAlign = TextAlign.Start
@@ -324,43 +332,63 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
     val blocks = remember(content) { getCachedMarkdownUiBlocks(content) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MarkdownUiBlock.Heading -> Text(
                     text = block.text,
                     style = TextStyle(
-                        fontSize = if (block.level <= 2) 20.sp else 18.sp,
-                        lineHeight = if (block.level <= 2) 34.sp else 30.sp,
+                        fontSize = if (block.level <= 2) 22.sp else 19.sp,
+                        lineHeight = if (block.level <= 2) 38.sp else 33.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF111111)
                     )
                 )
-                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
                         text = "\u2022",
-                        style = TextStyle(fontSize = 18.sp, lineHeight = 31.sp, color = Color(0xFF171717)),
+                        style = TextStyle(fontSize = 18.sp, lineHeight = 32.sp, color = Color(0xFF171717)),
                     )
                     Text(
                         text = block.text,
                         modifier = Modifier.weight(1f),
-                        style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717))
+                        style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, color = Color(0xFF171717))
                     )
                 }
-                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
                         text = "${block.number}.",
-                        style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF171717)),
+                        style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF171717)),
                     )
                     Text(
                         text = block.text,
                         modifier = Modifier.weight(1f),
-                        style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717))
+                        style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, color = Color(0xFF171717))
+                    )
+                }
+                is MarkdownUiBlock.Quote -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 3.dp)
+                            .width(4.dp)
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(99.dp))
+                            .background(Color(0xFFD7DADF))
+                    )
+                    Text(
+                        text = block.text,
+                        modifier = Modifier.weight(1f),
+                        style = TextStyle(
+                            fontSize = 16.sp,
+                            lineHeight = 30.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF2B2B2B)
+                        )
                     )
                 }
                 is MarkdownUiBlock.Paragraph -> Text(
                     text = block.text,
-                    style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717)),
+                    style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, color = Color(0xFF171717)),
                     textAlign = TextAlign.Start
                 )
             }
@@ -570,12 +598,12 @@ fun ChatScreen() {
     }
     val context = LocalContext.current
     val sessionId = remember { IdManager.getSessionId() }
-    val appTopBottomTint = Color(0xFFF8F8F7)
+    val appTopBottomTint = Color(0xFFFAFAF9)
     val appCenterTint = Color(0xFFFFFFFF)
-    val chromeSurface = Color.White.copy(alpha = 0.84f)
-    val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.22f)
-    val inputSurface = Color.White.copy(alpha = 0.86f)
-    val inputBorder = Color(0xFFD7DADF).copy(alpha = 0.26f)
+    val chromeSurface = Color.White.copy(alpha = 0.88f)
+    val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
+    val inputSurface = Color.White.copy(alpha = 0.9f)
+    val inputBorder = Color(0xFFD4D8DE).copy(alpha = 0.22f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -835,9 +863,9 @@ fun ChatScreen() {
             else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 18.dp
-            maxWidth < 600.dp -> 24.dp
-            else -> 30.dp
+            maxWidth < 360.dp -> 20.dp
+            maxWidth < 600.dp -> 26.dp
+            else -> 32.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
@@ -863,16 +891,16 @@ fun ChatScreen() {
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .height(116.dp)
-                            .background(
-                                Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color.White.copy(alpha = 0.52f),
-                                        Color(0xFFF3F4F6).copy(alpha = 0.64f),
-                                        Color.White.copy(alpha = 0.82f)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Transparent,
+                                                Color.White.copy(alpha = 0.44f),
+                                                Color(0xFFF4F5F7).copy(alpha = 0.58f),
+                                                Color.White.copy(alpha = 0.84f)
+                                            )
+                                        )
                                     )
-                                )
-                            )
                     )
                     Row(
                         modifier = Modifier
@@ -884,7 +912,7 @@ fun ChatScreen() {
                             .navigationBarsPadding()
                             .imePadding(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         FrostedCircleButton(
                             size = addButtonSize,
@@ -903,7 +931,7 @@ fun ChatScreen() {
                             color = inputSurface,
                             border = BorderStroke(0.68.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 1.6.dp,
+                            shadowElevation = 1.1.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -919,8 +947,8 @@ fun ChatScreen() {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .align(Alignment.CenterStart)
-                                        .padding(end = 58.dp),
-                                    placeholder = { Text("描述作物/地区/问题", color = Color(0xFFA4A19A)) },
+                                        .padding(start = 2.dp, end = 58.dp),
+                                    placeholder = { Text("描述作物/地区/问题", color = Color(0xFFAEAFB4)) },
                                     singleLine = true,
                                     textStyle = TextStyle(
                                         fontSize = 16.sp,
@@ -944,7 +972,7 @@ fun ChatScreen() {
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.CenterEnd)
-                                        .padding(end = 7.dp)
+                                        .padding(end = 8.dp)
                                         .size(sendButtonSize)
                                         .clip(CircleShape)
                                         .background(actionBg),
@@ -1117,9 +1145,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White.copy(alpha = 0.82f),
-                                Color(0xFFF4F5F7).copy(alpha = 0.58f),
-                                appCenterTint.copy(alpha = 0.42f),
+                                Color.White.copy(alpha = 0.74f),
+                                Color(0xFFF5F6F8).copy(alpha = 0.48f),
+                                appCenterTint.copy(alpha = 0.36f),
                                 Color.Transparent
                             )
                         )
@@ -1160,10 +1188,10 @@ fun ChatScreen() {
                     ) {
                         Surface(
                             shape = RoundedCornerShape(18.dp),
-                            color = Color.White.copy(alpha = 0.84f),
+                            color = Color.White.copy(alpha = 0.9f),
                             border = BorderStroke(0.38.dp, chromeBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.96.dp
+                            shadowElevation = 0.72.dp
                         ) {
                             Text(
                                 text = "农技千问",
