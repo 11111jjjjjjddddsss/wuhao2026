@@ -236,8 +236,9 @@ private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
 
 @Composable
 private fun AssistantStreamingContent(content: String, modifier: Modifier = Modifier) {
+    val displayText = remember(content) { buildMarkdownAnnotatedString(normalizeAssistantText(content)) }
     Text(
-        text = normalizeAssistantText(content),
+        text = displayText,
         modifier = modifier.fillMaxWidth(),
         style = TextStyle(
             fontSize = 17.sp,
@@ -556,7 +557,6 @@ fun ChatScreen() {
                 assistantMessageId = newId
                 messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
                 trimMessagesInPlace()
-                persistTick++
                 streamTick++
                 return@post
             }
@@ -568,7 +568,6 @@ fun ChatScreen() {
                 messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
             }
             trimMessagesInPlace()
-            persistTick++
             streamTick++
         }
     }
