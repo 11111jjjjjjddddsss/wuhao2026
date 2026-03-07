@@ -19,6 +19,8 @@ ALPHA_THRESHOLD = 18
 GREEN_THRESHOLD = 60
 LEAF_SEED = (650, 330)
 SYMBOL_SCALE = 0.86
+GREEN_BRIGHTNESS = 1.1
+GREEN_LIFT = (6, 14, 2)
 
 LEGACY_SIZES = {
     "mdpi": 48,
@@ -104,6 +106,24 @@ def trim_black(img: Image.Image) -> Image.Image:
     return rgba
 
 
+def brighten_greens(img: Image.Image) -> Image.Image:
+    out = img.copy()
+    px = out.load()
+    lift_r, lift_g, lift_b = GREEN_LIFT
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            px[x, y] = (
+                min(255, round(r * GREEN_BRIGHTNESS) + lift_r),
+                min(255, round(g * GREEN_BRIGHTNESS) + lift_g),
+                min(255, round(b * GREEN_BRIGHTNESS) + lift_b),
+                a,
+            )
+    return out
+
+
 def build_svg_from_png(foreground: Image.Image) -> str:
     buffer = io.BytesIO()
     foreground.save(buffer, format="PNG")
@@ -132,7 +152,7 @@ def main() -> None:
     ART_DIR.mkdir(parents=True, exist_ok=True)
     reference = load_reference()
     mother_leaf = extract_leaf_canvas(reference)
-    foreground = trim_black(build_symbol(mother_leaf))
+    foreground = brighten_greens(trim_black(build_symbol(mother_leaf)))
     black_bg = Image.new("RGBA", (CANVAS, CANVAS), BACKGROUND)
     black_bg.alpha_composite(foreground)
 
