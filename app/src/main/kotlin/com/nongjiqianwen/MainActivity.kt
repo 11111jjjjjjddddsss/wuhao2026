@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -50,7 +51,7 @@ class MainActivity : ComponentActivity() {
                 Surface {
                     var showLaunchOverlay by remember { mutableStateOf(true) }
                     LaunchedEffect(Unit) {
-                        delay(820)
+                        delay(720)
                         showLaunchOverlay = false
                     }
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -68,21 +69,21 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LaunchOverlay() {
     val rotation = remember { Animatable(0f) }
-    val scale = remember { Animatable(0.72f) }
-    val alpha = remember { Animatable(0f) }
+    val scale = remember { Animatable(0.96f) }
+    val alpha = remember { Animatable(1f) }
 
     LaunchedEffect(Unit) {
-        alpha.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
-        )
         rotation.animateTo(
-            targetValue = 24f,
-            animationSpec = tween(durationMillis = 820, easing = FastOutSlowInEasing)
+            targetValue = 14f,
+            animationSpec = tween(durationMillis = 720, easing = LinearOutSlowInEasing)
         )
         scale.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 820, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 720, easing = FastOutSlowInEasing)
+        )
+        alpha.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = 120, easing = FastOutSlowInEasing)
         )
     }
 
@@ -96,7 +97,7 @@ private fun LaunchOverlay() {
             painter = painterResource(id = R.mipmap.ic_launcher_foreground),
             contentDescription = null,
             modifier = Modifier
-                .size(184.dp)
+                .size(170.dp)
                 .graphicsLayer(
                     rotationZ = rotation.value,
                     scaleX = scale.value,
