@@ -313,7 +313,7 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
         modifier = modifier.fillMaxWidth(),
         style = TextStyle(
             fontSize = 17.sp,
-            lineHeight = 31.sp,
+            lineHeight = 30.sp,
             color = Color(0xFF171717)
         ),
         textAlign = TextAlign.Start
@@ -418,7 +418,7 @@ private fun LongArrowIcon(
         val centerX = size.width / 2f
         val headY = if (directionUp) size.height * 0.14f else size.height * 0.86f
         val tailY = if (directionUp) size.height * 0.9f else size.height * 0.1f
-        val wingY = if (directionUp) size.height * 0.38f else size.height * 0.62f
+        val wingY = if (directionUp) size.height * 0.48f else size.height * 0.52f
         drawLine(
             color = tint,
             start = Offset(centerX, tailY),
@@ -429,14 +429,14 @@ private fun LongArrowIcon(
         drawLine(
             color = tint,
             start = Offset(centerX, headY),
-            end = Offset(size.width * 0.24f, wingY),
+            end = Offset(size.width * 0.16f, wingY),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = tint,
             start = Offset(centerX, headY),
-            end = Offset(size.width * 0.76f, wingY),
+            end = Offset(size.width * 0.84f, wingY),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
@@ -540,12 +540,12 @@ fun ChatScreen() {
     val density = LocalDensity.current
     val context = LocalContext.current
     val sessionId = remember { IdManager.getSessionId() }
-    val appTopBottomTint = Color(0xFFF7F7F5)
-    val appCenterTint = Color(0xFFFFFEFD)
-    val chromeSurface = Color.White.copy(alpha = 0.985f)
-    val chromeBorder = Color(0xFFECE9E3).copy(alpha = 0.12f)
-    val inputSurface = Color(0xFFFFFFFF)
-    val inputBorder = Color(0xFFE7E4DE).copy(alpha = 0.34f)
+    val appTopBottomTint = Color(0xFFF8F8F7)
+    val appCenterTint = Color(0xFFFFFFFF)
+    val chromeSurface = Color.White.copy(alpha = 0.84f)
+    val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.22f)
+    val inputSurface = Color.White.copy(alpha = 0.86f)
+    val inputBorder = Color(0xFFD7DADF).copy(alpha = 0.26f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
@@ -559,9 +559,9 @@ fun ChatScreen() {
         topInset + 72.dp
     }
     val jumpButtonBottomPadding = if (measuredBottomBarHeight > 0.dp) {
-        (measuredBottomBarHeight - 10.dp).coerceAtLeast(74.dp)
+        (measuredBottomBarHeight + 12.dp).coerceAtLeast(88.dp)
     } else {
-        78.dp
+        94.dp
     }
 
     val focusManager = LocalFocusManager.current
@@ -616,6 +616,12 @@ fun ChatScreen() {
         if (persistTick == 0) return@LaunchedEffect
         delay(if (isStreaming) 220 else 80)
         context.saveLocalChatWindow(sessionId, messages)
+    }
+
+    LaunchedEffect(atBottom, isStreaming, userInteracting) {
+        if (isStreaming && atBottom && !userInteracting) {
+            autoFollowEnabled = true
+        }
     }
 
     fun appendAssistantChunk(piece: String) {
@@ -804,9 +810,9 @@ fun ChatScreen() {
             else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 16.dp
-            maxWidth < 600.dp -> 20.dp
-            else -> 26.dp
+            maxWidth < 360.dp -> 18.dp
+            maxWidth < 600.dp -> 24.dp
+            else -> 30.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
@@ -830,13 +836,14 @@ fun ChatScreen() {
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .height(104.dp)
+                            .height(116.dp)
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
                                         Color.Transparent,
-                                        Color(0xFFFFFEFC).copy(alpha = 0.94f),
-                                        Color(0xFFF4F3EF).copy(alpha = 0.98f)
+                                        Color.White.copy(alpha = 0.52f),
+                                        Color(0xFFF3F4F6).copy(alpha = 0.64f),
+                                        Color.White.copy(alpha = 0.82f)
                                     )
                                 )
                             )
@@ -872,7 +879,7 @@ fun ChatScreen() {
                             color = inputSurface,
                             border = BorderStroke(0.68.dp, inputBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 1.08.dp,
+                            shadowElevation = 1.6.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -931,7 +938,7 @@ fun ChatScreen() {
                                         LongArrowIcon(
                                             tint = actionTint,
                                             directionUp = true,
-                                            modifier = Modifier.size(21.dp)
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
                                 }
@@ -969,7 +976,7 @@ fun ChatScreen() {
                 state = listState,
                 contentPadding = PaddingValues(
                     top = topBarReservedHeight,
-                    bottom = 12.dp
+                    bottom = 18.dp
                 )
             ) {
                     items(
@@ -1072,7 +1079,7 @@ fun ChatScreen() {
                         LongArrowIcon(
                             tint = Color(0xFF111111),
                             directionUp = false,
-                            modifier = Modifier.size(21.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
@@ -1086,9 +1093,9 @@ fun ChatScreen() {
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color(0xFFF6F6F3).copy(alpha = 0.96f),
-                                Color(0xFFFBFBF8).copy(alpha = 0.9f),
-                                appCenterTint.copy(alpha = 0.68f),
+                                Color.White.copy(alpha = 0.82f),
+                                Color(0xFFF4F5F7).copy(alpha = 0.58f),
+                                appCenterTint.copy(alpha = 0.42f),
                                 Color.Transparent
                             )
                         )
@@ -1129,10 +1136,10 @@ fun ChatScreen() {
                     ) {
                         Surface(
                             shape = RoundedCornerShape(18.dp),
-                            color = Color.White.copy(alpha = 0.985f),
+                            color = Color.White.copy(alpha = 0.84f),
                             border = BorderStroke(0.38.dp, chromeBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.72.dp
+                            shadowElevation = 0.96.dp
                         ) {
                             Text(
                                 text = "农技千问",
