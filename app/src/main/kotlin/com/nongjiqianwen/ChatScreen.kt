@@ -489,6 +489,32 @@ private fun DiamondOutlineIcon(
 }
 
 @Composable
+private fun PlusCrossIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.12f
+        val centerX = size.width / 2f
+        val centerY = size.height / 2f
+        drawLine(
+            color = tint,
+            start = Offset(centerX, size.height * 0.14f),
+            end = Offset(centerX, size.height * 0.86f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.14f, centerY),
+            end = Offset(size.width * 0.86f, centerY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
 private fun FrostedCircleButton(
     size: Dp,
     surfaceColor: Color,
@@ -815,9 +841,10 @@ fun ChatScreen() {
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
-        val addButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
-        val addIconSize = if (maxWidth < 360.dp) 24.dp else 26.dp
-        val sendButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
+        val actionCircleSize = if (maxWidth < 360.dp) 42.dp else 44.dp
+        val addButtonSize = actionCircleSize
+        val addIconSize = if (maxWidth < 360.dp) 27.dp else 29.dp
+        val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.78f else 420.dp
         val assistantLeadWidth = 18.dp
 
@@ -865,11 +892,9 @@ fun ChatScreen() {
                             borderColor = chromeBorder,
                             onClick = {}
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Add,
-                                contentDescription = "添加",
-                                modifier = Modifier.size(addIconSize),
-                                tint = Color(0xFF252525)
+                            PlusCrossIcon(
+                                tint = Color(0xFF6F7277),
+                                modifier = Modifier.size(addIconSize)
                             )
                         }
 
