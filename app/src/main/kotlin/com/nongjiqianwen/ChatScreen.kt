@@ -1141,17 +1141,8 @@ fun ChatScreen() {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(topBarReservedHeight + 40.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.74f),
-                                Color(0xFFF5F6F8).copy(alpha = 0.48f),
-                                appCenterTint.copy(alpha = 0.36f),
-                                Color.Transparent
-                            )
-                        )
-                    )
+                    .height(topBarReservedHeight + 8.dp)
+                    .background(Color.White)
             )
 
             Box(
@@ -1168,14 +1159,12 @@ fun ChatScreen() {
                         .widthIn(max = chromeMaxWidth)
                         .fillMaxWidth()
                         .padding(horizontal = chromeHorizontalPadding),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FrostedCircleButton(
-                        size = chromeButtonSize,
-                        surfaceColor = chromeSurface,
-                        borderColor = chromeBorder,
-                        onClick = {}
+                    IconButton(
+                        onClick = {},
+                        modifier = Modifier.size(chromeButtonSize)
                     ) {
                         MenuBarsIcon(
                             tint = Color(0xFF1E1E1E),
@@ -1186,30 +1175,20 @@ fun ChatScreen() {
                         modifier = Modifier.weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = Color.White.copy(alpha = 0.9f),
-                            border = BorderStroke(0.38.dp, chromeBorder),
-                            tonalElevation = 0.dp,
-                            shadowElevation = 0.72.dp
-                        ) {
-                            Text(
-                                text = "农技千问",
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-                                color = Color(0xFF111111),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center
-                            )
-                        }
+                        Text(
+                            text = "农技千问",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            color = Color(0xFF111111),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
                     }
-                    FrostedCircleButton(
-                        size = chromeButtonSize,
-                        surfaceColor = chromeSurface,
-                        borderColor = chromeBorder,
-                        onClick = {}
+                    IconButton(
+                        onClick = {},
+                        modifier = Modifier.size(chromeButtonSize)
                     ) {
                         DiamondOutlineIcon(
                             tint = Color(0xFF1E1E1E),
