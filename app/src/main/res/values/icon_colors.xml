@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_bg_black">#030303</color>
+    <color name="icon_leaf_main">#44D864</color>
+    <color name="icon_leaf_deep">#199847</color>
+</resources>

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <defs>
+    <radialGradient id="leafGradient" cx="50%" cy="50%" r="44%">
+      <stop offset="0%" stop-color="#199847" />
+      <stop offset="100%" stop-color="#44D864" />
+    </radialGradient>
+    <path id="leaf" d="M 652.413,482.154 C 623.894,346.110 650.870,250.824 820.376,374.702 C 858.094,475.624 776.774,598.030 720.471,587.877 C 668.456,663.088 631.065,575.308 652.413,482.154 Z" fill="url(#leafGradient)" />
+  </defs>
+  <g>
+    <use href="#leaf" transform="rotate(-90 512.0 512.0)" />
+    <use href="#leaf" transform="rotate(-30 512.0 512.0)" />
+    <use href="#leaf" transform="rotate(30 512.0 512.0)" />
+    <use href="#leaf" transform="rotate(90 512.0 512.0)" />
+    <use href="#leaf" transform="rotate(150 512.0 512.0)" />
+    <use href="#leaf" transform="rotate(210 512.0 512.0)" />
+  </g>
+</svg>
