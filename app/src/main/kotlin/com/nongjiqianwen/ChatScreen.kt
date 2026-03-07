@@ -63,6 +63,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -104,15 +105,18 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.random.Random
 import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT }
+@Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
@@ -206,18 +210,18 @@ private fun trimMessageWindow(source: List<ChatMessage>): List<ChatMessage> {
     return source.drop(startIndex)
 }
 
-private fun Context.loadLocalChatWindow(sessionId: String): List<ChatMessage> {
+private suspend fun Context.loadLocalChatWindow(sessionId: String): List<ChatMessage> = withContext(Dispatchers.IO) {
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_CACHE_KEY_PREFIX$sessionId", null)
         .orEmpty()
-    if (raw.isBlank()) return emptyList()
-    return runCatching {
+    if (raw.isBlank()) return@withContext emptyList()
+    runCatching {
         @Suppress("UNCHECKED_CAST")
         (chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList())
     }.getOrDefault(emptyList())
 }
 
-private fun Context.saveLocalChatWindow(sessionId: String, messages: List<ChatMessage>) {
+private suspend fun Context.saveLocalChatWindow(sessionId: String, messages: List<ChatMessage>) = withContext(Dispatchers.IO) {
     val trimmed = trimMessageWindow(messages)
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
@@ -232,6 +236,13 @@ private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
             if (round.assistant.isNotBlank()) add(ChatMessage("remote_assistant_$index", ChatRole.ASSISTANT, round.assistant))
         }
     }
+}
+
+private sealed interface MarkdownUiBlock {
+    data class Heading(val level: Int, val text: AnnotatedString) : MarkdownUiBlock
+    data class Bullet(val text: AnnotatedString) : MarkdownUiBlock
+    data class Numbered(val number: String, val text: AnnotatedString) : MarkdownUiBlock
+    data class Paragraph(val text: AnnotatedString) : MarkdownUiBlock
 }
 
 @Composable
@@ -251,12 +262,21 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
 
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
-    val blocks = remember(content) { parseMarkdownBlocks(content) }
+    val blocks = remember(content) {
+        parseMarkdownBlocks(content).map { block ->
+            when (block) {
+                is MarkdownBlock.Heading -> MarkdownUiBlock.Heading(block.level, buildMarkdownAnnotatedString(block.text))
+                is MarkdownBlock.Bullet -> MarkdownUiBlock.Bullet(buildMarkdownAnnotatedString(block.text))
+                is MarkdownBlock.Numbered -> MarkdownUiBlock.Numbered(block.number, buildMarkdownAnnotatedString(block.text))
+                is MarkdownBlock.Paragraph -> MarkdownUiBlock.Paragraph(buildMarkdownAnnotatedString(block.text))
+            }
+        }
+    }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         blocks.forEach { block ->
             when (block) {
-                is MarkdownBlock.Heading -> Text(
-                    text = buildMarkdownAnnotatedString(block.text),
+                is MarkdownUiBlock.Heading -> Text(
+                    text = block.text,
                     style = TextStyle(
                         fontSize = if (block.level <= 2) 20.sp else 18.sp,
                         lineHeight = if (block.level <= 2) 34.sp else 30.sp,
@@ -264,30 +284,30 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
                         color = Color(0xFF111111)
                     )
                 )
-                is MarkdownBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "\u2022",
                         style = TextStyle(fontSize = 18.sp, lineHeight = 31.sp, color = Color(0xFF171717)),
                     )
                     Text(
-                        text = buildMarkdownAnnotatedString(block.text),
+                        text = block.text,
                         modifier = Modifier.weight(1f),
                         style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717))
                     )
                 }
-                is MarkdownBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "${block.number}.",
                         style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF171717)),
                     )
                     Text(
-                        text = buildMarkdownAnnotatedString(block.text),
+                        text = block.text,
                         modifier = Modifier.weight(1f),
                         style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717))
                     )
                 }
-                is MarkdownBlock.Paragraph -> Text(
-                    text = buildMarkdownAnnotatedString(block.text),
+                is MarkdownUiBlock.Paragraph -> Text(
+                    text = block.text,
                     style = TextStyle(fontSize = 17.sp, lineHeight = 31.sp, color = Color(0xFF171717)),
                     textAlign = TextAlign.Start
                 )
@@ -457,8 +477,8 @@ fun ChatScreen() {
     var assistantMessageId by remember { mutableStateOf<String?>(null) }
     var autoFollowEnabled by remember { mutableStateOf(true) }
     var userInteracting by remember { mutableStateOf(false) }
-    var streamTick by remember { mutableStateOf(0) }
-    var sendTick by remember { mutableStateOf(0) }
+    var streamTick by remember { mutableIntStateOf(0) }
+    var sendTick by remember { mutableIntStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
     var persistTick by remember { mutableIntStateOf(0) }
