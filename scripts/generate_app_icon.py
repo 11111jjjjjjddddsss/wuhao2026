@@ -11,7 +11,7 @@ APP_RES = ROOT / 'app' / 'src' / 'main' / 'res'
 
 CANVAS = 1024
 CENTER = CANVAS / 2.0
-R_SCALE = 0.86
+R_SCALE = 0.89
 BACKGROUND = '#030303'
 LEAF_MAIN = '#44D864'
 LEAF_DEEP = '#199847'
@@ -39,9 +39,6 @@ class Point:
     x: float
     y: float
 
-    def to_tuple(self) -> tuple[float, float]:
-        return (self.x, self.y)
-
 
 def polar(radius: float, angle_deg: float) -> Point:
     radius *= R_SCALE
@@ -67,15 +64,15 @@ def normalize(x: float, y: float) -> tuple[float, float]:
 
 
 def spiral_centerline(s: float) -> Point:
-    angle = -54 + 84 * (s ** 0.96)
-    radius = 138 + 236 * (s ** 0.98)
+    angle = -56 + 82 * (s ** 0.96)
+    radius = 130 + 205 * (s ** 0.98)
     return polar(radius, angle)
 
 
 def leaf_width(s: float) -> float:
     ribbon = sin(pi * s) ** 0.84
-    bias = 0.74 + 0.26 * s
-    return (12 + 82 * ribbon * bias) * R_SCALE
+    bias = 0.78 + 0.22 * s
+    return (22 + 88 * ribbon * bias) * R_SCALE
 
 
 def leaf_geometry() -> tuple[str, list[Point]]:
@@ -116,8 +113,8 @@ def build_gradient(size: int) -> Image.Image:
     px = img.load()
     scale = size / CANVAS
     center = CENTER * scale
-    outer = 370 * R_SCALE * scale
-    inner = 122 * R_SCALE * scale
+    outer = 342 * R_SCALE * scale
+    inner = 108 * R_SCALE * scale
     for y in range(size):
         dy = y - center
         for x in range(size):
