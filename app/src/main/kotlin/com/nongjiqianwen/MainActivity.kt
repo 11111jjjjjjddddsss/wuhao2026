@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -29,6 +30,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,7 +53,7 @@ class MainActivity : ComponentActivity() {
                 Surface {
                     var showLaunchOverlay by remember { mutableStateOf(true) }
                     LaunchedEffect(Unit) {
-                        delay(760)
+                        delay(860)
                         showLaunchOverlay = false
                     }
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -68,12 +71,23 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LaunchOverlay() {
     val rotation = remember { Animatable(0f) }
+    val scale = remember { Animatable(0.72f) }
 
     LaunchedEffect(Unit) {
-        rotation.animateTo(
-            targetValue = 300f,
-            animationSpec = tween(durationMillis = 760, easing = LinearEasing)
-        )
+        coroutineScope {
+            launch {
+                rotation.animateTo(
+                    targetValue = 228f,
+                    animationSpec = tween(durationMillis = 860, easing = LinearEasing)
+                )
+            }
+            launch {
+                scale.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 860, easing = FastOutSlowInEasing)
+                )
+            }
+        }
     }
 
     Box(
@@ -87,7 +101,11 @@ private fun LaunchOverlay() {
             contentDescription = null,
             modifier = Modifier
                 .size(170.dp)
-                .graphicsLayer(rotationZ = rotation.value)
+                .graphicsLayer(
+                    rotationZ = rotation.value,
+                    scaleX = scale.value,
+                    scaleY = scale.value
+                )
         )
     }
 }
