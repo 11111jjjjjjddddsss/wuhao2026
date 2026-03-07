@@ -462,7 +462,7 @@ private fun MenuBarsIcon(
         )
         drawLine(
             color = tint,
-            start = Offset(size.width * 0.22f, y2),
+            start = Offset(size.width * 0.18f, y2),
             end = Offset(size.width * 0.58f, y2),
             strokeWidth = stroke,
             cap = StrokeCap.Round
