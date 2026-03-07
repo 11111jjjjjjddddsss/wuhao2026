@@ -111,6 +111,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.LinkedHashMap
 import kotlin.math.min
 import kotlin.random.Random
 import java.util.UUID
@@ -128,13 +129,30 @@ private sealed interface MarkdownBlock {
 private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
+private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
+private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
+private val collapseBreakRegex = Regex("\n{3,}")
+private val headingRegex = Regex("^#{1,6}\\s+.*$")
+private val bulletRegex = Regex("^[*-]\\s+.*$")
+private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
+private val linkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
+private val inlineMarkdownCache = object : LinkedHashMap<String, AnnotatedString>(INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AnnotatedString>?): Boolean {
+        return size > INLINE_MARKDOWN_CACHE_LIMIT
+    }
+}
+private val blockMarkdownCache = object : LinkedHashMap<String, List<MarkdownUiBlock>>(BLOCK_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<MarkdownUiBlock>>?): Boolean {
+        return size > BLOCK_MARKDOWN_CACHE_LIMIT
+    }
+}
 
 private fun normalizeAssistantText(content: String): String {
     return content
         .replace("\r\n", "\n")
-        .replace(Regex("\n{3,}"), "\n\n")
+        .replace(collapseBreakRegex, "\n\n")
         .trim()
 }
 
@@ -155,16 +173,16 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
         when {
             trimmed.isBlank() -> flushParagraph()
             trimmed.startsWith("```") -> Unit
-            trimmed.matches(Regex("^#{1,6}\\s+.*$")) -> {
+            trimmed.matches(headingRegex) -> {
                 flushParagraph()
                 val marker = trimmed.takeWhile { it == '#' }
                 blocks += MarkdownBlock.Heading(marker.length, trimmed.drop(marker.length).trim())
             }
-            trimmed.matches(Regex("^[*-]\\s+.*$")) -> {
+            trimmed.matches(bulletRegex) -> {
                 flushParagraph()
                 blocks += MarkdownBlock.Bullet(trimmed.drop(1).trim())
             }
-            trimmed.matches(Regex("^\\d+\\.\\s+.*$")) -> {
+            trimmed.matches(numberedRegex) -> {
                 flushParagraph()
                 blocks += MarkdownBlock.Numbered(trimmed.substringBefore('.'), trimmed.substringAfter('.').trim())
             }
@@ -180,7 +198,7 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
 }
 
 private fun buildMarkdownAnnotatedString(text: String): AnnotatedString {
-    val normalized = text.replace(Regex("\\[([^\\]]+)]\\(([^)]+)\\)"), "$1")
+    val normalized = text.replace(linkRegex, "$1")
     return buildAnnotatedString {
         var cursor = 0
         while (cursor < normalized.length) {
@@ -203,10 +221,52 @@ private fun buildMarkdownAnnotatedString(text: String): AnnotatedString {
     }
 }
 
+private fun getCachedAnnotatedString(text: String): AnnotatedString {
+    synchronized(inlineMarkdownCache) {
+        inlineMarkdownCache[text]?.let { return it }
+    }
+    val built = buildMarkdownAnnotatedString(text)
+    synchronized(inlineMarkdownCache) {
+        inlineMarkdownCache[text] = built
+    }
+    return built
+}
+
+private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
+    synchronized(blockMarkdownCache) {
+        blockMarkdownCache[content]?.let { return it }
+    }
+    val built = parseMarkdownBlocks(content).map { block ->
+        when (block) {
+            is MarkdownBlock.Heading -> MarkdownUiBlock.Heading(block.level, getCachedAnnotatedString(block.text))
+            is MarkdownBlock.Bullet -> MarkdownUiBlock.Bullet(getCachedAnnotatedString(block.text))
+            is MarkdownBlock.Numbered -> MarkdownUiBlock.Numbered(block.number, getCachedAnnotatedString(block.text))
+            is MarkdownBlock.Paragraph -> MarkdownUiBlock.Paragraph(getCachedAnnotatedString(block.text))
+        }
+    }
+    synchronized(blockMarkdownCache) {
+        blockMarkdownCache[content] = built
+    }
+    return built
+}
+
+private fun trimWindowStartIndex(source: List<ChatMessage>): Int {
+    var userCount = 0
+    source.forEach { if (it.role == ChatRole.USER) userCount++ }
+    if (userCount <= LOCAL_RENDER_ROUND_LIMIT) return 0
+    var keepFromUser = userCount - LOCAL_RENDER_ROUND_LIMIT
+    source.forEachIndexed { index, message ->
+        if (message.role == ChatRole.USER) {
+            if (keepFromUser == 0) return index
+            keepFromUser--
+        }
+    }
+    return 0
+}
+
 private fun trimMessageWindow(source: List<ChatMessage>): List<ChatMessage> {
-    val userIndexes = source.mapIndexedNotNull { index, message -> if (message.role == ChatRole.USER) index else null }
-    if (userIndexes.size <= LOCAL_RENDER_ROUND_LIMIT) return source
-    val startIndex = userIndexes[userIndexes.size - LOCAL_RENDER_ROUND_LIMIT]
+    val startIndex = trimWindowStartIndex(source)
+    if (startIndex <= 0) return source
     return source.drop(startIndex)
 }
 
@@ -247,7 +307,7 @@ private sealed interface MarkdownUiBlock {
 
 @Composable
 private fun AssistantStreamingContent(content: String, modifier: Modifier = Modifier) {
-    val displayText = remember(content) { buildMarkdownAnnotatedString(normalizeAssistantText(content)) }
+    val displayText = remember(content) { getCachedAnnotatedString(normalizeAssistantText(content)) }
     Text(
         text = displayText,
         modifier = modifier.fillMaxWidth(),
@@ -262,16 +322,7 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
 
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
-    val blocks = remember(content) {
-        parseMarkdownBlocks(content).map { block ->
-            when (block) {
-                is MarkdownBlock.Heading -> MarkdownUiBlock.Heading(block.level, buildMarkdownAnnotatedString(block.text))
-                is MarkdownBlock.Bullet -> MarkdownUiBlock.Bullet(buildMarkdownAnnotatedString(block.text))
-                is MarkdownBlock.Numbered -> MarkdownUiBlock.Numbered(block.number, buildMarkdownAnnotatedString(block.text))
-                is MarkdownBlock.Paragraph -> MarkdownUiBlock.Paragraph(buildMarkdownAnnotatedString(block.text))
-            }
-        }
-    }
+    val blocks = remember(content) { getCachedMarkdownUiBlocks(content) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         blocks.forEach { block ->
             when (block) {
@@ -524,10 +575,9 @@ fun ChatScreen() {
     }
 
     fun trimMessagesInPlace() {
-        val trimmed = trimMessageWindow(messages)
-        if (trimmed != messages.toList()) {
-            messages.clear()
-            messages.addAll(trimmed)
+        val startIndex = trimWindowStartIndex(messages)
+        if (startIndex > 0) {
+            repeat(startIndex) { messages.removeAt(0) }
         }
     }
 
