@@ -235,6 +235,20 @@ private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
 }
 
 @Composable
+private fun AssistantStreamingContent(content: String, modifier: Modifier = Modifier) {
+    Text(
+        text = normalizeAssistantText(content),
+        modifier = modifier.fillMaxWidth(),
+        style = TextStyle(
+            fontSize = 17.sp,
+            lineHeight = 31.sp,
+            color = Color(0xFF171717)
+        ),
+        textAlign = TextAlign.Start
+    )
+}
+
+@Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
     val blocks = remember(content) { parseMarkdownBlocks(content) }
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -889,7 +903,11 @@ fun ChatScreen() {
                     bottom = 12.dp
                 )
             ) {
-                    items(messages, key = { it.id }) { msg ->
+                    items(
+                        items = messages,
+                        key = { it.id },
+                        contentType = { it.role }
+                    ) { msg ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -925,6 +943,11 @@ fun ChatScreen() {
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(48.dp)
+                                            )
+                                        } else if (isStreaming && msg.id == assistantMessageId) {
+                                            AssistantStreamingContent(
+                                                content = msg.content,
+                                                modifier = Modifier.weight(1f)
                                             )
                                         } else {
                                             AssistantMarkdownContent(
