@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+from collections import deque
 from pathlib import Path
 
 from PIL import Image
@@ -12,9 +13,12 @@ APP_RES = ROOT / "app" / "src" / "main" / "res"
 REFERENCE = ART_DIR / "reference.png"
 
 CANVAS = 1024
+CENTER = CANVAS / 2
 BACKGROUND = "#030303"
 ALPHA_THRESHOLD = 18
-FOREGROUND_TARGET = 760
+GREEN_THRESHOLD = 60
+LEAF_SEED = (650, 330)
+SYMBOL_SCALE = 0.86
 
 LEGACY_SIZES = {
     "mdpi": 48,
@@ -37,54 +41,74 @@ def load_reference() -> Image.Image:
     return Image.open(REFERENCE).convert("RGBA")
 
 
-def alpha_bbox(img: Image.Image) -> tuple[int, int, int, int]:
-    px = img.load()
-    xs: list[int] = []
-    ys: list[int] = []
-    for y in range(img.height):
-        for x in range(img.width):
-            r, g, b, a = px[x, y]
-            if a and max(r, g, b) > ALPHA_THRESHOLD:
-                xs.append(x)
-                ys.append(y)
-    if not xs:
-        raise RuntimeError("reference icon is empty")
-    return min(xs), min(ys), max(xs) + 1, max(ys) + 1
+def extract_leaf_canvas(reference: Image.Image) -> Image.Image:
+    px = reference.load()
+    sx, sy = LEAF_SEED
+    sr, sg, sb, sa = px[sx, sy]
+    if not sa or sg < GREEN_THRESHOLD or sg < sr or sg < sb:
+        raise RuntimeError("leaf seed is outside the reference symbol")
+
+    queue = deque([(sx, sy)])
+    seen = {(sx, sy)}
+    component: list[tuple[int, int]] = []
+    while queue:
+        x0, y0 = queue.popleft()
+        component.append((x0, y0))
+        for nx in range(max(0, x0 - 1), min(CANVAS, x0 + 2)):
+            for ny in range(max(0, y0 - 1), min(CANVAS, y0 + 2)):
+                if (nx, ny) in seen:
+                    continue
+                r, g, b, a = px[nx, ny]
+                if a and g >= GREEN_THRESHOLD and g >= r and g >= b:
+                    seen.add((nx, ny))
+                    queue.append((nx, ny))
+
+    if not component:
+        raise RuntimeError("failed to isolate mother leaf")
+
+    leaf = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+    out = leaf.load()
+    for x, y in component:
+        out[x, y] = px[x, y]
+    return leaf
 
 
-def build_black_bg(reference: Image.Image) -> Image.Image:
-    if reference.size != (CANVAS, CANVAS):
-        reference = reference.resize((CANVAS, CANVAS), Image.Resampling.LANCZOS)
-    return reference
-
-
-def build_foreground(reference: Image.Image) -> Image.Image:
-    left, top, right, bottom = alpha_bbox(reference)
-    cropped = reference.crop((left, top, right, bottom))
-
-    px = cropped.load()
-    for y in range(cropped.height):
-        for x in range(cropped.width):
-            r, g, b, a = px[x, y]
-            if max(r, g, b) <= ALPHA_THRESHOLD:
-                px[x, y] = (0, 0, 0, 0)
-
+def scale_about_center(img: Image.Image, scale: float) -> Image.Image:
+    if scale == 1.0:
+        return img
+    scaled_size = max(1, round(CANVAS * scale))
+    resized = img.resize((scaled_size, scaled_size), Image.Resampling.LANCZOS)
     canvas = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
-    scale = min(FOREGROUND_TARGET / cropped.width, FOREGROUND_TARGET / cropped.height)
-    resized = cropped.resize(
-        (round(cropped.width * scale), round(cropped.height * scale)),
-        Image.Resampling.LANCZOS,
-    )
-    offset = ((CANVAS - resized.width) // 2, (CANVAS - resized.height) // 2)
+    offset = ((CANVAS - scaled_size) // 2, (CANVAS - scaled_size) // 2)
     canvas.alpha_composite(resized, offset)
     return canvas
+
+
+def build_symbol(leaf_canvas: Image.Image) -> Image.Image:
+    leaf_canvas = scale_about_center(leaf_canvas, SYMBOL_SCALE)
+    symbol = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
+    for index in range(6):
+        rotated = leaf_canvas.rotate(index * 60, resample=Image.Resampling.BICUBIC, center=(CENTER, CENTER))
+        symbol.alpha_composite(rotated)
+    return symbol
+
+
+def trim_black(img: Image.Image) -> Image.Image:
+    rgba = img.copy()
+    px = rgba.load()
+    for y in range(rgba.height):
+        for x in range(rgba.width):
+            r, g, b, a = px[x, y]
+            if a and max(r, g, b) <= ALPHA_THRESHOLD:
+                px[x, y] = (0, 0, 0, 0)
+    return rgba
 
 
 def build_svg_from_png(foreground: Image.Image) -> str:
     buffer = io.BytesIO()
     foreground.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{CANVAS}" height="{CANVAS}" viewBox="0 0 {CANVAS} {CANVAS}">
+    return f"""<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{CANVAS}\" height=\"{CANVAS}\" viewBox=\"0 0 {CANVAS} {CANVAS}\">
   <defs>
     <style>
       :root {{
@@ -92,7 +116,7 @@ def build_svg_from_png(foreground: Image.Image) -> str:
       }}
     </style>
   </defs>
-  <image width="{CANVAS}" height="{CANVAS}" href="data:image/png;base64,{encoded}" />
+  <image width=\"{CANVAS}\" height=\"{CANVAS}\" href=\"data:image/png;base64,{encoded}\" />
 </svg>
 """
 
@@ -107,8 +131,10 @@ def save_png(img: Image.Image, path: Path, size: int | None = None) -> None:
 def main() -> None:
     ART_DIR.mkdir(parents=True, exist_ok=True)
     reference = load_reference()
-    black_bg = build_black_bg(reference)
-    foreground = build_foreground(reference)
+    mother_leaf = extract_leaf_canvas(reference)
+    foreground = trim_black(build_symbol(mother_leaf))
+    black_bg = Image.new("RGBA", (CANVAS, CANVAS), BACKGROUND)
+    black_bg.alpha_composite(foreground)
 
     (ART_DIR / "icon.svg").write_text(build_svg_from_png(foreground), encoding="utf-8")
     save_png(foreground, ART_DIR / "icon_foreground.png")
