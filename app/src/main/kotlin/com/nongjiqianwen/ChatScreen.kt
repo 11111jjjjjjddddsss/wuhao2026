@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
@@ -536,8 +537,11 @@ fun ChatScreen() {
     var topBarHeightPx by remember { mutableIntStateOf(0) }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
-    val showJumpButton by remember { derivedStateOf { messages.isNotEmpty() && !atBottom && !listState.isScrollInProgress } }
     val density = LocalDensity.current
+    val imeVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
+    val showJumpButton by remember(atBottom, imeVisible, messages.size, listState.isScrollInProgress) {
+        derivedStateOf { messages.isNotEmpty() && !atBottom && !listState.isScrollInProgress && !imeVisible }
+    }
     val context = LocalContext.current
     val sessionId = remember { IdManager.getSessionId() }
     val appTopBottomTint = Color(0xFFF8F8F7)
@@ -552,17 +556,12 @@ fun ChatScreen() {
         .asPaddingValues()
         .calculateTopPadding()
     val measuredTopBarHeight = with(density) { topBarHeightPx.toDp() }
-    val measuredBottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
     val topBarReservedHeight = if (measuredTopBarHeight > 0.dp) {
         measuredTopBarHeight + 12.dp
     } else {
         topInset + 72.dp
     }
-    val jumpButtonBottomPadding = if (measuredBottomBarHeight > 0.dp) {
-        (measuredBottomBarHeight + 12.dp).coerceAtLeast(88.dp)
-    } else {
-        94.dp
-    }
+    val jumpButtonBottomPadding = 78.dp
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
