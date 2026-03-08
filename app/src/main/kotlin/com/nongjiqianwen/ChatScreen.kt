@@ -134,21 +134,21 @@ private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_AUTO_SCROLL_THROTTLE_MS = 36L
-private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 12L
-private const val STREAM_REVEAL_FRAME_BUDGET_MS = 56L
-private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 10
-private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 240L
-private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 420L
-private const val LOCAL_STREAM_MIN_BALL_MS = 320L
+private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
+private const val STREAM_REVEAL_FRAME_BUDGET_MS = 64L
+private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 12
+private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 140L
+private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 260L
+private const val LOCAL_STREAM_MIN_BALL_MS = 180L
 private const val STREAM_ANIMATED_SCROLL_MAX_DELTA_PX = 220
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
-private const val SEND_ANCHOR_USER_BOTTOM_RATIO = 0.46f
-private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.44f
+private const val SEND_ANCHOR_USER_BOTTOM_RATIO = 0.52f
+private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.34f
 private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
 private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
-private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 220.dp
+private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -234,17 +234,17 @@ private fun takeTypewriterToken(buffer: String): String {
     }
     if (first.isCjkUnifiedIdeograph()) {
         var end = 1
-        while (end < buffer.length && end < 3 && buffer[end].isCjkUnifiedIdeograph()) end++
+        while (end < buffer.length && end < 4 && buffer[end].isCjkUnifiedIdeograph()) end++
         return buffer.substring(0, end)
     }
     if (first.isDigit()) {
         var end = 1
-        while (end < buffer.length && end < 3 && buffer[end].isDigit()) end++
+        while (end < buffer.length && end < 4 && buffer[end].isDigit()) end++
         if (end < buffer.length && buffer[end] == '.') end++
         return buffer.substring(0, end)
     }
     var end = 1
-    while (end < buffer.length && end < 4) {
+    while (end < buffer.length && end < 6) {
         val ch = buffer[end]
         if (ch.isWhitespace() || ch.isCjkUnifiedIdeograph() || ch.isStructuralMarkdownChar() || ch.isWeakPausePunctuation() || ch.isStrongPausePunctuation()) {
             break
@@ -265,18 +265,18 @@ private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
     val takeCount = when {
         first == '\n' -> 1
         first.isStructuralMarkdownChar() -> 1
-        first.isCjkUnifiedIdeograph() -> Random.nextInt(2, 5)
+        first.isCjkUnifiedIdeograph() -> Random.nextInt(3, 7)
         first.isWhitespace() -> 1
-        else -> Random.nextInt(4, 8)
+        else -> Random.nextInt(5, 10)
     }.coerceAtMost(remaining.length)
     val text = remaining.substring(0, takeCount)
     val tail = text.last()
     val delayMs = when {
-        tail == '\n' -> Random.nextLong(90, 150)
-        tail.isStrongPausePunctuation() -> Random.nextLong(54, 96)
-        tail.isWeakPausePunctuation() -> Random.nextLong(24, 54)
-        text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(36, 72)
-        else -> Random.nextLong(12, 28)
+        tail == '\n' -> Random.nextLong(74, 120)
+        tail.isStrongPausePunctuation() -> Random.nextLong(42, 74)
+        tail.isWeakPausePunctuation() -> Random.nextLong(18, 34)
+        text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(24, 48)
+        else -> Random.nextLong(10, 18)
     }
     return LocalStreamFeedStep(text = text, delayMs = delayMs)
 }
@@ -293,13 +293,13 @@ private fun hasStructuralMarkdownPrefix(text: String): Boolean {
 private fun resolveTypewriterDelay(token: String, remainingBuffer: String): Long {
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
     return when {
-        lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 68L else 52L
-        lastChar.isStrongPausePunctuation() -> 26L
-        lastChar.isWeakPausePunctuation() -> 14L
-        token.length >= 4 -> 5L
-        token.length == 3 -> 6L
-        token.length == 2 -> 7L
-        else -> if (lastChar.isCjkUnifiedIdeograph()) 8L else 7L
+        lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 56L else 42L
+        lastChar.isStrongPausePunctuation() -> 20L
+        lastChar.isWeakPausePunctuation() -> 10L
+        token.length >= 5 -> 4L
+        token.length >= 3 -> 5L
+        token.length == 2 -> 6L
+        else -> if (lastChar.isCjkUnifiedIdeograph()) 7L else 6L
     }
 }
 
@@ -324,6 +324,13 @@ private data class StreamingRevealBatch(
     val text: String,
     val delayMs: Long
 )
+
+private fun needsParagraphJoinSpace(previous: Char, next: Char): Boolean {
+    if (previous.isWhitespace() || next.isWhitespace()) return false
+    if (previous.isCjkUnifiedIdeograph() || next.isCjkUnifiedIdeograph()) return false
+    if (previous.isWeakPausePunctuation() || previous.isStrongPausePunctuation()) return true
+    return previous.isLetterOrDigit() && next.isLetterOrDigit()
+}
 
 private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
     if (buffer.isEmpty()) return StreamingRevealBatch("", STREAM_TYPEWRITER_IDLE_POLL_MS)
@@ -350,6 +357,18 @@ private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
         text = text.toString(),
         delayMs = consumedDelay.coerceAtLeast(STREAM_TYPEWRITER_IDLE_POLL_MS)
     )
+}
+
+private fun StringBuilder.appendParagraphLine(line: String) {
+    if (line.isBlank()) return
+    if (isNotEmpty()) {
+        val previous = this[lastIndex]
+        val next = line.first()
+        if (needsParagraphJoinSpace(previous, next)) {
+            append(' ')
+        }
+    }
+    append(line)
 }
 
 private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
@@ -387,8 +406,7 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
                 blocks += MarkdownBlock.Paragraph(trimmed.drop(1).trim())
             }
             else -> {
-                if (paragraph.isNotEmpty()) paragraph.append('\n')
-                paragraph.append(trimmed)
+                paragraph.appendParagraphLine(trimmed)
             }
         }
     }
@@ -497,17 +515,30 @@ private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
 
 private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     fontSize = 17.sp,
-    lineHeight = 29.sp,
-    letterSpacing = 0.1.sp,
+    lineHeight = 28.sp,
+    letterSpacing = 0.05.sp,
     color = Color(0xFF171717)
 )
 
 private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
-    fontSize = if (level <= 2) 21.sp else 18.sp,
-    lineHeight = if (level <= 2) 34.sp else 30.sp,
+    fontSize = if (level <= 2) 20.sp else 18.sp,
+    lineHeight = if (level <= 2) 31.sp else 28.sp,
     fontWeight = FontWeight.Bold,
     color = Color(0xFF111111)
 )
+
+private fun releaseStreamingBottomSpacer(currentSpacerPx: Int, revealedText: String): Int {
+    if (currentSpacerPx <= 0 || revealedText.isEmpty()) return currentSpacerPx
+    val visibleCharCount = revealedText.count { !it.isWhitespace() }.coerceAtMost(18)
+    val perBatchRelease = visibleCharCount * 6
+    val structuralBonus = when {
+        revealedText.contains('\n') -> 48
+        revealedText.any { it.isStructuralMarkdownChar() } -> 28
+        else -> 0
+    }
+    val releasePx = (perBatchRelease + structuralBonus).coerceAtLeast(18)
+    return (currentSpacerPx - releasePx).coerceAtLeast(0)
+}
 
 private fun trimWindowStartIndex(source: List<ChatMessage>): Int {
     var userCount = 0
@@ -619,7 +650,7 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
     val parts = remember(content) { splitStreamingMarkdownParts(content) }
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (parts.completedContent.isNotBlank()) {
             AssistantMarkdownContent(content = parts.completedContent)
@@ -646,7 +677,7 @@ private fun AssistantStreamingTail(content: String) {
             )
         }
         trimmed.matches(bulletRegex) -> {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "\u2022",
                     style = assistantParagraphTextStyle().copy(fontSize = 18.sp)
@@ -662,7 +693,7 @@ private fun AssistantStreamingTail(content: String) {
         trimmed.matches(numberedRegex) -> {
             val number = trimmed.substringBefore('.')
             val body = trimmed.substringAfter('.', "")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
                     text = "$number.",
                     style = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
@@ -697,14 +728,14 @@ private fun AssistantStreamingTail(content: String) {
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
     val blocks = remember(content) { getCachedMarkdownUiBlocks(content) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MarkdownUiBlock.Heading -> Text(
                     text = block.text,
                     style = assistantHeadingTextStyle(block.level)
                 )
-                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "\u2022",
                         style = assistantParagraphTextStyle().copy(fontSize = 18.sp),
@@ -715,7 +746,7 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
                         style = assistantParagraphTextStyle()
                     )
                 }
-                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "${block.number}.",
                         style = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold),
@@ -1107,8 +1138,11 @@ fun ChatScreen() {
                     streamingMessageId = "assistant_${UUID.randomUUID()}"
                 }
                 streamingMessageContent += batch.text
-                if (streamBottomSpacerPx > 0 && streamingMessageContent.isNotBlank()) {
-                    streamBottomSpacerPx = 0
+                if (streamBottomSpacerPx > 0) {
+                    streamBottomSpacerPx = releaseStreamingBottomSpacer(
+                        currentSpacerPx = streamBottomSpacerPx,
+                        revealedText = batch.text
+                    )
                 }
                 streamTick++
                 delay(batch.delayMs)
@@ -1308,8 +1342,8 @@ fun ChatScreen() {
             .background(appCenterTint)
     ) {
         val chromeMaxWidth: Dp = when {
-            maxWidth >= 900.dp -> 860.dp
-            maxWidth >= 700.dp -> 720.dp
+            maxWidth >= 900.dp -> 880.dp
+            maxWidth >= 700.dp -> 740.dp
             else -> maxWidth
         }
         val chromeHorizontalPadding = when {
@@ -1318,9 +1352,9 @@ fun ChatScreen() {
             else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 16.dp
-            maxWidth < 600.dp -> 20.dp
-            else -> 28.dp
+            maxWidth < 360.dp -> 14.dp
+            maxWidth < 600.dp -> 18.dp
+            else -> 24.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
@@ -1486,7 +1520,7 @@ fun ChatScreen() {
                                         isStreaming = false,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(end = 4.dp)
+                                            .padding(end = 1.dp)
                                     )
                                 } else {
                                     Text(
@@ -1531,12 +1565,12 @@ fun ChatScreen() {
                                     isStreaming = isStreaming,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(end = 4.dp)
+                                        .padding(end = 1.dp)
                                 )
                             }
                         }
                     }
-                    if (streamBottomSpacerPx > 0 && isStreaming && streamingMessageContent.isBlank()) {
+                    if (streamBottomSpacerPx > 0 && isStreaming) {
                         Spacer(
                             modifier = Modifier
                                 .fillMaxWidth()
