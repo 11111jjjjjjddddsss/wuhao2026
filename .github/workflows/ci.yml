@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, test-android]
+    branches: [master]
   pull_request:
-    branches: [master, test-android]
+    branches: [master]
 
 jobs:
   verify:
