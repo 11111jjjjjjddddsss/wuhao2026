@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
                 Surface {
                     var showLaunchOverlay by remember { mutableStateOf(true) }
                     LaunchedEffect(Unit) {
-                        delay(760)
+                        delay(900)
                         showLaunchOverlay = false
                     }
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -69,19 +69,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LaunchOverlay() {
     val rotation = remember { Animatable(0f) }
-    val scale = remember { Animatable(0.88f) }
+    val scale = remember { Animatable(0.84f) }
     val alpha = remember { Animatable(1f) }
 
     LaunchedEffect(Unit) {
         rotation.animateTo(
-            targetValue = 18f,
-            animationSpec = tween(durationMillis = 760, easing = LinearOutSlowInEasing)
+            targetValue = 32f,
+            animationSpec = tween(durationMillis = 900, easing = LinearOutSlowInEasing)
         )
         scale.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 760, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
         )
-        delay(560)
+        delay(700)
         alpha.animateTo(
             targetValue = 0f,
             animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
@@ -98,7 +98,7 @@ private fun LaunchOverlay() {
             painter = painterResource(id = R.mipmap.ic_launcher_foreground),
             contentDescription = null,
             modifier = Modifier
-                .size(188.dp)
+                .size(236.dp)
                 .graphicsLayer(
                     rotationZ = rotation.value,
                     scaleX = scale.value,
