@@ -135,18 +135,18 @@ private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_AUTO_SCROLL_THROTTLE_MS = 36L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 12L
-private const val STREAM_REVEAL_FRAME_BUDGET_MS = 42L
-private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 8
-private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 860L
-private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 1420L
-private const val LOCAL_STREAM_MIN_BALL_MS = 1480L
+private const val STREAM_REVEAL_FRAME_BUDGET_MS = 56L
+private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 10
+private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 240L
+private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 420L
+private const val LOCAL_STREAM_MIN_BALL_MS = 320L
 private const val STREAM_ANIMATED_SCROLL_MAX_DELTA_PX = 220
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
 private const val SEND_ANCHOR_USER_BOTTOM_RATIO = 0.46f
 private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.44f
 private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
 private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
-private val STREAMING_MESSAGE_MIN_HEIGHT = 92.dp
+private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 220.dp
 private val chatCacheGson = Gson()
@@ -265,18 +265,18 @@ private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
     val takeCount = when {
         first == '\n' -> 1
         first.isStructuralMarkdownChar() -> 1
-        first.isCjkUnifiedIdeograph() -> Random.nextInt(1, 3)
+        first.isCjkUnifiedIdeograph() -> Random.nextInt(2, 5)
         first.isWhitespace() -> 1
-        else -> Random.nextInt(2, 5)
+        else -> Random.nextInt(4, 8)
     }.coerceAtMost(remaining.length)
     val text = remaining.substring(0, takeCount)
     val tail = text.last()
     val delayMs = when {
-        tail == '\n' -> Random.nextLong(150, 260)
-        tail.isStrongPausePunctuation() -> Random.nextLong(110, 210)
-        tail.isWeakPausePunctuation() -> Random.nextLong(72, 140)
-        text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(70, 120)
-        else -> Random.nextLong(28, 56)
+        tail == '\n' -> Random.nextLong(90, 150)
+        tail.isStrongPausePunctuation() -> Random.nextLong(54, 96)
+        tail.isWeakPausePunctuation() -> Random.nextLong(24, 54)
+        text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(36, 72)
+        else -> Random.nextLong(12, 28)
     }
     return LocalStreamFeedStep(text = text, delayMs = delayMs)
 }
@@ -293,13 +293,13 @@ private fun hasStructuralMarkdownPrefix(text: String): Boolean {
 private fun resolveTypewriterDelay(token: String, remainingBuffer: String): Long {
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
     return when {
-        lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 104L else 78L
-        lastChar.isStrongPausePunctuation() -> 44L
-        lastChar.isWeakPausePunctuation() -> 24L
-        token.length >= 4 -> 8L
-        token.length == 3 -> 9L
-        token.length == 2 -> 10L
-        else -> if (lastChar.isCjkUnifiedIdeograph()) 12L else 10L
+        lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 68L else 52L
+        lastChar.isStrongPausePunctuation() -> 26L
+        lastChar.isWeakPausePunctuation() -> 14L
+        token.length >= 4 -> 5L
+        token.length == 3 -> 6L
+        token.length == 2 -> 7L
+        else -> if (lastChar.isCjkUnifiedIdeograph()) 8L else 7L
     }
 }
 
@@ -497,13 +497,14 @@ private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
 
 private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     fontSize = 17.sp,
-    lineHeight = 32.sp,
+    lineHeight = 29.sp,
+    letterSpacing = 0.1.sp,
     color = Color(0xFF171717)
 )
 
 private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
-    fontSize = if (level <= 2) 22.sp else 19.sp,
-    lineHeight = if (level <= 2) 38.sp else 33.sp,
+    fontSize = if (level <= 2) 21.sp else 18.sp,
+    lineHeight = if (level <= 2) 34.sp else 30.sp,
     fontWeight = FontWeight.Bold,
     color = Color(0xFF111111)
 )
@@ -618,7 +619,7 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
     val parts = remember(content) { splitStreamingMarkdownParts(content) }
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         if (parts.completedContent.isNotBlank()) {
             AssistantMarkdownContent(content = parts.completedContent)
@@ -645,7 +646,7 @@ private fun AssistantStreamingTail(content: String) {
             )
         }
         trimmed.matches(bulletRegex) -> {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     text = "\u2022",
                     style = assistantParagraphTextStyle().copy(fontSize = 18.sp)
@@ -661,7 +662,7 @@ private fun AssistantStreamingTail(content: String) {
         trimmed.matches(numberedRegex) -> {
             val number = trimmed.substringBefore('.')
             val body = trimmed.substringAfter('.', "")
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
                     text = "$number.",
                     style = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
@@ -696,14 +697,14 @@ private fun AssistantStreamingTail(content: String) {
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
     val blocks = remember(content) { getCachedMarkdownUiBlocks(content) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         blocks.forEach { block ->
             when (block) {
                 is MarkdownUiBlock.Heading -> Text(
                     text = block.text,
                     style = assistantHeadingTextStyle(block.level)
                 )
-                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "\u2022",
                         style = assistantParagraphTextStyle().copy(fontSize = 18.sp),
@@ -714,7 +715,7 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
                         style = assistantParagraphTextStyle()
                     )
                 }
-                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
                         text = "${block.number}.",
                         style = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold),
@@ -1307,8 +1308,8 @@ fun ChatScreen() {
             .background(appCenterTint)
     ) {
         val chromeMaxWidth: Dp = when {
-            maxWidth >= 900.dp -> 820.dp
-            maxWidth >= 700.dp -> 680.dp
+            maxWidth >= 900.dp -> 860.dp
+            maxWidth >= 700.dp -> 720.dp
             else -> maxWidth
         }
         val chromeHorizontalPadding = when {
@@ -1317,9 +1318,9 @@ fun ChatScreen() {
             else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 20.dp
-            maxWidth < 600.dp -> 26.dp
-            else -> 32.dp
+            maxWidth < 360.dp -> 16.dp
+            maxWidth < 600.dp -> 20.dp
+            else -> 28.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
