@@ -68,6 +68,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.withFrameNanos
@@ -135,20 +136,26 @@ private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_AUTO_SCROLL_THROTTLE_MS = 36L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
-private const val STREAM_REVEAL_FRAME_BUDGET_MS = 64L
-private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 12
-private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 140L
-private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 260L
+private const val STREAM_REVEAL_FRAME_BUDGET_MS = 72L
+private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 10
+private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 170L
+private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 300L
 private const val LOCAL_STREAM_MIN_BALL_MS = 180L
 private const val STREAM_ANIMATED_SCROLL_MAX_DELTA_PX = 220
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
+private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 18
+private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 10
 private const val SEND_ANCHOR_USER_BOTTOM_RATIO = 0.52f
 private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.34f
 private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
 private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
+private const val PROGRAMMATIC_SCROLL_SETTLE_MS = 180L
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
+private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
+private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -520,6 +527,14 @@ private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     color = Color(0xFF171717)
 )
 
+private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
+    fontSize = 13.sp,
+    lineHeight = 18.sp,
+    color = Color(0xFF9A9CA3),
+    letterSpacing = 0.sp,
+    fontStyle = FontStyle.Italic
+)
+
 private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     fontSize = if (level <= 2) 20.sp else 18.sp,
     lineHeight = if (level <= 2) 31.sp else 28.sp,
@@ -606,6 +621,21 @@ private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
     }
 }
 
+private fun shouldReplaceHydratedMessages(
+    currentMessages: List<ChatMessage>,
+    remoteMessages: List<ChatMessage>
+): Boolean {
+    if (remoteMessages.isEmpty()) return false
+    val trimmedCurrent = trimMessageWindow(currentMessages)
+    val trimmedRemote = trimMessageWindow(remoteMessages)
+    if (trimmedCurrent.size != trimmedRemote.size) return true
+    return trimmedRemote.indices.any { index ->
+        val current = trimmedCurrent[index]
+        val remote = trimmedRemote[index]
+        current.role != remote.role || current.content != remote.content
+    }
+}
+
 private sealed interface MarkdownUiBlock {
     data class Heading(val level: Int, val text: AnnotatedString) : MarkdownUiBlock
     data class Bullet(val text: AnnotatedString) : MarkdownUiBlock
@@ -641,7 +671,18 @@ private fun AssistantMessageContent(
     if (isStreaming) {
         AssistantStreamingContent(content = content, modifier = stableModifier)
     } else {
-        AssistantMarkdownContent(content = content, modifier = modifier)
+        Column(
+            modifier = modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AssistantMarkdownContent(content = content)
+            Text(
+                text = AI_DISCLAIMER_TEXT,
+                modifier = Modifier.fillMaxWidth(),
+                style = assistantDisclaimerTextStyle(),
+                textAlign = TextAlign.Start
+            )
+        }
     }
 }
 
@@ -942,7 +983,7 @@ private fun FrostedCircleButton(
 @Composable
 @OptIn(ExperimentalComposeUiApi::class)
 fun ChatScreen() {
-    val input = remember { mutableStateOf("") }
+    val input = rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val sessionId = remember { IdManager.getSessionId() }
     val initialLocalMessages = remember(sessionId) { context.loadLocalChatWindowSync(sessionId) }
@@ -956,28 +997,34 @@ fun ChatScreen() {
     var fakeStreamJob by remember { mutableStateOf<Job?>(null) }
     var streamRevealJob by remember { mutableStateOf<Job?>(null) }
 
-    var isStreaming by remember { mutableStateOf(false) }
-    var streamingMessageId by remember { mutableStateOf<String?>(null) }
-    var streamingMessageContent by remember { mutableStateOf("") }
-    var streamingRevealBuffer by remember { mutableStateOf("") }
+    var isStreaming by rememberSaveable(sessionId) { mutableStateOf(false) }
+    var streamingMessageId by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
+    var streamingMessageContent by rememberSaveable(sessionId) { mutableStateOf("") }
+    var streamingRevealBuffer by rememberSaveable(sessionId) { mutableStateOf("") }
     var autoScrollMode by remember { mutableStateOf(AutoScrollMode.Idle) }
     var userInteracting by remember { mutableStateOf(false) }
     var streamTick by remember { mutableIntStateOf(0) }
     var sendTick by remember { mutableIntStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
+    var lastProgrammaticScrollMs by remember { mutableStateOf(0L) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
     var persistTick by remember { mutableIntStateOf(0) }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
-    var streamBottomSpacerPx by remember { mutableIntStateOf(0) }
+    var streamBottomSpacerPx by rememberSaveable(sessionId) { mutableStateOf(0) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
-    var anchoredUserMessageId by remember { mutableStateOf<String?>(null) }
+    var anchoredUserMessageId by rememberSaveable(sessionId) { mutableStateOf<String?>(null) }
     var anchoredUserBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredTargetBottomPx by remember { mutableIntStateOf(0) }
+    var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
+    var streamBottomFollowActive by remember { mutableStateOf(false) }
+    var initialBottomSnapDone by remember(sessionId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val followSlopPx = with(density) { STREAM_AUTO_FOLLOW_SLOP.toPx().toInt() }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
+    val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
+    val initialBottomSnapThresholdPx = with(density) { INITIAL_BOTTOM_SNAP_THRESHOLD.toPx().roundToInt() }
     val streamBottomSpacerDp = with(density) { streamBottomSpacerPx.toDp() }
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
@@ -1003,6 +1050,10 @@ fun ChatScreen() {
     val inputSurface = Color.White
     val inputBorder = Color(0xFFD4D8DE).copy(alpha = 0.22f)
     val userBubbleColor = Color(0xFFF4F4F7)
+    val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
+    var historyHydrationComplete by remember(sessionId) {
+        mutableStateOf(initialLocalMessages.isNotEmpty() || !hasRemoteHistorySource)
+    }
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
@@ -1036,29 +1087,11 @@ fun ChatScreen() {
             streamingMessageId = null
             streamingRevealBuffer = ""
             streamBottomSpacerPx = 0
+            streamingContentBottomPx = -1
+            streamBottomFollowActive = false
             autoScrollMode = AutoScrollMode.Idle
             if (clearVisibleContent) {
                 streamingMessageContent = ""
-            }
-        }
-    }
-
-    DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
-                focusManager.clearFocus(force = true)
-                keyboardController?.hide()
-            } else if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
-                if (isStreaming && fakeStreamJob?.isActive != true && streamRevealJob?.isActive != true) {
-                    resetStreamingUiState(clearVisibleContent = false)
-                }
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            if (isStreaming) {
-                resetStreamingUiState(clearVisibleContent = false)
             }
         }
     }
@@ -1069,21 +1102,27 @@ fun ChatScreen() {
                 prewarmAssistantMarkdown(initialLocalMessages)
             }
         }
-        if (BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()) {
+        if (hasRemoteHistorySource) {
             SessionApi.getSnapshot(sessionId) { snapshot ->
                 val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
                 if (remoteMessages.isNotEmpty()) {
                     snackbarScope.launch {
                         prewarmAssistantMarkdown(remoteMessages)
                     }
-                    mainHandler.post {
-                        if (!isStreaming && remoteMessages.size > messages.size) {
+                }
+                mainHandler.post {
+                    if (remoteMessages.isNotEmpty()) {
+                        if (!isStreaming && shouldReplaceHydratedMessages(messages, remoteMessages)) {
                             replaceMessages(remoteMessages)
+                            initialBottomSnapDone = false
                             persistTick++
                         }
                     }
+                    historyHydrationComplete = true
                 }
             }
+        } else {
+            historyHydrationComplete = true
         }
     }
 
@@ -1094,7 +1133,11 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(scrollState.isScrollInProgress, programmaticScroll, atBottom) {
-        if (programmaticScroll) return@LaunchedEffect
+        val now = SystemClock.uptimeMillis()
+        if (programmaticScroll || now - lastProgrammaticScrollMs < PROGRAMMATIC_SCROLL_SETTLE_MS) {
+            userInteracting = false
+            return@LaunchedEffect
+        }
         userInteracting = scrollState.isScrollInProgress
         if (scrollState.isScrollInProgress && !atBottom) {
             autoScrollMode = AutoScrollMode.Idle
@@ -1161,8 +1204,71 @@ fun ChatScreen() {
         }
     }
 
+    fun currentAnchorFollowDelta(): Int {
+        if (anchoredUserBottomPx <= 0 || anchoredTargetBottomPx <= 0) return 0
+        return (anchoredUserBottomPx - anchoredTargetBottomPx)
+            .coerceAtLeast(0)
+            .takeIf { it > STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX }
+            ?: 0
+    }
+
+    fun currentStreamingOverflowDelta(): Int {
+        val visibleBottom = (messageViewportHeightPx - bottomBarHeightPx - streamVisibleBottomGapPx)
+            .coerceAtLeast(0)
+        return if (streamingContentBottomPx > 0) {
+            (streamingContentBottomPx - visibleBottom).coerceAtLeast(0)
+        } else {
+            0
+        }
+    }
+
+    suspend fun followStreamingFrameStep(
+        scrollDelta: Int,
+        bottomFollow: Boolean
+    ) {
+        if (scrollDelta <= 0) return
+        val now = SystemClock.uptimeMillis()
+        lastAutoScrollMs = now
+        lastProgrammaticScrollMs = now
+        programmaticScroll = true
+        try {
+            val fixedStep = if (bottomFollow) {
+                STREAM_BOTTOM_FOLLOW_STEP_PX
+            } else {
+                STREAM_ANCHOR_FOLLOW_STEP_PX
+            }
+            val step = scrollDelta.coerceAtMost(fixedStep).toFloat()
+            scrollState.scrollBy(step)
+        } finally {
+            programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        }
+    }
+
+    suspend fun smoothCatchUpToBottom(maxPasses: Int = 8) {
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        programmaticScroll = true
+        try {
+            repeat(maxPasses) {
+                withFrameNanos { }
+                val remaining = (scrollState.maxValue - scrollState.value).coerceAtLeast(0)
+                if (remaining <= 0) return
+                val step = remaining.coerceAtMost(STREAM_STICKY_SCROLL_STEP_PX * 2)
+                scrollState.animateScrollBy(
+                    step.toFloat(),
+                    animationSpec = tween(durationMillis = 64, easing = FastOutSlowInEasing)
+                )
+            }
+        } finally {
+            programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        }
+    }
+
     fun finishStreaming() {
         mainHandler.post {
+            val shouldSnapToBottomOnFinish =
+                autoScrollMode == AutoScrollMode.StreamAnchorFollow && !userInteracting
             streamRevealJob?.cancel()
             streamRevealJob = null
             if (streamingRevealBuffer.isNotEmpty()) {
@@ -1185,8 +1291,81 @@ fun ChatScreen() {
             streamingMessageContent = ""
             streamingRevealBuffer = ""
             streamBottomSpacerPx = 0
+            streamingContentBottomPx = -1
+            streamBottomFollowActive = false
             autoScrollMode = AutoScrollMode.Idle
             persistTick++
+            if (shouldSnapToBottomOnFinish) {
+                snackbarScope.launch {
+                    repeat(3) { withFrameNanos { } }
+                    smoothCatchUpToBottom()
+                    jumpButtonVisible = false
+                }
+            }
+        }
+    }
+
+    fun launchLocalFakeStream(
+        skipChars: Int = 0,
+        applyInitialDelay: Boolean
+    ) {
+        val fullText = FAKE_STREAM_TEXT
+        val safeSkipChars = skipChars.coerceIn(0, fullText.length)
+        fakeStreamJob?.cancel()
+        fakeStreamJob = snackbarScope.launch {
+            if (applyInitialDelay) {
+                val ballStartTime = SystemClock.uptimeMillis()
+                val initialDelayMs = Random.nextLong(LOCAL_STREAM_FIRST_TOKEN_MIN_MS, LOCAL_STREAM_FIRST_TOKEN_MAX_MS)
+                val minBallMs = LOCAL_STREAM_MIN_BALL_MS
+                val elapsed = SystemClock.uptimeMillis() - ballStartTime
+                val firstTokenWait = maxOf(initialDelayMs, minBallMs - elapsed)
+                if (firstTokenWait > 0) {
+                    delay(firstTokenWait)
+                }
+            }
+
+            var remaining = fullText.drop(safeSkipChars)
+            if (remaining.isEmpty()) {
+                while (isActive && streamingRevealBuffer.isNotEmpty()) {
+                    delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+                }
+                if (isActive && isStreaming) {
+                    finishStreaming()
+                }
+                return@launch
+            }
+
+            while (isActive && remaining.isNotEmpty()) {
+                val step = nextLocalStreamFeedStep(remaining)
+                appendAssistantChunk(step.text)
+                remaining = remaining.drop(step.text.length)
+                if (step.delayMs > 0) {
+                    delay(step.delayMs)
+                }
+            }
+            if (isActive) finishStreaming()
+        }
+    }
+
+    fun recoverStreamingAfterLifecycleLoss() {
+        mainHandler.post {
+            if (!isStreaming) return@post
+            if (anchoredUserMessageId != null) {
+                if (anchoredTargetBottomPx <= 0 && messageViewportHeightPx > 0) {
+                    anchoredTargetBottomPx = (messageViewportHeightPx * SEND_ANCHOR_USER_BOTTOM_RATIO).roundToInt()
+                }
+                autoScrollMode = AutoScrollMode.StreamAnchorFollow
+            }
+            if (streamRevealJob?.isActive != true && streamingRevealBuffer.isNotEmpty()) {
+                ensureStreamingRevealJob()
+            }
+            if (fakeStreamJob?.isActive == true) return@post
+            val consumedChars = (streamingMessageContent.length + streamingRevealBuffer.length)
+                .coerceAtMost(FAKE_STREAM_TEXT.length)
+            launchLocalFakeStream(
+                skipChars = consumedChars,
+                applyInitialDelay = false
+            )
         }
     }
 
@@ -1197,6 +1376,8 @@ fun ChatScreen() {
         messages.add(ChatMessage(userId, ChatRole.USER, text))
         anchoredUserMessageId = userId
         anchoredUserBottomPx = -1
+        streamingContentBottomPx = -1
+        streamBottomFollowActive = false
         input.value = ""
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
@@ -1218,32 +1399,29 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        val fullText = FAKE_STREAM_TEXT
-        fakeStreamJob = snackbarScope.launch {
-            val ballStartTime = SystemClock.uptimeMillis()
-            val initialDelayMs = Random.nextLong(LOCAL_STREAM_FIRST_TOKEN_MIN_MS, LOCAL_STREAM_FIRST_TOKEN_MAX_MS)
-            val minBallMs = LOCAL_STREAM_MIN_BALL_MS
-            val elapsed = SystemClock.uptimeMillis() - ballStartTime
-            val firstTokenWait = maxOf(initialDelayMs, minBallMs - elapsed)
-            if (firstTokenWait > 0) {
-                delay(firstTokenWait)
-            }
+        launchLocalFakeStream(applyInitialDelay = true)
+    }
 
-            var remaining = fullText
-            while (isActive && remaining.isNotEmpty()) {
-                val step = nextLocalStreamFeedStep(remaining)
-                appendAssistantChunk(step.text)
-                remaining = remaining.drop(step.text.length)
-                if (step.delayMs > 0) {
-                    delay(step.delayMs)
+    DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            } else if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                if (isStreaming && fakeStreamJob?.isActive != true && streamRevealJob?.isActive != true) {
+                    recoverStreamingAfterLifecycleLoss()
                 }
             }
-            if (isActive) finishStreaming()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
     suspend fun scrollToBottom(animated: Boolean) {
         if (messages.isEmpty() && !hasStreamingItem) return
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
             withFrameNanos { }
@@ -1264,11 +1442,13 @@ fun ChatScreen() {
             withFrameNanos { }
         } finally {
             programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         }
     }
 
     suspend fun scrollAfterSendAnchor() {
         if (messages.isEmpty()) return
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
             anchoredTargetBottomPx = (messageViewportHeightPx * SEND_ANCHOR_USER_BOTTOM_RATIO).roundToInt()
@@ -1290,31 +1470,46 @@ fun ChatScreen() {
             }
         } finally {
             programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         }
     }
 
-    LaunchedEffect(streamTick, autoScrollMode, isStreaming, userInteracting, anchoredUserBottomPx) {
+    LaunchedEffect(
+        autoScrollMode,
+        isStreaming,
+        userInteracting,
+        hasStreamingItem,
+        anchoredUserMessageId
+    ) {
         if (!hasStreamingItem || !isStreaming) return@LaunchedEffect
         if (autoScrollMode != AutoScrollMode.StreamAnchorFollow) return@LaunchedEffect
-        if (userInteracting || programmaticScroll) return@LaunchedEffect
-        if (anchoredUserBottomPx <= 0 || anchoredTargetBottomPx <= 0) return@LaunchedEffect
-        val now = SystemClock.uptimeMillis()
-        if (now - lastAutoScrollMs < STREAM_AUTO_SCROLL_THROTTLE_MS) return@LaunchedEffect
-        val delta = anchoredUserBottomPx - anchoredTargetBottomPx
-        if (delta <= STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX) return@LaunchedEffect
-        lastAutoScrollMs = now
-        programmaticScroll = true
-        try {
-            if (delta <= STREAM_FOLLOW_ANIMATE_THRESHOLD_PX) {
-                scrollState.animateScrollBy(
-                    delta.toFloat(),
-                    animationSpec = tween(durationMillis = 68, easing = FastOutSlowInEasing)
+        if (userInteracting) return@LaunchedEffect
+        while (isStreaming && hasStreamingItem && autoScrollMode == AutoScrollMode.StreamAnchorFollow && !userInteracting) {
+            withFrameNanos { }
+            if (programmaticScroll) continue
+            if (anchoredUserBottomPx <= 0 || anchoredTargetBottomPx <= 0) {
+                continue
+            }
+            val streamingOverflow = currentStreamingOverflowDelta()
+            if (streamingOverflow > 0 && streamBottomSpacerPx <= 0) {
+                streamBottomFollowActive = true
+            }
+            val bottomFollow = streamBottomFollowActive
+            val scrollDelta = if (bottomFollow) {
+                maxOf(
+                    (scrollState.maxValue - scrollState.value).coerceAtLeast(0),
+                    streamingOverflow
                 )
             } else {
-                scrollState.scrollBy(delta.toFloat())
+                maxOf(currentAnchorFollowDelta(), streamingOverflow)
             }
-        } finally {
-            programmaticScroll = false
+            if (scrollDelta <= 0) {
+                continue
+            }
+            followStreamingFrameStep(
+                scrollDelta = scrollDelta,
+                bottomFollow = bottomFollow
+            )
         }
     }
 
@@ -1324,6 +1519,19 @@ fun ChatScreen() {
         userInteracting = false
         scrollAfterSendAnchor()
         lastAutoScrollMs = 0L
+    }
+
+    LaunchedEffect(messages.size, isStreaming, bottomBarHeightPx, hasStreamingItem, initialBottomSnapDone) {
+        if (initialBottomSnapDone) return@LaunchedEffect
+        if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
+        if (bottomBarHeightPx <= 0) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        val remaining = (scrollState.maxValue - scrollState.value).coerceAtLeast(0)
+        if (remaining > initialBottomSnapThresholdPx) {
+            scrollToBottom(animated = false)
+        }
+        jumpButtonVisible = false
+        initialBottomSnapDone = true
     }
 
     fun jumpToBottom() {
@@ -1565,6 +1773,10 @@ fun ChatScreen() {
                                     isStreaming = isStreaming,
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .onGloballyPositioned { coordinates ->
+                                            streamingContentBottomPx =
+                                                (coordinates.boundsInWindow().bottom - messageViewportTopPx).roundToInt()
+                                        }
                                         .padding(end = 1.dp)
                                 )
                             }
@@ -1579,7 +1791,7 @@ fun ChatScreen() {
                     }
                 }
 
-            if (messages.isEmpty() && !hasStreamingItem) {
+            if (historyHydrationComplete && messages.isEmpty() && !hasStreamingItem) {
                 Text(
                     text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                     modifier = Modifier
