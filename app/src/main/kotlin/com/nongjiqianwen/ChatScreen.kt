@@ -1,4 +1,4 @@
-﻿package com.nongjiqianwen
+package com.nongjiqianwen
 
 import android.content.Context
 import android.os.Handler
@@ -16,15 +16,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -32,6 +30,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -46,9 +45,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
@@ -83,15 +79,18 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -113,18 +112,18 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.LinkedHashMap
-import kotlin.math.min
 import kotlin.random.Random
+import kotlin.math.roundToInt
 import java.util.UUID
 
 private enum class ChatRole { USER, ASSISTANT }
+private enum class AutoScrollMode { Idle, AnchorUser, StreamAnchorFollow }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
     data class Numbered(val number: String, val text: String) : MarkdownBlock
-    data class Quote(val text: String) : MarkdownBlock
     data class Paragraph(val text: String) : MarkdownBlock
 }
 
@@ -133,9 +132,25 @@ private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
+private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
+private const val STREAM_AUTO_SCROLL_THROTTLE_MS = 36L
+private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 12L
+private const val STREAM_REVEAL_FRAME_BUDGET_MS = 42L
+private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 8
+private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 860L
+private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 1420L
+private const val LOCAL_STREAM_MIN_BALL_MS = 1480L
+private const val STREAM_ANIMATED_SCROLL_MAX_DELTA_PX = 220
+private const val STREAM_STICKY_SCROLL_STEP_PX = 96
+private const val SEND_ANCHOR_USER_BOTTOM_RATIO = 0.46f
+private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.44f
+private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
+private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
+private val STREAMING_MESSAGE_MIN_HEIGHT = 92.dp
+private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
+private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 220.dp
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
-private val collapseBreakRegex = Regex("\n{3,}")
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
 private val bulletRegex = Regex("^[*-]\\s+.*$")
 private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
@@ -155,8 +170,186 @@ private val blockMarkdownCache = object : LinkedHashMap<String, List<MarkdownUiB
 private fun normalizeAssistantText(content: String): String {
     return content
         .replace("\r\n", "\n")
-        .replace(collapseBreakRegex, "\n\n")
         .trim()
+}
+
+private data class StreamingMarkdownParts(
+    val completedContent: String,
+    val tailContent: String
+)
+
+private fun splitStreamingMarkdownParts(content: String): StreamingMarkdownParts {
+    val normalized = content
+        .replace("\r\n", "\n")
+    if (normalized.isBlank()) {
+        return StreamingMarkdownParts(completedContent = "", tailContent = "")
+    }
+
+    if (!normalized.contains('\n')) {
+        return StreamingMarkdownParts(completedContent = "", tailContent = normalized)
+    }
+
+    if (normalized.last() == '\n') {
+        val completed = normalized.dropLast(1)
+        return StreamingMarkdownParts(
+            completedContent = normalizeAssistantText(completed),
+            tailContent = ""
+        )
+    }
+
+    val splitIndex = normalized.lastIndexOf('\n')
+    val completed = normalized.substring(0, splitIndex)
+    val tail = normalized.substring(splitIndex + 1)
+    return StreamingMarkdownParts(
+        completedContent = normalizeAssistantText(completed),
+        tailContent = tail
+    )
+}
+
+private fun Char.isCjkUnifiedIdeograph(): Boolean {
+    val block = Character.UnicodeBlock.of(this)
+    return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
+        block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
+        block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
+        block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+}
+
+private fun Char.isStrongPausePunctuation(): Boolean {
+    return this == '\n' || this == '。' || this == '！' || this == '？' || this == '!' || this == '?'
+}
+
+private fun Char.isWeakPausePunctuation(): Boolean {
+    return this == '，' || this == '；' || this == '：' || this == ',' || this == ';' || this == ':'
+}
+
+private fun Char.isStructuralMarkdownChar(): Boolean {
+    return this == '#' || this == '-' || this == '*' || this == '`' || this == '>'
+}
+
+private fun takeTypewriterToken(buffer: String): String {
+    if (buffer.isEmpty()) return ""
+    val first = buffer.first()
+    if (first == '\n' || first.isWhitespace() || first.isStructuralMarkdownChar()) {
+        return first.toString()
+    }
+    if (first.isCjkUnifiedIdeograph()) {
+        var end = 1
+        while (end < buffer.length && end < 3 && buffer[end].isCjkUnifiedIdeograph()) end++
+        return buffer.substring(0, end)
+    }
+    if (first.isDigit()) {
+        var end = 1
+        while (end < buffer.length && end < 3 && buffer[end].isDigit()) end++
+        if (end < buffer.length && buffer[end] == '.') end++
+        return buffer.substring(0, end)
+    }
+    var end = 1
+    while (end < buffer.length && end < 4) {
+        val ch = buffer[end]
+        if (ch.isWhitespace() || ch.isCjkUnifiedIdeograph() || ch.isStructuralMarkdownChar() || ch.isWeakPausePunctuation() || ch.isStrongPausePunctuation()) {
+            break
+        }
+        end++
+    }
+    return buffer.substring(0, end)
+}
+
+private data class LocalStreamFeedStep(
+    val text: String,
+    val delayMs: Long
+)
+
+private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
+    if (remaining.isEmpty()) return LocalStreamFeedStep("", 0L)
+    val first = remaining.first()
+    val takeCount = when {
+        first == '\n' -> 1
+        first.isStructuralMarkdownChar() -> 1
+        first.isCjkUnifiedIdeograph() -> Random.nextInt(1, 3)
+        first.isWhitespace() -> 1
+        else -> Random.nextInt(2, 5)
+    }.coerceAtMost(remaining.length)
+    val text = remaining.substring(0, takeCount)
+    val tail = text.last()
+    val delayMs = when {
+        tail == '\n' -> Random.nextLong(150, 260)
+        tail.isStrongPausePunctuation() -> Random.nextLong(110, 210)
+        tail.isWeakPausePunctuation() -> Random.nextLong(72, 140)
+        text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(70, 120)
+        else -> Random.nextLong(28, 56)
+    }
+    return LocalStreamFeedStep(text = text, delayMs = delayMs)
+}
+
+private fun hasStructuralMarkdownPrefix(text: String): Boolean {
+    val trimmed = text.trimStart()
+    return trimmed.startsWith("#") ||
+        trimmed.startsWith("- ") ||
+        trimmed.startsWith("* ") ||
+        trimmed.startsWith("> ") ||
+        numberedRegex.matches(trimmed)
+}
+
+private fun resolveTypewriterDelay(token: String, remainingBuffer: String): Long {
+    val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
+    return when {
+        lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 104L else 78L
+        lastChar.isStrongPausePunctuation() -> 44L
+        lastChar.isWeakPausePunctuation() -> 24L
+        token.length >= 4 -> 8L
+        token.length == 3 -> 9L
+        token.length == 2 -> 10L
+        else -> if (lastChar.isCjkUnifiedIdeograph()) 12L else 10L
+    }
+}
+
+private data class StreamingTypewriterStep(
+    val text: String,
+    val delayMs: Long
+)
+
+private fun nextStreamingTypewriterStep(buffer: String): StreamingTypewriterStep {
+    if (buffer.isEmpty()) {
+        return StreamingTypewriterStep("", STREAM_TYPEWRITER_IDLE_POLL_MS)
+    }
+    val text = takeTypewriterToken(buffer)
+    val remaining = buffer.drop(text.length)
+    return StreamingTypewriterStep(
+        text = text,
+        delayMs = resolveTypewriterDelay(text, remaining)
+    )
+}
+
+private data class StreamingRevealBatch(
+    val text: String,
+    val delayMs: Long
+)
+
+private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
+    if (buffer.isEmpty()) return StreamingRevealBatch("", STREAM_TYPEWRITER_IDLE_POLL_MS)
+    val text = StringBuilder()
+    var consumedDelay = 0L
+    var remaining = buffer
+    var tokenCount = 0
+
+    while (remaining.isNotEmpty() && tokenCount < STREAM_REVEAL_MAX_TOKENS_PER_BATCH) {
+        val step = nextStreamingTypewriterStep(remaining)
+        if (step.text.isEmpty()) break
+        text.append(step.text)
+        remaining = remaining.drop(step.text.length)
+        consumedDelay += step.delayMs
+        tokenCount++
+        val tail = step.text.lastOrNull()
+        val hitPause = tail == '\n' || tail?.isStrongPausePunctuation() == true
+        if (hitPause || consumedDelay >= STREAM_REVEAL_FRAME_BUDGET_MS) {
+            break
+        }
+    }
+
+    return StreamingRevealBatch(
+        text = text.toString(),
+        delayMs = consumedDelay.coerceAtLeast(STREAM_TYPEWRITER_IDLE_POLL_MS)
+    )
 }
 
 private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
@@ -191,7 +384,7 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
             }
             trimmed.matches(quoteRegex) -> {
                 flushParagraph()
-                blocks += MarkdownBlock.Quote(trimmed.drop(1).trim())
+                blocks += MarkdownBlock.Paragraph(trimmed.drop(1).trim())
             }
             else -> {
                 if (paragraph.isNotEmpty()) paragraph.append('\n')
@@ -204,28 +397,73 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
     return blocks
 }
 
-private fun buildMarkdownAnnotatedString(text: String): AnnotatedString {
+private fun markdownInlineSpanStyle(
+    isBold: Boolean,
+    isItalic: Boolean,
+    isCode: Boolean
+): SpanStyle {
+    return SpanStyle(
+        fontWeight = if (isBold) FontWeight.SemiBold else null,
+        fontStyle = if (isItalic) FontStyle.Italic else null,
+        fontFamily = if (isCode) FontFamily.Monospace else null,
+        background = if (isCode) Color(0xFFF2F3F5) else Color.Unspecified
+    )
+}
+
+private fun buildMarkdownAnnotatedStringInternal(
+    text: String
+): AnnotatedString {
     val normalized = text.replace(linkRegex, "$1")
     return buildAnnotatedString {
-        var cursor = 0
-        while (cursor < normalized.length) {
-            val boldStart = normalized.indexOf("**", cursor)
-            if (boldStart < 0) {
-                append(normalized.substring(cursor))
-                break
+        var index = 0
+        var bold = false
+        var italic = false
+        var code = false
+
+        fun appendStyled(chunk: String) {
+            if (chunk.isEmpty()) return
+            withStyle(markdownInlineSpanStyle(bold, italic, code)) {
+                append(chunk)
             }
-            if (boldStart > cursor) append(normalized.substring(cursor, boldStart))
-            val boldEnd = normalized.indexOf("**", boldStart + 2)
-            if (boldEnd < 0) {
-                append(normalized.substring(boldStart))
-                break
+        }
+
+        while (index < normalized.length) {
+            when {
+                !code && normalized.startsWith("**", index) -> {
+                    bold = !bold
+                    index += 2
+                }
+                normalized[index] == '`' -> {
+                    code = !code
+                    index += 1
+                }
+                !code && normalized[index] == '*' -> {
+                    italic = !italic
+                    index += 1
+                }
+                else -> {
+                    val nextSpecial = buildList {
+                        val boldIndex = if (!code) normalized.indexOf("**", index).takeIf { it >= 0 } else null
+                        val codeIndex = normalized.indexOf('`', index).takeIf { it >= 0 }
+                        val italicIndex = if (!code) normalized.indexOf('*', index).takeIf { it >= 0 } else null
+                        if (boldIndex != null) add(boldIndex)
+                        if (codeIndex != null) add(codeIndex)
+                        if (italicIndex != null) add(italicIndex)
+                    }.minOrNull() ?: normalized.length
+                    appendStyled(normalized.substring(index, nextSpecial))
+                    index = nextSpecial
+                }
             }
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                append(normalized.substring(boldStart + 2, boldEnd))
-            }
-            cursor = boldEnd + 2
         }
     }
+}
+
+private fun buildMarkdownAnnotatedString(text: String): AnnotatedString {
+    return buildMarkdownAnnotatedStringInternal(text = text)
+}
+
+private fun buildStreamingAnnotatedString(text: String): AnnotatedString {
+    return buildMarkdownAnnotatedStringInternal(text = text)
 }
 
 private fun getCachedAnnotatedString(text: String): AnnotatedString {
@@ -248,7 +486,6 @@ private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
             is MarkdownBlock.Heading -> MarkdownUiBlock.Heading(block.level, getCachedAnnotatedString(block.text))
             is MarkdownBlock.Bullet -> MarkdownUiBlock.Bullet(getCachedAnnotatedString(block.text))
             is MarkdownBlock.Numbered -> MarkdownUiBlock.Numbered(block.number, getCachedAnnotatedString(block.text))
-            is MarkdownBlock.Quote -> MarkdownUiBlock.Quote(getCachedAnnotatedString(block.text))
             is MarkdownBlock.Paragraph -> MarkdownUiBlock.Paragraph(getCachedAnnotatedString(block.text))
         }
     }
@@ -257,6 +494,19 @@ private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
     }
     return built
 }
+
+private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
+    fontSize = 17.sp,
+    lineHeight = 32.sp,
+    color = Color(0xFF171717)
+)
+
+private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
+    fontSize = if (level <= 2) 22.sp else 19.sp,
+    lineHeight = if (level <= 2) 38.sp else 33.sp,
+    fontWeight = FontWeight.Bold,
+    color = Color(0xFF111111)
+)
 
 private fun trimWindowStartIndex(source: List<ChatMessage>): Int {
     var userCount = 0
@@ -289,12 +539,30 @@ private suspend fun Context.loadLocalChatWindow(sessionId: String): List<ChatMes
     }.getOrDefault(emptyList())
 }
 
+private fun Context.loadLocalChatWindowSync(sessionId: String): List<ChatMessage> {
+    val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .getString("$CHAT_CACHE_KEY_PREFIX$sessionId", null)
+        .orEmpty()
+    if (raw.isBlank()) return emptyList()
+    return runCatching {
+        @Suppress("UNCHECKED_CAST")
+        (chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList())
+    }.getOrDefault(emptyList())
+}
+
 private suspend fun Context.saveLocalChatWindow(sessionId: String, messages: List<ChatMessage>) = withContext(Dispatchers.IO) {
     val trimmed = trimMessageWindow(messages)
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
         .putString("$CHAT_CACHE_KEY_PREFIX$sessionId", chatCacheGson.toJson(trimmed))
         .apply()
+}
+
+private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = withContext(Dispatchers.Default) {
+    messages
+        .filter { it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
+        .takeLast(12)
+        .forEach { getCachedMarkdownUiBlocks(it.content) }
 }
 
 private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
@@ -310,23 +578,119 @@ private sealed interface MarkdownUiBlock {
     data class Heading(val level: Int, val text: AnnotatedString) : MarkdownUiBlock
     data class Bullet(val text: AnnotatedString) : MarkdownUiBlock
     data class Numbered(val number: String, val text: AnnotatedString) : MarkdownUiBlock
-    data class Quote(val text: AnnotatedString) : MarkdownUiBlock
     data class Paragraph(val text: AnnotatedString) : MarkdownUiBlock
 }
 
 @Composable
+private fun AssistantMessageContent(
+    content: String,
+    isStreaming: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val stableModifier = if (isStreaming) {
+        modifier.heightIn(min = STREAMING_MESSAGE_MIN_HEIGHT)
+    } else {
+        modifier
+    }
+    if (content.isBlank()) {
+        if (isStreaming) {
+            Box(
+                modifier = stableModifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                GPTBreathingBall()
+            }
+        }
+        return
+    }
+
+    if (isStreaming) {
+        AssistantStreamingContent(content = content, modifier = stableModifier)
+    } else {
+        AssistantMarkdownContent(content = content, modifier = modifier)
+    }
+}
+
+@Composable
 private fun AssistantStreamingContent(content: String, modifier: Modifier = Modifier) {
-    val displayText = remember(content) { getCachedAnnotatedString(normalizeAssistantText(content)) }
-    Text(
-        text = displayText,
+    val parts = remember(content) { splitStreamingMarkdownParts(content) }
+    Column(
         modifier = modifier.fillMaxWidth(),
-        style = TextStyle(
-            fontSize = 17.sp,
-            lineHeight = 31.sp,
-            color = Color(0xFF171717)
-        ),
-        textAlign = TextAlign.Start
-    )
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        if (parts.completedContent.isNotBlank()) {
+            AssistantMarkdownContent(content = parts.completedContent)
+        }
+        if (parts.tailContent.isNotBlank()) {
+            AssistantStreamingTail(content = parts.tailContent)
+        }
+    }
+}
+
+@Composable
+private fun AssistantStreamingTail(content: String) {
+    val trimmed = content.trimStart()
+    fun buildTail(text: String): AnnotatedString = buildStreamingAnnotatedString(text)
+
+    when {
+        trimmed.matches(headingRegex) -> {
+            val marker = trimmed.takeWhile { it == '#' }
+            Text(
+                text = remember(trimmed) { buildTail(trimmed.drop(marker.length).trimStart()) },
+                modifier = Modifier.fillMaxWidth(),
+                style = assistantHeadingTextStyle(marker.length),
+                textAlign = TextAlign.Start
+            )
+        }
+        trimmed.matches(bulletRegex) -> {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "\u2022",
+                    style = assistantParagraphTextStyle().copy(fontSize = 18.sp)
+                )
+                Text(
+                    text = remember(trimmed) { buildTail(trimmed.drop(1).trimStart()) },
+                    modifier = Modifier.weight(1f),
+                    style = assistantParagraphTextStyle(),
+                    textAlign = TextAlign.Start
+                )
+            }
+        }
+        trimmed.matches(numberedRegex) -> {
+            val number = trimmed.substringBefore('.')
+            val body = trimmed.substringAfter('.', "")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "$number.",
+                    style = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
+                )
+                Text(
+                    text = remember(body) { buildTail(body.trimStart()) },
+                    modifier = Modifier.weight(1f),
+                    style = assistantParagraphTextStyle(),
+                    textAlign = TextAlign.Start
+                )
+            }
+        }
+        trimmed.matches(quoteRegex) -> {
+            Text(
+                text = remember(trimmed) { buildTail(trimmed.drop(1).trimStart()) },
+                modifier = Modifier.fillMaxWidth(),
+                style = assistantParagraphTextStyle(),
+                textAlign = TextAlign.Start
+            )
+        }
+        else -> {
+            Text(
+                text = remember(content) { buildTail(content) },
+                modifier = Modifier.fillMaxWidth(),
+                style = assistantParagraphTextStyle(),
+                textAlign = TextAlign.Start
+            )
+        }
+    }
 }
 
 @Composable
@@ -337,58 +701,33 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
             when (block) {
                 is MarkdownUiBlock.Heading -> Text(
                     text = block.text,
-                    style = TextStyle(
-                        fontSize = if (block.level <= 2) 22.sp else 19.sp,
-                        lineHeight = if (block.level <= 2) 38.sp else 33.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF111111)
-                    )
+                    style = assistantHeadingTextStyle(block.level)
                 )
                 is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
                         text = "\u2022",
-                        style = TextStyle(fontSize = 18.sp, lineHeight = 32.sp, color = Color(0xFF171717)),
+                        style = assistantParagraphTextStyle().copy(fontSize = 18.sp),
                     )
                     Text(
                         text = block.text,
                         modifier = Modifier.weight(1f),
-                        style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, color = Color(0xFF171717))
+                        style = assistantParagraphTextStyle()
                     )
                 }
                 is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
                         text = "${block.number}.",
-                        style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF171717)),
+                        style = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold),
                     )
                     Text(
                         text = block.text,
                         modifier = Modifier.weight(1f),
-                        style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, color = Color(0xFF171717))
-                    )
-                }
-                is MarkdownUiBlock.Quote -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .padding(top = 3.dp)
-                            .width(4.dp)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(99.dp))
-                            .background(Color(0xFFD7DADF))
-                    )
-                    Text(
-                        text = block.text,
-                        modifier = Modifier.weight(1f),
-                        style = TextStyle(
-                            fontSize = 16.sp,
-                            lineHeight = 30.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF2B2B2B)
-                        )
+                        style = assistantParagraphTextStyle()
                     )
                 }
                 is MarkdownUiBlock.Paragraph -> Text(
                     text = block.text,
-                    style = TextStyle(fontSize = 17.sp, lineHeight = 32.sp, color = Color(0xFF171717)),
+                    style = assistantParagraphTextStyle(),
                     textAlign = TextAlign.Start
                 )
             }
@@ -572,49 +911,70 @@ private fun FrostedCircleButton(
 @OptIn(ExperimentalComposeUiApi::class)
 fun ChatScreen() {
     val input = remember { mutableStateOf("") }
-    val messages = remember { mutableStateListOf<ChatMessage>() }
-    val listState = rememberLazyListState()
+    val context = LocalContext.current
+    val sessionId = remember { IdManager.getSessionId() }
+    val initialLocalMessages = remember(sessionId) { context.loadLocalChatWindowSync(sessionId) }
+    val messages = remember(sessionId) {
+        mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
+    }
+    val scrollState = rememberScrollState(initial = Int.MAX_VALUE)
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember { mutableStateOf<Job?>(null) }
+    var streamRevealJob by remember { mutableStateOf<Job?>(null) }
 
     var isStreaming by remember { mutableStateOf(false) }
-    var assistantMessageId by remember { mutableStateOf<String?>(null) }
-    var autoFollowEnabled by remember { mutableStateOf(true) }
+    var streamingMessageId by remember { mutableStateOf<String?>(null) }
+    var streamingMessageContent by remember { mutableStateOf("") }
+    var streamingRevealBuffer by remember { mutableStateOf("") }
+    var autoScrollMode by remember { mutableStateOf(AutoScrollMode.Idle) }
     var userInteracting by remember { mutableStateOf(false) }
     var streamTick by remember { mutableIntStateOf(0) }
     var sendTick by remember { mutableIntStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastAutoScrollMs by remember { mutableStateOf(0L) }
     var persistTick by remember { mutableIntStateOf(0) }
-    var topBarHeightPx by remember { mutableIntStateOf(0) }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
-    val atBottom by remember { derivedStateOf { !listState.canScrollForward } }
+    var messageViewportHeightPx by remember { mutableIntStateOf(0) }
+    var streamBottomSpacerPx by remember { mutableIntStateOf(0) }
+    var messageViewportTopPx by remember { mutableStateOf(0f) }
+    var anchoredUserMessageId by remember { mutableStateOf<String?>(null) }
+    var anchoredUserBottomPx by remember { mutableIntStateOf(-1) }
+    var anchoredTargetBottomPx by remember { mutableIntStateOf(0) }
+    var jumpButtonVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
-    val showJumpButton by remember(atBottom, imeVisible, messages.size, listState.isScrollInProgress) {
-        derivedStateOf { messages.isNotEmpty() && !atBottom && !listState.isScrollInProgress && !imeVisible }
+    val followSlopPx = with(density) { STREAM_AUTO_FOLLOW_SLOP.toPx().toInt() }
+    val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
+    val streamBottomSpacerDp = with(density) { streamBottomSpacerPx.toDp() }
+    val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
+        derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
     }
-    val context = LocalContext.current
-    val sessionId = remember { IdManager.getSessionId() }
-    val appTopBottomTint = Color(0xFFFAFAF9)
-    val appCenterTint = Color(0xFFFFFFFF)
-    val chromeSurface = Color.White.copy(alpha = 0.88f)
+    val atBottom by remember {
+        derivedStateOf {
+            val remaining = scrollState.maxValue - scrollState.value
+            remaining <= followSlopPx
+        }
+    }
+    val imeVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
+    val shouldOfferJumpButton by remember(atBottom, imeVisible, messages.size, autoScrollMode, hasStreamingItem) {
+        derivedStateOf {
+            (messages.isNotEmpty() || hasStreamingItem) &&
+                !atBottom &&
+                !imeVisible &&
+                autoScrollMode == AutoScrollMode.Idle
+        }
+    }
+    val appCenterTint = Color.White
+    val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
-    val inputSurface = Color.White.copy(alpha = 0.9f)
+    val inputSurface = Color.White
     val inputBorder = Color(0xFFD4D8DE).copy(alpha = 0.22f)
     val userBubbleColor = Color(0xFFF4F4F7)
     val topInset = WindowInsets.safeDrawing
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
         .calculateTopPadding()
-    val measuredTopBarHeight = with(density) { topBarHeightPx.toDp() }
-    val topBarReservedHeight = if (measuredTopBarHeight > 0.dp) {
-        measuredTopBarHeight + 12.dp
-    } else {
-        topInset + 72.dp
-    }
     val jumpButtonBottomPadding = 78.dp
 
     val focusManager = LocalFocusManager.current
@@ -634,26 +994,56 @@ fun ChatScreen() {
         }
     }
 
+    fun resetStreamingUiState(clearVisibleContent: Boolean) {
+        mainHandler.post {
+            fakeStreamJob?.cancel()
+            fakeStreamJob = null
+            streamRevealJob?.cancel()
+            streamRevealJob = null
+            isStreaming = false
+            streamingMessageId = null
+            streamingRevealBuffer = ""
+            streamBottomSpacerPx = 0
+            autoScrollMode = AutoScrollMode.Idle
+            if (clearVisibleContent) {
+                streamingMessageContent = ""
+            }
+        }
+    }
+
     DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
+            } else if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                if (isStreaming && fakeStreamJob?.isActive != true && streamRevealJob?.isActive != true) {
+                    resetStreamingUiState(clearVisibleContent = false)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (isStreaming) {
+                resetStreamingUiState(clearVisibleContent = false)
+            }
+        }
     }
 
     LaunchedEffect(sessionId) {
-        val localMessages = context.loadLocalChatWindow(sessionId)
-        if (localMessages.isNotEmpty()) {
-            replaceMessages(localMessages)
+        if (initialLocalMessages.isNotEmpty()) {
+            snackbarScope.launch {
+                prewarmAssistantMarkdown(initialLocalMessages)
+            }
         }
         if (BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()) {
             SessionApi.getSnapshot(sessionId) { snapshot ->
                 val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
                 if (remoteMessages.isNotEmpty()) {
+                    snackbarScope.launch {
+                        prewarmAssistantMarkdown(remoteMessages)
+                    }
                     mainHandler.post {
                         if (!isStreaming && remoteMessages.size > messages.size) {
                             replaceMessages(remoteMessages)
@@ -671,49 +1061,96 @@ fun ChatScreen() {
         context.saveLocalChatWindow(sessionId, messages)
     }
 
-    LaunchedEffect(atBottom, isStreaming, userInteracting) {
-        if (isStreaming && atBottom && !userInteracting) {
-            autoFollowEnabled = true
+    LaunchedEffect(scrollState.isScrollInProgress, programmaticScroll, atBottom) {
+        if (programmaticScroll) return@LaunchedEffect
+        userInteracting = scrollState.isScrollInProgress
+        if (scrollState.isScrollInProgress && !atBottom) {
+            autoScrollMode = AutoScrollMode.Idle
+        }
+    }
+
+    LaunchedEffect(shouldOfferJumpButton, scrollState.isScrollInProgress, programmaticScroll) {
+        if (!shouldOfferJumpButton) {
+            jumpButtonVisible = false
+            return@LaunchedEffect
+        }
+        if (programmaticScroll || scrollState.isScrollInProgress) {
+            jumpButtonVisible = false
+            return@LaunchedEffect
+        }
+
+        jumpButtonVisible = true
+        delay(JUMP_BUTTON_AUTO_HIDE_MS)
+        if (!scrollState.isScrollInProgress && !programmaticScroll && shouldOfferJumpButton) {
+            jumpButtonVisible = false
+        }
+    }
+
+    fun ensureStreamingRevealJob() {
+        if (streamRevealJob?.isActive == true) return
+        streamRevealJob = snackbarScope.launch {
+            while (isActive) {
+                val buffer = streamingRevealBuffer
+                if (buffer.isEmpty()) {
+                    if (!isStreaming) break
+                    delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+                    continue
+                }
+                val batch = buildStreamingRevealBatch(buffer)
+                if (batch.text.isEmpty()) {
+                    delay(batch.delayMs)
+                    continue
+                }
+                streamingRevealBuffer = streamingRevealBuffer.drop(batch.text.length)
+                if (streamingMessageId.isNullOrBlank()) {
+                    streamingMessageId = "assistant_${UUID.randomUUID()}"
+                }
+                streamingMessageContent += batch.text
+                if (streamBottomSpacerPx > 0 && streamingMessageContent.isNotBlank()) {
+                    streamBottomSpacerPx = 0
+                }
+                streamTick++
+                delay(batch.delayMs)
+            }
         }
     }
 
     fun appendAssistantChunk(piece: String) {
-        if (piece.isBlank()) return
+        if (piece.isEmpty()) return
         mainHandler.post {
-            val currentId = assistantMessageId
-            if (currentId.isNullOrBlank()) {
-                val newId = "assistant_${UUID.randomUUID()}"
-                assistantMessageId = newId
-                messages.add(ChatMessage(newId, ChatRole.ASSISTANT, piece))
-                trimMessagesInPlace()
-                streamTick++
-                return@post
+            if (streamingMessageId.isNullOrBlank()) {
+                streamingMessageId = "assistant_${UUID.randomUUID()}"
             }
-            val index = messages.indexOfLast { it.id == currentId }
-            if (index >= 0) {
-                val old = messages[index]
-                messages[index] = old.copy(content = old.content + piece)
-            } else {
-                messages.add(ChatMessage(currentId, ChatRole.ASSISTANT, piece))
-            }
-            trimMessagesInPlace()
-            streamTick++
+            streamingRevealBuffer += piece
+            ensureStreamingRevealJob()
         }
     }
 
     fun finishStreaming() {
         mainHandler.post {
-            val currentId = assistantMessageId
-            if (!currentId.isNullOrBlank()) {
-                val index = messages.indexOfLast { it.id == currentId }
-                if (index >= 0 && messages[index].role == ChatRole.ASSISTANT && messages[index].content.isBlank()) {
-                    messages.removeAt(index)
+            streamRevealJob?.cancel()
+            streamRevealJob = null
+            if (streamingRevealBuffer.isNotEmpty()) {
+                if (streamingMessageId.isNullOrBlank()) {
+                    streamingMessageId = "assistant_${UUID.randomUUID()}"
                 }
+                streamingMessageContent += streamingRevealBuffer
+                streamingRevealBuffer = ""
+                streamTick++
+            }
+            val finalContent = streamingMessageContent
+            val finalId = streamingMessageId
+            if (finalContent.isNotBlank()) {
+                messages.add(ChatMessage(finalId ?: "assistant_${UUID.randomUUID()}", ChatRole.ASSISTANT, finalContent))
+                trimMessagesInPlace()
             }
             fakeStreamJob = null
             isStreaming = false
-            assistantMessageId = null
-            trimMessagesInPlace()
+            streamingMessageId = null
+            streamingMessageContent = ""
+            streamingRevealBuffer = ""
+            streamBottomSpacerPx = 0
+            autoScrollMode = AutoScrollMode.Idle
             persistTick++
         }
     }
@@ -723,51 +1160,47 @@ fun ChatScreen() {
         if (text.isEmpty()) return
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
+        anchoredUserMessageId = userId
+        anchoredUserBottomPx = -1
         input.value = ""
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
 
-        val assistantId = "assistant_${UUID.randomUUID()}"
-        messages.add(ChatMessage(assistantId, ChatRole.ASSISTANT, ""))
         trimMessagesInPlace()
         persistTick++
         isStreaming = true
-        assistantMessageId = assistantId
-        autoFollowEnabled = true
+        streamingMessageId = "assistant_${UUID.randomUUID()}"
+        streamingMessageContent = ""
+        streamingRevealBuffer = ""
+        streamBottomSpacerPx = maxOf(
+            (messageViewportHeightPx * SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO).roundToInt(),
+            minSendAnchorExtraBottomSpacePx
+        )
+        autoScrollMode = AutoScrollMode.AnchorUser
         userInteracting = false
         sendTick++
 
         fakeStreamJob?.cancel()
+        streamRevealJob?.cancel()
+        streamRevealJob = null
         val fullText = FAKE_STREAM_TEXT
         fakeStreamJob = snackbarScope.launch {
             val ballStartTime = SystemClock.uptimeMillis()
-            val initialDelayMs = Random.nextLong(720, 1001)
-            val minBallMs = 1680L
+            val initialDelayMs = Random.nextLong(LOCAL_STREAM_FIRST_TOKEN_MIN_MS, LOCAL_STREAM_FIRST_TOKEN_MAX_MS)
+            val minBallMs = LOCAL_STREAM_MIN_BALL_MS
             val elapsed = SystemClock.uptimeMillis() - ballStartTime
             val firstTokenWait = maxOf(initialDelayMs, minBallMs - elapsed)
             if (firstTokenWait > 0) {
                 delay(firstTokenWait)
             }
 
-            var cursor = 0
-            var emittedSincePause = 0
-            var pauseThreshold = Random.nextInt(90, 161)
-            while (isActive && cursor < fullText.length) {
-                val chunkSize = Random.nextInt(2, 6)
-                val next = min(cursor + chunkSize, fullText.length)
-                val piece = fullText.substring(cursor, next)
-                appendAssistantChunk(piece)
-                emittedSincePause += piece.length
-                cursor = next
-                delay(Random.nextLong(48, 96))
-                val tail = piece.lastOrNull()
-                if (tail == '。' || tail == '，' || tail == '；' || tail == '：' || tail == '！' || tail == '？' || tail == '\n') {
-                    delay(Random.nextLong(70, 151))
-                }
-                if (emittedSincePause >= pauseThreshold && cursor < fullText.length) {
-                    emittedSincePause = 0
-                    pauseThreshold = Random.nextInt(90, 161)
-                    delay(Random.nextLong(130, 281))
+            var remaining = fullText
+            while (isActive && remaining.isNotEmpty()) {
+                val step = nextLocalStreamFeedStep(remaining)
+                appendAssistantChunk(step.text)
+                remaining = remaining.drop(step.text.length)
+                if (step.delayMs > 0) {
+                    delay(step.delayMs)
                 }
             }
             if (isActive) finishStreaming()
@@ -775,64 +1208,95 @@ fun ChatScreen() {
     }
 
     suspend fun scrollToBottom(animated: Boolean) {
-        val lastIndex = messages.lastIndex
-        if (lastIndex < 0) return
+        if (messages.isEmpty() && !hasStreamingItem) return
         programmaticScroll = true
         try {
-            repeat(2) {
-                withFrameNanos { }
-                if (animated) listState.animateScrollToItem(lastIndex) else listState.scrollToItem(lastIndex)
-                withFrameNanos { }
-                val info = listState.layoutInfo
-                val lastItem = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return@repeat
-                val overflow = lastItem.offset + lastItem.size - info.viewportEndOffset
-                if (overflow > 0) {
-                    if (animated) listState.animateScrollBy(overflow.toFloat()) else listState.scrollBy(overflow.toFloat())
+            withFrameNanos { }
+            val target = scrollState.maxValue
+            val delta = target - scrollState.value
+            if (delta <= 0) return
+            when {
+                animated -> {
+                    scrollState.animateScrollTo(target, animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing))
+                }
+                delta <= STREAM_ANIMATED_SCROLL_MAX_DELTA_PX -> {
+                    scrollState.animateScrollTo(target, animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing))
+                }
+                else -> {
+                    scrollState.scrollTo(target)
                 }
             }
+            withFrameNanos { }
         } finally {
             programmaticScroll = false
         }
     }
 
     suspend fun scrollAfterSendAnchor() {
-        val userIndex = messages.indexOfLast { it.role == ChatRole.USER }
-        if (userIndex < 0) return
+        if (messages.isEmpty()) return
         programmaticScroll = true
         try {
-            withFrameNanos { }
-            val viewportHeight =
-                (listState.layoutInfo.viewportEndOffset - listState.layoutInfo.viewportStartOffset)
-                    .coerceAtLeast(1)
-            val anchorOffset = (viewportHeight * 0.42f).toInt().coerceAtLeast(0)
-            listState.scrollToItem(userIndex, anchorOffset)
-            withFrameNanos { }
-            listState.scrollToItem(userIndex, anchorOffset)
+            anchoredTargetBottomPx = (messageViewportHeightPx * SEND_ANCHOR_USER_BOTTOM_RATIO).roundToInt()
+            repeat(16) {
+                withFrameNanos { }
+                delay(24)
+                val currentBottom = anchoredUserBottomPx
+                if (currentBottom <= 0) return@repeat
+                val delta = currentBottom - anchoredTargetBottomPx
+                if (kotlin.math.abs(delta) <= 4) return@repeat
+                val target = (scrollState.value + delta).coerceIn(0, scrollState.maxValue)
+                if (it < 15) scrollState.scrollTo(target)
+                else scrollState.animateScrollTo(target, animationSpec = tween(durationMillis = 110, easing = FastOutSlowInEasing))
+            }
+            autoScrollMode = if (isStreaming && anchoredUserMessageId != null) {
+                AutoScrollMode.StreamAnchorFollow
+            } else {
+                AutoScrollMode.Idle
+            }
         } finally {
             programmaticScroll = false
         }
     }
 
-    LaunchedEffect(streamTick) {
-        if (!autoFollowEnabled) return@LaunchedEffect
-        if (userInteracting) return@LaunchedEffect
-        if (messages.isEmpty()) return@LaunchedEffect
+    LaunchedEffect(streamTick, autoScrollMode, isStreaming, userInteracting, anchoredUserBottomPx) {
+        if (!hasStreamingItem || !isStreaming) return@LaunchedEffect
+        if (autoScrollMode != AutoScrollMode.StreamAnchorFollow) return@LaunchedEffect
+        if (userInteracting || programmaticScroll) return@LaunchedEffect
+        if (anchoredUserBottomPx <= 0 || anchoredTargetBottomPx <= 0) return@LaunchedEffect
         val now = SystemClock.uptimeMillis()
-        if (now - lastAutoScrollMs < 120L) return@LaunchedEffect
+        if (now - lastAutoScrollMs < STREAM_AUTO_SCROLL_THROTTLE_MS) return@LaunchedEffect
+        val delta = anchoredUserBottomPx - anchoredTargetBottomPx
+        if (delta <= STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX) return@LaunchedEffect
         lastAutoScrollMs = now
-        scrollToBottom(animated = false)
+        programmaticScroll = true
+        try {
+            if (delta <= STREAM_FOLLOW_ANIMATE_THRESHOLD_PX) {
+                scrollState.animateScrollBy(
+                    delta.toFloat(),
+                    animationSpec = tween(durationMillis = 68, easing = FastOutSlowInEasing)
+                )
+            } else {
+                scrollState.scrollBy(delta.toFloat())
+            }
+        } finally {
+            programmaticScroll = false
+        }
     }
 
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
+        autoScrollMode = AutoScrollMode.AnchorUser
+        userInteracting = false
         scrollAfterSendAnchor()
+        lastAutoScrollMs = 0L
     }
 
     fun jumpToBottom() {
         snackbarScope.launch {
-            if (messages.isEmpty()) return@launch
-            autoFollowEnabled = true
+            if (messages.isEmpty() && !hasStreamingItem) return@launch
+            autoScrollMode = AutoScrollMode.Idle
             userInteracting = false
+            jumpButtonVisible = false
             scrollToBottom(animated = true)
         }
     }
@@ -840,17 +1304,7 @@ fun ChatScreen() {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colorStops = arrayOf(
-                        0.0f to appTopBottomTint,
-                        0.14f to Color(0xFFF5F5F3),
-                        0.5f to appCenterTint,
-                        0.86f to Color(0xFFF5F5F3),
-                        1.0f to appTopBottomTint
-                    )
-                )
-            )
+            .background(appCenterTint)
     ) {
         val chromeMaxWidth: Dp = when {
             maxWidth >= 900.dp -> 820.dp
@@ -874,8 +1328,7 @@ fun ChatScreen() {
         val addIconSize = if (maxWidth < 360.dp) 27.dp else 29.dp
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.78f else 420.dp
-        val assistantLeadWidth = 18.dp
-
+        val topBarReservedHeight = topInset + chromeButtonSize + 6.dp
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = Color.Transparent,
@@ -891,16 +1344,7 @@ fun ChatScreen() {
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .height(116.dp)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.Transparent,
-                                                Color.White.copy(alpha = 0.44f),
-                                                Color(0xFFF4F5F7).copy(alpha = 0.58f),
-                                                Color.White.copy(alpha = 0.84f)
-                                            )
-                                        )
-                                    )
+                            .background(Color.White)
                     )
                     Row(
                         modifier = Modifier
@@ -1011,31 +1455,19 @@ fun ChatScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .onSizeChanged { messageViewportHeightPx = it.height }
+                    .onGloballyPositioned { coordinates ->
+                        messageViewportTopPx = coordinates.boundsInWindow().top
+                    }
                     .padding(innerPadding)
             ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            userInteracting = true
-                            autoFollowEnabled = false
-                            waitForUpOrCancellation()
-                            userInteracting = false
-                        }
-                    },
-                state = listState,
-                contentPadding = PaddingValues(
-                    top = topBarReservedHeight,
-                    bottom = 18.dp
-                )
-            ) {
-                    items(
-                        items = messages,
-                        key = { it.id },
-                        contentType = { it.role }
-                    ) { msg ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState)
+                        .padding(top = topBarReservedHeight, bottom = 18.dp)
+                ) {
+                    messages.forEach { msg ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1048,48 +1480,29 @@ fun ChatScreen() {
                                     .fillMaxWidth()
                             ) {
                                 if (msg.role == ChatRole.ASSISTANT) {
-                                    val showBreathingBall = isStreaming && msg.id == assistantMessageId && msg.content.isBlank()
-                                    Row(
+                                    AssistantMessageContent(
+                                        content = msg.content,
+                                        isStreaming = false,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(end = 4.dp),
-                                        verticalAlignment = Alignment.Top
-                                    ) {
-                                        if (showBreathingBall) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(assistantLeadWidth)
-                                                    .padding(top = 9.dp),
-                                                contentAlignment = Alignment.CenterStart
-                                            ) {
-                                                GPTBreathingBall()
-                                            }
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                        }
-                                        if (msg.content.isBlank() && showBreathingBall) {
-                                            Spacer(
-                                                modifier = Modifier
-                                                    .weight(1f)
-                                                    .height(48.dp)
-                                            )
-                                        } else if (isStreaming && msg.id == assistantMessageId) {
-                                            AssistantStreamingContent(
-                                                content = msg.content,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        } else {
-                                            AssistantMarkdownContent(
-                                                content = msg.content,
-                                                modifier = Modifier.weight(1f)
-                                            )
-                                        }
-                                    }
+                                            .padding(end = 4.dp)
+                                    )
                                 } else {
                                     Text(
                                         text = msg.content,
                                         modifier = Modifier
                                             .align(Alignment.CenterEnd)
                                             .widthIn(max = userBubbleMaxWidth)
+                                            .then(
+                                                if (msg.id == anchoredUserMessageId) {
+                                                    Modifier.onGloballyPositioned { coordinates ->
+                                                        anchoredUserBottomPx =
+                                                            (coordinates.boundsInWindow().bottom - messageViewportTopPx).roundToInt()
+                                                    }
+                                                } else {
+                                                    Modifier
+                                                }
+                                            )
                                             .clip(RoundedCornerShape(20.dp))
                                             .background(userBubbleColor)
                                             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -1100,9 +1513,38 @@ fun ChatScreen() {
                             }
                         }
                     }
-            }
+                    if (hasStreamingItem) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .widthIn(max = chromeMaxWidth)
+                                    .fillMaxWidth()
+                            ) {
+                                AssistantMessageContent(
+                                    content = streamingMessageContent,
+                                    isStreaming = isStreaming,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(end = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    if (streamBottomSpacerPx > 0 && isStreaming && streamingMessageContent.isBlank()) {
+                        Spacer(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(streamBottomSpacerDp)
+                        )
+                    }
+                }
 
-            if (messages.isEmpty()) {
+            if (messages.isEmpty() && !hasStreamingItem) {
                 Text(
                     text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                     modifier = Modifier
@@ -1115,7 +1557,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (showJumpButton) {
+            if (jumpButtonVisible) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
@@ -1141,7 +1583,7 @@ fun ChatScreen() {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(topBarReservedHeight + 8.dp)
+                    .height(topInset + chromeButtonSize + 2.dp)
                     .background(Color.White)
             )
 
@@ -1149,9 +1591,8 @@ fun ChatScreen() {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .onSizeChanged { topBarHeightPx = it.height }
                     .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                    .padding(top = topInset + 8.dp, bottom = 8.dp)
+                    .padding(top = topInset + 4.dp, bottom = 2.dp)
             ) {
                 Row(
                     modifier = Modifier

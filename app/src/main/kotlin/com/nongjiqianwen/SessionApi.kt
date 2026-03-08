@@ -427,13 +427,13 @@ object SessionApi {
                                                 ?.get("content")
                                                 ?.takeIf { it.isJsonPrimitive }
                                                 ?.asString
-                                                ?.takeIf { it.isNotBlank() }
+                                                ?.takeIf { it.isNotEmpty() }
                                                 ?: choice0.getAsJsonObject("message")
                                                     ?.get("content")
                                                     ?.takeIf { it.isJsonPrimitive }
                                                     ?.asString
-                                                    ?.takeIf { it.isNotBlank() }
-                                        if (!piece.isNullOrBlank()) {
+                                                    ?.takeIf { it.isNotEmpty() }
+                                        if (!piece.isNullOrEmpty()) {
                                             onChunk(piece)
                                         }
                                     } catch (_: Exception) {

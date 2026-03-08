@@ -203,7 +203,7 @@ object QwenClient {
         }
 
         fun appendChunk(piece: String) {
-            if (piece.isBlank()) return
+            if (piece.isEmpty()) return
             synchronized(pendingLock) {
                 pending.append(piece)
                 val elapsed = System.currentTimeMillis() - lastDispatchMs
@@ -276,7 +276,7 @@ object QwenClient {
                             ?.asString
                             .orEmpty()
                     }
-                    if (piece.isBlank()) continue
+                    if (piece.isEmpty()) continue
                     seenValidChunk = true
                     buffer.append(piece)
                     appendChunk(piece)
