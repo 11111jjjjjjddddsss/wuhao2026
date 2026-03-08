@@ -48,10 +48,10 @@ class MainActivity : ComponentActivity() {
         IdManager.init(this)
         setContent {
             MaterialTheme {
-                Surface {
+                Surface(color = Color(0xFF030303)) {
                     var showLaunchOverlay by remember { mutableStateOf(true) }
                     LaunchedEffect(Unit) {
-                        delay(900)
+                        delay(760)
                         showLaunchOverlay = false
                     }
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -69,19 +69,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun LaunchOverlay() {
     val rotation = remember { Animatable(0f) }
-    val scale = remember { Animatable(0.84f) }
+    val scale = remember { Animatable(0.96f) }
     val alpha = remember { Animatable(1f) }
 
     LaunchedEffect(Unit) {
         rotation.animateTo(
-            targetValue = 32f,
-            animationSpec = tween(durationMillis = 900, easing = LinearOutSlowInEasing)
+            targetValue = 68f,
+            animationSpec = tween(durationMillis = 760, easing = LinearOutSlowInEasing)
         )
         scale.animateTo(
             targetValue = 1f,
-            animationSpec = tween(durationMillis = 900, easing = FastOutSlowInEasing)
+            animationSpec = tween(durationMillis = 760, easing = FastOutSlowInEasing)
         )
-        delay(700)
+        delay(560)
         alpha.animateTo(
             targetValue = 0f,
             animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
@@ -98,7 +98,7 @@ private fun LaunchOverlay() {
             painter = painterResource(id = R.mipmap.ic_launcher_foreground),
             contentDescription = null,
             modifier = Modifier
-                .size(236.dp)
+                .size(248.dp)
                 .graphicsLayer(
                     rotationZ = rotation.value,
                     scaleX = scale.value,
