@@ -23,28 +23,23 @@ class MainActivity : ComponentActivity() {
             val iconView = splashViewProvider.iconView
             iconView.scaleX = 0.9f
             iconView.scaleY = 0.9f
-            iconView.rotation = 0f
 
-            val rotation = ObjectAnimator.ofFloat(iconView, "rotation", 0f, 76f).apply {
-                duration = 760L
-                interpolator = AccelerateDecelerateInterpolator()
-            }
             val scaleX = ObjectAnimator.ofFloat(iconView, "scaleX", 0.9f, 1f).apply {
-                duration = 760L
+                duration = 720L
                 interpolator = DecelerateInterpolator()
             }
             val scaleY = ObjectAnimator.ofFloat(iconView, "scaleY", 0.9f, 1f).apply {
-                duration = 760L
+                duration = 720L
                 interpolator = DecelerateInterpolator()
             }
             val fade = ObjectAnimator.ofFloat(splashViewProvider.view, "alpha", 1f, 0f).apply {
-                duration = 140L
-                startDelay = 620L
+                duration = 120L
+                startDelay = 600L
                 interpolator = DecelerateInterpolator()
             }
 
             AnimatorSet().apply {
-                playTogether(rotation, scaleX, scaleY, fade)
+                playTogether(scaleX, scaleY, fade)
                 addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
                         splashViewProvider.remove()
