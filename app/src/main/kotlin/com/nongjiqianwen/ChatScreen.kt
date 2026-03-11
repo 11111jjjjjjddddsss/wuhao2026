@@ -155,7 +155,7 @@ private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
-private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，仅供参考。"
+private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -528,11 +528,13 @@ private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
 )
 
 private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
-    fontSize = 13.sp,
-    lineHeight = 18.sp,
-    color = Color(0xFF9A9CA3),
-    letterSpacing = 0.sp,
-    fontStyle = FontStyle.Italic
+    fontSize = 14.sp,
+    lineHeight = 20.sp,
+    color = Color(0xFF94979D),
+    letterSpacing = 0.1.sp,
+    fontStyle = FontStyle.Italic,
+    fontFamily = FontFamily.SansSerif,
+    fontWeight = FontWeight.Normal
 )
 
 private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
@@ -542,17 +544,9 @@ private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     color = Color(0xFF111111)
 )
 
-private fun releaseStreamingBottomSpacer(currentSpacerPx: Int, revealedText: String): Int {
-    if (currentSpacerPx <= 0 || revealedText.isEmpty()) return currentSpacerPx
-    val visibleCharCount = revealedText.count { !it.isWhitespace() }.coerceAtMost(18)
-    val perBatchRelease = visibleCharCount * 6
-    val structuralBonus = when {
-        revealedText.contains('\n') -> 48
-        revealedText.any { it.isStructuralMarkdownChar() } -> 28
-        else -> 0
-    }
-    val releasePx = (perBatchRelease + structuralBonus).coerceAtLeast(18)
-    return (currentSpacerPx - releasePx).coerceAtLeast(0)
+private fun consumeStreamingBottomSpacer(currentSpacerPx: Int, consumedScrollPx: Float): Int {
+    if (currentSpacerPx <= 0 || consumedScrollPx <= 0f) return currentSpacerPx
+    return (currentSpacerPx - consumedScrollPx.toInt()).coerceAtLeast(0)
 }
 
 private fun trimWindowStartIndex(source: List<ChatMessage>): Int {
@@ -1181,12 +1175,6 @@ fun ChatScreen() {
                     streamingMessageId = "assistant_${UUID.randomUUID()}"
                 }
                 streamingMessageContent += batch.text
-                if (streamBottomSpacerPx > 0) {
-                    streamBottomSpacerPx = releaseStreamingBottomSpacer(
-                        currentSpacerPx = streamBottomSpacerPx,
-                        revealedText = batch.text
-                    )
-                }
                 streamTick++
                 delay(batch.delayMs)
             }
@@ -1238,26 +1226,30 @@ fun ChatScreen() {
                 STREAM_ANCHOR_FOLLOW_STEP_PX
             }
             val step = scrollDelta.coerceAtMost(fixedStep).toFloat()
-            scrollState.scrollBy(step)
+            val consumed = scrollState.scrollBy(step)
+            if (streamBottomSpacerPx > 0 && consumed > 0f) {
+                streamBottomSpacerPx = consumeStreamingBottomSpacer(
+                    currentSpacerPx = streamBottomSpacerPx,
+                    consumedScrollPx = consumed
+                )
+            }
         } finally {
             programmaticScroll = false
             lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         }
     }
 
-    suspend fun smoothCatchUpToBottom(maxPasses: Int = 8) {
+    suspend fun smoothCatchUpToBottom(maxFrames: Int = 480) {
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
-            repeat(maxPasses) {
+            repeat(maxFrames) {
                 withFrameNanos { }
                 val remaining = (scrollState.maxValue - scrollState.value).coerceAtLeast(0)
                 if (remaining <= 0) return
-                val step = remaining.coerceAtMost(STREAM_STICKY_SCROLL_STEP_PX * 2)
-                scrollState.animateScrollBy(
-                    step.toFloat(),
-                    animationSpec = tween(durationMillis = 64, easing = FastOutSlowInEasing)
-                )
+                val step = remaining.coerceAtMost(STREAM_BOTTOM_FOLLOW_STEP_PX).toFloat()
+                val consumed = scrollState.scrollBy(step)
+                if (consumed <= 0f) return
             }
         } finally {
             programmaticScroll = false
@@ -1491,7 +1483,7 @@ fun ChatScreen() {
                 continue
             }
             val streamingOverflow = currentStreamingOverflowDelta()
-            if (streamingOverflow > 0 && streamBottomSpacerPx <= 0) {
+            if (streamingOverflow > 0) {
                 streamBottomFollowActive = true
             }
             val bottomFollow = streamBottomFollowActive

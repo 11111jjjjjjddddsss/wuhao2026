@@ -69,25 +69,18 @@ function consumeChatRateLimit(userId: string, now = Date.now()): { allowed: bool
   return { allowed: true, retryAfterSec: 0 };
 }
 
-function resolveSystemAnchor(): { text: string; source: 'env' | 'file' } {
-  const envAnchor = (process.env.SYSTEM_ANCHOR || '').trim();
-  let fileAnchor = '';
+function resolveSystemAnchor(): string {
   try {
-    fileAnchor = fs.readFileSync(ANCHOR_FILE_PATH, 'utf8').trim();
+    const fileAnchor = fs.readFileSync(ANCHOR_FILE_PATH, 'utf8').trim();
+    if (fileAnchor) return fileAnchor;
   } catch {
-    fileAnchor = '';
+    // Fall through to the explicit startup error below.
   }
-  if (envAnchor && fileAnchor && envAnchor !== fileAnchor) {
-    throw new Error('SYSTEM_ANCHOR mismatch between env and file');
-  }
-  if (envAnchor) return { text: envAnchor, source: 'env' };
-  if (fileAnchor) return { text: fileAnchor, source: 'file' };
-  throw new Error('SYSTEM_ANCHOR missing in both env and server/assets/system_anchor.txt');
+  throw new Error('SYSTEM_ANCHOR missing in server/assets/system_anchor.txt');
 }
 
-const resolvedAnchor = resolveSystemAnchor();
-const SYSTEM_ANCHOR = resolvedAnchor.text;
-app.log.info({ anchor_source: resolvedAnchor.source, anchor_chars: SYSTEM_ANCHOR.length }, 'system anchor loaded');
+const SYSTEM_ANCHOR = resolveSystemAnchor();
+app.log.info({ anchor_source: 'file', anchor_chars: SYSTEM_ANCHOR.length }, 'system anchor loaded');
 
 function buildVisionUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [{ type: 'text', text }];

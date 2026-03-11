@@ -4,9 +4,13 @@ import type { ConsumeResult, DailyQuotaStatus, QuotaSource, Tier } from './types
 
 const TIER_LIMITS: Record<Tier, number> = {
   free: 6,
-  plus: 20,
-  pro: 35,
+  plus: 25,
+  pro: 40,
 };
+const MEMBERSHIP_TERM_DAYS = 30;
+const TOPUP_PACK_REMAINING = 100;
+const TOPUP_PACK_PRICE = 6.0;
+const TOPUP_PACK_ACTIVE_LIMIT = 1;
 
 type EntitlementRow = RowDataPacket & {
   tier: Tier;
@@ -24,7 +28,7 @@ type LedgerRow = RowDataPacket & {
 type TopupRow = RowDataPacket & {
   pack_id: string;
   remaining: number;
-  expire_at: number;
+  expire_at: number | null;
   status: 'active' | 'used_up' | 'expired';
 };
 
@@ -175,8 +179,8 @@ export async function consumeOnDone(params: {
         const [topupRows] = await conn.execute<TopupRow[]>(
           `SELECT pack_id, remaining, expire_at, status
            FROM topup_packs
-           WHERE user_id = ? AND status = 'active' AND remaining > 0 AND expire_at > ?
-           ORDER BY expire_at ASC, created_at ASC
+           WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)
+           ORDER BY CASE WHEN expire_at IS NULL THEN 1 ELSE 0 END ASC, expire_at ASC, created_at ASC
            LIMIT 1
            FOR UPDATE`,
           [params.userId, now],
@@ -235,7 +239,7 @@ export async function getTopupStatus(userId: string): Promise<{ remaining: numbe
     const [rows] = await conn.execute<RowDataPacket[]>(
       `SELECT COALESCE(SUM(remaining),0) AS total_remaining, MIN(expire_at) AS earliest_expire_at
        FROM topup_packs
-       WHERE user_id = ? AND status = 'active' AND remaining > 0 AND expire_at > ?`,
+       WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)`,
       [userId, now],
     );
     const first = rows[0] as RowDataPacket | undefined;
@@ -262,7 +266,7 @@ export async function getUpgradeRemaining(userId: string): Promise<number> {
 export async function buyTopupPack(userId: string, orderId: string): Promise<{
   replay: boolean;
   pack_id: string;
-  expire_at: number;
+  expire_at: number | null;
   remaining: number;
 }> {
   return withConnection(async (conn) => {
@@ -293,27 +297,27 @@ export async function buyTopupPack(userId: string, orderId: string): Promise<{
       const [activePackRows] = await conn.execute<RowDataPacket[]>(
         `SELECT COUNT(1) AS cnt
          FROM topup_packs
-         WHERE user_id = ? AND status = 'active' AND remaining > 0 AND expire_at > ?`,
+         WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)`,
         [userId, now],
       );
       const activeCount = Number(activePackRows[0]?.cnt ?? 0);
-      if (activeCount >= 2) {
+      if (activeCount >= TOPUP_PACK_ACTIVE_LIMIT) {
         throw new Error('TOPUP_LIMIT_REACHED');
       }
 
       const packId = `pack_${orderId}`;
-      const expireAt = addDays(now, 10);
-      const result = { pack_id: packId, expire_at: expireAt, remaining: 30 };
+      const expireAt = null;
+      const result = { pack_id: packId, expire_at: expireAt, remaining: TOPUP_PACK_REMAINING };
 
       await conn.execute(
         `INSERT INTO topup_packs(pack_id, user_id, remaining, expire_at, status, created_at)
-         VALUES (?, ?, 30, ?, 'active', ?)`,
-        [packId, userId, expireAt, now],
+         VALUES (?, ?, ?, ?, 'active', ?)`,
+        [packId, userId, TOPUP_PACK_REMAINING, expireAt, now],
       );
       await conn.execute(
         `INSERT INTO orders(order_id, user_id, type, amount, created_at, status, result_json)
-         VALUES (?, ?, 'buy_topup', 6.6, ?, 'success', ?)`,
-        [orderId, userId, now, JSON.stringify(result)],
+         VALUES (?, ?, 'buy_topup', ?, ?, 'success', ?)`,
+        [orderId, userId, TOPUP_PACK_PRICE, now, JSON.stringify(result)],
       );
 
       await conn.commit();
@@ -364,7 +368,7 @@ export async function upgradePlusToPro(userId: string, orderId: string): Promise
       const remainingFullDays = Math.max(0, dayIndexFromTsCN(expireAtOld) - dayIndexFromTsCN(now));
       const compensation = todayRemainingPlus + remainingFullDays * TIER_LIMITS.plus;
 
-      const newTierExpireAt = addDays(now, 30);
+      const newTierExpireAt = addDays(now, MEMBERSHIP_TERM_DAYS);
       await conn.execute(
         'UPDATE user_entitlement SET tier = ?, tier_expire_at = ?, updated_at = ? WHERE user_id = ?',
         ['pro', newTierExpireAt, now, userId],
