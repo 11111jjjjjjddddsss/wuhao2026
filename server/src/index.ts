@@ -20,6 +20,8 @@ import {
   getTodayKeyCN,
   getTopupStatus,
   getUpgradeRemaining,
+  renewPlus,
+  renewPro,
   upgradePlusToPro,
   wasProcessed,
 } from './quota.js';
@@ -298,6 +300,44 @@ app.post('/api/topup/buy', async (request, reply) => {
   } catch (error) {
     const code = error instanceof Error && error.message === 'FORBIDDEN_TIER' ? 403 : error instanceof Error && error.message === 'TOPUP_LIMIT_REACHED' ? 409 : 500;
     const msg = error instanceof Error ? error.message : 'internal_error';
+    return reply.code(code).send({ error: msg });
+  }
+});
+
+app.post('/api/tier/renew_plus', async (request, reply) => {
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
+  const userId = auth.userId;
+  const body = (request.body || {}) as Record<string, unknown>;
+  const orderId = String(body.order_id || '').trim();
+  if (!orderId) return reply.code(400).send({ error: 'order_id required' });
+  await ensureUser(userId, 'free');
+  try {
+    const result = await renewPlus(userId, orderId);
+    request.log.info({ userId, orderId, replay: result.replay, tierExpireAt: result.tier_expire_at }, 'tier renew plus');
+    return reply.send({ ok: true, replay: result.replay, tier: result.tier, tier_expire_at: result.tier_expire_at });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'internal_error';
+    const code = msg === 'FORBIDDEN_TIER' ? 403 : 500;
+    return reply.code(code).send({ error: msg });
+  }
+});
+
+app.post('/api/tier/renew_pro', async (request, reply) => {
+  const auth = requireAuthOrReply(request, reply);
+  if (!auth) return;
+  const userId = auth.userId;
+  const body = (request.body || {}) as Record<string, unknown>;
+  const orderId = String(body.order_id || '').trim();
+  if (!orderId) return reply.code(400).send({ error: 'order_id required' });
+  await ensureUser(userId, 'free');
+  try {
+    const result = await renewPro(userId, orderId);
+    request.log.info({ userId, orderId, replay: result.replay, tierExpireAt: result.tier_expire_at }, 'tier renew pro');
+    return reply.send({ ok: true, replay: result.replay, tier: result.tier, tier_expire_at: result.tier_expire_at });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'internal_error';
+    const code = msg === 'FORBIDDEN_TIER' ? 403 : msg === 'USE_UPGRADE_PLUS_TO_PRO' ? 409 : 500;
     return reply.code(code).send({ error: msg });
   }
 });

@@ -11,6 +11,8 @@ const MEMBERSHIP_TERM_DAYS = 30;
 const TOPUP_PACK_REMAINING = 100;
 const TOPUP_PACK_PRICE = 6.0;
 const TOPUP_PACK_ACTIVE_LIMIT = 1;
+const PLUS_TIER_PRICE = 0.0;
+const PRO_TIER_PRICE = 0.0;
 
 type EntitlementRow = RowDataPacket & {
   tier: Tier;
@@ -34,7 +36,7 @@ type TopupRow = RowDataPacket & {
 
 type UpgradeRow = RowDataPacket & {
   remaining: number;
-  expire_at: number;
+  expire_at: number | null;
 };
 type OrderRow = RowDataPacket & {
   order_id: string;
@@ -48,6 +50,10 @@ function nowTs(): number {
 
 function addDays(ts: number, days: number): number {
   return ts + days * 24 * 60 * 60 * 1000;
+}
+
+function extendTierExpireAt(now: number, currentExpireAt: number | null): number {
+  return addDays(Math.max(now, currentExpireAt ?? 0), MEMBERSHIP_TERM_DAYS);
 }
 
 function cnDateParts(date = new Date()): { year: number; month: number; day: number } {
@@ -176,40 +182,40 @@ export async function consumeOnDone(params: {
         );
         source = 'daily';
       } else {
-        const [topupRows] = await conn.execute<TopupRow[]>(
-          `SELECT pack_id, remaining, expire_at, status
-           FROM topup_packs
-           WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)
-           ORDER BY CASE WHEN expire_at IS NULL THEN 1 ELSE 0 END ASC, expire_at ASC, created_at ASC
+        const [upgradeRows] = await conn.execute<UpgradeRow[]>(
+          `SELECT remaining, expire_at
+           FROM upgrade_credits
+           WHERE user_id = ? AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)
            LIMIT 1
            FOR UPDATE`,
           [params.userId, now],
         );
-        if (topupRows.length > 0) {
-          const pack = topupRows[0];
+        if (upgradeRows.length > 0) {
           await conn.execute(
-            `UPDATE topup_packs
-             SET remaining = remaining - 1,
-                 status = CASE WHEN remaining - 1 <= 0 THEN 'used_up' ELSE status END
-             WHERE pack_id = ?`,
-            [pack.pack_id],
+            'UPDATE upgrade_credits SET remaining = remaining - 1, updated_at = ? WHERE user_id = ?',
+            [now, params.userId],
           );
-          source = 'topup';
+          source = 'upgrade';
         } else {
-          const [upgradeRows] = await conn.execute<UpgradeRow[]>(
-            `SELECT remaining, expire_at
-             FROM upgrade_credits
-             WHERE user_id = ? AND remaining > 0 AND expire_at > ?
+          const [topupRows] = await conn.execute<TopupRow[]>(
+            `SELECT pack_id, remaining, expire_at, status
+             FROM topup_packs
+             WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)
+             ORDER BY CASE WHEN expire_at IS NULL THEN 1 ELSE 0 END ASC, expire_at ASC, created_at ASC
              LIMIT 1
              FOR UPDATE`,
             [params.userId, now],
           );
-          if (upgradeRows.length > 0) {
+          if (topupRows.length > 0) {
+            const pack = topupRows[0];
             await conn.execute(
-              'UPDATE upgrade_credits SET remaining = remaining - 1, updated_at = ? WHERE user_id = ?',
-              [now, params.userId],
+              `UPDATE topup_packs
+               SET remaining = remaining - 1,
+                   status = CASE WHEN remaining - 1 <= 0 THEN 'used_up' ELSE status END
+               WHERE pack_id = ?`,
+              [pack.pack_id],
             );
-            source = 'upgrade';
+            source = 'topup';
           }
         }
       }
@@ -258,9 +264,86 @@ export async function getUpgradeRemaining(userId: string): Promise<number> {
       [userId],
     );
     if (rows.length === 0) return 0;
-    if (rows[0].expire_at <= now) return 0;
+    if (rows[0].expire_at != null && rows[0].expire_at <= now) return 0;
     return Math.max(0, rows[0].remaining);
   });
+}
+
+async function renewTier(userId: string, orderId: string, targetTier: 'plus' | 'pro'): Promise<{
+  replay: boolean;
+  tier: Tier;
+  tier_expire_at: number;
+}> {
+  return withConnection(async (conn) => {
+    const now = nowTs();
+    await conn.beginTransaction();
+    try {
+      const [existingOrderRows] = await conn.execute<OrderRow[]>(
+        'SELECT order_id, type, result_json FROM orders WHERE order_id = ? AND user_id = ? LIMIT 1 FOR UPDATE',
+        [orderId, userId],
+      );
+      if (existingOrderRows.length > 0) {
+        const resultJson = existingOrderRows[0].result_json;
+        const replayResult = resultJson ? JSON.parse(resultJson) : null;
+        await conn.commit();
+        if (replayResult && replayResult.tier === targetTier) return { replay: true, ...replayResult };
+        throw new Error('ORDER_REPLAY_INVALID');
+      }
+
+      const [entitlementRows] = await conn.execute<EntitlementRow[]>(
+        'SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE',
+        [userId],
+      );
+      const row = entitlementRows[0];
+      const currentTier = row?.tier ?? 'free';
+      if (targetTier === 'plus' && currentTier === 'pro') {
+        throw new Error('FORBIDDEN_TIER');
+      }
+      if (targetTier === 'pro' && currentTier === 'plus') {
+        throw new Error('USE_UPGRADE_PLUS_TO_PRO');
+      }
+
+      const newTierExpireAt = extendTierExpireAt(now, row?.tier_expire_at ?? null);
+      await conn.execute(
+        'UPDATE user_entitlement SET tier = ?, tier_expire_at = ?, updated_at = ? WHERE user_id = ?',
+        [targetTier, newTierExpireAt, now, userId],
+      );
+
+      const result = {
+        tier: targetTier as Tier,
+        tier_expire_at: newTierExpireAt,
+      };
+      const amount = targetTier === 'plus' ? PLUS_TIER_PRICE : PRO_TIER_PRICE;
+      const orderType = targetTier === 'plus' ? 'renew_plus' : 'renew_pro';
+      await conn.execute(
+        `INSERT INTO orders(order_id, user_id, type, amount, created_at, status, result_json)
+         VALUES (?, ?, ?, ?, ?, 'success', ?)`,
+        [orderId, userId, orderType, amount, now, JSON.stringify(result)],
+      );
+
+      await conn.commit();
+      return { replay: false, ...result };
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    }
+  });
+}
+
+export async function renewPlus(userId: string, orderId: string): Promise<{
+  replay: boolean;
+  tier: Tier;
+  tier_expire_at: number;
+}> {
+  return renewTier(userId, orderId, 'plus');
+}
+
+export async function renewPro(userId: string, orderId: string): Promise<{
+  replay: boolean;
+  tier: Tier;
+  tier_expire_at: number;
+}> {
+  return renewTier(userId, orderId, 'pro');
 }
 
 export async function buyTopupPack(userId: string, orderId: string): Promise<{
@@ -374,13 +457,13 @@ export async function upgradePlusToPro(userId: string, orderId: string): Promise
         ['pro', newTierExpireAt, now, userId],
       );
 
-      const upgradeExpireAt = addDays(now, 365);
+      const upgradeExpireAt = null;
       await conn.execute(
         `INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
          VALUES (?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE
            remaining = remaining + VALUES(remaining),
-           expire_at = GREATEST(expire_at, VALUES(expire_at)),
+           expire_at = NULL,
            updated_at = VALUES(updated_at)`,
         [userId, compensation, upgradeExpireAt, now],
       );
