@@ -95,8 +95,9 @@ function buildVisionUserContent(text: string, images: string[]): Array<Record<st
   return content;
 }
 
-function roundToUserContent(round: SessionRound): string | Array<Record<string, unknown>> {
-  return round.user;
+function roundToUserContent(round: SessionRound, includeImages: boolean): string | Array<Record<string, unknown>> {
+  const images = includeImages ? (round.user_images ?? []).filter((url) => typeof url === 'string' && url.trim()) : [];
+  return images.length > 0 ? buildVisionUserContent(round.user, images) : round.user;
 }
 
 function buildPromptMessages(
@@ -117,8 +118,9 @@ function buildPromptMessages(
   if (hasCSummary) {
     messages.push({ role: 'system', content: `【C层长期记忆（仅供参考）】\n${snapshot!.c_summary.trim()}` });
   }
-  for (const round of rounds) {
-    messages.push({ role: 'user', content: roundToUserContent(round) });
+  const previousRoundIndex = rounds.length - 1;
+  for (const [index, round] of rounds.entries()) {
+    messages.push({ role: 'user', content: roundToUserContent(round, index == previousRoundIndex) });
     messages.push({ role: 'assistant', content: round.assistant });
   }
   messages.push({ role: 'user', content: buildVisionUserContent(currentText, currentImages) });
