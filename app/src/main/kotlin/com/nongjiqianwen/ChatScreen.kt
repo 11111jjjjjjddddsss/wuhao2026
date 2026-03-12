@@ -20,15 +20,16 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -69,7 +70,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -141,14 +141,12 @@ private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
-private const val STREAM_AUTO_SCROLL_THROTTLE_MS = 16L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 private const val STREAM_REVEAL_FRAME_BUDGET_MS = 42L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 5
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 1500L
-private const val STREAM_ANIMATED_SCROLL_MAX_DELTA_PX = 220
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
 private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 18
 private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 10
@@ -161,7 +159,6 @@ private const val PROGRAMMATIC_SCROLL_SETTLE_MS = 180L
 private const val GPT_BALL_PULSE_MS = 760
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
-private const val STREAM_BOTTOM_FOLLOW_MIN_DEBT_PX = 2f
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
@@ -170,7 +167,6 @@ private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 20.dp
 private val GPT_BALL_TOP_PADDING = 8.dp
-private val GPT_STREAM_TAIL_SHIFT = 3.dp
 private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -745,27 +741,15 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
 private fun AssistantStreamingTail(content: String) {
     val trimmed = content.trimStart()
     fun buildTail(text: String): AnnotatedString = buildStreamingAnnotatedString(text)
-    val density = LocalDensity.current
     val alpha = remember { Animatable(1f) }
-    val translateY = remember { Animatable(0f) }
     LaunchedEffect(content.length) {
-        val startAlpha = if (content.length <= 6) 0.58f else 0.74f
+        val startAlpha = if (content.length <= 6) 0.78f else 0.88f
         alpha.snapTo(startAlpha)
-        translateY.snapTo(with(density) { GPT_STREAM_TAIL_SHIFT.toPx() })
-        launch {
-            alpha.animateTo(
-                targetValue = 1f,
-                animationSpec = tween(
-                    durationMillis = GPT_STREAM_TEXT_ENTRY_MS,
-                    easing = LinearOutSlowInEasing
-                )
-            )
-        }
-        translateY.animateTo(
-            targetValue = 0f,
+        alpha.animateTo(
+            targetValue = 1f,
             animationSpec = tween(
                 durationMillis = GPT_STREAM_TEXT_ENTRY_MS,
-                easing = FastOutSlowInEasing
+                easing = LinearOutSlowInEasing
             )
         )
     }
@@ -773,7 +757,6 @@ private fun AssistantStreamingTail(content: String) {
         .fillMaxWidth()
         .graphicsLayer {
             this.alpha = alpha.value
-            translationY = translateY.value
         }
 
     when {
@@ -1065,7 +1048,7 @@ fun ChatScreen() {
     val messages = remember(sessionId) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
-    val scrollState = rememberScrollState(initial = Int.MAX_VALUE)
+    val listState = rememberLazyListState()
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -1082,7 +1065,6 @@ fun ChatScreen() {
     var sendTick by remember { mutableIntStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastProgrammaticScrollMs by remember { mutableStateOf(0L) }
-    var lastAutoScrollMs by remember { mutableStateOf(0L) }
     var persistTick by remember { mutableIntStateOf(0) }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
@@ -1097,8 +1079,6 @@ fun ChatScreen() {
     var anchoredLongUserMode by remember { mutableStateOf(false) }
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
     var streamBottomFollowActive by remember { mutableStateOf(false) }
-    var streamBottomFollowDebtPx by remember { mutableFloatStateOf(0f) }
-    var lastStreamingDocumentBottomPx by remember { mutableIntStateOf(-1) }
     var initialBottomSnapDone by remember(sessionId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -1106,16 +1086,12 @@ fun ChatScreen() {
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val longUserVisibleHeightPx = with(density) { SEND_ANCHOR_LONG_USER_VISIBLE_HEIGHT.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
-    val initialBottomSnapThresholdPx = with(density) { INITIAL_BOTTOM_SNAP_THRESHOLD.toPx().roundToInt() }
     val streamBottomSpacerDp = with(density) { streamBottomSpacerPx.toDp() }
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
     }
     val atBottom by remember {
-        derivedStateOf {
-            val remaining = scrollState.maxValue - scrollState.value
-            remaining <= followSlopPx
-        }
+        derivedStateOf { !listState.canScrollForward }
     }
     val imeVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
     val shouldOfferJumpButton by remember(atBottom, imeVisible, messages.size, autoScrollMode, hasStreamingItem) {
@@ -1214,31 +1190,31 @@ fun ChatScreen() {
         context.saveLocalChatWindow(sessionId, messages)
     }
 
-    LaunchedEffect(scrollState.isScrollInProgress, programmaticScroll, atBottom) {
+    LaunchedEffect(listState.isScrollInProgress, programmaticScroll, atBottom) {
         val now = SystemClock.uptimeMillis()
         if (programmaticScroll || now - lastProgrammaticScrollMs < PROGRAMMATIC_SCROLL_SETTLE_MS) {
             userInteracting = false
             return@LaunchedEffect
         }
-        userInteracting = scrollState.isScrollInProgress
-        if (scrollState.isScrollInProgress && !atBottom) {
+        userInteracting = listState.isScrollInProgress
+        if (listState.isScrollInProgress && !atBottom) {
             autoScrollMode = AutoScrollMode.Idle
         }
     }
 
-    LaunchedEffect(shouldOfferJumpButton, scrollState.isScrollInProgress, programmaticScroll) {
+    LaunchedEffect(shouldOfferJumpButton, listState.isScrollInProgress, programmaticScroll) {
         if (!shouldOfferJumpButton) {
             jumpButtonVisible = false
             return@LaunchedEffect
         }
-        if (programmaticScroll || scrollState.isScrollInProgress) {
+        if (programmaticScroll || listState.isScrollInProgress) {
             jumpButtonVisible = false
             return@LaunchedEffect
         }
 
         jumpButtonVisible = true
         delay(JUMP_BUTTON_AUTO_HIDE_MS)
-        if (!scrollState.isScrollInProgress && !programmaticScroll && shouldOfferJumpButton) {
+        if (!listState.isScrollInProgress && !programmaticScroll && shouldOfferJumpButton) {
             jumpButtonVisible = false
         }
     }
@@ -1305,19 +1281,12 @@ fun ChatScreen() {
         }
     }
 
-    fun currentStreamingDocumentBottomPx(): Int {
-        if (streamingContentBottomPx <= 0) return -1
-        return scrollState.value + streamingContentBottomPx
-    }
-
     suspend fun followStreamingFrameStep(
         scrollDelta: Int,
         bottomFollow: Boolean
     ) {
         if (scrollDelta <= 0) return
-        val now = SystemClock.uptimeMillis()
-        lastAutoScrollMs = now
-        lastProgrammaticScrollMs = now
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
             val fixedStep = if (bottomFollow) {
@@ -1326,17 +1295,13 @@ fun ChatScreen() {
                 STREAM_ANCHOR_FOLLOW_STEP_PX
             }
             val step = scrollDelta.coerceAtMost(fixedStep).toFloat()
-            val consumed = scrollState.scrollBy(step)
+            val consumed = listState.scrollBy(step)
             if (consumed > 0f) {
                 if (streamBottomSpacerPx > 0) {
                     streamBottomSpacerPx = consumeStreamingBottomSpacer(
                         currentSpacerPx = streamBottomSpacerPx,
                         consumedScrollPx = consumed
                     )
-                }
-                if (bottomFollow && streamBottomFollowDebtPx > 0f) {
-                    streamBottomFollowDebtPx =
-                        (streamBottomFollowDebtPx - consumed).coerceAtLeast(0f)
                 }
             }
         } finally {
@@ -1351,10 +1316,8 @@ fun ChatScreen() {
         try {
             repeat(maxFrames) {
                 withFrameNanos { }
-                val remaining = (scrollState.maxValue - scrollState.value).coerceAtLeast(0)
-                if (remaining <= 0) return
-                val step = remaining.coerceAtMost(STREAM_BOTTOM_FOLLOW_STEP_PX).toFloat()
-                val consumed = scrollState.scrollBy(step)
+                if (!listState.canScrollForward) return
+                val consumed = listState.scrollBy(STREAM_BOTTOM_FOLLOW_STEP_PX.toFloat())
                 if (consumed <= 0f) return
             }
         } finally {
@@ -1391,8 +1354,6 @@ fun ChatScreen() {
             streamBottomSpacerPx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
-            streamBottomFollowDebtPx = 0f
-            lastStreamingDocumentBottomPx = -1
             autoScrollMode = AutoScrollMode.Idle
             persistTick++
             if (shouldSnapToBottomOnFinish) {
@@ -1463,7 +1424,6 @@ fun ChatScreen() {
                 }
                 autoScrollMode = AutoScrollMode.StreamAnchorFollow
             }
-            lastStreamingDocumentBottomPx = -1
             if (streamRevealJob?.isActive != true && streamingRevealBuffer.isNotEmpty()) {
                 ensureStreamingRevealJob()
             }
@@ -1491,8 +1451,6 @@ fun ChatScreen() {
         anchoredLongUserMode = false
         streamingContentBottomPx = -1
         streamBottomFollowActive = false
-        streamBottomFollowDebtPx = 0f
-        lastStreamingDocumentBottomPx = -1
         input.value = ""
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
@@ -1540,19 +1498,18 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             withFrameNanos { }
-            val target = scrollState.maxValue
-            val delta = target - scrollState.value
-            if (delta <= 0) return
-            when {
-                animated -> {
-                    scrollState.animateScrollTo(target, animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing))
-                }
-                delta <= STREAM_ANIMATED_SCROLL_MAX_DELTA_PX -> {
-                    scrollState.animateScrollTo(target, animationSpec = tween(durationMillis = 90, easing = FastOutSlowInEasing))
-                }
-                else -> {
-                    scrollState.scrollTo(target)
-                }
+            val lastIndex = (messages.size + if (hasStreamingItem) 1 else 0) - 1
+            if (lastIndex < 0) return
+            if (animated) {
+                listState.animateScrollToItem(lastIndex)
+            } else {
+                listState.scrollToItem(lastIndex)
+            }
+            repeat(18) {
+                withFrameNanos { }
+                if (!listState.canScrollForward) return
+                val consumed = listState.scrollBy(STREAM_STICKY_SCROLL_STEP_PX.toFloat())
+                if (consumed <= 0f) return
             }
             withFrameNanos { }
         } finally {
@@ -1590,9 +1547,11 @@ fun ChatScreen() {
                 if (current < 0) return@repeat
                 val delta = current - target
                 if (kotlin.math.abs(delta) <= 4) return@repeat
-                val scrollTarget = (scrollState.value + delta).coerceIn(0, scrollState.maxValue)
-                if (it < 15) scrollState.scrollTo(scrollTarget)
-                else scrollState.animateScrollTo(scrollTarget, animationSpec = tween(durationMillis = 110, easing = FastOutSlowInEasing))
+                val consumed = listState.scrollBy(delta.toFloat())
+                if (delta > 0 && consumed + 1f < delta.toFloat()) {
+                    streamBottomSpacerPx += ((delta.toFloat() - consumed).roundToInt() + followSlopPx)
+                    return@repeat
+                }
             }
             autoScrollMode = if (isStreaming && anchoredUserMessageId != null) {
                 AutoScrollMode.StreamAnchorFollow
@@ -1616,54 +1575,23 @@ fun ChatScreen() {
         if (autoScrollMode != AutoScrollMode.StreamAnchorFollow) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
         while (isStreaming && hasStreamingItem && autoScrollMode == AutoScrollMode.StreamAnchorFollow && !userInteracting) {
-            delay(STREAM_AUTO_SCROLL_THROTTLE_MS)
+            withFrameNanos { }
             if (programmaticScroll) continue
             val anchorReady = if (anchoredLongUserMode) {
                 anchoredUserBottomPx > 0 && anchoredTargetBottomPx > 0
             } else {
                 anchoredUserTopPx >= 0 && anchoredTargetTopPx > 0
             }
-            if (!anchorReady) {
-                continue
-            }
             val streamingOverflow = currentStreamingOverflowDelta()
             if (!streamBottomFollowActive && streamingOverflow > 0) {
                 streamBottomFollowActive = true
-                streamBottomFollowDebtPx = maxOf(
-                    streamBottomFollowDebtPx,
-                    streamingOverflow.toFloat()
-                )
-                currentStreamingDocumentBottomPx()
-                    .takeIf { it > 0 }
-                    ?.let { lastStreamingDocumentBottomPx = it }
             }
             val bottomFollow = streamBottomFollowActive
-            if (bottomFollow) {
-                val currentDocumentBottom = currentStreamingDocumentBottomPx()
-                if (currentDocumentBottom > 0) {
-                    if (lastStreamingDocumentBottomPx > 0) {
-                        val growthPx = (currentDocumentBottom - lastStreamingDocumentBottomPx)
-                            .coerceAtLeast(0)
-                        if (growthPx > 0) {
-                            streamBottomFollowDebtPx += growthPx.toFloat()
-                        }
-                    }
-                    lastStreamingDocumentBottomPx = currentDocumentBottom
-                } else {
-                    lastStreamingDocumentBottomPx = -1
-                }
-                if (streamingOverflow > 0) {
-                    streamBottomFollowDebtPx = maxOf(
-                        streamBottomFollowDebtPx,
-                        streamingOverflow.toFloat()
-                    )
-                }
+            if (!bottomFollow && !anchorReady) {
+                continue
             }
             val scrollDelta = if (bottomFollow) {
-                streamBottomFollowDebtPx
-                    .takeIf { it >= STREAM_BOTTOM_FOLLOW_MIN_DEBT_PX }
-                    ?.roundToInt()
-                    ?: 0
+                streamingOverflow
             } else {
                 maxOf(currentAnchorFollowDelta(), streamingOverflow)
             }
@@ -1682,7 +1610,6 @@ fun ChatScreen() {
         autoScrollMode = AutoScrollMode.AnchorUser
         userInteracting = false
         scrollAfterSendAnchor()
-        lastAutoScrollMs = 0L
     }
 
     LaunchedEffect(messages.size, isStreaming, bottomBarHeightPx, hasStreamingItem, initialBottomSnapDone) {
@@ -1690,8 +1617,7 @@ fun ChatScreen() {
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (bottomBarHeightPx <= 0) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
-        val remaining = (scrollState.maxValue - scrollState.value).coerceAtLeast(0)
-        if (remaining > initialBottomSnapThresholdPx) {
+        if (listState.canScrollForward) {
             scrollToBottom(animated = false)
         }
         jumpButtonVisible = false
@@ -1714,19 +1640,19 @@ fun ChatScreen() {
             .background(appCenterTint)
     ) {
         val chromeMaxWidth: Dp = when {
-            maxWidth >= 900.dp -> 880.dp
-            maxWidth >= 700.dp -> 740.dp
+            maxWidth >= 900.dp -> 900.dp
+            maxWidth >= 700.dp -> 760.dp
             else -> maxWidth
         }
         val chromeHorizontalPadding = when {
-            maxWidth < 360.dp -> 14.dp
-            maxWidth < 600.dp -> 18.dp
+            maxWidth < 360.dp -> 12.dp
+            maxWidth < 600.dp -> 16.dp
             else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 14.dp
-            maxWidth < 600.dp -> 18.dp
-            else -> 24.dp
+            maxWidth < 360.dp -> 12.dp
+            maxWidth < 600.dp -> 14.dp
+            else -> 22.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
@@ -1734,11 +1660,12 @@ fun ChatScreen() {
         val addButtonSize = actionCircleSize
         val addIconSize = if (maxWidth < 360.dp) 27.dp else 29.dp
         val sendButtonSize = actionCircleSize
-        val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.78f else 420.dp
+        val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
         val topBarReservedHeight = topInset + chromeButtonSize + 6.dp
+        val pageSurface = Color(0xFFFFFFFF)
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent,
+            containerColor = pageSurface,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
                 Box(
@@ -1751,7 +1678,7 @@ fun ChatScreen() {
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .height(116.dp)
-                            .background(Color.White)
+                            .background(pageSurface)
                     )
                     Row(
                         modifier = Modifier
@@ -1862,19 +1789,22 @@ fun ChatScreen() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(pageSurface)
                     .onSizeChanged { messageViewportHeightPx = it.height }
                     .onGloballyPositioned { coordinates ->
                         messageViewportTopPx = coordinates.boundsInWindow().top
                     }
                     .padding(innerPadding)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
-                        .padding(top = topBarReservedHeight, bottom = 18.dp)
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        top = topBarReservedHeight,
+                        bottom = 18.dp + streamBottomSpacerDp
+                    )
                 ) {
-                    messages.forEach { msg ->
+                    items(items = messages, key = { it.id }) { msg ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1925,37 +1855,32 @@ fun ChatScreen() {
                         }
                     }
                     if (hasStreamingItem) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
-                        ) {
+                        item(key = streamingMessageId ?: "streaming_message") {
                             Box(
                                 modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .widthIn(max = chromeMaxWidth)
                                     .fillMaxWidth()
+                                    .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
                             ) {
-                                AssistantMessageContent(
-                                    content = streamingMessageContent,
-                                    isStreaming = isStreaming,
+                                Box(
                                     modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .widthIn(max = chromeMaxWidth)
                                         .fillMaxWidth()
-                                        .onGloballyPositioned { coordinates ->
-                                            streamingContentBottomPx =
-                                                (coordinates.boundsInWindow().bottom - messageViewportTopPx).roundToInt()
-                                        }
-                                        .padding(end = 1.dp)
-                                )
+                                ) {
+                                    AssistantMessageContent(
+                                        content = streamingMessageContent,
+                                        isStreaming = isStreaming,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .onGloballyPositioned { coordinates ->
+                                                streamingContentBottomPx =
+                                                    (coordinates.boundsInWindow().bottom - messageViewportTopPx).roundToInt()
+                                            }
+                                            .padding(end = 1.dp)
+                                    )
+                                }
                             }
                         }
-                    }
-                    if (streamBottomSpacerPx > 0 && isStreaming) {
-                        Spacer(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(streamBottomSpacerDp)
-                        )
                     }
                 }
 
@@ -1999,7 +1924,7 @@ fun ChatScreen() {
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .height(topInset + chromeButtonSize + 2.dp)
-                    .background(Color.White)
+                    .background(pageSurface)
             )
 
             Box(
