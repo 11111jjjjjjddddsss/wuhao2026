@@ -1170,6 +1170,11 @@ fun ChatScreen() {
                 autoScrollMode == AutoScrollMode.Idle
         }
     }
+    val shouldRevealMessageList by remember(initialBottomSnapDone, messages.size, isStreaming, hasStreamingItem) {
+        derivedStateOf {
+            initialBottomSnapDone || messages.isEmpty() || isStreaming || hasStreamingItem
+        }
+    }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -1660,10 +1665,15 @@ fun ChatScreen() {
             } else {
                 listState.scrollToItem(lastIndex)
             }
-            repeat(18) {
+            val stickyStepPx = messageViewportHeightPx
+                .takeIf { it > 0 }
+                ?.let { (it * 0.88f).roundToInt() }
+                ?.coerceAtLeast(STREAM_STICKY_SCROLL_STEP_PX)
+                ?: STREAM_STICKY_SCROLL_STEP_PX
+            repeat(72) {
                 withFrameNanos { }
                 if (!listState.canScrollForward) return
-                val consumed = listState.scrollBy(STREAM_STICKY_SCROLL_STEP_PX.toFloat())
+                val consumed = listState.scrollBy(stickyStepPx.toFloat())
                 if (consumed <= 0f) return
             }
             withFrameNanos { }
@@ -1777,13 +1787,18 @@ fun ChatScreen() {
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (bottomBarHeightPx <= 0) return@LaunchedEffect
         repeat(4) { withFrameNanos { } }
-        scrollToBottom(animated = false)
-        repeat(2) { withFrameNanos { } }
-        if (listState.canScrollForward) {
+        repeat(3) { attempt ->
             scrollToBottom(animated = false)
+            repeat(2) { withFrameNanos { } }
+            if (!listState.canScrollForward) {
+                jumpButtonVisible = false
+                initialBottomSnapDone = true
+                return@LaunchedEffect
+            }
+            if (attempt < 2) {
+                delay(90)
+            }
         }
-        jumpButtonVisible = false
-        initialBottomSnapDone = true
     }
 
     fun jumpToBottom() {
@@ -1960,7 +1975,11 @@ fun ChatScreen() {
             ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            alpha = if (shouldRevealMessageList) 1f else 0f
+                        },
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
                         bottom = 18.dp + streamBottomSpacerDp
@@ -2059,7 +2078,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (jumpButtonVisible) {
+            if (jumpButtonVisible && shouldRevealMessageList) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
