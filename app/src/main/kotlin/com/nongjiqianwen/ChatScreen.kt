@@ -25,6 +25,7 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -58,6 +59,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -92,6 +94,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.graphicsLayer
@@ -105,10 +108,12 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -122,6 +127,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -171,12 +177,13 @@ private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2000L
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
 private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 22
-private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 14
+private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 16
 private const val SEND_ANCHOR_USER_TOP_RATIO = 0.16f
 private const val SEND_ANCHOR_LONG_USER_VISIBLE_MAX_RATIO = 0.34f
 private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.34f
 private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
 private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
+private const val STREAM_AUTO_FOLLOW_DEBOUNCE_MS = 16L
 private const val PROGRAMMATIC_SCROLL_SETTLE_MS = 180L
 private const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
@@ -187,9 +194,13 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val SEND_ANCHOR_LONG_USER_VISIBLE_HEIGHT = 220.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
-private val GPT_BALL_SIZE = 15.dp
+private val GPT_BALL_SIZE = 14.dp
+private val GPT_BALL_CONTAINER_SIZE = 18.dp
 private val GPT_BALL_TOP_PADDING = 8.dp
-private val GPT_BALL_START_PADDING = 3.dp
+private val GPT_BALL_START_PADDING = 6.dp
+private val MARKDOWN_BLOCK_SPACING = 12.dp
+private val SECTION_DIVIDER_GAP = 24.dp
+private val SECTION_DIVIDER_TOP_EXTRA_GAP = 12.dp
 private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -602,7 +613,8 @@ private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     lineHeight = 28.sp,
     letterSpacing = 0.05.sp,
     color = Color(0xFF171717),
-    textMotion = TextMotion.Animated
+    textMotion = TextMotion.Static,
+    lineBreak = LineBreak.Paragraph
 )
 
 private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
@@ -613,7 +625,7 @@ private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
     fontStyle = FontStyle.Italic,
     fontFamily = FontFamily.SansSerif,
     fontWeight = FontWeight.Normal,
-    textMotion = TextMotion.Animated
+    textMotion = TextMotion.Static
 )
 
 private fun shouldShowAiDisclaimer(content: String): Boolean {
@@ -623,12 +635,23 @@ private fun shouldShowAiDisclaimer(content: String): Boolean {
         "用药", "施药", "农药", "杀菌剂", "杀虫剂", "杀螨", "施肥", "肥料", "追肥", "叶面肥",
         "冲施", "滴灌", "灌根", "喷施", "喷雾", "喷药", "剂量", "用量", "倍数", "浓度", "稀释",
         "稀释倍数", "配比", "配方", "混配", "复配", "安全期", "间隔期", "残留", "采收期", "停药期",
-        "诊断", "病害", "虫害", "真菌", "细菌", "病毒", "药害", "肥害", "缺素", "风险", "风险提示",
-        "判断", "决策", "决策指导", "防治", "防控", "处理方案", "治疗", "处方", "推荐方案"
+        "诊断", "病害", "虫害", "真菌", "细菌", "病毒", "药害", "肥害", "缺素",
+        "防治", "防控", "处理方案", "治疗", "处方"
     )
     if (guidanceKeywords.any { normalized.contains(it) }) return true
-    val dosagePatterns = listOf("每亩", "亩用", "克/升", "毫升/升", "克/亩", "毫升/亩", "公斤/亩", "升/亩", "kg", "g", "ml", "l", "ppm", "倍液")
-    return dosagePatterns.any { normalized.contains(it) }
+    val dosageKeywords = listOf(
+        "每亩", "亩用", "兑水", "稀释", "二次稀释", "倍液", "ppm"
+    )
+    if (dosageKeywords.any { normalized.contains(it) }) return true
+    val dosageRegexes = listOf(
+        Regex("\\d+(\\.\\d+)?\\s*(克|g|公斤|kg)\\s*/\\s*(亩|升|l)"),
+        Regex("\\d+(\\.\\d+)?\\s*(毫升|ml|升|l)\\s*/\\s*(亩|升|l)"),
+        Regex("\\d+(\\.\\d+)?\\s*(克|g|毫升|ml|升|l|公斤|kg)\\s*(每亩|/亩)"),
+        Regex("\\d+(\\.\\d+)?\\s*(克|g|毫升|ml|升|l)\\s*兑\\s*\\d+(\\.\\d+)?\\s*(升|l)?\\s*水"),
+        Regex("\\d+(\\.\\d+)?\\s*ppm"),
+        Regex("\\d+(\\.\\d+)?\\s*倍液")
+    )
+    return dosageRegexes.any { it.containsMatchIn(normalized) }
 }
 
 private fun containsDisclaimerSensitiveAssistant(messages: List<ChatMessage>): Boolean {
@@ -640,7 +663,8 @@ private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     lineHeight = if (level <= 2) 31.sp else 28.sp,
     fontWeight = FontWeight.Bold,
     color = Color(0xFF111111),
-    textMotion = TextMotion.Animated
+    textMotion = TextMotion.Static,
+    lineBreak = LineBreak.Heading
 )
 
 private fun consumeStreamingBottomSpacer(currentSpacerPx: Int, consumedScrollPx: Float): Int {
@@ -695,7 +719,7 @@ private suspend fun Context.saveLocalChatWindow(sessionId: String, messages: Lis
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
         .putString("$CHAT_CACHE_KEY_PREFIX$sessionId", chatCacheGson.toJson(trimmed))
-        .apply()
+        .commit()
 }
 
 private fun Context.loadLocalStreamingDraftSync(sessionId: String): LocalStreamingDraft? {
@@ -805,6 +829,25 @@ private sealed interface MarkdownUiBlock {
     data class Paragraph(val text: AnnotatedString) : MarkdownUiBlock
 }
 
+private fun shouldShowMarkdownSectionDivider(
+    previous: MarkdownUiBlock?,
+    current: MarkdownUiBlock
+): Boolean {
+    if (previous == null) return false
+    val heading = current as? MarkdownUiBlock.Heading ?: return false
+    return heading.level <= 2
+}
+
+@Composable
+private fun MarkdownSectionDivider() {
+    HorizontalDivider(
+        modifier = Modifier
+            .fillMaxWidth(),
+        thickness = 1.dp,
+        color = Color(0xFFE7E9ED)
+    )
+}
+
 @Composable
 private fun AssistantMessageContent(
     content: String,
@@ -835,22 +878,7 @@ private fun AssistantMessageContent(
                 .then(sizeAnimatedModifier),
             contentAlignment = Alignment.TopStart
         ) {
-            AnimatedVisibility(
-                visible = content.isBlank(),
-                enter = fadeIn(animationSpec = tween(durationMillis = 90)),
-                exit = fadeOut(
-                    animationSpec = tween(
-                        durationMillis = GPT_BALL_EXIT_MS,
-                        easing = LinearOutSlowInEasing
-                    )
-                ) + scaleOut(
-                    targetScale = 0.72f,
-                    animationSpec = tween(
-                        durationMillis = GPT_BALL_EXIT_MS,
-                        easing = FastOutSlowInEasing
-                    )
-                )
-            ) {
+            if (content.isBlank()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -861,17 +889,7 @@ private fun AssistantMessageContent(
                     GPTBreathingBall()
                 }
             }
-            AnimatedVisibility(
-                visible = content.isNotBlank(),
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = GPT_STREAM_TEXT_ENTRY_MS,
-                        delayMillis = 36,
-                        easing = LinearOutSlowInEasing
-                    )
-                ),
-                exit = fadeOut(animationSpec = tween(durationMillis = 80))
-            ) {
+            if (content.isNotBlank()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -916,46 +934,48 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
     Column(
         modifier = modifier
             .fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
     ) {
         if (parts.completedContent.isNotBlank()) {
             AssistantMarkdownContent(content = parts.completedContent)
         }
         if (parts.tailContent.isNotBlank()) {
-            AssistantStreamingTail(content = parts.tailContent)
+            AssistantStreamingTail(
+                content = parts.tailContent,
+                showLeadingSectionDivider = parts.completedContent.isNotBlank()
+            )
         }
     }
 }
 
 @Composable
-private fun AssistantStreamingTail(content: String) {
+private fun AssistantStreamingTail(
+    content: String,
+    showLeadingSectionDivider: Boolean = false
+) {
     val trimmed = content.trimStart()
     fun buildTail(text: String): AnnotatedString = buildStreamingAnnotatedString(text)
-    val alpha = remember { Animatable(0.94f) }
-    LaunchedEffect(Unit) {
-        alpha.animateTo(
-            targetValue = 1f,
-            animationSpec = tween(
-                durationMillis = 140,
-                easing = LinearOutSlowInEasing
-            )
-        )
-    }
-    val animatedModifier = Modifier
-        .fillMaxWidth()
-        .graphicsLayer {
-            this.alpha = alpha.value
-        }
+    val animatedModifier = Modifier.fillMaxWidth()
 
     when {
         trimmed.matches(headingRegex) -> {
             val marker = trimmed.takeWhile { it == '#' }
-            Text(
-                text = remember(trimmed) { buildTail(trimmed.drop(marker.length).trimStart()) },
+            Column(
                 modifier = animatedModifier,
-                style = assistantHeadingTextStyle(marker.length),
-                textAlign = TextAlign.Start
-            )
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                if (showLeadingSectionDivider && marker.length <= 2) {
+                    Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
+                    MarkdownSectionDivider()
+                    Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
+                }
+                Text(
+                    text = remember(trimmed) { buildTail(trimmed.drop(marker.length).trimStart()) },
+                    modifier = Modifier.fillMaxWidth(),
+                    style = assistantHeadingTextStyle(marker.length),
+                    textAlign = TextAlign.Start
+                )
+            }
         }
         trimmed.matches(bulletRegex) -> {
             Row(
@@ -1015,13 +1035,23 @@ private fun AssistantStreamingTail(content: String) {
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
     val blocks = remember(content) { getCachedMarkdownUiBlocks(content) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        blocks.forEach { block ->
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)) {
+        blocks.forEachIndexed { index, block ->
             when (block) {
-                is MarkdownUiBlock.Heading -> Text(
-                    text = block.text,
-                    style = assistantHeadingTextStyle(block.level)
-                )
+                is MarkdownUiBlock.Heading -> Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    if (shouldShowMarkdownSectionDivider(blocks.getOrNull(index - 1), block)) {
+                        Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
+                        MarkdownSectionDivider()
+                        Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
+                    }
+                    Text(
+                        text = block.text,
+                        style = assistantHeadingTextStyle(block.level)
+                    )
+                }
                 is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         text = "\u2022",
@@ -1082,31 +1112,36 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
         label = "assistantBreathingDotScale"
     )
     Box(
-        modifier = modifier
-            .size(GPT_BALL_SIZE)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                this.alpha = alpha
-            }
-            .clip(CircleShape)
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF525252),
-                        Color(0xFF181818),
-                        Color(0xFF080808)
-                    ),
-                    center = Offset(GPT_BALL_SIZE.value * 0.38f, GPT_BALL_SIZE.value * 0.34f),
-                    radius = GPT_BALL_SIZE.value * 0.9f
+        modifier = modifier.size(GPT_BALL_CONTAINER_SIZE),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(GPT_BALL_SIZE)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    this.alpha = alpha
+                }
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF525252),
+                            Color(0xFF181818),
+                            Color(0xFF080808)
+                        ),
+                        center = Offset(GPT_BALL_SIZE.value * 0.38f, GPT_BALL_SIZE.value * 0.34f),
+                        radius = GPT_BALL_SIZE.value * 0.9f
+                    )
                 )
-            )
-            .border(
-                width = 0.6.dp,
-                color = Color.White.copy(alpha = 0.06f),
-                shape = CircleShape
-            )
-    )
+                .border(
+                    width = 0.6.dp,
+                    color = Color.White.copy(alpha = 0.06f),
+                    shape = CircleShape
+                )
+        )
+    }
 }
 
 @Composable
@@ -1228,7 +1263,7 @@ private fun FrostedCircleButton(
         shape = CircleShape,
         color = surfaceColor,
         border = BorderStroke(0.45.dp, borderColor),
-        shadowElevation = 0.92.dp,
+        shadowElevation = 0.28.dp,
         tonalElevation = 0.dp,
         modifier = modifier.size(size)
     ) {
@@ -1242,10 +1277,11 @@ private fun FrostedCircleButton(
 }
 
 @Composable
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 fun ChatScreen() {
     val input = rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     val sessionId = remember { IdManager.getSessionId() }
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
     val initialStreamingDraft = remember(sessionId, hasRemoteHistorySource) {
@@ -1328,17 +1364,24 @@ fun ChatScreen() {
     val hasFastLaunchViewport by remember(initialBottomViewport, initialLocalMessages.size, initialHasDisclaimerSensitiveAssistant) {
         derivedStateOf {
             initialBottomViewport != null &&
-                initialLocalMessages.isNotEmpty() &&
-                !initialHasDisclaimerSensitiveAssistant
+                initialLocalMessages.isNotEmpty()
         }
     }
     val atBottom by remember {
         derivedStateOf { !listState.canScrollForward }
     }
     val imeVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
-    val shouldOfferJumpButton by remember(atBottom, imeVisible, messages.size, autoScrollMode, hasStreamingItem) {
+    val shouldOfferJumpButton by remember(
+        atBottom,
+        imeVisible,
+        messages.size,
+        autoScrollMode,
+        hasStreamingItem,
+        initialBottomSnapDone
+    ) {
         derivedStateOf {
-            (messages.isNotEmpty() || hasStreamingItem) &&
+            initialBottomSnapDone &&
+                (messages.isNotEmpty() || hasStreamingItem) &&
                 !atBottom &&
                 !imeVisible &&
                 autoScrollMode == AutoScrollMode.Idle
@@ -1365,20 +1408,18 @@ fun ChatScreen() {
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
         .calculateTopPadding()
-    val jumpButtonBottomPadding = 62.dp
+    val jumpButtonBottomPadding = 46.dp
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(sessionId, hasFastLaunchViewport) {
-        if (hasFastLaunchViewport) {
-            initialBottomSnapDone = true
-            initialListRevealConsumed = true
-            LaunchUiGate.chatReady = true
-        } else {
-            LaunchUiGate.chatReady = false
-        }
+    LaunchedEffect(sessionId) {
+        val shouldRevealImmediately = initialLocalMessages.isEmpty()
+        initialBottomSnapDone = shouldRevealImmediately
+        initialListRevealConsumed = shouldRevealImmediately
+        jumpButtonVisible = false
+        LaunchUiGate.chatReady = shouldRevealImmediately
     }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
@@ -1434,13 +1475,8 @@ fun ChatScreen() {
                 mainHandler.post {
                     if (remoteMessages.isNotEmpty()) {
                         if (!isStreaming && shouldReplaceHydratedMessages(messages, remoteMessages)) {
-                            val remoteHasDisclaimerSensitiveAssistant =
-                                containsDisclaimerSensitiveAssistant(remoteMessages)
                             replaceMessages(remoteMessages)
-                            if (hasFastLaunchViewport && !remoteHasDisclaimerSensitiveAssistant) {
-                                initialBottomSnapDone = true
-                                initialListRevealConsumed = true
-                            } else {
+                            if (!initialListRevealConsumed) {
                                 initialBottomSnapDone = false
                                 initialListRevealConsumed = false
                             }
@@ -1469,8 +1505,8 @@ fun ChatScreen() {
                 initialListRevealConsumed = true
             }
             initialBottomSnapDone -> {
-                repeat(2) { withFrameNanos { } }
-                delay(48)
+                withFrameNanos { }
+                delay(16)
                 initialListRevealConsumed = true
             }
         }
@@ -1479,7 +1515,7 @@ fun ChatScreen() {
     LaunchedEffect(initialListRevealConsumed, messages.size, isStreaming, hasStreamingItem) {
         if (initialListRevealConsumed || messages.isEmpty() || isStreaming || hasStreamingItem) {
             if (initialListRevealConsumed) {
-                delay(24)
+                delay(8)
             }
             LaunchUiGate.chatReady = true
         }
@@ -1650,21 +1686,6 @@ fun ChatScreen() {
         }
     }
 
-    fun currentAnchorFollowDelta(): Int {
-        val current = if (anchoredLongUserMode) {
-            if (anchoredUserBottomPx <= 0 || anchoredTargetBottomPx <= 0) return 0
-            anchoredUserBottomPx
-        } else {
-            if (anchoredUserTopPx < 0 || anchoredTargetTopPx <= 0) return 0
-            anchoredUserTopPx
-        }
-        val target = if (anchoredLongUserMode) anchoredTargetBottomPx else anchoredTargetTopPx
-        return (current - target)
-            .coerceAtLeast(0)
-            .takeIf { it > STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX }
-            ?: 0
-    }
-
     fun currentStreamingOverflowDelta(): Int {
         val visibleBottom = (messageViewportHeightPx - bottomBarHeightPx - streamVisibleBottomGapPx)
             .coerceAtLeast(0)
@@ -1672,35 +1693,6 @@ fun ChatScreen() {
             (streamingContentBottomPx - visibleBottom).coerceAtLeast(0)
         } else {
             0
-        }
-    }
-
-    suspend fun followStreamingFrameStep(
-        scrollDelta: Int,
-        bottomFollow: Boolean
-    ) {
-        if (scrollDelta <= 0) return
-        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-        programmaticScroll = true
-        try {
-            val fixedStep = if (bottomFollow) {
-                STREAM_BOTTOM_FOLLOW_STEP_PX
-            } else {
-                STREAM_ANCHOR_FOLLOW_STEP_PX
-            }
-            val step = scrollDelta.coerceAtMost(fixedStep).toFloat()
-            val consumed = listState.scrollBy(step)
-            if (consumed > 0f) {
-                if (streamBottomSpacerPx > 0) {
-                    streamBottomSpacerPx = consumeStreamingBottomSpacer(
-                        currentSpacerPx = streamBottomSpacerPx,
-                        consumedScrollPx = consumed
-                    )
-                }
-            }
-        } finally {
-            programmaticScroll = false
-            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         }
     }
 
@@ -1919,11 +1911,19 @@ fun ChatScreen() {
                 ?.let { (it * 0.56f).roundToInt() }
                 ?.coerceAtLeast(STREAM_STICKY_SCROLL_STEP_PX)
                 ?: STREAM_STICKY_SCROLL_STEP_PX
-            repeat(72) {
-                withFrameNanos { }
-                if (!listState.canScrollForward) return
-                val consumed = listState.scrollBy(stickyStepPx.toFloat())
-                if (consumed <= 0f) return
+            if (animated) {
+                repeat(72) {
+                    withFrameNanos { }
+                    if (!listState.canScrollForward) return
+                    val consumed = listState.scrollBy(stickyStepPx.toFloat())
+                    if (consumed <= 0f) return
+                }
+            } else {
+                repeat(72) {
+                    if (!listState.canScrollForward) return
+                    val consumed = listState.scrollBy(stickyStepPx.toFloat())
+                    if (consumed <= 0f) return
+                }
             }
             withFrameNanos { }
         } finally {
@@ -1945,11 +1945,6 @@ fun ChatScreen() {
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
-            val anchorIndex = messages.indexOfLast { it.id == anchoredUserMessageId }
-            if (anchorIndex >= 0) {
-                listState.scrollToItem(anchorIndex)
-                repeat(2) { withFrameNanos { } }
-            }
             val shortTargetTop = (messageViewportHeightPx * SEND_ANCHOR_USER_TOP_RATIO).roundToInt()
             val longVisibleHeight = minOf(
                 longUserVisibleHeightPx,
@@ -1957,9 +1952,13 @@ fun ChatScreen() {
             ).coerceAtLeast(1)
             anchoredTargetTopPx = shortTargetTop
             anchoredTargetBottomPx = shortTargetTop + longVisibleHeight
+            val anchorIndex = messages.indexOfLast { it.id == anchoredUserMessageId }
+            if (anchorIndex >= 0) {
+                listState.scrollToItem(anchorIndex, scrollOffset = -shortTargetTop)
+                repeat(2) { withFrameNanos { } }
+            }
             repeat(16) {
                 withFrameNanos { }
-                delay(24)
                 anchoredLongUserMode = anchoredUserHeightPx > longVisibleHeight
                 val current = if (anchoredLongUserMode) {
                     anchoredUserBottomPx
@@ -2001,35 +2000,53 @@ fun ChatScreen() {
         if (!hasStreamingItem || !isStreaming) return@LaunchedEffect
         if (autoScrollMode != AutoScrollMode.StreamAnchorFollow) return@LaunchedEffect
         if (userInteracting) return@LaunchedEffect
-        while (isStreaming && hasStreamingItem && autoScrollMode == AutoScrollMode.StreamAnchorFollow && !userInteracting) {
-            withFrameNanos { }
-            if (programmaticScroll) continue
-            val anchorReady = if (anchoredLongUserMode) {
-                anchoredUserBottomPx > 0 && anchoredTargetBottomPx > 0
-            } else {
-                anchoredUserTopPx >= 0 && anchoredTargetTopPx > 0
-            }
-            val streamingOverflow = currentStreamingOverflowDelta()
-            if (!streamBottomFollowActive && streamingOverflow > 0) {
-                streamBottomFollowActive = true
-            }
-            val bottomFollow = streamBottomFollowActive
-            if (!bottomFollow && !anchorReady) {
-                continue
-            }
-            val scrollDelta = if (bottomFollow) {
-                streamingOverflow
-            } else {
-                maxOf(currentAnchorFollowDelta(), streamingOverflow)
-            }
-            if (scrollDelta <= 0) {
-                continue
-            }
-            followStreamingFrameStep(
-                scrollDelta = scrollDelta,
-                bottomFollow = bottomFollow
+        snapshotFlow {
+            Triple(
+                streamTick,
+                streamingMessageContent.length,
+                streamBottomSpacerPx
             )
         }
+            .distinctUntilChanged()
+            .debounce(STREAM_AUTO_FOLLOW_DEBOUNCE_MS)
+            .collect {
+                if (!isStreaming || !hasStreamingItem) return@collect
+                if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting) return@collect
+                if (streamingMessageContent.isBlank()) return@collect
+                withFrameNanos { }
+                val streamingOverflow = currentStreamingOverflowDelta()
+                if (!streamBottomFollowActive && streamingOverflow > 0) {
+                    streamBottomFollowActive = true
+                }
+                if (!streamBottomFollowActive) return@collect
+                if (streamBottomSpacerPx > 0) {
+                    streamBottomSpacerPx = 0
+                    withFrameNanos { }
+                }
+                repeat(18) {
+                    if (!isStreaming || !hasStreamingItem) return@collect
+                    if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting) return@collect
+                    val overflow = currentStreamingOverflowDelta()
+                    if (overflow <= 0) {
+                        streamBottomFollowActive = false
+                        return@collect
+                    }
+                    val maxStepPx = (messageViewportHeightPx * 0.26f)
+                        .roundToInt()
+                        .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX * 2)
+                    val stepPx = overflow.coerceAtMost(maxStepPx)
+                    lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                    programmaticScroll = true
+                    try {
+                        val consumed = listState.scrollBy(stepPx.toFloat())
+                        if (consumed <= 0f) return@collect
+                    } finally {
+                        programmaticScroll = false
+                        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                    }
+                    withFrameNanos { }
+                }
+            }
     }
 
     LaunchedEffect(sendTick) {
@@ -2039,20 +2056,20 @@ fun ChatScreen() {
         scrollAfterSendAnchor()
     }
 
-    LaunchedEffect(messages.size, isStreaming, bottomBarHeightPx, hasStreamingItem, initialBottomSnapDone) {
+    LaunchedEffect(messages.size, isStreaming, bottomBarHeightPx, hasStreamingItem, initialBottomSnapDone, hasFastLaunchViewport) {
         if (initialBottomSnapDone) return@LaunchedEffect
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (bottomBarHeightPx <= 0) return@LaunchedEffect
-        repeat(4) { withFrameNanos { } }
-        repeat(4) { attempt ->
+        repeat(if (hasFastLaunchViewport) 1 else 4) { withFrameNanos { } }
+        repeat(if (hasFastLaunchViewport) 5 else 4) { attempt ->
             scrollToBottom(animated = false)
             if (isBottomSettled()) {
                 jumpButtonVisible = false
                 initialBottomSnapDone = true
                 return@LaunchedEffect
             }
-            if (attempt < 3) {
-                delay(90)
+            if (attempt < if (hasFastLaunchViewport) 4 else 3) {
+                delay(if (hasFastLaunchViewport) 24 else 90)
             }
         }
     }
@@ -2063,7 +2080,7 @@ fun ChatScreen() {
             autoScrollMode = AutoScrollMode.Idle
             userInteracting = false
             jumpButtonVisible = false
-            scrollToBottom(animated = true)
+            scrollToBottom(animated = false)
         }
     }
 
@@ -2096,6 +2113,22 @@ fun ChatScreen() {
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
         val topBarReservedHeight = topInset + chromeButtonSize + 6.dp
         val pageSurface = Color(0xFFFFFFFF)
+        val inputChromeHorizontalPadding = when {
+            maxWidth < 360.dp -> 10.dp
+            maxWidth < 600.dp -> 12.dp
+            else -> chromeHorizontalPadding
+        }
+        val inputChromeSurface = Color.White
+        val inputChromeBorder = Color(0xFFD8DADF).copy(alpha = 0.2f)
+        val inputBarOverlayBrush = Brush.verticalGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.26f),
+                Color.White.copy(alpha = 0.34f),
+                Color.White.copy(alpha = 0.42f)
+            )
+        )
+        val inputFieldSurface = Color.White
+        val inputFieldBorder = Color(0xFFD4D8DE).copy(alpha = 0.2f)
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
@@ -2108,10 +2141,8 @@ fun ChatScreen() {
                 ) {
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(116.dp)
-                            .background(pageSurface)
+                            .matchParentSize()
+                            .background(inputBarOverlayBrush)
                     )
                     Row(
                         modifier = Modifier
@@ -2119,17 +2150,19 @@ fun ChatScreen() {
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                            .padding(horizontal = chromeHorizontalPadding, vertical = 8.dp)
+                            .padding(horizontal = inputChromeHorizontalPadding, vertical = 8.dp)
                             .navigationBarsPadding()
                             .imePadding(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         FrostedCircleButton(
                             size = addButtonSize,
-                            surfaceColor = chromeSurface,
-                            borderColor = chromeBorder,
-                            onClick = {}
+                            surfaceColor = inputChromeSurface,
+                            borderColor = inputChromeBorder,
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
                         ) {
                             PlusCrossIcon(
                                 tint = Color(0xFF6F7277),
@@ -2139,10 +2172,10 @@ fun ChatScreen() {
 
                         Surface(
                             shape = RoundedCornerShape(30.dp),
-                            color = inputSurface,
-                            border = BorderStroke(0.68.dp, inputBorder),
+                            color = inputFieldSurface,
+                            border = BorderStroke(0.68.dp, inputFieldBorder),
                             tonalElevation = 0.dp,
-                            shadowElevation = 1.1.dp,
+                            shadowElevation = 0.78.dp,
                             modifier = Modifier.weight(1f)
                         ) {
                             Box(
@@ -2159,7 +2192,7 @@ fun ChatScreen() {
                                         .fillMaxWidth()
                                         .align(Alignment.CenterStart)
                                         .padding(start = 2.dp, end = 58.dp),
-                                    placeholder = { Text("描述作物/地区/问题", color = Color(0xFFAEAFB4)) },
+                                    placeholder = { Text("描述作物/图片/问题", color = Color(0xFFAEAFB4)) },
                                     singleLine = true,
                                     textStyle = TextStyle(
                                         fontSize = 16.sp,
@@ -2192,6 +2225,7 @@ fun ChatScreen() {
                                     IconButton(
                                         onClick = {
                                             if (canSend) {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                 sendMessage()
                                             }
                                         },
@@ -2218,7 +2252,7 @@ fun ChatScreen() {
                         .padding(horizontal = 12.dp)
                 )
             }
-        ) { innerPadding ->
+        ) { _ ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -2227,18 +2261,21 @@ fun ChatScreen() {
                     .onGloballyPositioned { coordinates ->
                         messageViewportTopPx = coordinates.boundsInWindow().top
                     }
-                    .padding(innerPadding)
             ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
-                        .graphicsLayer {
-                            alpha = if (shouldRevealMessageList) 1f else 0f
-                        },
+                        .then(
+                            if (shouldRevealMessageList) {
+                                Modifier
+                            } else {
+                                Modifier.graphicsLayer(alpha = 0f)
+                            }
+                        ),
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
-                        bottom = 18.dp + streamBottomSpacerDp
+                        bottom = with(density) { bottomBarHeightPx.toDp() } + 18.dp + streamBottomSpacerDp
                     )
                 ) {
                     items(
@@ -2311,17 +2348,23 @@ fun ChatScreen() {
                                         .widthIn(max = chromeMaxWidth)
                                         .fillMaxWidth()
                                 ) {
-                                    AssistantMessageContent(
-                                        content = streamingMessageContent,
-                                        isStreaming = isStreaming,
-                                        animateLayoutChanges = false,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .onGloballyPositioned { coordinates ->
-                                                streamingContentBottomPx =
-                                                    (coordinates.boundsInWindow().bottom - messageViewportTopPx).roundToInt()
-                                            }
-                                    )
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        AssistantMessageContent(
+                                            content = streamingMessageContent,
+                                            isStreaming = isStreaming,
+                                            animateLayoutChanges = false,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Spacer(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(1.dp)
+                                                .onGloballyPositioned { coordinates ->
+                                                    streamingContentBottomPx =
+                                                        (coordinates.boundsInWindow().bottom - messageViewportTopPx).roundToInt()
+                                                }
+                                        )
+                                    }
                                 }
                             }
                         }

@@ -21,7 +21,7 @@ object LaunchUiGate {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         LaunchUiGate.chatReady = false
-        LaunchUiGate.splashDeadlineMs = SystemClock.uptimeMillis() + 140L
+        LaunchUiGate.splashDeadlineMs = SystemClock.uptimeMillis() + 90L
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition {
             !LaunchUiGate.chatReady && SystemClock.uptimeMillis() < LaunchUiGate.splashDeadlineMs
