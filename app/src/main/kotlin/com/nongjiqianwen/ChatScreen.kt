@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleOut
@@ -157,8 +158,8 @@ private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
-private const val STREAM_REVEAL_FRAME_BUDGET_MS = 42L
-private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 5
+private const val STREAM_REVEAL_FRAME_BUDGET_MS = 56L
+private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 7
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 1800L
@@ -260,15 +261,54 @@ private fun Char.isStructuralMarkdownChar(): Boolean {
     return this == '#' || this == '-' || this == '*' || this == '`' || this == '>'
 }
 
+private fun takeMarkdownPrefixToken(buffer: String): String? {
+    if (buffer.isEmpty()) return null
+    return when {
+        buffer.startsWith("> ") -> "> "
+        buffer.startsWith("- ") -> "- "
+        buffer.startsWith("* ") -> "* "
+        buffer.first() == '#' -> {
+            var end = 1
+            while (end < buffer.length && end < 6 && buffer[end] == '#') end++
+            while (end < buffer.length && buffer[end].isWhitespace()) end++
+            buffer.substring(0, end)
+        }
+        buffer.first().isDigit() -> {
+            var end = 1
+            while (end < buffer.length && end < 4 && buffer[end].isDigit()) end++
+            if (end < buffer.length && buffer[end] == '.') {
+                end++
+                while (end < buffer.length && buffer[end].isWhitespace()) end++
+                buffer.substring(0, end)
+            } else {
+                null
+            }
+        }
+        else -> null
+    }
+}
+
 private fun takeTypewriterToken(buffer: String): String {
     if (buffer.isEmpty()) return ""
     val first = buffer.first()
-    if (first == '\n' || first.isWhitespace() || first.isStructuralMarkdownChar()) {
+    val markdownPrefix = takeMarkdownPrefixToken(buffer)
+    if (markdownPrefix != null) {
+        return markdownPrefix
+    }
+    if (first == '\n') {
+        return first.toString()
+    }
+    if (first.isWhitespace()) {
+        var end = 1
+        while (end < buffer.length && end < 3 && buffer[end].isWhitespace() && buffer[end] != '\n') end++
+        return buffer.substring(0, end)
+    }
+    if (first.isStructuralMarkdownChar()) {
         return first.toString()
     }
     if (first.isCjkUnifiedIdeograph()) {
         var end = 1
-        while (end < buffer.length && end < 4 && buffer[end].isCjkUnifiedIdeograph()) end++
+        while (end < buffer.length && end < 5 && buffer[end].isCjkUnifiedIdeograph()) end++
         return buffer.substring(0, end)
     }
     if (first.isDigit()) {
@@ -278,7 +318,7 @@ private fun takeTypewriterToken(buffer: String): String {
         return buffer.substring(0, end)
     }
     var end = 1
-    while (end < buffer.length && end < 6) {
+    while (end < buffer.length && end < 8) {
         val ch = buffer[end]
         if (ch.isWhitespace() || ch.isCjkUnifiedIdeograph() || ch.isStructuralMarkdownChar() || ch.isWeakPausePunctuation() || ch.isStrongPausePunctuation()) {
             break
@@ -296,12 +336,14 @@ private data class LocalStreamFeedStep(
 private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
     if (remaining.isEmpty()) return LocalStreamFeedStep("", 0L)
     val first = remaining.first()
+    val markdownPrefix = takeMarkdownPrefixToken(remaining)
     val takeCount = when {
+        markdownPrefix != null -> markdownPrefix.length
         first == '\n' -> 1
         first.isStructuralMarkdownChar() -> 1
         first.isCjkUnifiedIdeograph() -> Random.nextInt(2, 5)
-        first.isWhitespace() -> 1
-        else -> Random.nextInt(3, 7)
+        first.isWhitespace() -> remaining.takeWhile { it.isWhitespace() && it != '\n' }.length.coerceIn(1, 2)
+        else -> Random.nextInt(4, 8)
     }.coerceAtMost(remaining.length)
     val text = remaining.substring(0, takeCount)
     val tail = text.last()
@@ -309,8 +351,8 @@ private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
         tail == '\n' -> Random.nextLong(110, 180)
         tail.isStrongPausePunctuation() -> Random.nextLong(72, 118)
         tail.isWeakPausePunctuation() -> Random.nextLong(34, 58)
-        text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(42, 72)
-        else -> Random.nextLong(20, 34)
+        markdownPrefix != null || text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(36, 60)
+        else -> Random.nextLong(18, 30)
     }
     return LocalStreamFeedStep(text = text, delayMs = delayMs)
 }
@@ -327,13 +369,14 @@ private fun hasStructuralMarkdownPrefix(text: String): Boolean {
 private fun resolveTypewriterDelay(token: String, remainingBuffer: String): Long {
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
     return when {
-        lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 72L else 56L
-        lastChar.isStrongPausePunctuation() -> 34L
-        lastChar.isWeakPausePunctuation() -> 18L
+        lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 64L else 48L
+        lastChar.isStrongPausePunctuation() -> 28L
+        lastChar.isWeakPausePunctuation() -> 16L
+        token.length >= 7 -> 8L
         token.length >= 5 -> 10L
         token.length >= 3 -> 12L
-        token.length == 2 -> 14L
-        else -> if (lastChar.isCjkUnifiedIdeograph()) 16L else 14L
+        token.length == 2 -> 13L
+        else -> if (lastChar.isCjkUnifiedIdeograph()) 14L else 12L
     }
 }
 
@@ -564,6 +607,25 @@ private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
     fontWeight = FontWeight.Normal
 )
 
+private fun shouldShowAiDisclaimer(content: String): Boolean {
+    if (content.isBlank()) return false
+    val normalized = content.lowercase()
+    val guidanceKeywords = listOf(
+        "用药", "施药", "农药", "杀菌剂", "杀虫剂", "杀螨", "施肥", "肥料", "追肥", "叶面肥",
+        "冲施", "滴灌", "灌根", "喷施", "喷雾", "喷药", "剂量", "用量", "倍数", "浓度", "稀释",
+        "稀释倍数", "配比", "配方", "混配", "复配", "安全期", "间隔期", "残留", "采收期", "停药期",
+        "诊断", "病害", "虫害", "真菌", "细菌", "病毒", "药害", "肥害", "缺素", "判断", "决策",
+        "决策指导", "防治", "防控", "处理方案", "治疗", "处方", "推荐方案"
+    )
+    if (guidanceKeywords.any { normalized.contains(it) }) return true
+    val dosagePatterns = listOf("每亩", "亩用", "克/升", "毫升/升", "克/亩", "毫升/亩", "公斤/亩", "升/亩", "kg", "g", "ml", "l", "ppm", "倍液")
+    return dosagePatterns.any { normalized.contains(it) }
+}
+
+private fun containsDisclaimerSensitiveAssistant(messages: List<ChatMessage>): Boolean {
+    return messages.any { it.role == ChatRole.ASSISTANT && shouldShowAiDisclaimer(it.content) }
+}
+
 private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     fontSize = if (level <= 2) 20.sp else 18.sp,
     lineHeight = if (level <= 2) 31.sp else 28.sp,
@@ -732,6 +794,7 @@ private fun AssistantMessageContent(
     isStreaming: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
     val stableModifier = if (isStreaming) {
         modifier.heightIn(min = STREAMING_MESSAGE_MIN_HEIGHT)
     } else {
@@ -739,7 +802,14 @@ private fun AssistantMessageContent(
     }
     if (isStreaming) {
         Box(
-            modifier = stableModifier.fillMaxWidth(),
+            modifier = stableModifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 120,
+                        easing = LinearOutSlowInEasing
+                    )
+                ),
             contentAlignment = Alignment.TopStart
         ) {
             AnimatedVisibility(
@@ -779,21 +849,50 @@ private fun AssistantMessageContent(
                 ),
                 exit = fadeOut(animationSpec = tween(durationMillis = 80))
             ) {
-                AssistantStreamingContent(content = content, modifier = Modifier.fillMaxWidth())
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .animateContentSize(
+                            animationSpec = tween(
+                                durationMillis = 120,
+                                easing = LinearOutSlowInEasing
+                            )
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    AssistantStreamingContent(content = content, modifier = Modifier.fillMaxWidth())
+                    if (showDisclaimer) {
+                        Text(
+                            text = AI_DISCLAIMER_TEXT,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = assistantDisclaimerTextStyle().copy(color = Color.Transparent),
+                            textAlign = TextAlign.Start
+                        )
+                    }
+                }
             }
         }
     } else {
         Column(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    animationSpec = tween(
+                        durationMillis = 120,
+                        easing = LinearOutSlowInEasing
+                    )
+                ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             AssistantMarkdownContent(content = content)
-            Text(
-                text = AI_DISCLAIMER_TEXT,
-                modifier = Modifier.fillMaxWidth(),
-                style = assistantDisclaimerTextStyle(),
-                textAlign = TextAlign.Start
-            )
+            if (showDisclaimer) {
+                Text(
+                    text = AI_DISCLAIMER_TEXT,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = assistantDisclaimerTextStyle(),
+                    textAlign = TextAlign.Start
+                )
+            }
         }
     }
 }
@@ -802,7 +901,14 @@ private fun AssistantMessageContent(
 private fun AssistantStreamingContent(content: String, modifier: Modifier = Modifier) {
     val parts = remember(content) { splitStreamingMarkdownParts(content) }
     Column(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = tween(
+                    durationMillis = 110,
+                    easing = LinearOutSlowInEasing
+                )
+            ),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (parts.completedContent.isNotBlank()) {
@@ -818,14 +924,12 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
 private fun AssistantStreamingTail(content: String) {
     val trimmed = content.trimStart()
     fun buildTail(text: String): AnnotatedString = buildStreamingAnnotatedString(text)
-    val alpha = remember { Animatable(1f) }
-    LaunchedEffect(content.length) {
-        val startAlpha = if (content.length <= 6) 0.78f else 0.88f
-        alpha.snapTo(startAlpha)
+    val alpha = remember { Animatable(0.94f) }
+    LaunchedEffect(Unit) {
         alpha.animateTo(
             targetValue = 1f,
             animationSpec = tween(
-                durationMillis = GPT_STREAM_TEXT_ENTRY_MS,
+                durationMillis = 140,
                 easing = LinearOutSlowInEasing
             )
         )
@@ -1141,6 +1245,9 @@ fun ChatScreen() {
     val messages = remember(sessionId) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
+    val initialHasDisclaimerSensitiveAssistant = remember(sessionId, initialLocalMessages) {
+        containsDisclaimerSensitiveAssistant(initialLocalMessages)
+    }
     val initialListIndex = remember(sessionId, initialLocalMessages.size, initialBottomViewport) {
         initialBottomViewport?.firstVisibleItemIndex
             ?.coerceIn(0, initialLocalMessages.lastIndex.coerceAtLeast(0))
@@ -1196,6 +1303,13 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
     }
+    val hasFastLaunchViewport by remember(initialBottomViewport, initialLocalMessages.size, initialHasDisclaimerSensitiveAssistant) {
+        derivedStateOf {
+            initialBottomViewport != null &&
+                initialLocalMessages.isNotEmpty() &&
+                !initialHasDisclaimerSensitiveAssistant
+        }
+    }
     val atBottom by remember {
         derivedStateOf { !listState.canScrollForward }
     }
@@ -1235,8 +1349,14 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    LaunchedEffect(sessionId) {
-        LaunchUiGate.chatReady = false
+    LaunchedEffect(sessionId, hasFastLaunchViewport) {
+        if (hasFastLaunchViewport) {
+            initialBottomSnapDone = true
+            initialListRevealConsumed = true
+            LaunchUiGate.chatReady = true
+        } else {
+            LaunchUiGate.chatReady = false
+        }
     }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
@@ -1292,8 +1412,16 @@ fun ChatScreen() {
                 mainHandler.post {
                     if (remoteMessages.isNotEmpty()) {
                         if (!isStreaming && shouldReplaceHydratedMessages(messages, remoteMessages)) {
+                            val remoteHasDisclaimerSensitiveAssistant =
+                                containsDisclaimerSensitiveAssistant(remoteMessages)
                             replaceMessages(remoteMessages)
-                            initialBottomSnapDone = false
+                            if (hasFastLaunchViewport && !remoteHasDisclaimerSensitiveAssistant) {
+                                initialBottomSnapDone = true
+                                initialListRevealConsumed = true
+                            } else {
+                                initialBottomSnapDone = false
+                                initialListRevealConsumed = false
+                            }
                             persistTick++
                         }
                     }
@@ -2129,7 +2257,7 @@ fun ChatScreen() {
                         }
                     }
                     if (hasStreamingItem) {
-                        item(key = streamingMessageId ?: "streaming_message") {
+                        item(key = "streaming_${streamingMessageId ?: "message"}") {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2162,7 +2290,7 @@ fun ChatScreen() {
                     text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = topBarReservedHeight + 40.dp, start = 24.dp, end = 24.dp),
+                        .padding(top = topBarReservedHeight + 56.dp, start = 24.dp, end = 24.dp),
                     style = MaterialTheme.typography.titleMedium,
                     color = Color(0xFF141414),
                     lineHeight = MaterialTheme.typography.titleMedium.lineHeight,

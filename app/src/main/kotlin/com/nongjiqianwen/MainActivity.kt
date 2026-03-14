@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -12,13 +13,19 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 object LaunchUiGate {
     @Volatile
     var chatReady: Boolean = false
+
+    @Volatile
+    var splashDeadlineMs: Long = 0L
 }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         LaunchUiGate.chatReady = false
+        LaunchUiGate.splashDeadlineMs = SystemClock.uptimeMillis() + 140L
         val splashScreen = installSplashScreen()
-        splashScreen.setKeepOnScreenCondition { !LaunchUiGate.chatReady }
+        splashScreen.setKeepOnScreenCondition {
+            !LaunchUiGate.chatReady && SystemClock.uptimeMillis() < LaunchUiGate.splashDeadlineMs
+        }
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge(
