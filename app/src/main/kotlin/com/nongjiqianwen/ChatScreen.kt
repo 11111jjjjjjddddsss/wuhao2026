@@ -1147,6 +1147,7 @@ fun ChatScreen() {
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
     var streamBottomFollowActive by remember { mutableStateOf(false) }
     var initialBottomSnapDone by remember(sessionId) { mutableStateOf(false) }
+    var initialListRevealConsumed by remember(sessionId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -1170,9 +1171,12 @@ fun ChatScreen() {
                 autoScrollMode == AutoScrollMode.Idle
         }
     }
-    val shouldRevealMessageList by remember(initialBottomSnapDone, messages.size, isStreaming, hasStreamingItem) {
+    val shouldRevealMessageList by remember(initialListRevealConsumed, messages.size, isStreaming, hasStreamingItem) {
         derivedStateOf {
-            initialBottomSnapDone || messages.isEmpty() || isStreaming || hasStreamingItem
+            initialListRevealConsumed ||
+                messages.isEmpty() ||
+                isStreaming ||
+                hasStreamingItem
         }
     }
     val appCenterTint = Color.White
@@ -1265,6 +1269,20 @@ fun ChatScreen() {
         context.clearLocalStreamingDraft(sessionId)
         context.saveLocalChatWindow(sessionId, initialLocalMessages)
         initialBottomSnapDone = false
+    }
+
+    LaunchedEffect(initialBottomSnapDone, messages.size, isStreaming, hasStreamingItem) {
+        if (initialListRevealConsumed) return@LaunchedEffect
+        when {
+            messages.isEmpty() || isStreaming || hasStreamingItem -> {
+                initialListRevealConsumed = true
+            }
+            initialBottomSnapDone -> {
+                repeat(2) { withFrameNanos { } }
+                delay(48)
+                initialListRevealConsumed = true
+            }
+        }
     }
 
     LaunchedEffect(persistTick) {
@@ -1683,6 +1701,14 @@ fun ChatScreen() {
         }
     }
 
+    suspend fun isBottomSettled(stableFrames: Int = 4): Boolean {
+        repeat(stableFrames) {
+            withFrameNanos { }
+            if (listState.canScrollForward) return false
+        }
+        return true
+    }
+
     suspend fun scrollAfterSendAnchor() {
         if (messages.isEmpty()) return
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
@@ -1787,15 +1813,14 @@ fun ChatScreen() {
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (bottomBarHeightPx <= 0) return@LaunchedEffect
         repeat(4) { withFrameNanos { } }
-        repeat(3) { attempt ->
+        repeat(4) { attempt ->
             scrollToBottom(animated = false)
-            repeat(2) { withFrameNanos { } }
-            if (!listState.canScrollForward) {
+            if (isBottomSettled()) {
                 jumpButtonVisible = false
                 initialBottomSnapDone = true
                 return@LaunchedEffect
             }
-            if (attempt < 2) {
+            if (attempt < 3) {
                 delay(90)
             }
         }
@@ -2003,7 +2028,6 @@ fun ChatScreen() {
                                         isStreaming = false,
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(end = 1.dp)
                                     )
                                 } else {
                                     Text(
@@ -2057,7 +2081,6 @@ fun ChatScreen() {
                                                 streamingContentBottomPx =
                                                     (coordinates.boundsInWindow().bottom - messageViewportTopPx).roundToInt()
                                             }
-                                            .padding(end = 1.dp)
                                     )
                                 }
                             }
