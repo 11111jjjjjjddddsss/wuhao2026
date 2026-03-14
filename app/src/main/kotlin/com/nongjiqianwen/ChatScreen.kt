@@ -128,6 +128,14 @@ private enum class ChatRole { USER, ASSISTANT }
 private enum class AutoScrollMode { Idle, AnchorUser, StreamAnchorFollow }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
+@Immutable
+private data class LocalStreamingDraft(
+    val messageId: String,
+    val content: String,
+    val revealBuffer: String,
+    val anchoredUserMessageId: String?,
+    val savedAtMs: Long
+)
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
@@ -138,6 +146,7 @@ private sealed interface MarkdownBlock {
 private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
+private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
@@ -611,6 +620,51 @@ private suspend fun Context.saveLocalChatWindow(sessionId: String, messages: Lis
         .apply()
 }
 
+private fun Context.loadLocalStreamingDraftSync(sessionId: String): LocalStreamingDraft? {
+    val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .getString("$CHAT_STREAM_DRAFT_KEY_PREFIX$sessionId", null)
+        .orEmpty()
+    if (raw.isBlank()) return null
+    return runCatching {
+        chatCacheGson.fromJson(raw, LocalStreamingDraft::class.java)
+    }.getOrNull()
+}
+
+private suspend fun Context.saveLocalStreamingDraft(sessionId: String, draft: LocalStreamingDraft) = withContext(Dispatchers.IO) {
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString("$CHAT_STREAM_DRAFT_KEY_PREFIX$sessionId", chatCacheGson.toJson(draft))
+        .commit()
+}
+
+private suspend fun Context.clearLocalStreamingDraft(sessionId: String) = withContext(Dispatchers.IO) {
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$sessionId")
+        .commit()
+}
+
+private fun recoverStreamingDraftAsCompletedMessage(
+    localMessages: List<ChatMessage>,
+    draft: LocalStreamingDraft?
+): List<ChatMessage> {
+    if (draft == null) return localMessages
+    val recoveredContent = normalizeAssistantText(FAKE_STREAM_TEXT)
+    if (recoveredContent.isBlank()) return localMessages
+    val alreadyPresent = localMessages.any { message ->
+        message.id == draft.messageId ||
+            (message.role == ChatRole.ASSISTANT && normalizeAssistantText(message.content) == recoveredContent)
+    }
+    if (alreadyPresent) return trimMessageWindow(localMessages)
+    return trimMessageWindow(
+        localMessages + ChatMessage(
+            id = draft.messageId.ifBlank { "assistant_${UUID.randomUUID()}" },
+            role = ChatRole.ASSISTANT,
+            content = recoveredContent
+        )
+    )
+}
+
 private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = withContext(Dispatchers.Default) {
     messages
         .filter { it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
@@ -1044,7 +1098,20 @@ fun ChatScreen() {
     val input = rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val sessionId = remember { IdManager.getSessionId() }
-    val initialLocalMessages = remember(sessionId) { context.loadLocalChatWindowSync(sessionId) }
+    val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
+    val initialStreamingDraft = remember(sessionId, hasRemoteHistorySource) {
+        if (hasRemoteHistorySource) {
+            null
+        } else {
+            context.loadLocalStreamingDraftSync(sessionId)
+        }
+    }
+    val initialLocalMessages = remember(sessionId, initialStreamingDraft) {
+        recoverStreamingDraftAsCompletedMessage(
+            localMessages = context.loadLocalChatWindowSync(sessionId),
+            draft = initialStreamingDraft
+        )
+    }
     val messages = remember(sessionId) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
@@ -1109,7 +1176,6 @@ fun ChatScreen() {
     val inputSurface = Color.White
     val inputBorder = Color(0xFFD4D8DE).copy(alpha = 0.22f)
     val userBubbleColor = Color(0xFFF4F4F7)
-    val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
     var historyHydrationComplete by remember(sessionId) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !hasRemoteHistorySource)
     }
@@ -1153,6 +1219,9 @@ fun ChatScreen() {
             if (clearVisibleContent) {
                 streamingMessageContent = ""
             }
+            snackbarScope.launch {
+                context.clearLocalStreamingDraft(sessionId)
+            }
         }
     }
 
@@ -1186,10 +1255,44 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(sessionId, initialStreamingDraft) {
+        if (initialStreamingDraft == null) return@LaunchedEffect
+        context.clearLocalStreamingDraft(sessionId)
+        context.saveLocalChatWindow(sessionId, initialLocalMessages)
+        initialBottomSnapDone = false
+    }
+
     LaunchedEffect(persistTick) {
         if (persistTick == 0) return@LaunchedEffect
         delay(if (isStreaming) 220 else 80)
         context.saveLocalChatWindow(sessionId, messages)
+    }
+
+    LaunchedEffect(
+        sessionId,
+        isStreaming,
+        streamingMessageId,
+        streamingMessageContent.length,
+        streamingRevealBuffer.length,
+        anchoredUserMessageId
+    ) {
+        if (!isStreaming || streamingMessageId.isNullOrBlank()) {
+            if (streamingMessageContent.isBlank() && streamingRevealBuffer.isBlank()) {
+                context.clearLocalStreamingDraft(sessionId)
+            }
+            return@LaunchedEffect
+        }
+        delay(90)
+        context.saveLocalStreamingDraft(
+            sessionId = sessionId,
+            draft = LocalStreamingDraft(
+                messageId = streamingMessageId.orEmpty(),
+                content = streamingMessageContent,
+                revealBuffer = streamingRevealBuffer,
+                anchoredUserMessageId = anchoredUserMessageId,
+                savedAtMs = SystemClock.uptimeMillis()
+            )
+        )
     }
 
     LaunchedEffect(listState.isScrollInProgress, programmaticScroll, atBottom) {
@@ -1506,6 +1609,9 @@ fun ChatScreen() {
 
         trimMessagesInPlace()
         persistTick++
+        snackbarScope.launch {
+            context.saveLocalChatWindow(sessionId, messages)
+        }
         isStreaming = true
         streamingMessageId = "assistant_${UUID.randomUUID()}"
         streamingMessageContent = ""
@@ -1572,6 +1678,11 @@ fun ChatScreen() {
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
+            val anchorIndex = messages.indexOfLast { it.id == anchoredUserMessageId }
+            if (anchorIndex >= 0) {
+                listState.scrollToItem(anchorIndex)
+                repeat(2) { withFrameNanos { } }
+            }
             val shortTargetTop = (messageViewportHeightPx * SEND_ANCHOR_USER_TOP_RATIO).roundToInt()
             val longVisibleHeight = minOf(
                 longUserVisibleHeightPx,
@@ -1665,6 +1776,8 @@ fun ChatScreen() {
         if (initialBottomSnapDone) return@LaunchedEffect
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (bottomBarHeightPx <= 0) return@LaunchedEffect
+        repeat(4) { withFrameNanos { } }
+        scrollToBottom(animated = false)
         repeat(2) { withFrameNanos { } }
         if (listState.canScrollForward) {
             scrollToBottom(animated = false)

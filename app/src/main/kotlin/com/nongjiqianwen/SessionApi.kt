@@ -1,5 +1,7 @@
 package com.nongjiqianwen
 
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -20,7 +22,10 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object SessionApi {
     private const val TAG = "SessionApi"
+    private const val SNAPSHOT_NETWORK_RETRY_MAX = 2
+    private const val STREAM_NETWORK_RETRY_MAX = 2
     private val gson = Gson()
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -178,41 +183,49 @@ object SessionApi {
             onResult(null)
             return
         }
-        enqueueWithRetry401(
-            requestFactory = { token ->
-                val builder = Request.Builder()
-                    .url("$base/api/session/snapshot?session_id=${android.net.Uri.encode(sessionId)}")
-                    .get()
-                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
-                builder
-            },
-            onResult = { response ->
-                response.use {
-                    if (!it.isSuccessful) {
-                        onResult(null)
-                        return@use
+        fun attempt(networkRetry: Int) {
+            enqueueWithRetry401(
+                requestFactory = { token ->
+                    val builder = Request.Builder()
+                        .url("$base/api/session/snapshot?session_id=${android.net.Uri.encode(sessionId)}")
+                        .get()
+                    if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                    builder
+                },
+                onResult = { response ->
+                    response.use {
+                        if (!it.isSuccessful) {
+                            onResult(null)
+                            return@use
+                        }
+                        val body = it.body?.string() ?: ""
+                        try {
+                            val json = gson.fromJson(body, SessionSnapshotJson::class.java)
+                            val listFromAJson = json.a_json ?: emptyList()
+                            val legacyList = json.a_rounds ?: emptyList()
+                            val fullList = json.a_rounds_full ?: if (listFromAJson.isNotEmpty()) listFromAJson else legacyList
+                            val forUiList = json.a_rounds_for_ui ?: fullList
+                            val full = fullList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
+                            val forUi = forUiList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
+                            onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "parse snapshot", e)
+                            onResult(null)
+                        }
                     }
-                    val body = it.body?.string() ?: ""
-                    try {
-                        val json = gson.fromJson(body, SessionSnapshotJson::class.java)
-                        val listFromAJson = json.a_json ?: emptyList()
-                        val legacyList = json.a_rounds ?: emptyList()
-                        val fullList = json.a_rounds_full ?: if (listFromAJson.isNotEmpty()) listFromAJson else legacyList
-                        val forUiList = json.a_rounds_for_ui ?: fullList
-                        val full = fullList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
-                        val forUi = forUiList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
-                        onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi))
-                    } catch (e: Exception) {
-                        Log.e(TAG, "parse snapshot", e)
+                },
+                onFailure = { error ->
+                    if (networkRetry < SNAPSHOT_NETWORK_RETRY_MAX) {
+                        val retryDelayMs = 300L * (networkRetry + 1)
+                        mainHandler.postDelayed({ attempt(networkRetry + 1) }, retryDelayMs)
+                    } else {
+                        Log.w(TAG, "getSnapshot failed", error)
                         onResult(null)
                     }
                 }
-            },
-            onFailure = {
-                Log.w(TAG, "getSnapshot failed", it)
-                onResult(null)
-            }
-        )
+            )
+        }
+        attempt(networkRetry = 0)
     }
 
     fun appendA(
@@ -351,7 +364,9 @@ object SessionApi {
             return builder.build()
         }
 
-        fun start(forceRefresh: Boolean, hasRetried: Boolean) {
+        var deliveredAnyChunk = false
+
+        fun start(forceRefresh: Boolean, hasRetried: Boolean, networkRetry: Int) {
             ensureAuthToken(forceRefresh = forceRefresh) { token ->
                 val request = buildRequest(token)
                 val call = client.newCall(request)
@@ -359,6 +374,13 @@ object SessionApi {
                 call.enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
                         currentStreamCall.compareAndSet(call, null)
+                        if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
+                            val retryDelayMs = 350L * (networkRetry + 1)
+                            mainHandler.postDelayed({
+                                start(forceRefresh = false, hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                            }, retryDelayMs)
+                            return
+                        }
                         val reason = if (call.isCanceled()) "canceled" else "network"
                         onInterrupted(reason)
                     }
@@ -368,13 +390,20 @@ object SessionApi {
                         response.use { res ->
                             if (res.code == 401) {
                                 if (!hasRetried) {
-                                    start(forceRefresh = true, hasRetried = true)
+                                    start(forceRefresh = true, hasRetried = true, networkRetry = networkRetry)
                                 } else {
                                     onInterrupted("auth")
                                 }
                                 return
                             }
                             if (!res.isSuccessful) {
+                                if (!deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX && (res.code == 502 || res.code == 503 || res.code == 504)) {
+                                    val retryDelayMs = 350L * (networkRetry + 1)
+                                    mainHandler.postDelayed({
+                                        start(forceRefresh = false, hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                    }, retryDelayMs)
+                                    return
+                                }
                                 val reason = when (res.code) {
                                     503 -> "model_unavailable"
                                     429 -> "rate_limit"
@@ -434,6 +463,7 @@ object SessionApi {
                                                     ?.asString
                                                     ?.takeIf { it.isNotEmpty() }
                                         if (!piece.isNullOrEmpty()) {
+                                            deliveredAnyChunk = true
                                             onChunk(piece)
                                         }
                                     } catch (_: Exception) {
@@ -442,6 +472,13 @@ object SessionApi {
                                 }
                                 onInterrupted("server")
                             } catch (_: Exception) {
+                                if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
+                                    val retryDelayMs = 350L * (networkRetry + 1)
+                                    mainHandler.postDelayed({
+                                        start(forceRefresh = false, hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                    }, retryDelayMs)
+                                    return
+                                }
                                 onInterrupted(if (call.isCanceled()) "canceled" else "server")
                             }
                         }
@@ -450,7 +487,7 @@ object SessionApi {
             }
         }
 
-        start(forceRefresh = false, hasRetried = false)
+        start(forceRefresh = false, hasRetried = false, networkRetry = 0)
     }
 
     private data class SessionSnapshotJson(

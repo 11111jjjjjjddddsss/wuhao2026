@@ -515,7 +515,6 @@ app.post('/api/chat/stream', async (request, reply) => {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
     }
-    abortController.abort();
   };
   request.raw.on('close', onClientClose);
 
@@ -535,7 +534,7 @@ app.post('/api/chat/stream', async (request, reply) => {
     const decoder = new TextDecoder();
     let lineBuffer = '';
 
-    while (!clientDisconnected) {
+    while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -577,8 +576,10 @@ app.post('/api/chat/stream', async (request, reply) => {
             // ignore chunk parse failure; relay should continue.
           }
         }
-        if (!reply.raw.write(`data: ${data}\n\n`)) {
-          await new Promise<void>((resolve) => reply.raw.once('drain', resolve));
+        if (!clientDisconnected && !reply.raw.destroyed && !reply.raw.writableEnded) {
+          if (!reply.raw.write(`data: ${data}\n\n`)) {
+            await new Promise<void>((resolve) => reply.raw.once('drain', resolve));
+          }
         }
         if (data === '[DONE]') {
           doneReceived = true;
@@ -589,7 +590,7 @@ app.post('/api/chat/stream', async (request, reply) => {
       if (doneReceived) break;
     }
 
-    if (!clientDisconnected && doneReceived) {
+    if (doneReceived) {
       const consume = await consumeOnDone({ userId, tier, clientMsgId, dayCN });
       request.log.info({ userId, clientMsgId, deducted: consume.deducted, source: consume.source }, 'quota consume on DONE');
       if (assistantText.trim()) {
@@ -608,6 +609,8 @@ app.post('/api/chat/stream', async (request, reply) => {
   } catch (error) {
     if (!clientDisconnected) {
       request.log.error({ error }, 'sse relay failed');
+    } else {
+      request.log.warn({ error }, 'background stream continuation failed after client disconnect');
     }
   } finally {
     if (heartbeatTimer) {
@@ -629,10 +632,12 @@ app.post('/api/chat/stream', async (request, reply) => {
       },
       'bailian stream finished',
     );
-    try {
-      reply.raw.end();
-    } catch {
-      // ignore
+    if (!clientDisconnected && !reply.raw.destroyed && !reply.raw.writableEnded) {
+      try {
+        reply.raw.end();
+      } catch {
+        // ignore
+      }
     }
   }
 });
