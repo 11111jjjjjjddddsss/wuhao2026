@@ -9,9 +9,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
+object LaunchUiGate {
+    @Volatile
+    var chatReady: Boolean = false
+}
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        LaunchUiGate.chatReady = false
+        val splashScreen = installSplashScreen()
+        splashScreen.setKeepOnScreenCondition { !LaunchUiGate.chatReady }
         super.onCreate(savedInstanceState)
 
         enableEdgeToEdge(

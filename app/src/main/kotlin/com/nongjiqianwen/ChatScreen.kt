@@ -136,6 +136,11 @@ private data class LocalStreamingDraft(
     val anchoredUserMessageId: String?,
     val savedAtMs: Long
 )
+@Immutable
+private data class LocalBottomViewport(
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemScrollOffset: Int
+)
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
@@ -147,6 +152,7 @@ private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
+private const val CHAT_BOTTOM_VIEWPORT_KEY_PREFIX = "bottom_viewport_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
@@ -644,6 +650,23 @@ private suspend fun Context.clearLocalStreamingDraft(sessionId: String) = withCo
         .commit()
 }
 
+private fun Context.loadLocalBottomViewportSync(sessionId: String): LocalBottomViewport? {
+    val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .getString("$CHAT_BOTTOM_VIEWPORT_KEY_PREFIX$sessionId", null)
+        .orEmpty()
+    if (raw.isBlank()) return null
+    return runCatching {
+        chatCacheGson.fromJson(raw, LocalBottomViewport::class.java)
+    }.getOrNull()
+}
+
+private suspend fun Context.saveLocalBottomViewport(sessionId: String, viewport: LocalBottomViewport) = withContext(Dispatchers.IO) {
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString("$CHAT_BOTTOM_VIEWPORT_KEY_PREFIX$sessionId", chatCacheGson.toJson(viewport))
+        .apply()
+}
+
 private fun recoverStreamingDraftAsCompletedMessage(
     localMessages: List<ChatMessage>,
     draft: LocalStreamingDraft?
@@ -1112,10 +1135,24 @@ fun ChatScreen() {
             draft = initialStreamingDraft
         )
     }
+    val initialBottomViewport = remember(sessionId) {
+        context.loadLocalBottomViewportSync(sessionId)
+    }
     val messages = remember(sessionId) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
-    val listState = rememberLazyListState()
+    val initialListIndex = remember(sessionId, initialLocalMessages.size, initialBottomViewport) {
+        initialBottomViewport?.firstVisibleItemIndex
+            ?.coerceIn(0, initialLocalMessages.lastIndex.coerceAtLeast(0))
+            ?: (initialLocalMessages.lastIndex).coerceAtLeast(0)
+    }
+    val initialListScrollOffset = remember(sessionId, initialBottomViewport) {
+        initialBottomViewport?.firstVisibleItemScrollOffset?.coerceAtLeast(0) ?: 0
+    }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = initialListIndex,
+        initialFirstVisibleItemScrollOffset = initialListScrollOffset
+    )
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -1197,6 +1234,10 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(sessionId) {
+        LaunchUiGate.chatReady = false
+    }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
         val trimmed = trimMessageWindow(newMessages)
@@ -1285,10 +1326,38 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(initialListRevealConsumed, messages.size, isStreaming, hasStreamingItem) {
+        if (initialListRevealConsumed || messages.isEmpty() || isStreaming || hasStreamingItem) {
+            if (initialListRevealConsumed) {
+                delay(24)
+            }
+            LaunchUiGate.chatReady = true
+        }
+    }
+
     LaunchedEffect(persistTick) {
         if (persistTick == 0) return@LaunchedEffect
         delay(if (isStreaming) 220 else 80)
         context.saveLocalChatWindow(sessionId, messages)
+    }
+
+    LaunchedEffect(
+        sessionId,
+        atBottom,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset,
+        messages.size,
+        hasStreamingItem
+    ) {
+        if (!atBottom || (messages.isEmpty() && !hasStreamingItem)) return@LaunchedEffect
+        delay(40)
+        context.saveLocalBottomViewport(
+            sessionId = sessionId,
+            viewport = LocalBottomViewport(
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+            )
+        )
     }
 
     LaunchedEffect(
@@ -1685,7 +1754,7 @@ fun ChatScreen() {
             }
             val stickyStepPx = messageViewportHeightPx
                 .takeIf { it > 0 }
-                ?.let { (it * 0.88f).roundToInt() }
+                ?.let { (it * 0.56f).roundToInt() }
                 ?.coerceAtLeast(STREAM_STICKY_SCROLL_STEP_PX)
                 ?: STREAM_STICKY_SCROLL_STEP_PX
             repeat(72) {
@@ -2093,7 +2162,7 @@ fun ChatScreen() {
                     text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = topBarReservedHeight + 24.dp, start = 24.dp, end = 24.dp),
+                        .padding(top = topBarReservedHeight + 40.dp, start = 24.dp, end = 24.dp),
                     style = MaterialTheme.typography.titleMedium,
                     color = Color(0xFF141414),
                     lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
