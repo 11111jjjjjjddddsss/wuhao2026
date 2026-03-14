@@ -146,7 +146,7 @@ private const val STREAM_REVEAL_FRAME_BUDGET_MS = 42L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 5
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
-private const val LOCAL_STREAM_MIN_BALL_MS = 1500L
+private const val LOCAL_STREAM_MIN_BALL_MS = 1800L
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
 private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 18
 private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 10
@@ -165,7 +165,7 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val SEND_ANCHOR_LONG_USER_VISIBLE_HEIGHT = 220.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
-private val GPT_BALL_SIZE = 20.dp
+private val GPT_BALL_SIZE = 18.dp
 private val GPT_BALL_TOP_PADDING = 8.dp
 private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
@@ -1081,6 +1081,7 @@ fun ChatScreen() {
     var streamBottomFollowActive by remember { mutableStateOf(false) }
     var initialBottomSnapDone by remember(sessionId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
+    var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val followSlopPx = with(density) { STREAM_AUTO_FOLLOW_SLOP.toPx().toInt() }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
@@ -1147,6 +1148,7 @@ fun ChatScreen() {
             streamBottomSpacerPx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
+            pendingResumeAutoFollow = false
             autoScrollMode = AutoScrollMode.Idle
             if (clearVisibleContent) {
                 streamingMessageContent = ""
@@ -1198,7 +1200,52 @@ fun ChatScreen() {
         }
         userInteracting = listState.isScrollInProgress
         if (listState.isScrollInProgress && !atBottom) {
+            pendingResumeAutoFollow = false
             autoScrollMode = AutoScrollMode.Idle
+        }
+    }
+
+    LaunchedEffect(listState, isStreaming, hasStreamingItem) {
+        var previousIndex = listState.firstVisibleItemIndex
+        var previousOffset = listState.firstVisibleItemScrollOffset
+        while (isActive) {
+            withFrameNanos { }
+            val currentIndex = listState.firstVisibleItemIndex
+            val currentOffset = listState.firstVisibleItemScrollOffset
+            val now = SystemClock.uptimeMillis()
+            if (programmaticScroll || now - lastProgrammaticScrollMs < PROGRAMMATIC_SCROLL_SETTLE_MS) {
+                previousIndex = currentIndex
+                previousOffset = currentOffset
+                continue
+            }
+            val movedTowardBottom =
+                currentIndex > previousIndex ||
+                    (currentIndex == previousIndex && currentOffset > previousOffset)
+            val movedTowardTop =
+                currentIndex < previousIndex ||
+                    (currentIndex == previousIndex && currentOffset < previousOffset)
+            if (!isStreaming || !hasStreamingItem) {
+                pendingResumeAutoFollow = false
+            } else if (listState.isScrollInProgress) {
+                when {
+                    movedTowardBottom -> {
+                        pendingResumeAutoFollow = true
+                        jumpButtonVisible = false
+                    }
+
+                    movedTowardTop -> {
+                        pendingResumeAutoFollow = false
+                    }
+                }
+            } else if (pendingResumeAutoFollow) {
+                autoScrollMode = AutoScrollMode.StreamAnchorFollow
+                streamBottomFollowActive = true
+                userInteracting = false
+                jumpButtonVisible = false
+                pendingResumeAutoFollow = false
+            }
+            previousIndex = currentIndex
+            previousOffset = currentOffset
         }
     }
 
@@ -1354,6 +1401,7 @@ fun ChatScreen() {
             streamBottomSpacerPx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
+            pendingResumeAutoFollow = false
             autoScrollMode = AutoScrollMode.Idle
             persistTick++
             if (shouldSnapToBottomOnFinish) {
@@ -1451,6 +1499,7 @@ fun ChatScreen() {
         anchoredLongUserMode = false
         streamingContentBottomPx = -1
         streamBottomFollowActive = false
+        pendingResumeAutoFollow = false
         input.value = ""
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
