@@ -106,6 +106,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -167,17 +168,17 @@ private const val STREAM_REVEAL_FRAME_BUDGET_MS = 56L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 7
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
-private const val LOCAL_STREAM_MIN_BALL_MS = 1800L
+private const val LOCAL_STREAM_MIN_BALL_MS = 2000L
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
-private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 18
-private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 10
+private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 22
+private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 14
 private const val SEND_ANCHOR_USER_TOP_RATIO = 0.16f
 private const val SEND_ANCHOR_LONG_USER_VISIBLE_MAX_RATIO = 0.34f
 private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.34f
 private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
 private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
 private const val PROGRAMMATIC_SCROLL_SETTLE_MS = 180L
-private const val GPT_BALL_PULSE_MS = 760
+private const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
@@ -186,8 +187,9 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val SEND_ANCHOR_LONG_USER_VISIBLE_HEIGHT = 220.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
-private val GPT_BALL_SIZE = 18.dp
+private val GPT_BALL_SIZE = 15.dp
 private val GPT_BALL_TOP_PADDING = 8.dp
+private val GPT_BALL_START_PADDING = 3.dp
 private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -599,7 +601,8 @@ private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     fontSize = 17.sp,
     lineHeight = 28.sp,
     letterSpacing = 0.05.sp,
-    color = Color(0xFF171717)
+    color = Color(0xFF171717),
+    textMotion = TextMotion.Animated
 )
 
 private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
@@ -609,7 +612,8 @@ private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
     letterSpacing = 0.1.sp,
     fontStyle = FontStyle.Italic,
     fontFamily = FontFamily.SansSerif,
-    fontWeight = FontWeight.Normal
+    fontWeight = FontWeight.Normal,
+    textMotion = TextMotion.Animated
 )
 
 private fun shouldShowAiDisclaimer(content: String): Boolean {
@@ -635,7 +639,8 @@ private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     fontSize = if (level <= 2) 20.sp else 18.sp,
     lineHeight = if (level <= 2) 31.sp else 28.sp,
     fontWeight = FontWeight.Bold,
-    color = Color(0xFF111111)
+    color = Color(0xFF111111),
+    textMotion = TextMotion.Animated
 )
 
 private fun consumeStreamingBottomSpacer(currentSpacerPx: Int, consumedScrollPx: Float): Int {
@@ -704,6 +709,13 @@ private fun Context.loadLocalStreamingDraftSync(sessionId: String): LocalStreami
 }
 
 private suspend fun Context.saveLocalStreamingDraft(sessionId: String, draft: LocalStreamingDraft) = withContext(Dispatchers.IO) {
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString("$CHAT_STREAM_DRAFT_KEY_PREFIX$sessionId", chatCacheGson.toJson(draft))
+        .commit()
+}
+
+private fun Context.saveLocalStreamingDraftSync(sessionId: String, draft: LocalStreamingDraft) {
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
         .putString("$CHAT_STREAM_DRAFT_KEY_PREFIX$sessionId", chatCacheGson.toJson(draft))
@@ -797,6 +809,7 @@ private sealed interface MarkdownUiBlock {
 private fun AssistantMessageContent(
     content: String,
     isStreaming: Boolean,
+    animateLayoutChanges: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
@@ -805,16 +818,21 @@ private fun AssistantMessageContent(
     } else {
         modifier
     }
+    val sizeAnimatedModifier = if (animateLayoutChanges) {
+        Modifier.animateContentSize(
+            animationSpec = tween(
+                durationMillis = 120,
+                easing = LinearOutSlowInEasing
+            )
+        )
+    } else {
+        Modifier
+    }
     if (isStreaming) {
         Box(
             modifier = stableModifier
                 .fillMaxWidth()
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 120,
-                        easing = LinearOutSlowInEasing
-                    )
-                ),
+                .then(sizeAnimatedModifier),
             contentAlignment = Alignment.TopStart
         ) {
             AnimatedVisibility(
@@ -837,7 +855,7 @@ private fun AssistantMessageContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
-                        .padding(top = GPT_BALL_TOP_PADDING),
+                        .padding(start = GPT_BALL_START_PADDING, top = GPT_BALL_TOP_PADDING),
                     contentAlignment = Alignment.TopStart
                 ) {
                     GPTBreathingBall()
@@ -857,12 +875,7 @@ private fun AssistantMessageContent(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateContentSize(
-                            animationSpec = tween(
-                                durationMillis = 120,
-                                easing = LinearOutSlowInEasing
-                            )
-                        ),
+                        .then(sizeAnimatedModifier),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     AssistantStreamingContent(content = content, modifier = Modifier.fillMaxWidth())
@@ -881,12 +894,7 @@ private fun AssistantMessageContent(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .animateContentSize(
-                    animationSpec = tween(
-                        durationMillis = 120,
-                        easing = LinearOutSlowInEasing
-                    )
-                ),
+                .then(sizeAnimatedModifier),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             AssistantMarkdownContent(content = content)
@@ -907,13 +915,7 @@ private fun AssistantStreamingContent(content: String, modifier: Modifier = Modi
     val parts = remember(content) { splitStreamingMarkdownParts(content) }
     Column(
         modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = tween(
-                    durationMillis = 110,
-                    easing = LinearOutSlowInEasing
-                )
-            ),
+            .fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (parts.completedContent.isNotBlank()) {
@@ -1056,7 +1058,7 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
     val alpha by transition.animateFloat(
-        initialValue = 0.56f,
+        initialValue = 0.48f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
             animation = tween(
@@ -1068,8 +1070,8 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
         label = "assistantBreathingDotAlpha"
     )
     val scale by transition.animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1.06f,
+        initialValue = 0.68f,
+        targetValue = 1.14f,
         animationSpec = infiniteRepeatable(
             animation = tween(
                 durationMillis = GPT_BALL_PULSE_MS,
@@ -1088,7 +1090,22 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
                 this.alpha = alpha
             }
             .clip(CircleShape)
-            .background(Color(0xFF111111))
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFF525252),
+                        Color(0xFF181818),
+                        Color(0xFF080808)
+                    ),
+                    center = Offset(GPT_BALL_SIZE.value * 0.38f, GPT_BALL_SIZE.value * 0.34f),
+                    radius = GPT_BALL_SIZE.value * 0.9f
+                )
+            )
+            .border(
+                width = 0.6.dp,
+                color = Color.White.copy(alpha = 0.06f),
+                shape = CircleShape
+            )
     )
 }
 
@@ -1531,7 +1548,6 @@ fun ChatScreen() {
         }
         userInteracting = listState.isScrollInProgress
         if (listState.isScrollInProgress && !atBottom) {
-            pendingResumeAutoFollow = false
             autoScrollMode = AutoScrollMode.Idle
         }
     }
@@ -1844,6 +1860,16 @@ fun ChatScreen() {
         streamingMessageId = "assistant_${UUID.randomUUID()}"
         streamingMessageContent = ""
         streamingRevealBuffer = ""
+        context.saveLocalStreamingDraftSync(
+            sessionId = sessionId,
+            draft = LocalStreamingDraft(
+                messageId = streamingMessageId.orEmpty(),
+                content = "",
+                revealBuffer = "",
+                anchoredUserMessageId = anchoredUserMessageId,
+                savedAtMs = SystemClock.uptimeMillis()
+            )
+        )
         streamBottomSpacerPx = maxOf(
             (messageViewportHeightPx * SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO).roundToInt(),
             minSendAnchorExtraBottomSpacePx
@@ -2235,6 +2261,7 @@ fun ChatScreen() {
                                     AssistantMessageContent(
                                         content = msg.content,
                                         isStreaming = false,
+                                        animateLayoutChanges = true,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                     )
@@ -2287,6 +2314,7 @@ fun ChatScreen() {
                                     AssistantMessageContent(
                                         content = streamingMessageContent,
                                         isStreaming = isStreaming,
+                                        animateLayoutChanges = false,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .onGloballyPositioned { coordinates ->
