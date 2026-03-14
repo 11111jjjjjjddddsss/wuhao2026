@@ -77,6 +77,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.withFrameNanos
@@ -120,6 +121,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import java.util.LinkedHashMap
 import kotlin.random.Random
 import kotlin.math.roundToInt
@@ -157,6 +161,7 @@ private const val CHAT_BOTTOM_VIEWPORT_KEY_PREFIX = "bottom_viewport_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
+private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 180L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 private const val STREAM_REVEAL_FRAME_BUDGET_MS = 56L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 7
@@ -614,8 +619,8 @@ private fun shouldShowAiDisclaimer(content: String): Boolean {
         "用药", "施药", "农药", "杀菌剂", "杀虫剂", "杀螨", "施肥", "肥料", "追肥", "叶面肥",
         "冲施", "滴灌", "灌根", "喷施", "喷雾", "喷药", "剂量", "用量", "倍数", "浓度", "稀释",
         "稀释倍数", "配比", "配方", "混配", "复配", "安全期", "间隔期", "残留", "采收期", "停药期",
-        "诊断", "病害", "虫害", "真菌", "细菌", "病毒", "药害", "肥害", "缺素", "判断", "决策",
-        "决策指导", "防治", "防控", "处理方案", "治疗", "处方", "推荐方案"
+        "诊断", "病害", "虫害", "真菌", "细菌", "病毒", "药害", "肥害", "缺素", "风险", "风险提示",
+        "判断", "决策", "决策指导", "防治", "防控", "处理方案", "治疗", "处方", "推荐方案"
     )
     if (guidanceKeywords.any { normalized.contains(it) }) return true
     val dosagePatterns = listOf("每亩", "亩用", "克/升", "毫升/升", "克/亩", "毫升/亩", "公斤/亩", "升/亩", "kg", "g", "ml", "l", "ppm", "倍液")
@@ -1469,23 +1474,26 @@ fun ChatScreen() {
         context.saveLocalChatWindow(sessionId, messages)
     }
 
-    LaunchedEffect(
-        sessionId,
-        atBottom,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset,
-        messages.size,
-        hasStreamingItem
-    ) {
-        if (!atBottom || (messages.isEmpty() && !hasStreamingItem)) return@LaunchedEffect
-        delay(40)
-        context.saveLocalBottomViewport(
-            sessionId = sessionId,
-            viewport = LocalBottomViewport(
-                firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
-            )
-        )
+    LaunchedEffect(sessionId, listState, messages.size, hasStreamingItem) {
+        snapshotFlow {
+            if (!atBottom || (messages.isEmpty() && !hasStreamingItem)) {
+                null
+            } else {
+                LocalBottomViewport(
+                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
+                )
+            }
+        }
+            .distinctUntilChanged()
+            .debounce(BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS)
+            .filterNotNull()
+            .collect { viewport ->
+                context.saveLocalBottomViewport(
+                    sessionId = sessionId,
+                    viewport = viewport
+                )
+            }
     }
 
     LaunchedEffect(
@@ -2207,7 +2215,11 @@ fun ChatScreen() {
                         bottom = 18.dp + streamBottomSpacerDp
                     )
                 ) {
-                    items(items = messages, key = { it.id }) { msg ->
+                    items(
+                        items = messages,
+                        key = { it.id },
+                        contentType = { it.role }
+                    ) { msg ->
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2257,7 +2269,10 @@ fun ChatScreen() {
                         }
                     }
                     if (hasStreamingItem) {
-                        item(key = "streaming_${streamingMessageId ?: "message"}") {
+                        item(
+                            key = "streaming_${streamingMessageId ?: "message"}",
+                            contentType = ChatRole.ASSISTANT
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
