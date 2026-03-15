@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -87,6 +88,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -97,6 +99,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -193,11 +196,12 @@ private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val SEND_ANCHOR_LONG_USER_VISIBLE_HEIGHT = 220.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
+private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 40.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
-private val GPT_BALL_CONTAINER_SIZE = 18.dp
+private val GPT_BALL_CONTAINER_SIZE = 20.dp
 private val GPT_BALL_TOP_PADDING = 8.dp
-private val GPT_BALL_START_PADDING = 6.dp
+private val GPT_BALL_START_PADDING = 8.dp
 private val MARKDOWN_BLOCK_SPACING = 12.dp
 private val SECTION_DIVIDER_GAP = 24.dp
 private val SECTION_DIVIDER_TOP_EXTRA_GAP = 12.dp
@@ -1131,7 +1135,7 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
                             Color(0xFF181818),
                             Color(0xFF080808)
                         ),
-                        center = Offset(GPT_BALL_SIZE.value * 0.38f, GPT_BALL_SIZE.value * 0.34f),
+                        center = Offset(GPT_BALL_SIZE.value * 0.45f, GPT_BALL_SIZE.value * 0.36f),
                         radius = GPT_BALL_SIZE.value * 0.9f
                     )
                 )
@@ -1262,10 +1266,17 @@ private fun FrostedCircleButton(
     Surface(
         shape = CircleShape,
         color = surfaceColor,
-        border = BorderStroke(0.45.dp, borderColor),
-        shadowElevation = 0.28.dp,
+        border = BorderStroke(0.6.dp, borderColor.copy(alpha = 0.82f)),
+        shadowElevation = 0.dp,
         tonalElevation = 0.dp,
-        modifier = modifier.size(size)
+        modifier = modifier
+            .size(size)
+            .shadow(
+                elevation = 1.6.dp,
+                shape = CircleShape,
+                ambientColor = Color(0x16000000),
+                spotColor = Color(0x16000000)
+            )
     ) {
         IconButton(
             onClick = onClick,
@@ -1282,6 +1293,7 @@ fun ChatScreen() {
     val input = rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
     val sessionId = remember { IdManager.getSessionId() }
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
     val initialStreamingDraft = remember(sessionId, hasRemoteHistorySource) {
@@ -1413,6 +1425,12 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    fun performButtonHaptic() {
+        val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (!handled) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
 
     LaunchedEffect(sessionId) {
         val shouldRevealImmediately = initialLocalMessages.isEmpty()
@@ -1633,20 +1651,10 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(shouldOfferJumpButton, listState.isScrollInProgress, programmaticScroll) {
-        if (!shouldOfferJumpButton) {
-            jumpButtonVisible = false
-            return@LaunchedEffect
-        }
-        if (programmaticScroll || listState.isScrollInProgress) {
-            jumpButtonVisible = false
-            return@LaunchedEffect
-        }
-
-        jumpButtonVisible = true
-        delay(JUMP_BUTTON_AUTO_HIDE_MS)
-        if (!listState.isScrollInProgress && !programmaticScroll && shouldOfferJumpButton) {
-            jumpButtonVisible = false
-        }
+        jumpButtonVisible =
+            shouldOfferJumpButton &&
+                !programmaticScroll &&
+                !listState.isScrollInProgress
     }
 
     fun ensureStreamingRevealJob() {
@@ -2121,10 +2129,11 @@ fun ChatScreen() {
         val inputChromeSurface = Color.White
         val inputChromeBorder = Color(0xFFD8DADF).copy(alpha = 0.2f)
         val inputBarOverlayBrush = Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.26f),
-                Color.White.copy(alpha = 0.34f),
-                Color.White.copy(alpha = 0.42f)
+            colorStops = arrayOf(
+                0.0f to Color.White.copy(alpha = 0.10f),
+                0.18f to Color.White.copy(alpha = 0.28f),
+                0.54f to Color.White.copy(alpha = 0.64f),
+                1.0f to Color.White.copy(alpha = 0.90f)
             )
         )
         val inputFieldSurface = Color.White
@@ -2137,6 +2146,8 @@ fun ChatScreen() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .imePadding()
                         .onSizeChanged { bottomBarHeightPx = it.height }
                 ) {
                     Box(
@@ -2146,13 +2157,11 @@ fun ChatScreen() {
                     )
                     Row(
                         modifier = Modifier
-                            .align(Alignment.Center)
+                            .align(Alignment.BottomCenter)
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                            .padding(horizontal = inputChromeHorizontalPadding, vertical = 8.dp)
-                            .navigationBarsPadding()
-                            .imePadding(),
+                            .padding(horizontal = inputChromeHorizontalPadding, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -2161,7 +2170,7 @@ fun ChatScreen() {
                             surfaceColor = inputChromeSurface,
                             borderColor = inputChromeBorder,
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                performButtonHaptic()
                             }
                         ) {
                             PlusCrossIcon(
@@ -2173,10 +2182,17 @@ fun ChatScreen() {
                         Surface(
                             shape = RoundedCornerShape(30.dp),
                             color = inputFieldSurface,
-                            border = BorderStroke(0.68.dp, inputFieldBorder),
+                            border = BorderStroke(0.68.dp, inputFieldBorder.copy(alpha = 0.32f)),
                             tonalElevation = 0.dp,
-                            shadowElevation = 0.78.dp,
-                            modifier = Modifier.weight(1f)
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .shadow(
+                                    elevation = 1.35.dp,
+                                    shape = RoundedCornerShape(30.dp),
+                                    ambientColor = Color(0x14000000),
+                                    spotColor = Color(0x14000000)
+                                )
                         ) {
                             Box(
                                 modifier = Modifier
@@ -2225,7 +2241,7 @@ fun ChatScreen() {
                                     IconButton(
                                         onClick = {
                                             if (canSend) {
-                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                performButtonHaptic()
                                                 sendMessage()
                                             }
                                         },
@@ -2275,7 +2291,9 @@ fun ChatScreen() {
                         ),
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
-                        bottom = with(density) { bottomBarHeightPx.toDp() } + 18.dp + streamBottomSpacerDp
+                        bottom = with(density) { bottomBarHeightPx.toDp() } +
+                            BOTTOM_OVERLAY_CONTENT_CLEARANCE +
+                            streamBottomSpacerDp
                     )
                 ) {
                     items(
