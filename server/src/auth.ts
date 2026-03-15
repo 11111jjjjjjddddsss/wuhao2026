@@ -1,13 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyRequest } from 'fastify';
 
-export type AuthMode = 'token' | 'guest' | 'unauthorized';
-
-function getAnonTokenTtlDays(): number {
-  const raw = Number(process.env.ANON_TOKEN_TTL_DAYS || '30');
-  if (!Number.isFinite(raw) || raw <= 0) return 30;
-  return Math.floor(raw);
-}
+export type AuthMode = 'token' | 'header' | 'unauthorized';
 
 function isPrivateIpv4(ip: string): boolean {
   if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return false;
@@ -49,7 +43,7 @@ function verifyToken(token: string, appSecret: string): { ok: boolean; userId?: 
     const ts = Number(tsRaw);
     if (!Number.isFinite(ts)) return { ok: false };
     const nowSec = Math.floor(Date.now() / 1000);
-    const maxAgeSec = getAnonTokenTtlDays() * 24 * 60 * 60;
+    const maxAgeSec = 30 * 24 * 60 * 60;
     if (Math.abs(nowSec - ts) > maxAgeSec) return { ok: false };
     const expected = crypto.createHmac('sha256', appSecret).update(`${userId}:${tsRaw}`).digest('hex');
     if (expected !== sig) return { ok: false };
@@ -57,12 +51,6 @@ function verifyToken(token: string, appSecret: string): { ok: boolean; userId?: 
   } catch {
     return { ok: false };
   }
-}
-
-export function issueToken(userId: string, appSecret: string, nowSec = Math.floor(Date.now() / 1000)): string {
-  const ts = String(nowSec);
-  const sig = crypto.createHmac('sha256', appSecret).update(`${userId}:${ts}`).digest('hex');
-  return Buffer.from(`${userId}:${ts}:${sig}`, 'utf8').toString('base64');
 }
 
 export function isAuthStrict(): boolean {
@@ -89,8 +77,13 @@ export function resolveAuthUserId(request: FastifyRequest): {
     }
   }
 
-  if (strict) {
+  const headerUserId = String(request.headers['x-user-id'] || '').trim().slice(0, 128);
+  if (headerUserId) {
+    return { userId: headerUserId, authMode: 'header', maskedIp };
+  }
+
+  if (!strict) {
     return { userId: '', authMode: 'unauthorized', maskedIp };
   }
-  return { userId: `guest:${ip || 'unknown'}`, authMode: 'guest', maskedIp };
+  return { userId: '', authMode: 'unauthorized', maskedIp };
 }

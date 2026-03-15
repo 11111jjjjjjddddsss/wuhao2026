@@ -7,7 +7,7 @@ import java.util.UUID
  * 当前仍直连 DashScope；后期切 CNB 时只改此处 baseUrl + 鉴权，不动 App 主链路。
  */
 object ApiConfig {
-    /** 当前请求 ID（每次 getReply 生成）；userId/sessionId 由 IdManager 提供 */
+    /** 当前请求 ID（每次 getReply 生成）；userId 由 IdManager 提供 */
     fun nextRequestId(): String = "req_${UUID.randomUUID()}"
 
     /** 服务端常驻 API 接口形态（占位，当前未使用） */

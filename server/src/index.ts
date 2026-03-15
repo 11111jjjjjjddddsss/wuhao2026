@@ -5,9 +5,9 @@ import path from 'node:path';
 import Fastify from 'fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { fileURLToPath } from 'node:url';
-import { getClientIp, isAuthStrict, issueToken, resolveAuthUserId } from './auth.js';
+import { getClientIp, isAuthStrict, resolveAuthUserId } from './auth.js';
 import { openBailianStream } from './bailian.js';
-import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeSessionBSummary, writeSessionCSummary } from './db.js';
+import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeUserBSummary, writeUserCSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
 import { formatShanghaiNowToSecond, parseRegionFromHeaders, resolveRegionByIp } from './geo.js';
 import { getSummaryIntervals, processSessionSummaries } from './summary.js';
@@ -127,24 +127,6 @@ function buildPromptMessages(
   return { messages, usedARoundsCount: rounds.length, hasBSummary, hasCSummary };
 }
 
-function buildAnonymousUserId(installId: string, ip: string): string {
-  const source = installId.trim() || ip || 'unknown';
-  const digest = crypto.createHash('sha1').update(source).digest('hex').slice(0, 24);
-  return `anon:${digest}`;
-}
-
-app.post('/api/auth/anonymous', async (request, reply) => {
-  const secret = (process.env.APP_SECRET || '').trim();
-  if (!secret) {
-    return reply.code(500).send({ error: 'APP_SECRET missing' });
-  }
-  const body = (request.body || {}) as Record<string, unknown>;
-  const installId = String(body.install_id || '').trim().slice(0, 128);
-  const userId = buildAnonymousUserId(installId, getClientIp(request));
-  const token = issueToken(userId, secret);
-  return reply.send({ ok: true, user_id: userId, token });
-});
-
 app.get('/healthz', async () => ({
   ok: true,
   bailian: hasBailianKey() ? 'ok' : 'missing_key',
@@ -157,9 +139,6 @@ function requireAuthOrReply(request: FastifyRequest, reply: FastifyReply) {
     request.log.warn({ masked_ip: auth.maskedIp }, 'auth unauthorized');
     reply.code(401).send({ error: 'unauthorized' });
     return null;
-  }
-  if (auth.authMode === 'guest') {
-    request.log.warn({ masked_ip: auth.maskedIp }, 'auth fallback guest');
   }
   return auth;
 }
@@ -190,11 +169,9 @@ app.post('/api/session/b', async (request, reply) => {
   if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Record<string, string>;
-  const sessionId = (body.session_id || '').trim();
   const bSummary = (body.b_summary || '').trim();
-  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   if (!bSummary) return reply.code(400).send({ error: 'b_summary required' });
-  await writeSessionBSummary(userId, sessionId, bSummary);
+  await writeUserBSummary(userId, bSummary);
   return reply.send({ ok: true });
 });
 
@@ -203,11 +180,9 @@ app.post('/api/session/c', async (request, reply) => {
   if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Record<string, string>;
-  const sessionId = (body.session_id || '').trim();
   const cSummary = (body.c_summary || '').trim();
-  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   if (!cSummary) return reply.code(400).send({ error: 'c_summary required' });
-  await writeSessionCSummary(userId, sessionId, cSummary);
+  await writeUserCSummary(userId, cSummary);
   return reply.send({ ok: true });
 });
 
@@ -215,14 +190,10 @@ app.get('/api/session/snapshot', async (request, reply) => {
   const auth = requireAuthOrReply(request, reply);
   if (!auth) return;
   const userId = auth.userId;
-  const query = request.query as Record<string, string | undefined>;
-  const sessionId = (query.session_id || '').trim();
-  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
-  const snapshot = await getSessionSnapshot(userId, sessionId);
-  const safe = snapshot ?? { user_id: userId, session_id: sessionId, a_rounds_full: [], b_summary: '', c_summary: '', round_total: 0, updated_at: Date.now() };
+  const snapshot = await getSessionSnapshot(userId);
+  const safe = snapshot ?? { user_id: userId, a_rounds_full: [], b_summary: '', c_summary: '', round_total: 0, updated_at: Date.now() };
   return reply.send({
     user_id: safe.user_id,
-    session_id: safe.session_id,
     a_json: safe.a_rounds_full,
     b_summary: safe.b_summary,
     c_summary: safe.c_summary,
@@ -236,14 +207,13 @@ app.post('/api/session/round_complete', async (request, reply) => {
   if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Record<string, unknown>;
-  const sessionId = String(body.session_id || '').trim();
   const clientMsgId = String(body.client_msg_id || '').trim();
   const userText = String(body.user_text || '').trim();
   const assistantText = String(body.assistant_text || '').trim();
   const userImages: string[] = [];
 
-  if (!sessionId || !clientMsgId) {
-    return reply.code(400).send({ error: 'session_id/client_msg_id required' });
+  if (!clientMsgId) {
+    return reply.code(400).send({ error: 'client_msg_id required' });
   }
   if (!userText || !assistantText) {
     return reply.code(400).send({ error: 'user_text/assistant_text required' });
@@ -256,19 +226,17 @@ app.post('/api/session/round_complete', async (request, reply) => {
 
   const result = await appendSessionRoundComplete(
     userId,
-    sessionId,
     clientMsgId,
     { user: userText, user_images: userImages, assistant: assistantText },
     aWindowRounds,
     summaryIntervals.bEveryRounds,
     summaryIntervals.cEveryRounds,
   );
-  void processSessionSummaries(userId, sessionId, result.snapshot, request.log);
+  void processSessionSummaries(userId, result.snapshot, request.log);
 
   request.log.info(
     {
       userId,
-      sessionId,
       clientMsgId,
       replay: result.replay,
       tier: entitlement.tier,
@@ -375,12 +343,10 @@ app.post('/api/chat/stream', async (request, reply) => {
   if (!auth) return;
   const userId = auth.userId;
   const body = (request.body || {}) as Partial<ChatStreamRequest>;
-  const sessionId = (body.session_id || '').trim();
   const clientMsgId = (body.client_msg_id || '').trim();
   const text = (body.text || '').trim();
   const images = Array.isArray(body.images) ? body.images.filter((url) => typeof url === 'string') : [];
 
-  if (!sessionId) return reply.code(400).send({ error: 'session_id required' });
   if (!clientMsgId) return reply.code(400).send({ error: 'client_msg_id required' });
   if (images.length > 4) return reply.code(400).send({ error: 'single request supports up to 4 images' });
   if (!text) return reply.code(400).send({ error: 'text required' });
@@ -391,7 +357,7 @@ app.post('/api/chat/stream', async (request, reply) => {
   const tier = entitlement.tier;
   const aWindowRounds = getAWindowByTier(tier);
   const summaryIntervals = getSummaryIntervals(tier);
-  const snapshot = await getSessionSnapshot(userId, sessionId);
+  const snapshot = await getSessionSnapshot(userId);
   const clientIp = getClientIp(request);
   const regionFromHeaders = parseRegionFromHeaders(request.headers as Record<string, unknown>);
   const resolvedRegion = regionFromHeaders ?? resolveRegionByIp(clientIp);
@@ -400,12 +366,11 @@ app.post('/api/chat/stream', async (request, reply) => {
   const prompt = buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader);
   const dayCN = getTodayKeyCN();
 
-  await touchSessionContext(userId, sessionId, resolvedRegion.region, resolvedRegion.source, resolvedRegion.reliability, Date.now());
+  await touchSessionContext(userId, resolvedRegion.region, resolvedRegion.source, resolvedRegion.reliability, Date.now());
 
   request.log.info(
     {
       userId,
-      sessionId,
       auth_mode: auth.authMode,
       masked_ip: auth.maskedIp,
       tier,
@@ -461,7 +426,7 @@ app.post('/api/chat/stream', async (request, reply) => {
   let upstream: Response;
   try {
     upstream = await openBailianStream({
-      payload: { user_id: userId, session_id: sessionId, client_msg_id: clientMsgId, text, images },
+      payload: { user_id: userId, client_msg_id: clientMsgId, text, images },
       messages: prompt.messages,
       signal: abortController.signal,
     });
@@ -596,14 +561,13 @@ app.post('/api/chat/stream', async (request, reply) => {
       if (assistantText.trim()) {
         const result = await appendSessionRoundComplete(
           userId,
-          sessionId,
           clientMsgId,
           { user: text, user_images: images, assistant: assistantText.trim() },
           aWindowRounds,
           summaryIntervals.bEveryRounds,
           summaryIntervals.cEveryRounds,
         );
-        void processSessionSummaries(userId, sessionId, result.snapshot, request.log);
+        void processSessionSummaries(userId, result.snapshot, request.log);
       }
     }
   } catch (error) {

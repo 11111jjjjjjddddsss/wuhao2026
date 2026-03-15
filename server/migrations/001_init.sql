@@ -40,12 +40,9 @@ CREATE TABLE IF NOT EXISTS upgrade_credits (
 );
 
 CREATE TABLE IF NOT EXISTS session_ab (
-  user_id VARCHAR(128) NOT NULL,
-  session_id VARCHAR(128) NOT NULL,
+  user_id VARCHAR(128) PRIMARY KEY,
   a_json JSON NULL,
   b_summary TEXT NULL,
   round_total INT NOT NULL DEFAULT 0,
-  updated_at BIGINT NOT NULL,
-  PRIMARY KEY (user_id, session_id)
+  updated_at BIGINT NOT NULL
 );
-

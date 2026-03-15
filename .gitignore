@@ -22,3 +22,13 @@ server/dist/
 server/.env
 *.env
 .env.*
+
+# Local diagnostics / temp artifacts
+compat_results/
+tmp/
+tmp_*/
+tmp_*.png
+tmp_*.xml
+tmp_*.ps1
+scripts/android_compat_resume.ps1
+scripts/download_http_range.ps1

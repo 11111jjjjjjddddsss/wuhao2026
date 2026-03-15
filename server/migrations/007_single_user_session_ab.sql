@@ -1,0 +1,4 @@
+ALTER TABLE session_ab
+  DROP PRIMARY KEY,
+  DROP COLUMN IF EXISTS session_id,
+  ADD PRIMARY KEY (user_id);

@@ -26,7 +26,6 @@ data class ARound(
 /** POST /api/session/append-a 请求体：仅 onComplete 后追加一轮 A */
 data class AppendABody(
     val user_id: String,
-    val session_id: String,
     val user_message: String,
     val assistant_message: String
 )
@@ -34,13 +33,11 @@ data class AppendABody(
 /** POST /api/session/update-b 请求体：B 覆盖写成功后才允许后端清 A */
 data class UpdateBBody(
     val user_id: String,
-    val session_id: String,
     val b_summary: String
 )
 
 /** POST /api/session/c 请求体：C 覆盖写成功后用于长期记忆回填 */
 data class UpdateCBody(
     val user_id: String,
-    val session_id: String,
     val c_summary: String
 )

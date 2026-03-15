@@ -32,11 +32,8 @@ object SessionApi {
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
     private val currentStreamCall = AtomicReference<Call?>(null)
-    @Volatile
-    private var cachedToken: String? = null
 
     data class StreamOptions(
-        val sessionId: String,
         val clientMsgId: String,
         val text: String,
         val images: List<String>,
@@ -46,7 +43,7 @@ object SessionApi {
     )
 
     private fun baseUrl(): String {
-        val url = BuildConfig.UPLOAD_BASE_URL?.trim() ?: ""
+        val url = BuildConfig.UPLOAD_BASE_URL.trim()
         return if (url.endsWith("/")) url.dropLast(1) else url
     }
 
@@ -56,76 +53,34 @@ object SessionApi {
         currentStreamCall.getAndSet(null)?.cancel()
     }
 
-    private fun ensureAuthToken(forceRefresh: Boolean = false, onResult: (String?) -> Unit) {
+    private fun ensureAuthToken(onResult: (String?) -> Unit) {
         val staticToken = BuildConfig.SESSION_API_TOKEN.trim()
-        if (!forceRefresh && staticToken.isNotEmpty()) {
+        if (staticToken.isNotEmpty()) {
             onResult(staticToken)
-            return
-        }
-        if (!forceRefresh && !cachedToken.isNullOrBlank()) {
-            onResult(cachedToken)
-            return
-        }
-        val base = baseUrl()
-        if (base.isEmpty()) {
+        } else {
             onResult(null)
-            return
         }
-        val body = gson.toJson(
-            mapOf(
-                "install_id" to IdManager.getInstallId()
-            )
-        )
-        val request = Request.Builder()
-            .url("$base/api/auth/anonymous")
-            .post(body.toRequestBody("application/json".toMediaType()))
-            .build()
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                Log.w(TAG, "auth/anonymous failed", e)
-                onResult(null)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    if (!it.isSuccessful) {
-                        onResult(null)
-                        return
-                    }
-                    val raw = it.body?.string().orEmpty()
-                    val token = try {
-                        gson.fromJson(raw, JsonObject::class.java)
-                            ?.get("token")
-                            ?.asString
-                            ?.trim()
-                            ?.takeIf { value -> value.isNotEmpty() }
-                    } catch (_: Exception) {
-                        null
-                    }
-                    cachedToken = token
-                    onResult(token)
-                }
-            }
-        })
     }
 
     private fun authedRequest(
-        forceRefresh: Boolean = false,
         builderFactory: (String?) -> Request.Builder,
         onReady: (Request) -> Unit
     ) {
-        ensureAuthToken(forceRefresh) { token ->
+        ensureAuthToken { token ->
             val builder = builderFactory(token)
             onReady(builder.build())
         }
     }
+
+    private fun applyIdentityHeaders(builder: Request.Builder): Request.Builder =
+        builder.addHeader("X-User-Id", IdManager.getUserId())
 
     private fun enqueueWithRetry401(
         requestFactory: (String?) -> Request.Builder,
         onResult: (Response) -> Unit,
         onFailure: (IOException) -> Unit
     ) {
-        authedRequest(forceRefresh = false, builderFactory = requestFactory) { request ->
+        authedRequest(builderFactory = requestFactory) { request ->
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     onFailure(e)
@@ -134,7 +89,7 @@ object SessionApi {
                 override fun onResponse(call: Call, response: Response) {
                     if (response.code == 401) {
                         response.close()
-                        authedRequest(forceRefresh = true, builderFactory = requestFactory) { retryReq ->
+                        authedRequest(builderFactory = requestFactory) { retryReq ->
                             client.newCall(retryReq).enqueue(object : Callback {
                                 override fun onFailure(call: Call, e: IOException) = onFailure(e)
                                 override fun onResponse(call: Call, response: Response) = onResult(response)
@@ -156,7 +111,7 @@ object SessionApi {
         }
         enqueueWithRetry401(
             requestFactory = { token ->
-                val builder = Request.Builder().url("$base/api/me").get()
+                val builder = applyIdentityHeaders(Request.Builder().url("$base/api/me").get())
                 if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
                 builder
             },
@@ -173,7 +128,7 @@ object SessionApi {
         )
     }
 
-    fun getSnapshot(sessionId: String, onResult: (SessionSnapshot?) -> Unit) {
+    fun getSnapshot(onResult: (SessionSnapshot?) -> Unit) {
         if (!BuildConfig.USE_BACKEND_AB) {
             onResult(null)
             return
@@ -186,9 +141,11 @@ object SessionApi {
         fun attempt(networkRetry: Int) {
             enqueueWithRetry401(
                 requestFactory = { token ->
-                    val builder = Request.Builder()
-                        .url("$base/api/session/snapshot?session_id=${android.net.Uri.encode(sessionId)}")
-                        .get()
+                    val builder = applyIdentityHeaders(
+                        Request.Builder()
+                            .url("$base/api/session/snapshot")
+                            .get()
+                    )
                     if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
                     builder
                 },
@@ -229,7 +186,6 @@ object SessionApi {
     }
 
     fun appendA(
-        sessionId: String,
         clientMsgId: String,
         userMessage: String,
         assistantMessage: String,
@@ -246,7 +202,6 @@ object SessionApi {
         }
         val body = gson.toJson(
             mapOf(
-                "session_id" to sessionId,
                 "client_msg_id" to clientMsgId,
                 "user_text" to userMessage,
                 "assistant_text" to assistantMessage
@@ -254,9 +209,11 @@ object SessionApi {
         )
         enqueueWithRetry401(
             requestFactory = { token ->
-                val builder = Request.Builder()
-                    .url("$base/api/session/round_complete")
-                    .post(body.toRequestBody("application/json".toMediaType()))
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/session/round_complete")
+                        .post(body.toRequestBody("application/json".toMediaType()))
+                )
                 if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
                 builder
             },
@@ -268,7 +225,7 @@ object SessionApi {
         )
     }
 
-    fun updateB(sessionId: String, bSummary: String, onResult: (Boolean) -> Unit) {
+    fun updateB(bSummary: String, onResult: (Boolean) -> Unit) {
         if (!BuildConfig.USE_BACKEND_AB) {
             onResult(false)
             return
@@ -280,15 +237,16 @@ object SessionApi {
         }
         val body = gson.toJson(
             mapOf(
-                "session_id" to sessionId,
                 "b_summary" to bSummary
             )
         )
         enqueueWithRetry401(
             requestFactory = { token ->
-                val builder = Request.Builder()
-                    .url("$base/api/session/b")
-                    .post(body.toRequestBody("application/json".toMediaType()))
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/session/b")
+                        .post(body.toRequestBody("application/json".toMediaType()))
+                )
                 if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
                 builder
             },
@@ -300,7 +258,7 @@ object SessionApi {
         )
     }
 
-    fun updateC(sessionId: String, cSummary: String, onResult: (Boolean) -> Unit) {
+    fun updateC(cSummary: String, onResult: (Boolean) -> Unit) {
         if (!BuildConfig.USE_BACKEND_AB) {
             onResult(false)
             return
@@ -312,15 +270,16 @@ object SessionApi {
         }
         val body = gson.toJson(
             mapOf(
-                "session_id" to sessionId,
                 "c_summary" to cSummary
             )
         )
         enqueueWithRetry401(
             requestFactory = { token ->
-                val builder = Request.Builder()
-                    .url("$base/api/session/c")
-                    .post(body.toRequestBody("application/json".toMediaType()))
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/session/c")
+                        .post(body.toRequestBody("application/json".toMediaType()))
+                )
                 if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
                 builder
             },
@@ -345,18 +304,19 @@ object SessionApi {
         }
         val body = gson.toJson(
             mapOf(
-                "session_id" to options.sessionId,
                 "client_msg_id" to options.clientMsgId,
                 "text" to options.text,
                 "images" to options.images
             )
         )
         fun buildRequest(token: String?): Request {
-            val builder = Request.Builder()
-                .url("$base${ApiConfig.PATH_CHAT_STREAM}")
-                .addHeader("Content-Type", "application/json")
-                .addHeader("Accept", "text/event-stream")
-                .post(body.toRequestBody("application/json".toMediaType()))
+            val builder = applyIdentityHeaders(
+                Request.Builder()
+                    .url("$base${ApiConfig.PATH_CHAT_STREAM}")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Accept", "text/event-stream")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+            )
             if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
             if (!options.region.isNullOrBlank()) builder.addHeader("X-User-Region", options.region)
             if (!options.regionSource.isNullOrBlank()) builder.addHeader("X-Region-Source", options.regionSource)
@@ -366,8 +326,8 @@ object SessionApi {
 
         var deliveredAnyChunk = false
 
-        fun start(forceRefresh: Boolean, hasRetried: Boolean, networkRetry: Int) {
-            ensureAuthToken(forceRefresh = forceRefresh) { token ->
+        fun start(hasRetried: Boolean, networkRetry: Int) {
+            ensureAuthToken { token ->
                 val request = buildRequest(token)
                 val call = client.newCall(request)
                 currentStreamCall.set(call)
@@ -377,7 +337,7 @@ object SessionApi {
                         if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
                             val retryDelayMs = 350L * (networkRetry + 1)
                             mainHandler.postDelayed({
-                                start(forceRefresh = false, hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
                             }, retryDelayMs)
                             return
                         }
@@ -390,7 +350,7 @@ object SessionApi {
                         response.use { res ->
                             if (res.code == 401) {
                                 if (!hasRetried) {
-                                    start(forceRefresh = true, hasRetried = true, networkRetry = networkRetry)
+                                    start(hasRetried = true, networkRetry = networkRetry)
                                 } else {
                                     onInterrupted("auth")
                                 }
@@ -400,7 +360,7 @@ object SessionApi {
                                 if (!deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX && (res.code == 502 || res.code == 503 || res.code == 504)) {
                                     val retryDelayMs = 350L * (networkRetry + 1)
                                     mainHandler.postDelayed({
-                                        start(forceRefresh = false, hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                        start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
                                     }, retryDelayMs)
                                     return
                                 }
@@ -475,7 +435,7 @@ object SessionApi {
                                 if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
                                     val retryDelayMs = 350L * (networkRetry + 1)
                                     mainHandler.postDelayed({
-                                        start(forceRefresh = false, hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                        start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
                                     }, retryDelayMs)
                                     return
                                 }
@@ -487,7 +447,7 @@ object SessionApi {
             }
         }
 
-        start(forceRefresh = false, hasRetried = false, networkRetry = 0)
+        start(hasRetried = false, networkRetry = 0)
     }
 
     private data class SessionSnapshotJson(

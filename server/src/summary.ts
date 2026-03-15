@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyBaseLogger } from 'fastify';
 import { hasBailianKeyConfigured, openBailianCompletion } from './bailian.js';
-import { setSessionSummaryPending, writeSessionBSummary, writeSessionCSummary } from './db.js';
+import { setUserSummaryPending, writeUserBSummary, writeUserCSummary } from './db.js';
 import type { SessionSnapshot, Tier } from './types.js';
 
 type SummaryLayer = 'B' | 'C';
@@ -65,36 +65,35 @@ async function extractSummary(layer: SummaryLayer, oldSummary: string, dialogueT
 async function processLayer(
   layer: SummaryLayer,
   userId: string,
-  sessionId: string,
   snapshot: SessionSnapshot,
   logger: FastifyBaseLogger,
 ): Promise<void> {
   const pending = layer === 'B' ? snapshot.pending_retry_b : snapshot.pending_retry_c;
   if (!pending) return;
   if (!hasBailianKeyConfigured()) {
-    logger.warn({ userId, sessionId, layer }, 'summary extraction skipped: model backend unavailable');
+    logger.warn({ userId, layer }, 'summary extraction skipped: model backend unavailable');
     return;
   }
   const dialogueText = buildDialogueText(snapshot.a_rounds_full);
   if (!dialogueText) {
-    logger.warn({ userId, sessionId, layer }, 'summary extraction skipped: empty dialogue');
+    logger.warn({ userId, layer }, 'summary extraction skipped: empty dialogue');
     return;
   }
   try {
     const nextSummary = await extractSummary(layer, layer === 'B' ? snapshot.b_summary : snapshot.c_summary, dialogueText);
     if (layer === 'B') {
-      await writeSessionBSummary(userId, sessionId, nextSummary);
+      await writeUserBSummary(userId, nextSummary);
       snapshot.b_summary = nextSummary;
       snapshot.pending_retry_b = false;
     } else {
-      await writeSessionCSummary(userId, sessionId, nextSummary);
+      await writeUserCSummary(userId, nextSummary);
       snapshot.c_summary = nextSummary;
       snapshot.pending_retry_c = false;
     }
-    logger.info({ userId, sessionId, layer, chars: nextSummary.length }, 'summary extraction success');
+    logger.info({ userId, layer, chars: nextSummary.length }, 'summary extraction success');
   } catch (error) {
-    await setSessionSummaryPending(userId, sessionId, layer, true);
-    logger.error({ userId, sessionId, layer, error }, 'summary extraction failed');
+    await setUserSummaryPending(userId, layer, true);
+    logger.error({ userId, layer, error }, 'summary extraction failed');
   }
 }
 
@@ -106,10 +105,9 @@ export function getSummaryIntervals(tier: Tier): SummaryIntervals {
 
 export async function processSessionSummaries(
   userId: string,
-  sessionId: string,
   snapshot: SessionSnapshot,
   logger: FastifyBaseLogger,
 ): Promise<void> {
-  await processLayer('B', userId, sessionId, snapshot, logger);
-  await processLayer('C', userId, sessionId, snapshot, logger);
+  await processLayer('B', userId, snapshot, logger);
+  await processLayer('C', userId, snapshot, logger);
 }

@@ -392,7 +392,6 @@ object QwenClient {
      */
     fun callApi(
         userId: String,
-        sessionId: String,
         requestId: String,
         streamId: String,
         userMessage: String,
@@ -407,7 +406,7 @@ object QwenClient {
         val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
         val startMs = System.currentTimeMillis()
         if (BuildConfig.DEBUG) {
-            Log.d(TAG, "userId=$userId sessionId=$sessionId requestId=$requestId streamId=$streamId model=$model 开始")
+            Log.d(TAG, "userId=$userId requestId=$requestId streamId=$streamId model=$model 开始")
         }
         val completed = AtomicBoolean(false)
         val fireComplete: () -> Unit = {
@@ -445,7 +444,6 @@ object QwenClient {
                     .addHeader("Cache-Control", "no-cache")
                     .addHeader("Accept-Encoding", "identity")
                     .addHeader("X-User-Id", userId)
-                    .addHeader("X-Session-Id", sessionId)
                     .addHeader("X-Request-Id", requestId)
                     .addHeader("X-Client-Msg-Id", effectiveClientMsgId)
                     .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
@@ -476,7 +474,7 @@ object QwenClient {
 
                 if (code != 200) {
                     Log.e(TAG, "callApi HTTP error status=$code")
-                    handleErrorResponse(userId, sessionId, requestId, streamId, code, body, inLen, imgCount, outputCharCount, onInterrupted, fireComplete, onInterruptedResumable)
+                    handleErrorResponse(userId, requestId, streamId, code, body, inLen, imgCount, outputCharCount, onInterrupted, fireComplete, onInterruptedResumable)
                     return@Thread
                 }
 
@@ -565,7 +563,7 @@ object QwenClient {
             }
         }.start()
     }
-    private fun handleErrorResponse(userId: String, sessionId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit, onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null) {
+    private fun handleErrorResponse(userId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit, onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null) {
         var reason = "server"
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)

@@ -2,7 +2,6 @@ export type Tier = 'free' | 'plus' | 'pro';
 
 export interface ChatStreamRequest {
   user_id: string;
-  session_id: string;
   client_msg_id: string;
   text: string;
   images?: string[];
@@ -39,7 +38,6 @@ export interface SessionRound {
 
 export interface SessionSnapshot {
   user_id: string;
-  session_id: string;
   a_rounds_full: SessionRound[];
   b_summary: string;
   c_summary: string;

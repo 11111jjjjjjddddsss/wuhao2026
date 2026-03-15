@@ -23,7 +23,6 @@ type SessionRoundLedgerRow = RowDataPacket & {
 
 export async function appendSessionRoundComplete(
   userId: string,
-  sessionId: string,
   clientMsgId: string,
   round: SessionRound,
   aWindowRounds: number,
@@ -34,22 +33,22 @@ export async function appendSessionRoundComplete(
     await conn.beginTransaction();
     try {
       const [ledgerRows] = await conn.execute<SessionRoundLedgerRow[]>(
-        'SELECT id FROM session_round_ledger WHERE user_id = ? AND session_id = ? AND client_msg_id = ? LIMIT 1 FOR UPDATE',
-        [userId, sessionId, clientMsgId],
+        'SELECT id FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1 FOR UPDATE',
+        [userId, clientMsgId],
       );
       if (ledgerRows.length > 0) {
-        const snapshot = await readSnapshotForUpdate(conn, userId, sessionId);
+        const snapshot = await readSnapshotForUpdate(conn, userId);
         await conn.commit();
         return { replay: true, snapshot };
       }
 
       await conn.execute(
-        `INSERT INTO session_round_ledger(user_id, session_id, client_msg_id, created_at)
-         VALUES (?, ?, ?, ?)`,
-        [userId, sessionId, clientMsgId, nowTs()],
+        `INSERT INTO session_round_ledger(user_id, client_msg_id, created_at)
+         VALUES (?, ?, ?)`,
+        [userId, clientMsgId, nowTs()],
       );
 
-      const snapshot = await appendRoundAndUpsertSnapshot(conn, userId, sessionId, round, aWindowRounds, bEveryRounds, cEveryRounds);
+      const snapshot = await appendRoundAndUpsertSnapshot(conn, userId, round, aWindowRounds, bEveryRounds, cEveryRounds);
       await conn.commit();
       return { replay: false, snapshot };
     } catch (error) {
@@ -62,15 +61,14 @@ export async function appendSessionRoundComplete(
 async function appendRoundAndUpsertSnapshot(
   conn: PoolConnection,
   userId: string,
-  sessionId: string,
   round: SessionRound,
   aWindowRounds: number,
   bEveryRounds: number,
   cEveryRounds: number,
 ): Promise<SessionSnapshot> {
   const [rows] = await conn.execute<SessionRow[]>(
-    'SELECT a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1 FOR UPDATE',
-    [userId, sessionId],
+    'SELECT a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE',
+    [userId],
   );
   const existing = rows[0];
   const rounds: SessionRound[] = existing?.a_json ? JSON.parse(existing.a_json) : [];
@@ -84,20 +82,19 @@ async function appendRoundAndUpsertSnapshot(
   const pendingRetryC = Boolean(existing?.pending_retry_c) || (cEveryRounds > 0 && roundTotal % cEveryRounds === 0);
 
   await conn.execute(
-    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO session_ab(user_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        a_json = VALUES(a_json),
        pending_retry_b = VALUES(pending_retry_b),
        pending_retry_c = VALUES(pending_retry_c),
        round_total = VALUES(round_total),
        updated_at = VALUES(updated_at)`,
-    [userId, sessionId, JSON.stringify(rounds), bSummary, cSummary, pendingRetryB ? 1 : 0, pendingRetryC ? 1 : 0, roundTotal, updatedAt],
+    [userId, JSON.stringify(rounds), bSummary, cSummary, pendingRetryB ? 1 : 0, pendingRetryC ? 1 : 0, roundTotal, updatedAt],
   );
 
   return {
     user_id: userId,
-    session_id: sessionId,
     a_rounds_full: rounds,
     b_summary: bSummary,
     c_summary: cSummary,
@@ -108,59 +105,58 @@ async function appendRoundAndUpsertSnapshot(
   };
 }
 
-export async function writeSessionBSummary(userId: string, sessionId: string, summary: string): Promise<void> {
+export async function writeUserBSummary(userId: string, summary: string): Promise<void> {
   const normalized = summary.trim();
   if (!normalized) {
     throw new Error('b_summary empty');
   }
   await withConnection(async (conn) => {
     await conn.execute(
-      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?)
+      `INSERT INTO session_ab(user_id, a_json, b_summary, c_summary, round_total, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?)
        ON DUPLICATE KEY UPDATE b_summary = VALUES(b_summary), pending_retry_b = 0, updated_at = VALUES(updated_at)`,
-      [userId, sessionId, JSON.stringify([]), normalized, '', nowTs()],
+      [userId, JSON.stringify([]), normalized, '', nowTs()],
     );
   });
 }
 
-export async function writeSessionCSummary(userId: string, sessionId: string, summary: string): Promise<void> {
+export async function writeUserCSummary(userId: string, summary: string): Promise<void> {
   const normalized = summary.trim();
   if (!normalized) {
     throw new Error('c_summary empty');
   }
   await withConnection(async (conn) => {
     await conn.execute(
-      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, round_total, updated_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?)
+      `INSERT INTO session_ab(user_id, a_json, b_summary, c_summary, round_total, updated_at)
+       VALUES (?, ?, ?, ?, 0, ?)
        ON DUPLICATE KEY UPDATE c_summary = VALUES(c_summary), pending_retry_c = 0, updated_at = VALUES(updated_at)`,
-      [userId, sessionId, JSON.stringify([]), '', normalized, nowTs()],
+      [userId, JSON.stringify([]), '', normalized, nowTs()],
     );
   });
 }
 
-export async function setSessionSummaryPending(userId: string, sessionId: string, layer: 'B' | 'C', pending: boolean): Promise<void> {
+export async function setUserSummaryPending(userId: string, layer: 'B' | 'C', pending: boolean): Promise<void> {
   const pendingRetryB = layer === 'B' && pending ? 1 : 0;
   const pendingRetryC = layer === 'C' && pending ? 1 : 0;
   const column = layer === 'B' ? 'pending_retry_b' : 'pending_retry_c';
   await withConnection(async (conn) => {
     await conn.execute(
-      `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
+      `INSERT INTO session_ab(user_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?)
        ON DUPLICATE KEY UPDATE ${column} = VALUES(${column}), updated_at = VALUES(updated_at)`,
-      [userId, sessionId, JSON.stringify([]), '', '', pendingRetryB, pendingRetryC, nowTs()],
+      [userId, JSON.stringify([]), '', '', pendingRetryB, pendingRetryC, nowTs()],
     );
   });
 }
 
-export async function getSessionSnapshot(userId: string, sessionId: string): Promise<SessionSnapshot | null> {
+export async function getSessionSnapshot(userId: string): Promise<SessionSnapshot | null> {
   return withConnection(async (conn) => {
-    return readSnapshotOptional(conn, userId, sessionId);
+    return readSnapshotOptional(conn, userId);
   });
 }
 
 export async function touchSessionContext(
   userId: string,
-  sessionId: string,
   region: string,
   source: RegionSource,
   reliability: RegionReliability,
@@ -170,7 +166,6 @@ export async function touchSessionContext(
     await conn.execute(
       `INSERT INTO session_ab(
          user_id,
-         session_id,
          a_json,
          b_summary,
          c_summary,
@@ -181,14 +176,14 @@ export async function touchSessionContext(
          last_region_reliability,
          last_seen_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          last_region = VALUES(last_region),
          last_region_source = VALUES(last_region_source),
          last_region_reliability = VALUES(last_region_reliability),
          last_seen_at = VALUES(last_seen_at),
          updated_at = VALUES(updated_at)`,
-      [userId, sessionId, JSON.stringify([]), '', '', 0, seenAt, region, source, reliability, seenAt],
+      [userId, JSON.stringify([]), '', '', 0, seenAt, region, source, reliability, seenAt],
     );
   });
 }
@@ -196,18 +191,16 @@ export async function touchSessionContext(
 async function readSnapshotOptional(
   conn: PoolConnection,
   userId: string,
-  sessionId: string,
 ): Promise<SessionSnapshot | null> {
   const [rows] = await conn.execute<SessionRow[]>(
-    'SELECT a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at FROM session_ab WHERE user_id = ? AND session_id = ? LIMIT 1',
-    [userId, sessionId],
+    'SELECT a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1',
+    [userId],
   );
   if (rows.length === 0) return null;
   const row = rows[0];
   const rounds: SessionRound[] = row.a_json ? JSON.parse(row.a_json) : [];
   return {
     user_id: userId,
-    session_id: sessionId,
     a_rounds_full: rounds,
     b_summary: row.b_summary ?? '',
     c_summary: row.c_summary ?? '',
@@ -221,13 +214,11 @@ async function readSnapshotOptional(
 async function readSnapshotForUpdate(
   conn: PoolConnection,
   userId: string,
-  sessionId: string,
 ): Promise<SessionSnapshot> {
-  const snapshot = await readSnapshotOptional(conn, userId, sessionId);
+  const snapshot = await readSnapshotOptional(conn, userId);
   if (snapshot) return snapshot;
   const empty: SessionSnapshot = {
     user_id: userId,
-    session_id: sessionId,
     a_rounds_full: [],
     b_summary: '',
     c_summary: '',
@@ -237,10 +228,10 @@ async function readSnapshotForUpdate(
     updated_at: nowTs(),
   };
   await conn.execute(
-    `INSERT INTO session_ab(user_id, session_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?)
+    `INSERT INTO session_ab(user_id, a_json, b_summary, c_summary, pending_retry_b, pending_retry_c, round_total, updated_at)
+     VALUES (?, ?, ?, ?, 0, 0, 0, ?)
      ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)`,
-    [userId, sessionId, JSON.stringify([]), '', '', empty.updated_at],
+    [userId, JSON.stringify([]), '', '', empty.updated_at],
   );
   return empty;
 }

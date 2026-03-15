@@ -22,12 +22,10 @@ object ModelService {
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         QwenClient.cancelCurrentRequest()
-        val userId = IdManager.getClientId()
-        val sessionId = IdManager.getSessionId()
+        val userId = IdManager.getUserId()
         val requestId = ApiConfig.nextRequestId()
         QwenClient.callApi(
             userId = userId,
-            sessionId = sessionId,
             requestId = requestId,
             streamId = streamId,
             userMessage = userMessage,
@@ -51,12 +49,10 @@ object ModelService {
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         QwenClient.cancelCurrentRequest()
-        val userId = IdManager.getClientId()
-        val sessionId = IdManager.getSessionId()
+        val userId = IdManager.getUserId()
         val requestId = ApiConfig.nextRequestId()
         QwenClient.callApi(
             userId = userId,
-            sessionId = sessionId,
             requestId = requestId,
             streamId = streamId,
             userMessage = continuationUserMessage,
