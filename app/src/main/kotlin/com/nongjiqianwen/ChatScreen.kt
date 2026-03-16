@@ -1,4 +1,4 @@
-﻿package com.nongjiqianwen
+package com.nongjiqianwen
 
 import android.content.Context
 import android.os.Handler
@@ -198,7 +198,7 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
-private val ASSISTANT_START_ANCHOR_TOP = 236.dp
+private val ASSISTANT_START_ANCHOR_TOP = 228.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 52.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
@@ -949,44 +949,20 @@ private fun AssistantMessageContent(
     } else {
         modifier
     }
-    val sizeAnimatedModifier = if (animateLayoutChanges) {
-        Modifier.animateContentSize(
-            animationSpec = tween(
-                durationMillis = 120,
-                easing = LinearOutSlowInEasing
-            )
-        )
-    } else {
-        Modifier
-    }
     if (isStreaming) {
+        // Streaming: NO animateContentSize, NO AnimatedVisibility crossfade.
+        // Simple conditional switch: ball OR text. Eliminates jitter/ghosting.
         Box(
             modifier = stableModifier
-                .fillMaxWidth()
-                .then(sizeAnimatedModifier),
+                .fillMaxWidth(),
             contentAlignment = Alignment.TopStart
         ) {
-            AnimatedVisibility(
-                visible = content.isBlank(),
-                enter = fadeIn(animationSpec = tween(durationMillis = 90)),
-                exit = fadeOut(animationSpec = tween(durationMillis = GPT_BALL_EXIT_MS))
-            ) {
+            if (content.isBlank()) {
                 AssistantStreamingWaitingIndicator(modifier = Modifier.fillMaxWidth())
-            }
-            AnimatedVisibility(
-                visible = content.isNotBlank(),
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = GPT_STREAM_TEXT_ENTRY_MS,
-                        delayMillis = 36
-                    )
-                ),
-                exit = fadeOut(animationSpec = tween(durationMillis = 80))
-            ) {
+            } else {
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .then(sizeAnimatedModifier),
+                        .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     AssistantStreamingContent(
@@ -1010,8 +986,7 @@ private fun AssistantMessageContent(
     } else {
         Column(
             modifier = modifier
-                .fillMaxWidth()
-                .then(sizeAnimatedModifier),
+                .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             AssistantMarkdownContent(content = content)
@@ -1520,7 +1495,7 @@ fun ChatScreen() {
         anchoredUserMessageId != null &&
         (
             autoScrollMode == AutoScrollMode.AnchorUser ||
-                (!userDetachedFromBottom && !userInteracting)
+                !userDetachedFromBottom
             )
     ) {
         streamBottomSpacerPx
@@ -1906,10 +1881,10 @@ fun ChatScreen() {
     }
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
-        val viewportStep = (messageViewportHeightPx * 0.012f)
+        val viewportStep = (messageViewportHeightPx * 0.035f)
             .roundToInt()
-            .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX / 2)
-        val smoothStep = maxOf(viewportStep, 6)
+            .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
+        val smoothStep = maxOf(viewportStep, STREAM_BOTTOM_FOLLOW_STEP_PX)
         return overflow.coerceAtMost(smoothStep)
     }
 

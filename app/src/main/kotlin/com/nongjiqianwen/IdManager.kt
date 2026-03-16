@@ -8,12 +8,10 @@ import java.util.UUID
  * Unified identity manager.
  *
  * - user_id: local stable user identity for request headers and app-level continuity
- * - account_id: reserved for future signed-in account binding
  */
 object IdManager {
     private const val PREFS_NAME = "app_ids"
     private const val KEY_USER_ID = "user_id"
-    private const val KEY_ACCOUNT_ID = "account_id"
 
     private var appContext: Context? = null
 
@@ -27,32 +25,7 @@ object IdManager {
         ensureUserId()
     }
 
-    fun getUserId(): String = getAccountId() ?: ensureUserId()
-
-    fun getAccountId(): String? {
-        val ctx = appContext ?: return null
-        val value = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(KEY_ACCOUNT_ID, null)
-        return value?.trim()?.takeIf { it.isNotEmpty() }
-    }
-
-    fun bindAccountId(accountId: String?) {
-        val ctx = appContext ?: return
-        val clean = accountId?.trim()?.takeIf { it.isNotEmpty() }
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_ACCOUNT_ID, clean)
-            .apply()
-    }
-
-    data class UserIdentity(
-        val userId: String,
-        val accountId: String?,
-    )
-
-    fun getUserIdentity(): UserIdentity = UserIdentity(
-        userId = getUserId(),
-        accountId = getAccountId(),
-    )
+    fun getUserId(): String = ensureUserId()
 
     fun resetUserId(): String {
         val ctx = appContext ?: return UUID.randomUUID().toString()

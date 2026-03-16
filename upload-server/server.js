@@ -187,11 +187,10 @@ function ensureSessionTable(conn) {
   return conn.execute(
     `CREATE TABLE IF NOT EXISTS session_ab (
       user_id VARCHAR(128) NOT NULL,
-      session_id VARCHAR(128) NOT NULL,
       b_summary TEXT NOT NULL DEFAULT '',
       a_rounds_json LONGTEXT NOT NULL DEFAULT '[]',
       updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
-      PRIMARY KEY (user_id, session_id)
+      PRIMARY KEY (user_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   ).catch(() => {});
 }
@@ -201,11 +200,10 @@ app.get('/api/session/snapshot', (req, res) => {
     return res.status(503).json({ error: 'session 未配置数据库，请设置 DB_HOST/DB_USER/DB_PASSWORD/DB_DATABASE' });
   }
   const user_id = (req.query.user_id || '').slice(0, 128);
-  const session_id = (req.query.session_id || '').slice(0, 128);
   dbPool.getConnection()
     .then(conn => {
       return ensureSessionTable(conn)
-        .then(() => conn.execute('SELECT b_summary, a_rounds_json FROM session_ab WHERE user_id = ? AND session_id = ?', [user_id, session_id]))
+        .then(() => conn.execute('SELECT b_summary, a_rounds_json FROM session_ab WHERE user_id = ?', [user_id]))
         .then(([rows]) => {
           conn.release();
           let b_summary = '';
@@ -220,7 +218,7 @@ app.get('/api/session/snapshot', (req, res) => {
           if (!Array.isArray(a_rounds)) a_rounds = [];
           const a_rounds_full = a_rounds;
           const a_rounds_for_ui = a_rounds_full.slice(-A_ROUNDS_UI_MAX);
-          console.log('[SESSION] GET snapshot', user_id, session_id, 'b_len=' + b_summary.length, 'a_rounds_full=' + a_rounds_full.length, 'a_rounds_for_ui=' + a_rounds_for_ui.length);
+          console.log('[SESSION] GET snapshot', user_id, 'b_len=' + b_summary.length, 'a_rounds_full=' + a_rounds_full.length, 'a_rounds_for_ui=' + a_rounds_for_ui.length);
           return res.status(200).json({ b_summary, a_rounds_full, a_rounds_for_ui });
         });
     })
@@ -234,17 +232,16 @@ app.post('/api/session/append-a', (req, res) => {
   if (!dbPool) {
     return res.status(503).json({ error: 'session 未配置数据库' });
   }
-  const { user_id: uid, session_id: sid, user_message, assistant_message } = req.body || {};
+  const { user_id: uid, user_message, assistant_message } = req.body || {};
   const user_id = (uid || '').slice(0, 128);
-  const session_id = (sid || '').slice(0, 128);
-  if (!user_id || !session_id) {
-    return res.status(400).json({ error: '缺少 user_id 或 session_id' });
+  if (!user_id) {
+    return res.status(400).json({ error: '缺少 user_id' });
   }
   const round = { user: String(user_message || ''), assistant: String(assistant_message || '') };
   dbPool.getConnection()
     .then(conn => {
       return ensureSessionTable(conn)
-        .then(() => conn.execute('SELECT a_rounds_json FROM session_ab WHERE user_id = ? AND session_id = ?', [user_id, session_id]))
+        .then(() => conn.execute('SELECT a_rounds_json FROM session_ab WHERE user_id = ?', [user_id]))
         .then(([rows]) => {
           let a_rounds = [];
           if (Array.isArray(rows) && rows.length > 0) {
@@ -257,11 +254,11 @@ app.post('/api/session/append-a', (req, res) => {
           a_rounds.push(round);
           const a_rounds_json = JSON.stringify(a_rounds);
           return conn.execute(
-            'INSERT INTO session_ab (user_id, session_id, b_summary, a_rounds_json) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE a_rounds_json = ?, updated_at = CURRENT_TIMESTAMP(3)',
-            [user_id, session_id, '', a_rounds_json, a_rounds_json]
+            'INSERT INTO session_ab (user_id, b_summary, a_rounds_json) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE a_rounds_json = ?, updated_at = CURRENT_TIMESTAMP(3)',
+            [user_id, '', a_rounds_json, a_rounds_json]
           ).then(() => {
             conn.release();
-            console.log('[SESSION] POST append-a', user_id, session_id, 'a_rounds=' + a_rounds.length);
+            console.log('[SESSION] POST append-a', user_id, 'a_rounds=' + a_rounds.length);
             return res.status(200).json({ ok: true, a_rounds_count: a_rounds.length });
           });
         });
@@ -277,23 +274,22 @@ app.post('/api/session/update-b', (req, res) => {
   if (!dbPool) {
     return res.status(503).json({ error: 'session 未配置数据库' });
   }
-  const { user_id: uid, session_id: sid, b_summary: bSum } = req.body || {};
+  const { user_id: uid, b_summary: bSum } = req.body || {};
   const user_id = (uid || '').slice(0, 128);
-  const session_id = (sid || '').slice(0, 128);
-  if (!user_id || !session_id) {
-    return res.status(400).json({ error: '缺少 user_id 或 session_id' });
+  if (!user_id) {
+    return res.status(400).json({ error: '缺少 user_id' });
   }
   const b_summary = typeof bSum === 'string' ? bSum : '';
   dbPool.getConnection()
     .then(conn => {
       return ensureSessionTable(conn)
         .then(() => conn.execute(
-          'INSERT INTO session_ab (user_id, session_id, b_summary, a_rounds_json) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE b_summary = ?, a_rounds_json = ?',
-          [user_id, session_id, b_summary, '[]', b_summary, '[]']
+          'INSERT INTO session_ab (user_id, b_summary, a_rounds_json) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE b_summary = ?, a_rounds_json = ?',
+          [user_id, b_summary, '[]', b_summary, '[]']
         ))
         .then(() => {
           conn.release();
-          console.log('[SESSION] POST update-b', user_id, session_id, 'b_len=' + b_summary.length, 'a_cleared');
+          console.log('[SESSION] POST update-b', user_id, 'b_len=' + b_summary.length, 'a_cleared');
           return res.status(200).json({ ok: true });
         });
     })
