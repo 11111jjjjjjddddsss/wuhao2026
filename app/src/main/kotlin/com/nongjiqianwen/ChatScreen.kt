@@ -14,6 +14,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -78,6 +79,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -97,6 +99,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
@@ -122,6 +127,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -177,8 +183,8 @@ private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 180L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
-private const val STREAM_REVEAL_FRAME_BUDGET_MS = 56L
-private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 7
+private const val STREAM_REVEAL_FRAME_BUDGET_MS = 96L
+private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 12
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -198,7 +204,7 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
-private val ASSISTANT_START_ANCHOR_TOP = 228.dp
+private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 52.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
@@ -1041,6 +1047,23 @@ private fun AssistantStreamingContent(
             current = MarkdownUiBlock.Heading(markerLength, AnnotatedString(""))
         )
     }
+    val tailOffset = remember(content, parts.tailContent) {
+        (content.length - parts.tailContent.length).coerceAtLeast(0)
+    }
+    val tailFreshStart = remember(parts.tailContent, streamingFreshStart, tailOffset) {
+        if (streamingFreshStart < 0 || parts.tailContent.isEmpty()) {
+            -1
+        } else {
+            (streamingFreshStart - tailOffset).coerceIn(0, parts.tailContent.length)
+        }
+    }
+    val tailFreshEnd = remember(parts.tailContent, streamingFreshEnd, tailOffset, tailFreshStart) {
+        if (streamingFreshEnd <= tailFreshStart || parts.tailContent.isEmpty()) {
+            -1
+        } else {
+            (streamingFreshEnd - tailOffset).coerceIn(tailFreshStart, parts.tailContent.length)
+        }
+    }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
@@ -1054,7 +1077,10 @@ private fun AssistantStreamingContent(
         if (parts.tailContent.isNotBlank()) {
             AssistantStreamingTail(
                 content = parts.tailContent,
-                showLeadingSectionDivider = showLeadingSectionDivider
+                showLeadingSectionDivider = showLeadingSectionDivider,
+                freshStart = tailFreshStart,
+                freshEnd = tailFreshEnd,
+                freshTick = streamingFreshTick
             )
         }
     }
@@ -1063,10 +1089,43 @@ private fun AssistantStreamingContent(
 @Composable
 private fun AssistantStreamingTail(
     content: String,
-    showLeadingSectionDivider: Boolean = false
+    showLeadingSectionDivider: Boolean = false,
+    freshStart: Int = -1,
+    freshEnd: Int = -1,
+    freshTick: Int = 0
 ) {
     val trimmed = content.trimStart()
-    fun buildTail(text: String): AnnotatedString = buildStreamingAnnotatedString(text)
+    val hasFreshRange = freshStart >= 0 && freshEnd > freshStart
+    var freshAlphaTarget by remember { mutableFloatStateOf(1f) }
+    LaunchedEffect(freshTick, hasFreshRange) {
+        if (hasFreshRange && freshTick > 0) {
+            freshAlphaTarget = 0.9f
+            withFrameNanos { }
+            freshAlphaTarget = 1f
+        } else {
+            freshAlphaTarget = 1f
+        }
+    }
+    val freshAlpha by animateFloatAsState(
+        targetValue = freshAlphaTarget,
+        animationSpec = tween(durationMillis = 72),
+        label = "streamingFreshAlpha"
+    )
+    fun buildTail(text: String): AnnotatedString {
+        val base = buildStreamingAnnotatedString(text)
+        if (!hasFreshRange || text.isEmpty()) return base
+        val startInContent = content.indexOf(text).takeIf { it >= 0 } ?: return base
+        val localStart = (freshStart - startInContent).coerceIn(0, text.length)
+        val localEnd = (freshEnd - startInContent).coerceIn(localStart, text.length)
+        if (localEnd <= localStart) return base
+        return AnnotatedString.Builder(base).apply {
+            addStyle(
+                style = SpanStyle(color = Color(0xFF161616).copy(alpha = freshAlpha)),
+                start = localStart,
+                end = localEnd
+            )
+        }.toAnnotatedString()
+    }
     val animatedModifier = Modifier.fillMaxWidth()
 
     when {
@@ -1492,11 +1551,7 @@ fun ChatScreen() {
     val bottomOverlayClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.toPx().roundToInt() }
     val activeStreamBottomSpacerPx = if (
         isStreaming &&
-        anchoredUserMessageId != null &&
-        (
-            autoScrollMode == AutoScrollMode.AnchorUser ||
-                !userDetachedFromBottom
-            )
+        anchoredUserMessageId != null
     ) {
         streamBottomSpacerPx
     } else {
@@ -1506,11 +1561,26 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
     }
-    val lockUserScrollDuringBall by remember(isStreaming, autoScrollMode, streamingMessageContent) {
+    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, streamingContentBottomPx, messageViewportHeightPx) {
         derivedStateOf {
+            val streamDoesNotFillViewport =
+                streamingContentBottomPx <= 0 ||
+                    streamingContentBottomPx < (messageViewportHeightPx - streamVisibleBottomGapPx)
             isStreaming &&
-                autoScrollMode == AutoScrollMode.AnchorUser &&
-                streamingMessageContent.isBlank()
+                (streamingMessageContent.isBlank() || streamDoesNotFillViewport)
+        }
+    }
+    val streamingDirectionLock = remember(lockUserScrollDuringBall) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (!lockUserScrollDuringBall || source != NestedScrollSource.Drag) return Offset.Zero
+                return if (available.y < 0f) Offset(x = 0f, y = available.y) else Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (!lockUserScrollDuringBall) return Velocity.Zero
+                return if (available.y < 0f) available else Velocity.Zero
+            }
         }
     }
     val hasStartupBottomViewport by remember(initialBottomViewport, initialLocalMessages.size) {
@@ -1787,10 +1857,6 @@ fun ChatScreen() {
         if (streamBottomSpacerPx <= 0) return@LaunchedEffect
         if (!isStreaming || autoScrollMode == AutoScrollMode.Idle) {
             streamBottomSpacerPx = 0
-            return@LaunchedEffect
-        }
-        if (autoScrollMode != AutoScrollMode.AnchorUser && (userDetachedFromBottom || userInteracting)) {
-            streamBottomSpacerPx = 0
         }
     }
 
@@ -1849,19 +1915,8 @@ fun ChatScreen() {
             if (streamingMessageId.isNullOrBlank()) {
                 streamingMessageId = "assistant_${UUID.randomUUID()}"
             }
-            if (streamRevealJob?.isActive == true) {
-                streamRevealJob?.cancel()
-                streamRevealJob = null
-            }
-            if (streamingRevealBuffer.isNotEmpty()) {
-                streamingMessageContent += streamingRevealBuffer
-                streamingRevealBuffer = ""
-            }
-            streamingFreshStart = streamingMessageContent.length
-            streamingMessageContent += piece
-            streamingFreshEnd = streamingMessageContent.length
-            streamingFreshTick++
-            streamTick++
+            streamingRevealBuffer += piece
+            ensureStreamingRevealJob()
         }
     }
 
@@ -1871,21 +1926,23 @@ fun ChatScreen() {
         if (lastIndex < 0) return 0
         val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
         if (lastVisible.index < lastIndex) {
-            return (info.viewportEndOffset * 0.18f)
+            return (info.viewportEndOffset * 0.35f)
                 .roundToInt()
                 .coerceAtLeast(STREAM_ANCHOR_FOLLOW_STEP_PX)
         }
-        val visibleBottom = (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
+        val visibleBottom = (info.viewportEndOffset * 0.65f).roundToInt()
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
     }
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
-        val viewportStep = (messageViewportHeightPx * 0.035f)
+        if (overflow <= 0) return 0
+        val maxStep = (messageViewportHeightPx * 0.06f)
             .roundToInt()
-            .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
-        val smoothStep = maxOf(viewportStep, STREAM_BOTTOM_FOLLOW_STEP_PX)
-        return overflow.coerceAtMost(smoothStep)
+            .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX * 2)
+        return (overflow * 0.6f)
+            .roundToInt()
+            .coerceIn(STREAM_BOTTOM_FOLLOW_STEP_PX, maxStep)
     }
 
     suspend fun smoothCatchUpToBottom(maxFrames: Int = 480) {
@@ -2576,8 +2633,9 @@ fun ChatScreen() {
             ) {
                 LazyColumn(
                     state = listState,
-                    userScrollEnabled = !lockUserScrollDuringBall,
+                    userScrollEnabled = true,
                     modifier = Modifier
+                        .nestedScroll(streamingDirectionLock)
                         .fillMaxSize()
                         .then(
                             if (shouldRevealMessageList) {
@@ -2635,7 +2693,7 @@ fun ChatScreen() {
                     }
                     if (hasStreamingItem) {
                         item(
-                            key = "streaming_${streamingMessageId ?: "message"}",
+                            key = "streaming_item",
                             contentType = ChatRole.ASSISTANT
                         ) {
                             Box(
@@ -2652,6 +2710,8 @@ fun ChatScreen() {
                                             val bounds = coordinates.boundsInWindow()
                                             streamingAnchorTopPx =
                                                 (bounds.top - messageViewportTopPx).roundToInt()
+                                            streamingContentBottomPx =
+                                                (bounds.bottom - messageViewportTopPx).roundToInt()
                                         }
                                 ) {
                                     AssistantMessageContent(
