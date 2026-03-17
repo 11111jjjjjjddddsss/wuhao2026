@@ -207,7 +207,7 @@ private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 16.dp
-private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 52.dp
+private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 18.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
 private val GPT_BALL_CONTAINER_SIZE = 24.dp
@@ -992,7 +992,9 @@ private fun AssistantMessageContent(
             if (showDisclaimer) {
                 Text(
                     text = AI_DISCLAIMER_TEXT,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 4.dp),
                     style = assistantDisclaimerTextStyle(),
                     textAlign = TextAlign.Start
                 )
@@ -2566,7 +2568,7 @@ fun ChatScreen() {
                         ) {
                             val exceedsInputLimit = input.value.length > INPUT_MAX_CHARS
                             val inputSelectionColors = TextSelectionColors(
-                                handleColor = Color(0xFF9EA5AF),
+                                handleColor = Color(0xFF111111),
                                 backgroundColor = Color(0xFFBDC4CE).copy(alpha = 0.9f)
                             )
                             Box(
@@ -2678,6 +2680,7 @@ fun ChatScreen() {
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
                         bottom = with(density) { inputChromeRowHeightPx.toDp() } +
+                            BOTTOM_OVERLAY_CONTENT_CLEARANCE +
                             streamBottomSpacerDp
                     )
                 ) {
