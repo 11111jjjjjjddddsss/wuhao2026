@@ -94,6 +94,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -205,7 +206,7 @@ private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 4.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 16.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 52.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
@@ -1430,7 +1431,7 @@ private fun FrostedCircleButton(
     Surface(
         shape = CircleShape,
         color = surfaceColor,
-        border = BorderStroke(0.6.dp, borderColor.copy(alpha = 0.82f)),
+        border = BorderStroke(1.28.dp, borderColor.copy(alpha = 0.96f)),
         shadowElevation = 0.dp,
         tonalElevation = 0.dp,
         modifier = modifier
@@ -1518,6 +1519,7 @@ fun ChatScreen() {
     var lastProgrammaticScrollMs by remember { mutableStateOf(0L) }
     var persistTick by remember { mutableIntStateOf(0) }
     var bottomBarHeightPx by remember { mutableIntStateOf(0) }
+    var inputChromeRowHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
     var streamBottomSpacerPx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
@@ -1542,6 +1544,9 @@ fun ChatScreen() {
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomOverlayClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.toPx().roundToInt() }
+    val assistantLineStepPx = with(density) {
+        assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
+    }
     val activeStreamBottomSpacerPx = if (
         isStreaming &&
         anchoredUserMessageId != null
@@ -1572,25 +1577,38 @@ fun ChatScreen() {
             }
         }
     }
-    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, streamingContentBottomPx, streamingWorklineBottomPx) {
+    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
         derivedStateOf {
-            val streamDoesNotFillViewport =
-                streamingContentBottomPx <= 0 ||
-                    streamingContentBottomPx < streamingWorklineBottomPx
             isStreaming &&
-                (streamingMessageContent.isBlank() || streamDoesNotFillViewport)
+                streamingMessageContent.isBlank() &&
+                activeStreamBottomSpacerPx > 0
         }
     }
     val streamingDirectionLock = remember(lockUserScrollDuringBall) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (!lockUserScrollDuringBall || source != NestedScrollSource.Drag) return Offset.Zero
-                return if (available.y < 0f) Offset(x = 0f, y = available.y) else Offset.Zero
+                if (source != NestedScrollSource.Drag) return Offset.Zero
+                if (lockUserScrollDuringBall && available.y < 0f) {
+                    return Offset(x = 0f, y = available.y)
+                }
+                if (
+                    isStreaming &&
+                    activeStreamBottomSpacerPx > 0 &&
+                    available.y < 0f
+                ) {
+                    val dragPx = -available.y
+                    val consumePx = dragPx.coerceAtMost(streamBottomSpacerPx.toFloat())
+                    if (consumePx > 0f) {
+                        streamBottomSpacerPx = consumeStreamingBottomSpacer(streamBottomSpacerPx, consumePx)
+                        return Offset(x = 0f, y = available.y)
+                    }
+                }
+                return Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (!lockUserScrollDuringBall) return Velocity.Zero
-                return if (available.y < 0f) available else Velocity.Zero
+                if (lockUserScrollDuringBall && available.y < 0f) return available
+                return Velocity.Zero
             }
         }
     }
@@ -1932,16 +1950,15 @@ fun ChatScreen() {
     }
 
     fun currentStreamingOverflowDelta(): Int {
+        val worklineBottom = streamingWorklineBottomPx
+        if (streamingContentBottomPx > 0 && worklineBottom > 0) {
+            return (streamingContentBottomPx - worklineBottom).coerceAtLeast(0)
+        }
         val info = listState.layoutInfo
         val lastIndex = info.totalItemsCount - 1
         if (lastIndex < 0) return 0
         val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
-        if (lastVisible.index < lastIndex) {
-            return (info.viewportEndOffset * 0.35f)
-                .roundToInt()
-                .coerceAtLeast(STREAM_ANCHOR_FOLLOW_STEP_PX)
-        }
-        val visibleBottom = streamingWorklineBottomPx.takeIf { it > 0 }
+        val visibleBottom = worklineBottom.takeIf { it > 0 }
             ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
@@ -1949,12 +1966,10 @@ fun ChatScreen() {
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         if (overflow <= 0) return 0
-        val maxStep = (messageViewportHeightPx * 0.06f)
-            .roundToInt()
-            .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX * 2)
-        return (overflow * 0.6f)
-            .roundToInt()
-            .coerceIn(STREAM_BOTTOM_FOLLOW_STEP_PX, maxStep)
+        val triggerThresholdPx = (assistantLineStepPx * 0.92f).roundToInt()
+            .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
+        if (overflow < triggerThresholdPx) return 0
+        return assistantLineStepPx
     }
 
     suspend fun smoothCatchUpToBottom(maxFrames: Int = 480) {
@@ -1976,9 +1991,7 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
-                autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
-                    !userInteracting &&
-                    !userDetachedFromBottom
+                !userDetachedFromBottom
             streamRevealJob?.cancel()
             streamRevealJob = null
             if (streamingRevealBuffer.isNotEmpty()) {
@@ -2449,15 +2462,23 @@ fun ChatScreen() {
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
         val topBarReservedHeight = topInset + chromeButtonSize + 6.dp
         val pageSurface = Color(0xFFFFFFFF)
+        val navigationBottomInset: Dp = WindowInsets.safeDrawing
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
         val inputChromeHorizontalPadding = when {
             maxWidth < 360.dp -> 10.dp
             maxWidth < 600.dp -> 12.dp
             else -> chromeHorizontalPadding
         }
+        val inputChromeBottomPadding = 8.dp
+        val inputAreaBoardHeight = with(density) {
+            inputChromeRowHeightPx.toDp() + navigationBottomInset
+        }
         val inputChromeSurface = Color.White
-        val inputChromeBorder = Color(0xFFC9CDD4).copy(alpha = 0.42f)
+        val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
         val inputFieldSurface = Color.White
-        val inputFieldBorder = Color(0xFFC9CDD4).copy(alpha = 0.4f)
+        val inputFieldBorder = Color(0xFFBCC2CA).copy(alpha = 0.88f)
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
@@ -2466,9 +2487,9 @@ fun ChatScreen() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(pageSurface)
                         .navigationBarsPadding()
                         .imePadding()
+                        .background(pageSurface)
                         .onSizeChanged { bottomBarHeightPx = it.height }
                 ) {
                     if (inputLimitHintVisible) {
@@ -2500,7 +2521,13 @@ fun ChatScreen() {
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                            .padding(horizontal = inputChromeHorizontalPadding, vertical = 8.dp),
+                            .onSizeChanged { inputChromeRowHeightPx = it.height }
+                            .padding(
+                                start = inputChromeHorizontalPadding,
+                                end = inputChromeHorizontalPadding,
+                                top = 0.dp,
+                                bottom = inputChromeBottomPadding
+                            ),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -2521,7 +2548,7 @@ fun ChatScreen() {
                         Surface(
                             shape = RoundedCornerShape(30.dp),
                             color = inputFieldSurface,
-                            border = BorderStroke(0.72.dp, inputFieldBorder.copy(alpha = 0.62f)),
+                            border = BorderStroke(1.22.dp, inputFieldBorder.copy(alpha = 0.98f)),
                             tonalElevation = 0.dp,
                             shadowElevation = 0.dp,
                             modifier = Modifier
@@ -2539,8 +2566,8 @@ fun ChatScreen() {
                         ) {
                             val exceedsInputLimit = input.value.length > INPUT_MAX_CHARS
                             val inputSelectionColors = TextSelectionColors(
-                                handleColor = Color(0xFFB8BDC5),
-                                backgroundColor = Color(0xFFD9DDE3).copy(alpha = 0.72f)
+                                handleColor = Color(0xFF9EA5AF),
+                                backgroundColor = Color(0xFFBDC4CE).copy(alpha = 0.9f)
                             )
                             Box(
                                 modifier = Modifier
@@ -2650,8 +2677,7 @@ fun ChatScreen() {
                         ),
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
-                        bottom = with(density) { bottomBarHeightPx.toDp() } +
-                            BOTTOM_OVERLAY_CONTENT_CLEARANCE +
+                        bottom = with(density) { inputChromeRowHeightPx.toDp() } +
                             streamBottomSpacerDp
                     )
                 ) {
@@ -2756,21 +2782,12 @@ fun ChatScreen() {
                     }
                 }
 
-                if (bottomBarHeightPx > 0) {
-                    val contentWhiteboardHeightDp = with(density) {
-                        if (composerTopInViewportPx > 0 && messageViewportHeightPx > 0) {
-                            (messageViewportHeightPx - composerTopInViewportPx)
-                                .coerceAtLeast(0)
-                                .toDp()
-                        } else {
-                            bottomBarHeightPx.toDp()
-                        }
-                    }
+                if (navigationBottomInset > 0.dp) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .height(contentWhiteboardHeightDp)
+                            .height(navigationBottomInset)
                             .background(pageSurface)
                     )
                 }
