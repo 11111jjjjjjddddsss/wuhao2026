@@ -205,7 +205,7 @@ private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 18.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 4.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 52.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
@@ -978,14 +978,6 @@ private fun AssistantMessageContent(
                         streamingFreshTick = streamingFreshTick,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    if (showDisclaimer) {
-                        Text(
-                            text = AI_DISCLAIMER_TEXT,
-                            modifier = Modifier.fillMaxWidth(),
-                            style = assistantDisclaimerTextStyle().copy(color = Color.Transparent),
-                            textAlign = TextAlign.Start
-                        )
-                    }
                 }
             }
         }
@@ -1529,6 +1521,7 @@ fun ChatScreen() {
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
     var streamBottomSpacerPx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
+    var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingAnchorTopPx by remember { mutableIntStateOf(-1) }
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
@@ -1561,11 +1554,29 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
     }
-    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, streamingContentBottomPx, messageViewportHeightPx) {
+    val streamingWorklineBottomPx by remember(
+        messageViewportHeightPx,
+        bottomBarHeightPx,
+        composerTopInViewportPx,
+        streamVisibleBottomGapPx
+    ) {
+        derivedStateOf {
+            if (composerTopInViewportPx > 0) {
+                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+            } else {
+                (
+                    messageViewportHeightPx -
+                        bottomBarHeightPx -
+                        streamVisibleBottomGapPx
+                    ).coerceAtLeast(0)
+            }
+        }
+    }
+    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, streamingContentBottomPx, streamingWorklineBottomPx) {
         derivedStateOf {
             val streamDoesNotFillViewport =
                 streamingContentBottomPx <= 0 ||
-                    streamingContentBottomPx < (messageViewportHeightPx - streamVisibleBottomGapPx)
+                    streamingContentBottomPx < streamingWorklineBottomPx
             isStreaming &&
                 (streamingMessageContent.isBlank() || streamDoesNotFillViewport)
         }
@@ -1930,7 +1941,8 @@ fun ChatScreen() {
                 .roundToInt()
                 .coerceAtLeast(STREAM_ANCHOR_FOLLOW_STEP_PX)
         }
-        val visibleBottom = (info.viewportEndOffset * 0.65f).roundToInt()
+        val visibleBottom = streamingWorklineBottomPx.takeIf { it > 0 }
+            ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
     }
@@ -2444,14 +2456,6 @@ fun ChatScreen() {
         }
         val inputChromeSurface = Color.White
         val inputChromeBorder = Color(0xFFC9CDD4).copy(alpha = 0.42f)
-        val inputBarOverlayBrush = Brush.verticalGradient(
-            colorStops = arrayOf(
-                0.0f to Color.White.copy(alpha = 0.10f),
-                0.18f to Color.White.copy(alpha = 0.28f),
-                0.54f to Color.White.copy(alpha = 0.64f),
-                1.0f to Color.White.copy(alpha = 0.90f)
-            )
-        )
         val inputFieldSurface = Color.White
         val inputFieldBorder = Color(0xFFC9CDD4).copy(alpha = 0.4f)
         Scaffold(
@@ -2462,15 +2466,11 @@ fun ChatScreen() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(pageSurface)
                         .navigationBarsPadding()
                         .imePadding()
                         .onSizeChanged { bottomBarHeightPx = it.height }
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(inputBarOverlayBrush)
-                    )
                     if (inputLimitHintVisible) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -2532,6 +2532,10 @@ fun ChatScreen() {
                                     ambientColor = Color(0x14000000),
                                     spotColor = Color(0x14000000)
                                 )
+                                .onGloballyPositioned { coordinates ->
+                                    composerTopInViewportPx =
+                                        (coordinates.boundsInWindow().top - messageViewportTopPx).roundToInt()
+                                }
                         ) {
                             val exceedsInputLimit = input.value.length > INPUT_MAX_CHARS
                             val inputSelectionColors = TextSelectionColors(
@@ -2750,6 +2754,25 @@ fun ChatScreen() {
                             textAlign = TextAlign.Start
                         )
                     }
+                }
+
+                if (bottomBarHeightPx > 0) {
+                    val contentWhiteboardHeightDp = with(density) {
+                        if (composerTopInViewportPx > 0 && messageViewportHeightPx > 0) {
+                            (messageViewportHeightPx - composerTopInViewportPx)
+                                .coerceAtLeast(0)
+                                .toDp()
+                        } else {
+                            bottomBarHeightPx.toDp()
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(contentWhiteboardHeightDp)
+                            .background(pageSurface)
+                    )
                 }
 
             if (jumpButtonVisible && shouldRevealMessageList) {

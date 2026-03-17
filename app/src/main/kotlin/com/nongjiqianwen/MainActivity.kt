@@ -1,6 +1,8 @@
 package com.nongjiqianwen
 
+import android.graphics.Color
 import android.os.Bundle
+import android.os.Build
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -30,14 +32,18 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(
-                lightScrim = android.graphics.Color.TRANSPARENT,
-                darkScrim = android.graphics.Color.TRANSPARENT
+                lightScrim = Color.TRANSPARENT,
+                darkScrim = Color.TRANSPARENT
             ),
-            navigationBarStyle = SystemBarStyle.auto(
-                lightScrim = android.graphics.Color.TRANSPARENT,
-                darkScrim = android.graphics.Color.TRANSPARENT
+            navigationBarStyle = SystemBarStyle.light(
+                scrim = Color.WHITE,
+                darkScrim = Color.WHITE
             )
         )
+        window.navigationBarColor = Color.WHITE
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
         IdManager.init(this)
         setContent {
             MaterialTheme {
