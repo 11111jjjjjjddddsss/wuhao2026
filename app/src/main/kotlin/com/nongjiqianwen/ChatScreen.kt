@@ -79,6 +79,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -498,16 +499,26 @@ private sealed interface StreamingLineModel {
     data class Paragraph(val text: String) : StreamingLineModel
 }
 
-private fun suppressTinyLeadingActiveLine(
-    lines: StreamingRenderedLines,
-    maxHiddenVisibleChars: Int
-): StreamingRenderedLines {
-    val active = lines.activeLine ?: return lines
-    if (maxHiddenVisibleChars <= 0) return lines
-    if (lines.stableLines.isEmpty()) return lines
-    val visibleCharCount = active.text.count { !it.isWhitespace() }
-    if (visibleCharCount > maxHiddenVisibleChars) return lines
-    return lines.copy(activeLine = null)
+private fun buildLockedStreamingActivePreview(
+    activeLine: AnnotatedString,
+    maxVisibleChars: Int
+): AnnotatedString {
+    if (maxVisibleChars <= 0 || activeLine.text.isEmpty()) {
+        return AnnotatedString("")
+    }
+    val visibleCharCount = activeLine.text.count { !it.isWhitespace() }
+    if (visibleCharCount <= maxVisibleChars) return activeLine
+
+    val preview = StringBuilder()
+    var remaining = activeLine.text
+    var revealedVisibleChars = 0
+    while (remaining.isNotEmpty() && revealedVisibleChars < maxVisibleChars) {
+        val token = takeTypewriterToken(remaining).ifEmpty { remaining.first().toString() }
+        preview.append(token)
+        revealedVisibleChars += token.count { !it.isWhitespace() }
+        remaining = remaining.drop(token.length.coerceAtLeast(1))
+    }
+    return AnnotatedString(preview.toString())
 }
 
 private fun splitStreamingLogicalLines(content: String): StreamingLogicalLines {
@@ -1389,11 +1400,37 @@ private fun applyStreamingLineRevealGate(
     strictLineReveal: Boolean,
     lineRevealLocked: Boolean
 ): StreamingRenderedLines {
-    if (!strictLineReveal || !lineRevealLocked) return lines
-    return StreamingRenderedLines(
-        stableLines = lines.stableLines,
-        activeLine = if (lines.stableLines.isNotEmpty()) AnnotatedString("") else null
-    )
+    return lines
+}
+
+@Composable
+private fun rememberLockedStreamingRenderedLines(
+    lines: StreamingRenderedLines,
+    strictLineReveal: Boolean,
+    lineRevealLocked: Boolean,
+    maxVisibleCharsWhenLocked: Int
+): StreamingRenderedLines {
+    if (!strictLineReveal || lines.activeLine == null || lines.stableLines.isEmpty()) {
+        return lines
+    }
+    var activeLineUnlockedOnce by remember(lines.stableLines.size) { mutableStateOf(false) }
+    if (!lineRevealLocked) {
+        SideEffect {
+            activeLineUnlockedOnce = true
+        }
+    }
+    return remember(lines, lineRevealLocked, activeLineUnlockedOnce, maxVisibleCharsWhenLocked) {
+        when {
+            !lineRevealLocked -> lines
+            activeLineUnlockedOnce -> lines
+            else -> lines.copy(
+                activeLine = buildLockedStreamingActivePreview(
+                    activeLine = lines.activeLine,
+                    maxVisibleChars = maxVisibleCharsWhenLocked
+                )
+            )
+        }
+    }
 }
 
 @Composable
@@ -1515,18 +1552,12 @@ private fun AssistantStreamingActiveBlock(
         style: TextStyle,
         availableWidthPx: Int
     ): StreamingRenderedLines {
-        val lines = buildStableStreamingLineBuffer(
+        return buildStableStreamingLineBuffer(
             text = AnnotatedString(text),
             style = style,
             availableWidthPx = availableWidthPx,
             textMeasurer = textMeasurer
         )
-        val suppressed = if (strictLineReveal && lineRevealLocked) {
-            suppressTinyLeadingActiveLine(lines, maxHiddenVisibleChars = 3)
-        } else {
-            lines
-        }
-        return applyStreamingLineRevealGate(suppressed, lineAdvanceTick, strictLineReveal, lineRevealLocked)
     }
     val animatedModifier = modifier.fillMaxWidth()
 
@@ -1545,10 +1576,17 @@ private fun AssistantStreamingActiveBlock(
                         MarkdownSectionDivider()
                         Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
                     }
+                    val rawLines = remember(model.text, maxWidthPx) {
+                        resolveRenderedLines(model.text, headingStyle, maxWidthPx)
+                    }
+                    val lines = rememberLockedStreamingRenderedLines(
+                        lines = rawLines,
+                        strictLineReveal = strictLineReveal,
+                        lineRevealLocked = lineRevealLocked,
+                        maxVisibleCharsWhenLocked = 1
+                    )
                     StreamingSingleActiveLineText(
-                        lines = remember(model.text, maxWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
-                            resolveRenderedLines(model.text, headingStyle, maxWidthPx)
-                        },
+                        lines = lines,
                         modifier = Modifier.fillMaxWidth(),
                         style = headingStyle,
                         emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() }
@@ -1563,9 +1601,15 @@ private fun AssistantStreamingActiveBlock(
                 }
                 val bodyWidthPx = (maxWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
                 val gutterWidth = with(density) { (bulletWidthPx + spacingPx).toDp() }
-                val lines = remember(model.text, bodyWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
+                val rawLines = remember(model.text, bodyWidthPx) {
                     resolveRenderedLines(model.text, bodyStyle, bodyWidthPx)
                 }
+                val lines = rememberLockedStreamingRenderedLines(
+                    lines = rawLines,
+                    strictLineReveal = strictLineReveal,
+                    lineRevealLocked = lineRevealLocked,
+                    maxVisibleCharsWhenLocked = 1
+                )
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -1640,9 +1684,15 @@ private fun AssistantStreamingActiveBlock(
                 }
                 val bodyWidthPx = (maxWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
                 val gutterWidth = with(density) { (numberWidthPx + spacingPx).toDp() }
-                val lines = remember(model.text, bodyWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
+                val rawLines = remember(model.text, bodyWidthPx) {
                     resolveRenderedLines(model.text, bodyStyle, bodyWidthPx)
                 }
+                val lines = rememberLockedStreamingRenderedLines(
+                    lines = rawLines,
+                    strictLineReveal = strictLineReveal,
+                    lineRevealLocked = lineRevealLocked,
+                    maxVisibleCharsWhenLocked = 1
+                )
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -1711,10 +1761,17 @@ private fun AssistantStreamingActiveBlock(
             }
             is StreamingLineModel.Quote -> {
                 val quoteStyle = assistantStreamingParagraphTextStyle()
+                val rawLines = remember(model.text, maxWidthPx) {
+                    resolveRenderedLines(model.text, quoteStyle, maxWidthPx)
+                }
+                val lines = rememberLockedStreamingRenderedLines(
+                    lines = rawLines,
+                    strictLineReveal = strictLineReveal,
+                    lineRevealLocked = lineRevealLocked,
+                    maxVisibleCharsWhenLocked = 1
+                )
                 StreamingSingleActiveLineText(
-                    lines = remember(model.text, maxWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
-                        resolveRenderedLines(model.text, quoteStyle, maxWidthPx)
-                    },
+                    lines = lines,
                     modifier = Modifier.fillMaxWidth(),
                     style = quoteStyle,
                     emptyLineHeight = paragraphLineHeight
@@ -1722,10 +1779,17 @@ private fun AssistantStreamingActiveBlock(
             }
             is StreamingLineModel.Paragraph -> {
                 val paragraphStyle = assistantStreamingParagraphTextStyle()
+                val rawLines = remember(model.text, maxWidthPx) {
+                    resolveRenderedLines(model.text, paragraphStyle, maxWidthPx)
+                }
+                val lines = rememberLockedStreamingRenderedLines(
+                    lines = rawLines,
+                    strictLineReveal = strictLineReveal,
+                    lineRevealLocked = lineRevealLocked,
+                    maxVisibleCharsWhenLocked = 1
+                )
                 StreamingSingleActiveLineText(
-                    lines = remember(model.text, maxWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
-                        resolveRenderedLines(model.text, paragraphStyle, maxWidthPx)
-                    },
+                    lines = lines,
                     modifier = Modifier.fillMaxWidth(),
                     style = paragraphStyle,
                     emptyLineHeight = paragraphLineHeight
@@ -2095,7 +2159,7 @@ fun ChatScreen() {
         derivedStateOf { activeStreamBottomSpacerPx > 0 }
     }
     val lineRevealLockThresholdPx = remember(assistantLineStepPx) {
-        (assistantLineStepPx * 0.04f).roundToInt().coerceAtLeast(2)
+        (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(6)
     }
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
@@ -2123,7 +2187,6 @@ fun ChatScreen() {
         streamingContentBottomPx,
         streamingWorklineBottomPx,
         lineRevealLockThresholdPx,
-        streamBottomFollowActive,
         userDetachedFromBottom,
         userInteracting
     ) {
@@ -2133,10 +2196,7 @@ fun ChatScreen() {
                 !userInteracting &&
                 streamingContentBottomPx > 0 &&
                 streamingWorklineBottomPx > 0 &&
-                (
-                    streamBottomFollowActive ||
-                        streamingContentBottomPx > streamingWorklineBottomPx + lineRevealLockThresholdPx
-                    )
+                streamingContentBottomPx > streamingWorklineBottomPx + lineRevealLockThresholdPx
         }
     }
     val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
