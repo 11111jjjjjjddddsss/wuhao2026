@@ -2591,7 +2591,7 @@ fun ChatScreen() {
                                             .fillMaxWidth()
                                             .align(Alignment.CenterStart)
                                             .padding(start = 2.dp, end = 58.dp),
-                                        placeholder = { Text("描述作物/图片/问题", color = Color(0xFFAEAFB4)) },
+                                        placeholder = { Text("描述种植问题", color = Color(0xFFAEAFB4)) },
                                         singleLine = false,
                                         minLines = 1,
                                         maxLines = 6,
