@@ -208,7 +208,7 @@ private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 16.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 24.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 28.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
@@ -1095,7 +1095,7 @@ private fun AssistantStreamingTail(
     var freshAlphaTarget by remember { mutableFloatStateOf(1f) }
     LaunchedEffect(freshTick, hasFreshRange) {
         if (hasFreshRange && freshTick > 0) {
-            freshAlphaTarget = 0.9f
+            freshAlphaTarget = 0.97f
             withFrameNanos { }
             freshAlphaTarget = 1f
         } else {
@@ -1104,7 +1104,7 @@ private fun AssistantStreamingTail(
     }
     val freshAlpha by animateFloatAsState(
         targetValue = freshAlphaTarget,
-        animationSpec = tween(durationMillis = 72),
+        animationSpec = tween(durationMillis = 48),
         label = "streamingFreshAlpha"
     )
     fun buildTail(text: String): AnnotatedString {
