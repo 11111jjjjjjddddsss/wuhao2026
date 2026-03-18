@@ -996,7 +996,7 @@ private fun AssistantMessageContent(
                     text = AI_DISCLAIMER_TEXT,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 4.dp),
+                        .padding(bottom = 10.dp),
                     style = assistantDisclaimerTextStyle(),
                     textAlign = TextAlign.Start
                 )
@@ -2683,6 +2683,7 @@ fun ChatScreen() {
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
                         bottom = with(density) { inputChromeRowHeightPx.toDp() } +
+                            inputChromeBottomPadding +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE +
                             streamBottomSpacerDp
                     )
