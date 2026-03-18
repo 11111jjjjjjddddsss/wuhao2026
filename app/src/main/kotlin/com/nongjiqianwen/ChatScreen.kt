@@ -192,7 +192,7 @@ private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 180L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 private const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
-private const val STREAM_DELAY_MULTIPLIER = 1.18
+private const val STREAM_DELAY_MULTIPLIER = 1.08
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -213,9 +213,11 @@ private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
-private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 28.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 48.dp
+private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 36.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
+private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
+private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
 private val GPT_BALL_SIZE = 14.dp
 private val GPT_BALL_CONTAINER_SIZE = 24.dp
 private val GPT_BALL_START_PADDING = 0.dp
@@ -400,6 +402,7 @@ private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
 
 private fun nextLocalStreamFeedBatch(remaining: String): LocalStreamFeedStep {
     if (remaining.isEmpty()) return LocalStreamFeedStep("", 0L)
+    if (remaining.length <= 24) return nextLocalStreamFeedStep(remaining)
     val text = StringBuilder()
     var totalDelayMs = 0L
     var cursor = remaining
@@ -610,6 +613,44 @@ private fun classifyStreamingLine(line: String): StreamingLineModel {
         trimmed.matches(quoteRegex) -> StreamingLineModel.Quote(trimmed.drop(1).trimStart())
         else -> StreamingLineModel.Paragraph(line)
     }
+}
+
+private fun classifyActiveStreamingLine(line: String): StreamingLineModel {
+    if (line.isBlank()) return StreamingLineModel.Blank
+    val trimmed = line.trimStart()
+    val headingMarker = trimmed.takeWhile { it == '#' }
+    if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
+        val remainder = trimmed.drop(headingMarker.length)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Heading(
+                level = headingMarker.length,
+                text = remainder.trimStart()
+            )
+        }
+    }
+    if (trimmed.startsWith(">")) {
+        val remainder = trimmed.drop(1)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Quote(remainder.trimStart())
+        }
+    }
+    if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
+        val remainder = trimmed.drop(1)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Bullet(remainder.trimStart())
+        }
+    }
+    val numberedPrefix = trimmed.takeWhile { it.isDigit() }
+    if (numberedPrefix.isNotEmpty() && trimmed.drop(numberedPrefix.length).startsWith(".")) {
+        val remainder = trimmed.drop(numberedPrefix.length + 1)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Numbered(
+                number = numberedPrefix,
+                text = remainder.trimStart()
+            )
+        }
+    }
+    return StreamingLineModel.Paragraph(line)
 }
 
 private fun shouldShowStreamingSectionDivider(
@@ -868,7 +909,10 @@ private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
 )
 
 private fun assistantStreamingParagraphTextStyle(): TextStyle =
-    assistantParagraphTextStyle().copy(lineBreak = LineBreak.Simple)
+    assistantParagraphTextStyle().copy(
+        lineHeight = 30.sp,
+        lineBreak = LineBreak.Simple
+    )
 
 private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
     fontSize = 14.sp,
@@ -1256,7 +1300,7 @@ private fun AssistantStreamingContent(
         blockState.completedBlocks.map(::classifyStreamingLine)
     }
     val activeModel = remember(blockState.activeBlock) {
-        blockState.activeBlock?.let(::classifyStreamingLine)
+        blockState.activeBlock?.let(::classifyActiveStreamingLine)
     }
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -1264,12 +1308,15 @@ private fun AssistantStreamingContent(
     ) {
         completedModels.forEachIndexed { index, model ->
             key("streaming_completed_$index:${blockState.completedBlocks[index]}") {
-                AssistantStreamingCommittedBlock(
+                AssistantStreamingActiveBlock(
                     model = model,
                     showLeadingSectionDivider = shouldShowStreamingSectionDivider(
                         previous = completedModels.getOrNull(index - 1),
                         current = model
                     ),
+                    lineAdvanceTick = 0,
+                    strictLineReveal = false,
+                    lineRevealLocked = false,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1307,7 +1354,9 @@ private fun StreamingSingleActiveLineText(
             } else {
                 Text(
                     text = line,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = emptyLineHeight),
                     style = style,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
@@ -1321,7 +1370,9 @@ private fun StreamingSingleActiveLineText(
             } else {
                 Text(
                     text = line,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = emptyLineHeight),
                     style = style,
                     textAlign = TextAlign.Start,
                     maxLines = 1,
@@ -1341,7 +1392,7 @@ private fun applyStreamingLineRevealGate(
     if (!strictLineReveal || !lineRevealLocked) return lines
     return StreamingRenderedLines(
         stableLines = lines.stableLines,
-        activeLine = null
+        activeLine = if (lines.stableLines.isNotEmpty()) AnnotatedString("") else null
     )
 }
 
@@ -1383,24 +1434,22 @@ private fun AssistantStreamingCommittedBlock(
     showLeadingSectionDivider: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
     when (model) {
         StreamingLineModel.Blank -> Spacer(modifier = modifier.height(MARKDOWN_BLOCK_SPACING))
         is StreamingLineModel.Heading -> Column(
             modifier = modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            val headingStyle = assistantStreamingHeadingTextStyle(model.level)
             if (showLeadingSectionDivider && model.level <= 2) {
                 Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
                 MarkdownSectionDivider()
                 Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
             }
-            StreamingCommittedTextBlock(
+            Text(
                 text = model.text,
                 modifier = Modifier.fillMaxWidth(),
-                style = headingStyle,
-                emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() }
+                style = assistantStreamingHeadingTextStyle(model.level),
+                textAlign = TextAlign.Start
             )
         }
         is StreamingLineModel.Bullet -> Row(
@@ -1412,7 +1461,7 @@ private fun AssistantStreamingCommittedBlock(
                 style = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
             )
             Text(
-                text = AnnotatedString(model.text),
+                text = model.text,
                 modifier = Modifier.weight(1f),
                 style = assistantStreamingParagraphTextStyle(),
                 textAlign = TextAlign.Start
@@ -1427,23 +1476,23 @@ private fun AssistantStreamingCommittedBlock(
                 style = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
             )
             Text(
-                text = AnnotatedString(model.text),
+                text = model.text,
                 modifier = Modifier.weight(1f),
                 style = assistantStreamingParagraphTextStyle(),
                 textAlign = TextAlign.Start
             )
         }
-        is StreamingLineModel.Quote -> StreamingCommittedTextBlock(
+        is StreamingLineModel.Quote -> Text(
             text = model.text,
             modifier = modifier.fillMaxWidth(),
             style = assistantStreamingParagraphTextStyle(),
-            emptyLineHeight = with(density) { assistantStreamingParagraphTextStyle().lineHeight.toDp() }
+            textAlign = TextAlign.Start
         )
-        is StreamingLineModel.Paragraph -> StreamingCommittedTextBlock(
+        is StreamingLineModel.Paragraph -> Text(
             text = model.text,
             modifier = modifier.fillMaxWidth(),
             style = assistantStreamingParagraphTextStyle(),
-            emptyLineHeight = with(density) { assistantStreamingParagraphTextStyle().lineHeight.toDp() }
+            textAlign = TextAlign.Start
         )
     }
 }
@@ -1473,7 +1522,7 @@ private fun AssistantStreamingActiveBlock(
             textMeasurer = textMeasurer
         )
         val suppressed = if (strictLineReveal && lineRevealLocked) {
-            suppressTinyLeadingActiveLine(lines, maxHiddenVisibleChars = 1)
+            suppressTinyLeadingActiveLine(lines, maxHiddenVisibleChars = 3)
         } else {
             lines
         }
@@ -1524,7 +1573,9 @@ private fun AssistantStreamingActiveBlock(
                     if (lines.activeLine != null || lines.stableLines.isNotEmpty()) {
                         val firstLine = lines.stableLines.firstOrNull() ?: lines.activeLine
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = paragraphLineHeight),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
@@ -1543,7 +1594,11 @@ private fun AssistantStreamingActiveBlock(
                             }
                         }
                         lines.stableLines.drop(1).forEach { line ->
-                            Row(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = paragraphLineHeight)
+                            ) {
                                 Spacer(modifier = Modifier.width(gutterWidth))
                                 Text(
                                     text = line,
@@ -1557,7 +1612,11 @@ private fun AssistantStreamingActiveBlock(
                         }
                         if (lines.stableLines.isNotEmpty()) {
                             lines.activeLine?.let { line ->
-                                Row(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = paragraphLineHeight)
+                                ) {
                                     Spacer(modifier = Modifier.width(gutterWidth))
                                     Text(
                                         text = line,
@@ -1591,7 +1650,9 @@ private fun AssistantStreamingActiveBlock(
                     if (lines.activeLine != null || lines.stableLines.isNotEmpty()) {
                         val firstLine = lines.stableLines.firstOrNull() ?: lines.activeLine
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = paragraphLineHeight),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
@@ -1610,7 +1671,11 @@ private fun AssistantStreamingActiveBlock(
                             }
                         }
                         lines.stableLines.drop(1).forEach { line ->
-                            Row(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = paragraphLineHeight)
+                            ) {
                                 Spacer(modifier = Modifier.width(gutterWidth))
                                 Text(
                                     text = line,
@@ -1624,7 +1689,11 @@ private fun AssistantStreamingActiveBlock(
                         }
                         if (lines.stableLines.isNotEmpty()) {
                             lines.activeLine?.let { line ->
-                                Row(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = paragraphLineHeight)
+                                ) {
                                     Spacer(modifier = Modifier.width(gutterWidth))
                                     Text(
                                         text = line,
@@ -1668,51 +1737,39 @@ private fun AssistantStreamingActiveBlock(
 
 @Composable
 private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
-    val blocks = remember(content) { getCachedMarkdownUiBlocks(content) }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)) {
-        blocks.forEachIndexed { index, block ->
-            when (block) {
-                is MarkdownUiBlock.Heading -> Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    if (shouldShowMarkdownSectionDivider(blocks.getOrNull(index - 1), block)) {
-                        Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
-                        MarkdownSectionDivider()
-                        Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
-                    }
-                    Text(
-                        text = block.text,
-                        style = assistantHeadingTextStyle(block.level)
-                    )
-                }
-                is MarkdownUiBlock.Bullet -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "\u2022",
-                        style = assistantParagraphTextStyle().copy(fontSize = 18.sp),
-                    )
-                    Text(
-                        text = block.text,
-                        modifier = Modifier.weight(1f),
-                        style = assistantParagraphTextStyle()
-                    )
-                }
-                is MarkdownUiBlock.Numbered -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "${block.number}.",
-                        style = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold),
-                    )
-                    Text(
-                        text = block.text,
-                        modifier = Modifier.weight(1f),
-                        style = assistantParagraphTextStyle()
-                    )
-                }
-                is MarkdownUiBlock.Paragraph -> Text(
-                    text = block.text,
-                    style = assistantParagraphTextStyle(),
-                    textAlign = TextAlign.Start
+    val blockState = remember(content) { splitStreamingBlockState(content) }
+    val completedModels = remember(blockState) {
+        buildList {
+            addAll(blockState.completedBlocks.map(::classifyStreamingLine))
+            blockState.activeBlock?.let { add(classifyStreamingLine(it)) }
+        }
+    }
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
+    ) {
+        completedModels.forEachIndexed { index, model ->
+            key("markdown_completed_$index:${model.hashCode()}") {
+                val showLeadingSectionDivider = shouldShowStreamingSectionDivider(
+                    previous = completedModels.getOrNull(index - 1),
+                    current = model
                 )
+                if (index == completedModels.lastIndex) {
+                    AssistantStreamingActiveBlock(
+                        model = model,
+                        showLeadingSectionDivider = showLeadingSectionDivider,
+                        lineAdvanceTick = 0,
+                        strictLineReveal = false,
+                        lineRevealLocked = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    AssistantStreamingCommittedBlock(
+                        model = model,
+                        showLeadingSectionDivider = showLeadingSectionDivider,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
@@ -1973,6 +2030,9 @@ fun ChatScreen() {
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember { mutableStateOf<Job?>(null) }
     var streamRevealJob by remember { mutableStateOf<Job?>(null) }
+    val density = LocalDensity.current
+    val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
+    val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
 
     var isStreaming by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var streamingMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
@@ -1989,8 +2049,12 @@ fun ChatScreen() {
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastProgrammaticScrollMs by remember { mutableStateOf(0L) }
     var persistTick by remember { mutableIntStateOf(0) }
-    var bottomBarHeightPx by remember { mutableIntStateOf(0) }
-    var inputChromeRowHeightPx by remember { mutableIntStateOf(0) }
+    var bottomBarHeightPx by remember(chatScopeId, startupBottomBarHeightEstimatePx) {
+        mutableIntStateOf(startupBottomBarHeightEstimatePx)
+    }
+    var inputChromeRowHeightPx by remember(chatScopeId, startupInputChromeRowHeightEstimatePx) {
+        mutableIntStateOf(startupInputChromeRowHeightEstimatePx)
+    }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
     var streamBottomSpacerPx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
@@ -2009,7 +2073,6 @@ fun ChatScreen() {
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
-    val density = LocalDensity.current
     val followSlopPx = with(density) { STREAM_AUTO_FOLLOW_SLOP.toPx().toInt() }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
@@ -2020,15 +2083,19 @@ fun ChatScreen() {
     }
     val activeStreamBottomSpacerPx = if (
         isStreaming &&
-        anchoredUserMessageId != null
+        anchoredUserMessageId != null &&
+        !userDetachedFromBottom
     ) {
         streamBottomSpacerPx
     } else {
         0
     }
     val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
+    val hasStreamAnchorSpacer by remember(activeStreamBottomSpacerPx) {
+        derivedStateOf { activeStreamBottomSpacerPx > 0 }
+    }
     val lineRevealLockThresholdPx = remember(assistantLineStepPx) {
-        (assistantLineStepPx * 0.18f).roundToInt().coerceAtLeast(6)
+        (assistantLineStepPx * 0.04f).roundToInt().coerceAtLeast(2)
     }
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
@@ -2056,6 +2123,7 @@ fun ChatScreen() {
         streamingContentBottomPx,
         streamingWorklineBottomPx,
         lineRevealLockThresholdPx,
+        streamBottomFollowActive,
         userDetachedFromBottom,
         userInteracting
     ) {
@@ -2065,7 +2133,10 @@ fun ChatScreen() {
                 !userInteracting &&
                 streamingContentBottomPx > 0 &&
                 streamingWorklineBottomPx > 0 &&
-                streamingContentBottomPx > streamingWorklineBottomPx + lineRevealLockThresholdPx
+                (
+                    streamBottomFollowActive ||
+                        streamingContentBottomPx > streamingWorklineBottomPx + lineRevealLockThresholdPx
+                    )
         }
     }
     val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
@@ -2075,7 +2146,40 @@ fun ChatScreen() {
                 activeStreamBottomSpacerPx > 0
         }
     }
-    val streamingDirectionLock = remember(lockUserScrollDuringBall) {
+    val lockBottomBlankDuringStreaming by remember(
+        isStreaming,
+        streamingMessageContent,
+        activeStreamBottomSpacerPx,
+        autoScrollMode,
+        userDetachedFromBottom
+    ) {
+        derivedStateOf {
+            isStreaming &&
+                streamingMessageContent.isNotBlank() &&
+                activeStreamBottomSpacerPx > 0 &&
+                autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
+                !userDetachedFromBottom
+        }
+    }
+    fun currentStreamingOverflowSnapshot(): Int {
+        val worklineBottom = streamingWorklineBottomPx
+        if (streamingContentBottomPx > 0 && worklineBottom > 0) {
+            return (streamingContentBottomPx - worklineBottom).coerceAtLeast(0)
+        }
+        val info = listState.layoutInfo
+        val lastIndex = info.totalItemsCount - 1
+        if (lastIndex < 0) return 0
+        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
+        val visibleBottom = worklineBottom.takeIf { it > 0 }
+            ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
+        val itemBottom = lastVisible.offset + lastVisible.size
+        return (itemBottom - visibleBottom).coerceAtLeast(0)
+    }
+    val streamingDirectionLock = remember(
+        lockUserScrollDuringBall,
+        lockBottomBlankDuringStreaming,
+        lineRevealLockThresholdPx
+    ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
@@ -2084,6 +2188,7 @@ fun ChatScreen() {
                 }
                 if (
                     isStreaming &&
+                    streamingMessageContent.isBlank() &&
                     activeStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
@@ -2094,11 +2199,23 @@ fun ChatScreen() {
                         return Offset(x = 0f, y = available.y)
                     }
                 }
+                if (
+                    lockBottomBlankDuringStreaming &&
+                    available.y < 0f &&
+                    currentStreamingOverflowSnapshot() <= lineRevealLockThresholdPx
+                ) {
+                    return Offset(x = 0f, y = available.y)
+                }
                 return Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (lockUserScrollDuringBall && available.y < 0f) return available
+                if (
+                    (lockUserScrollDuringBall || lockBottomBlankDuringStreaming) &&
+                    available.y < 0f
+                ) {
+                    return available
+                }
                 return Velocity.Zero
             }
         }
@@ -2126,7 +2243,25 @@ fun ChatScreen() {
                 !atBottom
         }
     }
-    val shouldRevealMessageList = true
+    val shouldRevealMessageList by remember(
+        hasStartedConversation,
+        messages.size,
+        hasStreamingItem,
+        hasStartupBottomViewport,
+        initialBottomSnapDone,
+        initialListRevealConsumed
+    ) {
+        derivedStateOf {
+            when {
+                hasStartedConversation -> true
+                messages.isEmpty() && !hasStreamingItem -> true
+                hasStreamingItem -> true
+                !hasStartupBottomViewport -> true
+                initialBottomSnapDone -> true
+                else -> initialListRevealConsumed
+            }
+        }
+    }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -2160,9 +2295,9 @@ fun ChatScreen() {
 
     LaunchedEffect(chatScopeId) {
         initialBottomSnapDone = initialLocalMessages.isEmpty()
-        initialListRevealConsumed = true
+        initialListRevealConsumed = initialLocalMessages.isEmpty() || !hasStartupBottomViewport
         jumpButtonVisible = false
-        LaunchUiGate.chatReady = true
+        LaunchUiGate.chatReady = initialLocalMessages.isEmpty() || !hasStartupBottomViewport
     }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
@@ -2368,12 +2503,42 @@ fun ChatScreen() {
                     previousOffset = currentOffset
                     continue
                 }
-                pendingResumeAutoFollow = false
-                userDetachedFromBottom = true
+                when {
+                    movedTowardBottom -> {
+                        // Keep manual browsing detached until the user reaches the real bottom.
+                        pendingResumeAutoFollow = false
+                        userDetachedFromBottom = true
+                        jumpButtonVisible = false
+                    }
+
+                    movedTowardTop -> {
+                        pendingResumeAutoFollow = false
+                        userDetachedFromBottom = true
+                    }
+                }
             }
             previousIndex = currentIndex
             previousOffset = currentOffset
         }
+    }
+
+    LaunchedEffect(
+        pendingResumeAutoFollow,
+        listState.isScrollInProgress,
+        isStreaming,
+        hasStreamingItem
+    ) {
+        if (!pendingResumeAutoFollow) return@LaunchedEffect
+        if (!isStreaming || !hasStreamingItem) {
+            pendingResumeAutoFollow = false
+            return@LaunchedEffect
+        }
+        if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
+        autoScrollMode = AutoScrollMode.StreamAnchorFollow
+        userDetachedFromBottom = false
+        jumpButtonVisible = false
+        repeat(2) { withFrameNanos { } }
+        pendingResumeAutoFollow = false
     }
 
     LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
@@ -2460,10 +2625,10 @@ fun ChatScreen() {
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         if (overflow <= 0) return 0
-        val minStepPx = (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(8)
-        val triggerThresholdPx = (minStepPx * 0.5f).roundToInt().coerceAtLeast(4)
+        val minStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(6)
+        val triggerThresholdPx = (minStepPx * 0.5f).roundToInt().coerceAtLeast(3)
         if (overflow < triggerThresholdPx) return 0
-        val smoothCapPx = (assistantLineStepPx * 0.58f).roundToInt().coerceAtLeast(minStepPx)
+        val smoothCapPx = (assistantLineStepPx * 0.32f).roundToInt().coerceAtLeast(minStepPx)
         return overflow
             .coerceAtMost(smoothCapPx)
             .coerceAtLeast(minStepPx)
@@ -2570,6 +2735,9 @@ fun ChatScreen() {
                     delay(step.delayMs)
                 }
             }
+            while (isActive && streamingRevealBuffer.isNotEmpty()) {
+                delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+            }
             if (isActive) finishStreaming()
         }
     }
@@ -2667,12 +2835,16 @@ fun ChatScreen() {
     }
 
     suspend fun scrollToBottom(animated: Boolean) {
-        if (messages.isEmpty() && !hasStreamingItem) return
+        if (messages.isEmpty() && !hasStreamingItem && !hasStreamAnchorSpacer) return
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
             withFrameNanos { }
-            val lastIndex = (messages.size + if (hasStreamingItem) 1 else 0) - 1
+            val lastIndex = (
+                messages.size +
+                    if (hasStreamingItem) 1 else 0 +
+                    if (hasStreamAnchorSpacer) 1 else 0
+                ) - 1
             if (lastIndex < 0) return
             if (animated) {
                 listState.animateScrollToItem(lastIndex)
@@ -2706,12 +2878,16 @@ fun ChatScreen() {
     }
 
     suspend fun scrollStreamingToBottom() {
-        if (messages.isEmpty() && !hasStreamingItem) return
+        if (messages.isEmpty() && !hasStreamingItem && !hasStreamAnchorSpacer) return
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
             withFrameNanos { }
-            val lastIndex = (messages.size + if (hasStreamingItem) 1 else 0) - 1
+            val lastIndex = (
+                messages.size +
+                    if (hasStreamingItem) 1 else 0 +
+                    if (hasStreamAnchorSpacer) 1 else 0
+                ) - 1
             if (lastIndex < 0) return
             listState.scrollToItem(lastIndex)
             withFrameNanos { }
@@ -2865,9 +3041,17 @@ fun ChatScreen() {
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
-            val consumed = listState.scrollBy(stepPx.toFloat())
-            if (consumed > 0f) {
+            val followPasses = if (overflow >= assistantLineStepPx) 3 else 2
+            repeat(followPasses) { pass ->
+                val pendingOverflow = currentStreamingOverflowDelta()
+                val pendingStepPx = resolveStreamingFollowStepPx(pendingOverflow)
+                if (pendingStepPx <= 0) return@repeat
+                val consumed = listState.scrollBy(pendingStepPx.toFloat())
+                if (consumed <= 0f) return@repeat
                 streamingLineAdvanceTick++
+                if (pass < followPasses - 1 && pendingOverflow > pendingStepPx) {
+                    withFrameNanos { }
+                }
             }
         } finally {
             programmaticScroll = false
@@ -2909,18 +3093,45 @@ fun ChatScreen() {
         if (initialBottomSnapDone) return@LaunchedEffect
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (bottomBarHeightPx <= 0) return@LaunchedEffect
+        if (hasStartupBottomViewport) {
+            withFrameNanos { }
+            repeat(2) { attempt ->
+                scrollToBottom(animated = false)
+                if (!listState.canScrollForward) {
+                    jumpButtonVisible = false
+                    initialBottomSnapDone = true
+                    initialListRevealConsumed = true
+                    LaunchUiGate.chatReady = true
+                    return@LaunchedEffect
+                }
+                if (attempt < 1) {
+                    withFrameNanos { }
+                }
+            }
+            jumpButtonVisible = false
+            initialBottomSnapDone = true
+            initialListRevealConsumed = true
+            LaunchUiGate.chatReady = true
+            return@LaunchedEffect
+        }
         repeat(if (hasStartupBottomViewport) 1 else 4) { withFrameNanos { } }
         repeat(if (hasStartupBottomViewport) 5 else 4) { attempt ->
             scrollToBottom(animated = false)
             if (isBottomSettled()) {
                 jumpButtonVisible = false
                 initialBottomSnapDone = true
+                initialListRevealConsumed = true
+                LaunchUiGate.chatReady = true
                 return@LaunchedEffect
             }
             if (attempt < if (hasStartupBottomViewport) 4 else 3) {
                 delay(if (hasStartupBottomViewport) 24 else 90)
             }
         }
+        jumpButtonVisible = false
+        initialBottomSnapDone = true
+        initialListRevealConsumed = true
+        LaunchUiGate.chatReady = true
     }
 
     fun jumpToBottom() {
@@ -2979,9 +3190,6 @@ fun ChatScreen() {
             else -> chromeHorizontalPadding
         }
         val inputChromeBottomPadding = 8.dp
-        val inputAreaBoardHeight = with(density) {
-            inputChromeRowHeightPx.toDp() + navigationBottomInset
-        }
         val inputLimitHintOffsetPx = with(density) { 14.dp.roundToPx() } + inputChromeRowHeightPx
         val inputChromeSurface = Color.White
         val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
@@ -3185,10 +3393,8 @@ fun ChatScreen() {
                         ),
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
-                        bottom = with(density) { inputChromeRowHeightPx.toDp() } +
-                            inputChromeBottomPadding +
-                            BOTTOM_OVERLAY_CONTENT_CLEARANCE +
-                            streamBottomSpacerDp
+                        bottom = with(density) { bottomBarHeightPx.toDp() } +
+                            BOTTOM_OVERLAY_CONTENT_CLEARANCE
                     )
                 ) {
                     items(
@@ -3271,6 +3477,18 @@ fun ChatScreen() {
                                     )
                                 }
                             }
+                        }
+                    }
+                    if (hasStreamAnchorSpacer) {
+                        item(
+                            key = "stream_anchor_spacer",
+                            contentType = "stream_anchor_spacer"
+                        ) {
+                            Spacer(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(streamBottomSpacerDp)
+                            )
                         }
                     }
                 }
