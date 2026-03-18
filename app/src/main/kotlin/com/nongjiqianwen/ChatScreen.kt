@@ -209,7 +209,7 @@ private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 16.dp
-private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 18.dp
+private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 28.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
 private val GPT_BALL_CONTAINER_SIZE = 24.dp
@@ -995,7 +995,7 @@ private fun AssistantMessageContent(
                     text = AI_DISCLAIMER_TEXT,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp),
+                        .padding(bottom = 16.dp),
                     style = assistantDisclaimerTextStyle(),
                     textAlign = TextAlign.Start
                 )
