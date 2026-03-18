@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.asPaddingValues
@@ -128,6 +129,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -2477,6 +2479,7 @@ fun ChatScreen() {
         val inputAreaBoardHeight = with(density) {
             inputChromeRowHeightPx.toDp() + navigationBottomInset
         }
+        val inputLimitHintOffsetPx = with(density) { 14.dp.roundToPx() } + inputChromeRowHeightPx
         val inputChromeSurface = Color.White
         val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
         val inputFieldSurface = Color.White
@@ -2505,9 +2508,9 @@ fun ChatScreen() {
                                 .widthIn(max = chromeMaxWidth)
                                 .padding(
                                     start = inputChromeHorizontalPadding,
-                                    end = inputChromeHorizontalPadding,
-                                    bottom = inputBarMaxHeight + 14.dp
+                                    end = inputChromeHorizontalPadding
                                 )
+                                .offset { IntOffset(0, -inputLimitHintOffsetPx) }
                         ) {
                             Text(
                                 text = "已超过6000字，暂时不能发送",
