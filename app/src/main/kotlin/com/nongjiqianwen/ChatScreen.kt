@@ -210,7 +210,7 @@ private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 24.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 32.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 28.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
@@ -2833,7 +2833,7 @@ fun ChatScreen() {
                                         streamingFreshTick = streamingFreshTick,
                                         streamingLineAdvanceTick = streamingLineAdvanceTick,
                                         strictLineReveal =
-                                            autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
+                                            isStreaming &&
                                                 !userDetachedFromBottom &&
                                                 !userInteracting,
                                         modifier = Modifier.fillMaxWidth()
