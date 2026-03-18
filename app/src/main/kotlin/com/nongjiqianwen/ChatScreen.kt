@@ -79,6 +79,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -117,6 +118,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -188,8 +190,9 @@ private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 180L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
-private const val STREAM_REVEAL_FRAME_BUDGET_MS = 96L
-private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 12
+private const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
+private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
+private const val STREAM_DELAY_MULTIPLIER = 1.18
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -210,7 +213,7 @@ private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 32.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 28.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val GPT_BALL_SIZE = 14.dp
@@ -343,9 +346,7 @@ private fun takeTypewriterToken(buffer: String): String {
         return first.toString()
     }
     if (first.isCjkUnifiedIdeograph()) {
-        var end = 1
-        while (end < buffer.length && end < 5 && buffer[end].isCjkUnifiedIdeograph()) end++
-        return buffer.substring(0, end)
+        return buffer.substring(0, 1)
     }
     if (first.isDigit()) {
         var end = 1
@@ -369,6 +370,10 @@ private data class LocalStreamFeedStep(
     val delayMs: Long
 )
 
+private fun scaleStreamingDelay(delayMs: Long): Long {
+    return (delayMs * STREAM_DELAY_MULTIPLIER).roundToInt().toLong().coerceAtLeast(STREAM_TYPEWRITER_IDLE_POLL_MS)
+}
+
 private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
     if (remaining.isEmpty()) return LocalStreamFeedStep("", 0L)
     val first = remaining.first()
@@ -377,7 +382,7 @@ private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
         markdownPrefix != null -> markdownPrefix.length
         first == '\n' -> 1
         first.isStructuralMarkdownChar() -> 1
-        first.isCjkUnifiedIdeograph() -> Random.nextInt(2, 5)
+        first.isCjkUnifiedIdeograph() -> Random.nextInt(1, 3)
         first.isWhitespace() -> remaining.takeWhile { it.isWhitespace() && it != '\n' }.length.coerceIn(1, 2)
         else -> Random.nextInt(4, 8)
     }.coerceAtMost(remaining.length)
@@ -390,7 +395,7 @@ private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
         markdownPrefix != null || text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(36, 60)
         else -> Random.nextLong(18, 30)
     }
-    return LocalStreamFeedStep(text = text, delayMs = delayMs)
+    return LocalStreamFeedStep(text = text, delayMs = scaleStreamingDelay(delayMs))
 }
 
 private fun nextLocalStreamFeedBatch(remaining: String): LocalStreamFeedStep {
@@ -416,7 +421,7 @@ private fun nextLocalStreamFeedBatch(remaining: String): LocalStreamFeedStep {
 
     return LocalStreamFeedStep(
         text = text.toString(),
-        delayMs = totalDelayMs.coerceAtLeast(42L)
+        delayMs = scaleStreamingDelay(totalDelayMs.coerceAtLeast(42L))
     )
 }
 
@@ -431,7 +436,7 @@ private fun hasStructuralMarkdownPrefix(text: String): Boolean {
 
 private fun resolveTypewriterDelay(token: String, remainingBuffer: String): Long {
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
-    return when {
+    val baseDelay = when {
         lastChar == '\n' -> if (hasStructuralMarkdownPrefix(remainingBuffer)) 64L else 48L
         lastChar.isStrongPausePunctuation() -> 28L
         lastChar.isWeakPausePunctuation() -> 16L
@@ -441,6 +446,7 @@ private fun resolveTypewriterDelay(token: String, remainingBuffer: String): Long
         token.length == 2 -> 13L
         else -> if (lastChar.isCjkUnifiedIdeograph()) 14L else 12L
     }
+    return scaleStreamingDelay(baseDelay)
 }
 
 private data class StreamingTypewriterStep(
@@ -464,6 +470,155 @@ private data class StreamingRevealBatch(
     val text: String,
     val delayMs: Long
 )
+
+private data class StreamingRenderedLines(
+    val stableLines: List<AnnotatedString>,
+    val activeLine: AnnotatedString?
+)
+
+private data class StreamingLogicalLines(
+    val completedLines: List<String>,
+    val activeLine: String?
+)
+
+private data class StreamingBlockState(
+    val completedBlocks: List<String>,
+    val activeBlock: String?
+)
+
+private sealed interface StreamingLineModel {
+    data object Blank : StreamingLineModel
+    data class Heading(val level: Int, val text: String) : StreamingLineModel
+    data class Bullet(val text: String) : StreamingLineModel
+    data class Numbered(val number: String, val text: String) : StreamingLineModel
+    data class Quote(val text: String) : StreamingLineModel
+    data class Paragraph(val text: String) : StreamingLineModel
+}
+
+private fun suppressTinyLeadingActiveLine(
+    lines: StreamingRenderedLines,
+    maxHiddenVisibleChars: Int
+): StreamingRenderedLines {
+    val active = lines.activeLine ?: return lines
+    if (maxHiddenVisibleChars <= 0) return lines
+    if (lines.stableLines.isEmpty()) return lines
+    val visibleCharCount = active.text.count { !it.isWhitespace() }
+    if (visibleCharCount > maxHiddenVisibleChars) return lines
+    return lines.copy(activeLine = null)
+}
+
+private fun splitStreamingLogicalLines(content: String): StreamingLogicalLines {
+    val normalized = content.replace("\r\n", "\n")
+    if (normalized.isEmpty()) return StreamingLogicalLines(emptyList(), null)
+
+    val lines = mutableListOf<String>()
+    var start = 0
+    normalized.forEachIndexed { index, ch ->
+        if (ch == '\n') {
+            lines += normalized.substring(start, index)
+            start = index + 1
+        }
+    }
+
+    return if (normalized.last() == '\n') {
+        lines += ""
+        StreamingLogicalLines(completedLines = lines, activeLine = null)
+    } else {
+        StreamingLogicalLines(
+            completedLines = lines,
+            activeLine = normalized.substring(start)
+        )
+    }
+}
+
+private fun shouldShowStreamingSectionDivider(previousLine: String?, currentLine: String): Boolean {
+    if (previousLine.isNullOrBlank()) return false
+    val trimmed = currentLine.trimStart()
+    if (!trimmed.matches(headingRegex)) return false
+    return trimmed.takeWhile { it == '#' }.length <= 2
+}
+
+private fun isStructuralStreamingLine(trimmed: String): Boolean {
+    return trimmed.matches(headingRegex) ||
+        trimmed.matches(bulletRegex) ||
+        trimmed.matches(numberedRegex) ||
+        trimmed.matches(quoteRegex)
+}
+
+private fun splitStreamingBlockState(content: String): StreamingBlockState {
+    val logicalLines = splitStreamingLogicalLines(content)
+    val completedBlocks = mutableListOf<String>()
+    val paragraph = StringBuilder()
+
+    fun flushParagraphBlock() {
+        val text = paragraph.toString().trim()
+        if (text.isNotEmpty()) {
+            completedBlocks += text
+        }
+        paragraph.clear()
+    }
+
+    logicalLines.completedLines.forEach { line ->
+        val trimmed = line.trim()
+        when {
+            trimmed.isBlank() -> flushParagraphBlock()
+            isStructuralStreamingLine(trimmed) -> {
+                flushParagraphBlock()
+                completedBlocks += trimmed
+            }
+            else -> paragraph.appendParagraphLine(trimmed)
+        }
+    }
+
+    val activeBlock = logicalLines.activeLine?.let { line ->
+        val trimmed = line.trim()
+        when {
+            paragraph.isNotEmpty() -> buildString {
+                append(paragraph.toString())
+                if (trimmed.isNotBlank()) {
+                    if (isNotEmpty()) {
+                        appendParagraphLine(trimmed)
+                    } else {
+                        append(trimmed)
+                    }
+                }
+            }.trim().ifEmpty { null }
+            trimmed.isBlank() -> null
+            else -> trimmed
+        }
+    } ?: paragraph.toString().trim().ifEmpty { null }
+
+    return StreamingBlockState(
+        completedBlocks = completedBlocks,
+        activeBlock = activeBlock
+    )
+}
+
+private fun classifyStreamingLine(line: String): StreamingLineModel {
+    if (line.isBlank()) return StreamingLineModel.Blank
+    val trimmed = line.trimStart()
+    return when {
+        trimmed.matches(headingRegex) -> {
+            val marker = trimmed.takeWhile { it == '#' }
+            StreamingLineModel.Heading(marker.length, trimmed.drop(marker.length).trimStart())
+        }
+        trimmed.matches(bulletRegex) -> StreamingLineModel.Bullet(trimmed.drop(1).trimStart())
+        trimmed.matches(numberedRegex) -> StreamingLineModel.Numbered(
+            number = trimmed.substringBefore('.'),
+            text = trimmed.substringAfter('.').trimStart()
+        )
+        trimmed.matches(quoteRegex) -> StreamingLineModel.Quote(trimmed.drop(1).trimStart())
+        else -> StreamingLineModel.Paragraph(line)
+    }
+}
+
+private fun shouldShowStreamingSectionDivider(
+    previous: StreamingLineModel?,
+    current: StreamingLineModel
+): Boolean {
+    val heading = current as? StreamingLineModel.Heading ?: return false
+    return previous != null && heading.level <= 2
+}
 
 private fun needsParagraphJoinSpace(previous: Char, next: Char): Boolean {
     if (previous.isWhitespace() || next.isWhitespace()) return false
@@ -496,6 +651,56 @@ private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
     return StreamingRevealBatch(
         text = text.toString(),
         delayMs = consumedDelay.coerceAtLeast(STREAM_TYPEWRITER_IDLE_POLL_MS)
+    )
+}
+
+private fun buildStableStreamingLineBuffer(
+    text: AnnotatedString,
+    style: TextStyle,
+    availableWidthPx: Int,
+    textMeasurer: TextMeasurer
+): StreamingRenderedLines {
+    if (text.isEmpty()) return StreamingRenderedLines(emptyList(), null)
+    if (availableWidthPx <= 0) return StreamingRenderedLines(emptyList(), text)
+
+    val stableLines = mutableListOf<AnnotatedString>()
+    val raw = text.text
+    var lineStart = 0
+    var cursor = 0
+
+    while (cursor < raw.length) {
+        if (raw[cursor] == '\n') {
+            stableLines += text.subSequence(lineStart, cursor)
+            lineStart = cursor + 1
+            cursor = lineStart
+            continue
+        }
+
+        val candidate = text.subSequence(lineStart, cursor + 1)
+        val layout = textMeasurer.measure(
+            text = candidate,
+            style = style,
+            constraints = Constraints(maxWidth = availableWidthPx)
+        )
+        if (layout.lineCount > 1) {
+            val breakOffset = layout.getLineEnd(0, visibleEnd = true).coerceAtLeast(1)
+            stableLines += candidate.subSequence(0, breakOffset)
+            lineStart += breakOffset
+            cursor = lineStart
+            continue
+        }
+        cursor++
+    }
+
+    val activeLine = when {
+        lineStart < raw.length -> text.subSequence(lineStart, raw.length)
+        raw.endsWith('\n') -> AnnotatedString("")
+        else -> null
+    }
+
+    return StreamingRenderedLines(
+        stableLines = stableLines,
+        activeLine = activeLine
     )
 }
 
@@ -662,6 +867,9 @@ private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     lineBreak = LineBreak.Paragraph
 )
 
+private fun assistantStreamingParagraphTextStyle(): TextStyle =
+    assistantParagraphTextStyle().copy(lineBreak = LineBreak.Simple)
+
 private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
     fontSize = 14.sp,
     lineHeight = 20.sp,
@@ -710,6 +918,9 @@ private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     textMotion = TextMotion.Static,
     lineBreak = LineBreak.Heading
 )
+
+private fun assistantStreamingHeadingTextStyle(level: Int): TextStyle =
+    assistantHeadingTextStyle(level).copy(lineBreak = LineBreak.Simple)
 
 private fun consumeStreamingBottomSpacer(currentSpacerPx: Int, consumedScrollPx: Float): Int {
     if (currentSpacerPx <= 0 || consumedScrollPx <= 0f) return currentSpacerPx
@@ -953,6 +1164,7 @@ private fun AssistantMessageContent(
     streamingFreshTick: Int = 0,
     streamingLineAdvanceTick: Int = 0,
     strictLineReveal: Boolean = false,
+    lineRevealLocked: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
@@ -984,6 +1196,7 @@ private fun AssistantMessageContent(
                         streamingFreshTick = streamingFreshTick,
                         streamingLineAdvanceTick = streamingLineAdvanceTick,
                         strictLineReveal = strictLineReveal,
+                        lineRevealLocked = lineRevealLocked,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -1035,229 +1248,418 @@ private fun AssistantStreamingContent(
     streamingFreshTick: Int,
     streamingLineAdvanceTick: Int,
     strictLineReveal: Boolean,
+    lineRevealLocked: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val parts = remember(content) { splitStreamingMarkdownParts(content) }
-    val completedBlocks = remember(parts.completedContent) {
-        if (parts.completedContent.isBlank()) emptyList() else getCachedMarkdownUiBlocks(parts.completedContent)
+    val blockState = remember(content) { splitStreamingBlockState(content) }
+    val completedModels = remember(blockState.completedBlocks) {
+        blockState.completedBlocks.map(::classifyStreamingLine)
     }
-    val tailTrimmed = parts.tailContent.trimStart()
-    val showLeadingSectionDivider = remember(completedBlocks, tailTrimmed) {
-        val lastCompleted = completedBlocks.lastOrNull() ?: return@remember false
-        if (!tailTrimmed.matches(headingRegex)) return@remember false
-        val markerLength = tailTrimmed.takeWhile { it == '#' }.length
-        markerLength <= 2 && shouldShowMarkdownSectionDivider(
-            previous = lastCompleted,
-            current = MarkdownUiBlock.Heading(markerLength, AnnotatedString(""))
-        )
-    }
-    val tailOffset = remember(content, parts.tailContent) {
-        (content.length - parts.tailContent.length).coerceAtLeast(0)
-    }
-    val tailFreshStart = remember(parts.tailContent, streamingFreshStart, tailOffset) {
-        if (streamingFreshStart < 0 || parts.tailContent.isEmpty()) {
-            -1
-        } else {
-            (streamingFreshStart - tailOffset).coerceIn(0, parts.tailContent.length)
-        }
-    }
-    val tailFreshEnd = remember(parts.tailContent, streamingFreshEnd, tailOffset, tailFreshStart) {
-        if (streamingFreshEnd <= tailFreshStart || parts.tailContent.isEmpty()) {
-            -1
-        } else {
-            (streamingFreshEnd - tailOffset).coerceIn(tailFreshStart, parts.tailContent.length)
-        }
+    val activeModel = remember(blockState.activeBlock) {
+        blockState.activeBlock?.let(::classifyStreamingLine)
     }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
     ) {
-        if (parts.completedContent.isNotBlank()) {
-            AssistantMarkdownContent(
-                content = parts.completedContent,
-                modifier = Modifier.fillMaxWidth()
-            )
+        completedModels.forEachIndexed { index, model ->
+            key("streaming_completed_$index:${blockState.completedBlocks[index]}") {
+                AssistantStreamingCommittedBlock(
+                    model = model,
+                    showLeadingSectionDivider = shouldShowStreamingSectionDivider(
+                        previous = completedModels.getOrNull(index - 1),
+                        current = model
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
-        if (parts.tailContent.isNotBlank()) {
-            AssistantStreamingTail(
-                content = parts.tailContent,
-                showLeadingSectionDivider = showLeadingSectionDivider,
-                freshStart = tailFreshStart,
-                freshEnd = tailFreshEnd,
-                freshTick = streamingFreshTick,
+        activeModel?.let { model ->
+            AssistantStreamingActiveBlock(
+                model = model,
+                showLeadingSectionDivider = shouldShowStreamingSectionDivider(
+                    previous = completedModels.lastOrNull(),
+                    current = model
+                ),
                 lineAdvanceTick = streamingLineAdvanceTick,
-                strictLineReveal = strictLineReveal
+                strictLineReveal = strictLineReveal,
+                lineRevealLocked = lineRevealLocked,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
 }
 
 @Composable
-private fun AssistantStreamingTail(
-    content: String,
-    showLeadingSectionDivider: Boolean = false,
-    freshStart: Int = -1,
-    freshEnd: Int = -1,
-    freshTick: Int = 0,
-    lineAdvanceTick: Int = 0,
-    strictLineReveal: Boolean = true
+private fun StreamingSingleActiveLineText(
+    lines: StreamingRenderedLines,
+    style: TextStyle,
+    emptyLineHeight: Dp,
+    modifier: Modifier = Modifier
 ) {
-    val trimmed = content.trimStart()
-    val hasFreshRange = freshStart >= 0 && freshEnd > freshStart
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        lines.stableLines.forEach { line ->
+            if (line.text.isEmpty()) {
+                Spacer(modifier = Modifier.height(emptyLineHeight))
+            } else {
+                Text(
+                    text = line,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = style,
+                    textAlign = TextAlign.Start,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+        lines.activeLine?.let { line ->
+            if (line.text.isEmpty()) {
+                Spacer(modifier = Modifier.height(emptyLineHeight))
+            } else {
+                Text(
+                    text = line,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = style,
+                    textAlign = TextAlign.Start,
+                    maxLines = 1,
+                    softWrap = false
+                )
+            }
+        }
+    }
+}
+
+private fun applyStreamingLineRevealGate(
+    lines: StreamingRenderedLines,
+    lineAdvanceTick: Int,
+    strictLineReveal: Boolean,
+    lineRevealLocked: Boolean
+): StreamingRenderedLines {
+    if (!strictLineReveal || !lineRevealLocked) return lines
+    return StreamingRenderedLines(
+        stableLines = lines.stableLines,
+        activeLine = null
+    )
+}
+
+@Composable
+private fun StreamingCommittedTextBlock(
+    text: String,
+    style: TextStyle,
+    emptyLineHeight: Dp,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val maxWidthPx = with(density) { maxWidth.roundToPx() }
+        val measured = remember(text, style, maxWidthPx) {
+            val lines = buildStableStreamingLineBuffer(
+                text = AnnotatedString(text),
+                style = style,
+                availableWidthPx = maxWidthPx,
+                textMeasurer = textMeasurer
+            )
+            StreamingRenderedLines(
+                stableLines = if (lines.activeLine != null) lines.stableLines + lines.activeLine else lines.stableLines,
+                activeLine = null
+            )
+        }
+        StreamingSingleActiveLineText(
+            lines = measured,
+            style = style,
+            emptyLineHeight = emptyLineHeight,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun AssistantStreamingCommittedBlock(
+    model: StreamingLineModel,
+    showLeadingSectionDivider: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    when (model) {
+        StreamingLineModel.Blank -> Spacer(modifier = modifier.height(MARKDOWN_BLOCK_SPACING))
+        is StreamingLineModel.Heading -> Column(
+            modifier = modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            val headingStyle = assistantStreamingHeadingTextStyle(model.level)
+            if (showLeadingSectionDivider && model.level <= 2) {
+                Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
+                MarkdownSectionDivider()
+                Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
+            }
+            StreamingCommittedTextBlock(
+                text = model.text,
+                modifier = Modifier.fillMaxWidth(),
+                style = headingStyle,
+                emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() }
+            )
+        }
+        is StreamingLineModel.Bullet -> Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "\u2022",
+                style = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
+            )
+            Text(
+                text = AnnotatedString(model.text),
+                modifier = Modifier.weight(1f),
+                style = assistantStreamingParagraphTextStyle(),
+                textAlign = TextAlign.Start
+            )
+        }
+        is StreamingLineModel.Numbered -> Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "${model.number}.",
+                style = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
+            )
+            Text(
+                text = AnnotatedString(model.text),
+                modifier = Modifier.weight(1f),
+                style = assistantStreamingParagraphTextStyle(),
+                textAlign = TextAlign.Start
+            )
+        }
+        is StreamingLineModel.Quote -> StreamingCommittedTextBlock(
+            text = model.text,
+            modifier = modifier.fillMaxWidth(),
+            style = assistantStreamingParagraphTextStyle(),
+            emptyLineHeight = with(density) { assistantStreamingParagraphTextStyle().lineHeight.toDp() }
+        )
+        is StreamingLineModel.Paragraph -> StreamingCommittedTextBlock(
+            text = model.text,
+            modifier = modifier.fillMaxWidth(),
+            style = assistantStreamingParagraphTextStyle(),
+            emptyLineHeight = with(density) { assistantStreamingParagraphTextStyle().lineHeight.toDp() }
+        )
+    }
+}
+
+@Composable
+private fun AssistantStreamingActiveBlock(
+    model: StreamingLineModel,
+    showLeadingSectionDivider: Boolean = false,
+    lineAdvanceTick: Int = 0,
+    strictLineReveal: Boolean = true,
+    lineRevealLocked: Boolean = false,
+    modifier: Modifier = Modifier
+) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val spacingPx = with(density) { 8.dp.roundToPx() }
-    val releasedLineCount = if (strictLineReveal) {
-        (lineAdvanceTick + 1).coerceAtLeast(1)
-    } else {
-        Int.MAX_VALUE
-    }
-    var freshAlphaTarget by remember { mutableFloatStateOf(1f) }
-    LaunchedEffect(freshTick, hasFreshRange) {
-        if (hasFreshRange && freshTick > 0) {
-            freshAlphaTarget = 0.97f
-            withFrameNanos { }
-            freshAlphaTarget = 1f
-        } else {
-            freshAlphaTarget = 1f
-        }
-    }
-    val freshAlpha by animateFloatAsState(
-        targetValue = freshAlphaTarget,
-        animationSpec = tween(durationMillis = 48),
-        label = "streamingFreshAlpha"
-    )
-    fun buildTail(text: String): AnnotatedString {
-        val base = buildStreamingAnnotatedString(text)
-        if (!hasFreshRange || text.isEmpty()) return base
-        val startInContent = content.indexOf(text).takeIf { it >= 0 } ?: return base
-        val localStart = (freshStart - startInContent).coerceIn(0, text.length)
-        val localEnd = (freshEnd - startInContent).coerceIn(localStart, text.length)
-        if (localEnd <= localStart) return base
-        return AnnotatedString.Builder(base).apply {
-            addStyle(
-                style = SpanStyle(color = Color(0xFF161616).copy(alpha = freshAlpha)),
-                start = localStart,
-                end = localEnd
-            )
-        }.toAnnotatedString()
-    }
-    fun clampVisibleLines(
+    val paragraphLineHeight = with(density) { assistantStreamingParagraphTextStyle().lineHeight.toDp() }
+    fun resolveRenderedLines(
         text: String,
         style: TextStyle,
         availableWidthPx: Int
-    ): AnnotatedString {
-        val base = buildTail(text)
-        if (!strictLineReveal || text.isEmpty() || availableWidthPx <= 0) return base
-        val layout = textMeasurer.measure(
-            text = base,
+    ): StreamingRenderedLines {
+        val lines = buildStableStreamingLineBuffer(
+            text = AnnotatedString(text),
             style = style,
-            constraints = Constraints(maxWidth = availableWidthPx)
+            availableWidthPx = availableWidthPx,
+            textMeasurer = textMeasurer
         )
-        if (layout.lineCount <= releasedLineCount) return base
-        val visibleLineIndex = (releasedLineCount - 1).coerceAtLeast(0)
-        val visibleEnd = layout.getLineEnd(visibleLineIndex, visibleEnd = true)
-        return base.subSequence(0, visibleEnd)
+        val suppressed = if (strictLineReveal && lineRevealLocked) {
+            suppressTinyLeadingActiveLine(lines, maxHiddenVisibleChars = 1)
+        } else {
+            lines
+        }
+        return applyStreamingLineRevealGate(suppressed, lineAdvanceTick, strictLineReveal, lineRevealLocked)
     }
-    val animatedModifier = Modifier.fillMaxWidth()
+    val animatedModifier = modifier.fillMaxWidth()
 
     BoxWithConstraints(modifier = animatedModifier) {
         val maxWidthPx = with(density) { maxWidth.roundToPx() }
-        when {
-            trimmed.matches(headingRegex) -> {
-                val marker = trimmed.takeWhile { it == '#' }
-                val headingStyle = assistantHeadingTextStyle(marker.length)
+        when (model) {
+            StreamingLineModel.Blank -> Unit
+            is StreamingLineModel.Heading -> {
+                val headingStyle = assistantStreamingHeadingTextStyle(model.level)
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    if (showLeadingSectionDivider && marker.length <= 2) {
+                    if (showLeadingSectionDivider && model.level <= 2) {
                         Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
                         MarkdownSectionDivider()
                         Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
                     }
-                    Text(
-                        text = remember(trimmed, maxWidthPx, releasedLineCount, strictLineReveal, freshTick) {
-                            clampVisibleLines(trimmed.drop(marker.length).trimStart(), headingStyle, maxWidthPx)
+                    StreamingSingleActiveLineText(
+                        lines = remember(model.text, maxWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
+                            resolveRenderedLines(model.text, headingStyle, maxWidthPx)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         style = headingStyle,
-                        textAlign = TextAlign.Start
+                        emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() }
                     )
                 }
             }
-            trimmed.matches(bulletRegex) -> {
-                val bulletStyle = assistantParagraphTextStyle().copy(fontSize = 18.sp)
-                val bodyStyle = assistantParagraphTextStyle()
+            is StreamingLineModel.Bullet -> {
+                val bulletStyle = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
+                val bodyStyle = assistantStreamingParagraphTextStyle()
                 val bulletWidthPx = remember(textMeasurer, bulletStyle) {
                     textMeasurer.measure(AnnotatedString("\u2022"), style = bulletStyle).size.width
                 }
                 val bodyWidthPx = (maxWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
-                Row(
+                val gutterWidth = with(density) { (bulletWidthPx + spacingPx).toDp() }
+                val lines = remember(model.text, bodyWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
+                    resolveRenderedLines(model.text, bodyStyle, bodyWidthPx)
+                }
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    Text(
-                        text = "\u2022",
-                        style = bulletStyle
-                    )
-                    Text(
-                        text = remember(trimmed, bodyWidthPx, releasedLineCount, strictLineReveal, freshTick) {
-                            clampVisibleLines(trimmed.drop(1).trimStart(), bodyStyle, bodyWidthPx)
-                        },
-                        modifier = Modifier.weight(1f),
-                        style = bodyStyle,
-                        textAlign = TextAlign.Start
-                    )
+                    if (lines.activeLine != null || lines.stableLines.isNotEmpty()) {
+                        val firstLine = lines.stableLines.firstOrNull() ?: lines.activeLine
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "\u2022",
+                                style = bulletStyle
+                            )
+                            firstLine?.let { line ->
+                                Text(
+                                    text = line,
+                                    modifier = Modifier.weight(1f),
+                                    style = bodyStyle,
+                                    textAlign = TextAlign.Start,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                        lines.stableLines.drop(1).forEach { line ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Spacer(modifier = Modifier.width(gutterWidth))
+                                Text(
+                                    text = line,
+                                    modifier = Modifier.weight(1f),
+                                    style = bodyStyle,
+                                    textAlign = TextAlign.Start,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                        if (lines.stableLines.isNotEmpty()) {
+                            lines.activeLine?.let { line ->
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Spacer(modifier = Modifier.width(gutterWidth))
+                                    Text(
+                                        text = line,
+                                        modifier = Modifier.weight(1f),
+                                        style = bodyStyle,
+                                        textAlign = TextAlign.Start,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            trimmed.matches(numberedRegex) -> {
-                val number = trimmed.substringBefore('.')
-                val body = trimmed.substringAfter('.', "")
-                val numberStyle = assistantParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
-                val bodyStyle = assistantParagraphTextStyle()
-                val numberWidthPx = remember(textMeasurer, number, numberStyle) {
-                    textMeasurer.measure(AnnotatedString("$number."), style = numberStyle).size.width
+            is StreamingLineModel.Numbered -> {
+                val numberStyle = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
+                val bodyStyle = assistantStreamingParagraphTextStyle()
+                val numberWidthPx = remember(textMeasurer, model.number, numberStyle) {
+                    textMeasurer.measure(AnnotatedString("${model.number}."), style = numberStyle).size.width
                 }
                 val bodyWidthPx = (maxWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
-                Row(
+                val gutterWidth = with(density) { (numberWidthPx + spacingPx).toDp() }
+                val lines = remember(model.text, bodyWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
+                    resolveRenderedLines(model.text, bodyStyle, bodyWidthPx)
+                }
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
                 ) {
-                    Text(
-                        text = "$number.",
-                        style = numberStyle
-                    )
-                    Text(
-                        text = remember(body, bodyWidthPx, releasedLineCount, strictLineReveal, freshTick) {
-                            clampVisibleLines(body.trimStart(), bodyStyle, bodyWidthPx)
-                        },
-                        modifier = Modifier.weight(1f),
-                        style = bodyStyle,
-                        textAlign = TextAlign.Start
-                    )
+                    if (lines.activeLine != null || lines.stableLines.isNotEmpty()) {
+                        val firstLine = lines.stableLines.firstOrNull() ?: lines.activeLine
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "${model.number}.",
+                                style = numberStyle
+                            )
+                            firstLine?.let { line ->
+                                Text(
+                                    text = line,
+                                    modifier = Modifier.weight(1f),
+                                    style = bodyStyle,
+                                    textAlign = TextAlign.Start,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                        lines.stableLines.drop(1).forEach { line ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                Spacer(modifier = Modifier.width(gutterWidth))
+                                Text(
+                                    text = line,
+                                    modifier = Modifier.weight(1f),
+                                    style = bodyStyle,
+                                    textAlign = TextAlign.Start,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                        if (lines.stableLines.isNotEmpty()) {
+                            lines.activeLine?.let { line ->
+                                Row(modifier = Modifier.fillMaxWidth()) {
+                                    Spacer(modifier = Modifier.width(gutterWidth))
+                                    Text(
+                                        text = line,
+                                        modifier = Modifier.weight(1f),
+                                        style = bodyStyle,
+                                        textAlign = TextAlign.Start,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            trimmed.matches(quoteRegex) -> {
-                val quoteStyle = assistantParagraphTextStyle()
-                Text(
-                    text = remember(trimmed, maxWidthPx, releasedLineCount, strictLineReveal, freshTick) {
-                        clampVisibleLines(trimmed.drop(1).trimStart(), quoteStyle, maxWidthPx)
+            is StreamingLineModel.Quote -> {
+                val quoteStyle = assistantStreamingParagraphTextStyle()
+                StreamingSingleActiveLineText(
+                    lines = remember(model.text, maxWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
+                        resolveRenderedLines(model.text, quoteStyle, maxWidthPx)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     style = quoteStyle,
-                    textAlign = TextAlign.Start
+                    emptyLineHeight = paragraphLineHeight
                 )
             }
-            else -> {
-                val paragraphStyle = assistantParagraphTextStyle()
-                Text(
-                    text = remember(content, maxWidthPx, releasedLineCount, strictLineReveal, freshTick) {
-                        clampVisibleLines(content, paragraphStyle, maxWidthPx)
+            is StreamingLineModel.Paragraph -> {
+                val paragraphStyle = assistantStreamingParagraphTextStyle()
+                StreamingSingleActiveLineText(
+                    lines = remember(model.text, maxWidthPx, strictLineReveal, lineAdvanceTick, lineRevealLocked) {
+                        resolveRenderedLines(model.text, paragraphStyle, maxWidthPx)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     style = paragraphStyle,
-                    textAlign = TextAlign.Start
+                    emptyLineHeight = paragraphLineHeight
                 )
             }
         }
@@ -1625,6 +2027,9 @@ fun ChatScreen() {
         0
     }
     val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
+    val lineRevealLockThresholdPx = remember(assistantLineStepPx) {
+        (assistantLineStepPx * 0.18f).roundToInt().coerceAtLeast(6)
+    }
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
     }
@@ -1644,6 +2049,23 @@ fun ChatScreen() {
                         streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
             }
+        }
+    }
+    val lineRevealLocked by remember(
+        isStreaming,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        lineRevealLockThresholdPx,
+        userDetachedFromBottom,
+        userInteracting
+    ) {
+        derivedStateOf {
+            isStreaming &&
+                !userDetachedFromBottom &&
+                !userInteracting &&
+                streamingContentBottomPx > 0 &&
+                streamingWorklineBottomPx > 0 &&
+                streamingContentBottomPx > streamingWorklineBottomPx + lineRevealLockThresholdPx
         }
     }
     val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
@@ -1694,9 +2116,11 @@ fun ChatScreen() {
         atBottom,
         messages.size,
         hasStreamingItem,
-        autoScrollMode
+        autoScrollMode,
+        pendingFinalBottomSnap
     ) {
         derivedStateOf {
+            !pendingFinalBottomSnap &&
             (messages.isNotEmpty() || hasStreamingItem) &&
                 autoScrollMode == AutoScrollMode.Idle &&
                 !atBottom
@@ -2036,10 +2460,13 @@ fun ChatScreen() {
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         if (overflow <= 0) return 0
-        val triggerThresholdPx = (assistantLineStepPx * 0.92f).roundToInt()
-            .coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
+        val minStepPx = (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(8)
+        val triggerThresholdPx = (minStepPx * 0.5f).roundToInt().coerceAtLeast(4)
         if (overflow < triggerThresholdPx) return 0
-        return assistantLineStepPx
+        val smoothCapPx = (assistantLineStepPx * 0.58f).roundToInt().coerceAtLeast(minStepPx)
+        return overflow
+            .coerceAtMost(smoothCapPx)
+            .coerceAtLeast(minStepPx)
     }
 
     suspend fun smoothCatchUpToBottom(maxFrames: Int = 480) {
@@ -2099,6 +2526,7 @@ fun ChatScreen() {
             streamingBackgrounded = false
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
+            jumpButtonVisible = false
             persistTick++
             pendingFinalBottomSnap = shouldSnapToBottomOnFinish
         }
@@ -2411,7 +2839,9 @@ fun ChatScreen() {
         hasStreamingItem,
         userInteracting,
         userDetachedFromBottom,
-        streamTick
+        streamTick,
+        streamingContentBottomPx,
+        lineRevealLocked
     ) {
         if (!hasStreamingItem || !isStreaming) {
             streamBottomFollowActive = false
@@ -2836,6 +3266,7 @@ fun ChatScreen() {
                                             isStreaming &&
                                                 !userDetachedFromBottom &&
                                                 !userInteracting,
+                                        lineRevealLocked = lineRevealLocked,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
