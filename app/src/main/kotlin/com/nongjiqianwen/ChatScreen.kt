@@ -675,11 +675,10 @@ private fun shouldShowAiDisclaimer(content: String): Boolean {
     if (content.isBlank()) return false
     val normalized = content.lowercase()
     val guidanceKeywords = listOf(
-        "用药", "施药", "农药", "杀菌剂", "杀虫剂", "杀螨", "施肥", "肥料", "追肥", "叶面肥",
+        "用药", "施药", "农药", "杀菌剂", "杀虫剂", "杀螨", "施肥", "追肥", "叶面肥",
         "冲施", "滴灌", "灌根", "喷施", "喷雾", "喷药", "剂量", "用量", "倍数", "浓度", "稀释",
         "稀释倍数", "配比", "配方", "混配", "复配", "安全期", "间隔期", "残留", "采收期", "停药期",
-        "诊断", "病害", "虫害", "真菌", "细菌", "病毒", "药害", "肥害", "缺素",
-        "防治", "防控", "处理方案", "治疗", "处方"
+        "防治", "防控", "处理方案"
     )
     if (guidanceKeywords.any { normalized.contains(it) }) return true
     val dosageKeywords = listOf(
