@@ -714,46 +714,37 @@ private fun buildStableStreamingLineBuffer(
 ): StreamingRenderedLines {
     if (text.isEmpty()) return StreamingRenderedLines(emptyList(), null)
     if (availableWidthPx <= 0) return StreamingRenderedLines(emptyList(), text)
-
-    val stableLines = mutableListOf<AnnotatedString>()
     val raw = text.text
-    var lineStart = 0
-    var cursor = 0
-
-    while (cursor < raw.length) {
-        if (raw[cursor] == '\n') {
-            stableLines += text.subSequence(lineStart, cursor)
-            lineStart = cursor + 1
-            cursor = lineStart
-            continue
-        }
-
-        val candidate = text.subSequence(lineStart, cursor + 1)
-        val layout = textMeasurer.measure(
-            text = candidate,
-            style = style,
-            constraints = Constraints(maxWidth = availableWidthPx)
-        )
-        if (layout.lineCount > 1) {
-            val breakOffset = layout.getLineEnd(0, visibleEnd = true).coerceAtLeast(1)
-            stableLines += candidate.subSequence(0, breakOffset)
-            lineStart += breakOffset
-            cursor = lineStart
-            continue
-        }
-        cursor++
-    }
-
-    val activeLine = when {
-        lineStart < raw.length -> text.subSequence(lineStart, raw.length)
-        raw.endsWith('\n') -> AnnotatedString("")
-        else -> null
-    }
-
-    return StreamingRenderedLines(
-        stableLines = stableLines,
-        activeLine = activeLine
+    val layout = textMeasurer.measure(
+        text = text,
+        style = style,
+        constraints = Constraints(maxWidth = availableWidthPx)
     )
+    if (layout.lineCount <= 0) {
+        return StreamingRenderedLines(
+            stableLines = emptyList(),
+            activeLine = if (raw.endsWith('\n')) AnnotatedString("") else text
+        )
+    }
+
+    val stableLines = buildList {
+        for (lineIndex in 0 until (layout.lineCount - 1)) {
+            val lineStart = layout.getLineStart(lineIndex).coerceIn(0, raw.length)
+            val lineEnd = layout.getLineEnd(lineIndex, visibleEnd = true).coerceIn(lineStart, raw.length)
+            add(text.subSequence(lineStart, lineEnd))
+        }
+    }
+    val activeLine = when {
+        raw.endsWith('\n') -> AnnotatedString("")
+        else -> {
+            val activeIndex = layout.lineCount - 1
+            val lineStart = layout.getLineStart(activeIndex).coerceIn(0, raw.length)
+            val lineEnd = layout.getLineEnd(activeIndex, visibleEnd = true).coerceIn(lineStart, raw.length)
+            if (lineStart >= lineEnd) null else text.subSequence(lineStart, lineEnd)
+        }
+    }
+
+    return StreamingRenderedLines(stableLines = stableLines, activeLine = activeLine)
 }
 
 private fun StringBuilder.appendParagraphLine(line: String) {
