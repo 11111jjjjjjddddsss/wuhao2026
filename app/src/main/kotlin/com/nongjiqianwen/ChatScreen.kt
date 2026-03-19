@@ -1404,27 +1404,60 @@ private fun rememberLockedStreamingRenderedLines(
     lines: StreamingRenderedLines,
     strictLineReveal: Boolean,
     lineRevealLocked: Boolean,
+    lineAdvanceTick: Int,
     maxVisibleCharsWhenLocked: Int
 ): StreamingRenderedLines {
     if (!strictLineReveal || lines.activeLine == null || lines.stableLines.isEmpty()) {
         return lines
     }
     var activeLineUnlockedOnce by remember(lines.stableLines.size) { mutableStateOf(false) }
-    if (!lineRevealLocked) {
-        SideEffect {
+    var pendingFreshLineRelease by remember(lines.stableLines.size) { mutableStateOf(true) }
+    var pendingFreshLineTick by remember(lines.stableLines.size) { mutableIntStateOf(lineAdvanceTick) }
+
+    LaunchedEffect(lines.stableLines.size) {
+        pendingFreshLineRelease = true
+        pendingFreshLineTick = lineAdvanceTick
+        activeLineUnlockedOnce = false
+    }
+
+    LaunchedEffect(lines.stableLines.size, lineRevealLocked, lineAdvanceTick) {
+        if (activeLineUnlockedOnce) return@LaunchedEffect
+        if (!pendingFreshLineRelease) {
+            if (!lineRevealLocked) {
+                activeLineUnlockedOnce = true
+            }
+            return@LaunchedEffect
+        }
+        if (lineRevealLocked) return@LaunchedEffect
+        if (lineAdvanceTick > pendingFreshLineTick) {
+            pendingFreshLineRelease = false
+            activeLineUnlockedOnce = true
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        if (!lineRevealLocked && lineAdvanceTick == pendingFreshLineTick) {
+            pendingFreshLineRelease = false
             activeLineUnlockedOnce = true
         }
     }
-    return remember(lines, lineRevealLocked, activeLineUnlockedOnce, maxVisibleCharsWhenLocked) {
+
+    return remember(
+        lines,
+        lineRevealLocked,
+        lineAdvanceTick,
+        activeLineUnlockedOnce,
+        pendingFreshLineRelease,
+        maxVisibleCharsWhenLocked
+    ) {
         when {
-            !lineRevealLocked -> lines
             activeLineUnlockedOnce -> lines
-            else -> lines.copy(
+            pendingFreshLineRelease || lineRevealLocked -> lines.copy(
                 activeLine = buildLockedStreamingActivePreview(
                     activeLine = lines.activeLine,
                     maxVisibleChars = maxVisibleCharsWhenLocked
                 )
             )
+            else -> lines
         }
     }
 }
@@ -1579,6 +1612,7 @@ private fun AssistantStreamingActiveBlock(
                         lines = rawLines,
                         strictLineReveal = strictLineReveal,
                         lineRevealLocked = lineRevealLocked,
+                        lineAdvanceTick = lineAdvanceTick,
                         maxVisibleCharsWhenLocked = 0
                     )
                     StreamingSingleActiveLineText(
@@ -1604,6 +1638,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
+                    lineAdvanceTick = lineAdvanceTick,
                     maxVisibleCharsWhenLocked = 0
                 )
                 Column(
@@ -1687,6 +1722,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
+                    lineAdvanceTick = lineAdvanceTick,
                     maxVisibleCharsWhenLocked = 0
                 )
                 Column(
@@ -1764,6 +1800,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
+                    lineAdvanceTick = lineAdvanceTick,
                     maxVisibleCharsWhenLocked = 0
                 )
                 StreamingSingleActiveLineText(
@@ -1782,6 +1819,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
+                    lineAdvanceTick = lineAdvanceTick,
                     maxVisibleCharsWhenLocked = 0
                 )
                 StreamingSingleActiveLineText(
