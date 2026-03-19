@@ -199,6 +199,7 @@ private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 private const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 private const val STREAM_DELAY_MULTIPLIER = 1.08
+private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 2
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -1429,13 +1430,9 @@ private fun rememberLockedStreamingRenderedLines(
             return@LaunchedEffect
         }
         if (lineRevealLocked) return@LaunchedEffect
-        if (lineAdvanceTick > pendingFreshLineTick) {
-            pendingFreshLineRelease = false
-            activeLineUnlockedOnce = true
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        if (!lineRevealLocked && lineAdvanceTick == pendingFreshLineTick) {
+        val settleFrames = if (lineAdvanceTick > pendingFreshLineTick) 1 else STREAM_FRESH_LINE_SETTLE_FRAMES
+        repeat(settleFrames) { withFrameNanos { } }
+        if (!lineRevealLocked) {
             pendingFreshLineRelease = false
             activeLineUnlockedOnce = true
         }
