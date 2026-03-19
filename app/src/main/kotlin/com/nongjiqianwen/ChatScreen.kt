@@ -201,6 +201,8 @@ private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 private const val STREAM_DELAY_MULTIPLIER = 1.08
 private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 3
 private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 2
+private const val STREAM_FRESH_SUFFIX_FADE_MS = 64
+private const val STREAM_FRESH_SUFFIX_FADE_START_ALPHA = 0.42f
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -1311,6 +1313,21 @@ private fun AssistantStreamingContent(
     val activeModel = remember(blockState.activeBlock) {
         blockState.activeBlock?.let(::classifyActiveStreamingLine)
     }
+    val activeFreshTailChars = remember(
+        content,
+        streamingFreshStart,
+        streamingFreshEnd,
+        streamingFreshTick,
+        blockState.activeBlock
+    ) {
+        if (streamingFreshTick <= 0 || blockState.activeBlock.isNullOrEmpty()) {
+            0
+        } else {
+            (streamingFreshEnd - streamingFreshStart)
+                .coerceAtLeast(0)
+                .coerceAtMost(blockState.activeBlock.length)
+        }
+    }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
@@ -1337,6 +1354,8 @@ private fun AssistantStreamingContent(
                     previous = completedModels.lastOrNull(),
                     current = model
                 ),
+                freshTailChars = activeFreshTailChars,
+                freshTick = streamingFreshTick,
                 lineAdvanceTick = streamingLineAdvanceTick,
                 strictLineReveal = strictLineReveal,
                 lineRevealLocked = lineRevealLocked,
@@ -1351,6 +1370,8 @@ private fun StreamingSingleActiveLineText(
     lines: StreamingRenderedLines,
     style: TextStyle,
     emptyLineHeight: Dp,
+    freshTailChars: Int = 0,
+    freshTick: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1377,19 +1398,80 @@ private fun StreamingSingleActiveLineText(
             if (line.text.isEmpty()) {
                 Spacer(modifier = Modifier.height(emptyLineHeight))
             } else {
-                Text(
+                StreamingAnimatedLineText(
                     text = line,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = emptyLineHeight),
                     style = style,
-                    textAlign = TextAlign.Start,
-                    maxLines = 1,
-                    softWrap = false
+                    freshTailChars = freshTailChars,
+                    freshTick = freshTick
                 )
             }
         }
     }
+}
+
+@Composable
+private fun StreamingAnimatedLineText(
+    text: AnnotatedString,
+    style: TextStyle,
+    freshTailChars: Int = 0,
+    freshTick: Int = 0,
+    modifier: Modifier = Modifier
+) {
+    val effectiveFreshTailChars = freshTailChars.coerceIn(0, text.length)
+    if (effectiveFreshTailChars <= 0 || freshTick <= 0) {
+        Text(
+            text = text,
+            modifier = modifier,
+            style = style,
+            textAlign = TextAlign.Start,
+            maxLines = 1,
+            softWrap = false
+        )
+        return
+    }
+
+    var freshAlphaTarget by remember(freshTick, text.text, effectiveFreshTailChars) {
+        mutableFloatStateOf(STREAM_FRESH_SUFFIX_FADE_START_ALPHA)
+    }
+    LaunchedEffect(freshTick, text.text, effectiveFreshTailChars) {
+        freshAlphaTarget = 1f
+    }
+    val freshAlpha by animateFloatAsState(
+        targetValue = freshAlphaTarget,
+        animationSpec = tween(
+            durationMillis = STREAM_FRESH_SUFFIX_FADE_MS,
+            easing = LinearOutSlowInEasing
+        ),
+        label = "streamFreshSuffixAlpha"
+    )
+    val renderedText = remember(text, effectiveFreshTailChars, freshAlpha, style.color) {
+        val stableEnd = (text.length - effectiveFreshTailChars).coerceAtLeast(0)
+        buildAnnotatedString {
+            append(text.subSequence(0, stableEnd))
+            withStyle(
+                SpanStyle(
+                    color = if (style.color != Color.Unspecified) {
+                        style.color.copy(alpha = freshAlpha)
+                    } else {
+                        Color.Unspecified
+                    }
+                )
+            ) {
+                append(text.subSequence(stableEnd, text.length))
+            }
+        }
+    }
+    Text(
+        text = renderedText,
+        modifier = modifier,
+        style = style,
+        textAlign = TextAlign.Start,
+        maxLines = 1,
+        softWrap = false
+    )
 }
 
 @Composable
@@ -1560,6 +1642,8 @@ private fun AssistantStreamingCommittedBlock(
 private fun AssistantStreamingActiveBlock(
     model: StreamingLineModel,
     showLeadingSectionDivider: Boolean = false,
+    freshTailChars: Int = 0,
+    freshTick: Int = 0,
     lineAdvanceTick: Int = 0,
     strictLineReveal: Boolean = true,
     lineRevealLocked: Boolean = false,
@@ -1612,7 +1696,9 @@ private fun AssistantStreamingActiveBlock(
                         lines = lines,
                         modifier = Modifier.fillMaxWidth(),
                         style = headingStyle,
-                        emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() }
+                        emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() },
+                        freshTailChars = freshTailChars,
+                        freshTick = freshTick
                     )
                 }
             }
@@ -1651,13 +1737,12 @@ private fun AssistantStreamingActiveBlock(
                                 style = bulletStyle
                             )
                             firstLine?.let { line ->
-                                Text(
+                                StreamingAnimatedLineText(
                                     text = line,
                                     modifier = Modifier.weight(1f),
                                     style = bodyStyle,
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    softWrap = false
+                                    freshTailChars = if (lines.stableLines.isEmpty()) freshTailChars else 0,
+                                    freshTick = if (lines.stableLines.isEmpty()) freshTick else 0
                                 )
                             }
                         }
@@ -1686,13 +1771,12 @@ private fun AssistantStreamingActiveBlock(
                                         .heightIn(min = paragraphLineHeight)
                                 ) {
                                     Spacer(modifier = Modifier.width(gutterWidth))
-                                    Text(
+                                    StreamingAnimatedLineText(
                                         text = line,
                                         modifier = Modifier.weight(1f),
                                         style = bodyStyle,
-                                        textAlign = TextAlign.Start,
-                                        maxLines = 1,
-                                        softWrap = false
+                                        freshTailChars = freshTailChars,
+                                        freshTick = freshTick
                                     )
                                 }
                             }
@@ -1735,13 +1819,12 @@ private fun AssistantStreamingActiveBlock(
                                 style = numberStyle
                             )
                             firstLine?.let { line ->
-                                Text(
+                                StreamingAnimatedLineText(
                                     text = line,
                                     modifier = Modifier.weight(1f),
                                     style = bodyStyle,
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    softWrap = false
+                                    freshTailChars = if (lines.stableLines.isEmpty()) freshTailChars else 0,
+                                    freshTick = if (lines.stableLines.isEmpty()) freshTick else 0
                                 )
                             }
                         }
@@ -1770,13 +1853,12 @@ private fun AssistantStreamingActiveBlock(
                                         .heightIn(min = paragraphLineHeight)
                                 ) {
                                     Spacer(modifier = Modifier.width(gutterWidth))
-                                    Text(
+                                    StreamingAnimatedLineText(
                                         text = line,
                                         modifier = Modifier.weight(1f),
                                         style = bodyStyle,
-                                        textAlign = TextAlign.Start,
-                                        maxLines = 1,
-                                        softWrap = false
+                                        freshTailChars = freshTailChars,
+                                        freshTick = freshTick
                                     )
                                 }
                             }
@@ -1800,7 +1882,9 @@ private fun AssistantStreamingActiveBlock(
                     lines = lines,
                     modifier = Modifier.fillMaxWidth(),
                     style = quoteStyle,
-                    emptyLineHeight = paragraphLineHeight
+                    emptyLineHeight = paragraphLineHeight,
+                    freshTailChars = freshTailChars,
+                    freshTick = freshTick
                 )
             }
             is StreamingLineModel.Paragraph -> {
@@ -1819,7 +1903,9 @@ private fun AssistantStreamingActiveBlock(
                     lines = lines,
                     modifier = Modifier.fillMaxWidth(),
                     style = paragraphStyle,
-                    emptyLineHeight = paragraphLineHeight
+                    emptyLineHeight = paragraphLineHeight,
+                    freshTailChars = freshTailChars,
+                    freshTick = freshTick
                 )
             }
         }
