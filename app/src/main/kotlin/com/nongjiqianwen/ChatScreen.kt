@@ -1579,7 +1579,7 @@ private fun AssistantStreamingActiveBlock(
                         lines = rawLines,
                         strictLineReveal = strictLineReveal,
                         lineRevealLocked = lineRevealLocked,
-                        maxVisibleCharsWhenLocked = 1
+                        maxVisibleCharsWhenLocked = 0
                     )
                     StreamingSingleActiveLineText(
                         lines = lines,
@@ -1604,7 +1604,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
-                    maxVisibleCharsWhenLocked = 1
+                    maxVisibleCharsWhenLocked = 0
                 )
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -1687,7 +1687,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
-                    maxVisibleCharsWhenLocked = 1
+                    maxVisibleCharsWhenLocked = 0
                 )
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -1764,7 +1764,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
-                    maxVisibleCharsWhenLocked = 1
+                    maxVisibleCharsWhenLocked = 0
                 )
                 StreamingSingleActiveLineText(
                     lines = lines,
@@ -1782,7 +1782,7 @@ private fun AssistantStreamingActiveBlock(
                     lines = rawLines,
                     strictLineReveal = strictLineReveal,
                     lineRevealLocked = lineRevealLocked,
-                    maxVisibleCharsWhenLocked = 1
+                    maxVisibleCharsWhenLocked = 0
                 )
                 StreamingSingleActiveLineText(
                     lines = lines,
@@ -2208,6 +2208,7 @@ fun ChatScreen() {
         isStreaming,
         userDetachedFromBottom,
         userInteracting,
+        streamBottomFollowActive,
         streamingContentBottomPx,
         streamingWorklineBottomPx,
         lineRevealLockThresholdPx,
@@ -2220,6 +2221,7 @@ fun ChatScreen() {
         }
         val nextLocked = when {
             !isStreaming || userDetachedFromBottom || userInteracting -> false
+            streamBottomFollowActive -> true
             overflowPx <= 0 -> false
             lineRevealLocked -> overflowPx > lineRevealUnlockThresholdPx
             else -> overflowPx > lineRevealLockThresholdPx
@@ -2830,6 +2832,16 @@ fun ChatScreen() {
             }
             while (isActive && streamingRevealBuffer.isNotEmpty()) {
                 delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+            }
+            for (attempt in 0 until 18) {
+                if (!isActive || !isStreaming) break
+                val overflow = currentStreamingOverflowDelta()
+                if (!streamBottomFollowActive && overflow <= lineRevealUnlockThresholdPx) {
+                    break
+                }
+                if (attempt < 17) {
+                    delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+                }
             }
             if (isActive) finishStreaming()
         }
