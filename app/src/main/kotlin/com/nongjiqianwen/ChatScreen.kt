@@ -2923,6 +2923,8 @@ fun ChatScreen() {
         initialBottomSnapDone = true
         initialListRevealConsumed = true
         LaunchUiGate.chatReady = true
+        restoreBottomAfterImeClose = false
+        suppressJumpButtonForImeTransition = true
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
         anchoredUserMessageId = userId
@@ -3050,6 +3052,8 @@ fun ChatScreen() {
         if (imeVisible) {
             restoreBottomAfterImeClose =
                 atBottom &&
+                    !isStreaming &&
+                    !hasStreamAnchorSpacer &&
                     !userDetachedFromBottom &&
                     !listState.isScrollInProgress &&
                     !programmaticScroll
@@ -3058,15 +3062,17 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
 
-        if (restoreBottomAfterImeClose) {
+        if (restoreBottomAfterImeClose && !isStreaming && !hasStreamAnchorSpacer) {
             repeat(2) { withFrameNanos { } }
             if (!userDetachedFromBottom && !listState.isScrollInProgress && !programmaticScroll) {
                 scrollToBottom(
                     animated = false,
-                    includeAnchorSpacer = !(isStreaming && hasStreamingItem)
+                    includeAnchorSpacer = true
                 )
             }
             jumpButtonVisible = false
+            restoreBottomAfterImeClose = false
+        } else {
             restoreBottomAfterImeClose = false
         }
 
