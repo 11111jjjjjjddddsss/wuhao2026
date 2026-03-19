@@ -105,6 +105,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -202,9 +203,11 @@ private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 private const val STREAM_DELAY_MULTIPLIER = 1.08
 private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 4
 private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 3
-private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 6
-private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 240
-private const val STREAM_FRESH_SUFFIX_BACKGROUND_MAX_ALPHA = 0.52f
+private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 5
+private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180
+private const val STREAM_FRESH_SUFFIX_START_ALPHA = 0.78f
+private const val STREAM_FRESH_SUFFIX_WHITE_GLOW_ALPHA = 0.34f
+private const val STREAM_FRESH_SUFFIX_WHITE_GLOW_RADIUS = 6f
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -227,8 +230,8 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 12.dp
-private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFF8F98A2)
-private val STREAM_FRESH_SUFFIX_BACKGROUND_COLOR = Color(0xFFF1F3F5)
+private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFD6DADF)
+private val STREAM_FRESH_SUFFIX_GLOW_COLOR = Color.White
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
@@ -1466,19 +1469,26 @@ private fun StreamingAnimatedLineText(
                     STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR,
                     baseColor,
                     settledProgress
+                ).copy(
+                    alpha = STREAM_FRESH_SUFFIX_START_ALPHA +
+                        ((1f - STREAM_FRESH_SUFFIX_START_ALPHA) * settledProgress)
                 )
             } else {
                 Color.Unspecified
             }
-        val freshBackground = STREAM_FRESH_SUFFIX_BACKGROUND_COLOR.copy(
-            alpha = STREAM_FRESH_SUFFIX_BACKGROUND_MAX_ALPHA * highlightProgress
+        val freshShadow = Shadow(
+            color = STREAM_FRESH_SUFFIX_GLOW_COLOR.copy(
+                alpha = STREAM_FRESH_SUFFIX_WHITE_GLOW_ALPHA * highlightProgress
+            ),
+            offset = Offset.Zero,
+            blurRadius = STREAM_FRESH_SUFFIX_WHITE_GLOW_RADIUS * highlightProgress
         )
         buildAnnotatedString {
             append(text.subSequence(0, stableEnd))
             withStyle(
                 SpanStyle(
                     color = freshColor,
-                    background = freshBackground
+                    shadow = freshShadow
                 )
             ) {
                 append(text.subSequence(stableEnd, text.length))
