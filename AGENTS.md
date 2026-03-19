@@ -48,3 +48,9 @@
 
 - 具体检查项见 [docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)
 - 主聊天页动态交互逻辑见 [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)
+
+## Backend 约束
+
+- 当前生产主后端以 [server](D:/wuhao/server) 为准。
+- [upload-server](D:/wuhao/upload-server) 视为历史遗留目录，不作为当前主部署和主 CI 目标。
+- 图片上传能力默认并入主后端，不单独拆服务，除非后期确有独立扩容或独立安全隔离需求。

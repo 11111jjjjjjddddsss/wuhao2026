@@ -11,6 +11,7 @@ import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, wr
 import { initMySql } from './db/mysql.js';
 import { formatShanghaiNowToSecond, parseRegionFromHeaders, resolveRegionByIp } from './geo.js';
 import { getSummaryIntervals, processSessionSummaries } from './summary.js';
+import { registerUploadRoutes } from './upload.js';
 import {
   buyTopupPack,
   consumeOnDone,
@@ -607,6 +608,7 @@ app.post('/api/chat/stream', async (request, reply) => {
 });
 
 async function bootstrap() {
+  await registerUploadRoutes(app, __dirname);
   await initMySql();
   const port = Number(process.env.PORT || 3000);
   await app.listen({ port, host: '0.0.0.0' });
