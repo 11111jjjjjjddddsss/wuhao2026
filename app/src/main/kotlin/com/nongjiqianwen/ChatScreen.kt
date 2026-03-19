@@ -105,6 +105,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -202,8 +203,9 @@ private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 private const val STREAM_DELAY_MULTIPLIER = 1.08
 private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 3
 private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 2
-private const val STREAM_FRESH_SUFFIX_FADE_MS = 96
-private const val STREAM_FRESH_SUFFIX_FADE_START_ALPHA = 0.74f
+private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 132
+private const val STREAM_FRESH_SUFFIX_GLOW_MAX_ALPHA = 0.72f
+private const val STREAM_FRESH_SUFFIX_GLOW_MAX_RADIUS = 12f
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -226,7 +228,8 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 12.dp
-private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFF6F86A6)
+private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFF5D789A)
+private val STREAM_FRESH_SUFFIX_GLOW_COLOR = Color(0xFFD8EAFF)
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
@@ -1444,7 +1447,7 @@ private fun StreamingAnimatedLineText(
     val freshRevealProgress by animateFloatAsState(
         targetValue = freshRevealTarget,
         animationSpec = tween(
-            durationMillis = STREAM_FRESH_SUFFIX_FADE_MS,
+            durationMillis = STREAM_FRESH_SUFFIX_HIGHLIGHT_MS,
             easing = LinearOutSlowInEasing
         ),
         label = "streamFreshSuffixReveal"
@@ -1452,24 +1455,31 @@ private fun StreamingAnimatedLineText(
     val renderedText = remember(text, effectiveFreshTailChars, freshRevealProgress, style.color) {
         val stableEnd = (text.length - effectiveFreshTailChars).coerceAtLeast(0)
         val baseColor = style.color
+        val settledProgress = FastOutSlowInEasing.transform(freshRevealProgress)
+        val glowProgress = 1f - settledProgress
         val freshColor =
             if (baseColor != Color.Unspecified) {
                 lerp(
                     STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR,
                     baseColor,
-                    freshRevealProgress
-                ).copy(
-                    alpha = STREAM_FRESH_SUFFIX_FADE_START_ALPHA +
-                        ((1f - STREAM_FRESH_SUFFIX_FADE_START_ALPHA) * freshRevealProgress)
+                    settledProgress
                 )
             } else {
                 Color.Unspecified
             }
+        val freshShadow = Shadow(
+            color = STREAM_FRESH_SUFFIX_GLOW_COLOR.copy(
+                alpha = STREAM_FRESH_SUFFIX_GLOW_MAX_ALPHA * glowProgress
+            ),
+            offset = Offset.Zero,
+            blurRadius = STREAM_FRESH_SUFFIX_GLOW_MAX_RADIUS * glowProgress
+        )
         buildAnnotatedString {
             append(text.subSequence(0, stableEnd))
             withStyle(
                 SpanStyle(
-                    color = freshColor
+                    color = freshColor,
+                    shadow = freshShadow
                 )
             ) {
                 append(text.subSequence(stableEnd, text.length))
