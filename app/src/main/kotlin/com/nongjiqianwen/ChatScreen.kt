@@ -2352,6 +2352,13 @@ fun ChatScreen() {
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
         .calculateTopPadding()
+    val safeBottomInsetPx = with(density) {
+        WindowInsets.safeDrawing
+            .only(WindowInsetsSides.Bottom)
+            .asPaddingValues()
+            .calculateBottomPadding()
+            .roundToPx()
+    }
     val jumpButtonBottomPadding = with(density) { bottomBarHeightPx.toDp() + 48.dp }
 
     val focusManager = LocalFocusManager.current
@@ -2361,6 +2368,15 @@ fun ChatScreen() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
+    LaunchedEffect(inputChromeRowHeightPx, safeBottomInsetPx) {
+        val stableBottomBarHeightPx =
+            (inputChromeRowHeightPx + safeBottomInsetPx)
+                .coerceAtLeast(startupBottomBarHeightEstimatePx)
+        if (bottomBarHeightPx != stableBottomBarHeightPx) {
+            bottomBarHeightPx = stableBottomBarHeightPx
         }
     }
 
@@ -3280,7 +3296,6 @@ fun ChatScreen() {
                         .navigationBarsPadding()
                         .imePadding()
                         .background(pageSurface)
-                        .onSizeChanged { bottomBarHeightPx = it.height }
                 ) {
                     if (inputLimitHintVisible) {
                         Surface(
