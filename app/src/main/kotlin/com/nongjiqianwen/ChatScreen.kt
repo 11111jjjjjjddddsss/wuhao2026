@@ -203,8 +203,8 @@ private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 4
 private const val STREAM_DELAY_MULTIPLIER = 1.08
 private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 4
 private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 3
-private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 4
-private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 140
+private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 6
+private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180
 private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 320L
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
@@ -228,7 +228,8 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 12.dp
-private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFB5BBC2)
+private val STREAM_FRESH_SUFFIX_TRAIL_HIGHLIGHT_COLOR = Color(0xFFCDD2D8)
+private val STREAM_FRESH_SUFFIX_PEAK_HIGHLIGHT_COLOR = Color(0xFFF1F3F5)
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
@@ -1458,10 +1459,23 @@ private fun StreamingAnimatedLineText(
         val stableEnd = (text.length - highlightedTailChars).coerceAtLeast(0)
         val baseColor = style.color
         val settledProgress = FastOutSlowInEasing.transform(freshRevealProgress)
-        val freshColor =
+        val newestTailChars = effectiveFreshTailChars.coerceAtLeast(1).coerceAtMost(highlightedTailChars)
+        val peakStart = (text.length - newestTailChars).coerceAtLeast(stableEnd)
+        val trailProgress = (settledProgress + 0.28f).coerceAtMost(1f)
+        val trailColor =
             if (baseColor != Color.Unspecified) {
                 lerp(
-                    STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR,
+                    STREAM_FRESH_SUFFIX_TRAIL_HIGHLIGHT_COLOR,
+                    baseColor,
+                    trailProgress
+                )
+            } else {
+                Color.Unspecified
+            }
+        val peakColor =
+            if (baseColor != Color.Unspecified) {
+                lerp(
+                    STREAM_FRESH_SUFFIX_PEAK_HIGHLIGHT_COLOR,
                     baseColor,
                     settledProgress
                 )
@@ -1470,12 +1484,21 @@ private fun StreamingAnimatedLineText(
             }
         buildAnnotatedString {
             append(text.subSequence(0, stableEnd))
+            if (peakStart > stableEnd) {
+                withStyle(
+                    SpanStyle(
+                        color = trailColor
+                    )
+                ) {
+                    append(text.subSequence(stableEnd, peakStart))
+                }
+            }
             withStyle(
                 SpanStyle(
-                    color = freshColor
+                    color = peakColor
                 )
             ) {
-                append(text.subSequence(stableEnd, text.length))
+                append(text.subSequence(peakStart, text.length))
             }
         }
     }
