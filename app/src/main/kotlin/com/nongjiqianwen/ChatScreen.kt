@@ -3400,11 +3400,22 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(isStreaming, streamingMessageContent.isNotBlank(), autoScrollMode, userDetachedFromBottom) {
+    LaunchedEffect(
+        isStreaming,
+        streamingMessageContent.isNotBlank(),
+        autoScrollMode,
+        userDetachedFromBottom,
+        userInteracting,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx
+    ) {
         if (!isStreaming) return@LaunchedEffect
         if (autoScrollMode != AutoScrollMode.AnchorUser) return@LaunchedEffect
         if (userDetachedFromBottom) return@LaunchedEffect
+        if (userInteracting || listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
         if (streamingMessageContent.isBlank()) return@LaunchedEffect
+        if (streamingContentBottomPx <= 0 || streamingWorklineBottomPx <= 0) return@LaunchedEffect
+        if (streamingContentBottomPx <= streamingWorklineBottomPx) return@LaunchedEffect
         autoScrollMode = AutoScrollMode.StreamAnchorFollow
     }
 
