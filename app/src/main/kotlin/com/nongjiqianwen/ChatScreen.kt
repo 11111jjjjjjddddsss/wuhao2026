@@ -2261,6 +2261,8 @@ fun ChatScreen() {
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
+    var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
+    var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
@@ -2443,12 +2445,14 @@ fun ChatScreen() {
         isStreaming,
         userDetachedFromBottom,
         keyboardVisibleForJumpButton,
-        suppressJumpButtonForImeTransition
+        suppressJumpButtonForImeTransition,
+        suppressJumpButtonForLifecycleResume
     ) {
         derivedStateOf {
             !pendingFinalBottomSnap &&
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
+                !suppressJumpButtonForLifecycleResume &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (!isStreaming || userDetachedFromBottom) &&
                 !atBottom
@@ -3240,6 +3244,17 @@ fun ChatScreen() {
     DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                if (!isStreaming) {
+                    restoreBottomAfterLifecycleResume =
+                        atBottom &&
+                            (messages.isNotEmpty() || hasStreamingItem) &&
+                            !listState.isScrollInProgress &&
+                            !programmaticScroll
+                    suppressJumpButtonForLifecycleResume = restoreBottomAfterLifecycleResume
+                    if (restoreBottomAfterLifecycleResume) {
+                        jumpButtonVisible = false
+                    }
+                }
                 if (isStreaming) {
                     streamingBackgrounded = true
                     completeStreamingImmediatelyFromBackground()
@@ -3257,6 +3272,31 @@ fun ChatScreen() {
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
+    }
+
+    LaunchedEffect(
+        restoreBottomAfterLifecycleResume,
+        isStreaming,
+        messages.size,
+        hasStreamingItem
+    ) {
+        if (!restoreBottomAfterLifecycleResume) return@LaunchedEffect
+        if (isStreaming || (messages.isEmpty() && !hasStreamingItem)) {
+            restoreBottomAfterLifecycleResume = false
+            suppressJumpButtonForLifecycleResume = false
+            return@LaunchedEffect
+        }
+        repeat(2) { withFrameNanos { } }
+        if (!listState.isScrollInProgress && !programmaticScroll) {
+            scrollToBottom(
+                animated = false,
+                includeAnchorSpacer = true
+            )
+            jumpButtonVisible = false
+        }
+        repeat(2) { withFrameNanos { } }
+        suppressJumpButtonForLifecycleResume = false
+        restoreBottomAfterLifecycleResume = false
     }
 
     suspend fun isBottomSettled(stableFrames: Int = 4): Boolean {
