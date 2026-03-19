@@ -2161,6 +2161,9 @@ fun ChatScreen() {
     val lineRevealLockThresholdPx = remember(assistantLineStepPx) {
         (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(6)
     }
+    val lineRevealUnlockThresholdPx = remember(assistantLineStepPx) {
+        (assistantLineStepPx * 0.06f).roundToInt().coerceAtLeast(3)
+    }
     val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
         derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
     }
@@ -2182,23 +2185,7 @@ fun ChatScreen() {
             }
         }
     }
-    val lineRevealLocked by remember(
-        isStreaming,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx,
-        lineRevealLockThresholdPx,
-        userDetachedFromBottom,
-        userInteracting
-    ) {
-        derivedStateOf {
-            isStreaming &&
-                !userDetachedFromBottom &&
-                !userInteracting &&
-                streamingContentBottomPx > 0 &&
-                streamingWorklineBottomPx > 0 &&
-                streamingContentBottomPx > streamingWorklineBottomPx + lineRevealLockThresholdPx
-        }
-    }
+    var lineRevealLocked by remember(chatScopeId) { mutableStateOf(false) }
     val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
         derivedStateOf {
             isStreaming &&
@@ -2219,6 +2206,30 @@ fun ChatScreen() {
                 activeStreamBottomSpacerPx > 0 &&
                 autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
                 !userDetachedFromBottom
+        }
+    }
+    LaunchedEffect(
+        isStreaming,
+        userDetachedFromBottom,
+        userInteracting,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        lineRevealLockThresholdPx,
+        lineRevealUnlockThresholdPx
+    ) {
+        val overflowPx = if (streamingContentBottomPx > 0 && streamingWorklineBottomPx > 0) {
+            (streamingContentBottomPx - streamingWorklineBottomPx).coerceAtLeast(0)
+        } else {
+            0
+        }
+        val nextLocked = when {
+            !isStreaming || userDetachedFromBottom || userInteracting -> false
+            overflowPx <= 0 -> false
+            lineRevealLocked -> overflowPx > lineRevealUnlockThresholdPx
+            else -> overflowPx > lineRevealLockThresholdPx
+        }
+        if (lineRevealLocked != nextLocked) {
+            lineRevealLocked = nextLocked
         }
     }
     fun currentStreamingOverflowSnapshot(): Int {
