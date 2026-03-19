@@ -148,6 +148,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1216,7 +1217,6 @@ private fun MarkdownSectionDivider() {
 private fun AssistantMessageContent(
     content: String,
     isStreaming: Boolean,
-    animateLayoutChanges: Boolean = true,
     streamingFreshStart: Int = -1,
     streamingFreshEnd: Int = -1,
     streamingFreshTick: Int = 0,
@@ -2172,7 +2172,12 @@ private fun FrostedCircleButton(
 }
 
 @Composable
-@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(
+    ExperimentalComposeUiApi::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalLayoutApi::class,
+    FlowPreview::class
+)
 fun ChatScreen() {
     val input = rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
@@ -2201,9 +2206,6 @@ fun ChatScreen() {
     }
     val messages = remember(chatScopeId) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
-    }
-    val initialHasDisclaimerSensitiveAssistant = remember(chatScopeId, initialLocalMessages) {
-        containsDisclaimerSensitiveAssistant(initialLocalMessages)
     }
     val initialListIndex = remember(chatScopeId, initialLocalMessages.size, initialBottomViewport) {
         initialBottomViewport?.firstVisibleItemIndex
@@ -2270,11 +2272,9 @@ fun ChatScreen() {
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
-    val followSlopPx = with(density) { STREAM_AUTO_FOLLOW_SLOP.toPx().toInt() }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
-    val bottomOverlayClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.toPx().roundToInt() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -2484,8 +2484,6 @@ fun ChatScreen() {
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
-    val inputSurface = Color.White
-    val inputBorder = Color(0xFFD4D8DE).copy(alpha = 0.22f)
     val userBubbleColor = Color(0xFFF4F4F7)
     var historyHydrationComplete by remember(chatScopeId) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
@@ -3769,7 +3767,6 @@ fun ChatScreen() {
                                     AssistantMessageContent(
                                         content = msg.content,
                                         isStreaming = false,
-                                        animateLayoutChanges = false,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                     )
@@ -3815,7 +3812,6 @@ fun ChatScreen() {
                                     AssistantMessageContent(
                                         content = streamingMessageContent,
                                         isStreaming = isStreaming,
-                                        animateLayoutChanges = false,
                                         streamingFreshStart = streamingFreshStart,
                                         streamingFreshEnd = streamingFreshEnd,
                                         streamingFreshTick = streamingFreshTick,
