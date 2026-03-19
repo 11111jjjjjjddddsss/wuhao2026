@@ -2168,6 +2168,8 @@ fun ChatScreen() {
     var userDetachedFromBottom by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
+    var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
+    var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
@@ -2347,11 +2349,13 @@ fun ChatScreen() {
         pendingFinalBottomSnap,
         isStreaming,
         userDetachedFromBottom,
-        keyboardVisibleForJumpButton
+        keyboardVisibleForJumpButton,
+        suppressJumpButtonForImeTransition
     ) {
         derivedStateOf {
             !pendingFinalBottomSnap &&
                 !keyboardVisibleForJumpButton &&
+                !suppressJumpButtonForImeTransition &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (!isStreaming || userDetachedFromBottom) &&
                 !atBottom
@@ -2427,6 +2431,8 @@ fun ChatScreen() {
         initialBottomSnapDone = initialLocalMessages.isEmpty()
         initialListRevealConsumed = initialLocalMessages.isEmpty() || !hasStartupBottomViewport
         jumpButtonVisible = false
+        restoreBottomAfterImeClose = false
+        suppressJumpButtonForImeTransition = false
         LaunchUiGate.chatReady = initialLocalMessages.isEmpty() || !hasStartupBottomViewport
     }
 
@@ -3038,6 +3044,34 @@ fun ChatScreen() {
             programmaticScroll = false
             lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         }
+    }
+
+    LaunchedEffect(imeVisible) {
+        if (imeVisible) {
+            restoreBottomAfterImeClose =
+                atBottom &&
+                    !userDetachedFromBottom &&
+                    !listState.isScrollInProgress &&
+                    !programmaticScroll
+            suppressJumpButtonForImeTransition = true
+            jumpButtonVisible = false
+            return@LaunchedEffect
+        }
+
+        if (restoreBottomAfterImeClose) {
+            repeat(2) { withFrameNanos { } }
+            if (!userDetachedFromBottom && !listState.isScrollInProgress && !programmaticScroll) {
+                scrollToBottom(
+                    animated = false,
+                    includeAnchorSpacer = !(isStreaming && hasStreamingItem)
+                )
+            }
+            jumpButtonVisible = false
+            restoreBottomAfterImeClose = false
+        }
+
+        repeat(2) { withFrameNanos { } }
+        suppressJumpButtonForImeTransition = false
     }
 
     LaunchedEffect(pendingFinalBottomSnap, messages.size, isStreaming) {
