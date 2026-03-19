@@ -106,6 +106,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -201,8 +202,8 @@ private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 private const val STREAM_DELAY_MULTIPLIER = 1.08
 private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 3
 private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 2
-private const val STREAM_FRESH_SUFFIX_FADE_MS = 64
-private const val STREAM_FRESH_SUFFIX_FADE_START_ALPHA = 0.42f
+private const val STREAM_FRESH_SUFFIX_FADE_MS = 96
+private const val STREAM_FRESH_SUFFIX_FADE_START_ALPHA = 0.74f
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -225,6 +226,7 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 16.dp
+private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFF6F86A6)
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
@@ -1433,31 +1435,41 @@ private fun StreamingAnimatedLineText(
         return
     }
 
-    var freshAlphaTarget by remember(freshTick, text.text, effectiveFreshTailChars) {
-        mutableFloatStateOf(STREAM_FRESH_SUFFIX_FADE_START_ALPHA)
+    var freshRevealTarget by remember(freshTick, text.text, effectiveFreshTailChars) {
+        mutableFloatStateOf(0f)
     }
     LaunchedEffect(freshTick, text.text, effectiveFreshTailChars) {
-        freshAlphaTarget = 1f
+        freshRevealTarget = 1f
     }
-    val freshAlpha by animateFloatAsState(
-        targetValue = freshAlphaTarget,
+    val freshRevealProgress by animateFloatAsState(
+        targetValue = freshRevealTarget,
         animationSpec = tween(
             durationMillis = STREAM_FRESH_SUFFIX_FADE_MS,
             easing = LinearOutSlowInEasing
         ),
-        label = "streamFreshSuffixAlpha"
+        label = "streamFreshSuffixReveal"
     )
-    val renderedText = remember(text, effectiveFreshTailChars, freshAlpha, style.color) {
+    val renderedText = remember(text, effectiveFreshTailChars, freshRevealProgress, style.color) {
         val stableEnd = (text.length - effectiveFreshTailChars).coerceAtLeast(0)
+        val baseColor = style.color
+        val freshColor =
+            if (baseColor != Color.Unspecified) {
+                lerp(
+                    STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR,
+                    baseColor,
+                    freshRevealProgress
+                ).copy(
+                    alpha = STREAM_FRESH_SUFFIX_FADE_START_ALPHA +
+                        ((1f - STREAM_FRESH_SUFFIX_FADE_START_ALPHA) * freshRevealProgress)
+                )
+            } else {
+                Color.Unspecified
+            }
         buildAnnotatedString {
             append(text.subSequence(0, stableEnd))
             withStyle(
                 SpanStyle(
-                    color = if (style.color != Color.Unspecified) {
-                        style.color.copy(alpha = freshAlpha)
-                    } else {
-                        Color.Unspecified
-                    }
+                    color = freshColor
                 )
             ) {
                 append(text.subSequence(stableEnd, text.length))
