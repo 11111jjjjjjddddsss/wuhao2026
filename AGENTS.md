@@ -48,6 +48,7 @@
 
 - 具体检查项见 [docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)
 - 主聊天页动态交互逻辑见 [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)
+- 只要准备修改主聊天页动态交互，先读 [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)，再下刀。
 
 ## Backend 约束
 
