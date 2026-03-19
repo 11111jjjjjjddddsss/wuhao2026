@@ -2303,11 +2303,14 @@ fun ChatScreen() {
         atBottom,
         messages.size,
         hasStreamingItem,
-        pendingFinalBottomSnap
+        pendingFinalBottomSnap,
+        isStreaming,
+        userDetachedFromBottom
     ) {
         derivedStateOf {
             !pendingFinalBottomSnap &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
+                (!isStreaming || userDetachedFromBottom) &&
                 !atBottom
         }
     }
