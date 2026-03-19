@@ -199,7 +199,8 @@ private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 private const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 private const val STREAM_DELAY_MULTIPLIER = 1.08
-private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 2
+private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 3
+private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 2
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -1430,7 +1431,11 @@ private fun rememberLockedStreamingRenderedLines(
             return@LaunchedEffect
         }
         if (lineRevealLocked) return@LaunchedEffect
-        val settleFrames = if (lineAdvanceTick > pendingFreshLineTick) 1 else STREAM_FRESH_LINE_SETTLE_FRAMES
+        val settleFrames = if (lineAdvanceTick > pendingFreshLineTick) {
+            STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES
+        } else {
+            STREAM_FRESH_LINE_SETTLE_FRAMES
+        }
         repeat(settleFrames) { withFrameNanos { } }
         if (!lineRevealLocked) {
             pendingFreshLineRelease = false
@@ -2187,6 +2192,7 @@ fun ChatScreen() {
     } else {
         0
     }
+    val imeVisible = WindowInsets.isImeVisible
     val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
     val hasStreamAnchorSpacer by remember(activeStreamBottomSpacerPx) {
         derivedStateOf { activeStreamBottomSpacerPx > 0 }
@@ -2204,10 +2210,11 @@ fun ChatScreen() {
         messageViewportHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
-        streamVisibleBottomGapPx
+        streamVisibleBottomGapPx,
+        imeVisible
     ) {
         derivedStateOf {
-            if (composerTopInViewportPx > 0) {
+            if (!imeVisible && composerTopInViewportPx > 0) {
                 (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 (
@@ -2383,7 +2390,6 @@ fun ChatScreen() {
     val inputSurface = Color.White
     val inputBorder = Color(0xFFD4D8DE).copy(alpha = 0.22f)
     val userBubbleColor = Color(0xFFF4F4F7)
-    val imeVisible = WindowInsets.isImeVisible
     var historyHydrationComplete by remember(chatScopeId) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
     }
