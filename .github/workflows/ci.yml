@@ -1,4 +1,4 @@
-name: CI
+name: Android CI
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  verify:
+  android-verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -41,11 +41,6 @@ jobs:
           yes | sdkmanager --licenses
           retry 3 sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
       - name: Mojibake check
         run: python3 scripts/check_mojibake.py
 
@@ -76,9 +71,3 @@ jobs:
             done
           }
           retry 2 ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
-
-      - name: Server build
-        run: |
-          cd server
-          npm ci
-          npm run build
