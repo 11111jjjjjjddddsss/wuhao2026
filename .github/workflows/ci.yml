@@ -3,18 +3,43 @@ name: Android CI
 on:
   push:
     branches: [master]
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'scripts/check_mojibake.py'
+      - '.mojibake-baseline.txt'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [master]
+    paths:
+      - 'app/**'
+      - 'gradle/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradlew'
+      - 'gradlew.bat'
+      - 'scripts/check_mojibake.py'
+      - '.mojibake-baseline.txt'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
 
 jobs:
   android-verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"

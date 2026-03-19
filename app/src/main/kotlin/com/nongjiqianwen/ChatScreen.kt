@@ -1392,15 +1392,6 @@ private fun StreamingSingleActiveLineText(
     }
 }
 
-private fun applyStreamingLineRevealGate(
-    lines: StreamingRenderedLines,
-    lineAdvanceTick: Int,
-    strictLineReveal: Boolean,
-    lineRevealLocked: Boolean
-): StreamingRenderedLines {
-    return lines
-}
-
 @Composable
 private fun rememberLockedStreamingRenderedLines(
     lines: StreamingRenderedLines,
