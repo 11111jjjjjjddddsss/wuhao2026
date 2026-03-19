@@ -2977,7 +2977,7 @@ fun ChatScreen() {
         commitSendMessage(text)
     }
 
-    suspend fun scrollToBottom(animated: Boolean) {
+    suspend fun scrollToBottom(animated: Boolean, includeAnchorSpacer: Boolean = true) {
         if (messages.isEmpty() && !hasStreamingItem && !hasStreamAnchorSpacer) return
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
@@ -2986,7 +2986,7 @@ fun ChatScreen() {
             val lastIndex = (
                 messages.size +
                     if (hasStreamingItem) 1 else 0 +
-                    if (hasStreamAnchorSpacer) 1 else 0
+                    if (hasStreamAnchorSpacer && includeAnchorSpacer) 1 else 0
                 ) - 1
             if (lastIndex < 0) return
             if (animated) {
@@ -3280,16 +3280,22 @@ fun ChatScreen() {
     fun jumpToBottom() {
         snackbarScope.launch {
             if (messages.isEmpty() && !hasStreamingItem) return@launch
-            autoScrollMode = if (isStreaming && hasStreamingItem) {
+            val jumpingIntoStreaming = isStreaming && hasStreamingItem
+            autoScrollMode = if (jumpingIntoStreaming) {
                 AutoScrollMode.StreamAnchorFollow
             } else {
                 AutoScrollMode.Idle
             }
             userInteracting = false
             pendingResumeAutoFollow = false
-            userDetachedFromBottom = false
             jumpButtonVisible = false
-            scrollToBottom(animated = false)
+            if (jumpingIntoStreaming) {
+                scrollToBottom(animated = false, includeAnchorSpacer = false)
+                userDetachedFromBottom = false
+            } else {
+                userDetachedFromBottom = false
+                scrollToBottom(animated = false)
+            }
         }
     }
 
