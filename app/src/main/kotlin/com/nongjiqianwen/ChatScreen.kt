@@ -2299,16 +2299,19 @@ fun ChatScreen() {
     val atBottom by remember {
         derivedStateOf { !listState.canScrollForward }
     }
+    val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
     val shouldOfferJumpButton by remember(
         atBottom,
         messages.size,
         hasStreamingItem,
         pendingFinalBottomSnap,
         isStreaming,
-        userDetachedFromBottom
+        userDetachedFromBottom,
+        keyboardVisibleForJumpButton
     ) {
         derivedStateOf {
             !pendingFinalBottomSnap &&
+                !keyboardVisibleForJumpButton &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (!isStreaming || userDetachedFromBottom) &&
                 !atBottom
