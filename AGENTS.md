@@ -52,5 +52,6 @@
 ## Backend 约束
 
 - 当前生产主后端以 [server](D:/wuhao/server) 为准。
-- [upload-server](D:/wuhao/upload-server) 视为历史遗留目录，不作为当前主部署和主 CI 目标。
 - 图片上传能力默认并入主后端，不单独拆服务，除非后期确有独立扩容或独立安全隔离需求。
+- 商城能力后续优先在 [server](D:/wuhao/server) 内按模块扩展，先预留清晰路由和数据边界，不提前搭空框架或第二套服务。
+- 后端边界和后续商城预留方式见 [docs/backend-boundaries.md](D:/wuhao/docs/backend-boundaries.md)。

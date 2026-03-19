@@ -15,7 +15,6 @@ BUSINESS_ROOTS = (
     ROOT / "server/src",
     ROOT / "server/assets",
     ROOT / "server/migrations",
-    ROOT / "upload-server/src",
     ROOT / "scripts",
 )
 
