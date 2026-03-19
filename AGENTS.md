@@ -47,3 +47,4 @@
 ## 执行方式
 
 - 具体检查项见 [docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)
+- 主聊天页动态交互逻辑见 [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)
