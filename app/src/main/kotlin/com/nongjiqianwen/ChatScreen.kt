@@ -23,6 +23,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -106,6 +109,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
@@ -2282,6 +2287,9 @@ fun ChatScreen() {
             }
         }
     }
+    val enableStreamingScrollLock by remember(isStreaming, activeStreamBottomSpacerPx) {
+        derivedStateOf { isStreaming || activeStreamBottomSpacerPx > 0 }
+    }
     val hasStartupBottomViewport by remember(initialBottomViewport, initialLocalMessages.size) {
         derivedStateOf {
             initialBottomViewport != null &&
@@ -2296,12 +2304,13 @@ fun ChatScreen() {
         messages.size,
         hasStreamingItem,
         autoScrollMode,
-        pendingFinalBottomSnap
+        pendingFinalBottomSnap,
+        userDetachedFromBottom
     ) {
         derivedStateOf {
             !pendingFinalBottomSnap &&
-            (messages.isNotEmpty() || hasStreamingItem) &&
-                autoScrollMode == AutoScrollMode.Idle &&
+                (messages.isNotEmpty() || hasStreamingItem) &&
+                (autoScrollMode == AutoScrollMode.Idle || userDetachedFromBottom) &&
                 !atBottom
         }
     }
@@ -2522,17 +2531,20 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(listState, isStreaming, hasStreamingItem) {
+    LaunchedEffect(listState, isStreaming, hasStreamingItem, autoScrollMode) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
-        while (isActive) {
-            withFrameNanos { }
-            val currentIndex = listState.firstVisibleItemIndex
-            val currentOffset = listState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                listState.isScrollInProgress
+            )
+        }.collect { (currentIndex, currentOffset, scrollInProgress) ->
             if (programmaticScroll) {
                 previousIndex = currentIndex
                 previousOffset = currentOffset
-                continue
+                return@collect
             }
             val movedTowardBottom =
                 currentIndex > previousIndex ||
@@ -2556,14 +2568,14 @@ fun ChatScreen() {
                         userDetachedFromBottom = true
                     }
                 }
-            } else if (listState.isScrollInProgress) {
+            } else if (scrollInProgress) {
                 if (autoScrollMode == AutoScrollMode.AnchorUser) {
                     pendingResumeAutoFollow = false
                     userDetachedFromBottom = false
                     jumpButtonVisible = false
                     previousIndex = currentIndex
                     previousOffset = currentOffset
-                    continue
+                    return@collect
                 }
                 when {
                     movedTowardBottom -> {
@@ -2615,19 +2627,7 @@ fun ChatScreen() {
             jumpButtonVisible = false
             return@LaunchedEffect
         }
-        if (shouldOfferJumpButton) {
-            jumpButtonVisible = true
-            delay(JUMP_BUTTON_AUTO_HIDE_MS)
-            if (!listState.isScrollInProgress && !programmaticScroll && shouldOfferJumpButton) {
-                jumpButtonVisible = false
-            }
-            return@LaunchedEffect
-        }
-        if (!jumpButtonVisible) return@LaunchedEffect
-        delay(JUMP_BUTTON_AUTO_HIDE_MS)
-        if (!listState.isScrollInProgress && !programmaticScroll && !shouldOfferJumpButton) {
-            jumpButtonVisible = false
-        }
+        jumpButtonVisible = shouldOfferJumpButton
     }
 
     fun ensureStreamingRevealJob() {
@@ -3435,6 +3435,17 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(pageSurface)
+                    .pointerInput(imeVisible) {
+                        if (!imeVisible) return@pointerInput
+                        awaitEachGesture {
+                            awaitFirstDown(pass = PointerEventPass.Final)
+                            val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
+                            if (up != null) {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
+                            }
+                        }
+                    }
                     .onSizeChanged { messageViewportHeightPx = it.height }
                     .onGloballyPositioned { coordinates ->
                         messageViewportTopPx = coordinates.boundsInWindow().top
@@ -3444,7 +3455,13 @@ fun ChatScreen() {
                     state = listState,
                     userScrollEnabled = true,
                     modifier = Modifier
-                        .nestedScroll(streamingDirectionLock)
+                        .then(
+                            if (enableStreamingScrollLock) {
+                                Modifier.nestedScroll(streamingDirectionLock)
+                            } else {
+                                Modifier
+                            }
+                        )
                         .fillMaxSize()
                         .then(
                             if (shouldRevealMessageList) {
