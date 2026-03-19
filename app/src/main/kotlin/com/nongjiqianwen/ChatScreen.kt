@@ -205,6 +205,7 @@ private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 4
 private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 3
 private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 5
 private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180
+private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 96L
 private const val STREAM_FRESH_SUFFIX_START_ALPHA = 0.78f
 private const val STREAM_FRESH_SUFFIX_WHITE_GLOW_ALPHA = 0.34f
 private const val STREAM_FRESH_SUFFIX_WHITE_GLOW_RADIUS = 6f
@@ -1444,10 +1445,10 @@ private fun StreamingAnimatedLineText(
         STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS
     ).coerceAtMost(text.length)
 
-    var freshRevealTarget by remember(freshTick, text.text, highlightedTailChars) {
+    var freshRevealTarget by remember(freshTick) {
         mutableFloatStateOf(0f)
     }
-    LaunchedEffect(freshTick, text.text, highlightedTailChars) {
+    LaunchedEffect(freshTick) {
         freshRevealTarget = 1f
     }
     val freshRevealProgress by animateFloatAsState(
@@ -2253,6 +2254,7 @@ fun ChatScreen() {
     var streamingFreshStart by remember { mutableIntStateOf(-1) }
     var streamingFreshEnd by remember { mutableIntStateOf(-1) }
     var streamingFreshTick by remember { mutableIntStateOf(0) }
+    var lastStreamingFreshRevealMs by remember { mutableStateOf(0L) }
     var sendTick by remember { mutableIntStateOf(0) }
     var programmaticScroll by remember { mutableStateOf(false) }
     var lastProgrammaticScrollMs by remember { mutableStateOf(0L) }
@@ -2576,6 +2578,7 @@ fun ChatScreen() {
             streamingFreshStart = -1
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
+            lastStreamingFreshRevealMs = 0L
             streamBottomSpacerPx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
@@ -2844,7 +2847,15 @@ fun ChatScreen() {
                 streamingFreshStart = streamingMessageContent.length
                 streamingMessageContent += batch.text
                 streamingFreshEnd = streamingMessageContent.length
-                streamingFreshTick++
+                val now = SystemClock.uptimeMillis()
+                if (
+                    streamingFreshTick <= 0 ||
+                    now - lastStreamingFreshRevealMs >= STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS ||
+                    batch.text.indexOf('\n') >= 0
+                ) {
+                    streamingFreshTick++
+                    lastStreamingFreshRevealMs = now
+                }
                 streamTick++
                 delay(batch.delayMs)
             }
@@ -3051,6 +3062,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
         input.value = ""
@@ -3069,6 +3081,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
             draft = LocalStreamingDraft(
