@@ -2303,14 +2303,11 @@ fun ChatScreen() {
         atBottom,
         messages.size,
         hasStreamingItem,
-        autoScrollMode,
-        pendingFinalBottomSnap,
-        userDetachedFromBottom
+        pendingFinalBottomSnap
     ) {
         derivedStateOf {
             !pendingFinalBottomSnap &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
-                (autoScrollMode == AutoScrollMode.Idle || userDetachedFromBottom) &&
                 !atBottom
         }
     }
@@ -2627,7 +2624,19 @@ fun ChatScreen() {
             jumpButtonVisible = false
             return@LaunchedEffect
         }
-        jumpButtonVisible = shouldOfferJumpButton
+        if (shouldOfferJumpButton) {
+            jumpButtonVisible = true
+            delay(JUMP_BUTTON_AUTO_HIDE_MS)
+            if (!listState.isScrollInProgress && !programmaticScroll && shouldOfferJumpButton) {
+                jumpButtonVisible = false
+            }
+            return@LaunchedEffect
+        }
+        if (!jumpButtonVisible) return@LaunchedEffect
+        delay(JUMP_BUTTON_AUTO_HIDE_MS)
+        if (!listState.isScrollInProgress && !programmaticScroll && !shouldOfferJumpButton) {
+            jumpButtonVisible = false
+        }
     }
 
     fun ensureStreamingRevealJob() {
