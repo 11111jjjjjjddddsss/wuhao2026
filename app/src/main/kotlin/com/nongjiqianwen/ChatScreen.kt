@@ -3870,14 +3870,14 @@ fun ChatScreen() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
+                            text = "欢迎咨询种植、病虫害防治、施肥等问题，必要时可上传图片。",
                             modifier = Modifier
                                 .widthIn(max = chromeMaxWidth)
                                 .fillMaxWidth()
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp),
                             color = Color(0xFF141414),
-                            lineHeight = MaterialTheme.typography.titleMedium.lineHeight,
+                            lineHeight = 36.sp,
                             textAlign = TextAlign.Start
                         )
                     }
