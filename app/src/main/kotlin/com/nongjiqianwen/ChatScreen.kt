@@ -231,6 +231,8 @@ private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
+private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
+private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
@@ -2180,6 +2182,12 @@ fun ChatScreen() {
     }
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val chatSelectionColors = remember {
+        TextSelectionColors(
+            handleColor = CHAT_SELECTION_HANDLE_COLOR,
+            backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
+        )
+    }
     val view = LocalView.current
     val chatScopeId = remember { IdManager.getUserId() }
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
@@ -3623,16 +3631,12 @@ fun ChatScreen() {
                                 }
                         ) {
                             val exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
-                            val inputSelectionColors = TextSelectionColors(
-                                handleColor = Color(0xFF111111),
-                                backgroundColor = Color(0xFFBDC4CE).copy(alpha = 0.9f)
-                            )
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
                             ) {
-                                CompositionLocalProvider(LocalTextSelectionColors provides inputSelectionColors) {
+                                CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
                                     TextField(
                                         value = input.value,
                                         onValueChange = {
@@ -3776,26 +3780,30 @@ fun ChatScreen() {
                                     .fillMaxWidth()
                             ) {
                                 if (msg.role == ChatRole.ASSISTANT) {
-                                    AssistantMessageContent(
-                                        content = msg.content,
-                                        isStreaming = false,
-                                        selectionEnabled = true,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                    )
-                                } else {
-                                    SelectionContainer {
-                                        Text(
-                                            text = msg.content,
+                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                        AssistantMessageContent(
+                                            content = msg.content,
+                                            isStreaming = false,
+                                            selectionEnabled = true,
                                             modifier = Modifier
-                                                .align(Alignment.CenterEnd)
-                                                .widthIn(max = userBubbleMaxWidth)
-                                                .clip(RoundedCornerShape(20.dp))
-                                                .background(userBubbleColor)
-                                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = Color(0xFF161616)
+                                                .fillMaxWidth()
                                         )
+                                    }
+                                } else {
+                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                        SelectionContainer {
+                                            Text(
+                                                text = msg.content,
+                                                modifier = Modifier
+                                                    .align(Alignment.CenterEnd)
+                                                    .widthIn(max = userBubbleMaxWidth)
+                                                    .clip(RoundedCornerShape(20.dp))
+                                                    .background(userBubbleColor)
+                                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = Color(0xFF161616)
+                                            )
+                                        }
                                     }
                                 }
                             }
