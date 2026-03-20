@@ -3840,19 +3840,34 @@ fun ChatScreen() {
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
+                        Column(
                             modifier = Modifier
-                                .widthIn(max = 340.dp)
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = Color(0xFF141414),
-                            lineHeight = 28.sp,
-                            textAlign = TextAlign.Center
-                        )
+                                .widthIn(max = 360.dp)
+                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "欢迎咨询种植问题",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 21.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = Color(0xFF141414),
+                                lineHeight = 30.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "可咨询病虫害防治、施肥等问题，必要时可上传图片",
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = Color(0xFF60646B),
+                                lineHeight = 24.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
 
