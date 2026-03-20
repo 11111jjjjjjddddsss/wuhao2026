@@ -4000,7 +4000,7 @@ fun ChatScreen() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "农技千问",
+                            text = "农技千查",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                             color = Color(0xFF111111),
                             style = MaterialTheme.typography.titleMedium,
