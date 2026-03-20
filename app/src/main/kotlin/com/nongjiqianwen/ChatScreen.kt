@@ -129,6 +129,7 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -2166,7 +2167,9 @@ private fun FrostedCircleButton(
     FlowPreview::class
 )
 fun ChatScreen() {
-    val input = rememberSaveable { mutableStateOf("") }
+    val input = rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val view = LocalView.current
@@ -3033,7 +3036,7 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
-        input.value = ""
+        input.value = TextFieldValue("")
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
 
@@ -3076,7 +3079,7 @@ fun ChatScreen() {
     }
 
     fun sendMessage() {
-        val text = input.value.trim()
+        val text = input.value.text.trim()
         if (text.isEmpty() || isStreaming) return
         commitSendMessage(text)
     }
@@ -3611,7 +3614,7 @@ fun ChatScreen() {
                                         (coordinates.boundsInWindow().top - messageViewportTopPx).roundToInt()
                                 }
                         ) {
-                            val exceedsInputLimit = input.value.length > INPUT_MAX_CHARS
+                            val exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
                             val inputSelectionColors = TextSelectionColors(
                                 handleColor = Color(0xFF111111),
                                 backgroundColor = Color(0xFFBDC4CE).copy(alpha = 0.9f)
@@ -3625,7 +3628,10 @@ fun ChatScreen() {
                                     TextField(
                                         value = input.value,
                                         onValueChange = {
-                                            if (it.length > INPUT_MAX_CHARS && input.value.length <= INPUT_MAX_CHARS) {
+                                            if (
+                                                it.text.length > INPUT_MAX_CHARS &&
+                                                input.value.text.length <= INPUT_MAX_CHARS
+                                            ) {
                                                 inputLimitHintTick++
                                             }
                                             input.value = it
@@ -3653,7 +3659,7 @@ fun ChatScreen() {
                                         )
                                     )
                                 }
-                                val canPressSend = input.value.trim().isNotEmpty() && !isStreaming
+                                val canPressSend = input.value.text.trim().isNotEmpty() && !isStreaming
                                 val canSend = canPressSend && !exceedsInputLimit
                                 val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
                                 val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
