@@ -3577,8 +3577,8 @@ fun ChatScreen() {
             .asPaddingValues()
             .calculateBottomPadding()
         val inputChromeHorizontalPadding = when {
-            maxWidth < 360.dp -> 10.dp
-            maxWidth < 600.dp -> 12.dp
+            maxWidth < 360.dp -> 8.dp
+            maxWidth < 600.dp -> 10.dp
             else -> chromeHorizontalPadding
         }
         val inputChromeBottomPadding = 8.dp
@@ -3636,7 +3636,7 @@ fun ChatScreen() {
                                 bottom = inputChromeBottomPadding
                             ),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         FrostedCircleButton(
                             size = addButtonSize,
