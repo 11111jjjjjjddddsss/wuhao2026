@@ -22,7 +22,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -72,7 +71,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -80,7 +78,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -116,7 +113,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
@@ -134,7 +130,6 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -145,8 +140,6 @@ import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
@@ -177,18 +170,6 @@ private enum class ChatRole { USER, ASSISTANT }
 private enum class AutoScrollMode { Idle, AnchorUser, StreamAnchorFollow }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
-@Immutable
-private data class MessageActionMenuTarget(
-    val messageId: String,
-    val role: ChatRole,
-    val content: String
-)
-@Immutable
-private data class MessageSelectAllTarget(
-    val messageId: String,
-    val role: ChatRole,
-    val content: String
-)
 @Immutable
 private data class LocalStreamingDraft(
     val messageId: String,
@@ -1345,101 +1326,6 @@ private fun AssistantStreamingWaitingIndicator(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun MessageActionDialog(
-    target: MessageActionMenuTarget,
-    onDismiss: () -> Unit,
-    onCopy: () -> Unit,
-    onSelectAll: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(if (target.role == ChatRole.USER) "当前用户消息" else "当前AI消息")
-        },
-        text = {
-            Text("选择当前这条消息的操作")
-        },
-        confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onCopy) {
-                    Text("复制")
-                }
-                TextButton(onClick = onSelectAll) {
-                    Text("全选")
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("关闭")
-                }
-            }
-        }
-    )
-}
-
-@Composable
-private fun MessageSelectAllDialog(
-    target: MessageSelectAllTarget,
-    selectionColors: TextSelectionColors,
-    onDismiss: () -> Unit,
-    onCopyAll: () -> Unit
-) {
-    val focusRequester = remember { FocusRequester() }
-    var value by remember(target.messageId, target.content) {
-        mutableStateOf(
-            TextFieldValue(
-                text = target.content,
-                selection = TextRange(0, target.content.length)
-            )
-        )
-    }
-    LaunchedEffect(target.messageId) {
-        withFrameNanos { }
-        focusRequester.requestFocus()
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(if (target.role == ChatRole.USER) "当前用户消息" else "当前AI消息")
-        },
-        text = {
-            CompositionLocalProvider(LocalTextSelectionColors provides selectionColors) {
-                TextField(
-                    value = value,
-                    onValueChange = { value = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 140.dp, max = 320.dp)
-                        .focusRequester(focusRequester),
-                    readOnly = true,
-                    textStyle = TextStyle(
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp,
-                        color = Color(0xFF111111)
-                    ),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent
-                    )
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onCopyAll) {
-                Text("复制")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("关闭")
-            }
-        }
-    )
-}
-
-@Composable
 @Suppress("UNUSED_PARAMETER")
 private fun AssistantStreamingContent(
     content: String,
@@ -2295,7 +2181,6 @@ fun ChatScreen() {
     val input = rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val chatSelectionColors = remember {
@@ -2304,8 +2189,6 @@ fun ChatScreen() {
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
-    var messageActionMenuTarget by remember { mutableStateOf<MessageActionMenuTarget?>(null) }
-    var messageSelectAllTarget by remember { mutableStateOf<MessageSelectAllTarget?>(null) }
     val view = LocalView.current
     val chatScopeId = remember { IdManager.getUserId() }
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
@@ -3906,43 +3789,32 @@ fun ChatScreen() {
                                     .align(Alignment.Center)
                                     .widthIn(max = chromeMaxWidth)
                                     .fillMaxWidth()
-                                    .combinedClickable(
-                                        indication = null,
-                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                        onClick = {},
-                                        onLongClick = {
-                                            performButtonHaptic()
-                                            messageActionMenuTarget = MessageActionMenuTarget(
-                                                messageId = msg.id,
-                                                role = msg.role,
-                                                content = msg.content
-                                            )
-                                        }
-                                    )
                             ) {
                                 if (msg.role == ChatRole.ASSISTANT) {
-                                    AssistantMessageContent(
-                                        content = msg.content,
-                                        isStreaming = false,
-                                        selectionEnabled = false,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                    )
-                                } else {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.End
-                                    ) {
-                                        Text(
-                                            text = msg.content,
+                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                        AssistantMessageContent(
+                                            content = msg.content,
+                                            isStreaming = false,
+                                            selectionEnabled = true,
                                             modifier = Modifier
-                                                .widthIn(max = userBubbleMaxWidth)
-                                                .clip(RoundedCornerShape(20.dp))
-                                                .background(userBubbleColor)
-                                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            color = Color(0xFF161616)
+                                                .fillMaxWidth()
                                         )
+                                    }
+                                } else {
+                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                        SelectionContainer {
+                                            Text(
+                                                text = msg.content,
+                                                modifier = Modifier
+                                                    .align(Alignment.CenterEnd)
+                                                    .widthIn(max = userBubbleMaxWidth)
+                                                    .clip(RoundedCornerShape(20.dp))
+                                                    .background(userBubbleColor)
+                                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                color = Color(0xFF161616)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -4001,43 +3873,6 @@ fun ChatScreen() {
                             )
                         }
                     }
-                }
-
-                messageActionMenuTarget?.let { target ->
-                    MessageActionDialog(
-                        target = target,
-                        onDismiss = { messageActionMenuTarget = null },
-                        onCopy = {
-                            clipboardManager.setText(AnnotatedString(target.content))
-                            messageActionMenuTarget = null
-                            snackbarScope.launch {
-                                snackbarHostState.showSnackbar("已复制当前消息")
-                            }
-                        },
-                        onSelectAll = {
-                            messageActionMenuTarget = null
-                            messageSelectAllTarget = MessageSelectAllTarget(
-                                messageId = target.messageId,
-                                role = target.role,
-                                content = target.content
-                            )
-                        }
-                    )
-                }
-
-                messageSelectAllTarget?.let { target ->
-                    MessageSelectAllDialog(
-                        target = target,
-                        selectionColors = chatSelectionColors,
-                        onDismiss = { messageSelectAllTarget = null },
-                        onCopyAll = {
-                            clipboardManager.setText(AnnotatedString(target.content))
-                            messageSelectAllTarget = null
-                            snackbarScope.launch {
-                                snackbarHostState.showSnackbar("已复制当前整条消息")
-                            }
-                        }
-                    )
                 }
 
                 if (showWelcomePlaceholder) {
