@@ -3891,17 +3891,21 @@ fun ChatScreen() {
                                             .fillMaxWidth()
                                     )
                                 } else {
-                                    Text(
-                                        text = msg.content,
-                                        modifier = Modifier
-                                            .align(Alignment.CenterEnd)
-                                            .widthIn(max = userBubbleMaxWidth)
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(userBubbleColor)
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = Color(0xFF161616)
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End
+                                    ) {
+                                        Text(
+                                            text = msg.content,
+                                            modifier = Modifier
+                                                .widthIn(max = userBubbleMaxWidth)
+                                                .clip(RoundedCornerShape(20.dp))
+                                                .background(userBubbleColor)
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = Color(0xFF161616)
+                                        )
+                                    }
                                 }
                                 DropdownMenu(
                                     expanded = messageActionMenuTarget?.messageId == msg.id,
@@ -3988,6 +3992,21 @@ fun ChatScreen() {
                             )
                         }
                     }
+                }
+
+                messageSelectAllTarget?.let { target ->
+                    MessageSelectAllDialog(
+                        target = target,
+                        selectionColors = chatSelectionColors,
+                        onDismiss = { messageSelectAllTarget = null },
+                        onCopyAll = {
+                            clipboardManager.setText(AnnotatedString(target.content))
+                            messageSelectAllTarget = null
+                            snackbarScope.launch {
+                                snackbarHostState.showSnackbar("已复制当前整条消息")
+                            }
+                        }
+                    )
                 }
 
                 if (showWelcomePlaceholder) {
