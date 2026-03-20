@@ -3853,17 +3853,25 @@ fun ChatScreen() {
                 }
 
                 if (showWelcomePlaceholder) {
+                    val welcomeBottomInset =
+                        with(density) { bottomBarHeightPx.toDp() } +
+                            BOTTOM_OVERLAY_CONTENT_CLEARANCE +
+                            24.dp
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .fillMaxWidth()
-                            .padding(top = topBarReservedHeight + 56.dp)
-                            .padding(horizontal = listHorizontalPadding)
+                            .align(Alignment.Center)
+                            .fillMaxSize()
+                            .padding(
+                                start = listHorizontalPadding,
+                                end = listHorizontalPadding,
+                                top = topBarReservedHeight,
+                                bottom = welcomeBottomInset
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = "欢迎咨询种植、病虫害防治、施肥等问题。\n描述作物/地区/现象，必要时可上传图片。",
                             modifier = Modifier
-                                .align(Alignment.TopCenter)
                                 .widthIn(max = chromeMaxWidth)
                                 .fillMaxWidth()
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
