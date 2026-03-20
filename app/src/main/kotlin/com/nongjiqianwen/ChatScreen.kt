@@ -3845,10 +3845,10 @@ fun ChatScreen() {
                                 .widthIn(max = 360.dp)
                                 .padding(horizontal = 20.dp, vertical = 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "欢迎咨询种植问题",
+                                text = "欢迎咨询种植",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontSize = 21.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -3858,13 +3858,23 @@ fun ChatScreen() {
                                 textAlign = TextAlign.Center
                             )
                             Text(
-                                text = "可咨询病虫害防治、施肥等问题，必要时可上传图片",
+                                text = "病虫害防治、施肥等问题",
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = Color(0xFF1A1A1A),
+                                lineHeight = 26.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "必要时可上传图片",
                                 style = MaterialTheme.typography.bodyLarge.copy(
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium
                                 ),
                                 color = Color(0xFF60646B),
-                                lineHeight = 24.sp,
+                                lineHeight = 22.sp,
                                 textAlign = TextAlign.Center
                             )
                         }
