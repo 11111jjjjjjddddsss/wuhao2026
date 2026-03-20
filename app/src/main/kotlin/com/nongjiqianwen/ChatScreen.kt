@@ -572,6 +572,17 @@ private fun isStructuralStreamingLine(trimmed: String): Boolean {
         trimmed.matches(quoteRegex)
 }
 
+private fun isStructuralActiveStreamingLine(line: String): Boolean {
+    return when (classifyActiveStreamingLine(line)) {
+        StreamingLineModel.Blank,
+        is StreamingLineModel.Paragraph -> false
+        is StreamingLineModel.Heading,
+        is StreamingLineModel.Bullet,
+        is StreamingLineModel.Numbered,
+        is StreamingLineModel.Quote -> true
+    }
+}
+
 private fun splitStreamingBlockState(content: String): StreamingBlockState {
     val logicalLines = splitStreamingLogicalLines(content)
     val completedBlocks = mutableListOf<String>()
@@ -599,7 +610,12 @@ private fun splitStreamingBlockState(content: String): StreamingBlockState {
 
     val activeBlock = logicalLines.activeLine?.let { line ->
         val trimmed = line.trim()
+        val activeLooksStructural = trimmed.isNotBlank() && isStructuralActiveStreamingLine(line)
         when {
+            paragraph.isNotEmpty() && activeLooksStructural -> {
+                flushParagraphBlock()
+                trimmed.ifEmpty { null }
+            }
             paragraph.isNotEmpty() -> buildString {
                 append(paragraph.toString())
                 if (trimmed.isNotBlank()) {
