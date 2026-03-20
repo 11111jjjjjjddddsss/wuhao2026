@@ -1970,18 +1970,6 @@ private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modif
 @Composable
 private fun GPTBreathingBall(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
-    val alpha by transition.animateFloat(
-        initialValue = 0.48f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = GPT_BALL_PULSE_MS,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "assistantBreathingDotAlpha"
-    )
     val scale by transition.animateFloat(
         initialValue = 0.68f,
         targetValue = 1.14f,
@@ -2001,30 +1989,13 @@ private fun GPTBreathingBall(modifier: Modifier = Modifier) {
         Canvas(
             modifier = Modifier
                 .size(GPT_BALL_CONTAINER_SIZE)
-                .graphicsLayer { this.alpha = alpha }
         ) {
             val baseRadius = GPT_BALL_SIZE.toPx() / 2f
             val radius = baseRadius * scale
             val center = this.center
 
             drawCircle(
-                color = Color.Black.copy(alpha = 0.10f),
-                radius = radius * 1.04f,
-                center = Offset(
-                    x = center.x,
-                    y = center.y + radius * 0.04f
-                )
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF121212),
-                        Color(0xFF080808),
-                        Color(0xFF020202)
-                    ),
-                    center = center,
-                    radius = radius * 1.10f
-                ),
+                color = Color.Black,
                 radius = radius,
                 center = center
             )
