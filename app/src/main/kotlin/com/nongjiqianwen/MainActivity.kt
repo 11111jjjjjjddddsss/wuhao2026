@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
             window.isNavigationBarContrastEnforced = false
         }
         ComposeFoundationFlags.isNewContextMenuEnabled = true
-        ComposeFoundationFlags.isSmartSelectionEnabled = true
+        ComposeFoundationFlags.isSmartSelectionEnabled = false
         IdManager.init(this)
         setContent {
             MaterialTheme {

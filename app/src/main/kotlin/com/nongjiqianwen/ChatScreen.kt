@@ -1247,6 +1247,7 @@ private fun AssistantMessageContent(
     strictLineReveal: Boolean = false,
     lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
+    selectionResetKey: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
@@ -1291,8 +1292,10 @@ private fun AssistantMessageContent(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (selectionEnabled) {
-                SelectionContainer {
-                    AssistantMarkdownContent(content = content)
+                key(selectionResetKey) {
+                    SelectionContainer {
+                        AssistantMarkdownContent(content = content)
+                    }
                 }
             } else {
                 AssistantMarkdownContent(content = content)
@@ -2272,6 +2275,7 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
+    var messageSelectionEpoch by remember { mutableIntStateOf(0) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
@@ -2781,6 +2785,18 @@ fun ChatScreen() {
             previousIndex = currentIndex
             previousOffset = currentOffset
         }
+    }
+
+    LaunchedEffect(listState) {
+        var manualScrollActive = false
+        snapshotFlow { listState.isScrollInProgress to programmaticScroll }
+            .collect { (scrollInProgress, isProgrammaticScroll) ->
+                val nextManualScrollActive = scrollInProgress && !isProgrammaticScroll
+                if (nextManualScrollActive && !manualScrollActive) {
+                    messageSelectionEpoch++
+                }
+                manualScrollActive = nextManualScrollActive
+            }
     }
 
     LaunchedEffect(
@@ -3810,6 +3826,7 @@ fun ChatScreen() {
                                             content = msg.content,
                                             isStreaming = false,
                                             selectionEnabled = true,
+                                            selectionResetKey = messageSelectionEpoch,
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                         )
@@ -3820,17 +3837,19 @@ fun ChatScreen() {
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.End
                                         ) {
-                                            SelectionContainer {
-                                                Text(
-                                                    text = msg.content,
-                                                    modifier = Modifier
-                                                        .widthIn(max = userBubbleMaxWidth)
-                                                        .clip(RoundedCornerShape(20.dp))
-                                                        .background(userBubbleColor)
-                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    color = Color(0xFF161616)
-                                                )
+                                            key(messageSelectionEpoch) {
+                                                SelectionContainer {
+                                                    Text(
+                                                        text = msg.content,
+                                                        modifier = Modifier
+                                                            .widthIn(max = userBubbleMaxWidth)
+                                                            .clip(RoundedCornerShape(20.dp))
+                                                            .background(userBubbleColor)
+                                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        color = Color(0xFF161616)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
