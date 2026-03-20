@@ -3841,16 +3841,16 @@ fun ChatScreen() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "欢迎咨询种植、病虫害防治、\n施肥等问题，必要时可上传图片。",
+                            text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
                             modifier = Modifier
-                                .widthIn(max = 360.dp)
+                                .widthIn(max = 340.dp)
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 19.sp,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
                             color = Color(0xFF141414),
-                            lineHeight = 29.sp,
+                            lineHeight = 28.sp,
                             textAlign = TextAlign.Center
                         )
                     }
