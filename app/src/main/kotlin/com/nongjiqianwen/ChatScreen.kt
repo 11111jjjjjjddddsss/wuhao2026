@@ -30,6 +30,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -1240,6 +1241,7 @@ private fun AssistantMessageContent(
     streamingLineAdvanceTick: Int = 0,
     strictLineReveal: Boolean = false,
     lineRevealLocked: Boolean = false,
+    selectionEnabled: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
@@ -1283,7 +1285,13 @@ private fun AssistantMessageContent(
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            AssistantMarkdownContent(content = content)
+            if (selectionEnabled) {
+                SelectionContainer {
+                    AssistantMarkdownContent(content = content)
+                }
+            } else {
+                AssistantMarkdownContent(content = content)
+            }
             if (showDisclaimer) {
                 Text(
                     text = AI_DISCLAIMER_TEXT,
@@ -3771,21 +3779,24 @@ fun ChatScreen() {
                                     AssistantMessageContent(
                                         content = msg.content,
                                         isStreaming = false,
+                                        selectionEnabled = true,
                                         modifier = Modifier
                                             .fillMaxWidth()
                                     )
                                 } else {
-                                    Text(
-                                        text = msg.content,
-                                        modifier = Modifier
-                                            .align(Alignment.CenterEnd)
-                                            .widthIn(max = userBubbleMaxWidth)
-                                            .clip(RoundedCornerShape(20.dp))
-                                            .background(userBubbleColor)
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = Color(0xFF161616)
-                                    )
+                                    SelectionContainer {
+                                        Text(
+                                            text = msg.content,
+                                            modifier = Modifier
+                                                .align(Alignment.CenterEnd)
+                                                .widthIn(max = userBubbleMaxWidth)
+                                                .clip(RoundedCornerShape(20.dp))
+                                                .background(userBubbleColor)
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = Color(0xFF161616)
+                                        )
+                                    }
                                 }
                             }
                         }
