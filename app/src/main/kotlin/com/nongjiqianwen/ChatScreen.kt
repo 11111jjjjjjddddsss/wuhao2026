@@ -195,10 +195,11 @@ private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
 private const val CHAT_BOTTOM_VIEWPORT_KEY_PREFIX = "bottom_viewport_"
-private const val INLINE_MARKDOWN_CACHE_LIMIT = 120
-private const val BLOCK_MARKDOWN_CACHE_LIMIT = 80
+private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
+private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
-private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 180L
+private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 320L
+private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 private const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 4
@@ -2687,7 +2688,7 @@ fun ChatScreen() {
             }
             return@LaunchedEffect
         }
-        delay(90)
+        delay(STREAM_DRAFT_SAVE_DEBOUNCE_MS)
         context.saveLocalStreamingDraft(
             chatScopeId = chatScopeId,
             draft = LocalStreamingDraft(
