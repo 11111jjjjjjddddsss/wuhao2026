@@ -145,6 +145,10 @@
 - `lineRevealLocked` 不是单阈值开关，而是带锁定/解锁双阈值的滞回门槛；不要再改回“一帧锁、一帧放”的单阈值方案。
 - 当前 settle 规则分两档：正常释放要多等一点；如果刚发生过真实上推，则仍要等，但会稍短一点。不要把这层缓冲砍掉。
 
+当前基线数字：
+- `STREAM_FRESH_LINE_SETTLE_FRAMES = 5`
+- `STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 4`
+
 这条是当前生成稳定性的核心。
 
 ### 5. 手动浏览与回到底部按钮
@@ -271,11 +275,17 @@
 - 只对活动行尾巴最后一小段字做短时颜色提亮，再回到正文色。
 - 当前实现是 `STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR -> style.color` 的颜色回落，不再叠阴影、灰底条、扫光或白色拖带。
 - 当前最少覆盖尾巴最后 `6` 个字；不是单字闪，也不是整行亮。
-- 高亮不是每批字都重启，而是按时间桶触发；当前间隔约 `520ms`，或遇到换行时强制触发一次。
+- 高亮不是每批字都重启，而是按时间桶触发；当前间隔约 `620ms`，或遇到换行时强制触发一次。
 - 不做 `translateY`
 - 不做整行缩放
 - 不做行高动画
 - 不做 shimmer / sweep gradient / 明显的白光扫过
+
+当前基线数字：
+- `STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 6`
+- `STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180`
+- `STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 620L`
+- `STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = 0xFFDDE1E6`
 
 作用：
 - 正文有一点 GPT 式尾巴活性，但不会回到“高频闪眼”“灰影”“黑带”的副作用。
@@ -293,7 +303,7 @@
 - `STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 4`
 - `STREAM_DELAY_MULTIPLIER = 1.18`
 - `STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180`
-- `STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 520L`
+- `STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 620L`
 
 结论：
 - 正文不要追求明显扫光、明显 shimmer、明显位移动画。
@@ -309,6 +319,20 @@
 3. 如果观感太闪眼，先收提亮频率，再收亮度对比和高亮窗口，不要直接降正文速度。
 4. 如果出现飞字/冒头，优先检查 `lineRevealLocked`、滞回阈值和 settle 帧，不要先碰颜色动画。
 5. 如果出现用户消息下坠、空白页、误冒回底按钮，优先检查 owner/handoff/静默补底链路，不要去改 Markdown 或样式层。
+
+### 9. 当前关键布局数字
+
+这些数字不需要每次小调都全文抄一遍，但当前版本的关键基线应该明确：
+
+- `ASSISTANT_START_ANCHOR_TOP = 196.dp`
+  发送后用户消息上抬的目标视觉区域
+- `STREAM_VISIBLE_BOTTOM_GAP = 44.dp`
+  生成工作线和输入框之间的目标距离
+- `BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp`
+  静态正文/免责声明离输入框的底部避让
+- `SECTION_DIVIDER_TOP_EXTRA_GAP = 16.dp`
+- `SECTION_DIVIDER_GAP = 28.dp`
+  这两项决定标题分割线出现时的上下留白；如果这里观感太跳，不要先上动画，优先检查是否需要提前占位或轻收 gap
 
 ## 当前必须守住的铁规则
 
