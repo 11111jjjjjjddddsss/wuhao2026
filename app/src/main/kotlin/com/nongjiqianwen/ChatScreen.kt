@@ -3846,9 +3846,12 @@ fun ChatScreen() {
                                 .widthIn(max = chromeMaxWidth)
                                 .fillMaxWidth()
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
-                            style = MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp),
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontSize = 23.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
                             color = Color(0xFF141414),
-                            lineHeight = 36.sp,
+                            lineHeight = 33.sp,
                             textAlign = TextAlign.Start
                         )
                     }
