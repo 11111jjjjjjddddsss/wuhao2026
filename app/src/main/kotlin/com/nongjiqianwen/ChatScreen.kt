@@ -3807,18 +3807,22 @@ fun ChatScreen() {
                                     }
                                 } else {
                                     CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                        SelectionContainer {
-                                            Text(
-                                                text = msg.content,
-                                                modifier = Modifier
-                                                    .align(Alignment.CenterEnd)
-                                                    .widthIn(max = userBubbleMaxWidth)
-                                                    .clip(RoundedCornerShape(20.dp))
-                                                    .background(userBubbleColor)
-                                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                style = MaterialTheme.typography.bodyLarge,
-                                                color = Color(0xFF161616)
-                                            )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            SelectionContainer {
+                                                Text(
+                                                    text = msg.content,
+                                                    modifier = Modifier
+                                                        .widthIn(max = userBubbleMaxWidth)
+                                                        .clip(RoundedCornerShape(20.dp))
+                                                        .background(userBubbleColor)
+                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    color = Color(0xFF161616)
+                                                )
+                                            }
                                         }
                                     }
                                 }
