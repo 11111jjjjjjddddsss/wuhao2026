@@ -231,6 +231,7 @@ private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 12.dp
+private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 6
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
@@ -2537,7 +2538,11 @@ fun ChatScreen() {
         val stableBottomBarHeightPx =
             (inputChromeRowHeightPx + safeBottomInsetPx)
                 .coerceAtLeast(startupBottomBarHeightEstimatePx)
-        if (bottomBarHeightPx != stableBottomBarHeightPx) {
+        val deltaPx = kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx)
+        if (
+            bottomBarHeightPx != stableBottomBarHeightPx &&
+            (imeVisible || deltaPx > BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX)
+        ) {
             bottomBarHeightPx = stableBottomBarHeightPx
         }
     }
