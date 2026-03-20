@@ -72,8 +72,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -118,8 +116,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -183,8 +181,7 @@ private data class ChatMessage(val id: String, val role: ChatRole, val content: 
 private data class MessageActionMenuTarget(
     val messageId: String,
     val role: ChatRole,
-    val content: String,
-    val alignEnd: Boolean
+    val content: String
 )
 @Immutable
 private data class MessageSelectAllTarget(
@@ -252,6 +249,7 @@ private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
 private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
+private val BOTTOM_POSITION_TOLERANCE = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
@@ -1331,6 +1329,53 @@ private fun AssistantMessageContent(
 }
 
 @Composable
+private fun AssistantStreamingWaitingIndicator(modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    val lineHeight = with(density) {
+        assistantParagraphTextStyle().lineHeight.toDp()
+    }
+    Box(
+        modifier = modifier
+            .height(lineHeight)
+            .padding(start = GPT_BALL_START_PADDING),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        GPTBreathingBall()
+    }
+}
+
+@Composable
+private fun MessageActionDialog(
+    target: MessageActionMenuTarget,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    onSelectAll: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(if (target.role == ChatRole.USER) "当前用户消息" else "当前AI消息")
+        },
+        text = {
+            Text("选择当前这条消息的操作")
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onCopy) {
+                    Text("复制")
+                }
+                TextButton(onClick = onSelectAll) {
+                    Text("全选")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("关闭")
+                }
+            }
+        }
+    )
+}
+
+@Composable
 private fun MessageSelectAllDialog(
     target: MessageSelectAllTarget,
     selectionColors: TextSelectionColors,
@@ -1392,22 +1437,6 @@ private fun MessageSelectAllDialog(
             }
         }
     )
-}
-
-@Composable
-private fun AssistantStreamingWaitingIndicator(modifier: Modifier = Modifier) {
-    val density = LocalDensity.current
-    val lineHeight = with(density) {
-        assistantParagraphTextStyle().lineHeight.toDp()
-    }
-    Box(
-        modifier = modifier
-            .height(lineHeight)
-            .padding(start = GPT_BALL_START_PADDING),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        GPTBreathingBall()
-    }
 }
 
 @Composable
@@ -2266,8 +2295,8 @@ fun ChatScreen() {
     val input = rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
-    val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val chatSelectionColors = remember {
         TextSelectionColors(
@@ -2370,6 +2399,7 @@ fun ChatScreen() {
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
+    val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -2532,8 +2562,17 @@ fun ChatScreen() {
                 initialLocalMessages.isNotEmpty()
         }
     }
-    val atBottom by remember {
-        derivedStateOf { !listState.canScrollForward }
+    fun isWithinBottomTolerance(): Boolean {
+        if (!listState.canScrollForward) return true
+        val info = listState.layoutInfo
+        val lastIndex = info.totalItemsCount - 1
+        if (lastIndex < 0) return true
+        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return false
+        val overflowPx = (lastVisible.offset + lastVisible.size - info.viewportEndOffset).coerceAtLeast(0)
+        return overflowPx <= bottomPositionTolerancePx
+    }
+    val atBottom by remember(bottomPositionTolerancePx) {
+        derivedStateOf { isWithinBottomTolerance() }
     }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
     val shouldOfferJumpButton by remember(
@@ -3410,7 +3449,7 @@ fun ChatScreen() {
     suspend fun isBottomSettled(stableFrames: Int = 4): Boolean {
         repeat(stableFrames) {
             withFrameNanos { }
-            if (listState.canScrollForward) return false
+            if (!isWithinBottomTolerance()) return false
         }
         return true
     }
@@ -3876,8 +3915,7 @@ fun ChatScreen() {
                                             messageActionMenuTarget = MessageActionMenuTarget(
                                                 messageId = msg.id,
                                                 role = msg.role,
-                                                content = msg.content,
-                                                alignEnd = msg.role == ChatRole.USER
+                                                content = msg.content
                                             )
                                         }
                                     )
@@ -3906,35 +3944,6 @@ fun ChatScreen() {
                                             color = Color(0xFF161616)
                                         )
                                     }
-                                }
-                                DropdownMenu(
-                                    expanded = messageActionMenuTarget?.messageId == msg.id,
-                                    onDismissRequest = { messageActionMenuTarget = null },
-                                    modifier = Modifier.align(
-                                        if (msg.role == ChatRole.USER) Alignment.TopEnd else Alignment.TopStart
-                                    )
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text("复制") },
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(msg.content))
-                                            messageActionMenuTarget = null
-                                            snackbarScope.launch {
-                                                snackbarHostState.showSnackbar("已复制当前消息")
-                                            }
-                                        }
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text("全选") },
-                                        onClick = {
-                                            messageActionMenuTarget = null
-                                            messageSelectAllTarget = MessageSelectAllTarget(
-                                                messageId = msg.id,
-                                                role = msg.role,
-                                                content = msg.content
-                                            )
-                                        }
-                                    )
                                 }
                             }
                         }
@@ -3992,6 +4001,28 @@ fun ChatScreen() {
                             )
                         }
                     }
+                }
+
+                messageActionMenuTarget?.let { target ->
+                    MessageActionDialog(
+                        target = target,
+                        onDismiss = { messageActionMenuTarget = null },
+                        onCopy = {
+                            clipboardManager.setText(AnnotatedString(target.content))
+                            messageActionMenuTarget = null
+                            snackbarScope.launch {
+                                snackbarHostState.showSnackbar("已复制当前消息")
+                            }
+                        },
+                        onSelectAll = {
+                            messageActionMenuTarget = null
+                            messageSelectAllTarget = MessageSelectAllTarget(
+                                messageId = target.messageId,
+                                role = target.role,
+                                content = target.content
+                            )
+                        }
+                    )
                 }
 
                 messageSelectAllTarget?.let { target ->
