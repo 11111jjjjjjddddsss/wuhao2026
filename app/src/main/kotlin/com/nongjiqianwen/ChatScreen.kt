@@ -3848,33 +3848,13 @@ fun ChatScreen() {
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "欢迎咨询种植",
+                                text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = Color(0xFF141414),
                                 lineHeight = 31.sp,
-                                textAlign = TextAlign.Center
-                            )
-                            Text(
-                                text = "病虫害防治、施肥等问题",
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                color = Color(0xFF50545B),
-                                lineHeight = 22.sp,
-                                textAlign = TextAlign.Center
-                            )
-                            Text(
-                                text = "必要时可上传图片",
-                                style = MaterialTheme.typography.bodyLarge.copy(
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Normal
-                                ),
-                                color = Color(0xFF7B818A),
-                                lineHeight = 20.sp,
                                 textAlign = TextAlign.Center
                             )
                         }
