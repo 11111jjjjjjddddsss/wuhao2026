@@ -8,6 +8,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ComposeFoundationFlags
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -21,6 +23,7 @@ object LaunchUiGate {
 }
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         LaunchUiGate.chatReady = false
         LaunchUiGate.splashDeadlineMs = SystemClock.uptimeMillis() + 90L
@@ -44,6 +47,8 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
+        ComposeFoundationFlags.isNewContextMenuEnabled = true
+        ComposeFoundationFlags.isSmartSelectionEnabled = true
         IdManager.init(this)
         setContent {
             MaterialTheme {
