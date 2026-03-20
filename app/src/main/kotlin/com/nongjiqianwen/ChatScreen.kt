@@ -3843,16 +3843,15 @@ fun ChatScreen() {
                         Text(
                             text = "欢迎咨询种植、病虫害防治、施肥等问题，必要时可上传图片。",
                             modifier = Modifier
-                                .widthIn(max = chromeMaxWidth)
-                                .fillMaxWidth()
+                                .widthIn(max = 320.dp)
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
                             style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 23.sp,
+                                fontSize = 20.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
                             color = Color(0xFF141414),
-                            lineHeight = 33.sp,
-                            textAlign = TextAlign.Start
+                            lineHeight = 30.sp,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
