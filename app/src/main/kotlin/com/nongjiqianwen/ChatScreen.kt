@@ -336,7 +336,7 @@ private fun estimateMessageSelectionStart(
         softWrap = true
     )
     val localX = (pressOffset.x - horizontalPaddingPx).coerceIn(0f, layout.size.width.toFloat().coerceAtLeast(0f))
-    val localY = (pressOffset.y - verticalPaddingPx).coerceAtLeast(0f)
+    val localY = pressOffset.y.coerceAtLeast(0f)
     return layout.getOffsetForPosition(Offset(localX, localY)).coerceIn(0, content.length)
 }
 
@@ -936,8 +936,8 @@ private fun buildAssistantSelectableText(content: String): String {
     return blocks.joinToString(separator = "\n\n") { block ->
         when (block) {
             is MarkdownBlock.Heading -> getCachedAnnotatedString(block.text).text
-            is MarkdownBlock.Bullet -> "• ${getCachedAnnotatedString(block.text).text}"
-            is MarkdownBlock.Numbered -> "${block.number}. ${getCachedAnnotatedString(block.text).text}"
+            is MarkdownBlock.Bullet -> getCachedAnnotatedString(block.text).text
+            is MarkdownBlock.Numbered -> getCachedAnnotatedString(block.text).text
             is MarkdownBlock.Paragraph -> getCachedAnnotatedString(block.text).text
         }
     }.trim()
@@ -2639,6 +2639,7 @@ fun ChatScreen() {
     var messageActionMenuState by remember { mutableStateOf<MessageActionMenuState?>(null) }
     var messageSelectionOverlayState by remember { mutableStateOf<MessageSelectionOverlayState?>(null) }
     var messageSelectionValue by remember { mutableStateOf<TextFieldValue?>(null) }
+    var selectionJustEnteredTick by remember { mutableIntStateOf(0) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -3905,7 +3906,8 @@ fun ChatScreen() {
                     .pointerInput(
                         imeVisible,
                         messageActionMenuState?.messageId,
-                        messageSelectionOverlayState?.messageId
+                        messageSelectionOverlayState?.messageId,
+                        selectionJustEnteredTick
                     ) {
                         awaitEachGesture {
                             awaitFirstDown(pass = PointerEventPass.Final)
@@ -4385,8 +4387,8 @@ private fun MessageActionMenuPopup(
     val maxX = (viewportWidthPx - resolvedWidth - marginPx).coerceAtLeast(marginPx)
     val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(marginPx, maxX)
     val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    val fallbackBottom = (anchorLocalY + verticalSpacingPx)
-        .coerceAtMost((viewportHeightPx - resolvedHeight - marginPx).coerceAtLeast(marginPx))
+    val fallbackBottom = (viewportHeightPx - resolvedHeight - marginPx)
+        .coerceAtLeast(marginPx)
     val preferredY = if (preferredTop >= marginPx) preferredTop else fallbackBottom
 
     Box(
