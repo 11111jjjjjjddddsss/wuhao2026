@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
-        ComposeFoundationFlags.isNewContextMenuEnabled = true
+        ComposeFoundationFlags.isNewContextMenuEnabled = false
         ComposeFoundationFlags.isSmartSelectionEnabled = false
         IdManager.init(this)
         setContent {
