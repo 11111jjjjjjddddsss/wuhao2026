@@ -3925,7 +3925,10 @@ fun ChatScreen() {
                     .background(pageSurface)
                     .pointerInput(
                         imeVisible,
-                        messageActionMenuState?.messageId
+                        messageActionMenuState?.messageId,
+                        messageActionMenuShownAtMs,
+                        messageActionMenuCardBounds,
+                        messageActionMenuIgnoreNextUp
                     ) {
                         awaitEachGesture {
                             awaitFirstDown(pass = PointerEventPass.Final)
@@ -3935,6 +3938,20 @@ fun ChatScreen() {
                                     imeVisible -> {
                                         focusManager.clearFocus(force = true)
                                         keyboardController?.hide()
+                                    }
+                                    messageActionMenuState != null -> {
+                                        if (messageActionMenuIgnoreNextUp) {
+                                            messageActionMenuIgnoreNextUp = false
+                                            return@awaitEachGesture
+                                        }
+                                        val tappedCard =
+                                            messageActionMenuCardBounds?.contains(up.position) == true
+                                        if (!tappedCard) {
+                                            messageActionMenuShownAtMs = 0L
+                                            messageActionMenuCardBounds = null
+                                            messageActionMenuIgnoreNextUp = false
+                                            messageActionMenuState = null
+                                        }
                                     }
                                 }
                             }
@@ -4110,8 +4127,12 @@ fun ChatScreen() {
                 }
 
                 messageActionMenuState?.let { state ->
-                    ChatMessageActionMenuPopupOld(
+                    AnchoredMessageActionMenuCardOverlay(
                         state = state,
+                        containerWidthPx = messageViewportWidthPx,
+                        containerHeightPx = messageViewportHeightPx,
+                        containerLeftPx = messageViewportLeftPx,
+                        containerTopPx = messageViewportTopPx,
                         onCopy = {
                             performButtonHaptic()
                             clipboardManager.setText(AnnotatedString(state.content))
@@ -4143,6 +4164,9 @@ fun ChatScreen() {
                             messageActionMenuCardBounds = null
                             messageActionMenuIgnoreNextUp = false
                             messageActionMenuState = null
+                        },
+                        onBoundsChanged = { bounds ->
+                            messageActionMenuCardBounds = bounds
                         }
                     )
                 }
@@ -4294,7 +4318,7 @@ private fun MessageActionMenuPopupOld(
             verticalSpacingPx = 12
         ),
         properties = PopupProperties(
-            focusable = true,
+            focusable = false,
             dismissOnBackPress = true,
             dismissOnClickOutside = false,
             clippingEnabled = false
@@ -4344,6 +4368,34 @@ private fun MessageActionMenuButton(
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold
         )
+    }
+}
+
+@Composable
+private fun MessageActionMenuCardContent(
+    modifier: Modifier = Modifier,
+    onCopy: () -> Unit,
+    onSelectText: () -> Unit
+) {
+    Surface(
+        color = Color(0xFF111111),
+        shape = RoundedCornerShape(14.dp),
+        shadowElevation = 10.dp,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            MessageActionMenuButton(
+                label = "全部复制",
+                onClick = onCopy
+            )
+            MessageActionMenuButton(
+                label = "选择文字",
+                onClick = onSelectText
+            )
+        }
     }
 }
 
@@ -4405,9 +4457,9 @@ private fun MessageSelectionPopup(
             top = state.messageTop
         ),
         properties = PopupProperties(
-            focusable = true,
+            focusable = false,
             dismissOnBackPress = true,
-            dismissOnClickOutside = true,
+            dismissOnClickOutside = false,
             clippingEnabled = false
         ),
         onDismissRequest = onDismiss
@@ -4456,9 +4508,12 @@ private fun MessageSelectionPopup(
 @Composable
 private fun ChatMessageActionMenuPopupOld(
     state: MessageActionMenuState,
+    containerLeftPx: Float,
+    containerTopPx: Float,
     onCopy: () -> Unit,
     onSelectText: () -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onBoundsChanged: (Rect?) -> Unit
 ) {
     Popup(
         popupPositionProvider = AnchoredMessagePopupPositionProvider(
@@ -4469,7 +4524,7 @@ private fun ChatMessageActionMenuPopupOld(
         properties = PopupProperties(
             focusable = true,
             dismissOnBackPress = true,
-            dismissOnClickOutside = true,
+            dismissOnClickOutside = false,
             clippingEnabled = false
         ),
         onDismissRequest = onDismiss
@@ -4677,7 +4732,7 @@ private fun AnchoredMessageActionMenuCardOverlay(
             .fillMaxSize()
             .zIndex(3f)
     ) {
-        InlineMessageActionMenuCard(
+        MessageActionMenuCardContent(
             modifier = Modifier
                 .offset { IntOffset(popupX, popupY) }
                 .onSizeChanged { cardSize = it }
