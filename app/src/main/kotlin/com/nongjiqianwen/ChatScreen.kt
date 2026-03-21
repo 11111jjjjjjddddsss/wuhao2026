@@ -118,6 +118,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1256,7 +1257,6 @@ private fun AssistantMessageContent(
     strictLineReveal: Boolean = false,
     lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
-    selectionResetKey: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
@@ -1301,10 +1301,8 @@ private fun AssistantMessageContent(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (selectionEnabled) {
-                key(selectionResetKey) {
-                    SelectionContainer {
-                        AssistantMarkdownContent(content = content)
-                    }
+                SelectionContainer {
+                    AssistantMarkdownContent(content = content)
                 }
             } else {
                 AssistantMarkdownContent(content = content)
@@ -2284,7 +2282,6 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
-    var messageSelectionEpoch by remember { mutableIntStateOf(0) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
@@ -2541,6 +2538,7 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val textToolbar = LocalTextToolbar.current
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -2799,7 +2797,7 @@ fun ChatScreen() {
     LaunchedEffect(listState) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
-        var selectionResetForThisDrag = false
+        var toolbarHiddenForThisDrag = false
         var manualScrollStartedAtMs = 0L
         snapshotFlow {
             SelectionScrollSnapshot(
@@ -2825,13 +2823,13 @@ fun ChatScreen() {
                 manualScrollActive &&
                 viewportMoved &&
                 manualScrollHeldLongEnough &&
-                !selectionResetForThisDrag
+                !toolbarHiddenForThisDrag
             ) {
-                messageSelectionEpoch++
-                selectionResetForThisDrag = true
+                textToolbar.hide()
+                toolbarHiddenForThisDrag = true
             }
             if (!manualScrollActive) {
-                selectionResetForThisDrag = false
+                toolbarHiddenForThisDrag = false
                 manualScrollStartedAtMs = 0L
             }
             previousIndex = snapshot.firstVisibleItemIndex
@@ -3866,7 +3864,6 @@ fun ChatScreen() {
                                             content = msg.content,
                                             isStreaming = false,
                                             selectionEnabled = true,
-                                            selectionResetKey = messageSelectionEpoch,
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                         )
@@ -3877,19 +3874,17 @@ fun ChatScreen() {
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.End
                                         ) {
-                                            key(messageSelectionEpoch) {
-                                                SelectionContainer {
-                                                    Text(
-                                                        text = msg.content,
-                                                        modifier = Modifier
-                                                            .widthIn(max = userBubbleMaxWidth)
-                                                            .clip(RoundedCornerShape(20.dp))
-                                                            .background(userBubbleColor)
-                                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                        style = MaterialTheme.typography.bodyLarge,
-                                                        color = Color(0xFF161616)
-                                                    )
-                                                }
+                                            SelectionContainer {
+                                                Text(
+                                                    text = msg.content,
+                                                    modifier = Modifier
+                                                        .widthIn(max = userBubbleMaxWidth)
+                                                        .clip(RoundedCornerShape(20.dp))
+                                                        .background(userBubbleColor)
+                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    color = Color(0xFF161616)
+                                                )
                                             }
                                         }
                                     }
