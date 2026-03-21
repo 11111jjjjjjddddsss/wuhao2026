@@ -22,6 +22,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -191,6 +193,32 @@ private data class SelectionScrollSnapshot(
     val isScrollInProgress: Boolean,
     val isProgrammaticScroll: Boolean
 )
+
+private object MinimalChatBringIntoViewSpec : BringIntoViewSpec {
+    override fun calculateScrollDistance(
+        offset: Float,
+        size: Float,
+        containerSize: Float
+    ): Float {
+        val childStart = offset
+        val childEnd = offset + size
+        if (childStart >= 0f && childEnd <= containerSize) {
+            return 0f
+        }
+        if (size >= containerSize) {
+            return when {
+                childStart < 0f -> childStart
+                childEnd > containerSize -> childEnd - containerSize
+                else -> 0f
+            }
+        }
+        return when {
+            childStart < 0f -> childStart
+            childEnd > containerSize -> childEnd - containerSize
+            else -> 0f
+        }
+    }
+}
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
@@ -3817,86 +3845,37 @@ fun ChatScreen() {
                         messageViewportTopPx = coordinates.boundsInWindow().top
                     }
             ) {
-                LazyColumn(
-                    state = listState,
-                    userScrollEnabled = true,
-                    modifier = Modifier
-                        .then(
-                            if (enableStreamingScrollLock) {
-                                Modifier.nestedScroll(streamingDirectionLock)
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .fillMaxSize()
-                        .then(
-                            if (shouldRevealMessageList) {
-                                Modifier
-                            } else {
-                                Modifier.graphicsLayer(alpha = 0f)
-                            }
-                        ),
-                    contentPadding = PaddingValues(
-                        top = topBarReservedHeight,
-                        bottom = with(density) { bottomBarHeightPx.toDp() } +
-                            BOTTOM_OVERLAY_CONTENT_CLEARANCE
-                    )
-                ) {
-                    items(
-                        items = messages,
-                        key = { it.id },
-                        contentType = { it.role }
-                    ) { msg ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .widthIn(max = chromeMaxWidth)
-                                    .fillMaxWidth()
-                            ) {
-                                if (msg.role == ChatRole.ASSISTANT) {
-                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                        AssistantMessageContent(
-                                            content = msg.content,
-                                            isStreaming = false,
-                                            selectionEnabled = true,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                        )
-                                    }
+                CompositionLocalProvider(LocalBringIntoViewSpec provides MinimalChatBringIntoViewSpec) {
+                    LazyColumn(
+                        state = listState,
+                        userScrollEnabled = true,
+                        modifier = Modifier
+                            .then(
+                                if (enableStreamingScrollLock) {
+                                    Modifier.nestedScroll(streamingDirectionLock)
                                 } else {
-                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.End
-                                        ) {
-                                            SelectionContainer {
-                                                Text(
-                                                    text = msg.content,
-                                                    modifier = Modifier
-                                                        .widthIn(max = userBubbleMaxWidth)
-                                                        .clip(RoundedCornerShape(20.dp))
-                                                        .background(userBubbleColor)
-                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    color = Color(0xFF161616)
-                                                )
-                                            }
-                                        }
-                                    }
+                                    Modifier
                                 }
-                            }
-                        }
-                    }
-                    if (hasStreamingItem) {
-                        item(
-                            key = "streaming_item",
-                            contentType = ChatRole.ASSISTANT
-                        ) {
+                            )
+                            .fillMaxSize()
+                            .then(
+                                if (shouldRevealMessageList) {
+                                    Modifier
+                                } else {
+                                    Modifier.graphicsLayer(alpha = 0f)
+                                }
+                            ),
+                        contentPadding = PaddingValues(
+                            top = topBarReservedHeight,
+                            bottom = with(density) { bottomBarHeightPx.toDp() } +
+                                BOTTOM_OVERLAY_CONTENT_CLEARANCE
+                        )
+                    ) {
+                        items(
+                            items = messages,
+                            key = { it.id },
+                            contentType = { it.role }
+                        ) { msg ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -3907,42 +3886,92 @@ fun ChatScreen() {
                                         .align(Alignment.Center)
                                         .widthIn(max = chromeMaxWidth)
                                         .fillMaxWidth()
-                                        .onGloballyPositioned { coordinates ->
-                                            val bounds = coordinates.boundsInWindow()
-                                            streamingAnchorTopPx =
-                                                (bounds.top - messageViewportTopPx).roundToInt()
-                                            streamingContentBottomPx =
-                                                (bounds.bottom - messageViewportTopPx).roundToInt()
-                                        }
                                 ) {
-                                    AssistantMessageContent(
-                                        content = streamingMessageContent,
-                                        isStreaming = isStreaming,
-                                        streamingFreshStart = streamingFreshStart,
-                                        streamingFreshEnd = streamingFreshEnd,
-                                        streamingFreshTick = streamingFreshTick,
-                                        streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                        strictLineReveal =
-                                            isStreaming &&
-                                                !userDetachedFromBottom &&
-                                                !userInteracting,
-                                        lineRevealLocked = lineRevealLocked,
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
+                                    if (msg.role == ChatRole.ASSISTANT) {
+                                        CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                            AssistantMessageContent(
+                                                content = msg.content,
+                                                isStreaming = false,
+                                                selectionEnabled = true,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    } else {
+                                        CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.End
+                                            ) {
+                                                SelectionContainer {
+                                                    Text(
+                                                        text = msg.content,
+                                                        modifier = Modifier
+                                                            .widthIn(max = userBubbleMaxWidth)
+                                                            .clip(RoundedCornerShape(20.dp))
+                                                            .background(userBubbleColor)
+                                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                        color = Color(0xFF161616)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (hasStreamAnchorSpacer) {
-                        item(
-                            key = "stream_anchor_spacer",
-                            contentType = "stream_anchor_spacer"
-                        ) {
-                            Spacer(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(streamBottomSpacerDp)
-                            )
+                        if (hasStreamingItem) {
+                            item(
+                                key = "streaming_item",
+                                contentType = ChatRole.ASSISTANT
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.Center)
+                                            .widthIn(max = chromeMaxWidth)
+                                            .fillMaxWidth()
+                                            .onGloballyPositioned { coordinates ->
+                                                val bounds = coordinates.boundsInWindow()
+                                                streamingAnchorTopPx =
+                                                    (bounds.top - messageViewportTopPx).roundToInt()
+                                                streamingContentBottomPx =
+                                                    (bounds.bottom - messageViewportTopPx).roundToInt()
+                                            }
+                                    ) {
+                                        AssistantMessageContent(
+                                            content = streamingMessageContent,
+                                            isStreaming = isStreaming,
+                                            streamingFreshStart = streamingFreshStart,
+                                            streamingFreshEnd = streamingFreshEnd,
+                                            streamingFreshTick = streamingFreshTick,
+                                            streamingLineAdvanceTick = streamingLineAdvanceTick,
+                                            strictLineReveal =
+                                                isStreaming &&
+                                                    !userDetachedFromBottom &&
+                                                    !userInteracting,
+                                            lineRevealLocked = lineRevealLocked,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (hasStreamAnchorSpacer) {
+                            item(
+                                key = "stream_anchor_spacer",
+                                contentType = "stream_anchor_spacer"
+                            ) {
+                                Spacer(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(streamBottomSpacerDp)
+                                )
+                            }
                         }
                     }
                 }
