@@ -22,8 +22,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.BringIntoViewSpec
-import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -194,31 +192,6 @@ private data class SelectionScrollSnapshot(
     val isProgrammaticScroll: Boolean
 )
 
-private object MinimalChatBringIntoViewSpec : BringIntoViewSpec {
-    override fun calculateScrollDistance(
-        offset: Float,
-        size: Float,
-        containerSize: Float
-    ): Float {
-        val childStart = offset
-        val childEnd = offset + size
-        if (childStart >= 0f && childEnd <= containerSize) {
-            return 0f
-        }
-        if (size >= containerSize) {
-            return when {
-                childStart < 0f -> childStart
-                childEnd > containerSize -> childEnd - containerSize
-                else -> 0f
-            }
-        }
-        return when {
-            childStart < 0f -> childStart
-            childEnd > containerSize -> childEnd - containerSize
-            else -> 0f
-        }
-    }
-}
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
@@ -3845,32 +3818,31 @@ fun ChatScreen() {
                         messageViewportTopPx = coordinates.boundsInWindow().top
                     }
             ) {
-                CompositionLocalProvider(LocalBringIntoViewSpec provides MinimalChatBringIntoViewSpec) {
-                    LazyColumn(
-                        state = listState,
-                        userScrollEnabled = true,
-                        modifier = Modifier
-                            .then(
-                                if (enableStreamingScrollLock) {
-                                    Modifier.nestedScroll(streamingDirectionLock)
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .fillMaxSize()
-                            .then(
-                                if (shouldRevealMessageList) {
-                                    Modifier
-                                } else {
-                                    Modifier.graphicsLayer(alpha = 0f)
-                                }
-                            ),
-                        contentPadding = PaddingValues(
-                            top = topBarReservedHeight,
-                            bottom = with(density) { bottomBarHeightPx.toDp() } +
-                                BOTTOM_OVERLAY_CONTENT_CLEARANCE
+                LazyColumn(
+                    state = listState,
+                    userScrollEnabled = true,
+                    modifier = Modifier
+                        .then(
+                            if (enableStreamingScrollLock) {
+                                Modifier.nestedScroll(streamingDirectionLock)
+                            } else {
+                                Modifier
+                            }
                         )
-                    ) {
+                        .fillMaxSize()
+                        .then(
+                            if (shouldRevealMessageList) {
+                                Modifier
+                            } else {
+                                Modifier.graphicsLayer(alpha = 0f)
+                            }
+                        ),
+                    contentPadding = PaddingValues(
+                        top = topBarReservedHeight,
+                        bottom = with(density) { bottomBarHeightPx.toDp() } +
+                            BOTTOM_OVERLAY_CONTENT_CLEARANCE
+                    )
+                ) {
                         items(
                             items = messages,
                             key = { it.id },
@@ -4103,7 +4075,6 @@ fun ChatScreen() {
                             modifier = Modifier.size(18.dp)
                         )
                     }
-                }
             }
         }
     }
