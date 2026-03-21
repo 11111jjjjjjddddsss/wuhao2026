@@ -156,15 +156,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -234,39 +229,6 @@ private data class MessageSelectionOverlayState(
     val messageWidth: Int,
     val initialSelectionStart: Int
 )
-
-private class TouchAnchoredMessagePopupPositionProvider(
-    private val anchorX: Int,
-    private val anchorY: Int,
-    private val verticalSpacingPx: Int
-) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize
-    ): IntOffset {
-        val marginPx = 8
-        val x =
-            (anchorX - popupContentSize.width / 2)
-                .coerceAtLeast(marginPx)
-                .coerceAtMost(
-                    (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
-                )
-        val preferredTop = anchorY - popupContentSize.height - verticalSpacingPx
-        val y =
-            if (preferredTop >= marginPx) {
-                preferredTop
-            } else {
-                (anchorY + verticalSpacingPx)
-                    .coerceAtMost(
-                        (windowSize.height - popupContentSize.height - marginPx)
-                            .coerceAtLeast(marginPx)
-                    )
-            }
-        return IntOffset(x, y)
-    }
-}
 
 private object DisabledSelectionTextToolbar : TextToolbar {
     override val status: TextToolbarStatus
@@ -4211,6 +4173,10 @@ fun ChatScreen() {
                 messageActionMenuState?.let { state ->
                     MessageActionMenuPopup(
                         state = state,
+                        viewportLeftPx = messageViewportLeftPx,
+                        viewportTopPx = messageViewportTopPx,
+                        viewportWidthPx = messageViewportWidthPx,
+                        viewportHeightPx = messageViewportHeightPx,
                         onCopy = {
                             performButtonHaptic()
                             val selectionValue = messageSelectionValue
@@ -4240,7 +4206,7 @@ fun ChatScreen() {
                             messageActionMenuState = null
                             messageSelectionOverlayState = null
                             messageSelectionValue = null
-                        },
+                        }
                     )
                 }
 
@@ -4383,6 +4349,12 @@ private fun MessageActionMenuCardContent(
                 label = "复制",
                 onClick = onCopy
             )
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(18.dp)
+                    .background(Color.White.copy(alpha = 0.16f))
+            )
             MessageActionMenuButton(
                 label = "全选",
                 onClick = onSelectAll
@@ -4394,26 +4366,49 @@ private fun MessageActionMenuCardContent(
 @Composable
 private fun MessageActionMenuPopup(
     state: MessageActionMenuState,
+    viewportLeftPx: Float,
+    viewportTopPx: Float,
+    viewportWidthPx: Int,
+    viewportHeightPx: Int,
     onCopy: () -> Unit,
     onSelectAll: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val verticalSpacingPx = with(LocalDensity.current) { 10.dp.roundToPx() }
-    Popup(
-        popupPositionProvider = TouchAnchoredMessagePopupPositionProvider(
-            anchorX = state.anchorX,
-            anchorY = state.anchorY,
-            verticalSpacingPx = verticalSpacingPx
-        ),
-        properties = PopupProperties(
-            focusable = true,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-            clippingEnabled = false
-        ),
-        onDismissRequest = onDismiss
+    val density = LocalDensity.current
+    val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
+    val marginPx = with(density) { 8.dp.roundToPx() }
+    var cardSize by remember(state.messageId) { mutableStateOf(IntSize.Zero) }
+    val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
+    val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
+    val resolvedWidth = if (cardSize.width > 0) cardSize.width else with(density) { 148.dp.roundToPx() }
+    val resolvedHeight = if (cardSize.height > 0) cardSize.height else with(density) { 48.dp.roundToPx() }
+    val maxX = (viewportWidthPx - resolvedWidth - marginPx).coerceAtLeast(marginPx)
+    val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(marginPx, maxX)
+    val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
+    val fallbackBottom = (anchorLocalY + verticalSpacingPx)
+        .coerceAtMost((viewportHeightPx - resolvedHeight - marginPx).coerceAtLeast(marginPx))
+    val preferredY = if (preferredTop >= marginPx) preferredTop else fallbackBottom
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(40f)
+            .pointerInput(state.messageId) {
+                detectTapGestures(onTap = { onDismiss() })
+            }
     ) {
-        MessageActionMenuCardContent(onCopy = onCopy, onSelectAll = onSelectAll)
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(preferredX, preferredY) }
+                .onGloballyPositioned { coordinates ->
+                    cardSize = coordinates.size
+                }
+                .pointerInput(state.messageId) {
+                    detectTapGestures(onTap = {})
+                }
+        ) {
+            MessageActionMenuCardContent(onCopy = onCopy, onSelectAll = onSelectAll)
+        }
     }
 }
 
