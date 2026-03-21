@@ -293,27 +293,6 @@ private val headingRegex = Regex("^#{1,6}\\s+.*$")
 private val bulletRegex = Regex("^[*-]\\s+.*$")
 private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
 
-private fun estimateMessageSelectionStart(
-    content: String,
-    pressOffset: Offset,
-    availableWidthPx: Int,
-    textStyle: TextStyle,
-    textMeasurer: TextMeasurer,
-    horizontalPaddingPx: Int = 0
-): Int {
-    if (content.isEmpty() || availableWidthPx <= 0) return 0
-    val layout = textMeasurer.measure(
-        text = AnnotatedString(content),
-        style = textStyle,
-        constraints = Constraints(maxWidth = (availableWidthPx - horizontalPaddingPx * 2).coerceAtLeast(1)),
-        overflow = TextOverflow.Clip,
-        softWrap = true
-    )
-    val localX = (pressOffset.x - horizontalPaddingPx).coerceIn(0f, layout.size.width.toFloat().coerceAtLeast(0f))
-    val localY = pressOffset.y.coerceAtLeast(0f)
-    return layout.getOffsetForPosition(Offset(localX, localY)).coerceIn(0, content.length)
-}
-
 private val quoteRegex = Regex("^>\\s+.*$")
 private val linkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
 private val inlineMarkdownCache = object : LinkedHashMap<String, AnnotatedString>(INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
