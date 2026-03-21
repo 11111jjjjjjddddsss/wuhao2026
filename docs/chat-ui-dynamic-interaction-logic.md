@@ -199,6 +199,7 @@
 - 消息区只保留原生文本选区，不再弹任何自定义复制/全选框。
 - `ComposeFoundationFlags.isNewContextMenuEnabled = true`，保留新版原生菜单链。
 - `ComposeFoundationFlags.isSmartSelectionEnabled = false`，因为它会让长按起点更容易偏离用户手指落点，造成“按这里却飞到别处”的观感。
+- 点消息区外的空白位置时，应当直接取消当前消息选区。
 - 不要因为刚进入滚动态就清掉消息选区；用户可能需要保留选区后上下查看已选内容。
 - 手动滚动列表时，只隐藏消息文本工具条，不主动清空选区；不要让 `复制/全选` 菜单跟着列表滚到顶部或输入框附近。
 - 用户消息右对齐 owner 必须是最外层固定 `Row(... Arrangement.End)`，不要再让 `SelectionContainer` 直接决定用户气泡位置。

@@ -121,6 +121,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1285,6 +1286,7 @@ private fun AssistantMessageContent(
     strictLineReveal: Boolean = false,
     lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
+    selectionResetKey: Int = 0,
     modifier: Modifier = Modifier
 ) {
     val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
@@ -1329,8 +1331,10 @@ private fun AssistantMessageContent(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (selectionEnabled) {
-                SelectionContainer {
-                    AssistantMarkdownContent(content = content)
+                key(selectionResetKey) {
+                    SelectionContainer {
+                        AssistantMarkdownContent(content = content)
+                    }
                 }
             } else {
                 AssistantMarkdownContent(content = content)
@@ -2310,6 +2314,7 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
+    var messageSelectionDismissEpoch by remember { mutableIntStateOf(0) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
@@ -2567,6 +2572,7 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val textToolbar = LocalTextToolbar.current
+    val viewConfiguration = LocalViewConfiguration.current
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -3840,6 +3846,21 @@ fun ChatScreen() {
                             }
                         }
                     }
+                    .pointerInput(messageSelectionDismissEpoch) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(pass = PointerEventPass.Final, requireUnconsumed = false)
+                            val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
+                            if (
+                                up != null &&
+                                !down.isConsumed &&
+                                !up.isConsumed &&
+                                (up.uptimeMillis - down.uptimeMillis) < viewConfiguration.longPressTimeoutMillis
+                            ) {
+                                textToolbar.hide()
+                                messageSelectionDismissEpoch++
+                            }
+                        }
+                    }
                     .onSizeChanged { messageViewportHeightPx = it.height }
                     .onGloballyPositioned { coordinates ->
                         messageViewportTopPx = coordinates.boundsInWindow().top
@@ -3889,19 +3910,21 @@ fun ChatScreen() {
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
                                         CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                            AssistantMessageContent(
-                                                content = msg.content,
-                                                isStreaming = false,
-                                                selectionEnabled = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    } else {
-                                        CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.End
-                                            ) {
+                                        AssistantMessageContent(
+                                            content = msg.content,
+                                            isStreaming = false,
+                                            selectionEnabled = true,
+                                            selectionResetKey = messageSelectionDismissEpoch,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                } else {
+                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End
+                                        ) {
+                                            key(messageSelectionDismissEpoch) {
                                                 SelectionContainer {
                                                     Text(
                                                         text = msg.content,
@@ -3916,6 +3939,7 @@ fun ChatScreen() {
                                                 }
                                             }
                                         }
+                                    }
                                     }
                                 }
                             }
