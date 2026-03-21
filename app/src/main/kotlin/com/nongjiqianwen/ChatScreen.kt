@@ -240,7 +240,8 @@ private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
-private const val MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX = 10
+private const val MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX = 28
+private const val MESSAGE_SELECTION_SCROLL_RESET_MIN_MS = 80L
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
@@ -2799,6 +2800,7 @@ fun ChatScreen() {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
         var selectionResetForThisDrag = false
+        var manualScrollStartedAtMs = 0L
         snapshotFlow {
             SelectionScrollSnapshot(
                 firstVisibleItemIndex = listState.firstVisibleItemIndex,
@@ -2808,16 +2810,29 @@ fun ChatScreen() {
             )
         }.collect { snapshot ->
             val manualScrollActive = snapshot.isScrollInProgress && !snapshot.isProgrammaticScroll
+            if (manualScrollActive && manualScrollStartedAtMs == 0L) {
+                manualScrollStartedAtMs = SystemClock.uptimeMillis()
+            }
             val viewportMoved =
                 snapshot.firstVisibleItemIndex != previousIndex ||
                     kotlin.math.abs(snapshot.firstVisibleItemScrollOffset - previousOffset) >=
                     MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX
-            if (manualScrollActive && viewportMoved && !selectionResetForThisDrag) {
+            val manualScrollHeldLongEnough =
+                manualScrollStartedAtMs > 0L &&
+                    SystemClock.uptimeMillis() - manualScrollStartedAtMs >=
+                    MESSAGE_SELECTION_SCROLL_RESET_MIN_MS
+            if (
+                manualScrollActive &&
+                viewportMoved &&
+                manualScrollHeldLongEnough &&
+                !selectionResetForThisDrag
+            ) {
                 messageSelectionEpoch++
                 selectionResetForThisDrag = true
             }
             if (!manualScrollActive) {
                 selectionResetForThisDrag = false
+                manualScrollStartedAtMs = 0L
             }
             previousIndex = snapshot.firstVisibleItemIndex
             previousOffset = snapshot.firstVisibleItemScrollOffset
