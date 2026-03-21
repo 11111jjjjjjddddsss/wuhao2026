@@ -235,6 +235,39 @@ private data class MessageSelectionOverlayState(
     val initialSelectionStart: Int
 )
 
+private class TouchAnchoredMessagePopupPositionProvider(
+    private val anchorX: Int,
+    private val anchorY: Int,
+    private val verticalSpacingPx: Int
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val marginPx = 8
+        val x =
+            (anchorX - popupContentSize.width / 2)
+                .coerceAtLeast(marginPx)
+                .coerceAtMost(
+                    (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
+                )
+        val preferredTop = anchorY - popupContentSize.height - verticalSpacingPx
+        val y =
+            if (preferredTop >= marginPx) {
+                preferredTop
+            } else {
+                (anchorY + verticalSpacingPx)
+                    .coerceAtMost(
+                        (windowSize.height - popupContentSize.height - marginPx)
+                            .coerceAtLeast(marginPx)
+                    )
+            }
+        return IntOffset(x, y)
+    }
+}
+
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
@@ -916,6 +949,21 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
 
     flushParagraph()
     return blocks
+}
+
+private fun buildAssistantSelectableText(content: String): String {
+    val blocks = parseMarkdownBlocks(content)
+    if (blocks.isEmpty()) {
+        return getCachedAnnotatedString(normalizeAssistantText(content)).text
+    }
+    return blocks.joinToString(separator = "\n\n") { block ->
+        when (block) {
+            is MarkdownBlock.Heading -> getCachedAnnotatedString(block.text).text
+            is MarkdownBlock.Bullet -> "• ${getCachedAnnotatedString(block.text).text}"
+            is MarkdownBlock.Numbered -> "${block.number}. ${getCachedAnnotatedString(block.text).text}"
+            is MarkdownBlock.Paragraph -> getCachedAnnotatedString(block.text).text
+        }
+    }.trim()
 }
 
 private fun markdownInlineSpanStyle(
@@ -3958,11 +4006,6 @@ fun ChatScreen() {
                             key = { it.id },
                             contentType = { it.role }
                         ) { msg ->
-                            val menuStateForMessage =
-                                messageActionMenuState?.takeIf { it.messageId == msg.id }
-                            var messageContainerBounds by remember(msg.id) {
-                                mutableStateOf<Rect?>(null)
-                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -3973,9 +4016,6 @@ fun ChatScreen() {
                                         .align(Alignment.Center)
                                         .widthIn(max = chromeMaxWidth)
                                         .fillMaxWidth()
-                                        .onGloballyPositioned { coordinates ->
-                                            messageContainerBounds = coordinates.boundsInWindow()
-                                        }
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
                                         CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
@@ -4035,49 +4075,6 @@ fun ChatScreen() {
                                                 }
                                             }
                                         }
-                                    }
-                                    if (menuStateForMessage != null && messageContainerBounds != null) {
-                                        InlineAnchoredMessageActionMenu(
-                                            state = menuStateForMessage,
-                                            containerBounds = messageContainerBounds!!,
-                                            viewportLeftPx = messageViewportLeftPx,
-                                            viewportTopPx = messageViewportTopPx,
-                                            onCopy = {
-                                                performButtonHaptic()
-                                                clipboardManager.setText(AnnotatedString(menuStateForMessage.content))
-                                                textToolbar.hide()
-                                                messageActionMenuShownAtMs = 0L
-                                                messageActionMenuCardBounds = null
-                                                messageActionMenuIgnoreNextUp = false
-                                                messageActionMenuState = null
-                                                messageSelectionOverlayState = null
-                                            },
-                                            onSelectText = {
-                                                performButtonHaptic()
-                                                messageSelectionOverlayState = MessageSelectionOverlayState(
-                                                    messageId = menuStateForMessage.messageId,
-                                                    role = menuStateForMessage.role,
-                                                    content = menuStateForMessage.content,
-                                                    messageLeft = menuStateForMessage.messageLeft,
-                                                    messageTop = menuStateForMessage.messageTop,
-                                                    messageWidth = menuStateForMessage.messageWidth,
-                                                    initialSelectionStart = menuStateForMessage.initialSelectionStart
-                                                )
-                                                messageActionMenuShownAtMs = 0L
-                                                messageActionMenuCardBounds = null
-                                                messageActionMenuIgnoreNextUp = false
-                                                messageActionMenuState = null
-                                            },
-                                            onDismiss = {
-                                                messageActionMenuShownAtMs = 0L
-                                                messageActionMenuCardBounds = null
-                                                messageActionMenuIgnoreNextUp = false
-                                                messageActionMenuState = null
-                                            },
-                                            onBoundsChanged = { bounds ->
-                                                messageActionMenuCardBounds = bounds
-                                            }
-                                        )
                                     }
                                 }
                             }
@@ -4174,6 +4171,49 @@ fun ChatScreen() {
                             )
                         }
                     }
+                }
+
+                messageActionMenuState?.let { state ->
+                    MessageActionMenuPopup(
+                        state = state,
+                        viewportLeftPx = messageViewportLeftPx,
+                        viewportTopPx = messageViewportTopPx,
+                        onCopy = {
+                            performButtonHaptic()
+                            clipboardManager.setText(AnnotatedString(state.content))
+                            textToolbar.hide()
+                            messageActionMenuShownAtMs = 0L
+                            messageActionMenuCardBounds = null
+                            messageActionMenuIgnoreNextUp = false
+                            messageActionMenuState = null
+                            messageSelectionOverlayState = null
+                        },
+                        onSelectText = {
+                            performButtonHaptic()
+                            messageSelectionOverlayState = MessageSelectionOverlayState(
+                                messageId = state.messageId,
+                                role = state.role,
+                                content = state.content,
+                                messageLeft = state.messageLeft,
+                                messageTop = state.messageTop,
+                                messageWidth = state.messageWidth,
+                                initialSelectionStart = state.initialSelectionStart
+                            )
+                            messageActionMenuShownAtMs = 0L
+                            messageActionMenuCardBounds = null
+                            messageActionMenuIgnoreNextUp = false
+                            messageActionMenuState = null
+                        },
+                        onDismiss = {
+                            messageActionMenuShownAtMs = 0L
+                            messageActionMenuCardBounds = null
+                            messageActionMenuIgnoreNextUp = false
+                            messageActionMenuState = null
+                        },
+                        onBoundsChanged = { bounds ->
+                            messageActionMenuCardBounds = bounds
+                        }
+                    )
                 }
 
                 if (navigationBottomInset > 0.dp) {
@@ -4324,9 +4364,8 @@ private fun MessageActionMenuCardContent(
 }
 
 @Composable
-private fun InlineAnchoredMessageActionMenu(
+private fun MessageActionMenuPopup(
     state: MessageActionMenuState,
-    containerBounds: Rect,
     viewportLeftPx: Float,
     viewportTopPx: Float,
     onCopy: () -> Unit,
@@ -4334,49 +4373,38 @@ private fun InlineAnchoredMessageActionMenu(
     onDismiss: () -> Unit,
     onBoundsChanged: (Rect?) -> Unit
 ) {
-    BackHandler(onBack = onDismiss)
-    val density = LocalDensity.current
-    val marginPx = with(density) { 8.dp.roundToPx() }
-    val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
-    var cardSize by remember(state.messageId, state.anchorX, state.anchorY) {
-        mutableStateOf(IntSize.Zero)
-    }
-    val containerWidthPx = containerBounds.width.roundToInt().coerceAtLeast(1)
-    val anchorXInContainer =
-        ((state.messageLeft - containerBounds.left).roundToInt() + state.localAnchorX)
-            .coerceIn(0, containerWidthPx)
-    val cardX = remember(anchorXInContainer, containerWidthPx, cardSize, marginPx) {
-        (anchorXInContainer - cardSize.width / 2)
-            .coerceAtLeast(marginPx)
-            .coerceAtMost((containerWidthPx - cardSize.width - marginPx).coerceAtLeast(marginPx))
-    }
-    val canShowAbove =
-        containerBounds.top - cardSize.height - verticalSpacingPx >= viewportTopPx + marginPx
-    val cardY = if (canShowAbove) {
-        -cardSize.height - verticalSpacingPx
-    } else {
-        containerBounds.height.roundToInt() + verticalSpacingPx
-    }
-
-    MessageActionMenuCardContent(
-        modifier = Modifier
-            .offset { IntOffset(cardX, cardY) }
-            .onSizeChanged { cardSize = it }
-            .onGloballyPositioned { coordinates ->
-                val bounds = coordinates.boundsInWindow()
-                onBoundsChanged(
-                    Rect(
-                        left = bounds.left - viewportLeftPx,
-                        top = bounds.top - viewportTopPx,
-                        right = bounds.right - viewportLeftPx,
-                        bottom = bounds.bottom - viewportTopPx
+    val verticalSpacingPx = with(LocalDensity.current) { 10.dp.roundToPx() }
+    Popup(
+        popupPositionProvider = TouchAnchoredMessagePopupPositionProvider(
+            anchorX = state.anchorX,
+            anchorY = state.anchorY,
+            verticalSpacingPx = verticalSpacingPx
+        ),
+        properties = PopupProperties(
+            focusable = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            clippingEnabled = false
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        MessageActionMenuCardContent(
+            modifier = Modifier
+                .onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInWindow()
+                    onBoundsChanged(
+                        Rect(
+                            left = bounds.left - viewportLeftPx,
+                            top = bounds.top - viewportTopPx,
+                            right = bounds.right - viewportLeftPx,
+                            bottom = bounds.bottom - viewportTopPx
+                        )
                     )
-                )
-            }
-            .zIndex(3f),
-        onCopy = onCopy,
-        onSelectText = onSelectText
-    )
+                },
+            onCopy = onCopy,
+            onSelectText = onSelectText
+        )
+    }
 }
 
 @Composable
@@ -4487,6 +4515,7 @@ private fun SelectableAssistantMessageBody(
     onLongPressMessage: (MessageActionMenuState) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val selectableContent = remember(content) { buildAssistantSelectableText(content) }
     var bounds by remember(content) { mutableStateOf<Rect?>(null) }
     var lastPressOffset by remember(content) { mutableStateOf<Offset?>(null) }
     val textMeasurer = rememberTextMeasurer()
@@ -4515,7 +4544,7 @@ private fun SelectableAssistantMessageBody(
                         MessageActionMenuState(
                             messageId = "assistant:${content.hashCode()}",
                             role = ChatRole.ASSISTANT,
-                            content = content,
+                            content = selectableContent,
                             anchorX = (rect.left + syntheticPressOffset.x).roundToInt(),
                             anchorY = (rect.top + syntheticPressOffset.y).roundToInt(),
                             localAnchorX = syntheticPressOffset.x.roundToInt(),
@@ -4524,7 +4553,7 @@ private fun SelectableAssistantMessageBody(
                             messageTop = rect.top.roundToInt(),
                             messageWidth = rect.width.roundToInt(),
                             initialSelectionStart = estimateMessageSelectionStart(
-                                content = content,
+                                content = selectableContent,
                                 pressOffset = syntheticPressOffset,
                                 availableWidthPx = rect.width.roundToInt(),
                                 textStyle = paragraphStyle,
