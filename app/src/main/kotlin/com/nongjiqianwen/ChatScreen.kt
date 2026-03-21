@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -161,6 +162,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.Gson
@@ -2369,8 +2371,10 @@ fun ChatScreen() {
     var inputChromeRowHeightPx by remember(chatScopeId, startupInputChromeRowHeightEstimatePx) {
         mutableIntStateOf(startupInputChromeRowHeightEstimatePx)
     }
+    var messageViewportWidthPx by remember { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
     var streamBottomSpacerPx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
+    var messageViewportLeftPx by remember { mutableStateOf(0f) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
     var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
@@ -3921,9 +3925,14 @@ fun ChatScreen() {
                             }
                         }
                     }
-                    .onSizeChanged { messageViewportHeightPx = it.height }
+                    .onSizeChanged {
+                        messageViewportWidthPx = it.width
+                        messageViewportHeightPx = it.height
+                    }
                     .onGloballyPositioned { coordinates ->
-                        messageViewportTopPx = coordinates.boundsInWindow().top
+                        val bounds = coordinates.boundsInWindow()
+                        messageViewportLeftPx = bounds.left
+                        messageViewportTopPx = bounds.top
                     }
             ) {
                 LazyColumn(
@@ -4118,6 +4127,10 @@ fun ChatScreen() {
                 messageActionMenuState?.let { state ->
                     ChatMessageActionMenuPopup(
                         state = state,
+                        containerWidthPx = messageViewportWidthPx,
+                        containerHeightPx = messageViewportHeightPx,
+                        containerLeftPx = messageViewportLeftPx.roundToInt(),
+                        containerTopPx = messageViewportTopPx.roundToInt(),
                         onCopy = {
                             performButtonHaptic()
                             clipboardManager.setText(AnnotatedString(state.content))
@@ -4507,28 +4520,49 @@ private fun ChatMessageSelectionPopupOld(
 @Composable
 private fun ChatMessageActionMenuPopup(
     state: MessageActionMenuState,
+    containerWidthPx: Int,
+    containerHeightPx: Int,
+    containerLeftPx: Int,
+    containerTopPx: Int,
     onCopy: () -> Unit,
     onSelectText: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Popup(
-        popupPositionProvider = AnchoredMessagePopupPositionProvider(
-            anchorX = state.anchorX,
-            anchorY = state.anchorY,
-            verticalSpacingPx = 12
-        ),
-        properties = PopupProperties(
-            focusable = true,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-            clippingEnabled = false
-        ),
-        onDismissRequest = onDismiss
+    BackHandler(onBack = onDismiss)
+    val density = LocalDensity.current
+    val marginPx = with(density) { 8.dp.roundToPx() }
+    val verticalSpacingPx = with(density) { 12.dp.roundToPx() }
+    var popupSize by remember(state.messageId, state.anchorX, state.anchorY) {
+        mutableStateOf(IntSize.Zero)
+    }
+    val localAnchorX = (state.anchorX - containerLeftPx).coerceAtLeast(0)
+    val localAnchorY = (state.anchorY - containerTopPx).coerceAtLeast(0)
+    val popupX = remember(localAnchorX, containerWidthPx, popupSize, marginPx) {
+        localAnchorX
+            .coerceAtLeast(marginPx)
+            .coerceAtMost((containerWidthPx - popupSize.width - marginPx).coerceAtLeast(marginPx))
+    }
+    val popupY = remember(localAnchorY, containerHeightPx, popupSize, marginPx, verticalSpacingPx) {
+        val preferredY = localAnchorY - popupSize.height - verticalSpacingPx
+        if (preferredY >= marginPx) {
+            preferredY
+        } else {
+            (localAnchorY + verticalSpacingPx)
+                .coerceAtMost((containerHeightPx - popupSize.height - marginPx).coerceAtLeast(marginPx))
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(3f)
     ) {
         Surface(
             color = Color(0xFF111111),
             shape = RoundedCornerShape(14.dp),
-            shadowElevation = 10.dp
+            shadowElevation = 10.dp,
+            modifier = Modifier
+                .offset { IntOffset(popupX, popupY) }
+                .onSizeChanged { popupSize = it }
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
