@@ -2653,6 +2653,7 @@ fun ChatScreen() {
     var messageActionMenuState by remember { mutableStateOf<MessageActionMenuState?>(null) }
     var messageActionMenuShownAtMs by remember { mutableStateOf(0L) }
     var messageActionMenuCardBounds by remember { mutableStateOf<Rect?>(null) }
+    var messageActionMenuIgnoreNextUp by remember { mutableStateOf(false) }
     var messageSelectionOverlayState by remember { mutableStateOf<MessageSelectionOverlayState?>(null) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -3926,7 +3927,8 @@ fun ChatScreen() {
                         imeVisible,
                         messageActionMenuState?.messageId,
                         messageActionMenuShownAtMs,
-                        messageActionMenuCardBounds
+                        messageActionMenuCardBounds,
+                        messageActionMenuIgnoreNextUp
                     ) {
                         awaitEachGesture {
                             awaitFirstDown(pass = PointerEventPass.Final)
@@ -3938,6 +3940,10 @@ fun ChatScreen() {
                                         keyboardController?.hide()
                                     }
                                     messageActionMenuState != null -> {
+                                        if (messageActionMenuIgnoreNextUp) {
+                                            messageActionMenuIgnoreNextUp = false
+                                            return@awaitEachGesture
+                                        }
                                         val elapsed =
                                             SystemClock.uptimeMillis() - messageActionMenuShownAtMs
                                         val tappedCard =
@@ -4027,6 +4033,7 @@ fun ChatScreen() {
                                                             messageSelectionOverlayState = null
                                                             messageActionMenuShownAtMs = SystemClock.uptimeMillis()
                                                             messageActionMenuCardBounds = null
+                                                            messageActionMenuIgnoreNextUp = true
                                                             messageActionMenuState = menuState.copy(messageId = msg.id)
                                                         }
                                                     )
@@ -4056,6 +4063,7 @@ fun ChatScreen() {
                                                             messageSelectionOverlayState = null
                                                             messageActionMenuShownAtMs = SystemClock.uptimeMillis()
                                                             messageActionMenuCardBounds = null
+                                                            messageActionMenuIgnoreNextUp = true
                                                             messageActionMenuState = menuState.copy(messageId = msg.id)
                                                         }
                                                     )
@@ -4135,6 +4143,7 @@ fun ChatScreen() {
                             textToolbar.hide()
                             messageActionMenuShownAtMs = 0L
                             messageActionMenuCardBounds = null
+                            messageActionMenuIgnoreNextUp = false
                             messageActionMenuState = null
                             messageSelectionOverlayState = null
                         },
@@ -4151,11 +4160,13 @@ fun ChatScreen() {
                             )
                             messageActionMenuShownAtMs = 0L
                             messageActionMenuCardBounds = null
+                            messageActionMenuIgnoreNextUp = false
                             messageActionMenuState = null
                         },
                         onDismiss = {
                             messageActionMenuShownAtMs = 0L
                             messageActionMenuCardBounds = null
+                            messageActionMenuIgnoreNextUp = false
                             messageActionMenuState = null
                         },
                         onBoundsChanged = { bounds ->
