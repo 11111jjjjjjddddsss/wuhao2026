@@ -23,7 +23,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -32,7 +31,6 @@ import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -104,8 +102,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -113,7 +109,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -126,7 +121,6 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.TextToolbar
@@ -219,31 +213,12 @@ private data class MessageActionMenuState(
     val messageWidth: Int,
     val initialSelectionStart: Int
 )
-@Immutable
-private data class MessageSelectionOverlayState(
-    val messageId: String,
-    val role: ChatRole,
-    val content: String,
-    val messageLeft: Int,
-    val messageTop: Int,
-    val messageWidth: Int,
-    val initialSelectionStart: Int
+private data class MessageSelectionToolbarState(
+    val anchorX: Int,
+    val anchorY: Int,
+    val onCopyRequested: (() -> Unit)?,
+    val onSelectAllRequested: (() -> Unit)?
 )
-
-private object DisabledSelectionTextToolbar : TextToolbar {
-    override val status: TextToolbarStatus
-        get() = TextToolbarStatus.Hidden
-
-    override fun showMenu(
-        rect: Rect,
-        onCopyRequested: (() -> Unit)?,
-        onPasteRequested: (() -> Unit)?,
-        onCutRequested: (() -> Unit)?,
-        onSelectAllRequested: (() -> Unit)?
-    ) = Unit
-
-    override fun hide() = Unit
-}
 
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
@@ -324,8 +299,7 @@ private fun estimateMessageSelectionStart(
     availableWidthPx: Int,
     textStyle: TextStyle,
     textMeasurer: TextMeasurer,
-    horizontalPaddingPx: Int = 0,
-    verticalPaddingPx: Int = 0
+    horizontalPaddingPx: Int = 0
 ): Int {
     if (content.isEmpty() || availableWidthPx <= 0) return 0
     val layout = textMeasurer.measure(
@@ -926,21 +900,6 @@ private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
 
     flushParagraph()
     return blocks
-}
-
-private fun buildAssistantSelectableText(content: String): String {
-    val blocks = parseMarkdownBlocks(content)
-    if (blocks.isEmpty()) {
-        return getCachedAnnotatedString(normalizeAssistantText(content)).text
-    }
-    return blocks.joinToString(separator = "\n\n") { block ->
-        when (block) {
-            is MarkdownBlock.Heading -> getCachedAnnotatedString(block.text).text
-            is MarkdownBlock.Bullet -> getCachedAnnotatedString(block.text).text
-            is MarkdownBlock.Numbered -> getCachedAnnotatedString(block.text).text
-            is MarkdownBlock.Paragraph -> getCachedAnnotatedString(block.text).text
-        }
-    }.trim()
 }
 
 private fun markdownInlineSpanStyle(
@@ -2363,9 +2322,13 @@ fun ChatScreen() {
     var inputChromeRowHeightPx by remember(chatScopeId, startupInputChromeRowHeightEstimatePx) {
         mutableIntStateOf(startupInputChromeRowHeightEstimatePx)
     }
+    var chatRootWidthPx by remember { mutableIntStateOf(0) }
+    var chatRootHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportWidthPx by remember { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
     var streamBottomSpacerPx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
+    var chatRootLeftPx by remember { mutableStateOf(0f) }
+    var chatRootTopPx by remember { mutableStateOf(0f) }
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
     var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
@@ -2634,12 +2597,46 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val clipboardManager = LocalClipboardManager.current
-    val textToolbar = LocalTextToolbar.current
-    var messageActionMenuState by remember { mutableStateOf<MessageActionMenuState?>(null) }
-    var messageSelectionOverlayState by remember { mutableStateOf<MessageSelectionOverlayState?>(null) }
-    var messageSelectionValue by remember { mutableStateOf<TextFieldValue?>(null) }
-    var selectionJustEnteredTick by remember { mutableIntStateOf(0) }
+    var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
+    var messageSelectionTouchAnchor by remember { mutableStateOf<Offset?>(null) }
+    var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
+    val messageSelectionTextToolbar = remember {
+        object : TextToolbar {
+            override val status: TextToolbarStatus
+                get() =
+                    if (messageSelectionToolbarState != null) {
+                        TextToolbarStatus.Shown
+                    } else {
+                        TextToolbarStatus.Hidden
+                    }
+
+            override fun showMenu(
+                rect: Rect,
+                onCopyRequested: (() -> Unit)?,
+                onPasteRequested: (() -> Unit)?,
+                onCutRequested: (() -> Unit)?,
+                onSelectAllRequested: (() -> Unit)?
+            ) {
+                val anchor =
+                    messageSelectionTouchAnchor ?: Offset(
+                        x = rect.center.x,
+                        y = rect.top
+                    )
+                messageSelectionToolbarState = MessageSelectionToolbarState(
+                    anchorX = anchor.x.roundToInt(),
+                    anchorY = anchor.y.roundToInt(),
+                    onCopyRequested = onCopyRequested,
+                    onSelectAllRequested = onSelectAllRequested
+                )
+                messageSelectionToolbarIgnoreNextUp = true
+            }
+
+            override fun hide() {
+                messageSelectionToolbarState = null
+                messageSelectionToolbarIgnoreNextUp = false
+            }
+        }
+    }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -2926,8 +2923,7 @@ fun ChatScreen() {
                 manualScrollHeldLongEnough &&
                 !toolbarHiddenForThisDrag
             ) {
-                textToolbar.hide()
-                messageActionMenuState = null
+                messageSelectionToolbarState = null
                 toolbarHiddenForThisDrag = true
             }
             if (!manualScrollActive) {
@@ -3686,6 +3682,15 @@ fun ChatScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(appCenterTint)
+            .onSizeChanged {
+                chatRootWidthPx = it.width
+                chatRootHeightPx = it.height
+            }
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                chatRootLeftPx = bounds.left
+                chatRootTopPx = bounds.top
+            }
     ) {
         val chromeMaxWidth: Dp = when {
             maxWidth >= 900.dp -> 900.dp
@@ -3905,9 +3910,7 @@ fun ChatScreen() {
                     .background(pageSurface)
                     .pointerInput(
                         imeVisible,
-                        messageActionMenuState?.messageId,
-                        messageSelectionOverlayState?.messageId,
-                        selectionJustEnteredTick
+                        messageSelectionToolbarState != null
                     ) {
                         awaitEachGesture {
                             awaitFirstDown(pass = PointerEventPass.Final)
@@ -3918,10 +3921,12 @@ fun ChatScreen() {
                                         focusManager.clearFocus(force = true)
                                         keyboardController?.hide()
                                     }
-                                    messageSelectionOverlayState != null &&
-                                        messageActionMenuState == null -> {
-                                        messageSelectionOverlayState = null
-                                        messageSelectionValue = null
+                                    messageSelectionToolbarState != null -> {
+                                        if (messageSelectionToolbarIgnoreNextUp) {
+                                            messageSelectionToolbarIgnoreNextUp = false
+                                        } else {
+                                            messageSelectionToolbarState = null
+                                        }
                                     }
                                 }
                             }
@@ -3979,101 +3984,26 @@ fun ChatScreen() {
                                         .fillMaxWidth()
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
-                                        CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                            val selectionState =
-                                                messageSelectionOverlayState?.takeIf { it.messageId == msg.id }
-                                            val selectionValue =
-                                                messageSelectionValue?.takeIf { selectionState != null }
-                                            Box(modifier = Modifier.fillMaxWidth()) {
-                                                if (selectionState != null && selectionValue != null) {
-                                                    InlineSelectableAssistantMessageBody(
-                                                        state = selectionState,
-                                                        value = selectionValue,
-                                                        onValueChange = { messageSelectionValue = it },
-                                                        textSelectionColors = chatSelectionColors,
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    )
-                                                } else {
-                                                    SelectableAssistantMessageBody(
-                                                        content = msg.content,
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        onLongPressMessage = { menuState ->
-                                                            performButtonHaptic()
-                                                            textToolbar.hide()
-                                                            val initialSelection = TextRange(
-                                                                start = menuState.initialSelectionStart
-                                                                    .coerceIn(0, menuState.content.length),
-                                                                end = (menuState.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
-                                                                    .coerceIn(0, menuState.content.length)
-                                                            )
-                                                            messageSelectionOverlayState = MessageSelectionOverlayState(
-                                                                messageId = msg.id,
-                                                                role = menuState.role,
-                                                                content = menuState.content,
-                                                                messageLeft = menuState.messageLeft,
-                                                                messageTop = menuState.messageTop,
-                                                                messageWidth = menuState.messageWidth,
-                                                                initialSelectionStart = initialSelection.start
-                                                            )
-                                                            messageSelectionValue = TextFieldValue(
-                                                                text = menuState.content,
-                                                                selection = initialSelection
-                                                            )
-                                                            messageActionMenuState = menuState.copy(messageId = msg.id)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
+                                        SelectableRenderedAssistantMessage(
+                                            content = msg.content,
+                                            textSelectionColors = chatSelectionColors,
+                                            textToolbar = messageSelectionTextToolbar,
+                                            onRecordLongPressAnchor = { offset ->
+                                                messageSelectionTouchAnchor = offset
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
                                     } else {
-                                        CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                            val selectionState =
-                                                messageSelectionOverlayState?.takeIf { it.messageId == msg.id }
-                                            val selectionValue =
-                                                messageSelectionValue?.takeIf { selectionState != null }
-                                            Box(modifier = Modifier.fillMaxWidth()) {
-                                                if (selectionState != null && selectionValue != null) {
-                                                    InlineSelectableUserMessageBubble(
-                                                        state = selectionState,
-                                                        value = selectionValue,
-                                                        onValueChange = { messageSelectionValue = it },
-                                                        textSelectionColors = chatSelectionColors,
-                                                        userBubbleMaxWidth = userBubbleMaxWidth,
-                                                        userBubbleColor = userBubbleColor
-                                                    )
-                                                } else {
-                                                    SelectableUserMessageBubble(
-                                                        content = msg.content,
-                                                        userBubbleMaxWidth = userBubbleMaxWidth,
-                                                        userBubbleColor = userBubbleColor,
-                                                        onLongPressMessage = { menuState ->
-                                                            performButtonHaptic()
-                                                            textToolbar.hide()
-                                                            val initialSelection = TextRange(
-                                                                start = menuState.initialSelectionStart
-                                                                    .coerceIn(0, menuState.content.length),
-                                                                end = (menuState.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
-                                                                    .coerceIn(0, menuState.content.length)
-                                                            )
-                                                            messageSelectionOverlayState = MessageSelectionOverlayState(
-                                                                messageId = msg.id,
-                                                                role = menuState.role,
-                                                                content = menuState.content,
-                                                                messageLeft = menuState.messageLeft,
-                                                                messageTop = menuState.messageTop,
-                                                                messageWidth = menuState.messageWidth,
-                                                                initialSelectionStart = initialSelection.start
-                                                            )
-                                                            messageSelectionValue = TextFieldValue(
-                                                                text = menuState.content,
-                                                                selection = initialSelection
-                                                            )
-                                                            messageActionMenuState = menuState.copy(messageId = msg.id)
-                                                        }
-                                                    )
-                                                }
+                                        SelectableRenderedUserMessageBubble(
+                                            content = msg.content,
+                                            textSelectionColors = chatSelectionColors,
+                                            textToolbar = messageSelectionTextToolbar,
+                                            userBubbleMaxWidth = userBubbleMaxWidth,
+                                            userBubbleColor = userBubbleColor,
+                                            onRecordLongPressAnchor = { offset ->
+                                                messageSelectionTouchAnchor = offset
                                             }
-                                        }
+                                        )
                                     }
                                 }
                             }
@@ -4172,46 +4102,6 @@ fun ChatScreen() {
                     }
                 }
 
-                messageActionMenuState?.let { state ->
-                    MessageActionMenuPopup(
-                        state = state,
-                        viewportLeftPx = messageViewportLeftPx,
-                        viewportTopPx = messageViewportTopPx,
-                        viewportWidthPx = messageViewportWidthPx,
-                        viewportHeightPx = messageViewportHeightPx,
-                        onCopy = {
-                            performButtonHaptic()
-                            val selectionValue = messageSelectionValue
-                            val selectedText =
-                                selectionValue?.let { value ->
-                                    val start = value.selection.start.coerceIn(0, value.text.length)
-                                    val end = value.selection.end.coerceIn(0, value.text.length)
-                                    value.text.substring(kotlin.math.min(start, end), kotlin.math.max(start, end))
-                                        .takeIf { it.isNotEmpty() }
-                                } ?: state.content
-                            clipboardManager.setText(AnnotatedString(selectedText))
-                            textToolbar.hide()
-                            messageActionMenuState = null
-                            messageSelectionOverlayState = null
-                            messageSelectionValue = null
-                        },
-                        onSelectAll = {
-                            performButtonHaptic()
-                            val current = messageSelectionValue
-                            if (current != null) {
-                                messageSelectionValue = current.copy(
-                                    selection = TextRange(0, current.text.length)
-                                )
-                            }
-                        },
-                        onDismiss = {
-                            messageActionMenuState = null
-                            messageSelectionOverlayState = null
-                            messageSelectionValue = null
-                        }
-                    )
-                }
-
                 if (navigationBottomInset > 0.dp) {
                     Box(
                         modifier = Modifier
@@ -4302,6 +4192,42 @@ fun ChatScreen() {
                         )
                     }
                 }
+            }
+
+            messageSelectionToolbarState?.let { state ->
+                MessageActionMenuPopup(
+                    state = MessageActionMenuState(
+                        messageId = "selection_toolbar",
+                        role = ChatRole.ASSISTANT,
+                        content = "",
+                        anchorX = state.anchorX,
+                        anchorY = state.anchorY,
+                        localAnchorX = 0,
+                        localAnchorY = 0,
+                        messageLeft = 0,
+                        messageTop = 0,
+                        messageWidth = 0,
+                        initialSelectionStart = 0
+                    ),
+                    viewportLeftPx = chatRootLeftPx,
+                    viewportTopPx = chatRootTopPx,
+                    viewportWidthPx = chatRootWidthPx,
+                    viewportHeightPx = chatRootHeightPx,
+                    onCopy = {
+                        performButtonHaptic()
+                        state.onCopyRequested?.invoke()
+                        messageSelectionToolbarState = null
+                        messageSelectionToolbarIgnoreNextUp = false
+                    },
+                    onSelectAll = {
+                        performButtonHaptic()
+                        state.onSelectAllRequested?.invoke()
+                    },
+                    onDismiss = {
+                        messageSelectionToolbarState = null
+                        messageSelectionToolbarIgnoreNextUp = false
+                    }
+                )
             }
         }
     }
@@ -4415,211 +4341,97 @@ private fun MessageActionMenuPopup(
 }
 
 @Composable
-private fun InlineSelectableAssistantMessageBody(
-    state: MessageSelectionOverlayState,
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    textSelectionColors: TextSelectionColors,
-    modifier: Modifier = Modifier
-) {
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(state.messageId, state.content) {
-        repeat(3) { withFrameNanos { } }
-        focusRequester.requestFocus()
-    }
-    CompositionLocalProvider(
-        LocalTextSelectionColors provides textSelectionColors,
-        LocalTextToolbar provides DisabledSelectionTextToolbar
-    ) {
-        BasicTextField(
-            value = value,
-            onValueChange = { onValueChange(it.copy(text = state.content)) },
-            modifier = modifier
-                .fillMaxWidth()
-                .focusRequester(focusRequester)
-                .focusable(),
-            readOnly = true,
-            enabled = true,
-            textStyle = assistantParagraphTextStyle(),
-            cursorBrush = SolidColor(Color.Black)
-        )
-    }
-}
-
-@Composable
-private fun InlineSelectableUserMessageBubble(
-    state: MessageSelectionOverlayState,
-    value: TextFieldValue,
-    onValueChange: (TextFieldValue) -> Unit,
-    textSelectionColors: TextSelectionColors,
-    userBubbleMaxWidth: Dp,
-    userBubbleColor: Color
-) {
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(state.messageId, state.content) {
-        repeat(3) { withFrameNanos { } }
-        focusRequester.requestFocus()
-    }
-    CompositionLocalProvider(
-        LocalTextSelectionColors provides textSelectionColors,
-        LocalTextToolbar provides DisabledSelectionTextToolbar
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            Box(
-                modifier = Modifier
-                    .widthIn(max = userBubbleMaxWidth)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(userBubbleColor)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) {
-                BasicTextField(
-                    value = value,
-                    onValueChange = { onValueChange(it.copy(text = state.content)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester)
-                        .focusable(),
-                    readOnly = true,
-                    enabled = true,
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color(0xFF161616)),
-                    cursorBrush = SolidColor(Color.Black)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SelectableAssistantMessageBody(
+private fun SelectableRenderedAssistantMessage(
     content: String,
-    onLongPressMessage: (MessageActionMenuState) -> Unit,
+    textSelectionColors: TextSelectionColors,
+    textToolbar: TextToolbar,
+    onRecordLongPressAnchor: (Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val selectableContent = remember(content) { buildAssistantSelectableText(content) }
     var bounds by remember(content) { mutableStateOf<Rect?>(null) }
-    var lastPressOffset by remember(content) { mutableStateOf<Offset?>(null) }
-    val textMeasurer = rememberTextMeasurer()
-    val paragraphStyle = assistantParagraphTextStyle()
     Box(
         modifier = modifier
             .onGloballyPositioned { coordinates ->
                 bounds = coordinates.boundsInWindow()
             }
             .pointerInput(content) {
-                detectTapGestures(
-                    onPress = { offset ->
-                        lastPressOffset = offset
-                        tryAwaitRelease()
-                    },
-                    onLongPress = {
-                        val rect = bounds ?: return@detectTapGestures
-                        val syntheticPressOffset =
-                            lastPressOffset ?: Offset(rect.width * 0.5f, rect.height * 0.5f)
-                        onLongPressMessage(
-                            MessageActionMenuState(
-                                messageId = "assistant:${content.hashCode()}",
-                                role = ChatRole.ASSISTANT,
-                                content = selectableContent,
-                                anchorX = (rect.left + syntheticPressOffset.x).roundToInt(),
-                                anchorY = (rect.top + syntheticPressOffset.y).roundToInt(),
-                                localAnchorX = syntheticPressOffset.x.roundToInt(),
-                                localAnchorY = syntheticPressOffset.y.roundToInt(),
-                                messageLeft = rect.left.roundToInt(),
-                                messageTop = rect.top.roundToInt(),
-                                messageWidth = rect.width.roundToInt(),
-                                initialSelectionStart = estimateMessageSelectionStart(
-                                    content = selectableContent,
-                                    pressOffset = syntheticPressOffset,
-                                    availableWidthPx = rect.width.roundToInt(),
-                                    textStyle = paragraphStyle,
-                                    textMeasurer = textMeasurer
-                                )
+                awaitEachGesture {
+                    val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                    val rect = bounds
+                    if (rect != null) {
+                        onRecordLongPressAnchor(
+                            Offset(
+                                x = rect.left + down.position.x,
+                                y = rect.top + down.position.y
                             )
                         )
                     }
-                )
+                    waitForUpOrCancellation(pass = PointerEventPass.Final)
+                }
             }
     ) {
-        AssistantMessageContent(
-            content = content,
-            isStreaming = false,
-            selectionEnabled = false,
-            modifier = Modifier.fillMaxWidth()
-        )
+        CompositionLocalProvider(
+            LocalTextSelectionColors provides textSelectionColors,
+            LocalTextToolbar provides textToolbar
+        ) {
+            AssistantMessageContent(
+                content = content,
+                isStreaming = false,
+                selectionEnabled = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
 @Composable
-private fun SelectableUserMessageBubble(
+private fun SelectableRenderedUserMessageBubble(
     content: String,
+    textSelectionColors: TextSelectionColors,
+    textToolbar: TextToolbar,
     userBubbleMaxWidth: Dp,
     userBubbleColor: Color,
-    onLongPressMessage: (MessageActionMenuState) -> Unit
+    onRecordLongPressAnchor: (Offset) -> Unit
 ) {
     var bounds by remember(content) { mutableStateOf<Rect?>(null) }
-    var lastPressOffset by remember(content) { mutableStateOf<Offset?>(null) }
-    val textMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val userTextStyle = MaterialTheme.typography.bodyLarge
-    val horizontalPaddingPx = with(density) { 14.dp.roundToPx() }
-    val verticalPaddingPx = with(density) { 10.dp.roundToPx() }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
-        Box {
-            Text(
-                text = content,
-                modifier = Modifier
-                    .widthIn(max = userBubbleMaxWidth)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(userBubbleColor)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-                    .onGloballyPositioned { coordinates ->
-                        bounds = coordinates.boundsInWindow()
-                    }
-                    .pointerInput(content) {
-                        detectTapGestures(
-                            onPress = { offset ->
-                                lastPressOffset = offset
-                                tryAwaitRelease()
-                            },
-                            onLongPress = {
-                                val rect = bounds ?: return@detectTapGestures
-                                val syntheticPressOffset =
-                                    lastPressOffset ?: Offset(rect.width * 0.5f, rect.height * 0.5f)
-                                onLongPressMessage(
-                                    MessageActionMenuState(
-                                        messageId = "user:${content.hashCode()}",
-                                        role = ChatRole.USER,
-                                        content = content,
-                                        anchorX = (rect.left + syntheticPressOffset.x).roundToInt(),
-                                        anchorY = (rect.top + syntheticPressOffset.y).roundToInt(),
-                                        localAnchorX = syntheticPressOffset.x.roundToInt(),
-                                        localAnchorY = syntheticPressOffset.y.roundToInt(),
-                                        messageLeft = rect.left.roundToInt(),
-                                        messageTop = rect.top.roundToInt(),
-                                        messageWidth = rect.width.roundToInt(),
-                                        initialSelectionStart = estimateMessageSelectionStart(
-                                            content = content,
-                                            pressOffset = syntheticPressOffset,
-                                            availableWidthPx = rect.width.roundToInt(),
-                                            textStyle = userTextStyle,
-                                            textMeasurer = textMeasurer,
-                                            horizontalPaddingPx = horizontalPaddingPx,
-                                            verticalPaddingPx = verticalPaddingPx
+        CompositionLocalProvider(
+            LocalTextSelectionColors provides textSelectionColors,
+            LocalTextToolbar provides textToolbar
+        ) {
+            SelectionContainer {
+                Text(
+                    text = content,
+                    modifier = Modifier
+                        .widthIn(max = userBubbleMaxWidth)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(userBubbleColor)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .onGloballyPositioned { coordinates ->
+                            bounds = coordinates.boundsInWindow()
+                        }
+                        .pointerInput(content) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                                val rect = bounds
+                                if (rect != null) {
+                                    onRecordLongPressAnchor(
+                                        Offset(
+                                            x = rect.left + down.position.x,
+                                            y = rect.top + down.position.y
                                         )
                                     )
-                                )
+                                }
+                                waitForUpOrCancellation(pass = PointerEventPass.Final)
                             }
-                        )
-                    },
-                style = userTextStyle,
-                color = Color(0xFF161616)
-            )
+                        },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color(0xFF161616)
+                )
+            }
         }
     }
 }
