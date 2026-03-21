@@ -261,7 +261,7 @@ private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 4
 private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 6
 private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180
 private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 620L
-private const val MESSAGE_SELECTION_INITIAL_CHARS = 18
+private const val MESSAGE_SELECTION_INITIAL_CHARS = 24
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -287,6 +287,7 @@ private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX = 28
+private const val MESSAGE_ACTION_MENU_DISMISS_GUARD_MS = 220L
 private const val MESSAGE_SELECTION_SCROLL_RESET_MIN_MS = 80L
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
@@ -2651,6 +2652,7 @@ fun ChatScreen() {
     val textToolbar = LocalTextToolbar.current
     var messageActionMenuState by remember { mutableStateOf<MessageActionMenuState?>(null) }
     var messageActionMenuShownAtMs by remember { mutableStateOf(0L) }
+    var messageActionMenuCardBounds by remember { mutableStateOf<Rect?>(null) }
     var messageSelectionOverlayState by remember { mutableStateOf<MessageSelectionOverlayState?>(null) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -2944,6 +2946,7 @@ fun ChatScreen() {
             ) {
                 textToolbar.hide()
                 messageActionMenuState = null
+                messageActionMenuCardBounds = null
                 toolbarHiddenForThisDrag = true
             }
             if (!manualScrollActive) {
@@ -3919,7 +3922,12 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(pageSurface)
-                    .pointerInput(imeVisible, messageActionMenuState?.messageId) {
+                    .pointerInput(
+                        imeVisible,
+                        messageActionMenuState?.messageId,
+                        messageActionMenuShownAtMs,
+                        messageActionMenuCardBounds
+                    ) {
                         awaitEachGesture {
                             awaitFirstDown(pass = PointerEventPass.Final)
                             val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
@@ -3930,8 +3938,18 @@ fun ChatScreen() {
                                         keyboardController?.hide()
                                     }
                                     messageActionMenuState != null -> {
-                                        messageActionMenuShownAtMs = 0L
-                                        messageActionMenuState = null
+                                        val elapsed =
+                                            SystemClock.uptimeMillis() - messageActionMenuShownAtMs
+                                        val tappedCard =
+                                            messageActionMenuCardBounds?.contains(up.position) == true
+                                        if (
+                                            elapsed >= MESSAGE_ACTION_MENU_DISMISS_GUARD_MS &&
+                                            !tappedCard
+                                        ) {
+                                            messageActionMenuShownAtMs = 0L
+                                            messageActionMenuCardBounds = null
+                                            messageActionMenuState = null
+                                        }
                                     }
                                 }
                             }
@@ -3992,8 +4010,6 @@ fun ChatScreen() {
                                         CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
                                             val selectionState =
                                                 messageSelectionOverlayState?.takeIf { it.messageId == msg.id }
-                                            val menuStateForMsg =
-                                                messageActionMenuState?.takeIf { it.messageId == msg.id }
                                             Box(modifier = Modifier.fillMaxWidth()) {
                                                 if (selectionState != null) {
                                                     InlineSelectableAssistantMessageBody(
@@ -4004,36 +4020,13 @@ fun ChatScreen() {
                                                 } else {
                                                     SelectableAssistantMessageBody(
                                                         content = msg.content,
-                                                        actionMenuState = menuStateForMsg,
                                                         modifier = Modifier.fillMaxWidth(),
-                                                        onCopyMessage = {
-                                                            performButtonHaptic()
-                                                            clipboardManager.setText(AnnotatedString(menuStateForMsg?.content.orEmpty()))
-                                                            textToolbar.hide()
-                                                            messageActionMenuShownAtMs = 0L
-                                                            messageActionMenuState = null
-                                                            messageSelectionOverlayState = null
-                                                        },
-                                                        onSelectTextFromMenu = {
-                                                            val currentState = menuStateForMsg ?: return@SelectableAssistantMessageBody
-                                                            performButtonHaptic()
-                                                            messageSelectionOverlayState = MessageSelectionOverlayState(
-                                                                messageId = currentState.messageId,
-                                                                role = currentState.role,
-                                                                content = currentState.content,
-                                                                messageLeft = currentState.messageLeft,
-                                                                messageTop = currentState.messageTop,
-                                                                messageWidth = currentState.messageWidth,
-                                                                initialSelectionStart = currentState.initialSelectionStart
-                                                            )
-                                                            messageActionMenuShownAtMs = 0L
-                                                            messageActionMenuState = null
-                                                        },
                                                         onLongPressMessage = { menuState ->
                                                             performButtonHaptic()
                                                             textToolbar.hide()
                                                             messageSelectionOverlayState = null
                                                             messageActionMenuShownAtMs = SystemClock.uptimeMillis()
+                                                            messageActionMenuCardBounds = null
                                                             messageActionMenuState = menuState.copy(messageId = msg.id)
                                                         }
                                                     )
@@ -4044,8 +4037,6 @@ fun ChatScreen() {
                                         CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
                                             val selectionState =
                                                 messageSelectionOverlayState?.takeIf { it.messageId == msg.id }
-                                            val menuStateForMsg =
-                                                messageActionMenuState?.takeIf { it.messageId == msg.id }
                                             Box(modifier = Modifier.fillMaxWidth()) {
                                                 if (selectionState != null) {
                                                     InlineSelectableUserMessageBubble(
@@ -4057,37 +4048,14 @@ fun ChatScreen() {
                                                 } else {
                                                     SelectableUserMessageBubble(
                                                         content = msg.content,
-                                                        actionMenuState = menuStateForMsg,
                                                         userBubbleMaxWidth = userBubbleMaxWidth,
                                                         userBubbleColor = userBubbleColor,
-                                                        onCopyMessage = {
-                                                            performButtonHaptic()
-                                                            clipboardManager.setText(AnnotatedString(menuStateForMsg?.content.orEmpty()))
-                                                            textToolbar.hide()
-                                                            messageActionMenuShownAtMs = 0L
-                                                            messageActionMenuState = null
-                                                            messageSelectionOverlayState = null
-                                                        },
-                                                        onSelectTextFromMenu = {
-                                                            val currentState = menuStateForMsg ?: return@SelectableUserMessageBubble
-                                                            performButtonHaptic()
-                                                            messageSelectionOverlayState = MessageSelectionOverlayState(
-                                                                messageId = currentState.messageId,
-                                                                role = currentState.role,
-                                                                content = currentState.content,
-                                                                messageLeft = currentState.messageLeft,
-                                                                messageTop = currentState.messageTop,
-                                                                messageWidth = currentState.messageWidth,
-                                                                initialSelectionStart = currentState.initialSelectionStart
-                                                            )
-                                                            messageActionMenuShownAtMs = 0L
-                                                            messageActionMenuState = null
-                                                        },
                                                         onLongPressMessage = { menuState ->
                                                             performButtonHaptic()
                                                             textToolbar.hide()
                                                             messageSelectionOverlayState = null
                                                             messageActionMenuShownAtMs = SystemClock.uptimeMillis()
+                                                            messageActionMenuCardBounds = null
                                                             messageActionMenuState = menuState.copy(messageId = msg.id)
                                                         }
                                                     )
@@ -4152,6 +4120,48 @@ fun ChatScreen() {
                             }
                         }
                     }
+                }
+
+                messageActionMenuState?.let { state ->
+                    AnchoredMessageActionMenuCardOverlay(
+                        state = state,
+                        containerWidthPx = messageViewportWidthPx,
+                        containerHeightPx = messageViewportHeightPx,
+                        containerLeftPx = messageViewportLeftPx,
+                        containerTopPx = messageViewportTopPx,
+                        onCopy = {
+                            performButtonHaptic()
+                            clipboardManager.setText(AnnotatedString(state.content))
+                            textToolbar.hide()
+                            messageActionMenuShownAtMs = 0L
+                            messageActionMenuCardBounds = null
+                            messageActionMenuState = null
+                            messageSelectionOverlayState = null
+                        },
+                        onSelectText = {
+                            performButtonHaptic()
+                            messageSelectionOverlayState = MessageSelectionOverlayState(
+                                messageId = state.messageId,
+                                role = state.role,
+                                content = state.content,
+                                messageLeft = state.messageLeft,
+                                messageTop = state.messageTop,
+                                messageWidth = state.messageWidth,
+                                initialSelectionStart = state.initialSelectionStart
+                            )
+                            messageActionMenuShownAtMs = 0L
+                            messageActionMenuCardBounds = null
+                            messageActionMenuState = null
+                        },
+                        onDismiss = {
+                            messageActionMenuShownAtMs = 0L
+                            messageActionMenuCardBounds = null
+                            messageActionMenuState = null
+                        },
+                        onBoundsChanged = { bounds ->
+                            messageActionMenuCardBounds = bounds
+                        }
+                    )
                 }
 
                 if (showWelcomePlaceholder) {
@@ -4578,7 +4588,7 @@ private fun ChatMessageSelectionPopupOld(
 }
 
 @Composable
-private fun ChatMessageActionMenuPopup(
+private fun ChatMessageActionMenuOverlay(
     state: MessageActionMenuState,
     containerWidthPx: Int,
     containerHeightPx: Int,
@@ -4598,7 +4608,7 @@ private fun ChatMessageActionMenuPopup(
     val localAnchorX = (state.anchorX - containerLeftPx).coerceAtLeast(0)
     val localAnchorY = (state.anchorY - containerTopPx).coerceAtLeast(0)
     val popupX = remember(localAnchorX, containerWidthPx, popupSize, marginPx) {
-        localAnchorX
+        (localAnchorX - popupSize.width / 2)
             .coerceAtLeast(marginPx)
             .coerceAtMost((containerWidthPx - popupSize.width - marginPx).coerceAtLeast(marginPx))
     }
@@ -4642,27 +4652,97 @@ private fun ChatMessageActionMenuPopup(
 }
 
 @Composable
+private fun AnchoredMessageActionMenuCardOverlay(
+    state: MessageActionMenuState,
+    containerWidthPx: Int,
+    containerHeightPx: Int,
+    containerLeftPx: Float,
+    containerTopPx: Float,
+    onCopy: () -> Unit,
+    onSelectText: () -> Unit,
+    onDismiss: () -> Unit,
+    onBoundsChanged: (Rect?) -> Unit
+) {
+    BackHandler(onBack = onDismiss)
+    val density = LocalDensity.current
+    val marginPx = with(density) { 8.dp.roundToPx() }
+    val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
+    var cardSize by remember(state.messageId, state.anchorX, state.anchorY) {
+        mutableStateOf(IntSize.Zero)
+    }
+    val localAnchorX = (state.anchorX - containerLeftPx).roundToInt().coerceAtLeast(0)
+    val localAnchorY = (state.anchorY - containerTopPx).roundToInt().coerceAtLeast(0)
+    val popupX = remember(localAnchorX, containerWidthPx, cardSize, marginPx) {
+        (localAnchorX - cardSize.width / 2)
+            .coerceAtLeast(marginPx)
+            .coerceAtMost((containerWidthPx - cardSize.width - marginPx).coerceAtLeast(marginPx))
+    }
+    val popupY =
+        remember(localAnchorY, containerHeightPx, cardSize, marginPx, verticalSpacingPx) {
+            val preferredY = localAnchorY - cardSize.height - verticalSpacingPx
+            if (preferredY >= marginPx) {
+                preferredY
+            } else {
+                (localAnchorY + verticalSpacingPx)
+                    .coerceAtMost(
+                        (containerHeightPx - cardSize.height - marginPx).coerceAtLeast(marginPx)
+                    )
+            }
+        }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(3f)
+    ) {
+        InlineMessageActionMenuCard(
+            modifier = Modifier
+                .offset { IntOffset(popupX, popupY) }
+                .onSizeChanged { cardSize = it }
+                .onGloballyPositioned { coordinates ->
+                    val bounds = coordinates.boundsInWindow()
+                    onBoundsChanged(
+                        Rect(
+                            left = bounds.left - containerLeftPx,
+                            top = bounds.top - containerTopPx,
+                            right = bounds.right - containerLeftPx,
+                            bottom = bounds.bottom - containerTopPx
+                        )
+                    )
+                }
+                .zIndex(3f),
+            onCopy = onCopy,
+            onSelectText = onSelectText
+        )
+    }
+}
+
+@Composable
 private fun InlineSelectableAssistantMessageBody(
     state: MessageSelectionOverlayState,
     textSelectionColors: TextSelectionColors,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
+    val initialSelection =
+        remember(state.messageId, state.content, state.initialSelectionStart) {
+            TextRange(
+                start = state.initialSelectionStart.coerceIn(0, state.content.length),
+                end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
+                    .coerceIn(0, state.content.length)
+            )
+        }
     var value by remember(state.messageId, state.content, state.initialSelectionStart) {
         mutableStateOf(
             TextFieldValue(
                 text = state.content,
-                selection = TextRange(
-                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
-                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
-                        .coerceIn(0, state.content.length)
-                )
+                selection = initialSelection
             )
         )
     }
-    LaunchedEffect(state.messageId) {
-        withFrameNanos { }
+    LaunchedEffect(state.messageId, state.content, initialSelection) {
+        repeat(3) { withFrameNanos { } }
         focusRequester.requestFocus()
+        value = TextFieldValue(text = state.content, selection = initialSelection)
     }
     CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
         BasicTextField(
@@ -4688,21 +4768,26 @@ private fun InlineSelectableUserMessageBubble(
     userBubbleColor: Color
 ) {
     val focusRequester = remember { FocusRequester() }
+    val initialSelection =
+        remember(state.messageId, state.content, state.initialSelectionStart) {
+            TextRange(
+                start = state.initialSelectionStart.coerceIn(0, state.content.length),
+                end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
+                    .coerceIn(0, state.content.length)
+            )
+        }
     var value by remember(state.messageId, state.content, state.initialSelectionStart) {
         mutableStateOf(
             TextFieldValue(
                 text = state.content,
-                selection = TextRange(
-                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
-                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
-                        .coerceIn(0, state.content.length)
-                )
+                selection = initialSelection
             )
         )
     }
-    LaunchedEffect(state.messageId) {
-        repeat(2) { withFrameNanos { } }
+    LaunchedEffect(state.messageId, state.content, initialSelection) {
+        repeat(3) { withFrameNanos { } }
         focusRequester.requestFocus()
+        value = TextFieldValue(text = state.content, selection = initialSelection)
     }
     CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
         Row(
@@ -4736,9 +4821,6 @@ private fun InlineSelectableUserMessageBubble(
 @Composable
 private fun SelectableAssistantMessageBody(
     content: String,
-    actionMenuState: MessageActionMenuState?,
-    onCopyMessage: () -> Unit,
-    onSelectTextFromMenu: () -> Unit,
     onLongPressMessage: (MessageActionMenuState) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -4746,8 +4828,6 @@ private fun SelectableAssistantMessageBody(
     var lastPressOffset by remember(content) { mutableStateOf<Offset?>(null) }
     val textMeasurer = rememberTextMeasurer()
     val paragraphStyle = assistantParagraphTextStyle()
-    val density = LocalDensity.current
-    var menuCardSize by remember(content) { mutableStateOf(IntSize.Zero) }
     Box(
         modifier = modifier
             .onGloballyPositioned { coordinates ->
@@ -4792,33 +4872,6 @@ private fun SelectableAssistantMessageBody(
                 }
             )
     ) {
-        actionMenuState?.let { state ->
-            val rect = bounds
-            if (rect != null) {
-                val marginPx = with(density) { 8.dp.roundToPx() }
-                val verticalSpacingPx = with(density) { 12.dp.roundToPx() }
-                val localX = state.localAnchorX
-                val localY = state.localAnchorY
-                val menuX =
-                    localX.coerceAtLeast(marginPx)
-                        .coerceAtMost((rect.width.roundToInt() - menuCardSize.width - marginPx).coerceAtLeast(marginPx))
-                val preferredY = localY - menuCardSize.height - verticalSpacingPx
-                val menuY = if (preferredY >= -menuCardSize.height) {
-                    preferredY
-                } else {
-                    (localY + verticalSpacingPx)
-                        .coerceAtMost((rect.height.roundToInt() - menuCardSize.height - marginPx).coerceAtLeast(marginPx))
-                }
-                InlineMessageActionMenuCard(
-                    modifier = Modifier
-                        .offset { IntOffset(menuX, menuY) }
-                        .onSizeChanged { menuCardSize = it }
-                        .zIndex(2f),
-                    onCopy = onCopyMessage,
-                    onSelectText = onSelectTextFromMenu
-                )
-            }
-        }
         AssistantMessageContent(
             content = content,
             isStreaming = false,
@@ -4831,11 +4884,8 @@ private fun SelectableAssistantMessageBody(
 @Composable
 private fun SelectableUserMessageBubble(
     content: String,
-    actionMenuState: MessageActionMenuState?,
     userBubbleMaxWidth: Dp,
     userBubbleColor: Color,
-    onCopyMessage: () -> Unit,
-    onSelectTextFromMenu: () -> Unit,
     onLongPressMessage: (MessageActionMenuState) -> Unit
 ) {
     var bounds by remember(content) { mutableStateOf<Rect?>(null) }
@@ -4845,39 +4895,11 @@ private fun SelectableUserMessageBubble(
     val userTextStyle = MaterialTheme.typography.bodyLarge
     val horizontalPaddingPx = with(density) { 14.dp.roundToPx() }
     val verticalPaddingPx = with(density) { 10.dp.roundToPx() }
-    var menuCardSize by remember(content) { mutableStateOf(IntSize.Zero) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
         Box {
-            actionMenuState?.let { state ->
-                val rect = bounds
-                if (rect != null) {
-                    val marginPx = with(density) { 8.dp.roundToPx() }
-                    val verticalSpacingPx = with(density) { 12.dp.roundToPx() }
-                    val localX = state.localAnchorX
-                    val localY = state.localAnchorY
-                    val menuX =
-                        localX.coerceAtLeast(marginPx)
-                            .coerceAtMost((rect.width.roundToInt() - menuCardSize.width - marginPx).coerceAtLeast(marginPx))
-                    val preferredY = localY - menuCardSize.height - verticalSpacingPx
-                    val menuY = if (preferredY >= -menuCardSize.height) {
-                        preferredY
-                    } else {
-                        (localY + verticalSpacingPx)
-                            .coerceAtMost((rect.height.roundToInt() - menuCardSize.height - marginPx).coerceAtLeast(marginPx))
-                    }
-                    InlineMessageActionMenuCard(
-                        modifier = Modifier
-                            .offset { IntOffset(menuX, menuY) }
-                            .onSizeChanged { menuCardSize = it }
-                            .zIndex(2f),
-                        onCopy = onCopyMessage,
-                        onSelectText = onSelectTextFromMenu
-                    )
-                }
-            }
             Text(
                 text = content,
             modifier = Modifier
