@@ -183,6 +183,13 @@ private data class LocalBottomViewport(
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int
 )
+@Immutable
+private data class SelectionScrollSnapshot(
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemScrollOffset: Int,
+    val isScrollInProgress: Boolean,
+    val isProgrammaticScroll: Boolean
+)
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
     data class Bullet(val text: String) : MarkdownBlock
@@ -233,6 +240,7 @@ private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
+private const val MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX = 10
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
@@ -2788,15 +2796,32 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(listState) {
-        var manualScrollActive = false
-        snapshotFlow { listState.isScrollInProgress to programmaticScroll }
-            .collect { (scrollInProgress, isProgrammaticScroll) ->
-                val nextManualScrollActive = scrollInProgress && !isProgrammaticScroll
-                if (nextManualScrollActive && !manualScrollActive) {
-                    messageSelectionEpoch++
-                }
-                manualScrollActive = nextManualScrollActive
+        var previousIndex = listState.firstVisibleItemIndex
+        var previousOffset = listState.firstVisibleItemScrollOffset
+        var selectionResetForThisDrag = false
+        snapshotFlow {
+            SelectionScrollSnapshot(
+                firstVisibleItemIndex = listState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
+                isScrollInProgress = listState.isScrollInProgress,
+                isProgrammaticScroll = programmaticScroll
+            )
+        }.collect { snapshot ->
+            val manualScrollActive = snapshot.isScrollInProgress && !snapshot.isProgrammaticScroll
+            val viewportMoved =
+                snapshot.firstVisibleItemIndex != previousIndex ||
+                    kotlin.math.abs(snapshot.firstVisibleItemScrollOffset - previousOffset) >=
+                    MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX
+            if (manualScrollActive && viewportMoved && !selectionResetForThisDrag) {
+                messageSelectionEpoch++
+                selectionResetForThisDrag = true
             }
+            if (!manualScrollActive) {
+                selectionResetForThisDrag = false
+            }
+            previousIndex = snapshot.firstVisibleItemIndex
+            previousOffset = snapshot.firstVisibleItemScrollOffset
+        }
     }
 
     LaunchedEffect(
