@@ -2641,6 +2641,7 @@ fun ChatScreen() {
     val clipboardManager = LocalClipboardManager.current
     val textToolbar = LocalTextToolbar.current
     var messageActionMenuState by remember { mutableStateOf<MessageActionMenuState?>(null) }
+    var messageActionMenuShownAtMs by remember { mutableStateOf(0L) }
     var messageSelectionOverlayState by remember { mutableStateOf<MessageSelectionOverlayState?>(null) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -2926,6 +2927,10 @@ fun ChatScreen() {
                 manualScrollActive &&
                 viewportMoved &&
                 manualScrollHeldLongEnough &&
+                (
+                    messageActionMenuShownAtMs == 0L ||
+                        SystemClock.uptimeMillis() - messageActionMenuShownAtMs >= 240L
+                    ) &&
                 !toolbarHiddenForThisDrag
             ) {
                 textToolbar.hide()
@@ -3977,13 +3982,14 @@ fun ChatScreen() {
                                                     content = msg.content,
                                                     modifier = Modifier.fillMaxWidth(),
                                                     onLongPressMessage = { menuState ->
-                                                        performButtonHaptic()
-                                                        textToolbar.hide()
-                                                        messageSelectionOverlayState = null
-                                                        messageActionMenuState = menuState.copy(messageId = msg.id)
-                                                    }
-                                                )
-                                            }
+                                                    performButtonHaptic()
+                                                    textToolbar.hide()
+                                                    messageSelectionOverlayState = null
+                                                    messageActionMenuShownAtMs = SystemClock.uptimeMillis()
+                                                    messageActionMenuState = menuState.copy(messageId = msg.id)
+                                                }
+                                            )
+                                        }
                                         }
                                     } else {
                                         CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
@@ -4002,13 +4008,14 @@ fun ChatScreen() {
                                                     userBubbleMaxWidth = userBubbleMaxWidth,
                                                     userBubbleColor = userBubbleColor,
                                                     onLongPressMessage = { menuState ->
-                                                        performButtonHaptic()
-                                                        textToolbar.hide()
-                                                        messageSelectionOverlayState = null
-                                                        messageActionMenuState = menuState.copy(messageId = msg.id)
-                                                    }
-                                                )
-                                            }
+                                                    performButtonHaptic()
+                                                    textToolbar.hide()
+                                                    messageSelectionOverlayState = null
+                                                    messageActionMenuShownAtMs = SystemClock.uptimeMillis()
+                                                    messageActionMenuState = menuState.copy(messageId = msg.id)
+                                                }
+                                            )
+                                        }
                                         }
                                     }
                                 }
@@ -4115,6 +4122,7 @@ fun ChatScreen() {
                             performButtonHaptic()
                             clipboardManager.setText(AnnotatedString(state.content))
                             textToolbar.hide()
+                            messageActionMenuShownAtMs = 0L
                             messageActionMenuState = null
                             messageSelectionOverlayState = null
                         },
@@ -4129,9 +4137,13 @@ fun ChatScreen() {
                                 messageWidth = state.messageWidth,
                                 initialSelectionStart = state.initialSelectionStart
                             )
+                            messageActionMenuShownAtMs = 0L
                             messageActionMenuState = null
                         },
-                        onDismiss = { messageActionMenuState = null }
+                        onDismiss = {
+                            messageActionMenuShownAtMs = 0L
+                            messageActionMenuState = null
+                        }
                     )
                 }
 
@@ -4246,7 +4258,7 @@ private fun MessageActionMenuPopupOld(
         properties = PopupProperties(
             focusable = true,
             dismissOnBackPress = true,
-            dismissOnClickOutside = true,
+            dismissOnClickOutside = false,
             clippingEnabled = false
         ),
         onDismissRequest = onDismiss
