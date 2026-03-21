@@ -342,7 +342,7 @@ private class AnchoredMessagePopupPositionProvider(
         popupContentSize: IntSize
     ): IntOffset {
         val margin = 8
-        val x = anchorX
+        val x = (anchorX - popupContentSize.width / 2)
             .coerceAtLeast(margin)
             .coerceAtMost((windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
         val preferredY = anchorY - popupContentSize.height - verticalSpacingPx
@@ -3925,10 +3925,7 @@ fun ChatScreen() {
                     .background(pageSurface)
                     .pointerInput(
                         imeVisible,
-                        messageActionMenuState?.messageId,
-                        messageActionMenuShownAtMs,
-                        messageActionMenuCardBounds,
-                        messageActionMenuIgnoreNextUp
+                        messageActionMenuState?.messageId
                     ) {
                         awaitEachGesture {
                             awaitFirstDown(pass = PointerEventPass.Final)
@@ -3938,24 +3935,6 @@ fun ChatScreen() {
                                     imeVisible -> {
                                         focusManager.clearFocus(force = true)
                                         keyboardController?.hide()
-                                    }
-                                    messageActionMenuState != null -> {
-                                        if (messageActionMenuIgnoreNextUp) {
-                                            messageActionMenuIgnoreNextUp = false
-                                            return@awaitEachGesture
-                                        }
-                                        val elapsed =
-                                            SystemClock.uptimeMillis() - messageActionMenuShownAtMs
-                                        val tappedCard =
-                                            messageActionMenuCardBounds?.contains(up.position) == true
-                                        if (
-                                            elapsed >= MESSAGE_ACTION_MENU_DISMISS_GUARD_MS &&
-                                            !tappedCard
-                                        ) {
-                                            messageActionMenuShownAtMs = 0L
-                                            messageActionMenuCardBounds = null
-                                            messageActionMenuState = null
-                                        }
                                     }
                                 }
                             }
@@ -4131,12 +4110,8 @@ fun ChatScreen() {
                 }
 
                 messageActionMenuState?.let { state ->
-                    AnchoredMessageActionMenuCardOverlay(
+                    ChatMessageActionMenuPopupOld(
                         state = state,
-                        containerWidthPx = messageViewportWidthPx,
-                        containerHeightPx = messageViewportHeightPx,
-                        containerLeftPx = messageViewportLeftPx,
-                        containerTopPx = messageViewportTopPx,
                         onCopy = {
                             performButtonHaptic()
                             clipboardManager.setText(AnnotatedString(state.content))
@@ -4168,9 +4143,6 @@ fun ChatScreen() {
                             messageActionMenuCardBounds = null
                             messageActionMenuIgnoreNextUp = false
                             messageActionMenuState = null
-                        },
-                        onBoundsChanged = { bounds ->
-                            messageActionMenuCardBounds = bounds
                         }
                     )
                 }
