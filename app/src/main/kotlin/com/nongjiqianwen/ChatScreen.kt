@@ -25,10 +25,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -100,12 +102,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -118,6 +124,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
@@ -127,6 +134,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
@@ -144,9 +152,15 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.google.gson.Gson
@@ -191,6 +205,28 @@ private data class SelectionScrollSnapshot(
     val isScrollInProgress: Boolean,
     val isProgrammaticScroll: Boolean
 )
+@Immutable
+private data class MessageActionMenuState(
+    val messageId: String,
+    val role: ChatRole,
+    val content: String,
+    val anchorX: Int,
+    val anchorY: Int,
+    val messageLeft: Int,
+    val messageTop: Int,
+    val messageWidth: Int,
+    val initialSelectionStart: Int
+)
+@Immutable
+private data class MessageSelectionOverlayState(
+    val messageId: String,
+    val role: ChatRole,
+    val content: String,
+    val messageLeft: Int,
+    val messageTop: Int,
+    val messageWidth: Int,
+    val initialSelectionStart: Int
+)
 
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
@@ -218,6 +254,7 @@ private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 4
 private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 6
 private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180
 private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 620L
+private const val MESSAGE_SELECTION_INITIAL_CHARS = 18
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -262,6 +299,68 @@ private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
 private val bulletRegex = Regex("^[*-]\\s+.*$")
 private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
+
+private fun estimateMessageSelectionStart(
+    content: String,
+    pressOffset: Offset,
+    availableWidthPx: Int,
+    textStyle: TextStyle,
+    textMeasurer: TextMeasurer,
+    horizontalPaddingPx: Int = 0,
+    verticalPaddingPx: Int = 0
+): Int {
+    if (content.isEmpty() || availableWidthPx <= 0) return 0
+    val layout = textMeasurer.measure(
+        text = AnnotatedString(content),
+        style = textStyle,
+        constraints = Constraints(maxWidth = (availableWidthPx - horizontalPaddingPx * 2).coerceAtLeast(1)),
+        overflow = TextOverflow.Clip,
+        softWrap = true
+    )
+    val localX = (pressOffset.x - horizontalPaddingPx).coerceIn(0f, layout.size.width.toFloat().coerceAtLeast(0f))
+    val localY = (pressOffset.y - verticalPaddingPx).coerceAtLeast(0f)
+    return layout.getOffsetForPosition(Offset(localX, localY)).coerceIn(0, content.length)
+}
+
+private class AnchoredMessagePopupPositionProvider(
+    private val anchorX: Int,
+    private val anchorY: Int,
+    private val verticalSpacingPx: Int
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val margin = 8
+        val x = anchorX
+            .coerceAtLeast(margin)
+            .coerceAtMost((windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
+        val preferredY = anchorY - popupContentSize.height - verticalSpacingPx
+        val y = if (preferredY >= margin) {
+            preferredY
+        } else {
+            (anchorY + verticalSpacingPx)
+                .coerceAtMost((windowSize.height - popupContentSize.height - margin).coerceAtLeast(margin))
+        }
+        return IntOffset(x, y)
+    }
+}
+
+private class AnchoredMessageSelectionPositionProvider(
+    private val left: Int,
+    private val top: Int
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        return IntOffset(left.coerceAtLeast(0), top.coerceAtLeast(0))
+    }
+}
 private val quoteRegex = Regex("^>\\s+.*$")
 private val linkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
 private val inlineMarkdownCache = object : LinkedHashMap<String, AnnotatedString>(INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
@@ -2539,7 +2638,10 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val clipboardManager = LocalClipboardManager.current
     val textToolbar = LocalTextToolbar.current
+    var messageActionMenuState by remember { mutableStateOf<MessageActionMenuState?>(null) }
+    var messageSelectionOverlayState by remember { mutableStateOf<MessageSelectionOverlayState?>(null) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -2827,6 +2929,7 @@ fun ChatScreen() {
                 !toolbarHiddenForThisDrag
             ) {
                 textToolbar.hide()
+                messageActionMenuState = null
                 toolbarHiddenForThisDrag = true
             }
             if (!manualScrollActive) {
@@ -3861,33 +3964,52 @@ fun ChatScreen() {
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
                                         CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                        AssistantMessageContent(
-                                            content = msg.content,
-                                            isStreaming = false,
-                                            selectionEnabled = true,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
-                                } else {
-                                    CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.End
-                                        ) {
-                                            SelectionContainer {
-                                                Text(
-                                                    text = msg.content,
-                                                    modifier = Modifier
-                                                        .widthIn(max = userBubbleMaxWidth)
-                                                        .clip(RoundedCornerShape(20.dp))
-                                                        .background(userBubbleColor)
-                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                                    style = MaterialTheme.typography.bodyLarge,
-                                                    color = Color(0xFF161616)
+                                            val selectionState =
+                                                messageSelectionOverlayState?.takeIf { it.messageId == msg.id }
+                                            if (selectionState != null) {
+                                                InlineSelectableAssistantMessageBody(
+                                                    state = selectionState,
+                                                    textSelectionColors = chatSelectionColors,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            } else {
+                                                SelectableAssistantMessageBody(
+                                                    content = msg.content,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    onLongPressMessage = { menuState ->
+                                                        performButtonHaptic()
+                                                        textToolbar.hide()
+                                                        messageSelectionOverlayState = null
+                                                        messageActionMenuState = menuState.copy(messageId = msg.id)
+                                                    }
                                                 )
                                             }
                                         }
-                                    }
+                                    } else {
+                                        CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
+                                            val selectionState =
+                                                messageSelectionOverlayState?.takeIf { it.messageId == msg.id }
+                                            if (selectionState != null) {
+                                                InlineSelectableUserMessageBubble(
+                                                    state = selectionState,
+                                                    textSelectionColors = chatSelectionColors,
+                                                    userBubbleMaxWidth = userBubbleMaxWidth,
+                                                    userBubbleColor = userBubbleColor
+                                                )
+                                            } else {
+                                                SelectableUserMessageBubble(
+                                                    content = msg.content,
+                                                    userBubbleMaxWidth = userBubbleMaxWidth,
+                                                    userBubbleColor = userBubbleColor,
+                                                    onLongPressMessage = { menuState ->
+                                                        performButtonHaptic()
+                                                        textToolbar.hide()
+                                                        messageSelectionOverlayState = null
+                                                        messageActionMenuState = menuState.copy(messageId = msg.id)
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -3986,6 +4108,33 @@ fun ChatScreen() {
                     }
                 }
 
+                messageActionMenuState?.let { state ->
+                    ChatMessageActionMenuPopup(
+                        state = state,
+                        onCopy = {
+                            performButtonHaptic()
+                            clipboardManager.setText(AnnotatedString(state.content))
+                            textToolbar.hide()
+                            messageActionMenuState = null
+                            messageSelectionOverlayState = null
+                        },
+                        onSelectText = {
+                            performButtonHaptic()
+                            messageSelectionOverlayState = MessageSelectionOverlayState(
+                                messageId = state.messageId,
+                                role = state.role,
+                                content = state.content,
+                                messageLeft = state.messageLeft,
+                                messageTop = state.messageTop,
+                                messageWidth = state.messageWidth,
+                                initialSelectionStart = state.initialSelectionStart
+                            )
+                            messageActionMenuState = null
+                        },
+                        onDismiss = { messageActionMenuState = null }
+                    )
+                }
+
                 if (navigationBottomInset > 0.dp) {
                     Box(
                         modifier = Modifier
@@ -4075,10 +4224,514 @@ fun ChatScreen() {
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                }
             }
         }
     }
 }
+
+@Composable
+private fun MessageActionMenuPopupOld(
+    state: MessageActionMenuState,
+    onCopy: () -> Unit,
+    onSelectText: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Popup(
+        popupPositionProvider = AnchoredMessagePopupPositionProvider(
+            anchorX = state.anchorX,
+            anchorY = state.anchorY,
+            verticalSpacingPx = 12
+        ),
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = false
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        Surface(
+            color = Color(0xFF111111),
+            shape = RoundedCornerShape(14.dp),
+            shadowElevation = 10.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                MessageActionMenuButton(
+                    label = "复制",
+                    onClick = onCopy
+                )
+                MessageActionMenuButton(
+                    label = "选择文字",
+                    onClick = onSelectText
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageActionMenuButton(
+    label: String,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.Transparent)
+            .pointerInput(label) {
+                detectTapGestures(onTap = { onClick() })
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun MessageSelectionPopup(
+    state: MessageSelectionOverlayState,
+    textSelectionColors: TextSelectionColors,
+    userBubbleColor: Color,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    var value by remember(state.messageId, state.content, state.initialSelectionStart) {
+        mutableStateOf(
+            TextFieldValue(
+                text = state.content,
+                selection = TextRange(
+                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
+                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
+                        .coerceIn(0, state.content.length)
+                )
+            )
+        )
+    }
+    LaunchedEffect(state.messageId) {
+        withFrameNanos { }
+        focusRequester.requestFocus()
+    }
+    Popup(
+        popupPositionProvider = AnchoredMessageSelectionPositionProvider(
+            left = state.messageLeft,
+            top = state.messageTop
+        ),
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = false
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+            val selectionWidth = with(LocalDensity.current) { state.messageWidth.toDp() }
+            if (state.role == ChatRole.USER) {
+                Box(
+                    modifier = Modifier
+                        .width(selectionWidth)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(userBubbleColor)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    BasicTextField(
+                        value = value,
+                        onValueChange = { value = it.copy(text = state.content) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        readOnly = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color(0xFF161616)),
+                        cursorBrush = SolidColor(Color.Black)
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .width(selectionWidth)
+                        .focusRequester(focusRequester)
+                ) {
+                    BasicTextField(
+                        value = value,
+                        onValueChange = { value = it.copy(text = state.content) },
+                        modifier = Modifier.fillMaxWidth(),
+                        readOnly = true,
+                        textStyle = assistantParagraphTextStyle(),
+                        cursorBrush = SolidColor(Color.Black)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageActionMenuPopupOld(
+    state: MessageActionMenuState,
+    onCopy: () -> Unit,
+    onSelectText: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Popup(
+        popupPositionProvider = AnchoredMessagePopupPositionProvider(
+            anchorX = state.anchorX,
+            anchorY = state.anchorY,
+            verticalSpacingPx = 12
+        ),
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = false
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        Surface(
+            color = Color(0xFF111111),
+            shape = RoundedCornerShape(14.dp),
+            shadowElevation = 10.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                MessageActionMenuButton(
+                    label = "全部复制",
+                    onClick = onCopy
+                )
+                MessageActionMenuButton(
+                    label = "选择文字",
+                    onClick = onSelectText
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageSelectionPopupOld(
+    state: MessageSelectionOverlayState,
+    textSelectionColors: TextSelectionColors,
+    userBubbleColor: Color,
+    onDismiss: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    var value by remember(state.messageId, state.content, state.initialSelectionStart) {
+        mutableStateOf(
+            TextFieldValue(
+                text = state.content,
+                selection = TextRange(
+                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
+                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
+                        .coerceIn(0, state.content.length)
+                )
+            )
+        )
+    }
+    LaunchedEffect(state.messageId) {
+        withFrameNanos { }
+        focusRequester.requestFocus()
+    }
+    Popup(
+        popupPositionProvider = AnchoredMessageSelectionPositionProvider(
+            left = state.messageLeft,
+            top = state.messageTop
+        ),
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = false
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+            val selectionWidth = with(LocalDensity.current) { state.messageWidth.toDp() }
+            if (state.role == ChatRole.USER) {
+                Box(
+                    modifier = Modifier
+                        .width(selectionWidth)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(userBubbleColor)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    BasicTextField(
+                        value = value,
+                        onValueChange = { value = it.copy(text = state.content) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        readOnly = true,
+                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color(0xFF161616)),
+                        cursorBrush = SolidColor(Color.Black)
+                    )
+                }
+            } else {
+                BasicTextField(
+                    value = value,
+                    onValueChange = { value = it.copy(text = state.content) },
+                    modifier = Modifier
+                        .width(selectionWidth)
+                        .focusRequester(focusRequester),
+                    readOnly = true,
+                    textStyle = assistantParagraphTextStyle(),
+                    cursorBrush = SolidColor(Color.Black)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageActionMenuPopup(
+    state: MessageActionMenuState,
+    onCopy: () -> Unit,
+    onSelectText: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Popup(
+        popupPositionProvider = AnchoredMessagePopupPositionProvider(
+            anchorX = state.anchorX,
+            anchorY = state.anchorY,
+            verticalSpacingPx = 12
+        ),
+        properties = PopupProperties(
+            focusable = true,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+            clippingEnabled = false
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        Surface(
+            color = Color(0xFF111111),
+            shape = RoundedCornerShape(14.dp),
+            shadowElevation = 10.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                MessageActionMenuButton(
+                    label = "全部复制",
+                    onClick = onCopy
+                )
+                MessageActionMenuButton(
+                    label = "选择文字",
+                    onClick = onSelectText
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineSelectableAssistantMessageBody(
+    state: MessageSelectionOverlayState,
+    textSelectionColors: TextSelectionColors,
+    modifier: Modifier = Modifier
+) {
+    val focusRequester = remember { FocusRequester() }
+    var value by remember(state.messageId, state.content, state.initialSelectionStart) {
+        mutableStateOf(
+            TextFieldValue(
+                text = state.content,
+                selection = TextRange(
+                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
+                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
+                        .coerceIn(0, state.content.length)
+                )
+            )
+        )
+    }
+    LaunchedEffect(state.messageId) {
+        withFrameNanos { }
+        focusRequester.requestFocus()
+    }
+    CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+        BasicTextField(
+            value = value,
+            onValueChange = { value = it.copy(text = state.content) },
+            modifier = modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester),
+            readOnly = true,
+            textStyle = assistantParagraphTextStyle(),
+            cursorBrush = SolidColor(Color.Black)
+        )
+    }
+}
+
+@Composable
+private fun InlineSelectableUserMessageBubble(
+    state: MessageSelectionOverlayState,
+    textSelectionColors: TextSelectionColors,
+    userBubbleMaxWidth: Dp,
+    userBubbleColor: Color
+) {
+    val focusRequester = remember { FocusRequester() }
+    var value by remember(state.messageId, state.content, state.initialSelectionStart) {
+        mutableStateOf(
+            TextFieldValue(
+                text = state.content,
+                selection = TextRange(
+                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
+                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
+                        .coerceIn(0, state.content.length)
+                )
+            )
+        )
+    }
+    LaunchedEffect(state.messageId) {
+        withFrameNanos { }
+        focusRequester.requestFocus()
+    }
+    CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = userBubbleMaxWidth)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(userBubbleColor)
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = { value = it.copy(text = state.content) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    readOnly = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color(0xFF161616)),
+                    cursorBrush = SolidColor(Color.Black)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectableAssistantMessageBody(
+    content: String,
+    onLongPressMessage: (MessageActionMenuState) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var bounds by remember(content) { mutableStateOf<Rect?>(null) }
+    val textMeasurer = rememberTextMeasurer()
+    val paragraphStyle = assistantParagraphTextStyle()
+    Box(
+        modifier = modifier
+            .onGloballyPositioned { coordinates ->
+                bounds = coordinates.boundsInWindow()
+            }
+            .pointerInput(content, bounds) {
+                detectTapGestures(
+                    onLongPress = { pressOffset ->
+                        val rect = bounds ?: return@detectTapGestures
+                        onLongPressMessage(
+                            MessageActionMenuState(
+                                messageId = "assistant:${content.hashCode()}",
+                                role = ChatRole.ASSISTANT,
+                                content = content,
+                                anchorX = (rect.left + pressOffset.x).roundToInt(),
+                                anchorY = (rect.top + pressOffset.y).roundToInt(),
+                                messageLeft = rect.left.roundToInt(),
+                                messageTop = rect.top.roundToInt(),
+                                messageWidth = rect.width.roundToInt(),
+                                initialSelectionStart = estimateMessageSelectionStart(
+                                    content = content,
+                                    pressOffset = pressOffset,
+                                    availableWidthPx = rect.width.roundToInt(),
+                                    textStyle = paragraphStyle,
+                                    textMeasurer = textMeasurer
+                                )
+                            )
+                        )
+                    }
+                )
+            }
+    ) {
+        AssistantMessageContent(
+            content = content,
+            isStreaming = false,
+            selectionEnabled = false,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun SelectableUserMessageBubble(
+    content: String,
+    userBubbleMaxWidth: Dp,
+    userBubbleColor: Color,
+    onLongPressMessage: (MessageActionMenuState) -> Unit
+) {
+    var bounds by remember(content) { mutableStateOf<Rect?>(null) }
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val userTextStyle = MaterialTheme.typography.bodyLarge
+    val horizontalPaddingPx = with(density) { 14.dp.roundToPx() }
+    val verticalPaddingPx = with(density) { 10.dp.roundToPx() }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
+        Text(
+            text = content,
+            modifier = Modifier
+                .widthIn(max = userBubbleMaxWidth)
+                .clip(RoundedCornerShape(20.dp))
+                .background(userBubbleColor)
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .onGloballyPositioned { coordinates ->
+                    bounds = coordinates.boundsInWindow()
+                }
+                .pointerInput(content, bounds) {
+                    detectTapGestures(
+                        onLongPress = { pressOffset ->
+                            val rect = bounds ?: return@detectTapGestures
+                            onLongPressMessage(
+                                MessageActionMenuState(
+                                    messageId = "user:${content.hashCode()}",
+                                    role = ChatRole.USER,
+                                    content = content,
+                                    anchorX = (rect.left + pressOffset.x).roundToInt(),
+                                    anchorY = (rect.top + pressOffset.y).roundToInt(),
+                                    messageLeft = rect.left.roundToInt(),
+                                    messageTop = rect.top.roundToInt(),
+                                    messageWidth = rect.width.roundToInt(),
+                                    initialSelectionStart = estimateMessageSelectionStart(
+                                        content = content,
+                                        pressOffset = pressOffset,
+                                        availableWidthPx = rect.width.roundToInt(),
+                                        textStyle = userTextStyle,
+                                        textMeasurer = textMeasurer,
+                                        horizontalPaddingPx = horizontalPaddingPx,
+                                        verticalPaddingPx = verticalPaddingPx
+                                    )
+                                )
+                            )
+                        }
+                    )
+                },
+            style = userTextStyle,
+            color = Color(0xFF161616)
+        )
+    }
 }
 
 private val FAKE_STREAM_TEXT = """
