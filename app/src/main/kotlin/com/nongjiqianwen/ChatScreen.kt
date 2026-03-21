@@ -23,11 +23,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -4683,32 +4685,34 @@ private fun SelectableAssistantMessageBody(
             .onGloballyPositioned { coordinates ->
                 bounds = coordinates.boundsInWindow()
             }
-            .pointerInput(content, bounds) {
-                detectTapGestures(
-                    onLongPress = { pressOffset ->
-                        val rect = bounds ?: return@detectTapGestures
-                        onLongPressMessage(
-                            MessageActionMenuState(
-                                messageId = "assistant:${content.hashCode()}",
-                                role = ChatRole.ASSISTANT,
+            .combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+                onLongClick = {
+                    val rect = bounds ?: return@combinedClickable
+                    val syntheticPressOffset = Offset(rect.width * 0.5f, rect.height * 0.5f)
+                    onLongPressMessage(
+                        MessageActionMenuState(
+                            messageId = "assistant:${content.hashCode()}",
+                            role = ChatRole.ASSISTANT,
+                            content = content,
+                            anchorX = rect.center.x.roundToInt(),
+                            anchorY = rect.top.roundToInt(),
+                            messageLeft = rect.left.roundToInt(),
+                            messageTop = rect.top.roundToInt(),
+                            messageWidth = rect.width.roundToInt(),
+                            initialSelectionStart = estimateMessageSelectionStart(
                                 content = content,
-                                anchorX = (rect.left + pressOffset.x).roundToInt(),
-                                anchorY = (rect.top + pressOffset.y).roundToInt(),
-                                messageLeft = rect.left.roundToInt(),
-                                messageTop = rect.top.roundToInt(),
-                                messageWidth = rect.width.roundToInt(),
-                                initialSelectionStart = estimateMessageSelectionStart(
-                                    content = content,
-                                    pressOffset = pressOffset,
-                                    availableWidthPx = rect.width.roundToInt(),
-                                    textStyle = paragraphStyle,
-                                    textMeasurer = textMeasurer
-                                )
+                                pressOffset = syntheticPressOffset,
+                                availableWidthPx = rect.width.roundToInt(),
+                                textStyle = paragraphStyle,
+                                textMeasurer = textMeasurer
                             )
                         )
-                    }
-                )
-            }
+                    )
+                }
+            )
     ) {
         AssistantMessageContent(
             content = content,
@@ -4746,34 +4750,36 @@ private fun SelectableUserMessageBubble(
                 .onGloballyPositioned { coordinates ->
                     bounds = coordinates.boundsInWindow()
                 }
-                .pointerInput(content, bounds) {
-                    detectTapGestures(
-                        onLongPress = { pressOffset ->
-                            val rect = bounds ?: return@detectTapGestures
-                            onLongPressMessage(
-                                MessageActionMenuState(
-                                    messageId = "user:${content.hashCode()}",
-                                    role = ChatRole.USER,
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                    onLongClick = {
+                        val rect = bounds ?: return@combinedClickable
+                        val syntheticPressOffset = Offset(rect.width * 0.5f, rect.height * 0.5f)
+                        onLongPressMessage(
+                            MessageActionMenuState(
+                                messageId = "user:${content.hashCode()}",
+                                role = ChatRole.USER,
+                                content = content,
+                                anchorX = rect.center.x.roundToInt(),
+                                anchorY = rect.top.roundToInt(),
+                                messageLeft = rect.left.roundToInt(),
+                                messageTop = rect.top.roundToInt(),
+                                messageWidth = rect.width.roundToInt(),
+                                initialSelectionStart = estimateMessageSelectionStart(
                                     content = content,
-                                    anchorX = (rect.left + pressOffset.x).roundToInt(),
-                                    anchorY = (rect.top + pressOffset.y).roundToInt(),
-                                    messageLeft = rect.left.roundToInt(),
-                                    messageTop = rect.top.roundToInt(),
-                                    messageWidth = rect.width.roundToInt(),
-                                    initialSelectionStart = estimateMessageSelectionStart(
-                                        content = content,
-                                        pressOffset = pressOffset,
-                                        availableWidthPx = rect.width.roundToInt(),
-                                        textStyle = userTextStyle,
-                                        textMeasurer = textMeasurer,
-                                        horizontalPaddingPx = horizontalPaddingPx,
-                                        verticalPaddingPx = verticalPaddingPx
-                                    )
+                                    pressOffset = syntheticPressOffset,
+                                    availableWidthPx = rect.width.roundToInt(),
+                                    textStyle = userTextStyle,
+                                    textMeasurer = textMeasurer,
+                                    horizontalPaddingPx = horizontalPaddingPx,
+                                    verticalPaddingPx = verticalPaddingPx
                                 )
                             )
-                        }
-                    )
-                },
+                        )
+                    }
+                ),
             style = userTextStyle,
             color = Color(0xFF161616)
         )
