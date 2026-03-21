@@ -4283,9 +4283,9 @@ private fun MessageActionMenuPopupOld(
             shape = RoundedCornerShape(14.dp),
             shadowElevation = 10.dp
         ) {
-            Row(
+            Column(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 MessageActionMenuButton(
                     label = "复制",
@@ -4678,6 +4678,7 @@ private fun SelectableAssistantMessageBody(
     modifier: Modifier = Modifier
 ) {
     var bounds by remember(content) { mutableStateOf<Rect?>(null) }
+    var lastPressOffset by remember(content) { mutableStateOf<Offset?>(null) }
     val textMeasurer = rememberTextMeasurer()
     val paragraphStyle = assistantParagraphTextStyle()
     Box(
@@ -4685,20 +4686,28 @@ private fun SelectableAssistantMessageBody(
             .onGloballyPositioned { coordinates ->
                 bounds = coordinates.boundsInWindow()
             }
+            .pointerInput(content) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                    lastPressOffset = down.position
+                    waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                }
+            }
             .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = {},
                 onLongClick = {
                     val rect = bounds ?: return@combinedClickable
-                    val syntheticPressOffset = Offset(rect.width * 0.5f, rect.height * 0.5f)
+                    val syntheticPressOffset =
+                        lastPressOffset ?: Offset(rect.width * 0.5f, rect.height * 0.5f)
                     onLongPressMessage(
                         MessageActionMenuState(
                             messageId = "assistant:${content.hashCode()}",
                             role = ChatRole.ASSISTANT,
                             content = content,
-                            anchorX = rect.center.x.roundToInt(),
-                            anchorY = rect.top.roundToInt(),
+                            anchorX = (rect.left + syntheticPressOffset.x).roundToInt(),
+                            anchorY = (rect.top + syntheticPressOffset.y).roundToInt(),
                             messageLeft = rect.left.roundToInt(),
                             messageTop = rect.top.roundToInt(),
                             messageWidth = rect.width.roundToInt(),
@@ -4731,6 +4740,7 @@ private fun SelectableUserMessageBubble(
     onLongPressMessage: (MessageActionMenuState) -> Unit
 ) {
     var bounds by remember(content) { mutableStateOf<Rect?>(null) }
+    var lastPressOffset by remember(content) { mutableStateOf<Offset?>(null) }
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val userTextStyle = MaterialTheme.typography.bodyLarge
@@ -4750,20 +4760,28 @@ private fun SelectableUserMessageBubble(
                 .onGloballyPositioned { coordinates ->
                     bounds = coordinates.boundsInWindow()
                 }
+                .pointerInput(content) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(pass = PointerEventPass.Initial)
+                        lastPressOffset = down.position
+                        waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                    }
+                }
                 .combinedClickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = {},
                     onLongClick = {
                         val rect = bounds ?: return@combinedClickable
-                        val syntheticPressOffset = Offset(rect.width * 0.5f, rect.height * 0.5f)
+                        val syntheticPressOffset =
+                            lastPressOffset ?: Offset(rect.width * 0.5f, rect.height * 0.5f)
                         onLongPressMessage(
                             MessageActionMenuState(
                                 messageId = "user:${content.hashCode()}",
                                 role = ChatRole.USER,
                                 content = content,
-                                anchorX = rect.center.x.roundToInt(),
-                                anchorY = rect.top.roundToInt(),
+                                anchorX = (rect.left + syntheticPressOffset.x).roundToInt(),
+                                anchorY = (rect.top + syntheticPressOffset.y).roundToInt(),
                                 messageLeft = rect.left.roundToInt(),
                                 messageTop = rect.top.roundToInt(),
                                 messageWidth = rect.width.roundToInt(),
