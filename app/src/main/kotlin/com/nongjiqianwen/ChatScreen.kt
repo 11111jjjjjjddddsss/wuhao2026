@@ -330,45 +330,6 @@ private fun estimateMessageSelectionStart(
     return layout.getOffsetForPosition(Offset(localX, localY)).coerceIn(0, content.length)
 }
 
-private class AnchoredMessagePopupPositionProvider(
-    private val anchorX: Int,
-    private val anchorY: Int,
-    private val verticalSpacingPx: Int
-) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize
-    ): IntOffset {
-        val margin = 8
-        val x = (anchorX - popupContentSize.width / 2)
-            .coerceAtLeast(margin)
-            .coerceAtMost((windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
-        val preferredY = anchorY - popupContentSize.height - verticalSpacingPx
-        val y = if (preferredY >= margin) {
-            preferredY
-        } else {
-            (anchorY + verticalSpacingPx)
-                .coerceAtMost((windowSize.height - popupContentSize.height - margin).coerceAtLeast(margin))
-        }
-        return IntOffset(x, y)
-    }
-}
-
-private class AnchoredMessageSelectionPositionProvider(
-    private val left: Int,
-    private val top: Int
-) : PopupPositionProvider {
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize
-    ): IntOffset {
-        return IntOffset(left.coerceAtLeast(0), top.coerceAtLeast(0))
-    }
-}
 private val quoteRegex = Regex("^>\\s+.*$")
 private val linkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
 private val inlineMarkdownCache = object : LinkedHashMap<String, AnnotatedString>(INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
@@ -3997,6 +3958,11 @@ fun ChatScreen() {
                             key = { it.id },
                             contentType = { it.role }
                         ) { msg ->
+                            val menuStateForMessage =
+                                messageActionMenuState?.takeIf { it.messageId == msg.id }
+                            var messageContainerBounds by remember(msg.id) {
+                                mutableStateOf<Rect?>(null)
+                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -4007,6 +3973,9 @@ fun ChatScreen() {
                                         .align(Alignment.Center)
                                         .widthIn(max = chromeMaxWidth)
                                         .fillMaxWidth()
+                                        .onGloballyPositioned { coordinates ->
+                                            messageContainerBounds = coordinates.boundsInWindow()
+                                        }
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
                                         CompositionLocalProvider(LocalTextSelectionColors provides chatSelectionColors) {
@@ -4067,6 +4036,49 @@ fun ChatScreen() {
                                             }
                                         }
                                     }
+                                    if (menuStateForMessage != null && messageContainerBounds != null) {
+                                        InlineAnchoredMessageActionMenu(
+                                            state = menuStateForMessage,
+                                            containerBounds = messageContainerBounds!!,
+                                            viewportLeftPx = messageViewportLeftPx,
+                                            viewportTopPx = messageViewportTopPx,
+                                            onCopy = {
+                                                performButtonHaptic()
+                                                clipboardManager.setText(AnnotatedString(menuStateForMessage.content))
+                                                textToolbar.hide()
+                                                messageActionMenuShownAtMs = 0L
+                                                messageActionMenuCardBounds = null
+                                                messageActionMenuIgnoreNextUp = false
+                                                messageActionMenuState = null
+                                                messageSelectionOverlayState = null
+                                            },
+                                            onSelectText = {
+                                                performButtonHaptic()
+                                                messageSelectionOverlayState = MessageSelectionOverlayState(
+                                                    messageId = menuStateForMessage.messageId,
+                                                    role = menuStateForMessage.role,
+                                                    content = menuStateForMessage.content,
+                                                    messageLeft = menuStateForMessage.messageLeft,
+                                                    messageTop = menuStateForMessage.messageTop,
+                                                    messageWidth = menuStateForMessage.messageWidth,
+                                                    initialSelectionStart = menuStateForMessage.initialSelectionStart
+                                                )
+                                                messageActionMenuShownAtMs = 0L
+                                                messageActionMenuCardBounds = null
+                                                messageActionMenuIgnoreNextUp = false
+                                                messageActionMenuState = null
+                                            },
+                                            onDismiss = {
+                                                messageActionMenuShownAtMs = 0L
+                                                messageActionMenuCardBounds = null
+                                                messageActionMenuIgnoreNextUp = false
+                                                messageActionMenuState = null
+                                            },
+                                            onBoundsChanged = { bounds ->
+                                                messageActionMenuCardBounds = bounds
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -4124,49 +4136,6 @@ fun ChatScreen() {
                             }
                         }
                     }
-                }
-
-                messageActionMenuState?.let { state ->
-                    ChatMessageActionMenuPopup(
-                        state = state,
-                        containerLeftPx = messageViewportLeftPx,
-                        containerTopPx = messageViewportTopPx,
-                        onCopy = {
-                            performButtonHaptic()
-                            clipboardManager.setText(AnnotatedString(state.content))
-                            textToolbar.hide()
-                            messageActionMenuShownAtMs = 0L
-                            messageActionMenuCardBounds = null
-                            messageActionMenuIgnoreNextUp = false
-                            messageActionMenuState = null
-                            messageSelectionOverlayState = null
-                        },
-                        onSelectText = {
-                            performButtonHaptic()
-                            messageSelectionOverlayState = MessageSelectionOverlayState(
-                                messageId = state.messageId,
-                                role = state.role,
-                                content = state.content,
-                                messageLeft = state.messageLeft,
-                                messageTop = state.messageTop,
-                                messageWidth = state.messageWidth,
-                                initialSelectionStart = state.initialSelectionStart
-                            )
-                            messageActionMenuShownAtMs = 0L
-                            messageActionMenuCardBounds = null
-                            messageActionMenuIgnoreNextUp = false
-                            messageActionMenuState = null
-                        },
-                        onDismiss = {
-                            messageActionMenuShownAtMs = 0L
-                            messageActionMenuCardBounds = null
-                            messageActionMenuIgnoreNextUp = false
-                            messageActionMenuState = null
-                        },
-                        onBoundsChanged = { bounds ->
-                            messageActionMenuCardBounds = bounds
-                        }
-                    )
                 }
 
                 if (showWelcomePlaceholder) {
@@ -4303,49 +4272,6 @@ fun ChatScreen() {
 }
 
 @Composable
-private fun MessageActionMenuPopupOld(
-    state: MessageActionMenuState,
-    onCopy: () -> Unit,
-    onSelectText: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    Popup(
-        popupPositionProvider = AnchoredMessagePopupPositionProvider(
-            anchorX = state.anchorX,
-            anchorY = state.anchorY,
-            verticalSpacingPx = 12
-        ),
-        properties = PopupProperties(
-            focusable = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            clippingEnabled = false
-        ),
-        onDismissRequest = onDismiss
-    ) {
-        Surface(
-            color = Color(0xFF111111),
-            shape = RoundedCornerShape(14.dp),
-            shadowElevation = 10.dp
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                MessageActionMenuButton(
-                    label = "复制",
-                    onClick = onCopy
-                )
-                MessageActionMenuButton(
-                    label = "选择文字",
-                    onClick = onSelectText
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun MessageActionMenuButton(
     label: String,
     onClick: () -> Unit
@@ -4398,366 +4324,11 @@ private fun MessageActionMenuCardContent(
 }
 
 @Composable
-private fun VisibleMessageActionMenuCard(
-    modifier: Modifier = Modifier,
-    onCopy: () -> Unit,
-    onSelectText: () -> Unit
-) {
-    Surface(
-        color = Color(0xFF111111),
-        shape = RoundedCornerShape(14.dp),
-        shadowElevation = 10.dp,
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            MessageActionMenuButton(label = "全部复制", onClick = onCopy)
-            MessageActionMenuButton(label = "选择文字", onClick = onSelectText)
-        }
-    }
-}
-
-@Composable
-private fun ChatMessageActionMenuPopup(
+private fun InlineAnchoredMessageActionMenu(
     state: MessageActionMenuState,
-    containerLeftPx: Float,
-    containerTopPx: Float,
-    onCopy: () -> Unit,
-    onSelectText: () -> Unit,
-    onDismiss: () -> Unit,
-    onBoundsChanged: (Rect?) -> Unit
-) {
-    Popup(
-        popupPositionProvider = AnchoredMessagePopupPositionProvider(
-            anchorX = state.anchorX,
-            anchorY = state.anchorY,
-            verticalSpacingPx = 12
-        ),
-        properties = PopupProperties(
-            focusable = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            clippingEnabled = false
-        ),
-        onDismissRequest = onDismiss
-    ) {
-        VisibleMessageActionMenuCard(
-            modifier = Modifier.onGloballyPositioned { coordinates ->
-                val bounds = coordinates.boundsInWindow()
-                onBoundsChanged(
-                    Rect(
-                        left = bounds.left - containerLeftPx,
-                        top = bounds.top - containerTopPx,
-                        right = bounds.right - containerLeftPx,
-                        bottom = bounds.bottom - containerTopPx
-                    )
-                )
-            },
-            onCopy = onCopy,
-            onSelectText = onSelectText
-        )
-    }
-}
-
-@Composable
-private fun InlineMessageActionMenuCard(
-    modifier: Modifier = Modifier,
-    onCopy: () -> Unit,
-    onSelectText: () -> Unit
-) {
-    Surface(
-        color = Color(0xFF111111),
-        shape = RoundedCornerShape(14.dp),
-        shadowElevation = 10.dp,
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            MessageActionMenuButton(
-                label = "全部复制",
-                onClick = onCopy
-            )
-            MessageActionMenuButton(
-                label = "选择文字",
-                onClick = onSelectText
-            )
-        }
-    }
-}
-
-@Composable
-private fun MessageSelectionPopup(
-    state: MessageSelectionOverlayState,
-    textSelectionColors: TextSelectionColors,
-    userBubbleColor: Color,
-    onDismiss: () -> Unit
-) {
-    val focusRequester = remember { FocusRequester() }
-    var value by remember(state.messageId, state.content, state.initialSelectionStart) {
-        mutableStateOf(
-            TextFieldValue(
-                text = state.content,
-                selection = TextRange(
-                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
-                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
-                        .coerceIn(0, state.content.length)
-                )
-            )
-        )
-    }
-    LaunchedEffect(state.messageId) {
-        repeat(2) { withFrameNanos { } }
-        focusRequester.requestFocus()
-    }
-    Popup(
-        popupPositionProvider = AnchoredMessageSelectionPositionProvider(
-            left = state.messageLeft,
-            top = state.messageTop
-        ),
-        properties = PopupProperties(
-            focusable = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            clippingEnabled = false
-        ),
-        onDismissRequest = onDismiss
-    ) {
-        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
-            val selectionWidth = with(LocalDensity.current) { state.messageWidth.toDp() }
-            if (state.role == ChatRole.USER) {
-                Box(
-                    modifier = Modifier
-                        .width(selectionWidth)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(userBubbleColor)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    BasicTextField(
-                        value = value,
-                        onValueChange = { value = it.copy(text = state.content) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        readOnly = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color(0xFF161616)),
-                        cursorBrush = SolidColor(Color.Black)
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .width(selectionWidth)
-                        .focusRequester(focusRequester)
-                ) {
-                    BasicTextField(
-                        value = value,
-                        onValueChange = { value = it.copy(text = state.content) },
-                        modifier = Modifier.fillMaxWidth(),
-                        readOnly = true,
-                        textStyle = assistantParagraphTextStyle(),
-                        cursorBrush = SolidColor(Color.Black)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChatMessageActionMenuPopupOld(
-    state: MessageActionMenuState,
-    containerLeftPx: Float,
-    containerTopPx: Float,
-    onCopy: () -> Unit,
-    onSelectText: () -> Unit,
-    onDismiss: () -> Unit,
-    onBoundsChanged: (Rect?) -> Unit
-) {
-    Popup(
-        popupPositionProvider = AnchoredMessagePopupPositionProvider(
-            anchorX = state.anchorX,
-            anchorY = state.anchorY,
-            verticalSpacingPx = 12
-        ),
-        properties = PopupProperties(
-            focusable = true,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            clippingEnabled = false
-        ),
-        onDismissRequest = onDismiss
-    ) {
-        Surface(
-            color = Color(0xFF111111),
-            shape = RoundedCornerShape(14.dp),
-            shadowElevation = 10.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                MessageActionMenuButton(
-                    label = "全部复制",
-                    onClick = onCopy
-                )
-                MessageActionMenuButton(
-                    label = "选择文字",
-                    onClick = onSelectText
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChatMessageSelectionPopupOld(
-    state: MessageSelectionOverlayState,
-    textSelectionColors: TextSelectionColors,
-    userBubbleColor: Color,
-    onDismiss: () -> Unit
-) {
-    val focusRequester = remember { FocusRequester() }
-    var value by remember(state.messageId, state.content, state.initialSelectionStart) {
-        mutableStateOf(
-            TextFieldValue(
-                text = state.content,
-                selection = TextRange(
-                    start = state.initialSelectionStart.coerceIn(0, state.content.length),
-                    end = (state.initialSelectionStart + MESSAGE_SELECTION_INITIAL_CHARS)
-                        .coerceIn(0, state.content.length)
-                )
-            )
-        )
-    }
-    LaunchedEffect(state.messageId) {
-        withFrameNanos { }
-        focusRequester.requestFocus()
-    }
-    Popup(
-        popupPositionProvider = AnchoredMessageSelectionPositionProvider(
-            left = state.messageLeft,
-            top = state.messageTop
-        ),
-        properties = PopupProperties(
-            focusable = true,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
-            clippingEnabled = false
-        ),
-        onDismissRequest = onDismiss
-    ) {
-        CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
-            val selectionWidth = with(LocalDensity.current) { state.messageWidth.toDp() }
-            if (state.role == ChatRole.USER) {
-                Box(
-                    modifier = Modifier
-                        .width(selectionWidth)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(userBubbleColor)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    BasicTextField(
-                        value = value,
-                        onValueChange = { value = it.copy(text = state.content) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        readOnly = true,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color(0xFF161616)),
-                        cursorBrush = SolidColor(Color.Black)
-                    )
-                }
-            } else {
-                BasicTextField(
-                    value = value,
-                    onValueChange = { value = it.copy(text = state.content) },
-                    modifier = Modifier
-                        .width(selectionWidth)
-                        .focusRequester(focusRequester),
-                    readOnly = true,
-                    textStyle = assistantParagraphTextStyle(),
-                    cursorBrush = SolidColor(Color.Black)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChatMessageActionMenuOverlay(
-    state: MessageActionMenuState,
-    containerWidthPx: Int,
-    containerHeightPx: Int,
-    containerLeftPx: Int,
-    containerTopPx: Int,
-    onCopy: () -> Unit,
-    onSelectText: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    BackHandler(onBack = onDismiss)
-    val density = LocalDensity.current
-    val marginPx = with(density) { 8.dp.roundToPx() }
-    val verticalSpacingPx = with(density) { 12.dp.roundToPx() }
-    var popupSize by remember(state.messageId, state.anchorX, state.anchorY) {
-        mutableStateOf(IntSize.Zero)
-    }
-    val localAnchorX = (state.anchorX - containerLeftPx).coerceAtLeast(0)
-    val localAnchorY = (state.anchorY - containerTopPx).coerceAtLeast(0)
-    val popupX = remember(localAnchorX, containerWidthPx, popupSize, marginPx) {
-        (localAnchorX - popupSize.width / 2)
-            .coerceAtLeast(marginPx)
-            .coerceAtMost((containerWidthPx - popupSize.width - marginPx).coerceAtLeast(marginPx))
-    }
-    val popupY = remember(localAnchorY, containerHeightPx, popupSize, marginPx, verticalSpacingPx) {
-        val preferredY = localAnchorY - popupSize.height - verticalSpacingPx
-        if (preferredY >= marginPx) {
-            preferredY
-        } else {
-            (localAnchorY + verticalSpacingPx)
-                .coerceAtMost((containerHeightPx - popupSize.height - marginPx).coerceAtLeast(marginPx))
-        }
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(3f)
-    ) {
-        Surface(
-            color = Color(0xFF111111),
-            shape = RoundedCornerShape(14.dp),
-            shadowElevation = 10.dp,
-            modifier = Modifier
-                .offset { IntOffset(popupX, popupY) }
-                .onSizeChanged { popupSize = it }
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                MessageActionMenuButton(
-                    label = "全部复制",
-                    onClick = onCopy
-                )
-                MessageActionMenuButton(
-                    label = "选择文字",
-                    onClick = onSelectText
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AnchoredMessageActionMenuCardOverlay(
-    state: MessageActionMenuState,
-    containerWidthPx: Int,
-    containerHeightPx: Int,
-    containerLeftPx: Float,
-    containerTopPx: Float,
+    containerBounds: Rect,
+    viewportLeftPx: Float,
+    viewportTopPx: Float,
     onCopy: () -> Unit,
     onSelectText: () -> Unit,
     onDismiss: () -> Unit,
@@ -4770,50 +4341,42 @@ private fun AnchoredMessageActionMenuCardOverlay(
     var cardSize by remember(state.messageId, state.anchorX, state.anchorY) {
         mutableStateOf(IntSize.Zero)
     }
-    val localAnchorX = (state.anchorX - containerLeftPx).roundToInt().coerceAtLeast(0)
-    val localAnchorY = (state.anchorY - containerTopPx).roundToInt().coerceAtLeast(0)
-    val popupX = remember(localAnchorX, containerWidthPx, cardSize, marginPx) {
-        (localAnchorX - cardSize.width / 2)
+    val containerWidthPx = containerBounds.width.roundToInt().coerceAtLeast(1)
+    val anchorXInContainer =
+        ((state.messageLeft - containerBounds.left).roundToInt() + state.localAnchorX)
+            .coerceIn(0, containerWidthPx)
+    val cardX = remember(anchorXInContainer, containerWidthPx, cardSize, marginPx) {
+        (anchorXInContainer - cardSize.width / 2)
             .coerceAtLeast(marginPx)
             .coerceAtMost((containerWidthPx - cardSize.width - marginPx).coerceAtLeast(marginPx))
     }
-    val popupY =
-        remember(localAnchorY, containerHeightPx, cardSize, marginPx, verticalSpacingPx) {
-            val preferredY = localAnchorY - cardSize.height - verticalSpacingPx
-            if (preferredY >= marginPx) {
-                preferredY
-            } else {
-                (localAnchorY + verticalSpacingPx)
-                    .coerceAtMost(
-                        (containerHeightPx - cardSize.height - marginPx).coerceAtLeast(marginPx)
-                    )
-            }
-        }
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(3f)
-    ) {
-        MessageActionMenuCardContent(
-            modifier = Modifier
-                .offset { IntOffset(popupX, popupY) }
-                .onSizeChanged { cardSize = it }
-                .onGloballyPositioned { coordinates ->
-                    val bounds = coordinates.boundsInWindow()
-                    onBoundsChanged(
-                        Rect(
-                            left = bounds.left - containerLeftPx,
-                            top = bounds.top - containerTopPx,
-                            right = bounds.right - containerLeftPx,
-                            bottom = bounds.bottom - containerTopPx
-                        )
-                    )
-                }
-                .zIndex(3f),
-            onCopy = onCopy,
-            onSelectText = onSelectText
-        )
+    val canShowAbove =
+        containerBounds.top - cardSize.height - verticalSpacingPx >= viewportTopPx + marginPx
+    val cardY = if (canShowAbove) {
+        -cardSize.height - verticalSpacingPx
+    } else {
+        containerBounds.height.roundToInt() + verticalSpacingPx
     }
+
+    MessageActionMenuCardContent(
+        modifier = Modifier
+            .offset { IntOffset(cardX, cardY) }
+            .onSizeChanged { cardSize = it }
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                onBoundsChanged(
+                    Rect(
+                        left = bounds.left - viewportLeftPx,
+                        top = bounds.top - viewportTopPx,
+                        right = bounds.right - viewportLeftPx,
+                        bottom = bounds.bottom - viewportTopPx
+                    )
+                )
+            }
+            .zIndex(3f),
+        onCopy = onCopy,
+        onSelectText = onSelectText
+    )
 }
 
 @Composable
