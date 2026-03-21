@@ -4127,10 +4127,8 @@ fun ChatScreen() {
                 }
 
                 messageActionMenuState?.let { state ->
-                    AnchoredMessageActionMenuCardOverlay(
+                    ChatMessageActionMenuPopup(
                         state = state,
-                        containerWidthPx = messageViewportWidthPx,
-                        containerHeightPx = messageViewportHeightPx,
                         containerLeftPx = messageViewportLeftPx,
                         containerTopPx = messageViewportTopPx,
                         onCopy = {
@@ -4396,6 +4394,70 @@ private fun MessageActionMenuCardContent(
                 onClick = onSelectText
             )
         }
+    }
+}
+
+@Composable
+private fun VisibleMessageActionMenuCard(
+    modifier: Modifier = Modifier,
+    onCopy: () -> Unit,
+    onSelectText: () -> Unit
+) {
+    Surface(
+        color = Color(0xFF111111),
+        shape = RoundedCornerShape(14.dp),
+        shadowElevation = 10.dp,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            MessageActionMenuButton(label = "全部复制", onClick = onCopy)
+            MessageActionMenuButton(label = "选择文字", onClick = onSelectText)
+        }
+    }
+}
+
+@Composable
+private fun ChatMessageActionMenuPopup(
+    state: MessageActionMenuState,
+    containerLeftPx: Float,
+    containerTopPx: Float,
+    onCopy: () -> Unit,
+    onSelectText: () -> Unit,
+    onDismiss: () -> Unit,
+    onBoundsChanged: (Rect?) -> Unit
+) {
+    Popup(
+        popupPositionProvider = AnchoredMessagePopupPositionProvider(
+            anchorX = state.anchorX,
+            anchorY = state.anchorY,
+            verticalSpacingPx = 12
+        ),
+        properties = PopupProperties(
+            focusable = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = false,
+            clippingEnabled = false
+        ),
+        onDismissRequest = onDismiss
+    ) {
+        VisibleMessageActionMenuCard(
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                onBoundsChanged(
+                    Rect(
+                        left = bounds.left - containerLeftPx,
+                        top = bounds.top - containerTopPx,
+                        right = bounds.right - containerLeftPx,
+                        bottom = bounds.bottom - containerTopPx
+                    )
+                )
+            },
+            onCopy = onCopy,
+            onSelectText = onSelectText
+        )
     }
 }
 
