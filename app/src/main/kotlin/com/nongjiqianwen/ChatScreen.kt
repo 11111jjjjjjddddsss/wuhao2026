@@ -24,6 +24,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -3918,14 +3919,21 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(pageSurface)
-                    .pointerInput(imeVisible) {
-                        if (!imeVisible) return@pointerInput
+                    .pointerInput(imeVisible, messageActionMenuState?.messageId) {
                         awaitEachGesture {
                             awaitFirstDown(pass = PointerEventPass.Final)
                             val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
                             if (up != null) {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
+                                when {
+                                    imeVisible -> {
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                    }
+                                    messageActionMenuState != null -> {
+                                        messageActionMenuShownAtMs = 0L
+                                        messageActionMenuState = null
+                                    }
+                                }
                             }
                         }
                     }
@@ -4395,7 +4403,7 @@ private fun MessageSelectionPopup(
         )
     }
     LaunchedEffect(state.messageId) {
-        withFrameNanos { }
+        repeat(2) { withFrameNanos { } }
         focusRequester.requestFocus()
     }
     Popup(
@@ -4662,8 +4670,10 @@ private fun InlineSelectableAssistantMessageBody(
             onValueChange = { value = it.copy(text = state.content) },
             modifier = modifier
                 .fillMaxWidth()
-                .focusRequester(focusRequester),
+                .focusRequester(focusRequester)
+                .focusable(),
             readOnly = true,
+            enabled = true,
             textStyle = assistantParagraphTextStyle(),
             cursorBrush = SolidColor(Color.Black)
         )
@@ -4691,7 +4701,7 @@ private fun InlineSelectableUserMessageBubble(
         )
     }
     LaunchedEffect(state.messageId) {
-        withFrameNanos { }
+        repeat(2) { withFrameNanos { } }
         focusRequester.requestFocus()
     }
     CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
@@ -4711,8 +4721,10 @@ private fun InlineSelectableUserMessageBubble(
                     onValueChange = { value = it.copy(text = state.content) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(focusRequester),
+                        .focusRequester(focusRequester)
+                        .focusable(),
                     readOnly = true,
+                    enabled = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color(0xFF161616)),
                     cursorBrush = SolidColor(Color.Black)
                 )
