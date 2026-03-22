@@ -205,8 +205,6 @@ private data class MessageSelectionToolbarState(
     val anchorX: Int,
     val anchorY: Int,
     val selectionBottomY: Int,
-    val selectionLeftRatio: Float,
-    val selectionRightRatio: Float,
     val anchorXRatio: Float,
     val selectionTopRatio: Float,
     val selectionBottomRatio: Float,
@@ -272,7 +270,7 @@ private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 48.dp
-private val MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE = 12.dp
+private val MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
@@ -2619,9 +2617,7 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
-    var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
-    var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
@@ -2639,16 +2635,11 @@ fun ChatScreen() {
 
     fun clearMessageSelection() {
         messageSelectionToolbarState = null
-        messageSelectionToolbarIgnoreNextUp = false
-        messageSelectionToolbarBoundsInRoot = null
         messageSelectionResetEpoch++
     }
 
     val activeMessageSelectionState =
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
-    val selectionCardVisible by remember(activeMessageSelectionState) {
-        derivedStateOf { activeMessageSelectionState != null }
-    }
     val messageSelectionHandleMaskClearancePx = with(density) {
         MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE.roundToPx()
     }
@@ -2726,8 +2717,6 @@ fun ChatScreen() {
                     anchorX = rect.center.x.roundToInt(),
                     anchorY = rect.top.roundToInt(),
                     selectionBottomY = rect.bottom.roundToInt(),
-                    selectionLeftRatio = ((rect.left - bounds.left) / width).coerceIn(0f, 1f),
-                    selectionRightRatio = ((rect.right - bounds.left) / width).coerceIn(0f, 1f),
                     anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
                     selectionTopRatio = ((rect.top - bounds.top) / height).coerceIn(0f, 1f),
                     selectionBottomRatio = ((rect.bottom - bounds.top) / height).coerceIn(0f, 1f),
@@ -2741,27 +2730,13 @@ fun ChatScreen() {
                 )
                 val resolvedState = resolveMessageSelectionToolbarState(nextState) ?: nextState
                 messageSelectionToolbarState = resolvedState
-                messageSelectionToolbarIgnoreNextUp = true
             }
 
             override fun hide() {
                 if (messageSelectionToolbarState?.messageId == messageId) {
                     messageSelectionToolbarState = null
                 }
-                messageSelectionToolbarIgnoreNextUp = false
-                messageSelectionToolbarBoundsInRoot = null
             }
-        }
-    }
-    LaunchedEffect(activeMessageSelectionState?.messageId) {
-        if (activeMessageSelectionState == null) {
-            messageSelectionToolbarBoundsInRoot = null
-        }
-    }
-    LaunchedEffect(messageSelectionToolbarState) {
-        if (messageSelectionToolbarState != null && messageSelectionToolbarIgnoreNextUp) {
-            delay(160L)
-            messageSelectionToolbarIgnoreNextUp = false
         }
     }
     BackHandler(enabled = messageSelectionToolbarState != null) {
@@ -4232,15 +4207,26 @@ fun ChatScreen() {
                     }
                 }
 
-                if (navigationBottomInset > 0.dp) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
+            if (navigationBottomInset > 0.dp) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
                             .height(navigationBottomInset)
-                            .background(pageSurface)
-                    )
-                }
+                        .background(pageSurface)
+                )
+            }
+
+            if (activeMessageSelectionState != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(with(density) { bottomBarHeightPx.toDp() })
+                        .background(pageSurface)
+                        .zIndex(45f)
+                )
+            }
 
             if (jumpButtonVisible && shouldRevealMessageList) {
                 Surface(
@@ -4329,8 +4315,7 @@ fun ChatScreen() {
                 }
             }
 
-            if (selectionCardVisible) {
-                activeMessageSelectionState?.let { state ->
+            activeMessageSelectionState?.let { state ->
                 MessageActionMenuPopup(
                     state = state,
                     viewportLeftPx = chatRootLeftPx,
@@ -4339,8 +4324,8 @@ fun ChatScreen() {
                     contentViewportTopPx = messageViewportTopPx,
                     contentViewportWidthPx = messageViewportWidthPx,
                     contentViewportHeightPx = messageViewportHeightPx,
+                    topChromeMaskBottomPx = topChromeMaskBottomPx,
                     composerTopInViewportPx = composerTopInViewportPx,
-                    onBoundsChanged = { bounds -> messageSelectionToolbarBoundsInRoot = bounds },
                     onCopy = {
                         performButtonHaptic()
                         state.onCopyRequested?.invoke()
@@ -4353,7 +4338,6 @@ fun ChatScreen() {
                     }
                 )
                 }
-            }
         }
     }
 }
@@ -4434,8 +4418,8 @@ private fun MessageActionMenuPopup(
     contentViewportTopPx: Float,
     contentViewportWidthPx: Int,
     contentViewportHeightPx: Int,
+    topChromeMaskBottomPx: Int,
     composerTopInViewportPx: Int,
-    onBoundsChanged: (Rect?) -> Unit,
     onCopy: () -> Unit,
     onCopyFull: () -> Unit
 ) {
@@ -4460,28 +4444,30 @@ private fun MessageActionMenuPopup(
             marginPx
         ).coerceAtLeast(minX)
     val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(minX, maxX)
-    val minY = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
-    val contentBottomLimit =
-        if (composerTopInViewportPx > 0) {
-            contentLocalTop + composerTopInViewportPx - marginPx
+    val topMaskBottomLocal =
+        if (topChromeMaskBottomPx > 0) {
+            (topChromeMaskBottomPx - viewportTopPx.roundToInt()).coerceAtLeast(0)
         } else {
-            contentLocalTop + contentViewportHeightPx - marginPx
+            Int.MIN_VALUE
         }
-    val maxY = (
-        contentBottomLimit -
-            resolvedHeight -
-            0
-        ).coerceAtLeast(minY)
+    val bottomMaskTopLocal =
+        if (composerTopInViewportPx > 0) {
+            composerTopInViewportPx
+        } else {
+            Int.MAX_VALUE
+        }
+    val contentTopLimit = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
+    val contentBottomLimit = contentLocalTop + contentViewportHeightPx - marginPx
+    val protectedTopLimit = maxOf(contentTopLimit, topMaskBottomLocal + marginPx)
+    val protectedBottomLimit = minOf(contentBottomLimit, bottomMaskTopLocal - marginPx)
     val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    val canPlaceAbove = preferredTop >= minY
     val belowCandidate = selectionBottomLocalY + verticalSpacingPx
-    val canPlaceBelow = belowCandidate <= maxY
+    val canPlaceAbove = preferredTop >= protectedTopLimit
+    val canPlaceBelow = belowCandidate + resolvedHeight <= protectedBottomLimit
     val resolvedPlaceBelow =
         when {
-            placeBelow && canPlaceBelow -> true
-            !placeBelow && canPlaceAbove -> false
-            canPlaceAbove -> false
-            canPlaceBelow -> true
+            !canPlaceAbove && canPlaceBelow -> true
+            canPlaceAbove && !canPlaceBelow -> false
             else -> placeBelow
         }
     SideEffect {
@@ -4491,14 +4477,15 @@ private fun MessageActionMenuPopup(
     }
     val preferredY =
         if (!resolvedPlaceBelow) {
-            preferredTop.coerceAtMost(maxY)
+            preferredTop
         } else {
-            belowCandidate.coerceIn(minY, maxY)
+            belowCandidate
         }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { clip = true }
             .zIndex(40f)
     ) {
         Box(
@@ -4506,14 +4493,6 @@ private fun MessageActionMenuPopup(
                 .offset { IntOffset(preferredX, preferredY) }
                 .onGloballyPositioned { coordinates ->
                     cardSize = coordinates.size
-                    onBoundsChanged(
-                        Rect(
-                            left = preferredX.toFloat(),
-                            top = preferredY.toFloat(),
-                            right = (preferredX + coordinates.size.width).toFloat(),
-                            bottom = (preferredY + coordinates.size.height).toFloat()
-                        )
-                    )
                 }
                 .pointerInput(state.anchorX, state.anchorY, state.selectionBottomY) {
                     detectTapGestures(onTap = {})
