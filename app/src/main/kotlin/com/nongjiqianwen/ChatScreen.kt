@@ -1,5 +1,7 @@
 package com.nongjiqianwen
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -195,12 +197,8 @@ private data class LocalBottomViewport(
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int
 )
-private enum class MessageSelectionMode { Partial, SelectAll }
-
 private data class MessageSelectionToolbarState(
     val messageId: String,
-    val role: ChatRole,
-    val mode: MessageSelectionMode,
     val anchorX: Int,
     val anchorY: Int,
     val selectionBottomY: Int,
@@ -208,7 +206,7 @@ private data class MessageSelectionToolbarState(
     val selectionTopRatio: Float,
     val selectionBottomRatio: Float,
     val onCopyRequested: (() -> Unit)?,
-    val onSelectAllRequested: (() -> Unit)?
+    val onCopyFullRequested: (() -> Unit)?
 )
 
 private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
@@ -974,6 +972,27 @@ private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
         blockMarkdownCache[content] = built
     }
     return built
+}
+
+private fun buildRenderedMessageCopyText(role: ChatRole, content: String): String {
+    return when (role) {
+        ChatRole.USER -> content.trim()
+        ChatRole.ASSISTANT -> {
+            val blocks = getCachedMarkdownUiBlocks(content)
+            if (blocks.isEmpty()) {
+                getCachedAnnotatedString(normalizeAssistantText(content)).text.trim()
+            } else {
+                blocks.joinToString(separator = "\n\n") { block ->
+                    when (block) {
+                        is MarkdownUiBlock.Heading -> block.text.text.trim()
+                        is MarkdownUiBlock.Bullet -> "\u2022 ${block.text.text.trim()}".trim()
+                        is MarkdownUiBlock.Numbered -> "${block.number}. ${block.text.text.trim()}".trim()
+                        is MarkdownUiBlock.Paragraph -> block.text.text.trim()
+                    }
+                }.trim()
+            }
+        }
+    }
 }
 
 private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
@@ -2576,11 +2595,9 @@ fun ChatScreen() {
     val lifecycleOwner = LocalLifecycleOwner.current
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
-    var messageSelectionIgnoreNextHideForMessageId by remember { mutableStateOf<String?>(null) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
     var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
-    var pendingMessageSelectionMode by remember { mutableStateOf<Pair<String, MessageSelectionMode>?>(null) }
     val messageSelectionBoundaryClearancePx =
         with(density) { MESSAGE_SELECTION_BOUNDARY_CLEARANCE.roundToPx() }
 
@@ -2604,45 +2621,22 @@ fun ChatScreen() {
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
 
-    fun windowRectToRoot(rect: Rect): Rect =
-        Rect(
-            left = rect.left - chatRootLeftPx,
-            top = rect.top - chatRootTopPx,
-            right = rect.right - chatRootLeftPx,
-            bottom = rect.bottom - chatRootTopPx
-        )
-
     fun currentSelectionTouchBoundsInRoot(state: MessageSelectionToolbarState): Rect? {
         val messageBounds = currentSelectionMessageBounds(state) ?: return null
-        return if (state.mode == MessageSelectionMode.SelectAll) {
-            windowRectToRoot(messageBounds)
-        } else {
-            Rect(
-                left = messageBounds.left - chatRootLeftPx,
-                top = state.anchorY.toFloat() - chatRootTopPx,
-                right = messageBounds.right - chatRootLeftPx,
-                bottom = state.selectionBottomY.toFloat() - chatRootTopPx
-            )
-        }
+        val selectionTop = state.anchorY.coerceAtMost(state.selectionBottomY).toFloat()
+        val selectionBottom = state.anchorY.coerceAtLeast(state.selectionBottomY).toFloat()
+        return Rect(
+            left = messageBounds.left - chatRootLeftPx,
+            top = selectionTop - chatRootTopPx,
+            right = messageBounds.right - chatRootLeftPx,
+            bottom = selectionBottom - chatRootTopPx
+        )
     }
 
     fun resolveMessageSelectionToolbarState(state: MessageSelectionToolbarState): MessageSelectionToolbarState? {
         val bounds = currentSelectionMessageBounds(state) ?: return null
         val width = bounds.width.coerceAtLeast(1f)
         val height = bounds.height.coerceAtLeast(1f)
-        if (state.mode == MessageSelectionMode.SelectAll) {
-            val visibleTop = currentMessageSelectionTopBoundaryPx()
-            val visibleBottom = currentMessageSelectionBottomBoundaryPx()
-            val top = bounds.top.roundToInt().coerceAtLeast(visibleTop)
-            val bottom = bounds.bottom.roundToInt().coerceAtMost(visibleBottom)
-            if (bottom <= top) return null
-            val anchorY = if (state.selectionTopRatio > 0.5f) bottom else top
-            return state.copy(
-                anchorX = bounds.center.x.roundToInt(),
-                anchorY = anchorY,
-                selectionBottomY = bottom
-            )
-        }
         return state.copy(
             anchorX = (bounds.left + width * state.anchorXRatio).roundToInt(),
             anchorY = (bounds.top + height * state.selectionTopRatio).roundToInt(),
@@ -2656,23 +2650,15 @@ fun ChatScreen() {
         val visibleTop = currentMessageSelectionTopBoundaryPx()
         val visibleBottom = currentMessageSelectionBottomBoundaryPx()
         if (visibleBottom <= visibleTop) return false
-        return when (resolvedState.mode) {
-            MessageSelectionMode.Partial ->
-                resolvedState.selectionBottomY > visibleTop && resolvedState.anchorY < visibleBottom
-
-            MessageSelectionMode.SelectAll -> {
-                val bounds = currentSelectionMessageBounds(resolvedState) ?: return false
-                bounds.bottom.roundToInt() > visibleTop && bounds.top.roundToInt() < visibleBottom
-            }
-        }
+        val selectionTop = resolvedState.anchorY.coerceAtMost(resolvedState.selectionBottomY)
+        val selectionBottom = resolvedState.anchorY.coerceAtLeast(resolvedState.selectionBottomY)
+        return selectionBottom > visibleTop && selectionTop < visibleBottom
     }
 
     fun clearMessageSelection() {
         messageSelectionToolbarState = null
         messageSelectionToolbarIgnoreNextUp = false
-        messageSelectionIgnoreNextHideForMessageId = null
         messageSelectionToolbarBoundsInRoot = null
-        pendingMessageSelectionMode = null
         messageSelectionResetEpoch++
     }
 
@@ -2680,16 +2666,35 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val activeSelectionTouchBoundsInRoot =
         activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
+    val selectionCardVisible by remember(
+        activeMessageSelectionState,
+        listState.isScrollInProgress,
+        programmaticScroll
+    ) {
+        derivedStateOf {
+            activeMessageSelectionState != null &&
+                !listState.isScrollInProgress &&
+                !programmaticScroll
+        }
+    }
     val messageSelectionColors = remember {
         TextSelectionColors(
             handleColor = CHAT_SELECTION_HANDLE_COLOR,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
+    fun copyTextToClipboard(label: String, text: String) {
+        val normalized = text.trim()
+        if (normalized.isEmpty()) return
+        val clipboard =
+            context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText(label, normalized))
+    }
 
     fun buildMessageSelectionTextToolbar(
         messageId: String,
-        role: ChatRole
+        role: ChatRole,
+        fullCopyText: String
     ): TextToolbar {
         return object : TextToolbar {
             override val status: TextToolbarStatus
@@ -2700,6 +2705,7 @@ fun ChatScreen() {
                         TextToolbarStatus.Hidden
                     }
 
+            @Suppress("UNUSED_PARAMETER")
             override fun showMenu(
                 rect: Rect,
                 onCopyRequested: (() -> Unit)?,
@@ -2710,16 +2716,8 @@ fun ChatScreen() {
                 val bounds = messageSelectionBoundsById[messageId] ?: return
                 val width = bounds.width.coerceAtLeast(1f)
                 val height = bounds.height.coerceAtLeast(1f)
-                val mode =
-                    pendingMessageSelectionMode
-                        ?.takeIf { it.first == messageId }
-                        ?.second
-                        ?: MessageSelectionMode.Partial
-                pendingMessageSelectionMode = null
                 val nextState = MessageSelectionToolbarState(
                     messageId = messageId,
-                    role = role,
-                    mode = mode,
                     anchorX = rect.center.x.roundToInt(),
                     anchorY = rect.top.roundToInt(),
                     selectionBottomY = rect.bottom.roundToInt(),
@@ -2727,7 +2725,12 @@ fun ChatScreen() {
                     selectionTopRatio = ((rect.top - bounds.top) / height).coerceIn(0f, 1f),
                     selectionBottomRatio = ((rect.bottom - bounds.top) / height).coerceIn(0f, 1f),
                     onCopyRequested = onCopyRequested,
-                    onSelectAllRequested = onSelectAllRequested
+                    onCopyFullRequested = {
+                        copyTextToClipboard(
+                            label = if (role == ChatRole.USER) "user_message_full_copy" else "assistant_message_full_copy",
+                            text = fullCopyText
+                        )
+                    }
                 )
                 if (!isSelectionWithinAllowedBounds(nextState)) {
                     clearMessageSelection()
@@ -2739,8 +2742,11 @@ fun ChatScreen() {
             }
 
             override fun hide() {
-                if (messageSelectionIgnoreNextHideForMessageId == messageId) {
-                    messageSelectionIgnoreNextHideForMessageId = null
+                if (
+                    (listState.isScrollInProgress || programmaticScroll) &&
+                    messageSelectionToolbarState?.messageId == messageId
+                ) {
+                    messageSelectionToolbarBoundsInRoot = null
                     return
                 }
                 if (messageSelectionToolbarState?.messageId == messageId) {
@@ -2751,11 +2757,19 @@ fun ChatScreen() {
             }
         }
     }
+    LaunchedEffect(selectionCardVisible, activeMessageSelectionState?.messageId) {
+        if (!selectionCardVisible) {
+            messageSelectionToolbarBoundsInRoot = null
+        }
+    }
     LaunchedEffect(messageSelectionToolbarState) {
         if (messageSelectionToolbarState != null && messageSelectionToolbarIgnoreNextUp) {
             delay(160L)
             messageSelectionToolbarIgnoreNextUp = false
         }
+    }
+    BackHandler(enabled = messageSelectionToolbarState != null) {
+        clearMessageSelection()
     }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -4068,8 +4082,15 @@ fun ChatScreen() {
                                     messageSelectionBoundsById.remove(msg.id)
                                 }
                             }
-                            val messageTextToolbar = remember(msg.id, msg.role) {
-                                buildMessageSelectionTextToolbar(msg.id, msg.role)
+                            val fullCopyText = remember(msg.role, msg.content) {
+                                buildRenderedMessageCopyText(msg.role, msg.content)
+                            }
+                            val messageTextToolbar = remember(msg.id, msg.role, fullCopyText) {
+                                buildMessageSelectionTextToolbar(
+                                    messageId = msg.id,
+                                    role = msg.role,
+                                    fullCopyText = fullCopyText
+                                )
                             }
                             Box(
                                 modifier = Modifier
@@ -4308,7 +4329,8 @@ fun ChatScreen() {
                 }
             }
 
-            activeMessageSelectionState?.let { state ->
+            if (selectionCardVisible) {
+                activeMessageSelectionState?.let { state ->
                 MessageActionMenuPopup(
                     state = state,
                     viewportLeftPx = chatRootLeftPx,
@@ -4326,20 +4348,13 @@ fun ChatScreen() {
                         state.onCopyRequested?.invoke()
                         clearMessageSelection()
                     },
-                    onSelectAll = {
+                    onCopyFull = {
                         performButtonHaptic()
-                        val fullSelectionState = state.copy(
-                            mode = MessageSelectionMode.SelectAll,
-                            anchorXRatio = 0.5f,
-                            selectionTopRatio = 0f,
-                            selectionBottomRatio = 1f
-                        )
-                        messageSelectionToolbarState = fullSelectionState
-                        messageSelectionIgnoreNextHideForMessageId = state.messageId
-                        pendingMessageSelectionMode = state.messageId to MessageSelectionMode.SelectAll
-                        state.onSelectAllRequested?.invoke()
+                        state.onCopyFullRequested?.invoke()
+                        clearMessageSelection()
                     }
                 )
+                }
             }
         }
     }
@@ -4373,7 +4388,7 @@ private fun MessageActionMenuButton(
 private fun MessageActionMenuCardContent(
     modifier: Modifier = Modifier,
     onCopy: () -> Unit,
-    onSelectAll: () -> Unit
+    onCopyFull: () -> Unit
 ) {
     Surface(
         color = Color(0xFF111111),
@@ -4396,8 +4411,8 @@ private fun MessageActionMenuCardContent(
                     .background(Color.White.copy(alpha = 0.16f))
             )
             MessageActionMenuButton(
-                label = "全选",
-                onClick = onSelectAll
+                label = "全文复制",
+                onClick = onCopyFull
             )
         }
     }
@@ -4416,12 +4431,12 @@ private fun MessageActionMenuPopup(
     composerTopInViewportPx: Int,
     onBoundsChanged: (Rect?) -> Unit,
     onCopy: () -> Unit,
-    onSelectAll: () -> Unit
+    onCopyFull: () -> Unit
 ) {
     val density = LocalDensity.current
     val verticalSpacingPx = with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
     val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
-    var placeBelow by remember(state.messageId, state.mode) { mutableStateOf(false) }
+    var placeBelow by remember(state.messageId) { mutableStateOf(false) }
     var cardSize by remember { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
@@ -4500,7 +4515,7 @@ private fun MessageActionMenuPopup(
                     detectTapGestures(onTap = {})
                 }
         ) {
-            MessageActionMenuCardContent(onCopy = onCopy, onSelectAll = onSelectAll)
+            MessageActionMenuCardContent(onCopy = onCopy, onCopyFull = onCopyFull)
         }
     }
 }
