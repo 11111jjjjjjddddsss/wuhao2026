@@ -4351,6 +4351,8 @@ fun ChatScreen() {
                     contentViewportTopPx = messageViewportTopPx,
                     contentViewportWidthPx = messageViewportWidthPx,
                     contentViewportHeightPx = messageViewportHeightPx,
+                    selectionTopBoundaryInViewportPx =
+                        (currentMessageSelectionTopBoundaryPx() - messageViewportTopPx.roundToInt()).coerceAtLeast(0),
                     composerTopInViewportPx = composerTopInViewportPx,
                     onBoundsChanged = { bounds -> messageSelectionToolbarBoundsInRoot = bounds },
                     onCopy = {
@@ -4443,6 +4445,7 @@ private fun MessageActionMenuPopup(
     contentViewportTopPx: Float,
     contentViewportWidthPx: Int,
     contentViewportHeightPx: Int,
+    selectionTopBoundaryInViewportPx: Int,
     composerTopInViewportPx: Int,
     onBoundsChanged: (Rect?) -> Unit,
     onCopy: () -> Unit,
@@ -4454,6 +4457,7 @@ private fun MessageActionMenuPopup(
     var cardSize by remember(state.anchorX, state.anchorY, state.selectionBottomY) { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
+    val selectionBottomLocalY = (state.selectionBottomY - viewportTopPx).roundToInt()
     val contentLocalLeft = (contentViewportLeftPx - viewportLeftPx).roundToInt()
     val contentLocalTop = (contentViewportTopPx - viewportTopPx).roundToInt()
     val resolvedWidth = if (cardSize.width > 0) cardSize.width else with(density) { 148.dp.roundToPx() }
@@ -4467,7 +4471,9 @@ private fun MessageActionMenuPopup(
             marginPx
         ).coerceAtLeast(minX)
     val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(minX, maxX)
-    val minY = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
+    val minY =
+        (contentLocalTop + selectionTopBoundaryInViewportPx)
+            .coerceAtLeast(marginPx)
     val contentBottomLimit =
         if (composerTopInViewportPx > 0) {
             contentLocalTop + composerTopInViewportPx - marginPx
@@ -4480,7 +4486,13 @@ private fun MessageActionMenuPopup(
             0
         ).coerceAtLeast(minY)
     val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    val preferredY = preferredTop.coerceIn(minY, maxY)
+    val fallbackBelow = (selectionBottomLocalY + verticalSpacingPx).coerceIn(minY, maxY)
+    val preferredY =
+        if (preferredTop >= minY) {
+            preferredTop.coerceAtMost(maxY)
+        } else {
+            fallbackBelow
+        }
 
     Box(
         modifier = Modifier
