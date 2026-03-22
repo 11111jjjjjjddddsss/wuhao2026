@@ -4037,7 +4037,10 @@ fun ChatScreen() {
                     ) {
                         val touchSlop = viewConfiguration.touchSlop
                         awaitEachGesture {
-                            val down = awaitFirstDown(pass = PointerEventPass.Final)
+                            val down = awaitFirstDown(
+                                requireUnconsumed = false,
+                                pass = PointerEventPass.Initial
+                            )
                             val toolbarVisible = messageSelectionToolbarState != null
                             val toolbarBounds = messageSelectionToolbarBoundsInRoot
                             val selectionBounds = activeSelectionTouchBoundsInRoot
@@ -4047,7 +4050,7 @@ fun ChatScreen() {
                             val tappedSelection =
                                 toolbarVisible &&
                                     selectionBounds?.contains(down.position) == true
-                            val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
+                            val up = waitForUpOrCancellation(pass = PointerEventPass.Initial)
                             if (up == null) return@awaitEachGesture
                             val gestureStayedTapRange =
                                 (up.position - down.position).getDistance() <= touchSlop
