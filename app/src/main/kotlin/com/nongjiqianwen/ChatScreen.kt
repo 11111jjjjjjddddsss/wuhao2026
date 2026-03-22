@@ -162,6 +162,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -4306,6 +4308,34 @@ fun ChatScreen() {
                     }
                 )
                 }
+
+            if (hasActiveMessageSelection) {
+                val selectionMaskWidth = with(density) {
+                    maxOf(view.width, messageViewportWidthPx).toDp()
+                }
+                Popup(
+                    alignment = Alignment.TopStart,
+                    properties = PopupProperties(focusable = false, clippingEnabled = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(selectionMaskWidth)
+                            .height(topBarReservedHeight)
+                            .background(pageSurface)
+                    )
+                }
+                Popup(
+                    alignment = Alignment.BottomStart,
+                    properties = PopupProperties(focusable = false, clippingEnabled = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(selectionMaskWidth)
+                            .height(with(density) { bottomBarHeightPx.toDp() })
+                            .background(pageSurface)
+                    )
+                }
+            }
         }
     }
 }
@@ -4394,7 +4424,6 @@ private fun MessageActionMenuPopup(
     val density = LocalDensity.current
     val verticalSpacingPx = with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
     val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
-    var placeBelow by remember(state.messageId) { mutableStateOf(false) }
     var cardSize by remember { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
@@ -4434,26 +4463,15 @@ private fun MessageActionMenuPopup(
     val bottomHandleVisible = bottomHandleLocalY in protectedTopLimit..protectedBottomLimit
     val anchorHandleLocalY =
         when {
-            topHandleVisible && !bottomHandleVisible -> topHandleLocalY
-            !topHandleVisible && bottomHandleVisible -> bottomHandleLocalY
-            !topHandleVisible && !bottomHandleVisible -> bottomHandleLocalY
-            else -> if (placeBelow) bottomHandleLocalY else topHandleLocalY
+            topHandleVisible -> topHandleLocalY
+            bottomHandleVisible -> bottomHandleLocalY
+            else -> bottomHandleLocalY
         }
     val preferredTop = anchorHandleLocalY - resolvedHeight - verticalSpacingPx
     val belowCandidate = anchorHandleLocalY + verticalSpacingPx
     val canPlaceAbove = preferredTop >= protectedTopLimit
     val canPlaceBelow = belowCandidate + resolvedHeight <= protectedBottomLimit
-    val resolvedPlaceBelow =
-        when {
-            !canPlaceAbove && canPlaceBelow -> true
-            canPlaceAbove && !canPlaceBelow -> false
-            else -> placeBelow
-        }
-    SideEffect {
-        if (placeBelow != resolvedPlaceBelow) {
-            placeBelow = resolvedPlaceBelow
-        }
-    }
+    val resolvedPlaceBelow = !canPlaceAbove && canPlaceBelow
     val preferredY =
         if (!resolvedPlaceBelow) {
             preferredTop
