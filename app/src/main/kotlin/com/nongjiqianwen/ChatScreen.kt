@@ -268,7 +268,7 @@ private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
-private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 48.dp
+private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -4355,13 +4355,13 @@ private fun MessageActionMenuButton(
     Box(
         modifier = modifier
             .widthIn(min = minWidth)
-            .heightIn(min = 42.dp)
+            .heightIn(min = 40.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Transparent)
             .pointerInput(label) {
                 detectTapGestures(onTap = { onClick() })
             }
-            .padding(horizontal = horizontalPadding, vertical = 9.dp),
+            .padding(horizontal = horizontalPadding, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -4386,7 +4386,7 @@ private fun MessageActionMenuCardContent(
         modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             MessageActionMenuButton(
@@ -4398,7 +4398,7 @@ private fun MessageActionMenuCardContent(
             Box(
                 modifier = Modifier
                     .width(1.dp)
-                    .height(18.dp)
+                    .height(16.dp)
                     .background(Color.White.copy(alpha = 0.16f))
             )
             MessageActionMenuButton(
