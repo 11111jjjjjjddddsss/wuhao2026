@@ -110,6 +110,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -4334,12 +4335,18 @@ private fun SelectableRenderedAssistantMessage(
         LocalTextToolbar provides textToolbar,
         LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
     ) {
-        AssistantMessageContent(
-            content = content,
-            isStreaming = false,
-            selectionEnabled = true,
-            modifier = modifier.fillMaxWidth()
-        )
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .focusProperties { canFocus = false }
+        ) {
+            AssistantMessageContent(
+                content = content,
+                isStreaming = false,
+                selectionEnabled = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
@@ -4361,17 +4368,21 @@ private fun SelectableRenderedUserMessageBubble(
             LocalTextToolbar provides textToolbar,
             LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
         ) {
-            SelectionContainer {
-                Text(
-                    text = content,
-                    modifier = Modifier
-                        .widthIn(max = userBubbleMaxWidth)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(userBubbleColor)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color(0xFF161616)
-                )
+            Box(
+                modifier = Modifier.focusProperties { canFocus = false }
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = content,
+                        modifier = Modifier
+                            .widthIn(max = userBubbleMaxWidth)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(userBubbleColor)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFF161616)
+                    )
+                }
             }
         }
     }
