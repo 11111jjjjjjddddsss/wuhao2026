@@ -203,6 +203,8 @@ private data class MessageSelectionToolbarState(
     val anchorX: Int,
     val anchorY: Int,
     val selectionBottomY: Int,
+    val selectionLeftRatio: Float,
+    val selectionRightRatio: Float,
     val anchorXRatio: Float,
     val selectionTopRatio: Float,
     val selectionBottomRatio: Float,
@@ -2623,6 +2625,21 @@ fun ChatScreen() {
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
 
+    fun currentSelectionTouchBoundsInRoot(state: MessageSelectionToolbarState): Rect? {
+        val messageBounds = currentSelectionMessageBounds(state) ?: return null
+        val width = messageBounds.width.coerceAtLeast(1f)
+        val selectionTop = state.anchorY.coerceAtMost(state.selectionBottomY).toFloat()
+        val selectionBottom = state.anchorY.coerceAtLeast(state.selectionBottomY).toFloat()
+        val selectionLeft = messageBounds.left + width * state.selectionLeftRatio
+        val selectionRight = messageBounds.left + width * state.selectionRightRatio
+        return Rect(
+            left = selectionLeft - chatRootLeftPx,
+            top = selectionTop - chatRootTopPx,
+            right = selectionRight - chatRootLeftPx,
+            bottom = selectionBottom - chatRootTopPx
+        )
+    }
+
     fun resolveMessageSelectionToolbarState(state: MessageSelectionToolbarState): MessageSelectionToolbarState? {
         val bounds = currentSelectionMessageBounds(state) ?: return null
         val width = bounds.width.coerceAtLeast(1f)
@@ -2654,6 +2671,8 @@ fun ChatScreen() {
 
     val activeMessageSelectionState =
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
+    val activeSelectionTouchBoundsInRoot =
+        activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
     val selectionHandlesVisible by remember(
         activeMessageSelectionState,
         listState.isScrollInProgress,
@@ -2728,6 +2747,8 @@ fun ChatScreen() {
                     anchorX = rect.center.x.roundToInt(),
                     anchorY = rect.top.roundToInt(),
                     selectionBottomY = rect.bottom.roundToInt(),
+                    selectionLeftRatio = ((rect.left - bounds.left) / width).coerceIn(0f, 1f),
+                    selectionRightRatio = ((rect.right - bounds.left) / width).coerceIn(0f, 1f),
                     anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
                     selectionTopRatio = ((rect.top - bounds.top) / height).coerceIn(0f, 1f),
                     selectionBottomRatio = ((rect.bottom - bounds.top) / height).coerceIn(0f, 1f),
@@ -4011,6 +4032,7 @@ fun ChatScreen() {
                         messageSelectionToolbarState != null,
                         messageSelectionToolbarBoundsInRoot,
                         messageSelectionToolbarIgnoreNextUp,
+                        activeSelectionTouchBoundsInRoot,
                         viewConfiguration.touchSlop
                     ) {
                         val touchSlop = viewConfiguration.touchSlop
@@ -4018,9 +4040,13 @@ fun ChatScreen() {
                             val down = awaitFirstDown(pass = PointerEventPass.Final)
                             val toolbarVisible = messageSelectionToolbarState != null
                             val toolbarBounds = messageSelectionToolbarBoundsInRoot
+                            val selectionBounds = activeSelectionTouchBoundsInRoot
                             val tappedToolbar =
                                 toolbarVisible &&
                                     toolbarBounds?.contains(down.position) == true
+                            val tappedSelection =
+                                toolbarVisible &&
+                                    selectionBounds?.contains(down.position) == true
                             val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
                             if (up == null) return@awaitEachGesture
                             val gestureStayedTapRange =
@@ -4030,7 +4056,7 @@ fun ChatScreen() {
                                     focusManager.clearFocus(force = true)
                                     keyboardController?.hide()
                                 }
-                                toolbarVisible && gestureStayedTapRange && !tappedToolbar -> {
+                                toolbarVisible && gestureStayedTapRange && !tappedToolbar && !tappedSelection -> {
                                     if (messageSelectionToolbarIgnoreNextUp) {
                                         messageSelectionToolbarIgnoreNextUp = false
                                     } else {
