@@ -26,7 +26,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -113,6 +116,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -2583,6 +2587,8 @@ fun ChatScreen() {
     var deferredMessageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
     var suppressMessageSelectionToolbarForScroll by remember { mutableStateOf(false) }
+    var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
+    var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionTextToolbar = remember {
         object : TextToolbar {
             override val status: TextToolbarStatus
@@ -2621,6 +2627,7 @@ fun ChatScreen() {
                 deferredMessageSelectionToolbarState = null
                 messageSelectionToolbarIgnoreNextUp = false
                 suppressMessageSelectionToolbarForScroll = false
+                messageSelectionToolbarBoundsInRoot = null
             }
         }
     }
@@ -2635,6 +2642,15 @@ fun ChatScreen() {
         if (!handled) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
+    }
+
+    fun clearMessageSelection() {
+        messageSelectionToolbarState = null
+        deferredMessageSelectionToolbarState = null
+        messageSelectionToolbarIgnoreNextUp = false
+        suppressMessageSelectionToolbarForScroll = false
+        messageSelectionToolbarBoundsInRoot = null
+        messageSelectionResetEpoch++
     }
 
     fun isToolbarSelectionVisible(state: MessageSelectionToolbarState): Boolean {
@@ -2899,8 +2915,6 @@ fun ChatScreen() {
     LaunchedEffect(listState) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
-        var toolbarHiddenForThisDrag = false
-        var manualScrollStartedAtMs = 0L
         snapshotFlow {
             SelectionScrollSnapshot(
                 firstVisibleItemIndex = listState.firstVisibleItemIndex,
@@ -2910,43 +2924,29 @@ fun ChatScreen() {
             )
         }.collect { snapshot ->
             val manualScrollActive = snapshot.isScrollInProgress && !snapshot.isProgrammaticScroll
-            if (manualScrollActive && manualScrollStartedAtMs == 0L) {
-                manualScrollStartedAtMs = SystemClock.uptimeMillis()
-            }
             val viewportMoved =
                 snapshot.firstVisibleItemIndex != previousIndex ||
-                    kotlin.math.abs(snapshot.firstVisibleItemScrollOffset - previousOffset) >=
-                    MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX
-            val manualScrollHeldLongEnough =
-                manualScrollStartedAtMs > 0L &&
-                    SystemClock.uptimeMillis() - manualScrollStartedAtMs >=
-                    MESSAGE_SELECTION_SCROLL_RESET_MIN_MS
-            if (
-                manualScrollActive &&
-                viewportMoved &&
-                manualScrollHeldLongEnough &&
-                !toolbarHiddenForThisDrag
-            ) {
+                    snapshot.firstVisibleItemScrollOffset != previousOffset
+            if (manualScrollActive && viewportMoved) {
                 suppressMessageSelectionToolbarForScroll = true
                 if (messageSelectionToolbarState != null) {
                     deferredMessageSelectionToolbarState = messageSelectionToolbarState
                 }
                 messageSelectionToolbarState = null
+                messageSelectionToolbarBoundsInRoot = null
                 messageSelectionToolbarIgnoreNextUp = false
-                toolbarHiddenForThisDrag = true
             }
             if (!manualScrollActive) {
-                if (toolbarHiddenForThisDrag) {
+                if (suppressMessageSelectionToolbarForScroll) {
                     suppressMessageSelectionToolbarForScroll = false
                     val deferredState = deferredMessageSelectionToolbarState
                     if (deferredState != null && isToolbarSelectionVisible(deferredState)) {
                         messageSelectionToolbarState = deferredState
+                        messageSelectionToolbarIgnoreNextUp = false
                     } else {
-                        deferredMessageSelectionToolbarState = null
+                        clearMessageSelection()
                     }
                 }
-                toolbarHiddenForThisDrag = false
-                manualScrollStartedAtMs = 0L
             }
             previousIndex = snapshot.firstVisibleItemIndex
             previousOffset = snapshot.firstVisibleItemScrollOffset
@@ -3928,25 +3928,33 @@ fun ChatScreen() {
                     .background(pageSurface)
                     .pointerInput(
                         imeVisible,
-                        messageSelectionToolbarState != null
+                        messageSelectionToolbarState != null,
+                        messageSelectionToolbarBoundsInRoot,
+                        messageSelectionToolbarIgnoreNextUp
                     ) {
-                        detectTapGestures(
-                            onTap = {
-                                when {
-                                    imeVisible -> {
-                                        focusManager.clearFocus(force = true)
-                                        keyboardController?.hide()
-                                    }
-                                    messageSelectionToolbarState != null -> {
-                                        if (messageSelectionToolbarIgnoreNextUp) {
-                                            messageSelectionToolbarIgnoreNextUp = false
-                                        } else {
-                                            messageSelectionToolbarState = null
-                                        }
+                        awaitEachGesture {
+                            val down = awaitFirstDown(pass = PointerEventPass.Final)
+                            val toolbarVisible = messageSelectionToolbarState != null
+                            val toolbarBounds = messageSelectionToolbarBoundsInRoot
+                            val tappedToolbar =
+                                toolbarVisible &&
+                                    toolbarBounds?.contains(down.position) == true
+                            val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
+                            if (up == null) return@awaitEachGesture
+                            when {
+                                imeVisible -> {
+                                    focusManager.clearFocus(force = true)
+                                    keyboardController?.hide()
+                                }
+                                toolbarVisible && !tappedToolbar -> {
+                                    if (messageSelectionToolbarIgnoreNextUp) {
+                                        messageSelectionToolbarIgnoreNextUp = false
+                                    } else {
+                                        clearMessageSelection()
                                     }
                                 }
                             }
-                        )
+                        }
                     }
                     .onSizeChanged {
                         messageViewportWidthPx = it.width
@@ -4007,6 +4015,7 @@ fun ChatScreen() {
                                             content = msg.content,
                                             textSelectionColors = chatSelectionColors,
                                             textToolbar = messageSelectionTextToolbar,
+                                            selectionResetKey = messageSelectionResetEpoch,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     } else {
@@ -4014,6 +4023,7 @@ fun ChatScreen() {
                                             content = msg.content,
                                             textSelectionColors = chatSelectionColors,
                                             textToolbar = messageSelectionTextToolbar,
+                                            selectionResetKey = messageSelectionResetEpoch,
                                             userBubbleMaxWidth = userBubbleMaxWidth,
                                             userBubbleColor = userBubbleColor
                                         )
@@ -4218,11 +4228,11 @@ fun ChatScreen() {
                     contentViewportWidthPx = messageViewportWidthPx,
                     contentViewportHeightPx = messageViewportHeightPx,
                     composerTopInViewportPx = composerTopInViewportPx,
+                    onBoundsChanged = { bounds -> messageSelectionToolbarBoundsInRoot = bounds },
                     onCopy = {
                         performButtonHaptic()
                         state.onCopyRequested?.invoke()
-                        messageSelectionToolbarState = null
-                        messageSelectionToolbarIgnoreNextUp = false
+                        clearMessageSelection()
                     },
                     onSelectAll = {
                         performButtonHaptic()
@@ -4302,6 +4312,7 @@ private fun MessageActionMenuPopup(
     contentViewportWidthPx: Int,
     contentViewportHeightPx: Int,
     composerTopInViewportPx: Int,
+    onBoundsChanged: (Rect?) -> Unit,
     onCopy: () -> Unit,
     onSelectAll: () -> Unit
 ) {
@@ -4350,6 +4361,14 @@ private fun MessageActionMenuPopup(
                 .offset { IntOffset(preferredX, preferredY) }
                 .onGloballyPositioned { coordinates ->
                     cardSize = coordinates.size
+                    onBoundsChanged(
+                        Rect(
+                            left = preferredX.toFloat(),
+                            top = preferredY.toFloat(),
+                            right = (preferredX + coordinates.size.width).toFloat(),
+                            bottom = (preferredY + coordinates.size.height).toFloat()
+                        )
+                    )
                 }
                 .pointerInput(state.anchorX, state.anchorY, state.selectionBottomY) {
                     detectTapGestures(onTap = {})
@@ -4366,18 +4385,21 @@ private fun SelectableRenderedAssistantMessage(
     content: String,
     textSelectionColors: TextSelectionColors,
     textToolbar: TextToolbar,
+    selectionResetKey: Int,
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(
         LocalTextSelectionColors provides textSelectionColors,
         LocalTextToolbar provides textToolbar
     ) {
-        AssistantMessageContent(
-            content = content,
-            isStreaming = false,
-            selectionEnabled = true,
-            modifier = modifier.fillMaxWidth()
-        )
+        key(selectionResetKey) {
+            AssistantMessageContent(
+                content = content,
+                isStreaming = false,
+                selectionEnabled = true,
+                modifier = modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
@@ -4387,6 +4409,7 @@ private fun SelectableRenderedUserMessageBubble(
     content: String,
     textSelectionColors: TextSelectionColors,
     textToolbar: TextToolbar,
+    selectionResetKey: Int,
     userBubbleMaxWidth: Dp,
     userBubbleColor: Color
 ) {
@@ -4398,17 +4421,19 @@ private fun SelectableRenderedUserMessageBubble(
             LocalTextSelectionColors provides textSelectionColors,
             LocalTextToolbar provides textToolbar
         ) {
-            SelectionContainer {
-                Text(
-                    text = content,
-                    modifier = Modifier
-                        .widthIn(max = userBubbleMaxWidth)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(userBubbleColor)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color(0xFF161616)
-                )
+            key(selectionResetKey) {
+                SelectionContainer {
+                    Text(
+                        text = content,
+                        modifier = Modifier
+                            .widthIn(max = userBubbleMaxWidth)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(userBubbleColor)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = Color(0xFF161616)
+                    )
+                }
             }
         }
     }
