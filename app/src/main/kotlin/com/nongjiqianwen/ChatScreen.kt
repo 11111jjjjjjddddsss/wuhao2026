@@ -242,7 +242,6 @@ private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 4
 private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 6
 private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180
 private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 620L
-private const val MESSAGE_SELECTION_INITIAL_CHARS = 36
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -2638,8 +2637,15 @@ fun ChatScreen() {
         messageSelectionResetEpoch++
     }
 
+    fun selectionDismissTapModifier(vararg keys: Any): Modifier =
+        Modifier.pointerInput(*keys) {
+            detectTapGestures(onTap = { clearMessageSelection() })
+        }
+
     val activeMessageSelectionState =
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
+    val hasActiveMessageSelection = activeMessageSelectionState != null
+    val activeMessageSelectionMessageId = activeMessageSelectionState?.messageId
     val messageSelectionHandleMaskClearancePx = with(density) {
         MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE.roundToPx()
     }
@@ -4010,10 +4016,8 @@ fun ChatScreen() {
                         )
                         .fillMaxSize()
                         .then(
-                            if (activeMessageSelectionState != null) {
-                                Modifier.pointerInput(activeMessageSelectionState.messageId) {
-                                    detectTapGestures(onTap = { clearMessageSelection() })
-                                }
+                            if (hasActiveMessageSelection) {
+                                selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
                             } else {
                                 Modifier
                             }
@@ -4057,15 +4061,13 @@ fun ChatScreen() {
                                     .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
                                     .then(
                                         if (
-                                            activeMessageSelectionState != null &&
-                                            activeMessageSelectionState.messageId != msg.id
+                                            hasActiveMessageSelection &&
+                                            activeMessageSelectionMessageId != msg.id
                                         ) {
-                                            Modifier.pointerInput(
-                                                activeMessageSelectionState.messageId,
+                                            selectionDismissTapModifier(
+                                                activeMessageSelectionMessageId ?: "selection",
                                                 msg.id
-                                            ) {
-                                                detectTapGestures(onTap = { clearMessageSelection() })
-                                            }
+                                            )
                                         } else {
                                             Modifier
                                         }
@@ -4217,7 +4219,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (activeMessageSelectionState != null) {
+            if (hasActiveMessageSelection) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
