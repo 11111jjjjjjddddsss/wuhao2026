@@ -131,6 +131,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -2593,6 +2594,7 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val viewConfiguration = LocalViewConfiguration.current
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
@@ -2666,6 +2668,25 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val activeSelectionTouchBoundsInRoot =
         activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
+    val selectionHandlesVisible by remember(
+        activeMessageSelectionState,
+        listState.isScrollInProgress,
+        programmaticScroll,
+        composerTopInViewportPx,
+        topChromeMaskBottomPx
+    ) {
+        derivedStateOf {
+            val state = activeMessageSelectionState ?: return@derivedStateOf true
+            if (listState.isScrollInProgress || programmaticScroll) {
+                return@derivedStateOf false
+            }
+            val visibleTop = currentMessageSelectionTopBoundaryPx()
+            val visibleBottom = currentMessageSelectionBottomBoundaryPx()
+            val selectionTop = state.anchorY.coerceAtMost(state.selectionBottomY)
+            val selectionBottom = state.anchorY.coerceAtLeast(state.selectionBottomY)
+            selectionTop >= visibleTop && selectionBottom <= visibleBottom
+        }
+    }
     val selectionCardVisible by remember(
         activeMessageSelectionState,
         listState.isScrollInProgress,
@@ -2677,9 +2698,9 @@ fun ChatScreen() {
                 !programmaticScroll
         }
     }
-    val messageSelectionColors = remember {
+    val messageSelectionColors = remember(selectionHandlesVisible) {
         TextSelectionColors(
-            handleColor = CHAT_SELECTION_HANDLE_COLOR,
+            handleColor = if (selectionHandlesVisible) CHAT_SELECTION_HANDLE_COLOR else Color.Transparent,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
@@ -4004,8 +4025,10 @@ fun ChatScreen() {
                         messageSelectionToolbarState != null,
                         messageSelectionToolbarBoundsInRoot,
                         messageSelectionToolbarIgnoreNextUp,
-                        activeSelectionTouchBoundsInRoot
+                        activeSelectionTouchBoundsInRoot,
+                        viewConfiguration.touchSlop
                     ) {
+                        val touchSlop = viewConfiguration.touchSlop
                         awaitEachGesture {
                             val down = awaitFirstDown(pass = PointerEventPass.Final)
                             val toolbarVisible = messageSelectionToolbarState != null
@@ -4015,16 +4038,18 @@ fun ChatScreen() {
                                 toolbarVisible &&
                                     toolbarBounds?.contains(down.position) == true
                             val tappedSelection =
-                                toolbarVisible &&
+                                    toolbarVisible &&
                                     selectionBounds?.contains(down.position) == true
                             val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
                             if (up == null) return@awaitEachGesture
+                            val gestureStayedTapRange =
+                                (up.position - down.position).getDistance() <= touchSlop
                             when {
                                 imeVisible -> {
                                     focusManager.clearFocus(force = true)
                                     keyboardController?.hide()
                                 }
-                                toolbarVisible && !tappedToolbar && !tappedSelection -> {
+                                toolbarVisible && gestureStayedTapRange && !tappedToolbar && !tappedSelection -> {
                                     if (messageSelectionToolbarIgnoreNextUp) {
                                         messageSelectionToolbarIgnoreNextUp = false
                                     } else {
