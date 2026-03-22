@@ -4198,6 +4198,7 @@ fun ChatScreen() {
                     contentViewportTopPx = messageViewportTopPx,
                     contentViewportWidthPx = messageViewportWidthPx,
                     contentViewportHeightPx = messageViewportHeightPx,
+                    composerTopInViewportPx = composerTopInViewportPx,
                     onCopy = {
                         performButtonHaptic()
                         state.onCopyRequested?.invoke()
@@ -4281,6 +4282,7 @@ private fun MessageActionMenuPopup(
     contentViewportTopPx: Float,
     contentViewportWidthPx: Int,
     contentViewportHeightPx: Int,
+    composerTopInViewportPx: Int,
     onCopy: () -> Unit,
     onSelectAll: () -> Unit
 ) {
@@ -4303,11 +4305,16 @@ private fun MessageActionMenuPopup(
         ).coerceAtLeast(minX)
     val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(minX, maxX)
     val minY = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
+    val contentBottomLimit =
+        if (composerTopInViewportPx > 0) {
+            composerTopInViewportPx - marginPx
+        } else {
+            contentLocalTop + contentViewportHeightPx - marginPx
+        }
     val maxY = (
-        contentLocalTop +
-            contentViewportHeightPx -
+        contentBottomLimit -
             resolvedHeight -
-            marginPx
+            0
         ).coerceAtLeast(minY)
     val preferredY =
         (anchorLocalY - resolvedHeight - verticalSpacingPx)
