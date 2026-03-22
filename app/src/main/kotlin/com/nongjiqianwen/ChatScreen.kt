@@ -203,6 +203,8 @@ private data class MessageSelectionToolbarState(
     val anchorX: Int,
     val anchorY: Int,
     val selectionBottomY: Int,
+    val selectionLeftRatio: Float,
+    val selectionRightRatio: Float,
     val anchorXRatio: Float,
     val selectionTopRatio: Float,
     val selectionBottomRatio: Float,
@@ -2625,12 +2627,15 @@ fun ChatScreen() {
 
     fun currentSelectionTouchBoundsInRoot(state: MessageSelectionToolbarState): Rect? {
         val messageBounds = currentSelectionMessageBounds(state) ?: return null
+        val width = messageBounds.width.coerceAtLeast(1f)
         val selectionTop = state.anchorY.coerceAtMost(state.selectionBottomY).toFloat()
         val selectionBottom = state.anchorY.coerceAtLeast(state.selectionBottomY).toFloat()
+        val selectionLeft = messageBounds.left + width * state.selectionLeftRatio
+        val selectionRight = messageBounds.left + width * state.selectionRightRatio
         return Rect(
-            left = messageBounds.left - chatRootLeftPx,
+            left = selectionLeft - chatRootLeftPx,
             top = selectionTop - chatRootTopPx,
-            right = messageBounds.right - chatRootLeftPx,
+            right = selectionRight - chatRootLeftPx,
             bottom = selectionBottom - chatRootTopPx
         )
     }
@@ -2742,6 +2747,8 @@ fun ChatScreen() {
                     anchorX = rect.center.x.roundToInt(),
                     anchorY = rect.top.roundToInt(),
                     selectionBottomY = rect.bottom.roundToInt(),
+                    selectionLeftRatio = ((rect.left - bounds.left) / width).coerceIn(0f, 1f),
+                    selectionRightRatio = ((rect.right - bounds.left) / width).coerceIn(0f, 1f),
                     anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
                     selectionTopRatio = ((rect.top - bounds.top) / height).coerceIn(0f, 1f),
                     selectionBottomRatio = ((rect.bottom - bounds.top) / height).coerceIn(0f, 1f),
