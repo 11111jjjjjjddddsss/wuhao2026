@@ -2616,6 +2616,12 @@ fun ChatScreen() {
             }
         }
     }
+    LaunchedEffect(messageSelectionToolbarState) {
+        if (messageSelectionToolbarState != null && messageSelectionToolbarIgnoreNextUp) {
+            delay(160L)
+            messageSelectionToolbarIgnoreNextUp = false
+        }
+    }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -3891,10 +3897,8 @@ fun ChatScreen() {
                         imeVisible,
                         messageSelectionToolbarState != null
                     ) {
-                        awaitEachGesture {
-                            awaitFirstDown(pass = PointerEventPass.Final)
-                            val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
-                            if (up != null) {
+                        detectTapGestures(
+                            onTap = {
                                 when {
                                     imeVisible -> {
                                         focusManager.clearFocus(force = true)
@@ -3909,7 +3913,7 @@ fun ChatScreen() {
                                     }
                                 }
                             }
-                        }
+                        )
                     }
                     .onSizeChanged {
                         messageViewportWidthPx = it.width
@@ -4201,10 +4205,6 @@ fun ChatScreen() {
                     onSelectAll = {
                         performButtonHaptic()
                         state.onSelectAllRequested?.invoke()
-                    },
-                    onDismiss = {
-                        messageSelectionToolbarState = null
-                        messageSelectionToolbarIgnoreNextUp = false
                     }
                 )
             }
@@ -4278,8 +4278,7 @@ private fun MessageActionMenuPopup(
     viewportWidthPx: Int,
     viewportHeightPx: Int,
     onCopy: () -> Unit,
-    onSelectAll: () -> Unit,
-    onDismiss: () -> Unit
+    onSelectAll: () -> Unit
 ) {
     val density = LocalDensity.current
     val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
@@ -4291,18 +4290,15 @@ private fun MessageActionMenuPopup(
     val resolvedHeight = if (cardSize.height > 0) cardSize.height else with(density) { 48.dp.roundToPx() }
     val maxX = (viewportWidthPx - resolvedWidth - marginPx).coerceAtLeast(marginPx)
     val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(marginPx, maxX)
-    val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    val fallbackBottom = (viewportHeightPx - resolvedHeight - marginPx)
-        .coerceAtLeast(marginPx)
-    val preferredY = if (preferredTop >= marginPx) preferredTop else fallbackBottom
+    val maxY = (viewportHeightPx - resolvedHeight - marginPx).coerceAtLeast(marginPx)
+    val preferredY =
+        (anchorLocalY - resolvedHeight - verticalSpacingPx)
+            .coerceIn(marginPx, maxY)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .zIndex(40f)
-            .pointerInput(state.messageId) {
-                detectTapGestures(onTap = { onDismiss() })
-            }
     ) {
         Box(
             modifier = Modifier
