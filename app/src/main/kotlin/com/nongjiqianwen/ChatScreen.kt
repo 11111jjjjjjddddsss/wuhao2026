@@ -24,6 +24,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -220,6 +222,10 @@ private data class MessageSelectionToolbarState(
     val onCopyRequested: (() -> Unit)?,
     val onSelectAllRequested: (() -> Unit)?
 )
+
+private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
+}
 
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
@@ -4320,6 +4326,7 @@ private fun MessageActionMenuPopup(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SelectableRenderedAssistantMessage(
     content: String,
     textSelectionColors: TextSelectionColors,
@@ -4328,7 +4335,8 @@ private fun SelectableRenderedAssistantMessage(
 ) {
     CompositionLocalProvider(
         LocalTextSelectionColors provides textSelectionColors,
-        LocalTextToolbar provides textToolbar
+        LocalTextToolbar provides textToolbar,
+        LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
     ) {
         AssistantMessageContent(
             content = content,
@@ -4340,6 +4348,7 @@ private fun SelectableRenderedAssistantMessage(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun SelectableRenderedUserMessageBubble(
     content: String,
     textSelectionColors: TextSelectionColors,
@@ -4353,7 +4362,8 @@ private fun SelectableRenderedUserMessageBubble(
     ) {
         CompositionLocalProvider(
             LocalTextSelectionColors provides textSelectionColors,
-            LocalTextToolbar provides textToolbar
+            LocalTextToolbar provides textToolbar,
+            LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
         ) {
             SelectionContainer {
                 Text(
