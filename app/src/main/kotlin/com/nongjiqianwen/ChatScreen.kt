@@ -4177,11 +4177,12 @@ fun ChatScreen() {
                                         }
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
-                                        SelectableRenderedAssistantMessage(
+                                        SelectableRenderedStaticMessageContent(
                                             content = msg.content,
                                             textSelectionColors = messageSelectionColors,
                                             textToolbar = messageTextToolbar,
                                             selectionResetKey = messageSelectionResetEpoch,
+                                            showDisclaimer = true,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     } else {
@@ -4596,11 +4597,12 @@ private fun MessageActionMenuPopup(
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun SelectableRenderedAssistantMessage(
+private fun SelectableRenderedStaticMessageContent(
     content: String,
     textSelectionColors: TextSelectionColors,
     textToolbar: TextToolbar,
     selectionResetKey: Int,
+    showDisclaimer: Boolean,
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(
@@ -4612,6 +4614,7 @@ private fun SelectableRenderedAssistantMessage(
                 content = content,
                 isStreaming = false,
                 selectionEnabled = true,
+                showDisclaimer = showDisclaimer,
                 modifier = modifier.fillMaxWidth()
             )
         }
@@ -4633,30 +4636,24 @@ private fun SelectableRenderedUserMessageBubble(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
     ) {
-        CompositionLocalProvider(
-            LocalTextSelectionColors provides textSelectionColors,
-            LocalTextToolbar provides textToolbar
-        ) {
-            key(selectionResetKey) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = userBubbleMaxWidth)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(userBubbleColor)
-                        .onGloballyPositioned { coordinates ->
-                            onBubbleBoundsChanged(coordinates.boundsInWindow())
-                        }
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    AssistantMessageContent(
-                        content = content,
-                        isStreaming = false,
-                        selectionEnabled = true,
-                        showDisclaimer = false,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+        Box(
+            modifier = Modifier
+                .widthIn(max = userBubbleMaxWidth)
+                .clip(RoundedCornerShape(20.dp))
+                .background(userBubbleColor)
+                .onGloballyPositioned { coordinates ->
+                    onBubbleBoundsChanged(coordinates.boundsInWindow())
                 }
-            }
+                .padding(horizontal = 14.dp, vertical = 10.dp)
+        ) {
+            SelectableRenderedStaticMessageContent(
+                content = content,
+                textSelectionColors = textSelectionColors,
+                textToolbar = textToolbar,
+                selectionResetKey = selectionResetKey,
+                showDisclaimer = false,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
