@@ -2623,26 +2623,6 @@ fun ChatScreen() {
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
     var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
-    val messageSelectionBoundaryClearancePx =
-        with(density) { MESSAGE_SELECTION_BOUNDARY_CLEARANCE.roundToPx() }
-
-    fun currentMessageSelectionTopBoundaryPx(): Int {
-        val viewportTop = messageViewportTopPx.roundToInt()
-        val maskBottom = topChromeMaskBottomPx.takeIf { it > 0 } ?: viewportTop
-        return maskBottom + messageSelectionBoundaryClearancePx
-    }
-
-    fun currentMessageSelectionBottomBoundaryPx(): Int {
-        val viewportTop = messageViewportTopPx.roundToInt()
-        val viewportBottom = viewportTop + messageViewportHeightPx
-        val composerTop = if (composerTopInViewportPx > 0) {
-            viewportTop + composerTopInViewportPx
-        } else {
-            viewportBottom
-        }
-        return composerTop - messageSelectionBoundaryClearancePx
-    }
-
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
 
@@ -4326,9 +4306,6 @@ fun ChatScreen() {
                     contentViewportTopPx = messageViewportTopPx,
                     contentViewportWidthPx = messageViewportWidthPx,
                     contentViewportHeightPx = messageViewportHeightPx,
-                    selectionTopBoundaryInViewportPx =
-                        (currentMessageSelectionTopBoundaryPx() - messageViewportTopPx.roundToInt()).coerceAtLeast(0),
-                    composerTopInViewportPx = composerTopInViewportPx,
                     onBoundsChanged = { bounds -> messageSelectionToolbarBoundsInRoot = bounds },
                     onCopy = {
                         performButtonHaptic()
@@ -4423,8 +4400,6 @@ private fun MessageActionMenuPopup(
     contentViewportTopPx: Float,
     contentViewportWidthPx: Int,
     contentViewportHeightPx: Int,
-    selectionTopBoundaryInViewportPx: Int,
-    composerTopInViewportPx: Int,
     onBoundsChanged: (Rect?) -> Unit,
     onCopy: () -> Unit,
     onCopyFull: () -> Unit
@@ -4450,15 +4425,8 @@ private fun MessageActionMenuPopup(
             marginPx
         ).coerceAtLeast(minX)
     val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(minX, maxX)
-    val minY =
-        (contentLocalTop + selectionTopBoundaryInViewportPx)
-            .coerceAtLeast(marginPx)
-    val contentBottomLimit =
-        if (composerTopInViewportPx > 0) {
-            contentLocalTop + composerTopInViewportPx - marginPx
-        } else {
-            contentLocalTop + contentViewportHeightPx - marginPx
-        }
+    val minY = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
+    val contentBottomLimit = contentLocalTop + contentViewportHeightPx - marginPx
     val maxY = (
         contentBottomLimit -
             resolvedHeight -
