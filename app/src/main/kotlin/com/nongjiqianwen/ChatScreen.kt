@@ -270,7 +270,6 @@ private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 52.dp
 private val MESSAGE_SELECTION_BOUNDARY_CLEARANCE = 18.dp
-private val MESSAGE_SELECTION_HANDLE_VISIBILITY_CLEARANCE = 28.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
@@ -2583,8 +2582,6 @@ fun ChatScreen() {
     var pendingMessageSelectionMode by remember { mutableStateOf<Pair<String, MessageSelectionMode>?>(null) }
     val messageSelectionBoundaryClearancePx =
         with(density) { MESSAGE_SELECTION_BOUNDARY_CLEARANCE.roundToPx() }
-    val messageSelectionHandleVisibilityClearancePx =
-        with(density) { MESSAGE_SELECTION_HANDLE_VISIBILITY_CLEARANCE.roundToPx() }
 
     fun currentMessageSelectionTopBoundaryPx(): Int {
         val viewportTop = messageViewportTopPx.roundToInt()
@@ -2669,27 +2666,6 @@ fun ChatScreen() {
         }
     }
 
-    fun isSelectionFullyWithinVisibleBounds(
-        state: MessageSelectionToolbarState,
-        extraClearancePx: Int = 0
-    ): Boolean {
-        val resolvedState = resolveMessageSelectionToolbarState(state) ?: return false
-        val visibleTop = currentMessageSelectionTopBoundaryPx() + extraClearancePx
-        val visibleBottom = currentMessageSelectionBottomBoundaryPx() - extraClearancePx
-        if (visibleBottom <= visibleTop) return false
-        return when (resolvedState.mode) {
-            MessageSelectionMode.Partial ->
-                resolvedState.anchorY >= visibleTop &&
-                    resolvedState.selectionBottomY <= visibleBottom
-
-            MessageSelectionMode.SelectAll -> {
-                val bounds = currentSelectionMessageBounds(resolvedState) ?: return false
-                bounds.top.roundToInt() >= visibleTop &&
-                    bounds.bottom.roundToInt() <= visibleBottom
-            }
-        }
-    }
-
     fun clearMessageSelection() {
         messageSelectionToolbarState = null
         messageSelectionToolbarIgnoreNextUp = false
@@ -2698,29 +2674,13 @@ fun ChatScreen() {
         messageSelectionResetEpoch++
     }
 
-    fun shouldShowMessageSelectionHandles(state: MessageSelectionToolbarState): Boolean {
-        return isSelectionFullyWithinVisibleBounds(
-            state = state,
-            extraClearancePx = messageSelectionHandleVisibilityClearancePx
-        )
-    }
-
     val activeMessageSelectionState =
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val activeSelectionTouchBoundsInRoot =
         activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
-    val messageSelectionHandleColor =
-        if (
-            activeMessageSelectionState != null &&
-            !shouldShowMessageSelectionHandles(activeMessageSelectionState)
-        ) {
-            Color.Transparent
-        } else {
-            CHAT_SELECTION_HANDLE_COLOR
-        }
-    val messageSelectionColors = remember(messageSelectionHandleColor) {
+    val messageSelectionColors = remember {
         TextSelectionColors(
-            handleColor = messageSelectionHandleColor,
+            handleColor = CHAT_SELECTION_HANDLE_COLOR,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
@@ -4454,6 +4414,7 @@ private fun MessageActionMenuPopup(
     val density = LocalDensity.current
     val verticalSpacingPx = with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
     val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
+    var placeBelow by remember(state.messageId, state.mode) { mutableStateOf(false) }
     var cardSize by remember(state.anchorX, state.anchorY, state.selectionBottomY) { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
@@ -4486,12 +4447,27 @@ private fun MessageActionMenuPopup(
             0
         ).coerceAtLeast(minY)
     val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    val fallbackBelow = (selectionBottomLocalY + verticalSpacingPx).coerceIn(minY, maxY)
+    val canPlaceAbove = preferredTop >= minY
+    val belowCandidate = selectionBottomLocalY + verticalSpacingPx
+    val canPlaceBelow = belowCandidate <= maxY
+    val resolvedPlaceBelow =
+        when {
+            placeBelow && canPlaceBelow -> true
+            !placeBelow && canPlaceAbove -> false
+            canPlaceAbove -> false
+            canPlaceBelow -> true
+            else -> placeBelow
+        }
+    SideEffect {
+        if (placeBelow != resolvedPlaceBelow) {
+            placeBelow = resolvedPlaceBelow
+        }
+    }
     val preferredY =
-        if (preferredTop >= minY) {
+        if (!resolvedPlaceBelow) {
             preferredTop.coerceAtMost(maxY)
         } else {
-            fallbackBelow
+            belowCandidate.coerceIn(minY, maxY)
         }
 
     Box(
