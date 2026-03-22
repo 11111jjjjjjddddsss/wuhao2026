@@ -35,6 +35,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -279,6 +280,7 @@ private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
+private val STATIC_SELECTION_CACHE_WINDOW = 6000.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
@@ -2305,6 +2307,10 @@ fun ChatScreen() {
         initialBottomViewport?.firstVisibleItemScrollOffset?.coerceAtLeast(0) ?: 0
     }
     val listState = rememberLazyListState(
+        cacheWindow = LazyLayoutCacheWindow(
+            ahead = STATIC_SELECTION_CACHE_WINDOW,
+            behind = STATIC_SELECTION_CACHE_WINDOW
+        ),
         initialFirstVisibleItemIndex = initialListIndex,
         initialFirstVisibleItemScrollOffset = initialListScrollOffset
     )
@@ -2693,39 +2699,12 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val activeSelectionTouchBoundsInRoot =
         activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
-    val selectionHandlesVisible by remember(
-        activeMessageSelectionState,
-        listState.isScrollInProgress,
-        programmaticScroll,
-        composerTopInViewportPx,
-        topChromeMaskBottomPx
-    ) {
-        derivedStateOf {
-            val state = activeMessageSelectionState ?: return@derivedStateOf true
-            if (listState.isScrollInProgress || programmaticScroll) {
-                return@derivedStateOf false
-            }
-            val visibleTop = currentMessageSelectionTopBoundaryPx()
-            val visibleBottom = currentMessageSelectionBottomBoundaryPx()
-            val selectionTop = state.anchorY.coerceAtMost(state.selectionBottomY)
-            val selectionBottom = state.anchorY.coerceAtLeast(state.selectionBottomY)
-            selectionTop >= visibleTop && selectionBottom <= visibleBottom
-        }
+    val selectionCardVisible by remember(activeMessageSelectionState) {
+        derivedStateOf { activeMessageSelectionState != null }
     }
-    val selectionCardVisible by remember(
-        activeMessageSelectionState,
-        listState.isScrollInProgress,
-        programmaticScroll
-    ) {
-        derivedStateOf {
-            activeMessageSelectionState != null &&
-                !listState.isScrollInProgress &&
-                !programmaticScroll
-        }
-    }
-    val messageSelectionColors = remember(selectionHandlesVisible) {
+    val messageSelectionColors = remember {
         TextSelectionColors(
-            handleColor = if (selectionHandlesVisible) CHAT_SELECTION_HANDLE_COLOR else Color.Transparent,
+            handleColor = CHAT_SELECTION_HANDLE_COLOR,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
@@ -2790,13 +2769,6 @@ fun ChatScreen() {
             }
 
             override fun hide() {
-                if (
-                    (listState.isScrollInProgress || programmaticScroll) &&
-                    messageSelectionToolbarState?.messageId == messageId
-                ) {
-                    messageSelectionToolbarBoundsInRoot = null
-                    return
-                }
                 if (messageSelectionToolbarState?.messageId == messageId) {
                     messageSelectionToolbarState = null
                 }
@@ -2805,8 +2777,8 @@ fun ChatScreen() {
             }
         }
     }
-    LaunchedEffect(selectionCardVisible, activeMessageSelectionState?.messageId) {
-        if (!selectionCardVisible) {
+    LaunchedEffect(activeMessageSelectionState?.messageId) {
+        if (activeMessageSelectionState == null) {
             messageSelectionToolbarBoundsInRoot = null
         }
     }
