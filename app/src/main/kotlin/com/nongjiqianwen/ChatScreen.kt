@@ -4194,8 +4194,10 @@ fun ChatScreen() {
                     ),
                     viewportLeftPx = chatRootLeftPx,
                     viewportTopPx = chatRootTopPx,
-                    viewportWidthPx = chatRootWidthPx,
-                    viewportHeightPx = chatRootHeightPx,
+                    contentViewportLeftPx = messageViewportLeftPx,
+                    contentViewportTopPx = messageViewportTopPx,
+                    contentViewportWidthPx = messageViewportWidthPx,
+                    contentViewportHeightPx = messageViewportHeightPx,
                     onCopy = {
                         performButtonHaptic()
                         state.onCopyRequested?.invoke()
@@ -4275,8 +4277,10 @@ private fun MessageActionMenuPopup(
     state: MessageActionMenuState,
     viewportLeftPx: Float,
     viewportTopPx: Float,
-    viewportWidthPx: Int,
-    viewportHeightPx: Int,
+    contentViewportLeftPx: Float,
+    contentViewportTopPx: Float,
+    contentViewportWidthPx: Int,
+    contentViewportHeightPx: Int,
     onCopy: () -> Unit,
     onSelectAll: () -> Unit
 ) {
@@ -4286,14 +4290,28 @@ private fun MessageActionMenuPopup(
     var cardSize by remember(state.messageId) { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
+    val contentLocalLeft = (contentViewportLeftPx - viewportLeftPx).roundToInt()
+    val contentLocalTop = (contentViewportTopPx - viewportTopPx).roundToInt()
     val resolvedWidth = if (cardSize.width > 0) cardSize.width else with(density) { 148.dp.roundToPx() }
     val resolvedHeight = if (cardSize.height > 0) cardSize.height else with(density) { 48.dp.roundToPx() }
-    val maxX = (viewportWidthPx - resolvedWidth - marginPx).coerceAtLeast(marginPx)
-    val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(marginPx, maxX)
-    val maxY = (viewportHeightPx - resolvedHeight - marginPx).coerceAtLeast(marginPx)
+    val minX = (contentLocalLeft + marginPx).coerceAtLeast(marginPx)
+    val maxX = (
+        contentLocalLeft +
+            contentViewportWidthPx -
+            resolvedWidth -
+            marginPx
+        ).coerceAtLeast(minX)
+    val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(minX, maxX)
+    val minY = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
+    val maxY = (
+        contentLocalTop +
+            contentViewportHeightPx -
+            resolvedHeight -
+            marginPx
+        ).coerceAtLeast(minY)
     val preferredY =
         (anchorLocalY - resolvedHeight - verticalSpacingPx)
-            .coerceIn(marginPx, maxY)
+            .coerceIn(minY, maxY)
 
     Box(
         modifier = Modifier
