@@ -272,6 +272,7 @@ private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 48.dp
+private val MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE = 12.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
@@ -2351,6 +2352,7 @@ fun ChatScreen() {
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
     var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
+    var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingAnchorTopPx by remember { mutableIntStateOf(-1) }
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
@@ -2647,9 +2649,42 @@ fun ChatScreen() {
     val selectionCardVisible by remember(activeMessageSelectionState) {
         derivedStateOf { activeMessageSelectionState != null }
     }
-    val messageSelectionColors = remember {
+    val messageSelectionHandleMaskClearancePx = with(density) {
+        MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE.roundToPx()
+    }
+    val selectionHandlesVisible by remember(
+        activeMessageSelectionState,
+        messageViewportTopPx,
+        messageViewportHeightPx,
+        topChromeMaskBottomPx,
+        composerTopInViewportPx,
+        messageSelectionHandleMaskClearancePx
+    ) {
+        derivedStateOf {
+            val state = activeMessageSelectionState ?: return@derivedStateOf true
+            val selectionTopInViewport =
+                state.anchorY.coerceAtMost(state.selectionBottomY) - messageViewportTopPx.roundToInt()
+            val selectionBottomInViewport =
+                state.anchorY.coerceAtLeast(state.selectionBottomY) - messageViewportTopPx.roundToInt()
+            val topBoundary =
+                if (topChromeMaskBottomPx > 0) {
+                    (topChromeMaskBottomPx - messageViewportTopPx.roundToInt()) +
+                        messageSelectionHandleMaskClearancePx
+                } else {
+                    0
+                }
+            val bottomBoundary =
+                if (composerTopInViewportPx > 0) {
+                    composerTopInViewportPx - messageSelectionHandleMaskClearancePx
+                } else {
+                    messageViewportHeightPx
+                }
+            selectionTopInViewport >= topBoundary && selectionBottomInViewport <= bottomBoundary
+        }
+    }
+    val messageSelectionColors = remember(selectionHandlesVisible) {
         TextSelectionColors(
-            handleColor = CHAT_SELECTION_HANDLE_COLOR,
+            handleColor = if (selectionHandlesVisible) CHAT_SELECTION_HANDLE_COLOR else Color.Transparent,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
@@ -4234,6 +4269,9 @@ fun ChatScreen() {
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .height(topBarReservedHeight)
+                    .onGloballyPositioned { coordinates ->
+                        topChromeMaskBottomPx = coordinates.boundsInWindow().bottom.roundToInt()
+                    }
                     .background(pageSurface)
                     .zIndex(45f)
             )
@@ -4301,6 +4339,7 @@ fun ChatScreen() {
                     contentViewportTopPx = messageViewportTopPx,
                     contentViewportWidthPx = messageViewportWidthPx,
                     contentViewportHeightPx = messageViewportHeightPx,
+                    composerTopInViewportPx = composerTopInViewportPx,
                     onBoundsChanged = { bounds -> messageSelectionToolbarBoundsInRoot = bounds },
                     onCopy = {
                         performButtonHaptic()
@@ -4395,6 +4434,7 @@ private fun MessageActionMenuPopup(
     contentViewportTopPx: Float,
     contentViewportWidthPx: Int,
     contentViewportHeightPx: Int,
+    composerTopInViewportPx: Int,
     onBoundsChanged: (Rect?) -> Unit,
     onCopy: () -> Unit,
     onCopyFull: () -> Unit
@@ -4421,7 +4461,12 @@ private fun MessageActionMenuPopup(
         ).coerceAtLeast(minX)
     val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(minX, maxX)
     val minY = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
-    val contentBottomLimit = contentLocalTop + contentViewportHeightPx - marginPx
+    val contentBottomLimit =
+        if (composerTopInViewportPx > 0) {
+            contentLocalTop + composerTopInViewportPx - marginPx
+        } else {
+            contentLocalTop + contentViewportHeightPx - marginPx
+        }
     val maxY = (
         contentBottomLimit -
             resolvedHeight -
