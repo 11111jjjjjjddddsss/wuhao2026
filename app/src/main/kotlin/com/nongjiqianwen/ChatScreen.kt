@@ -162,6 +162,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -4305,7 +4307,40 @@ fun ChatScreen() {
                         clearMessageSelection()
                     }
                 )
+            }
+
+            if (hasActiveMessageSelection) {
+                val selectionMaskWidth = with(density) {
+                    maxOf(view.width, messageViewportWidthPx).toDp()
                 }
+                if (topInset > 0.dp) {
+                    Popup(
+                        alignment = Alignment.TopStart,
+                        properties = PopupProperties(focusable = false, clippingEnabled = false)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(selectionMaskWidth)
+                                .height(topInset)
+                                .background(pageSurface)
+                        )
+                    }
+                }
+                val bottomMaskHeight = with(density) { safeBottomInsetPx.toDp() }
+                if (bottomMaskHeight > 0.dp) {
+                    Popup(
+                        alignment = Alignment.BottomStart,
+                        properties = PopupProperties(focusable = false, clippingEnabled = false)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(selectionMaskWidth)
+                                .height(bottomMaskHeight)
+                                .background(pageSurface)
+                        )
+                    }
+                }
+            }
 
         }
     }
@@ -4430,16 +4465,8 @@ private fun MessageActionMenuPopup(
     val protectedBottomLimit = minOf(contentBottomLimit, bottomMaskTopLocal - marginPx)
     val topHandleLocalY = minOf(anchorLocalY, selectionBottomLocalY)
     val bottomHandleLocalY = maxOf(anchorLocalY, selectionBottomLocalY)
-    val topHandleVisible = topHandleLocalY in protectedTopLimit..protectedBottomLimit
-    val bottomHandleVisible = bottomHandleLocalY in protectedTopLimit..protectedBottomLimit
-    val anchorHandleLocalY =
-        when {
-            topHandleVisible -> topHandleLocalY
-            bottomHandleVisible -> bottomHandleLocalY
-            else -> bottomHandleLocalY
-        }
-    val preferredTop = anchorHandleLocalY - resolvedHeight - verticalSpacingPx
-    val belowCandidate = anchorHandleLocalY + verticalSpacingPx
+    val preferredTop = topHandleLocalY - resolvedHeight - verticalSpacingPx
+    val belowCandidate = bottomHandleLocalY + verticalSpacingPx
     val canPlaceAbove = preferredTop >= protectedTopLimit
     val canPlaceBelow = belowCandidate + resolvedHeight <= protectedBottomLimit
     val resolvedPlaceBelow = !canPlaceAbove && canPlaceBelow
