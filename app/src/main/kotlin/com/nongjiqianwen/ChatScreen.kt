@@ -216,6 +216,7 @@ private data class MessageActionMenuState(
 private data class MessageSelectionToolbarState(
     val anchorX: Int,
     val anchorY: Int,
+    val selectionBottomY: Int,
     val onCopyRequested: (() -> Unit)?,
     val onSelectAllRequested: (() -> Unit)?
 )
@@ -2577,7 +2578,6 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
-    var messageSelectionTouchAnchor by remember { mutableStateOf<Offset?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
     val messageSelectionTextToolbar = remember {
         object : TextToolbar {
@@ -2596,14 +2596,10 @@ fun ChatScreen() {
                 onCutRequested: (() -> Unit)?,
                 onSelectAllRequested: (() -> Unit)?
             ) {
-                val anchor =
-                    messageSelectionTouchAnchor ?: Offset(
-                        x = rect.center.x,
-                        y = rect.top
-                    )
                 messageSelectionToolbarState = MessageSelectionToolbarState(
-                    anchorX = anchor.x.roundToInt(),
-                    anchorY = anchor.y.roundToInt(),
+                    anchorX = rect.center.x.roundToInt(),
+                    anchorY = rect.top.roundToInt(),
+                    selectionBottomY = rect.bottom.roundToInt(),
                     onCopyRequested = onCopyRequested,
                     onSelectAllRequested = onSelectAllRequested
                 )
@@ -3971,9 +3967,6 @@ fun ChatScreen() {
                                             content = msg.content,
                                             textSelectionColors = chatSelectionColors,
                                             textToolbar = messageSelectionTextToolbar,
-                                            onRecordLongPressAnchor = { offset ->
-                                                messageSelectionTouchAnchor = offset
-                                            },
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     } else {
@@ -3982,10 +3975,7 @@ fun ChatScreen() {
                                             textSelectionColors = chatSelectionColors,
                                             textToolbar = messageSelectionTextToolbar,
                                             userBubbleMaxWidth = userBubbleMaxWidth,
-                                            userBubbleColor = userBubbleColor,
-                                            onRecordLongPressAnchor = { offset ->
-                                                messageSelectionTouchAnchor = offset
-                                            }
+                                            userBubbleColor = userBubbleColor
                                         )
                                     }
                                 }
@@ -4179,19 +4169,7 @@ fun ChatScreen() {
 
             messageSelectionToolbarState?.let { state ->
                 MessageActionMenuPopup(
-                    state = MessageActionMenuState(
-                        messageId = "selection_toolbar",
-                        role = ChatRole.ASSISTANT,
-                        content = "",
-                        anchorX = state.anchorX,
-                        anchorY = state.anchorY,
-                        localAnchorX = 0,
-                        localAnchorY = 0,
-                        messageLeft = 0,
-                        messageTop = 0,
-                        messageWidth = 0,
-                        initialSelectionStart = 0
-                    ),
+                    state = state,
                     viewportLeftPx = chatRootLeftPx,
                     viewportTopPx = chatRootTopPx,
                     contentViewportLeftPx = messageViewportLeftPx,
@@ -4275,7 +4253,7 @@ private fun MessageActionMenuCardContent(
 
 @Composable
 private fun MessageActionMenuPopup(
-    state: MessageActionMenuState,
+    state: MessageSelectionToolbarState,
     viewportLeftPx: Float,
     viewportTopPx: Float,
     contentViewportLeftPx: Float,
@@ -4289,9 +4267,10 @@ private fun MessageActionMenuPopup(
     val density = LocalDensity.current
     val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
     val marginPx = with(density) { 8.dp.roundToPx() }
-    var cardSize by remember(state.messageId) { mutableStateOf(IntSize.Zero) }
+    var cardSize by remember(state.anchorX, state.anchorY, state.selectionBottomY) { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
+    val selectionBottomLocalY = (state.selectionBottomY - viewportTopPx).roundToInt()
     val contentLocalLeft = (contentViewportLeftPx - viewportLeftPx).roundToInt()
     val contentLocalTop = (contentViewportTopPx - viewportTopPx).roundToInt()
     val resolvedWidth = if (cardSize.width > 0) cardSize.width else with(density) { 148.dp.roundToPx() }
@@ -4316,9 +4295,9 @@ private fun MessageActionMenuPopup(
             resolvedHeight -
             0
         ).coerceAtLeast(minY)
-    val preferredY =
-        (anchorLocalY - resolvedHeight - verticalSpacingPx)
-            .coerceIn(minY, maxY)
+    val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
+    val fallbackBelow = (selectionBottomLocalY + verticalSpacingPx).coerceIn(minY, maxY)
+    val preferredY = if (preferredTop >= minY) preferredTop else fallbackBelow
 
     Box(
         modifier = Modifier
@@ -4331,7 +4310,7 @@ private fun MessageActionMenuPopup(
                 .onGloballyPositioned { coordinates ->
                     cardSize = coordinates.size
                 }
-                .pointerInput(state.messageId) {
+                .pointerInput(state.anchorX, state.anchorY, state.selectionBottomY) {
                     detectTapGestures(onTap = {})
                 }
         ) {
@@ -4345,42 +4324,18 @@ private fun SelectableRenderedAssistantMessage(
     content: String,
     textSelectionColors: TextSelectionColors,
     textToolbar: TextToolbar,
-    onRecordLongPressAnchor: (Offset) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var bounds by remember(content) { mutableStateOf<Rect?>(null) }
-    Box(
-        modifier = modifier
-            .onGloballyPositioned { coordinates ->
-                bounds = coordinates.boundsInWindow()
-            }
-            .pointerInput(content) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(pass = PointerEventPass.Initial)
-                    val rect = bounds
-                    if (rect != null) {
-                        onRecordLongPressAnchor(
-                            Offset(
-                                x = rect.left + down.position.x,
-                                y = rect.top + down.position.y
-                            )
-                        )
-                    }
-                    waitForUpOrCancellation(pass = PointerEventPass.Final)
-                }
-            }
+    CompositionLocalProvider(
+        LocalTextSelectionColors provides textSelectionColors,
+        LocalTextToolbar provides textToolbar
     ) {
-        CompositionLocalProvider(
-            LocalTextSelectionColors provides textSelectionColors,
-            LocalTextToolbar provides textToolbar
-        ) {
-            AssistantMessageContent(
-                content = content,
-                isStreaming = false,
-                selectionEnabled = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        AssistantMessageContent(
+            content = content,
+            isStreaming = false,
+            selectionEnabled = true,
+            modifier = modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -4390,10 +4345,8 @@ private fun SelectableRenderedUserMessageBubble(
     textSelectionColors: TextSelectionColors,
     textToolbar: TextToolbar,
     userBubbleMaxWidth: Dp,
-    userBubbleColor: Color,
-    onRecordLongPressAnchor: (Offset) -> Unit
+    userBubbleColor: Color
 ) {
-    var bounds by remember(content) { mutableStateOf<Rect?>(null) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -4409,25 +4362,7 @@ private fun SelectableRenderedUserMessageBubble(
                         .widthIn(max = userBubbleMaxWidth)
                         .clip(RoundedCornerShape(20.dp))
                         .background(userBubbleColor)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                        .onGloballyPositioned { coordinates ->
-                            bounds = coordinates.boundsInWindow()
-                        }
-                        .pointerInput(content) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(pass = PointerEventPass.Initial)
-                                val rect = bounds
-                                if (rect != null) {
-                                    onRecordLongPressAnchor(
-                                        Offset(
-                                            x = rect.left + down.position.x,
-                                            y = rect.top + down.position.y
-                                        )
-                                    )
-                                }
-                                waitForUpOrCancellation(pass = PointerEventPass.Final)
-                            }
-                        },
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
                     style = MaterialTheme.typography.bodyLarge,
                     color = Color(0xFF161616)
                 )
