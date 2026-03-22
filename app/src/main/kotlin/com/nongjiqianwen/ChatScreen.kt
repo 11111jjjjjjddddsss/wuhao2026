@@ -2596,12 +2596,6 @@ fun ChatScreen() {
     var pendingMessageSelectionMode by remember { mutableStateOf<Pair<String, MessageSelectionMode>?>(null) }
     val messageSelectionBoundaryClearancePx =
         with(density) { MESSAGE_SELECTION_BOUNDARY_CLEARANCE.roundToPx() }
-    val messageActionMenuMarginPx =
-        with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
-    val messageActionMenuVerticalSpacingPx =
-        with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
-    val messageActionMenuEstimatedHeightPx =
-        with(density) { MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT.roundToPx() }
     val messageSelectionHandleVisibilityClearancePx =
         with(density) { MESSAGE_SELECTION_HANDLE_VISIBILITY_CLEARANCE.roundToPx() }
 
@@ -2697,36 +2691,6 @@ fun ChatScreen() {
         messageSelectionResetEpoch++
     }
 
-    fun shouldShowMessageSelectionToolbar(state: MessageSelectionToolbarState): Boolean {
-        if (suppressMessageSelectionToolbarForScroll) return false
-        val resolvedState = resolveMessageSelectionToolbarState(state) ?: return false
-        val visibleTop = currentMessageSelectionTopBoundaryPx()
-        val visibleBottom = currentMessageSelectionBottomBoundaryPx()
-        if (visibleBottom <= visibleTop) return false
-        val selectionVisible =
-            when (resolvedState.mode) {
-                MessageSelectionMode.Partial ->
-                    resolvedState.selectionBottomY > visibleTop && resolvedState.anchorY < visibleBottom
-
-                MessageSelectionMode.SelectAll -> {
-                    val bounds = currentSelectionMessageBounds(resolvedState) ?: return false
-                    bounds.bottom.roundToInt() > visibleTop && bounds.top.roundToInt() < visibleBottom
-                }
-            }
-        if (!selectionVisible) return false
-        val minTop = currentMessageSelectionTopBoundaryPx() + messageActionMenuMarginPx
-        val maxTop =
-            currentMessageSelectionBottomBoundaryPx() -
-                messageActionMenuEstimatedHeightPx -
-                messageActionMenuMarginPx
-        if (maxTop < minTop) return false
-        val preferredTop =
-            resolvedState.anchorY -
-                messageActionMenuEstimatedHeightPx -
-                messageActionMenuVerticalSpacingPx
-        return preferredTop in minTop..maxTop
-    }
-
     fun shouldShowMessageSelectionHandles(state: MessageSelectionToolbarState): Boolean {
         if (suppressMessageSelectionToolbarForScroll) return false
         return isSelectionFullyWithinVisibleBounds(
@@ -2760,16 +2724,12 @@ fun ChatScreen() {
     ): TextToolbar {
         return object : TextToolbar {
             override val status: TextToolbarStatus
-                get() {
-                    val toolbarState =
-                        messageSelectionToolbarState?.takeIf { it.messageId == messageId }
-                            ?: return TextToolbarStatus.Hidden
-                    return if (shouldShowMessageSelectionToolbar(toolbarState)) {
+                get() =
+                    if (messageSelectionToolbarState?.messageId == messageId) {
                         TextToolbarStatus.Shown
                     } else {
                         TextToolbarStatus.Hidden
                     }
-                }
 
             override fun showMenu(
                 rect: Rect,
@@ -2810,8 +2770,7 @@ fun ChatScreen() {
                 } else {
                     messageSelectionToolbarState = resolvedState
                     deferredMessageSelectionToolbarState = resolvedState
-                    messageSelectionToolbarIgnoreNextUp =
-                        shouldShowMessageSelectionToolbar(resolvedState)
+                    messageSelectionToolbarIgnoreNextUp = true
                 }
             }
 
@@ -4468,18 +4427,9 @@ fun ChatScreen() {
                 }
             }
 
-            val resolvedMessageSelectionToolbarState =
-                messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
-            val shouldRenderMessageSelectionToolbar =
-                resolvedMessageSelectionToolbarState?.let(::shouldShowMessageSelectionToolbar) == true
-            if (!shouldRenderMessageSelectionToolbar && messageSelectionToolbarBoundsInRoot != null) {
-                SideEffect {
-                    messageSelectionToolbarBoundsInRoot = null
-                }
-            }
-            if (shouldRenderMessageSelectionToolbar && resolvedMessageSelectionToolbarState != null) {
+            messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)?.let { state ->
                 MessageActionMenuPopup(
-                    state = resolvedMessageSelectionToolbarState,
+                    state = state,
                     viewportLeftPx = chatRootLeftPx,
                     viewportTopPx = chatRootTopPx,
                     contentViewportLeftPx = messageViewportLeftPx,
@@ -4490,12 +4440,12 @@ fun ChatScreen() {
                     onBoundsChanged = { bounds -> messageSelectionToolbarBoundsInRoot = bounds },
                     onCopy = {
                         performButtonHaptic()
-                        resolvedMessageSelectionToolbarState.onCopyRequested?.invoke()
+                        state.onCopyRequested?.invoke()
                         clearMessageSelection()
                     },
                     onSelectAll = {
                         performButtonHaptic()
-                        val fullSelectionState = resolvedMessageSelectionToolbarState.copy(
+                        val fullSelectionState = state.copy(
                             mode = MessageSelectionMode.SelectAll,
                             anchorXRatio = 0.5f,
                             selectionTopRatio = 0f,
@@ -4503,9 +4453,8 @@ fun ChatScreen() {
                         )
                         messageSelectionToolbarState = fullSelectionState
                         deferredMessageSelectionToolbarState = fullSelectionState
-                        pendingMessageSelectionMode =
-                            resolvedMessageSelectionToolbarState.messageId to MessageSelectionMode.SelectAll
-                        resolvedMessageSelectionToolbarState.onSelectAllRequested?.invoke()
+                        pendingMessageSelectionMode = state.messageId to MessageSelectionMode.SelectAll
+                        state.onSelectAllRequested?.invoke()
                     }
                 )
             }
@@ -4617,11 +4566,7 @@ private fun MessageActionMenuPopup(
             0
         ).coerceAtLeast(minY)
     val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    if (preferredTop !in minY..maxY) {
-        SideEffect { onBoundsChanged(null) }
-        return
-    }
-    val preferredY = preferredTop
+    val preferredY = preferredTop.coerceIn(minY, maxY)
 
     Box(
         modifier = Modifier
