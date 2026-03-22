@@ -2599,9 +2599,9 @@ fun ChatScreen() {
                 onSelectAllRequested: (() -> Unit)?
             ) {
                 messageSelectionToolbarState = MessageSelectionToolbarState(
-                    anchorX = (chatRootLeftPx + rect.center.x).roundToInt(),
-                    anchorY = (chatRootTopPx + rect.top).roundToInt(),
-                    selectionBottomY = (chatRootTopPx + rect.bottom).roundToInt(),
+                    anchorX = rect.center.x.roundToInt(),
+                    anchorY = rect.top.roundToInt(),
+                    selectionBottomY = rect.bottom.roundToInt(),
                     onCopyRequested = onCopyRequested,
                     onSelectAllRequested = onSelectAllRequested
                 )
@@ -3923,7 +3923,10 @@ fun ChatScreen() {
                         messageViewportTopPx = bounds.top
                     }
             ) {
-                LazyColumn(
+                CompositionLocalProvider(
+                    LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
+                ) {
+                    LazyColumn(
                     state = listState,
                     userScrollEnabled = true,
                     modifier = Modifier
@@ -3947,7 +3950,7 @@ fun ChatScreen() {
                         bottom = with(density) { bottomBarHeightPx.toDp() } +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE
                     )
-                ) {
+                    ) {
                         items(
                             items = messages,
                             key = { it.id },
@@ -4036,6 +4039,7 @@ fun ChatScreen() {
                                 )
                             }
                         }
+                    }
                     }
                 }
 
@@ -4331,8 +4335,7 @@ private fun SelectableRenderedAssistantMessage(
 ) {
     CompositionLocalProvider(
         LocalTextSelectionColors provides textSelectionColors,
-        LocalTextToolbar provides textToolbar,
-        LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
+        LocalTextToolbar provides textToolbar
     ) {
         AssistantMessageContent(
             content = content,
@@ -4358,8 +4361,7 @@ private fun SelectableRenderedUserMessageBubble(
     ) {
         CompositionLocalProvider(
             LocalTextSelectionColors provides textSelectionColors,
-            LocalTextToolbar provides textToolbar,
-            LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
+            LocalTextToolbar provides textToolbar
         ) {
             SelectionContainer {
                 Text(
