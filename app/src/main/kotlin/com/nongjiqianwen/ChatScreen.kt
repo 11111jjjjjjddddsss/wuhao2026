@@ -4442,8 +4442,8 @@ private fun MessageActionMenuCardContent(
         ) {
             MessageActionMenuButton(
                 label = "复制",
-                minWidth = 88.dp,
-                horizontalPadding = 20.dp,
+                minWidth = 72.dp,
+                horizontalPadding = 16.dp,
                 onClick = onCopy
             )
             Box(
@@ -4453,10 +4453,10 @@ private fun MessageActionMenuCardContent(
                     .background(Color.White.copy(alpha = 0.16f))
             )
             MessageActionMenuButton(
-                modifier = Modifier.padding(start = 4.dp),
+                modifier = Modifier.padding(start = 2.dp),
                 label = "全文复制",
-                minWidth = 120.dp,
-                horizontalPadding = 18.dp,
+                minWidth = 100.dp,
+                horizontalPadding = 14.dp,
                 onClick = onCopyFull
             )
         }
