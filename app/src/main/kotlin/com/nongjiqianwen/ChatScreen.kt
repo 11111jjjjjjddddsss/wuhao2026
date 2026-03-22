@@ -4415,7 +4415,7 @@ private fun MessageActionMenuPopup(
     val verticalSpacingPx = with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
     val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
     var placeBelow by remember(state.messageId, state.mode) { mutableStateOf(false) }
-    var cardSize by remember(state.anchorX, state.anchorY, state.selectionBottomY) { mutableStateOf(IntSize.Zero) }
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
     val selectionBottomLocalY = (state.selectionBottomY - viewportTopPx).roundToInt()
