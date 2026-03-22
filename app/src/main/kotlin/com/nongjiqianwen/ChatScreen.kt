@@ -2659,9 +2659,9 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             val state = activeMessageSelectionState ?: return@derivedStateOf true
-            val selectionTopInViewport =
+            val topHandleInViewport =
                 state.anchorY.coerceAtMost(state.selectionBottomY) - messageViewportTopPx.roundToInt()
-            val selectionBottomInViewport =
+            val bottomHandleInViewport =
                 state.anchorY.coerceAtLeast(state.selectionBottomY) - messageViewportTopPx.roundToInt()
             val topBoundary =
                 if (topChromeMaskBottomPx > 0) {
@@ -2676,7 +2676,11 @@ fun ChatScreen() {
                 } else {
                     messageViewportHeightPx
                 }
-            selectionTopInViewport >= topBoundary && selectionBottomInViewport <= bottomBoundary
+            val topHandleVisible =
+                topHandleInViewport in topBoundary..bottomBoundary
+            val bottomHandleVisible =
+                bottomHandleInViewport in topBoundary..bottomBoundary
+            topHandleVisible || bottomHandleVisible
         }
     }
     val messageSelectionColors = remember(selectionHandlesVisible) {
@@ -4462,8 +4466,19 @@ private fun MessageActionMenuPopup(
     val contentBottomLimit = contentLocalTop + contentViewportHeightPx - marginPx
     val protectedTopLimit = maxOf(contentTopLimit, topMaskBottomLocal + marginPx)
     val protectedBottomLimit = minOf(contentBottomLimit, bottomMaskTopLocal - marginPx)
-    val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    val belowCandidate = selectionBottomLocalY + verticalSpacingPx
+    val topHandleLocalY = minOf(anchorLocalY, selectionBottomLocalY)
+    val bottomHandleLocalY = maxOf(anchorLocalY, selectionBottomLocalY)
+    val topHandleVisible = topHandleLocalY in protectedTopLimit..protectedBottomLimit
+    val bottomHandleVisible = bottomHandleLocalY in protectedTopLimit..protectedBottomLimit
+    val anchorHandleLocalY =
+        when {
+            topHandleVisible && !bottomHandleVisible -> topHandleLocalY
+            !topHandleVisible && bottomHandleVisible -> bottomHandleLocalY
+            !topHandleVisible && !bottomHandleVisible -> bottomHandleLocalY
+            else -> if (placeBelow) bottomHandleLocalY else topHandleLocalY
+        }
+    val preferredTop = anchorHandleLocalY - resolvedHeight - verticalSpacingPx
+    val belowCandidate = anchorHandleLocalY + verticalSpacingPx
     val canPlaceAbove = preferredTop >= protectedTopLimit
     val canPlaceBelow = belowCandidate + resolvedHeight <= protectedBottomLimit
     val resolvedPlaceBelow =
