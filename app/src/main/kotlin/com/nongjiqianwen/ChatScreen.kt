@@ -277,6 +277,7 @@ private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX = 28
 private const val MESSAGE_ACTION_MENU_DISMISS_GUARD_MS = 220L
 private const val MESSAGE_SELECTION_SCROLL_RESET_MIN_MS = 80L
+private const val MESSAGE_SELECTION_TOOLBAR_RESTORE_DELAY_MS = 140L
 private val MESSAGE_SELECTION_BOUNDARY_CLEARANCE = 18.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -2590,6 +2591,11 @@ fun ChatScreen() {
     var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
     var pendingMessageSelectionMode by remember { mutableStateOf<Pair<String, MessageSelectionMode>?>(null) }
+    val trackedMessageSelectionId by remember {
+        derivedStateOf {
+            messageSelectionToolbarState?.messageId ?: deferredMessageSelectionToolbarState?.messageId
+        }
+    }
     val messageSelectionBoundaryClearancePx =
         with(density) { MESSAGE_SELECTION_BOUNDARY_CLEARANCE.roundToPx() }
 
@@ -2674,6 +2680,7 @@ fun ChatScreen() {
         suppressMessageSelectionToolbarForScroll = false
         messageSelectionToolbarBoundsInRoot = null
         pendingMessageSelectionMode = null
+        messageSelectionBoundsById.clear()
         messageSelectionResetEpoch++
     }
     fun buildMessageSelectionTextToolbar(
@@ -3064,6 +3071,12 @@ fun ChatScreen() {
             }
             if (!manualScrollActive) {
                 if (suppressMessageSelectionToolbarForScroll) {
+                    delay(MESSAGE_SELECTION_TOOLBAR_RESTORE_DELAY_MS)
+                    if (listState.isScrollInProgress || programmaticScroll) {
+                        previousIndex = listState.firstVisibleItemIndex
+                        previousOffset = listState.firstVisibleItemScrollOffset
+                        return@collect
+                    }
                     suppressMessageSelectionToolbarForScroll = false
                     val deferredState = deferredMessageSelectionToolbarState
                     val resolvedState =
@@ -4153,7 +4166,9 @@ fun ChatScreen() {
                                         .widthIn(max = chromeMaxWidth)
                                         .fillMaxWidth()
                                         .onGloballyPositioned { coordinates ->
-                                            messageSelectionBoundsById[msg.id] = coordinates.boundsInWindow()
+                                            if (trackedMessageSelectionId == msg.id && msg.role == ChatRole.ASSISTANT) {
+                                                messageSelectionBoundsById[msg.id] = coordinates.boundsInWindow()
+                                            }
                                         }
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
@@ -4173,7 +4188,7 @@ fun ChatScreen() {
                                             userBubbleMaxWidth = userBubbleMaxWidth,
                                             userBubbleColor = userBubbleColor,
                                             onBubbleBoundsChanged = { bounds ->
-                                                if (bounds != null) {
+                                                if (bounds != null && trackedMessageSelectionId == msg.id) {
                                                     messageSelectionBoundsById[msg.id] = bounds
                                                 }
                                             }
