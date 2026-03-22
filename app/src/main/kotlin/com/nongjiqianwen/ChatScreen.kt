@@ -271,8 +271,7 @@ private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
-private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 52.dp
-private val MESSAGE_SELECTION_BOUNDARY_CLEARANCE = 18.dp
+private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 48.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
@@ -2352,7 +2351,6 @@ fun ChatScreen() {
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
     var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
-    var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingAnchorTopPx by remember { mutableIntStateOf(-1) }
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
@@ -4236,9 +4234,6 @@ fun ChatScreen() {
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .height(topBarReservedHeight)
-                    .onGloballyPositioned { coordinates ->
-                        topChromeMaskBottomPx = coordinates.boundsInWindow().bottom.roundToInt()
-                    }
                     .background(pageSurface)
                     .zIndex(45f)
             )
@@ -4335,13 +4330,13 @@ private fun MessageActionMenuButton(
     Box(
         modifier = modifier
             .widthIn(min = minWidth)
-            .heightIn(min = 46.dp)
+            .heightIn(min = 42.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Transparent)
             .pointerInput(label) {
                 detectTapGestures(onTap = { onClick() })
             }
-            .padding(horizontal = horizontalPadding, vertical = 11.dp),
+            .padding(horizontal = horizontalPadding, vertical = 9.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -4366,7 +4361,7 @@ private fun MessageActionMenuCardContent(
         modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             MessageActionMenuButton(
