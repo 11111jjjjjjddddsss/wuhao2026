@@ -31,7 +31,6 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -119,7 +118,10 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -994,6 +996,18 @@ private fun buildRenderedMessageCopyText(role: ChatRole, content: String): Strin
                     }
                 }.trim()
             }
+        }
+    }
+}
+
+private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
+    pass: PointerEventPass
+): PointerInputChange? {
+    while (true) {
+        val event = awaitPointerEvent(pass)
+        event.changes.firstOrNull { it.changedToUpIgnoreConsumed() }?.let { return it }
+        if (event.changes.none { it.pressed }) {
+            return null
         }
     }
 }
@@ -4050,7 +4064,7 @@ fun ChatScreen() {
                             val tappedSelection =
                                 toolbarVisible &&
                                     selectionBounds?.contains(down.position) == true
-                            val up = waitForUpOrCancellation(pass = PointerEventPass.Initial)
+                            val up = waitForUpIgnoringConsumption(pass = PointerEventPass.Initial)
                             if (up == null) return@awaitEachGesture
                             val gestureStayedTapRange =
                                 (up.position - down.position).getDistance() <= touchSlop
