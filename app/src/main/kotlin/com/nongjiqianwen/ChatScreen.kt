@@ -1324,9 +1324,12 @@ private fun AssistantMessageContent(
     strictLineReveal: Boolean = false,
     lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
+    showDisclaimer: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val showDisclaimer = remember(content) { shouldShowAiDisclaimer(content) }
+    val shouldRenderDisclaimer = remember(content, showDisclaimer) {
+        showDisclaimer && shouldShowAiDisclaimer(content)
+    }
     val stableModifier = if (isStreaming) {
         modifier.heightIn(min = STREAMING_MESSAGE_MIN_HEIGHT)
     } else {
@@ -1374,7 +1377,7 @@ private fun AssistantMessageContent(
             } else {
                 AssistantMarkdownContent(content = content)
             }
-            if (showDisclaimer) {
+            if (shouldRenderDisclaimer) {
                 Text(
                     text = AI_DISCLAIMER_TEXT,
                     modifier = Modifier
@@ -4635,19 +4638,22 @@ private fun SelectableRenderedUserMessageBubble(
             LocalTextToolbar provides textToolbar
         ) {
             key(selectionResetKey) {
-                SelectionContainer {
-                    Text(
-                        text = content,
-                        modifier = Modifier
-                            .widthIn(max = userBubbleMaxWidth)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(userBubbleColor)
-                            .onGloballyPositioned { coordinates ->
-                                onBubbleBoundsChanged(coordinates.boundsInWindow())
-                            }
-                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color(0xFF161616)
+                Box(
+                    modifier = Modifier
+                        .widthIn(max = userBubbleMaxWidth)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(userBubbleColor)
+                        .onGloballyPositioned { coordinates ->
+                            onBubbleBoundsChanged(coordinates.boundsInWindow())
+                        }
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    AssistantMessageContent(
+                        content = content,
+                        isStreaming = false,
+                        selectionEnabled = true,
+                        showDisclaimer = false,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
