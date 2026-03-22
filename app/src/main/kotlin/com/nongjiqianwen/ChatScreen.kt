@@ -195,13 +195,6 @@ private data class LocalBottomViewport(
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int
 )
-@Immutable
-private data class SelectionScrollSnapshot(
-    val firstVisibleItemIndex: Int,
-    val firstVisibleItemScrollOffset: Int,
-    val isScrollInProgress: Boolean,
-    val isProgrammaticScroll: Boolean
-)
 private enum class MessageSelectionMode { Partial, SelectAll }
 
 private data class MessageSelectionToolbarState(
@@ -273,10 +266,6 @@ private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
-private const val MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX = 28
-private const val MESSAGE_ACTION_MENU_DISMISS_GUARD_MS = 220L
-private const val MESSAGE_SELECTION_SCROLL_RESET_MIN_MS = 80L
-private const val MESSAGE_SELECTION_TOOLBAR_RESTORE_DELAY_MS = 140L
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 52.dp
@@ -2587,9 +2576,7 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
-    var deferredMessageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
-    var suppressMessageSelectionToolbarForScroll by remember { mutableStateOf(false) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
     var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
@@ -2618,6 +2605,28 @@ fun ChatScreen() {
 
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
+
+    fun windowRectToRoot(rect: Rect): Rect =
+        Rect(
+            left = rect.left - chatRootLeftPx,
+            top = rect.top - chatRootTopPx,
+            right = rect.right - chatRootLeftPx,
+            bottom = rect.bottom - chatRootTopPx
+        )
+
+    fun currentSelectionTouchBoundsInRoot(state: MessageSelectionToolbarState): Rect? {
+        val messageBounds = currentSelectionMessageBounds(state) ?: return null
+        return if (state.mode == MessageSelectionMode.SelectAll) {
+            windowRectToRoot(messageBounds)
+        } else {
+            Rect(
+                left = messageBounds.left - chatRootLeftPx,
+                top = state.anchorY.toFloat() - chatRootTopPx,
+                right = messageBounds.right - chatRootLeftPx,
+                bottom = state.selectionBottomY.toFloat() - chatRootTopPx
+            )
+        }
+    }
 
     fun resolveMessageSelectionToolbarState(state: MessageSelectionToolbarState): MessageSelectionToolbarState? {
         val bounds = currentSelectionMessageBounds(state) ?: return null
@@ -2683,16 +2692,13 @@ fun ChatScreen() {
 
     fun clearMessageSelection() {
         messageSelectionToolbarState = null
-        deferredMessageSelectionToolbarState = null
         messageSelectionToolbarIgnoreNextUp = false
-        suppressMessageSelectionToolbarForScroll = false
         messageSelectionToolbarBoundsInRoot = null
         pendingMessageSelectionMode = null
         messageSelectionResetEpoch++
     }
 
     fun shouldShowMessageSelectionHandles(state: MessageSelectionToolbarState): Boolean {
-        if (suppressMessageSelectionToolbarForScroll) return false
         return isSelectionFullyWithinVisibleBounds(
             state = state,
             extraClearancePx = messageSelectionHandleVisibilityClearancePx
@@ -2700,8 +2706,9 @@ fun ChatScreen() {
     }
 
     val activeMessageSelectionState =
-        (messageSelectionToolbarState ?: deferredMessageSelectionToolbarState)
-            ?.let(::resolveMessageSelectionToolbarState)
+        messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
+    val activeSelectionTouchBoundsInRoot =
+        activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
     val messageSelectionHandleColor =
         if (
             activeMessageSelectionState != null &&
@@ -2765,24 +2772,15 @@ fun ChatScreen() {
                     return
                 }
                 val resolvedState = resolveMessageSelectionToolbarState(nextState) ?: nextState
-                if (suppressMessageSelectionToolbarForScroll) {
-                    deferredMessageSelectionToolbarState = resolvedState
-                } else {
-                    messageSelectionToolbarState = resolvedState
-                    deferredMessageSelectionToolbarState = resolvedState
-                    messageSelectionToolbarIgnoreNextUp = true
-                }
+                messageSelectionToolbarState = resolvedState
+                messageSelectionToolbarIgnoreNextUp = true
             }
 
             override fun hide() {
                 if (messageSelectionToolbarState?.messageId == messageId) {
                     messageSelectionToolbarState = null
                 }
-                if (deferredMessageSelectionToolbarState?.messageId == messageId) {
-                    deferredMessageSelectionToolbarState = null
-                }
                 messageSelectionToolbarIgnoreNextUp = false
-                suppressMessageSelectionToolbarForScroll = false
                 messageSelectionToolbarBoundsInRoot = null
             }
         }
@@ -2797,38 +2795,6 @@ fun ChatScreen() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-    }
-
-    fun isToolbarSelectionVisible(state: MessageSelectionToolbarState): Boolean {
-        if (messageViewportWidthPx <= 0 || messageViewportHeightPx <= 0) return false
-        val resolvedState = resolveMessageSelectionToolbarState(state) ?: return false
-        val visibleTop = currentMessageSelectionTopBoundaryPx()
-        val visibleBottom = currentMessageSelectionBottomBoundaryPx()
-        if (visibleBottom <= visibleTop) return false
-        return when (resolvedState.mode) {
-            MessageSelectionMode.Partial ->
-                resolvedState.selectionBottomY > visibleTop && resolvedState.anchorY < visibleBottom
-
-            MessageSelectionMode.SelectAll -> {
-                val bounds = currentSelectionMessageBounds(resolvedState) ?: return false
-                bounds.bottom.roundToInt() > visibleTop && bounds.top.roundToInt() < visibleBottom
-            }
-        }
-    }
-
-    LaunchedEffect(
-        messageSelectionToolbarState,
-        topChromeMaskBottomPx,
-        composerTopInViewportPx,
-        messageViewportTopPx,
-        messageViewportHeightPx
-    ) {
-        val state = messageSelectionToolbarState ?: return@LaunchedEffect
-        if (!isSelectionWithinAllowedBounds(state)) {
-            clearMessageSelection()
-        } else {
-            messageSelectionToolbarState = resolveMessageSelectionToolbarState(state) ?: state
         }
     }
 
@@ -3077,62 +3043,6 @@ fun ChatScreen() {
             }
             previousIndex = currentIndex
             previousOffset = currentOffset
-        }
-    }
-
-    LaunchedEffect(listState) {
-        var previousIndex = listState.firstVisibleItemIndex
-        var previousOffset = listState.firstVisibleItemScrollOffset
-        snapshotFlow {
-            SelectionScrollSnapshot(
-                firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset,
-                isScrollInProgress = listState.isScrollInProgress,
-                isProgrammaticScroll = programmaticScroll
-            )
-        }.collect { snapshot ->
-            val manualScrollActive = snapshot.isScrollInProgress && !snapshot.isProgrammaticScroll
-            val viewportMoved =
-                snapshot.firstVisibleItemIndex != previousIndex ||
-                    snapshot.firstVisibleItemScrollOffset != previousOffset
-            if (manualScrollActive && viewportMoved) {
-                suppressMessageSelectionToolbarForScroll = true
-                if (messageSelectionToolbarState != null) {
-                    deferredMessageSelectionToolbarState = messageSelectionToolbarState
-                }
-                messageSelectionToolbarState = null
-                messageSelectionToolbarBoundsInRoot = null
-                messageSelectionToolbarIgnoreNextUp = false
-            }
-            if (!manualScrollActive) {
-                if (suppressMessageSelectionToolbarForScroll) {
-                    delay(MESSAGE_SELECTION_TOOLBAR_RESTORE_DELAY_MS)
-                    if (listState.isScrollInProgress || programmaticScroll) {
-                        previousIndex = listState.firstVisibleItemIndex
-                        previousOffset = listState.firstVisibleItemScrollOffset
-                        return@collect
-                    }
-                    suppressMessageSelectionToolbarForScroll = false
-                    val deferredState = deferredMessageSelectionToolbarState
-                    val resolvedState =
-                        deferredState?.let(::resolveMessageSelectionToolbarState)
-                    if (resolvedState == null || !isSelectionWithinAllowedBounds(resolvedState)) {
-                        clearMessageSelection()
-                    } else if (resolvedState.mode == MessageSelectionMode.Partial && !isToolbarSelectionVisible(resolvedState)) {
-                        clearMessageSelection()
-                    } else if (!isToolbarSelectionVisible(resolvedState)) {
-                        messageSelectionToolbarState = null
-                        deferredMessageSelectionToolbarState = resolvedState
-                        messageSelectionToolbarIgnoreNextUp = false
-                    } else {
-                        messageSelectionToolbarState = resolvedState
-                        deferredMessageSelectionToolbarState = resolvedState
-                        messageSelectionToolbarIgnoreNextUp = false
-                    }
-                }
-            }
-            previousIndex = snapshot.firstVisibleItemIndex
-            previousOffset = snapshot.firstVisibleItemScrollOffset
         }
     }
 
@@ -4113,15 +4023,20 @@ fun ChatScreen() {
                         imeVisible,
                         messageSelectionToolbarState != null,
                         messageSelectionToolbarBoundsInRoot,
-                        messageSelectionToolbarIgnoreNextUp
+                        messageSelectionToolbarIgnoreNextUp,
+                        activeSelectionTouchBoundsInRoot
                     ) {
                         awaitEachGesture {
                             val down = awaitFirstDown(pass = PointerEventPass.Final)
                             val toolbarVisible = messageSelectionToolbarState != null
                             val toolbarBounds = messageSelectionToolbarBoundsInRoot
+                            val selectionBounds = activeSelectionTouchBoundsInRoot
                             val tappedToolbar =
                                 toolbarVisible &&
                                     toolbarBounds?.contains(down.position) == true
+                            val tappedSelection =
+                                toolbarVisible &&
+                                    selectionBounds?.contains(down.position) == true
                             val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
                             if (up == null) return@awaitEachGesture
                             when {
@@ -4129,7 +4044,7 @@ fun ChatScreen() {
                                     focusManager.clearFocus(force = true)
                                     keyboardController?.hide()
                                 }
-                                toolbarVisible && !tappedToolbar -> {
+                                toolbarVisible && !tappedToolbar && !tappedSelection -> {
                                     if (messageSelectionToolbarIgnoreNextUp) {
                                         messageSelectionToolbarIgnoreNextUp = false
                                     } else {
@@ -4427,7 +4342,7 @@ fun ChatScreen() {
                 }
             }
 
-            messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)?.let { state ->
+            activeMessageSelectionState?.let { state ->
                 MessageActionMenuPopup(
                     state = state,
                     viewportLeftPx = chatRootLeftPx,
@@ -4452,7 +4367,6 @@ fun ChatScreen() {
                             selectionBottomRatio = 1f
                         )
                         messageSelectionToolbarState = fullSelectionState
-                        deferredMessageSelectionToolbarState = fullSelectionState
                         pendingMessageSelectionMode = state.messageId to MessageSelectionMode.SelectAll
                         state.onSelectAllRequested?.invoke()
                     }
