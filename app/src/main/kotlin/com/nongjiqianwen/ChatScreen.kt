@@ -4398,16 +4398,21 @@ fun ChatScreen() {
 @Composable
 private fun MessageActionMenuButton(
     label: String,
+    modifier: Modifier = Modifier,
+    minWidth: Dp = 0.dp,
+    horizontalPadding: Dp = 12.dp,
     onClick: () -> Unit
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
+            .widthIn(min = minWidth)
+            .heightIn(min = 46.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Transparent)
             .pointerInput(label) {
                 detectTapGestures(onTap = { onClick() })
             }
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = horizontalPadding, vertical = 11.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -4437,6 +4442,8 @@ private fun MessageActionMenuCardContent(
         ) {
             MessageActionMenuButton(
                 label = "复制",
+                minWidth = 88.dp,
+                horizontalPadding = 20.dp,
                 onClick = onCopy
             )
             Box(
@@ -4446,7 +4453,10 @@ private fun MessageActionMenuCardContent(
                     .background(Color.White.copy(alpha = 0.16f))
             )
             MessageActionMenuButton(
+                modifier = Modifier.padding(start = 4.dp),
                 label = "全文复制",
+                minWidth = 120.dp,
+                horizontalPadding = 18.dp,
                 onClick = onCopyFull
             )
         }
