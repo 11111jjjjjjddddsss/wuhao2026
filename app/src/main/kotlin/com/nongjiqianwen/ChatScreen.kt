@@ -2597,9 +2597,9 @@ fun ChatScreen() {
                 onSelectAllRequested: (() -> Unit)?
             ) {
                 messageSelectionToolbarState = MessageSelectionToolbarState(
-                    anchorX = rect.center.x.roundToInt(),
-                    anchorY = rect.top.roundToInt(),
-                    selectionBottomY = rect.bottom.roundToInt(),
+                    anchorX = (chatRootLeftPx + rect.center.x).roundToInt(),
+                    anchorY = (chatRootTopPx + rect.top).roundToInt(),
+                    selectionBottomY = (chatRootTopPx + rect.bottom).roundToInt(),
                     onCopyRequested = onCopyRequested,
                     onSelectAllRequested = onSelectAllRequested
                 )
