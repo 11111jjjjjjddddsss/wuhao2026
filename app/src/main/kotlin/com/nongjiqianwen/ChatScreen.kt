@@ -281,6 +281,8 @@ private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val MESSAGE_SELECTION_SCROLL_RESET_SLOP_PX = 28
 private const val MESSAGE_ACTION_MENU_DISMISS_GUARD_MS = 220L
 private const val MESSAGE_SELECTION_SCROLL_RESET_MIN_MS = 80L
+private val MESSAGE_SELECTION_BOUNDARY_CLEARANCE = 18.dp
+private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
@@ -2318,6 +2320,7 @@ fun ChatScreen() {
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
     var messageViewportTopPx by remember { mutableStateOf(0f) }
     var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
+    var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingAnchorTopPx by remember { mutableIntStateOf(-1) }
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
@@ -2589,6 +2592,42 @@ fun ChatScreen() {
     var suppressMessageSelectionToolbarForScroll by remember { mutableStateOf(false) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
     var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
+    val messageSelectionBoundaryClearancePx =
+        with(density) { MESSAGE_SELECTION_BOUNDARY_CLEARANCE.roundToPx() }
+
+    fun currentMessageSelectionTopBoundaryPx(): Int {
+        val viewportTop = messageViewportTopPx.roundToInt()
+        val maskBottom = topChromeMaskBottomPx.takeIf { it > 0 } ?: viewportTop
+        return maskBottom + messageSelectionBoundaryClearancePx
+    }
+
+    fun currentMessageSelectionBottomBoundaryPx(): Int {
+        val viewportTop = messageViewportTopPx.roundToInt()
+        val viewportBottom = viewportTop + messageViewportHeightPx
+        val composerTop = if (composerTopInViewportPx > 0) {
+            viewportTop + composerTopInViewportPx
+        } else {
+            viewportBottom
+        }
+        return composerTop - messageSelectionBoundaryClearancePx
+    }
+
+    fun isSelectionWithinAllowedBounds(state: MessageSelectionToolbarState): Boolean {
+        if (messageViewportWidthPx <= 0 || messageViewportHeightPx <= 0) return false
+        val visibleTop = currentMessageSelectionTopBoundaryPx()
+        val visibleBottom = currentMessageSelectionBottomBoundaryPx()
+        if (visibleBottom <= visibleTop) return false
+        return state.anchorY >= visibleTop && state.selectionBottomY <= visibleBottom
+    }
+
+    fun clearMessageSelection() {
+        messageSelectionToolbarState = null
+        deferredMessageSelectionToolbarState = null
+        messageSelectionToolbarIgnoreNextUp = false
+        suppressMessageSelectionToolbarForScroll = false
+        messageSelectionToolbarBoundsInRoot = null
+        messageSelectionResetEpoch++
+    }
     val messageSelectionTextToolbar = remember {
         object : TextToolbar {
             override val status: TextToolbarStatus
@@ -2613,6 +2652,10 @@ fun ChatScreen() {
                     onCopyRequested = onCopyRequested,
                     onSelectAllRequested = onSelectAllRequested
                 )
+                if (!isSelectionWithinAllowedBounds(nextState)) {
+                    clearMessageSelection()
+                    return
+                }
                 if (suppressMessageSelectionToolbarForScroll) {
                     deferredMessageSelectionToolbarState = nextState
                 } else {
@@ -2644,24 +2687,25 @@ fun ChatScreen() {
         }
     }
 
-    fun clearMessageSelection() {
-        messageSelectionToolbarState = null
-        deferredMessageSelectionToolbarState = null
-        messageSelectionToolbarIgnoreNextUp = false
-        suppressMessageSelectionToolbarForScroll = false
-        messageSelectionToolbarBoundsInRoot = null
-        messageSelectionResetEpoch++
-    }
-
     fun isToolbarSelectionVisible(state: MessageSelectionToolbarState): Boolean {
         if (messageViewportWidthPx <= 0 || messageViewportHeightPx <= 0) return false
-        val visibleTop = messageViewportTopPx.roundToInt()
-        val visibleBottom = if (composerTopInViewportPx > 0) {
-            messageViewportTopPx.roundToInt() + composerTopInViewportPx
-        } else {
-            messageViewportTopPx.roundToInt() + messageViewportHeightPx
-        }
+        val visibleTop = currentMessageSelectionTopBoundaryPx()
+        val visibleBottom = currentMessageSelectionBottomBoundaryPx()
+        if (visibleBottom <= visibleTop) return false
         return state.selectionBottomY > visibleTop && state.anchorY < visibleBottom
+    }
+
+    LaunchedEffect(
+        messageSelectionToolbarState,
+        topChromeMaskBottomPx,
+        composerTopInViewportPx,
+        messageViewportTopPx,
+        messageViewportHeightPx
+    ) {
+        val state = messageSelectionToolbarState ?: return@LaunchedEffect
+        if (!isSelectionWithinAllowedBounds(state)) {
+            clearMessageSelection()
+        }
     }
 
     LaunchedEffect(inputChromeRowHeightPx, safeBottomInsetPx) {
@@ -2940,7 +2984,11 @@ fun ChatScreen() {
                 if (suppressMessageSelectionToolbarForScroll) {
                     suppressMessageSelectionToolbarForScroll = false
                     val deferredState = deferredMessageSelectionToolbarState
-                    if (deferredState != null && isToolbarSelectionVisible(deferredState)) {
+                    if (
+                        deferredState != null &&
+                        isSelectionWithinAllowedBounds(deferredState) &&
+                        isToolbarSelectionVisible(deferredState)
+                    ) {
                         messageSelectionToolbarState = deferredState
                         messageSelectionToolbarIgnoreNextUp = false
                     } else {
@@ -3733,7 +3781,7 @@ fun ChatScreen() {
         val addIconSize = if (maxWidth < 360.dp) 27.dp else 29.dp
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
-        val topBarReservedHeight = topInset + chromeButtonSize + 6.dp
+        val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
         val pageSurface = Color(0xFFFFFFFF)
         val navigationBottomInset: Dp = WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
@@ -4162,7 +4210,10 @@ fun ChatScreen() {
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
-                    .height(topInset + chromeButtonSize + 2.dp)
+                    .height(topBarReservedHeight)
+                    .onGloballyPositioned { coordinates ->
+                        topChromeMaskBottomPx = coordinates.boundsInWindow().bottom.roundToInt()
+                    }
                     .background(pageSurface)
             )
 
