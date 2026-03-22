@@ -2657,17 +2657,6 @@ fun ChatScreen() {
         )
     }
 
-    fun isSelectionWithinAllowedBounds(state: MessageSelectionToolbarState): Boolean {
-        if (messageViewportWidthPx <= 0 || messageViewportHeightPx <= 0) return false
-        val resolvedState = resolveMessageSelectionToolbarState(state) ?: return false
-        val visibleTop = currentMessageSelectionTopBoundaryPx()
-        val visibleBottom = currentMessageSelectionBottomBoundaryPx()
-        if (visibleBottom <= visibleTop) return false
-        val selectionTop = resolvedState.anchorY.coerceAtMost(resolvedState.selectionBottomY)
-        val selectionBottom = resolvedState.anchorY.coerceAtLeast(resolvedState.selectionBottomY)
-        return selectionBottom > visibleTop && selectionTop < visibleBottom
-    }
-
     fun clearMessageSelection() {
         messageSelectionToolbarState = null
         messageSelectionToolbarIgnoreNextUp = false
@@ -2737,10 +2726,6 @@ fun ChatScreen() {
                         )
                     }
                 )
-                if (!isSelectionWithinAllowedBounds(nextState)) {
-                    clearMessageSelection()
-                    return
-                }
                 val resolvedState = resolveMessageSelectionToolbarState(nextState) ?: nextState
                 messageSelectionToolbarState = resolvedState
                 messageSelectionToolbarIgnoreNextUp = true
