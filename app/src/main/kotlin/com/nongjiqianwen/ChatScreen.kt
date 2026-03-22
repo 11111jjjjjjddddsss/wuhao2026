@@ -99,6 +99,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -2696,6 +2697,10 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val activeSelectionTouchBoundsInRoot =
         activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
+    val latestMessageSelectionToolbarState by rememberUpdatedState(messageSelectionToolbarState)
+    val latestMessageSelectionToolbarBoundsInRoot by rememberUpdatedState(messageSelectionToolbarBoundsInRoot)
+    val latestActiveSelectionTouchBoundsInRoot by rememberUpdatedState(activeSelectionTouchBoundsInRoot)
+    val latestImeVisible by rememberUpdatedState(imeVisible)
     val selectionCardVisible by remember(activeMessageSelectionState) {
         derivedStateOf { activeMessageSelectionState != null }
     }
@@ -4016,12 +4021,7 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(pageSurface)
-                    .pointerInput(
-                        imeVisible,
-                        messageSelectionToolbarState,
-                        messageSelectionToolbarBoundsInRoot,
-                        activeSelectionTouchBoundsInRoot
-                    ) {
+                    .pointerInput(Unit) {
                         awaitEachGesture {
                             val down = awaitFirstDown(
                                 requireUnconsumed = false,
@@ -4033,11 +4033,11 @@ fun ChatScreen() {
                                 (up.position - down.position).getDistance() <= viewConfiguration.touchSlop
                             if (!gestureStayedTapRange) return@awaitEachGesture
                             val tappedToolbar =
-                                messageSelectionToolbarBoundsInRoot?.contains(up.position) == true
+                                latestMessageSelectionToolbarBoundsInRoot?.contains(up.position) == true
                             val tappedSelection =
-                                activeSelectionTouchBoundsInRoot?.contains(up.position) == true
+                                latestActiveSelectionTouchBoundsInRoot?.contains(up.position) == true
                             if (
-                                messageSelectionToolbarState != null &&
+                                latestMessageSelectionToolbarState != null &&
                                 !tappedToolbar &&
                                 !tappedSelection
                             ) {
@@ -4047,7 +4047,7 @@ fun ChatScreen() {
                                     clearMessageSelection()
                                 }
                             }
-                            if (imeVisible) {
+                            if (latestImeVisible) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()
                             }
