@@ -2576,6 +2576,7 @@ fun ChatScreen() {
     val lifecycleOwner = LocalLifecycleOwner.current
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
+    var messageSelectionIgnoreNextHideForMessageId by remember { mutableStateOf<String?>(null) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
     var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
@@ -2669,6 +2670,7 @@ fun ChatScreen() {
     fun clearMessageSelection() {
         messageSelectionToolbarState = null
         messageSelectionToolbarIgnoreNextUp = false
+        messageSelectionIgnoreNextHideForMessageId = null
         messageSelectionToolbarBoundsInRoot = null
         pendingMessageSelectionMode = null
         messageSelectionResetEpoch++
@@ -2737,6 +2739,10 @@ fun ChatScreen() {
             }
 
             override fun hide() {
+                if (messageSelectionIgnoreNextHideForMessageId == messageId) {
+                    messageSelectionIgnoreNextHideForMessageId = null
+                    return
+                }
                 if (messageSelectionToolbarState?.messageId == messageId) {
                     messageSelectionToolbarState = null
                 }
@@ -4329,6 +4335,7 @@ fun ChatScreen() {
                             selectionBottomRatio = 1f
                         )
                         messageSelectionToolbarState = fullSelectionState
+                        messageSelectionIgnoreNextHideForMessageId = state.messageId
                         pendingMessageSelectionMode = state.messageId to MessageSelectionMode.SelectAll
                         state.onSelectAllRequested?.invoke()
                     }
