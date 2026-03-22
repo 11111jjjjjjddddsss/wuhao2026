@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -123,6 +124,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
@@ -2611,6 +2613,7 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val viewConfiguration = LocalViewConfiguration.current
+    var selectionDismissDownPosition by remember { mutableStateOf<Offset?>(null) }
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
@@ -4041,45 +4044,55 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(pageSurface)
+                    .pointerInteropFilter { event ->
+                        val toolbarVisible = messageSelectionToolbarState != null
+                        val toolbarBounds = messageSelectionToolbarBoundsInRoot
+                        val selectionBounds = activeSelectionTouchBoundsInRoot
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                selectionDismissDownPosition =
+                                    if (toolbarVisible) Offset(event.x, event.y) else null
+                            }
+
+                            MotionEvent.ACTION_CANCEL -> {
+                                selectionDismissDownPosition = null
+                            }
+
+                            MotionEvent.ACTION_UP -> {
+                                val down = selectionDismissDownPosition
+                                selectionDismissDownPosition = null
+                                if (toolbarVisible && down != null) {
+                                    val up = Offset(event.x, event.y)
+                                    val gestureStayedTapRange =
+                                        (up - down).getDistance() <= viewConfiguration.touchSlop
+                                    val tappedToolbar = toolbarBounds?.contains(up) == true
+                                    val tappedSelection = selectionBounds?.contains(up) == true
+                                    if (gestureStayedTapRange && !tappedToolbar && !tappedSelection) {
+                                        if (messageSelectionToolbarIgnoreNextUp) {
+                                            messageSelectionToolbarIgnoreNextUp = false
+                                        } else {
+                                            clearMessageSelection()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        false
+                    }
                     .pointerInput(
                         imeVisible,
-                        messageSelectionToolbarState != null,
-                        messageSelectionToolbarBoundsInRoot,
-                        messageSelectionToolbarIgnoreNextUp,
-                        activeSelectionTouchBoundsInRoot,
-                        viewConfiguration.touchSlop
+                        messageSelectionToolbarState != null
                     ) {
-                        val touchSlop = viewConfiguration.touchSlop
                         awaitEachGesture {
-                            val down = awaitFirstDown(
+                            awaitFirstDown(
                                 requireUnconsumed = false,
                                 pass = PointerEventPass.Initial
                             )
-                            val toolbarVisible = messageSelectionToolbarState != null
-                            val toolbarBounds = messageSelectionToolbarBoundsInRoot
-                            val selectionBounds = activeSelectionTouchBoundsInRoot
-                            val tappedToolbar =
-                                toolbarVisible &&
-                                    toolbarBounds?.contains(down.position) == true
-                            val tappedSelection =
-                                toolbarVisible &&
-                                    selectionBounds?.contains(down.position) == true
                             val up = waitForUpIgnoringConsumption(pass = PointerEventPass.Initial)
                             if (up == null) return@awaitEachGesture
-                            val gestureStayedTapRange =
-                                (up.position - down.position).getDistance() <= touchSlop
-                            when {
-                                imeVisible -> {
-                                    focusManager.clearFocus(force = true)
-                                    keyboardController?.hide()
-                                }
-                                toolbarVisible && gestureStayedTapRange && !tappedToolbar && !tappedSelection -> {
-                                    if (messageSelectionToolbarIgnoreNextUp) {
-                                        messageSelectionToolbarIgnoreNextUp = false
-                                    } else {
-                                        clearMessageSelection()
-                                    }
-                                }
+                            if (imeVisible) {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
                             }
                         }
                     }
