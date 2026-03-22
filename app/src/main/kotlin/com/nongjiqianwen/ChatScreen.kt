@@ -269,7 +269,6 @@ private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
-private val MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
@@ -2646,46 +2645,9 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val hasActiveMessageSelection = activeMessageSelectionState != null
     val activeMessageSelectionMessageId = activeMessageSelectionState?.messageId
-    val messageSelectionHandleMaskClearancePx = with(density) {
-        MESSAGE_SELECTION_HANDLE_MASK_CLEARANCE.roundToPx()
-    }
-    val selectionHandlesVisible by remember(
-        activeMessageSelectionState,
-        messageViewportTopPx,
-        messageViewportHeightPx,
-        topChromeMaskBottomPx,
-        composerTopInViewportPx,
-        messageSelectionHandleMaskClearancePx
-    ) {
-        derivedStateOf {
-            val state = activeMessageSelectionState ?: return@derivedStateOf true
-            val topHandleInViewport =
-                state.anchorY.coerceAtMost(state.selectionBottomY) - messageViewportTopPx.roundToInt()
-            val bottomHandleInViewport =
-                state.anchorY.coerceAtLeast(state.selectionBottomY) - messageViewportTopPx.roundToInt()
-            val topBoundary =
-                if (topChromeMaskBottomPx > 0) {
-                    (topChromeMaskBottomPx - messageViewportTopPx.roundToInt()) +
-                        messageSelectionHandleMaskClearancePx
-                } else {
-                    0
-                }
-            val bottomBoundary =
-                if (composerTopInViewportPx > 0) {
-                    composerTopInViewportPx - messageSelectionHandleMaskClearancePx
-                } else {
-                    messageViewportHeightPx
-                }
-            val topHandleVisible =
-                topHandleInViewport in topBoundary..bottomBoundary
-            val bottomHandleVisible =
-                bottomHandleInViewport in topBoundary..bottomBoundary
-            topHandleVisible || bottomHandleVisible
-        }
-    }
-    val messageSelectionColors = remember(selectionHandlesVisible) {
+    val messageSelectionColors = remember {
         TextSelectionColors(
-            handleColor = if (selectionHandlesVisible) CHAT_SELECTION_HANDLE_COLOR else Color.Transparent,
+            handleColor = CHAT_SELECTION_HANDLE_COLOR,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
