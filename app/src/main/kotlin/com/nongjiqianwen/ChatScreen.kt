@@ -162,8 +162,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -269,7 +267,7 @@ private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
-private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 10.dp
+private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -4309,33 +4307,6 @@ fun ChatScreen() {
                 )
                 }
 
-            if (hasActiveMessageSelection) {
-                val selectionMaskWidth = with(density) {
-                    maxOf(view.width, messageViewportWidthPx).toDp()
-                }
-                Popup(
-                    alignment = Alignment.TopStart,
-                    properties = PopupProperties(focusable = false, clippingEnabled = false)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(selectionMaskWidth)
-                            .height(topBarReservedHeight)
-                            .background(pageSurface)
-                    )
-                }
-                Popup(
-                    alignment = Alignment.BottomStart,
-                    properties = PopupProperties(focusable = false, clippingEnabled = false)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(selectionMaskWidth)
-                            .height(with(density) { bottomBarHeightPx.toDp() })
-                            .background(pageSurface)
-                    )
-                }
-            }
         }
     }
 }
