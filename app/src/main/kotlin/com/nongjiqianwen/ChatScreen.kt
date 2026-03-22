@@ -2580,7 +2580,9 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
+    var deferredMessageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
+    var suppressMessageSelectionToolbarForScroll by remember { mutableStateOf(false) }
     val messageSelectionTextToolbar = remember {
         object : TextToolbar {
             override val status: TextToolbarStatus
@@ -2598,19 +2600,27 @@ fun ChatScreen() {
                 onCutRequested: (() -> Unit)?,
                 onSelectAllRequested: (() -> Unit)?
             ) {
-                messageSelectionToolbarState = MessageSelectionToolbarState(
+                val nextState = MessageSelectionToolbarState(
                     anchorX = rect.center.x.roundToInt(),
                     anchorY = rect.top.roundToInt(),
                     selectionBottomY = rect.bottom.roundToInt(),
                     onCopyRequested = onCopyRequested,
                     onSelectAllRequested = onSelectAllRequested
                 )
-                messageSelectionToolbarIgnoreNextUp = true
+                if (suppressMessageSelectionToolbarForScroll) {
+                    deferredMessageSelectionToolbarState = nextState
+                } else {
+                    messageSelectionToolbarState = nextState
+                    deferredMessageSelectionToolbarState = nextState
+                    messageSelectionToolbarIgnoreNextUp = true
+                }
             }
 
             override fun hide() {
                 messageSelectionToolbarState = null
+                deferredMessageSelectionToolbarState = null
                 messageSelectionToolbarIgnoreNextUp = false
+                suppressMessageSelectionToolbarForScroll = false
             }
         }
     }
@@ -2625,6 +2635,17 @@ fun ChatScreen() {
         if (!handled) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
         }
+    }
+
+    fun isToolbarSelectionVisible(state: MessageSelectionToolbarState): Boolean {
+        if (messageViewportWidthPx <= 0 || messageViewportHeightPx <= 0) return false
+        val visibleTop = messageViewportTopPx.roundToInt()
+        val visibleBottom = if (composerTopInViewportPx > 0) {
+            messageViewportTopPx.roundToInt() + composerTopInViewportPx
+        } else {
+            messageViewportTopPx.roundToInt() + messageViewportHeightPx
+        }
+        return state.selectionBottomY > visibleTop && state.anchorY < visibleBottom
     }
 
     LaunchedEffect(inputChromeRowHeightPx, safeBottomInsetPx) {
@@ -2906,10 +2927,24 @@ fun ChatScreen() {
                 manualScrollHeldLongEnough &&
                 !toolbarHiddenForThisDrag
             ) {
+                suppressMessageSelectionToolbarForScroll = true
+                if (messageSelectionToolbarState != null) {
+                    deferredMessageSelectionToolbarState = messageSelectionToolbarState
+                }
                 messageSelectionToolbarState = null
+                messageSelectionToolbarIgnoreNextUp = false
                 toolbarHiddenForThisDrag = true
             }
             if (!manualScrollActive) {
+                if (toolbarHiddenForThisDrag) {
+                    suppressMessageSelectionToolbarForScroll = false
+                    val deferredState = deferredMessageSelectionToolbarState
+                    if (deferredState != null && isToolbarSelectionVisible(deferredState)) {
+                        messageSelectionToolbarState = deferredState
+                    } else {
+                        deferredMessageSelectionToolbarState = null
+                    }
+                }
                 toolbarHiddenForThisDrag = false
                 manualScrollStartedAtMs = 0L
             }
