@@ -249,7 +249,6 @@ private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 6
 private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 180
 private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 620L
 private const val MESSAGE_SELECTION_INITIAL_CHARS = 36
-private const val MESSAGE_SELECTION_LARGE_REGION_RATIO = 0.45f
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -2591,11 +2590,6 @@ fun ChatScreen() {
     var messageSelectionToolbarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
     var pendingMessageSelectionMode by remember { mutableStateOf<Pair<String, MessageSelectionMode>?>(null) }
-    val trackedMessageSelectionId by remember {
-        derivedStateOf {
-            messageSelectionToolbarState?.messageId ?: deferredMessageSelectionToolbarState?.messageId
-        }
-    }
     val messageSelectionBoundaryClearancePx =
         with(density) { MESSAGE_SELECTION_BOUNDARY_CLEARANCE.roundToPx() }
 
@@ -2643,15 +2637,6 @@ fun ChatScreen() {
         )
     }
 
-    fun shouldTreatSelectionAsLongRange(state: MessageSelectionToolbarState): Boolean {
-        val resolvedState = resolveMessageSelectionToolbarState(state) ?: return false
-        if (resolvedState.mode == MessageSelectionMode.SelectAll) return true
-        val visibleHeight = currentMessageSelectionBottomBoundaryPx() - currentMessageSelectionTopBoundaryPx()
-        if (visibleHeight <= 0) return false
-        return (resolvedState.selectionBottomY - resolvedState.anchorY) >=
-            visibleHeight * MESSAGE_SELECTION_LARGE_REGION_RATIO
-    }
-
     fun isSelectionWithinAllowedBounds(state: MessageSelectionToolbarState): Boolean {
         if (messageViewportWidthPx <= 0 || messageViewportHeightPx <= 0) return false
         val resolvedState = resolveMessageSelectionToolbarState(state) ?: return false
@@ -2660,11 +2645,7 @@ fun ChatScreen() {
         if (visibleBottom <= visibleTop) return false
         return when (resolvedState.mode) {
             MessageSelectionMode.Partial ->
-                if (shouldTreatSelectionAsLongRange(resolvedState)) {
-                    resolvedState.selectionBottomY > visibleTop && resolvedState.anchorY < visibleBottom
-                } else {
-                    resolvedState.anchorY >= visibleTop && resolvedState.selectionBottomY <= visibleBottom
-                }
+                resolvedState.selectionBottomY > visibleTop && resolvedState.anchorY < visibleBottom
 
             MessageSelectionMode.SelectAll -> {
                 val bounds = currentSelectionMessageBounds(resolvedState) ?: return false
@@ -2680,7 +2661,6 @@ fun ChatScreen() {
         suppressMessageSelectionToolbarForScroll = false
         messageSelectionToolbarBoundsInRoot = null
         pendingMessageSelectionMode = null
-        messageSelectionBoundsById.clear()
         messageSelectionResetEpoch++
     }
     fun buildMessageSelectionTextToolbar(
@@ -4166,8 +4146,11 @@ fun ChatScreen() {
                                         .widthIn(max = chromeMaxWidth)
                                         .fillMaxWidth()
                                         .onGloballyPositioned { coordinates ->
-                                            if (trackedMessageSelectionId == msg.id && msg.role == ChatRole.ASSISTANT) {
-                                                messageSelectionBoundsById[msg.id] = coordinates.boundsInWindow()
+                                            if (msg.role == ChatRole.ASSISTANT) {
+                                                val bounds = coordinates.boundsInWindow()
+                                                if (messageSelectionBoundsById[msg.id] != bounds) {
+                                                    messageSelectionBoundsById[msg.id] = bounds
+                                                }
                                             }
                                         }
                                 ) {
@@ -4188,7 +4171,7 @@ fun ChatScreen() {
                                             userBubbleMaxWidth = userBubbleMaxWidth,
                                             userBubbleColor = userBubbleColor,
                                             onBubbleBoundsChanged = { bounds ->
-                                                if (bounds != null && trackedMessageSelectionId == msg.id) {
+                                                if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
                                                     messageSelectionBoundsById[msg.id] = bounds
                                                 }
                                             }
@@ -4500,7 +4483,6 @@ private fun MessageActionMenuPopup(
     var cardSize by remember(state.anchorX, state.anchorY, state.selectionBottomY) { mutableStateOf(IntSize.Zero) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
-    val selectionBottomLocalY = (state.selectionBottomY - viewportTopPx).roundToInt()
     val contentLocalLeft = (contentViewportLeftPx - viewportLeftPx).roundToInt()
     val contentLocalTop = (contentViewportTopPx - viewportTopPx).roundToInt()
     val resolvedWidth = if (cardSize.width > 0) cardSize.width else with(density) { 148.dp.roundToPx() }
@@ -4516,7 +4498,7 @@ private fun MessageActionMenuPopup(
     val minY = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
     val contentBottomLimit =
         if (composerTopInViewportPx > 0) {
-            composerTopInViewportPx - marginPx
+            contentLocalTop + composerTopInViewportPx - marginPx
         } else {
             contentLocalTop + contentViewportHeightPx - marginPx
         }
@@ -4526,8 +4508,7 @@ private fun MessageActionMenuPopup(
             0
         ).coerceAtLeast(minY)
     val preferredTop = anchorLocalY - resolvedHeight - verticalSpacingPx
-    val fallbackBelow = (selectionBottomLocalY + verticalSpacingPx).coerceIn(minY, maxY)
-    val preferredY = if (preferredTop >= minY) preferredTop else fallbackBelow
+    val preferredY = preferredTop.coerceIn(minY, maxY)
 
     Box(
         modifier = Modifier
