@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -100,7 +99,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
@@ -125,7 +123,6 @@ import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
-import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -2623,7 +2620,6 @@ fun ChatScreen() {
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val viewConfiguration = LocalViewConfiguration.current
-    var selectionDismissDownPosition by remember { mutableStateOf<Offset?>(null) }
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionToolbarIgnoreNextUp by remember { mutableStateOf(false) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
@@ -2700,10 +2696,6 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val activeSelectionTouchBoundsInRoot =
         activeMessageSelectionState?.let(::currentSelectionTouchBoundsInRoot)
-    val latestMessageSelectionToolbarState by rememberUpdatedState(messageSelectionToolbarState)
-    val latestMessageSelectionToolbarBoundsInRoot by rememberUpdatedState(messageSelectionToolbarBoundsInRoot)
-    val latestActiveSelectionTouchBoundsInRoot by rememberUpdatedState(activeSelectionTouchBoundsInRoot)
-    val latestImeVisible by rememberUpdatedState(imeVisible)
     val selectionCardVisible by remember(activeMessageSelectionState) {
         derivedStateOf { activeMessageSelectionState != null }
     }
@@ -4024,44 +4016,7 @@ fun ChatScreen() {
                 modifier = Modifier
                     .fillMaxSize()
                     .background(pageSurface)
-                    .motionEventSpy { event ->
-                        when (event.actionMasked) {
-                            MotionEvent.ACTION_DOWN -> {
-                                selectionDismissDownPosition =
-                                    if (latestMessageSelectionToolbarState != null) {
-                                        Offset(event.x, event.y)
-                                    } else {
-                                        null
-                                    }
-                            }
-
-                            MotionEvent.ACTION_CANCEL -> {
-                                selectionDismissDownPosition = null
-                            }
-
-                            MotionEvent.ACTION_UP -> {
-                                val down = selectionDismissDownPosition
-                                selectionDismissDownPosition = null
-                                if (latestMessageSelectionToolbarState != null && down != null) {
-                                    val up = Offset(event.x, event.y)
-                                    val gestureStayedTapRange =
-                                        (up - down).getDistance() <= viewConfiguration.touchSlop
-                                    val tappedToolbar =
-                                        latestMessageSelectionToolbarBoundsInRoot?.contains(up) == true
-                                    val tappedSelection =
-                                        latestActiveSelectionTouchBoundsInRoot?.contains(up) == true
-                                    if (gestureStayedTapRange && !tappedToolbar && !tappedSelection) {
-                                        if (messageSelectionToolbarIgnoreNextUp) {
-                                            messageSelectionToolbarIgnoreNextUp = false
-                                        } else {
-                                            clearMessageSelection()
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .pointerInput(Unit) {
+                    .pointerInput(imeVisible) {
                         awaitEachGesture {
                             awaitFirstDown(
                                 requireUnconsumed = false,
@@ -4069,7 +4024,7 @@ fun ChatScreen() {
                             )
                             val up = waitForUpIgnoringConsumption(pass = PointerEventPass.Initial)
                             if (up == null) return@awaitEachGesture
-                            if (latestImeVisible) {
+                            if (imeVisible) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()
                             }
@@ -4398,8 +4353,120 @@ fun ChatScreen() {
                 )
                 }
             }
+            activeSelectionTouchBoundsInRoot?.let { selectionBounds ->
+                SelectionDismissOverlay(
+                    selectionBounds = selectionBounds,
+                    viewportWidthPx = messageViewportWidthPx,
+                    viewportHeightPx = messageViewportHeightPx,
+                    touchSlopPx = viewConfiguration.touchSlop,
+                    onDismiss = {
+                        if (messageSelectionToolbarIgnoreNextUp) {
+                            messageSelectionToolbarIgnoreNextUp = false
+                        } else {
+                            clearMessageSelection()
+                        }
+                    }
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun SelectionDismissOverlay(
+    selectionBounds: Rect,
+    viewportWidthPx: Int,
+    viewportHeightPx: Int,
+    touchSlopPx: Float,
+    onDismiss: () -> Unit
+) {
+    if (viewportWidthPx <= 0 || viewportHeightPx <= 0) return
+    val density = LocalDensity.current
+    val handleHorizontalPaddingPx = with(density) { 18.dp.toPx() }
+    val handleVerticalPaddingPx = with(density) { 32.dp.toPx() }
+    val expandedBounds = Rect(
+        left = (selectionBounds.left - handleHorizontalPaddingPx).coerceAtLeast(0f),
+        top = (selectionBounds.top - handleVerticalPaddingPx).coerceAtLeast(0f),
+        right = (selectionBounds.right + handleHorizontalPaddingPx).coerceAtMost(viewportWidthPx.toFloat()),
+        bottom = (selectionBounds.bottom + handleVerticalPaddingPx).coerceAtMost(viewportHeightPx.toFloat())
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(39f)
+    ) {
+        SelectionDismissRegion(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(with(density) { expandedBounds.top.toDp() }),
+            touchSlopPx = touchSlopPx,
+            onDismiss = onDismiss
+        )
+        SelectionDismissRegion(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        0,
+                        expandedBounds.top.roundToInt()
+                    )
+                }
+                .width(with(density) { expandedBounds.left.toDp() })
+                .height(with(density) { expandedBounds.height.toDp() }),
+            touchSlopPx = touchSlopPx,
+            onDismiss = onDismiss
+        )
+        SelectionDismissRegion(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        expandedBounds.right.roundToInt(),
+                        expandedBounds.top.roundToInt()
+                    )
+                }
+                .width(with(density) { (viewportWidthPx.toFloat() - expandedBounds.right).coerceAtLeast(0f).toDp() })
+                .height(with(density) { expandedBounds.height.toDp() }),
+            touchSlopPx = touchSlopPx,
+            onDismiss = onDismiss
+        )
+        SelectionDismissRegion(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        0,
+                        expandedBounds.bottom.roundToInt()
+                    )
+                }
+                .fillMaxWidth()
+                .height(with(density) { (viewportHeightPx.toFloat() - expandedBounds.bottom).coerceAtLeast(0f).toDp() }),
+            touchSlopPx = touchSlopPx,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+@Composable
+private fun SelectionDismissRegion(
+    modifier: Modifier = Modifier,
+    touchSlopPx: Float,
+    onDismiss: () -> Unit
+) {
+    Box(
+        modifier = modifier.pointerInput(touchSlopPx, onDismiss) {
+            awaitEachGesture {
+                val down = awaitFirstDown(
+                    requireUnconsumed = false,
+                    pass = PointerEventPass.Initial
+                )
+                val up = waitForUpIgnoringConsumption(pass = PointerEventPass.Initial)
+                    ?: return@awaitEachGesture
+                val gestureStayedTapRange =
+                    (up.position - down.position).getDistance() <= touchSlopPx
+                if (gestureStayedTapRange) {
+                    onDismiss()
+                }
+            }
+        }
+    )
 }
 
 @Composable
