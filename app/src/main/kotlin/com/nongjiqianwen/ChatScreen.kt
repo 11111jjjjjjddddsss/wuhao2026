@@ -214,6 +214,14 @@ private data class MessageSelectionToolbarState(
     val onCopyFullRequested: (() -> Unit)?
 )
 
+private data class InputSelectionToolbarState(
+    val anchorXRatio: Float,
+    val onCopyRequested: (() -> Unit)?,
+    val onPasteRequested: (() -> Unit)?,
+    val onCutRequested: (() -> Unit)?,
+    val onSelectAllRequested: (() -> Unit)?
+)
+
 private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
 }
@@ -998,6 +1006,10 @@ private fun buildRenderedMessageCopyText(role: ChatRole, content: String): Strin
             }
         }
     }
+}
+
+private fun Rect.containsPoint(offset: Offset): Boolean {
+    return offset.x >= left && offset.x <= right && offset.y >= top && offset.y <= bottom
 }
 
 private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
@@ -2617,6 +2629,9 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var inputSelectionToolbarState by remember { mutableStateOf<InputSelectionToolbarState?>(null) }
+    var inputSelectionMenuBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
+    var inputFieldBoundsInWindow by remember { mutableStateOf<Rect?>(null) }
     var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
     val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
@@ -2687,6 +2702,41 @@ fun ChatScreen() {
         val clipboard =
             context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText(label, normalized))
+    }
+
+    fun buildInputSelectionTextToolbar(): TextToolbar {
+        return object : TextToolbar {
+            override val status: TextToolbarStatus
+                get() =
+                    if (inputSelectionToolbarState != null) {
+                        TextToolbarStatus.Shown
+                    } else {
+                        TextToolbarStatus.Hidden
+                    }
+
+            override fun showMenu(
+                rect: Rect,
+                onCopyRequested: (() -> Unit)?,
+                onPasteRequested: (() -> Unit)?,
+                onCutRequested: (() -> Unit)?,
+                onSelectAllRequested: (() -> Unit)?
+            ) {
+                val bounds = inputFieldBoundsInWindow ?: return
+                val width = bounds.width.coerceAtLeast(1f)
+                inputSelectionToolbarState = InputSelectionToolbarState(
+                    anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
+                    onCopyRequested = onCopyRequested,
+                    onPasteRequested = onPasteRequested,
+                    onCutRequested = onCutRequested,
+                    onSelectAllRequested = onSelectAllRequested
+                )
+            }
+
+            override fun hide() {
+                inputSelectionToolbarState = null
+                inputSelectionMenuBoundsInRoot = null
+            }
+        }
     }
 
     fun buildMessageSelectionTextToolbar(
@@ -3876,17 +3926,25 @@ fun ChatScreen() {
                                     spotColor = Color(0x14000000)
                                 )
                                 .onGloballyPositioned { coordinates ->
+                                    val bounds = coordinates.boundsInWindow()
+                                    inputFieldBoundsInWindow = bounds
                                     composerTopInViewportPx =
-                                        (coordinates.boundsInWindow().top - messageViewportTopPx).roundToInt()
+                                        (bounds.top - messageViewportTopPx).roundToInt()
                                 }
                         ) {
                             val exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
+                            val inputTextToolbar = remember(inputFieldBoundsInWindow) {
+                                buildInputSelectionTextToolbar()
+                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
                             ) {
-                                CompositionLocalProvider(LocalTextSelectionColors provides inputSelectionColors) {
+                                CompositionLocalProvider(
+                                    LocalTextSelectionColors provides inputSelectionColors,
+                                    LocalTextToolbar provides inputTextToolbar
+                                ) {
                                     TextField(
                                         value = input.value,
                                         onValueChange = {
@@ -3980,6 +4038,9 @@ fun ChatScreen() {
                             )
                             val up = waitForUpIgnoringConsumption(pass = PointerEventPass.Initial)
                             if (up == null) return@awaitEachGesture
+                            if (inputSelectionMenuBoundsInRoot?.containsPoint(up.position) == true) {
+                                return@awaitEachGesture
+                            }
                             if (imeVisible) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()
@@ -4313,6 +4374,24 @@ fun ChatScreen() {
                 }
             }
 
+            inputSelectionToolbarState?.let { state ->
+                val inputBounds = inputFieldBoundsInWindow
+                if (inputBounds != null) {
+                    InputSelectionMenuPopup(
+                        state = state,
+                        inputFieldBoundsInWindow = inputBounds,
+                        viewportLeftPx = chatRootLeftPx,
+                        viewportTopPx = chatRootTopPx,
+                        topChromeMaskBottomPx = topChromeMaskBottomPx,
+                        onMenuBoundsChanged = { bounds -> inputSelectionMenuBoundsInRoot = bounds },
+                        onDismiss = {
+                            inputSelectionToolbarState = null
+                            inputSelectionMenuBoundsInRoot = null
+                        }
+                    )
+                }
+            }
+
             activeMessageSelectionState?.let { state ->
                 MessageActionMenuPopup(
                     state = state,
@@ -4436,6 +4515,161 @@ private fun MessageActionMenuCardContent(
                 minWidth = 0.dp,
                 horizontalPadding = 12.dp,
                 onClick = onCopyFull
+            )
+        }
+    }
+}
+
+private data class InputActionMenuItem(
+    val label: String,
+    val minWidth: Dp,
+    val horizontalPadding: Dp,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun InputActionMenuCardContent(
+    actions: List<InputActionMenuItem>,
+    modifier: Modifier = Modifier
+) {
+    if (actions.isEmpty()) return
+    Surface(
+        color = Color(0xFF111111),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 10.dp,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            actions.forEachIndexed { index, action ->
+                MessageActionMenuButton(
+                    label = action.label,
+                    minWidth = action.minWidth,
+                    horizontalPadding = action.horizontalPadding,
+                    onClick = action.onClick
+                )
+                if (index < actions.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(16.dp)
+                            .background(Color.White.copy(alpha = 0.16f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InputSelectionMenuPopup(
+    state: InputSelectionToolbarState,
+    inputFieldBoundsInWindow: Rect,
+    viewportLeftPx: Float,
+    viewportTopPx: Float,
+    topChromeMaskBottomPx: Int,
+    onMenuBoundsChanged: (Rect?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+    val actions = remember(state) {
+        buildList {
+            state.onCopyRequested?.let {
+                add(
+                    InputActionMenuItem(
+                        label = "\u590d\u5236",
+                        minWidth = 64.dp,
+                        horizontalPadding = 14.dp,
+                        onClick = it
+                    )
+                )
+            }
+            state.onPasteRequested?.let {
+                add(
+                    InputActionMenuItem(
+                        label = "\u7c98\u8d34",
+                        minWidth = 64.dp,
+                        horizontalPadding = 14.dp,
+                        onClick = it
+                    )
+                )
+            }
+            state.onCutRequested?.let {
+                add(
+                    InputActionMenuItem(
+                        label = "\u526a\u5207",
+                        minWidth = 64.dp,
+                        horizontalPadding = 14.dp,
+                        onClick = it
+                    )
+                )
+            }
+            state.onSelectAllRequested?.let {
+                add(
+                    InputActionMenuItem(
+                        label = "\u5168\u9009",
+                        minWidth = 64.dp,
+                        horizontalPadding = 14.dp,
+                        onClick = it
+                    )
+                )
+            }
+        }
+    }
+    if (actions.isEmpty()) {
+        SideEffect { onMenuBoundsChanged(null) }
+        return
+    }
+
+    val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
+    val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
+    val boundsLocal = Rect(
+        left = inputFieldBoundsInWindow.left - viewportLeftPx,
+        top = inputFieldBoundsInWindow.top - viewportTopPx,
+        right = inputFieldBoundsInWindow.right - viewportLeftPx,
+        bottom = inputFieldBoundsInWindow.bottom - viewportTopPx
+    )
+    val resolvedWidth = if (cardSize.width > 0) cardSize.width else with(density) { 256.dp.roundToPx() }
+    val resolvedHeight =
+        if (cardSize.height > 0) cardSize.height else with(density) { MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT.roundToPx() }
+    val preferredCenterX = boundsLocal.left + boundsLocal.width * state.anchorXRatio
+    val minX = (boundsLocal.left + marginPx).roundToInt()
+    val maxX = (boundsLocal.right - resolvedWidth - marginPx).roundToInt().coerceAtLeast(minX)
+    val preferredX = (preferredCenterX - resolvedWidth / 2f).roundToInt().coerceIn(minX, maxX)
+    val protectedTop = maxOf(
+        marginPx,
+        if (topChromeMaskBottomPx > 0) (topChromeMaskBottomPx - viewportTopPx.roundToInt()) + marginPx else marginPx
+    )
+    val preferredY = (boundsLocal.top.roundToInt() - resolvedHeight - verticalSpacingPx).coerceAtLeast(protectedTop)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(47f)
+    ) {
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(preferredX, preferredY) }
+                .onGloballyPositioned { coordinates ->
+                    cardSize = coordinates.size
+                    onMenuBoundsChanged(coordinates.boundsInWindow())
+                }
+                .pointerInput(state.anchorXRatio, actions.size) {
+                    detectTapGestures(onTap = {})
+                }
+        ) {
+            InputActionMenuCardContent(
+                actions = actions.map { action ->
+                    action.copy(
+                        onClick = {
+                            action.onClick()
+                            onDismiss()
+                        }
+                    )
+                }
             )
         }
     }
