@@ -67,6 +67,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -4635,6 +4636,7 @@ private fun SelectableRenderedUserMessageBubble(
     ) {
         Box(
             modifier = Modifier
+                .wrapContentWidth(Alignment.End)
                 .widthIn(max = userBubbleMaxWidth)
                 .clip(RoundedCornerShape(20.dp))
                 .background(userBubbleColor)
@@ -4648,9 +4650,12 @@ private fun SelectableRenderedUserMessageBubble(
                 LocalTextToolbar provides textToolbar
             ) {
                 key(selectionResetKey) {
-                    SelectionContainer {
+                    SelectionContainer(
+                        modifier = Modifier.wrapContentWidth(Alignment.Start)
+                    ) {
                         Text(
                             text = content,
+                            modifier = Modifier.wrapContentWidth(Alignment.Start),
                             style = MaterialTheme.typography.bodyLarge,
                             color = Color(0xFF161616)
                         )
