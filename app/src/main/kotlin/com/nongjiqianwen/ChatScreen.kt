@@ -4622,14 +4622,20 @@ private fun SelectableRenderedUserMessageBubble(
                 }
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            SelectableRenderedStaticMessageContent(
-                content = content,
-                textSelectionColors = textSelectionColors,
-                textToolbar = textToolbar,
-                selectionResetKey = selectionResetKey,
-                showDisclaimer = false,
-                expandToFullWidth = false
-            )
+            CompositionLocalProvider(
+                LocalTextSelectionColors provides textSelectionColors,
+                LocalTextToolbar provides textToolbar
+            ) {
+                key(selectionResetKey) {
+                    SelectionContainer {
+                        Text(
+                            text = content,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color(0xFF161616)
+                        )
+                    }
+                }
+            }
         }
     }
 }
