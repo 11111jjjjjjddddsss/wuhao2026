@@ -26,15 +26,17 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
@@ -127,17 +129,17 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -149,7 +151,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -161,6 +162,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -199,28 +202,21 @@ private data class LocalBottomViewport(
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int
 )
-private data class ActiveCustomMessageSelectionState(
+private data class MessageSelectionToolbarState(
     val messageId: String,
-    val role: ChatRole,
-    val content: String,
-    val fullCopyText: String,
-    val pressOffsetInMessage: Offset,
-    val messageBoundsInWindow: Rect
+    val anchorX: Int,
+    val anchorY: Int,
+    val selectionBottomY: Int,
+    val anchorXRatio: Float,
+    val selectionTopRatio: Float,
+    val selectionBottomRatio: Float,
+    val onCopyRequested: (() -> Unit)?,
+    val onCopyFullRequested: (() -> Unit)?
 )
 
-private data class PendingCustomMessageSelectionState(
-    val messageId: String,
-    val role: ChatRole,
-    val content: String,
-    val fullCopyText: String,
-    val pressOffsetInMessage: Offset
-)
-
-private data class SelectableMessageTextModel(
-    val annotatedText: AnnotatedString,
-    val plainText: String,
-    val showDisclaimer: Boolean
-)
+private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
+}
 
 private sealed interface MarkdownBlock {
     data class Heading(val level: Int, val text: String) : MarkdownBlock
@@ -276,10 +272,6 @@ private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
-private val CUSTOM_SELECTION_HANDLE_TOUCH_SIZE = 40.dp
-private val CUSTOM_SELECTION_HANDLE_VISUAL_SIZE = 24.dp
-private val CUSTOM_SELECTION_HANDLE_STEM_HEIGHT = 10.dp
-private const val CUSTOM_SELECTION_INITIAL_CHARS = 6
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
@@ -1007,153 +999,6 @@ private fun buildRenderedMessageCopyText(role: ChatRole, content: String): Strin
     }
 }
 
-private fun buildSelectableMessageTextModel(role: ChatRole, content: String): SelectableMessageTextModel {
-    return when (role) {
-        ChatRole.USER -> {
-            val text = content.trim()
-            SelectableMessageTextModel(
-                annotatedText = AnnotatedString(text),
-                plainText = text,
-                showDisclaimer = false
-            )
-        }
-
-        ChatRole.ASSISTANT -> {
-            val blocks = getCachedMarkdownUiBlocks(content)
-            val annotated =
-                if (blocks.isEmpty()) {
-                    getCachedAnnotatedString(normalizeAssistantText(content))
-                } else {
-                    buildAnnotatedString {
-                        blocks.forEachIndexed { index, block ->
-                            if (index > 0) {
-                                append("\n\n")
-                            }
-                            if (shouldShowMarkdownSectionDivider(blocks.getOrNull(index - 1), block)) {
-                                append("\n")
-                            }
-                            when (block) {
-                                is MarkdownUiBlock.Heading -> {
-                                    val headingStyle = assistantHeadingTextStyle(block.level)
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = headingStyle.lineHeight
-                                        )
-                                    ) {
-                                        withStyle(
-                                            SpanStyle(
-                                                fontSize = headingStyle.fontSize,
-                                                fontWeight = headingStyle.fontWeight,
-                                                color = headingStyle.color
-                                            )
-                                        ) {
-                                            append(block.text)
-                                        }
-                                    }
-                                }
-
-                                is MarkdownUiBlock.Bullet -> {
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = assistantParagraphTextStyle().lineHeight,
-                                            textIndent = TextIndent(restLine = 18.sp)
-                                        )
-                                    ) {
-                                        append("\u2022 ")
-                                        append(block.text)
-                                    }
-                                }
-
-                                is MarkdownUiBlock.Numbered -> {
-                                    val prefix = "${block.number}. "
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = assistantParagraphTextStyle().lineHeight,
-                                            textIndent = TextIndent(
-                                                restLine = (18 + block.number.length * 4).sp
-                                            )
-                                        )
-                                    ) {
-                                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                                            append(prefix)
-                                        }
-                                        append(block.text)
-                                    }
-                                }
-
-                                is MarkdownUiBlock.Paragraph -> {
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = assistantParagraphTextStyle().lineHeight
-                                        )
-                                    ) {
-                                        append(block.text)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            SelectableMessageTextModel(
-                annotatedText = annotated,
-                plainText = annotated.text,
-                showDisclaimer = shouldShowAiDisclaimer(content)
-            )
-        }
-    }
-}
-
-private fun resolveInitialSelectionRange(text: String, rawOffset: Int): TextRange {
-    if (text.isEmpty()) return TextRange.Zero
-    var center = rawOffset.coerceIn(0, text.lastIndex)
-    if (text[center].isWhitespace()) {
-        val next = (center until text.length).firstOrNull { !text[it].isWhitespace() }
-        val previous = (center downTo 0).firstOrNull { !text[it].isWhitespace() }
-        center = next ?: previous ?: center
-    }
-    val start = (center - 1).coerceAtLeast(0)
-    val endExclusive = (center + CUSTOM_SELECTION_INITIAL_CHARS - 1).coerceAtMost(text.length)
-    return TextRange(start, endExclusive.coerceAtLeast(start + 1))
-}
-
-private fun buildSelectionRects(layoutResult: TextLayoutResult, selection: TextRange): List<Rect> {
-    val start = selection.min.coerceIn(0, layoutResult.layoutInput.text.text.length)
-    val end = selection.max.coerceIn(start, layoutResult.layoutInput.text.text.length)
-    if (start >= end) return emptyList()
-    val lastSelectedOffset = (end - 1).coerceAtLeast(start)
-    val startLine = layoutResult.getLineForOffset(start)
-    val endLine = layoutResult.getLineForOffset(lastSelectedOffset)
-    return buildList {
-        for (line in startLine..endLine) {
-            val lineStart = maxOf(start, layoutResult.getLineStart(line))
-            val lineEnd = minOf(end, layoutResult.getLineEnd(line, visibleEnd = true))
-            if (lineStart >= lineEnd) continue
-            val startBox = layoutResult.getBoundingBox(lineStart)
-            val endBox = layoutResult.getBoundingBox((lineEnd - 1).coerceAtLeast(lineStart))
-            add(
-                Rect(
-                    left = startBox.left,
-                    top = layoutResult.getLineTop(line),
-                    right = maxOf(startBox.left + 1f, endBox.right),
-                    bottom = layoutResult.getLineBottom(line)
-                )
-            )
-        }
-    }
-}
-
-private fun resolveSelectionHandleAnchor(layoutResult: TextLayoutResult, offset: Int): Offset {
-    val safeOffset = offset.coerceIn(0, layoutResult.layoutInput.text.text.length)
-    return runCatching {
-        val cursor = layoutResult.getCursorRect(safeOffset)
-        Offset(cursor.left, cursor.bottom)
-    }.getOrElse {
-        val fallbackOffset = safeOffset.coerceAtMost((layoutResult.layoutInput.text.text.length - 1).coerceAtLeast(0))
-        val box = layoutResult.getBoundingBox(fallbackOffset)
-        Offset(box.right, box.bottom)
-    }
-}
-
 private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
     pass: PointerEventPass
 ): PointerInputChange? {
@@ -1475,6 +1320,7 @@ private fun AssistantMessageContent(
     streamingLineAdvanceTick: Int = 0,
     strictLineReveal: Boolean = false,
     lineRevealLocked: Boolean = false,
+    selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -1521,7 +1367,13 @@ private fun AssistantMessageContent(
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            AssistantMarkdownContent(content = content)
+            if (selectionEnabled) {
+                SelectionContainer {
+                    AssistantMarkdownContent(content = content)
+                }
+            } else {
+                AssistantMarkdownContent(content = content)
+            }
             if (shouldRenderDisclaimer) {
                 Text(
                     text = AI_DISCLAIMER_TEXT,
@@ -2764,46 +2616,43 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var activeCustomMessageSelection by remember(chatScopeId) { mutableStateOf<ActiveCustomMessageSelectionState?>(null) }
-    var pendingCustomMessageSelection by remember(chatScopeId) {
-        mutableStateOf<PendingCustomMessageSelectionState?>(null)
-    }
-    val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
+    var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
+    var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
+    val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
+    fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
+        messageSelectionBoundsById[state.messageId]
 
-    fun tryActivatePendingCustomMessageSelection(messageId: String, bounds: Rect) {
-        val pending = pendingCustomMessageSelection ?: return
-        if (pending.messageId != messageId) return
-        activeCustomMessageSelection = ActiveCustomMessageSelectionState(
-            messageId = pending.messageId,
-            role = pending.role,
-            content = pending.content,
-            fullCopyText = pending.fullCopyText,
-            pressOffsetInMessage = pending.pressOffsetInMessage,
-            messageBoundsInWindow = bounds
+    fun resolveMessageSelectionToolbarState(state: MessageSelectionToolbarState): MessageSelectionToolbarState? {
+        val bounds = currentSelectionMessageBounds(state) ?: return null
+        val width = bounds.width.coerceAtLeast(1f)
+        val height = bounds.height.coerceAtLeast(1f)
+        return state.copy(
+            anchorX = (bounds.left + width * state.anchorXRatio).roundToInt(),
+            anchorY = (bounds.top + height * state.selectionTopRatio).roundToInt(),
+            selectionBottomY = (bounds.top + height * state.selectionBottomRatio).roundToInt()
         )
-        pendingCustomMessageSelection = null
-    }
-
-    fun updateMessageSelectionBounds(messageId: String, bounds: Rect?) {
-        if (bounds == null) {
-            messageSelectionBoundsById.remove(messageId)
-            return
-        }
-        if (messageSelectionBoundsById[messageId] != bounds) {
-            messageSelectionBoundsById[messageId] = bounds
-        }
-        tryActivatePendingCustomMessageSelection(messageId, bounds)
     }
 
     fun clearMessageSelection() {
-        activeCustomMessageSelection = null
-        pendingCustomMessageSelection = null
+        messageSelectionToolbarState = null
+        messageSelectionResetEpoch++
     }
-    val currentSelectionBounds =
-        activeCustomMessageSelection?.let { state ->
-            messageSelectionBoundsById[state.messageId] ?: state.messageBoundsInWindow
+
+    fun selectionDismissTapModifier(vararg keys: Any): Modifier =
+        Modifier.pointerInput(*keys) {
+            detectTapGestures(onTap = { clearMessageSelection() })
         }
-    val hasActiveMessageSelection = activeCustomMessageSelection != null
+
+    val activeMessageSelectionState =
+        messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
+    val hasActiveMessageSelection = activeMessageSelectionState != null
+    val activeMessageSelectionMessageId = activeMessageSelectionState?.messageId
+    val messageSelectionColors = remember {
+        TextSelectionColors(
+            handleColor = CHAT_SELECTION_HANDLE_COLOR,
+            backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
+        )
+    }
     fun copyTextToClipboard(label: String, text: String) {
         val normalized = text.trim()
         if (normalized.isEmpty()) return
@@ -2812,47 +2661,60 @@ fun ChatScreen() {
         clipboard.setPrimaryClip(ClipData.newPlainText(label, normalized))
     }
 
-    fun activateCustomMessageSelection(
+    fun buildMessageSelectionTextToolbar(
         messageId: String,
         role: ChatRole,
-        content: String,
-        fullCopyText: String,
-        pressOffsetInMessage: Offset
-    ) {
-        val bounds = messageSelectionBoundsById[messageId]
-        if (bounds == null) {
-            pendingCustomMessageSelection = PendingCustomMessageSelectionState(
-                messageId = messageId,
-                role = role,
-                content = content,
-                fullCopyText = fullCopyText,
-                pressOffsetInMessage = pressOffsetInMessage
-            )
-            return
+        fullCopyText: String
+    ): TextToolbar {
+        return object : TextToolbar {
+            override val status: TextToolbarStatus
+                get() =
+                    if (messageSelectionToolbarState?.messageId == messageId) {
+                        TextToolbarStatus.Shown
+                    } else {
+                        TextToolbarStatus.Hidden
+                    }
+
+            @Suppress("UNUSED_PARAMETER")
+            override fun showMenu(
+                rect: Rect,
+                onCopyRequested: (() -> Unit)?,
+                onPasteRequested: (() -> Unit)?,
+                onCutRequested: (() -> Unit)?,
+                onSelectAllRequested: (() -> Unit)?
+            ) {
+                val bounds = messageSelectionBoundsById[messageId] ?: return
+                val width = bounds.width.coerceAtLeast(1f)
+                val height = bounds.height.coerceAtLeast(1f)
+                val nextState = MessageSelectionToolbarState(
+                    messageId = messageId,
+                    anchorX = rect.center.x.roundToInt(),
+                    anchorY = rect.top.roundToInt(),
+                    selectionBottomY = rect.bottom.roundToInt(),
+                    anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
+                    selectionTopRatio = ((rect.top - bounds.top) / height).coerceIn(0f, 1f),
+                    selectionBottomRatio = ((rect.bottom - bounds.top) / height).coerceIn(0f, 1f),
+                    onCopyRequested = onCopyRequested,
+                    onCopyFullRequested = {
+                        copyTextToClipboard(
+                            label = if (role == ChatRole.USER) "user_message_full_copy" else "assistant_message_full_copy",
+                            text = fullCopyText
+                        )
+                    }
+                )
+                val resolvedState = resolveMessageSelectionToolbarState(nextState) ?: nextState
+                messageSelectionToolbarState = resolvedState
+            }
+
+            override fun hide() {
+                if (messageSelectionToolbarState?.messageId == messageId) {
+                    messageSelectionToolbarState = null
+                }
+            }
         }
-        activeCustomMessageSelection = ActiveCustomMessageSelectionState(
-            messageId = messageId,
-            role = role,
-            content = content,
-            fullCopyText = fullCopyText,
-            pressOffsetInMessage = pressOffsetInMessage,
-            messageBoundsInWindow = bounds
-        )
-        pendingCustomMessageSelection = null
     }
-    BackHandler(enabled = activeCustomMessageSelection != null) {
+    BackHandler(enabled = messageSelectionToolbarState != null) {
         clearMessageSelection()
-    }
-    LaunchedEffect(messages.size, activeCustomMessageSelection?.messageId, pendingCustomMessageSelection?.messageId) {
-        val activeId = activeCustomMessageSelection?.messageId
-        if (activeId != null && messages.none { it.id == activeId }) {
-            clearMessageSelection()
-            return@LaunchedEffect
-        }
-        val pendingId = pendingCustomMessageSelection?.messageId
-        if (pendingId != null && messages.none { it.id == pendingId }) {
-            pendingCustomMessageSelection = null
-        }
     }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -4106,7 +3968,10 @@ fun ChatScreen() {
                         messageViewportTopPx = bounds.top
                     }
             ) {
-                LazyColumn(
+                CompositionLocalProvider(
+                    LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
+                ) {
+                    LazyColumn(
                     state = listState,
                     userScrollEnabled = true,
                     modifier = Modifier
@@ -4118,6 +3983,13 @@ fun ChatScreen() {
                             }
                         )
                         .fillMaxSize()
+                        .then(
+                            if (hasActiveMessageSelection) {
+                                selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
+                            } else {
+                                Modifier
+                            }
+                        )
                         .then(
                             if (shouldRevealMessageList) {
                                 Modifier
@@ -4138,16 +4010,36 @@ fun ChatScreen() {
                         ) { msg ->
                             DisposableEffect(msg.id) {
                                 onDispose {
-                                    updateMessageSelectionBounds(msg.id, null)
+                                    messageSelectionBoundsById.remove(msg.id)
                                 }
                             }
                             val fullCopyText = remember(msg.role, msg.content) {
                                 buildRenderedMessageCopyText(msg.role, msg.content)
                             }
+                            val messageTextToolbar = remember(msg.id, msg.role, fullCopyText) {
+                                buildMessageSelectionTextToolbar(
+                                    messageId = msg.id,
+                                    role = msg.role,
+                                    fullCopyText = fullCopyText
+                                )
+                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
+                                    .then(
+                                        if (
+                                            hasActiveMessageSelection &&
+                                            activeMessageSelectionMessageId != msg.id
+                                        ) {
+                                            selectionDismissTapModifier(
+                                                activeMessageSelectionMessageId ?: "selection",
+                                                msg.id
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -4156,77 +4048,34 @@ fun ChatScreen() {
                                         .fillMaxWidth()
                                         .onGloballyPositioned { coordinates ->
                                             if (msg.role == ChatRole.ASSISTANT) {
-                                                updateMessageSelectionBounds(
-                                                    msg.id,
-                                                    coordinates.boundsInWindow()
-                                                )
+                                                val bounds = coordinates.boundsInWindow()
+                                                if (messageSelectionBoundsById[msg.id] != bounds) {
+                                                    messageSelectionBoundsById[msg.id] = bounds
+                                                }
                                             }
                                         }
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
-                                        RenderedStaticMessageContent(
+                                        SelectableRenderedStaticMessageContent(
                                             content = msg.content,
+                                            textSelectionColors = messageSelectionColors,
+                                            textToolbar = messageTextToolbar,
+                                            selectionResetKey = messageSelectionResetEpoch,
                                             showDisclaimer = true,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .then(
-                                                    if (hasActiveMessageSelection) {
-                                                        Modifier
-                                                    } else {
-                                                        Modifier.pointerInput(
-                                                            msg.id,
-                                                            msg.role,
-                                                            msg.content,
-                                                            fullCopyText
-                                                        ) {
-                                                            detectTapGestures(
-                                                                onLongPress = { offset ->
-                                                                    performButtonHaptic()
-                                                                    activateCustomMessageSelection(
-                                                                        messageId = msg.id,
-                                                                        role = msg.role,
-                                                                        content = msg.content,
-                                                                        fullCopyText = fullCopyText,
-                                                                        pressOffsetInMessage = offset
-                                                                    )
-                                                                }
-                                                            )
-                                                        }
-                                                    }
-                                                )
+                                            modifier = Modifier.fillMaxWidth()
                                         )
                                     } else {
-                                        RenderedUserMessageBubble(
+                                        SelectableRenderedUserMessageBubble(
                                             content = msg.content,
+                                            textSelectionColors = messageSelectionColors,
+                                            textToolbar = messageTextToolbar,
+                                            selectionResetKey = messageSelectionResetEpoch,
                                             userBubbleMaxWidth = userBubbleMaxWidth,
                                             userBubbleColor = userBubbleColor,
-                                            modifier = Modifier.then(
-                                                if (hasActiveMessageSelection) {
-                                                    Modifier
-                                                } else {
-                                                    Modifier.pointerInput(
-                                                        msg.id,
-                                                        msg.role,
-                                                        msg.content,
-                                                        fullCopyText
-                                                    ) {
-                                                        detectTapGestures(
-                                                            onLongPress = { offset ->
-                                                                performButtonHaptic()
-                                                            activateCustomMessageSelection(
-                                                                messageId = msg.id,
-                                                                role = msg.role,
-                                                                content = msg.content,
-                                                                fullCopyText = fullCopyText,
-                                                                pressOffsetInMessage = offset
-                                                            )
-                                                        }
-                                                    )
-                                                    }
-                                                }
-                                            ),
                                             onBubbleBoundsChanged = { bounds ->
-                                                updateMessageSelectionBounds(msg.id, bounds)
+                                                if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
+                                                    messageSelectionBoundsById[msg.id] = bounds
+                                                }
                                             }
                                         )
                                     }
@@ -4286,6 +4135,7 @@ fun ChatScreen() {
                                 )
                             }
                         }
+                    }
                     }
                 }
 
@@ -4435,10 +4285,9 @@ fun ChatScreen() {
                 }
             }
 
-            activeCustomMessageSelection?.let { state ->
-                CustomMessageSelectionOverlay(
+            activeMessageSelectionState?.let { state ->
+                MessageActionMenuPopup(
                     state = state,
-                    messageBoundsInWindow = currentSelectionBounds ?: state.messageBoundsInWindow,
                     viewportLeftPx = chatRootLeftPx,
                     viewportTopPx = chatRootTopPx,
                     contentViewportLeftPx = messageViewportLeftPx,
@@ -4447,25 +4296,50 @@ fun ChatScreen() {
                     contentViewportHeightPx = messageViewportHeightPx,
                     topChromeMaskBottomPx = topChromeMaskBottomPx,
                     composerTopInViewportPx = composerTopInViewportPx,
-                    userBubbleMaxWidth = userBubbleMaxWidth,
-                    onCopySelected = { selectedText ->
+                    onCopy = {
                         performButtonHaptic()
-                        copyTextToClipboard(
-                            label = if (state.role == ChatRole.USER) "user_message_copy" else "assistant_message_copy",
-                            text = selectedText
-                        )
+                        state.onCopyRequested?.invoke()
                         clearMessageSelection()
                     },
                     onCopyFull = {
                         performButtonHaptic()
-                        copyTextToClipboard(
-                            label = if (state.role == ChatRole.USER) "user_message_full_copy" else "assistant_message_full_copy",
-                            text = state.fullCopyText
-                        )
+                        state.onCopyFullRequested?.invoke()
                         clearMessageSelection()
-                    },
-                    onDismiss = { clearMessageSelection() }
+                    }
                 )
+            }
+
+            if (hasActiveMessageSelection) {
+                val selectionMaskWidth = with(density) {
+                    maxOf(view.width, messageViewportWidthPx).toDp()
+                }
+                if (topInset > 0.dp) {
+                    Popup(
+                        alignment = Alignment.TopStart,
+                        properties = PopupProperties(focusable = false, clippingEnabled = false)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(selectionMaskWidth)
+                                .height(topInset)
+                                .background(pageSurface)
+                        )
+                    }
+                }
+                val bottomMaskHeight = with(density) { safeBottomInsetPx.toDp() }
+                if (bottomMaskHeight > 0.dp) {
+                    Popup(
+                        alignment = Alignment.BottomStart,
+                        properties = PopupProperties(focusable = false, clippingEnabled = false)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .width(selectionMaskWidth)
+                                .height(bottomMaskHeight)
+                                .background(pageSurface)
+                        )
+                    }
+                }
             }
 
         }
@@ -4478,7 +4352,6 @@ private fun MessageActionMenuButton(
     modifier: Modifier = Modifier,
     minWidth: Dp = 0.dp,
     horizontalPadding: Dp = 12.dp,
-    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Box(
@@ -4488,18 +4361,14 @@ private fun MessageActionMenuButton(
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Transparent)
             .pointerInput(label) {
-                detectTapGestures(onTap = {
-                    if (enabled) {
-                        onClick()
-                    }
-                })
+                detectTapGestures(onTap = { onClick() })
             }
             .padding(horizontal = horizontalPadding, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            color = if (enabled) Color.White else Color.White.copy(alpha = 0.42f),
+            color = Color.White,
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -4509,7 +4378,6 @@ private fun MessageActionMenuButton(
 @Composable
 private fun MessageActionMenuCardContent(
     modifier: Modifier = Modifier,
-    copyEnabled: Boolean = true,
     onCopy: () -> Unit,
     onCopyFull: () -> Unit
 ) {
@@ -4527,7 +4395,6 @@ private fun MessageActionMenuCardContent(
                 label = "复制",
                 minWidth = 78.dp,
                 horizontalPadding = 17.dp,
-                enabled = copyEnabled,
                 onClick = onCopy
             )
             Box(
@@ -4546,86 +4413,9 @@ private fun MessageActionMenuCardContent(
     }
 }
 
-private fun Rect.containsPoint(offset: Offset): Boolean {
-    return offset.x >= left && offset.x <= right && offset.y >= top && offset.y <= bottom
-}
-
-private fun clampPositionToRect(offset: Offset, rect: Rect): Offset {
-    val maxX = rect.width.coerceAtLeast(1f) - 1f
-    val maxY = rect.height.coerceAtLeast(1f) - 1f
-    return Offset(
-        x = offset.x.coerceIn(0f, maxX),
-        y = offset.y.coerceIn(0f, maxY)
-    )
-}
-
 @Composable
-private fun CustomSelectionHandle(
-    modifier: Modifier = Modifier
-) {
-    val stemHeight = with(LocalDensity.current) { CUSTOM_SELECTION_HANDLE_STEM_HEIGHT.toPx() }
-    Box(
-        modifier = modifier.size(CUSTOM_SELECTION_HANDLE_TOUCH_SIZE),
-        contentAlignment = Alignment.TopCenter
-    ) {
-        Canvas(
-            modifier = Modifier.size(CUSTOM_SELECTION_HANDLE_VISUAL_SIZE)
-        ) {
-            val stemWidth = size.width * 0.16f
-            val stemTop = size.height * 0.08f
-            val stemBottom = (stemTop + stemHeight).coerceAtMost(size.height * 0.52f)
-            val knobRadius = size.width * 0.32f
-            drawLine(
-                color = CHAT_SELECTION_HANDLE_COLOR,
-                start = Offset(size.width / 2f, stemTop),
-                end = Offset(size.width / 2f, stemBottom),
-                strokeWidth = stemWidth,
-                cap = StrokeCap.Round
-            )
-            drawCircle(
-                color = CHAT_SELECTION_HANDLE_COLOR,
-                radius = knobRadius,
-                center = Offset(size.width / 2f, size.height * 0.72f)
-            )
-        }
-    }
-}
-
-@Composable
-private fun CustomSelectableTextBody(
-    text: AnnotatedString,
-    selectionRects: List<Rect>,
-    onTextLayout: (TextLayoutResult) -> Unit,
-    onTextBoundsChanged: (Rect) -> Unit,
-    textColor: Color = assistantParagraphTextStyle().color,
-    modifier: Modifier = Modifier
-) {
-    Text(
-        text = text,
-        modifier = modifier
-            .onGloballyPositioned { coordinates ->
-                onTextBoundsChanged(coordinates.boundsInWindow())
-            }
-            .drawWithContent {
-                selectionRects.forEach { rect ->
-                    drawRect(
-                        color = CHAT_SELECTION_BACKGROUND_COLOR,
-                        topLeft = Offset(rect.left, rect.top),
-                        size = androidx.compose.ui.geometry.Size(rect.width, rect.height)
-                    )
-                }
-                drawContent()
-            },
-        style = assistantParagraphTextStyle().copy(color = textColor),
-        textAlign = TextAlign.Start,
-        onTextLayout = onTextLayout
-    )
-}
-
-@Composable
-private fun CustomMessageSelectionOverlay(
-    state: ActiveCustomMessageSelectionState,
-    messageBoundsInWindow: Rect,
+private fun MessageActionMenuPopup(
+    state: MessageSelectionToolbarState,
     viewportLeftPx: Float,
     viewportTopPx: Float,
     contentViewportLeftPx: Float,
@@ -4634,385 +4424,115 @@ private fun CustomMessageSelectionOverlay(
     contentViewportHeightPx: Int,
     topChromeMaskBottomPx: Int,
     composerTopInViewportPx: Int,
-    userBubbleMaxWidth: Dp,
-    onCopySelected: (String) -> Unit,
-    onCopyFull: () -> Unit,
-    onDismiss: () -> Unit
+    onCopy: () -> Unit,
+    onCopyFull: () -> Unit
 ) {
     val density = LocalDensity.current
-    val viewConfiguration = LocalViewConfiguration.current
-    val model = remember(state.role, state.content) {
-        buildSelectableMessageTextModel(state.role, state.content)
-    }
-    var selectionRange by remember(state.messageId, model.plainText) {
-        mutableStateOf(TextRange.Zero)
-    }
-    var textLayoutResult by remember(state.messageId) {
-        mutableStateOf<TextLayoutResult?>(null)
-    }
-    var textBoundsInWindow by remember(state.messageId) {
-        mutableStateOf<Rect?>(null)
-    }
-    var cardSize by remember(state.messageId) {
-        mutableStateOf(IntSize.Zero)
-    }
-    val hasResolvedSelection = !selectionRange.collapsed && model.plainText.isNotEmpty()
-    val messageLeftLocal = messageBoundsInWindow.left - viewportLeftPx
-    val messageTopLocal = messageBoundsInWindow.top - viewportTopPx
-    val messageWidthDp = with(density) { messageBoundsInWindow.width.toDp() }
-    val messageHeightDp = with(density) { messageBoundsInWindow.height.toDp() }
-
-    val textBoundsLocal = textBoundsInWindow?.let { bounds ->
-        Rect(
-            left = bounds.left - viewportLeftPx,
-            top = bounds.top - viewportTopPx,
-            right = bounds.right - viewportLeftPx,
-            bottom = bounds.bottom - viewportTopPx
-        )
-    }
-    val selectionRectsLocal = remember(textLayoutResult, selectionRange) {
-        if (!hasResolvedSelection) {
-            emptyList()
-        } else {
-            textLayoutResult?.let { buildSelectionRects(it, selectionRange) }.orEmpty()
-        }
-    }
-    val selectionRectsInRoot = remember(selectionRectsLocal, textBoundsLocal) {
-        val textBounds = textBoundsLocal ?: return@remember emptyList()
-        selectionRectsLocal.map { rect ->
-            Rect(
-                left = textBounds.left + rect.left,
-                top = textBounds.top + rect.top,
-                right = textBounds.left + rect.right,
-                bottom = textBounds.top + rect.bottom
-            )
-        }
-    }
-    val startHandleAnchor = remember(textLayoutResult, selectionRange, textBoundsLocal) {
-        if (!hasResolvedSelection) return@remember null
-        val layout = textLayoutResult ?: return@remember null
-        val textBounds = textBoundsLocal ?: return@remember null
-        val local = resolveSelectionHandleAnchor(layout, selectionRange.min)
-        Offset(textBounds.left + local.x, textBounds.top + local.y)
-    }
-    val endHandleAnchor = remember(textLayoutResult, selectionRange, textBoundsLocal) {
-        if (!hasResolvedSelection) return@remember null
-        val layout = textLayoutResult ?: return@remember null
-        val textBounds = textBoundsLocal ?: return@remember null
-        val local = resolveSelectionHandleAnchor(layout, selectionRange.max)
-        Offset(textBounds.left + local.x, textBounds.top + local.y)
-    }
-    val handleTouchSizePx = with(density) { CUSTOM_SELECTION_HANDLE_TOUCH_SIZE.roundToPx().toFloat() }
-    val startHandleRect = startHandleAnchor?.let { anchor ->
-        Rect(
-            left = anchor.x - handleTouchSizePx / 2f,
-            top = anchor.y,
-            right = anchor.x + handleTouchSizePx / 2f,
-            bottom = anchor.y + handleTouchSizePx
-        )
-    }
-    val endHandleRect = endHandleAnchor?.let { anchor ->
-        Rect(
-            left = anchor.x - handleTouchSizePx / 2f,
-            top = anchor.y,
-            right = anchor.x + handleTouchSizePx / 2f,
-            bottom = anchor.y + handleTouchSizePx
-        )
-    }
-    val selectedText = remember(model.plainText, selectionRange) {
-        if (selectionRange.collapsed || model.plainText.isEmpty()) {
-            ""
-        } else {
-            model.plainText.substring(selectionRange.min, selectionRange.max).trim()
-        }
-    }
-    val pressPositionInWindow = remember(messageBoundsInWindow, state.pressOffsetInMessage) {
-        Offset(
-            x = messageBoundsInWindow.left + state.pressOffsetInMessage.x,
-            y = messageBoundsInWindow.top + state.pressOffsetInMessage.y
-        )
-    }
-    val pressAnchorLocal = remember(pressPositionInWindow, viewportLeftPx, viewportTopPx) {
-        Offset(
-            x = pressPositionInWindow.x - viewportLeftPx,
-            y = pressPositionInWindow.y - viewportTopPx
-        )
-    }
-    val safeTopLocal = if (topChromeMaskBottomPx > 0) {
-        topChromeMaskBottomPx - viewportTopPx
-    } else {
-        contentViewportTopPx - viewportTopPx
-    }
-    val safeBottomLocal = if (composerTopInViewportPx > 0) {
-        composerTopInViewportPx.toFloat()
-    } else {
-        contentViewportTopPx + contentViewportHeightPx - viewportTopPx
-    }
-    val cardWidthPx = if (cardSize.width > 0) cardSize.width else with(density) { 168.dp.roundToPx() }
-    val cardHeightPx = if (cardSize.height > 0) cardSize.height else with(density) { MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT.roundToPx() }
-    val cardMarginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
-    val cardSpacingPx = with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
-    val contentLeftLocal = contentViewportLeftPx - viewportLeftPx
-    val minCardX = (contentLeftLocal + cardMarginPx).coerceAtLeast(cardMarginPx.toFloat())
-    val maxCardX = (
-        contentLeftLocal +
+    val verticalSpacingPx = with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
+    val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
+    val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
+    val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
+    val selectionBottomLocalY = (state.selectionBottomY - viewportTopPx).roundToInt()
+    val contentLocalLeft = (contentViewportLeftPx - viewportLeftPx).roundToInt()
+    val contentLocalTop = (contentViewportTopPx - viewportTopPx).roundToInt()
+    val resolvedWidth = if (cardSize.width > 0) cardSize.width else with(density) { 148.dp.roundToPx() }
+    val resolvedHeight =
+        if (cardSize.height > 0) cardSize.height else with(density) { MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT.roundToPx() }
+    val minX = (contentLocalLeft + marginPx).coerceAtLeast(marginPx)
+    val maxX = (
+        contentLocalLeft +
             contentViewportWidthPx -
-            cardWidthPx -
-            cardMarginPx
-        ).coerceAtLeast(minCardX)
-    val startVisible = startHandleAnchor?.y?.let { it in safeTopLocal..safeBottomLocal } == true
-    val endVisible = endHandleAnchor?.y?.let { it in safeTopLocal..safeBottomLocal } == true
-    val anchorForCard = when {
-        startVisible -> startHandleAnchor
-        endVisible -> endHandleAnchor
-        startHandleAnchor != null -> startHandleAnchor
-        endHandleAnchor != null -> endHandleAnchor
-        else -> pressAnchorLocal
-    }
-    val placeCardAbove = when (anchorForCard) {
-        null -> true
-        startHandleAnchor -> anchorForCard.y - cardSpacingPx - cardHeightPx >= safeTopLocal
-        else -> anchorForCard.y + cardSpacingPx + cardHeightPx > safeBottomLocal
-    }
-    val cardOffset = anchorForCard?.let { anchor ->
-        val resolvedX = (anchor.x - cardWidthPx / 2f).coerceIn(minCardX, maxCardX)
-        val resolvedY = if (placeCardAbove) {
-            anchor.y - cardHeightPx - cardSpacingPx
+            resolvedWidth -
+            marginPx
+        ).coerceAtLeast(minX)
+    val preferredX = (anchorLocalX - resolvedWidth / 2).coerceIn(minX, maxX)
+    val topMaskBottomLocal =
+        if (topChromeMaskBottomPx > 0) {
+            (topChromeMaskBottomPx - viewportTopPx.roundToInt()).coerceAtLeast(0)
         } else {
-            anchor.y + cardSpacingPx
+            Int.MIN_VALUE
         }
-        Offset(resolvedX, resolvedY)
-    }
-    val cardRect = cardOffset?.let { offset ->
-        Rect(
-            left = offset.x,
-            top = offset.y,
-            right = offset.x + cardWidthPx,
-            bottom = offset.y + cardHeightPx
-        )
-    }
-    val activeProtectedRects = remember(selectionRectsInRoot, cardRect, startHandleRect, endHandleRect) {
-        buildList {
-            addAll(selectionRectsInRoot)
-            cardRect?.let(::add)
-            startHandleRect?.let(::add)
-            endHandleRect?.let(::add)
-        }
-    }
-    LaunchedEffect(textLayoutResult, textBoundsInWindow, pressPositionInWindow, model.plainText) {
-        val layout = textLayoutResult ?: return@LaunchedEffect
-        val textBounds = textBoundsInWindow ?: return@LaunchedEffect
-        if (selectionRange.collapsed && model.plainText.isNotEmpty()) {
-            val localPress = clampPositionToRect(
-                offset = Offset(
-                    x = pressPositionInWindow.x - textBounds.left,
-                    y = pressPositionInWindow.y - textBounds.top
-                ),
-                rect = textBounds
-            )
-            val startOffset = layout.getOffsetForPosition(localPress)
-            selectionRange = resolveInitialSelectionRange(model.plainText, startOffset)
-        }
-    }
-
-    fun updateSelectionFromHandle(isStartHandle: Boolean, pointerPositionInRoot: Offset) {
-        val layout = textLayoutResult ?: return
-        val textBounds = textBoundsLocal ?: return
-        val local = clampPositionToRect(
-            offset = Offset(
-                x = pointerPositionInRoot.x - textBounds.left,
-                y = pointerPositionInRoot.y - textBounds.top
-            ),
-            rect = textBounds
-        )
-        val targetOffset = layout.getOffsetForPosition(local).coerceIn(0, model.plainText.length)
-        val nextRange = if (isStartHandle) {
-            TextRange(minOf(targetOffset, selectionRange.max), maxOf(targetOffset, selectionRange.max))
+    val bottomMaskTopLocal =
+        if (composerTopInViewportPx > 0) {
+            composerTopInViewportPx
         } else {
-            TextRange(minOf(selectionRange.min, targetOffset), maxOf(selectionRange.min, targetOffset))
+            Int.MAX_VALUE
         }
-        if (!nextRange.collapsed) {
-            selectionRange = nextRange
+    val contentTopLimit = (contentLocalTop + marginPx).coerceAtLeast(marginPx)
+    val contentBottomLimit = contentLocalTop + contentViewportHeightPx - marginPx
+    val protectedTopLimit = maxOf(contentTopLimit, topMaskBottomLocal + marginPx)
+    val protectedBottomLimit = minOf(contentBottomLimit, bottomMaskTopLocal - marginPx)
+    val topHandleLocalY = minOf(anchorLocalY, selectionBottomLocalY)
+    val bottomHandleLocalY = maxOf(anchorLocalY, selectionBottomLocalY)
+    val preferredTop = topHandleLocalY - resolvedHeight - verticalSpacingPx
+    val belowCandidate = bottomHandleLocalY + verticalSpacingPx
+    val canPlaceAbove = preferredTop >= protectedTopLimit
+    val canPlaceBelow = belowCandidate + resolvedHeight <= protectedBottomLimit
+    val resolvedPlaceBelow = !canPlaceAbove && canPlaceBelow
+    val preferredY =
+        if (!resolvedPlaceBelow) {
+            preferredTop
+        } else {
+            belowCandidate
         }
-    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { clip = true }
             .zIndex(40f)
-            .pointerInput(activeProtectedRects, selectionRange) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(
-                        requireUnconsumed = false,
-                        pass = PointerEventPass.Initial
-                    )
-                    var distance = 0f
-                    var previousPosition = down.position
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        distance += (change.position - previousPosition).getDistance()
-                        previousPosition = change.position
-                        if (change.changedToUpIgnoreConsumed()) {
-                            if (
-                                distance <= viewConfiguration.touchSlop &&
-                                activeProtectedRects.none { it.containsPoint(down.position) }
-                            ) {
-                                onDismiss()
-                            }
-                            break
-                        }
-                        if (!change.pressed) {
-                            break
-                        }
-                    }
-                }
-            }
     ) {
         Box(
             modifier = Modifier
-                .offset {
-                    IntOffset(
-                        x = messageLeftLocal.roundToInt(),
-                        y = messageTopLocal.roundToInt()
-                    )
+                .offset { IntOffset(preferredX, preferredY) }
+                .onGloballyPositioned { coordinates ->
+                    cardSize = coordinates.size
                 }
-                .width(messageWidthDp)
-                .height(messageHeightDp)
+                .pointerInput(state.anchorX, state.anchorY, state.selectionBottomY) {
+                    detectTapGestures(onTap = {})
+                }
         ) {
-            if (state.role == ChatRole.USER) {
-                Box(
-                    modifier = Modifier
-                        .widthIn(max = userBubbleMaxWidth)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    CustomSelectableTextBody(
-                        text = model.annotatedText,
-                        selectionRects = selectionRectsLocal,
-                        onTextLayout = { textLayoutResult = it },
-                        onTextBoundsChanged = { textBoundsInWindow = it },
-                        textColor = Color.Transparent,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            } else {
-                CustomSelectableTextBody(
-                    text = model.annotatedText,
-                    selectionRects = selectionRectsLocal,
-                    onTextLayout = { textLayoutResult = it },
-                    onTextBoundsChanged = { textBoundsInWindow = it },
-                    textColor = Color.Transparent,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        cardOffset?.let { offset ->
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = offset.x.roundToInt(),
-                            y = offset.y.roundToInt()
-                        )
-                    }
-                    .onGloballyPositioned { coordinates ->
-                        cardSize = coordinates.size
-                    }
-                    .pointerInput(state.messageId) {
-                        detectTapGestures(onTap = {})
-                    }
-            ) {
-                MessageActionMenuCardContent(
-                    copyEnabled = selectedText.isNotEmpty(),
-                    onCopy = {
-                        if (selectedText.isNotEmpty()) {
-                            onCopySelected(selectedText)
-                        }
-                    },
-                    onCopyFull = onCopyFull
-                )
-            }
-        }
-
-        startHandleAnchor?.let { anchor ->
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = (anchor.x - handleTouchSizePx / 2f).roundToInt(),
-                            y = anchor.y.roundToInt()
-                        )
-                    }
-                    .pointerInput(state.messageId) {
-                        detectDragGestures(
-                            onDrag = { change, _ ->
-                                change.consume()
-                                updateSelectionFromHandle(
-                                    isStartHandle = true,
-                                    pointerPositionInRoot = Offset(
-                                        x = (anchor.x - handleTouchSizePx / 2f) + change.position.x,
-                                        y = anchor.y + change.position.y
-                                    )
-                                )
-                            }
-                        )
-                    }
-            ) {
-                CustomSelectionHandle()
-            }
-        }
-
-        endHandleAnchor?.let { anchor ->
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            x = (anchor.x - handleTouchSizePx / 2f).roundToInt(),
-                            y = anchor.y.roundToInt()
-                        )
-                    }
-                    .pointerInput(state.messageId) {
-                        detectDragGestures(
-                            onDrag = { change, _ ->
-                                change.consume()
-                                updateSelectionFromHandle(
-                                    isStartHandle = false,
-                                    pointerPositionInRoot = Offset(
-                                        x = (anchor.x - handleTouchSizePx / 2f) + change.position.x,
-                                        y = anchor.y + change.position.y
-                                    )
-                                )
-                            }
-                        )
-                    }
-            ) {
-                CustomSelectionHandle()
-            }
+            MessageActionMenuCardContent(onCopy = onCopy, onCopyFull = onCopyFull)
         }
     }
 }
 
 @Composable
-private fun RenderedStaticMessageContent(
+@OptIn(ExperimentalFoundationApi::class)
+private fun SelectableRenderedStaticMessageContent(
     content: String,
+    textSelectionColors: TextSelectionColors,
+    textToolbar: TextToolbar,
+    selectionResetKey: Int,
     showDisclaimer: Boolean,
     modifier: Modifier = Modifier
 ) {
-    AssistantMessageContent(
-        content = content,
-        isStreaming = false,
-        showDisclaimer = showDisclaimer,
-        modifier = modifier.fillMaxWidth()
-    )
+    CompositionLocalProvider(
+        LocalTextSelectionColors provides textSelectionColors,
+        LocalTextToolbar provides textToolbar
+    ) {
+        key(selectionResetKey) {
+            AssistantMessageContent(
+                content = content,
+                isStreaming = false,
+                selectionEnabled = true,
+                showDisclaimer = showDisclaimer,
+                modifier = modifier.fillMaxWidth()
+            )
+        }
+    }
 }
 
 @Composable
-private fun RenderedUserMessageBubble(
+@OptIn(ExperimentalFoundationApi::class)
+private fun SelectableRenderedUserMessageBubble(
     content: String,
+    textSelectionColors: TextSelectionColors,
+    textToolbar: TextToolbar,
+    selectionResetKey: Int,
     userBubbleMaxWidth: Dp,
     userBubbleColor: Color,
-    modifier: Modifier = Modifier,
     onBubbleBoundsChanged: (Rect?) -> Unit = {}
 ) {
     Row(
@@ -5024,14 +4544,16 @@ private fun RenderedUserMessageBubble(
                 .widthIn(max = userBubbleMaxWidth)
                 .clip(RoundedCornerShape(20.dp))
                 .background(userBubbleColor)
-                .then(modifier)
                 .onGloballyPositioned { coordinates ->
                     onBubbleBoundsChanged(coordinates.boundsInWindow())
                 }
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
-            RenderedStaticMessageContent(
+            SelectableRenderedStaticMessageContent(
                 content = content,
+                textSelectionColors = textSelectionColors,
+                textToolbar = textToolbar,
+                selectionResetKey = selectionResetKey,
                 showDisclaimer = false,
                 modifier = Modifier.fillMaxWidth()
             )
