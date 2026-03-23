@@ -204,8 +204,16 @@ private data class ActiveCustomMessageSelectionState(
     val role: ChatRole,
     val content: String,
     val fullCopyText: String,
-    val pressPositionInWindow: Offset,
+    val pressOffsetInMessage: Offset,
     val messageBoundsInWindow: Rect
+)
+
+private data class PendingCustomMessageSelectionState(
+    val messageId: String,
+    val role: ChatRole,
+    val content: String,
+    val fullCopyText: String,
+    val pressOffsetInMessage: Offset
 )
 
 private data class SelectableMessageTextModel(
@@ -2756,11 +2764,40 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var activeCustomMessageSelection by remember { mutableStateOf<ActiveCustomMessageSelectionState?>(null) }
-    val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
+    var activeCustomMessageSelection by remember(chatScopeId) { mutableStateOf<ActiveCustomMessageSelectionState?>(null) }
+    var pendingCustomMessageSelection by remember(chatScopeId) {
+        mutableStateOf<PendingCustomMessageSelectionState?>(null)
+    }
+    val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
+
+    fun tryActivatePendingCustomMessageSelection(messageId: String, bounds: Rect) {
+        val pending = pendingCustomMessageSelection ?: return
+        if (pending.messageId != messageId) return
+        activeCustomMessageSelection = ActiveCustomMessageSelectionState(
+            messageId = pending.messageId,
+            role = pending.role,
+            content = pending.content,
+            fullCopyText = pending.fullCopyText,
+            pressOffsetInMessage = pending.pressOffsetInMessage,
+            messageBoundsInWindow = bounds
+        )
+        pendingCustomMessageSelection = null
+    }
+
+    fun updateMessageSelectionBounds(messageId: String, bounds: Rect?) {
+        if (bounds == null) {
+            messageSelectionBoundsById.remove(messageId)
+            return
+        }
+        if (messageSelectionBoundsById[messageId] != bounds) {
+            messageSelectionBoundsById[messageId] = bounds
+        }
+        tryActivatePendingCustomMessageSelection(messageId, bounds)
+    }
 
     fun clearMessageSelection() {
         activeCustomMessageSelection = null
+        pendingCustomMessageSelection = null
     }
     val currentSelectionBounds =
         activeCustomMessageSelection?.let { state ->
@@ -2781,20 +2818,42 @@ fun ChatScreen() {
         role: ChatRole,
         content: String,
         fullCopyText: String,
-        pressPositionInWindow: Offset
+        pressOffsetInMessage: Offset
     ) {
-        val bounds = messageSelectionBoundsById[messageId] ?: return
+        val bounds = messageSelectionBoundsById[messageId]
+        if (bounds == null) {
+            pendingCustomMessageSelection = PendingCustomMessageSelectionState(
+                messageId = messageId,
+                role = role,
+                content = content,
+                fullCopyText = fullCopyText,
+                pressOffsetInMessage = pressOffsetInMessage
+            )
+            return
+        }
         activeCustomMessageSelection = ActiveCustomMessageSelectionState(
             messageId = messageId,
             role = role,
             content = content,
             fullCopyText = fullCopyText,
-            pressPositionInWindow = pressPositionInWindow,
+            pressOffsetInMessage = pressOffsetInMessage,
             messageBoundsInWindow = bounds
         )
+        pendingCustomMessageSelection = null
     }
     BackHandler(enabled = activeCustomMessageSelection != null) {
         clearMessageSelection()
+    }
+    LaunchedEffect(messages.size, activeCustomMessageSelection?.messageId, pendingCustomMessageSelection?.messageId) {
+        val activeId = activeCustomMessageSelection?.messageId
+        if (activeId != null && messages.none { it.id == activeId }) {
+            clearMessageSelection()
+            return@LaunchedEffect
+        }
+        val pendingId = pendingCustomMessageSelection?.messageId
+        if (pendingId != null && messages.none { it.id == pendingId }) {
+            pendingCustomMessageSelection = null
+        }
     }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -4080,7 +4139,7 @@ fun ChatScreen() {
                         ) { msg ->
                             DisposableEffect(msg.id) {
                                 onDispose {
-                                    messageSelectionBoundsById.remove(msg.id)
+                                    updateMessageSelectionBounds(msg.id, null)
                                 }
                             }
                             val fullCopyText = remember(msg.role, msg.content) {
@@ -4099,10 +4158,10 @@ fun ChatScreen() {
                                         .fillMaxWidth()
                                         .onGloballyPositioned { coordinates ->
                                             if (msg.role == ChatRole.ASSISTANT) {
-                                                val bounds = coordinates.boundsInWindow()
-                                                if (messageSelectionBoundsById[msg.id] != bounds) {
-                                                    messageSelectionBoundsById[msg.id] = bounds
-                                                }
+                                                updateMessageSelectionBounds(
+                                                    msg.id,
+                                                    coordinates.boundsInWindow()
+                                                )
                                             }
                                         }
                                 ) {
@@ -4130,12 +4189,7 @@ fun ChatScreen() {
                                                                         role = msg.role,
                                                                         content = msg.content,
                                                                         fullCopyText = fullCopyText,
-                                                                        pressPositionInWindow = Offset(
-                                                                            messageSelectionBoundsById[msg.id]?.left?.plus(offset.x)
-                                                                                ?: offset.x,
-                                                                            messageSelectionBoundsById[msg.id]?.top?.plus(offset.y)
-                                                                                ?: offset.y
-                                                                        )
+                                                                        pressOffsetInMessage = offset
                                                                     )
                                                                 }
                                                             )
@@ -4174,27 +4228,20 @@ fun ChatScreen() {
                                                         detectTapGestures(
                                                             onLongPress = { offset ->
                                                                 performButtonHaptic()
-                                                                activateCustomMessageSelection(
-                                                                    messageId = msg.id,
-                                                                    role = msg.role,
-                                                                    content = msg.content,
-                                                                    fullCopyText = fullCopyText,
-                                                                    pressPositionInWindow = Offset(
-                                                                        messageSelectionBoundsById[msg.id]?.left?.plus(offset.x)
-                                                                            ?: offset.x,
-                                                                        messageSelectionBoundsById[msg.id]?.top?.plus(offset.y)
-                                                                            ?: offset.y
-                                                                    )
-                                                                )
-                                                            }
-                                                        )
+                                                            activateCustomMessageSelection(
+                                                                messageId = msg.id,
+                                                                role = msg.role,
+                                                                content = msg.content,
+                                                                fullCopyText = fullCopyText,
+                                                                pressOffsetInMessage = offset
+                                                            )
+                                                        }
+                                                    )
                                                     }
                                                 }
                                             ),
                                             onBubbleBoundsChanged = { bounds ->
-                                                if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
-                                                    messageSelectionBoundsById[msg.id] = bounds
-                                                }
+                                                updateMessageSelectionBounds(msg.id, bounds)
                                             }
                                         )
                                     }
@@ -4739,14 +4786,20 @@ private fun CustomMessageSelectionOverlay(
             endHandleRect?.let(::add)
         }
     }
+    val pressPositionInWindow = remember(messageBoundsInWindow, state.pressOffsetInMessage) {
+        Offset(
+            x = messageBoundsInWindow.left + state.pressOffsetInMessage.x,
+            y = messageBoundsInWindow.top + state.pressOffsetInMessage.y
+        )
+    }
 
-    LaunchedEffect(textLayoutResult, textBoundsInWindow, state.pressPositionInWindow, model.plainText) {
+    LaunchedEffect(textLayoutResult, textBoundsInWindow, pressPositionInWindow, model.plainText) {
         val layout = textLayoutResult ?: return@LaunchedEffect
         val textBounds = textBoundsInWindow ?: return@LaunchedEffect
         if (selectionRange.collapsed && model.plainText.isNotEmpty()) {
             val localPress = Offset(
-                x = state.pressPositionInWindow.x - textBounds.left,
-                y = state.pressPositionInWindow.y - textBounds.top
+                x = pressPositionInWindow.x - textBounds.left,
+                y = pressPositionInWindow.y - textBounds.top
             )
             val startOffset = layout.getOffsetForPosition(localPress)
             selectionRange = resolveInitialSelectionRange(model.plainText, startOffset)
