@@ -281,6 +281,7 @@ private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
 private val MESSAGE_ACTION_MENU_SWITCH_THRESHOLD = 28.dp
+private val JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE = 32.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -2619,7 +2620,9 @@ fun ChatScreen() {
             .calculateBottomPadding()
             .roundToPx()
     }
-    val jumpButtonBottomPadding = with(density) { bottomBarHeightPx.toDp() + 48.dp }
+    val jumpButtonBottomPadding = with(density) {
+        bottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
+    }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
