@@ -1330,6 +1330,7 @@ private fun AssistantMessageContent(
     lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
+    expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val shouldRenderDisclaimer = remember(content, showDisclaimer) {
@@ -1344,8 +1345,11 @@ private fun AssistantMessageContent(
         // Streaming: NO animateContentSize, NO AnimatedVisibility crossfade.
         // Simple conditional switch: ball OR text. Eliminates jitter/ghosting.
         Box(
-            modifier = stableModifier
-                .fillMaxWidth(),
+            modifier = if (expandToFullWidth) {
+                stableModifier.fillMaxWidth()
+            } else {
+                stableModifier
+            },
             contentAlignment = Alignment.TopStart
         ) {
             if (content.isBlank()) {
@@ -1371,8 +1375,11 @@ private fun AssistantMessageContent(
         }
     } else {
         Column(
-            modifier = modifier
-                .fillMaxWidth(),
+            modifier = if (expandToFullWidth) {
+                modifier.fillMaxWidth()
+            } else {
+                modifier
+            },
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (selectionEnabled) {
@@ -4606,6 +4613,7 @@ private fun SelectableRenderedStaticMessageContent(
     textToolbar: TextToolbar,
     selectionResetKey: Int,
     showDisclaimer: Boolean,
+    expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     CompositionLocalProvider(
@@ -4618,7 +4626,8 @@ private fun SelectableRenderedStaticMessageContent(
                 isStreaming = false,
                 selectionEnabled = true,
                 showDisclaimer = showDisclaimer,
-                modifier = modifier.fillMaxWidth()
+                expandToFullWidth = expandToFullWidth,
+                modifier = modifier
             )
         }
     }
@@ -4655,7 +4664,7 @@ private fun SelectableRenderedUserMessageBubble(
                 textToolbar = textToolbar,
                 selectionResetKey = selectionResetKey,
                 showDisclaimer = false,
-                modifier = Modifier.fillMaxWidth()
+                expandToFullWidth = false
             )
         }
     }
