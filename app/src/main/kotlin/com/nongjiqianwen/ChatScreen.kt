@@ -221,6 +221,8 @@ private data class PendingMessageSelectionToolbarState(
     val onCopyFullRequested: (() -> Unit)?
 )
 
+private enum class MessageActionMenuSide { Above, Below }
+
 private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
 }
@@ -278,6 +280,7 @@ private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
+private val MESSAGE_ACTION_MENU_SWITCH_THRESHOLD = 28.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -4474,7 +4477,9 @@ private fun MessageActionMenuPopup(
     val density = LocalDensity.current
     val verticalSpacingPx = with(density) { MESSAGE_ACTION_MENU_VERTICAL_SPACING.roundToPx() }
     val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
+    val switchThresholdPx = with(density) { MESSAGE_ACTION_MENU_SWITCH_THRESHOLD.roundToPx() }
     var cardSize by remember { mutableStateOf(IntSize.Zero) }
+    var lockedSide by remember(state.messageId) { mutableStateOf<MessageActionMenuSide?>(null) }
     val anchorLocalX = (state.anchorX - viewportLeftPx).roundToInt()
     val anchorLocalY = (state.anchorY - viewportTopPx).roundToInt()
     val selectionBottomLocalY = (state.selectionBottomY - viewportTopPx).roundToInt()
@@ -4511,11 +4516,51 @@ private fun MessageActionMenuPopup(
     val bottomHandleLocalY = maxOf(anchorLocalY, selectionBottomLocalY)
     val preferredTop = topHandleLocalY - resolvedHeight - verticalSpacingPx
     val belowCandidate = bottomHandleLocalY + verticalSpacingPx
-    val canPlaceAbove = preferredTop >= protectedTopLimit
-    val canPlaceBelow = belowCandidate + resolvedHeight <= protectedBottomLimit
-    val resolvedPlaceBelow = !canPlaceAbove && canPlaceBelow
+    val topOverflow = (protectedTopLimit - preferredTop).coerceAtLeast(0)
+    val bottomOverflow = (belowCandidate + resolvedHeight - protectedBottomLimit).coerceAtLeast(0)
+    val canPlaceAbove = topOverflow == 0
+    val canPlaceBelow = bottomOverflow == 0
+    val resolvedSide =
+        when (lockedSide) {
+            MessageActionMenuSide.Above -> {
+                if (topOverflow > switchThresholdPx && canPlaceBelow) {
+                    MessageActionMenuSide.Below
+                } else {
+                    MessageActionMenuSide.Above
+                }
+            }
+
+            MessageActionMenuSide.Below -> {
+                if (bottomOverflow > switchThresholdPx && canPlaceAbove) {
+                    MessageActionMenuSide.Above
+                } else {
+                    MessageActionMenuSide.Below
+                }
+            }
+
+            null -> {
+                when {
+                    canPlaceAbove -> MessageActionMenuSide.Above
+                    canPlaceBelow -> MessageActionMenuSide.Below
+                    topOverflow <= bottomOverflow -> MessageActionMenuSide.Above
+                    else -> MessageActionMenuSide.Below
+                }
+            }
+        }
+    LaunchedEffect(
+        state.messageId,
+        resolvedSide,
+        state.anchorY,
+        state.selectionBottomY,
+        topChromeMaskBottomPx,
+        composerTopInViewportPx
+    ) {
+        if (lockedSide != resolvedSide) {
+            lockedSide = resolvedSide
+        }
+    }
     val preferredY =
-        if (!resolvedPlaceBelow) {
+        if (resolvedSide == MessageActionMenuSide.Above) {
             preferredTop
         } else {
             belowCandidate
