@@ -139,7 +139,6 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextMeasurer
@@ -152,7 +151,6 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -997,104 +995,6 @@ private fun buildRenderedMessageCopyText(role: ChatRole, content: String): Strin
                     }
                 }.trim()
             }
-        }
-    }
-}
-
-private data class SelectableMessageTextModel(
-    val annotatedText: AnnotatedString,
-    val showDisclaimer: Boolean
-)
-
-private fun buildSelectableMessageTextModel(role: ChatRole, content: String): SelectableMessageTextModel {
-    return when (role) {
-        ChatRole.USER -> {
-            SelectableMessageTextModel(
-                annotatedText = AnnotatedString(content.trim()),
-                showDisclaimer = false
-            )
-        }
-
-        ChatRole.ASSISTANT -> {
-            val blocks = getCachedMarkdownUiBlocks(content)
-            val annotated =
-                if (blocks.isEmpty()) {
-                    getCachedAnnotatedString(normalizeAssistantText(content))
-                } else {
-                    buildAnnotatedString {
-                        blocks.forEachIndexed { index, block ->
-                            if (index > 0) {
-                                append("\n\n")
-                            }
-                            if (shouldShowMarkdownSectionDivider(blocks.getOrNull(index - 1), block)) {
-                                append("\n")
-                            }
-                            when (block) {
-                                is MarkdownUiBlock.Heading -> {
-                                    val headingStyle = assistantHeadingTextStyle(block.level)
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = headingStyle.lineHeight
-                                        )
-                                    ) {
-                                        withStyle(
-                                            SpanStyle(
-                                                fontSize = headingStyle.fontSize,
-                                                fontWeight = headingStyle.fontWeight,
-                                                color = headingStyle.color
-                                            )
-                                        ) {
-                                            append(block.text)
-                                        }
-                                    }
-                                }
-
-                                is MarkdownUiBlock.Bullet -> {
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = assistantParagraphTextStyle().lineHeight,
-                                            textIndent = TextIndent(restLine = 18.sp)
-                                        )
-                                    ) {
-                                        append("\u2022 ")
-                                        append(block.text)
-                                    }
-                                }
-
-                                is MarkdownUiBlock.Numbered -> {
-                                    val prefix = "${block.number}. "
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = assistantParagraphTextStyle().lineHeight,
-                                            textIndent = TextIndent(
-                                                restLine = (18 + block.number.length * 4).sp
-                                            )
-                                        )
-                                    ) {
-                                        withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                                            append(prefix)
-                                        }
-                                        append(block.text)
-                                    }
-                                }
-
-                                is MarkdownUiBlock.Paragraph -> {
-                                    withStyle(
-                                        ParagraphStyle(
-                                            lineHeight = assistantParagraphTextStyle().lineHeight
-                                        )
-                                    ) {
-                                        append(block.text)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            SelectableMessageTextModel(
-                annotatedText = annotated,
-                showDisclaimer = shouldShowAiDisclaimer(content)
-            )
         }
     }
 }
@@ -4157,11 +4057,11 @@ fun ChatScreen() {
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
                                         SelectableRenderedStaticMessageContent(
-                                            role = ChatRole.ASSISTANT,
                                             content = msg.content,
                                             textSelectionColors = messageSelectionColors,
                                             textToolbar = messageTextToolbar,
                                             selectionResetKey = messageSelectionResetEpoch,
+                                            showDisclaimer = true,
                                             modifier = Modifier.fillMaxWidth()
                                         )
                                     } else {
@@ -4601,44 +4501,25 @@ private fun MessageActionMenuPopup(
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun SelectableRenderedStaticMessageContent(
-    role: ChatRole,
     content: String,
     textSelectionColors: TextSelectionColors,
     textToolbar: TextToolbar,
     selectionResetKey: Int,
+    showDisclaimer: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val model = remember(role, content) {
-        buildSelectableMessageTextModel(role, content)
-    }
     CompositionLocalProvider(
         LocalTextSelectionColors provides textSelectionColors,
         LocalTextToolbar provides textToolbar
     ) {
         key(selectionResetKey) {
-            Column(
-                modifier = modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = model.annotatedText,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = assistantParagraphTextStyle(),
-                        textAlign = TextAlign.Start
-                    )
-                }
-                if (model.showDisclaimer) {
-                    Text(
-                        text = AI_DISCLAIMER_TEXT,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp),
-                        style = assistantDisclaimerTextStyle(),
-                        textAlign = TextAlign.Start
-                    )
-                }
-            }
+            AssistantMessageContent(
+                content = content,
+                isStreaming = false,
+                selectionEnabled = true,
+                showDisclaimer = showDisclaimer,
+                modifier = modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -4669,11 +4550,11 @@ private fun SelectableRenderedUserMessageBubble(
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
             SelectableRenderedStaticMessageContent(
-                role = ChatRole.USER,
                 content = content,
                 textSelectionColors = textSelectionColors,
                 textToolbar = textToolbar,
                 selectionResetKey = selectionResetKey,
+                showDisclaimer = false,
                 modifier = Modifier.fillMaxWidth()
             )
         }
