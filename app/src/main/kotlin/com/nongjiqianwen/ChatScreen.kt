@@ -222,6 +222,22 @@ private data class PendingMessageSelectionToolbarState(
     val onCopyFullRequested: (() -> Unit)?
 )
 
+private data class InputSelectionToolbarState(
+    val anchorXRatio: Float,
+    val onCopyRequested: (() -> Unit)?,
+    val onPasteRequested: (() -> Unit)?,
+    val onCutRequested: (() -> Unit)?,
+    val onSelectAllRequested: (() -> Unit)?
+)
+
+private data class PendingInputSelectionToolbarState(
+    val rect: Rect,
+    val onCopyRequested: (() -> Unit)?,
+    val onPasteRequested: (() -> Unit)?,
+    val onCutRequested: (() -> Unit)?,
+    val onSelectAllRequested: (() -> Unit)?
+)
+
 private enum class MessageActionMenuSide { Above, Below }
 
 private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
@@ -1010,6 +1026,10 @@ private fun buildRenderedMessageCopyText(role: ChatRole, content: String): Strin
             }
         }
     }
+}
+
+private fun Rect.containsPoint(offset: Offset): Boolean {
+    return offset.x >= left && offset.x <= right && offset.y >= top && offset.y <= bottom
 }
 
 private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
@@ -2560,29 +2580,47 @@ fun ChatScreen() {
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
     }
-    val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
-    val shouldOfferJumpButton by remember(
-        atBottom,
-        messages.size,
-        hasStreamingItem,
-        pendingFinalBottomSnap,
-        isStreaming,
-        userDetachedFromBottom,
-        keyboardVisibleForJumpButton,
-        suppressJumpButtonForImeTransition,
-        suppressJumpButtonForLifecycleResume
+    val appCenterTint = Color.White
+    val chromeSurface = Color.White
+    val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
+    val userBubbleColor = Color(0xFFF4F4F7)
+    var inputChromeMeasured by remember(chatScopeId) { mutableStateOf(false) }
+    var messageViewportMeasured by remember(chatScopeId) { mutableStateOf(false) }
+    var composerMeasured by remember(chatScopeId) { mutableStateOf(false) }
+    var historyHydrationComplete by remember(chatScopeId) {
+        mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
+    }
+    val startupLayoutReady by remember(
+        historyHydrationComplete,
+        messageViewportMeasured,
+        inputChromeMeasured,
+        composerMeasured,
+        bottomBarHeightPx
     ) {
         derivedStateOf {
-            !pendingFinalBottomSnap &&
-                !keyboardVisibleForJumpButton &&
-                !suppressJumpButtonForImeTransition &&
-                !suppressJumpButtonForLifecycleResume &&
-                (messages.isNotEmpty() || hasStreamingItem) &&
-                (!isStreaming || userDetachedFromBottom) &&
-                !atBottom
+            historyHydrationComplete &&
+                messageViewportMeasured &&
+                inputChromeMeasured &&
+                composerMeasured &&
+                bottomBarHeightPx > 0
+        }
+    }
+    val effectiveBottomBarHeightPx by remember(
+        startupLayoutReady,
+        bottomBarHeightPx,
+        startupBottomBarHeightEstimatePx
+    ) {
+        derivedStateOf {
+            if (startupLayoutReady) {
+                bottomBarHeightPx
+            } else {
+                startupBottomBarHeightEstimatePx
+            }
         }
     }
     val shouldRevealMessageList by remember(
+        startupLayoutReady,
+        historyHydrationComplete,
         hasStartedConversation,
         messages.size,
         hasStreamingItem,
@@ -2590,20 +2628,15 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             when {
+                !historyHydrationComplete -> false
+                !startupLayoutReady -> false
                 hasStartedConversation -> true
-                messages.isEmpty() && !hasStreamingItem -> true
                 hasStreamingItem -> true
+                messages.isEmpty() -> true
                 initialBottomSnapDone -> true
                 else -> false
             }
         }
-    }
-    val appCenterTint = Color.White
-    val chromeSurface = Color.White
-    val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
-    val userBubbleColor = Color(0xFFF4F4F7)
-    var historyHydrationComplete by remember(chatScopeId) {
-        mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
     }
     val showWelcomePlaceholder by remember(historyHydrationComplete, messages.size, hasStreamingItem) {
         derivedStateOf {
@@ -2622,12 +2655,62 @@ fun ChatScreen() {
             .roundToPx()
     }
     val jumpButtonBottomPadding = with(density) {
-        bottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
+        effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var inputSelectionToolbarState by remember(chatScopeId) {
+        mutableStateOf<InputSelectionToolbarState?>(null)
+    }
+    var pendingInputSelectionToolbarState by remember(chatScopeId) {
+        mutableStateOf<PendingInputSelectionToolbarState?>(null)
+    }
+    var inputSelectionMenuBoundsInRoot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    var inputFieldBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
+    val shouldOfferJumpButton by remember(
+        startupLayoutReady,
+        atBottom,
+        messages.size,
+        hasStreamingItem,
+        pendingFinalBottomSnap,
+        isStreaming,
+        userDetachedFromBottom,
+        keyboardVisibleForJumpButton,
+        suppressJumpButtonForImeTransition,
+        suppressJumpButtonForLifecycleResume
+    ) {
+        derivedStateOf {
+            startupLayoutReady &&
+                !pendingFinalBottomSnap &&
+                !keyboardVisibleForJumpButton &&
+                !suppressJumpButtonForImeTransition &&
+                !suppressJumpButtonForLifecycleResume &&
+                (messages.isNotEmpty() || hasStreamingItem) &&
+                (!isStreaming || userDetachedFromBottom) &&
+                !atBottom
+        }
+    }
+    LaunchedEffect(
+        startupLayoutReady,
+        historyHydrationComplete,
+        hasStartedConversation,
+        messages.size,
+        hasStreamingItem,
+        initialBottomSnapDone
+    ) {
+        LaunchUiGate.chatReady =
+            when {
+                !historyHydrationComplete -> false
+                !startupLayoutReady -> false
+                hasStartedConversation -> true
+                hasStreamingItem -> true
+                messages.isEmpty() -> true
+                else -> initialBottomSnapDone
+            }
+    }
     var messageSelectionToolbarState by remember(chatScopeId) {
         mutableStateOf<MessageSelectionToolbarState?>(null)
     }
@@ -2706,12 +2789,93 @@ fun ChatScreen() {
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
+    fun clearInputSelectionToolbar() {
+        inputSelectionToolbarState = null
+        pendingInputSelectionToolbarState = null
+        inputSelectionMenuBoundsInRoot = null
+    }
+
+    fun buildResolvedInputSelectionToolbarState(
+        rect: Rect,
+        bounds: Rect,
+        onCopyRequested: (() -> Unit)?,
+        onPasteRequested: (() -> Unit)?,
+        onCutRequested: (() -> Unit)?,
+        onSelectAllRequested: (() -> Unit)?
+    ): InputSelectionToolbarState {
+        val width = bounds.width.coerceAtLeast(1f)
+        return InputSelectionToolbarState(
+            anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
+            onCopyRequested = onCopyRequested,
+            onPasteRequested = onPasteRequested,
+            onCutRequested = onCutRequested,
+            onSelectAllRequested = onSelectAllRequested
+        )
+    }
+
+    fun applyPendingInputSelectionToolbarIfReady(bounds: Rect) {
+        val pending = pendingInputSelectionToolbarState ?: return
+        pendingInputSelectionToolbarState = null
+        inputSelectionToolbarState = buildResolvedInputSelectionToolbarState(
+            rect = pending.rect,
+            bounds = bounds,
+            onCopyRequested = pending.onCopyRequested,
+            onPasteRequested = pending.onPasteRequested,
+            onCutRequested = pending.onCutRequested,
+            onSelectAllRequested = pending.onSelectAllRequested
+        )
+    }
     fun copyTextToClipboard(label: String, text: String) {
         val normalized = text.trim()
         if (normalized.isEmpty()) return
         val clipboard =
             context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText(label, normalized))
+    }
+
+    fun buildInputSelectionTextToolbar(): TextToolbar {
+        return object : TextToolbar {
+            override val status: TextToolbarStatus
+                get() =
+                    if (inputSelectionToolbarState != null) {
+                        TextToolbarStatus.Shown
+                    } else {
+                        TextToolbarStatus.Hidden
+                    }
+
+            override fun showMenu(
+                rect: Rect,
+                onCopyRequested: (() -> Unit)?,
+                onPasteRequested: (() -> Unit)?,
+                onCutRequested: (() -> Unit)?,
+                onSelectAllRequested: (() -> Unit)?
+            ) {
+                val bounds = inputFieldBoundsInWindow
+                if (bounds == null) {
+                    pendingInputSelectionToolbarState = PendingInputSelectionToolbarState(
+                        rect = rect,
+                        onCopyRequested = onCopyRequested,
+                        onPasteRequested = onPasteRequested,
+                        onCutRequested = onCutRequested,
+                        onSelectAllRequested = onSelectAllRequested
+                    )
+                    return
+                }
+                pendingInputSelectionToolbarState = null
+                inputSelectionToolbarState = buildResolvedInputSelectionToolbarState(
+                    rect = rect,
+                    bounds = bounds,
+                    onCopyRequested = onCopyRequested,
+                    onPasteRequested = onPasteRequested,
+                    onCutRequested = onCutRequested,
+                    onSelectAllRequested = onSelectAllRequested
+                )
+            }
+
+            override fun hide() {
+                clearInputSelectionToolbar()
+            }
+        }
     }
 
     fun buildMessageSelectionTextToolbar(
@@ -2774,8 +2938,11 @@ fun ChatScreen() {
             }
         }
     }
-    BackHandler(enabled = messageSelectionToolbarState != null) {
-        clearMessageSelection()
+    BackHandler(enabled = messageSelectionToolbarState != null || inputSelectionToolbarState != null) {
+        when {
+            inputSelectionToolbarState != null -> clearInputSelectionToolbar()
+            messageSelectionToolbarState != null -> clearMessageSelection()
+        }
     }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -2784,7 +2951,8 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(inputChromeRowHeightPx, safeBottomInsetPx) {
+    LaunchedEffect(inputChromeMeasured, inputChromeRowHeightPx, safeBottomInsetPx) {
+        if (!inputChromeMeasured) return@LaunchedEffect
         val stableBottomBarHeightPx =
             (inputChromeRowHeightPx + safeBottomInsetPx)
                 .coerceAtLeast(startupBottomBarHeightEstimatePx)
@@ -2798,11 +2966,14 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(chatScopeId) {
-        initialBottomSnapDone = initialLocalMessages.isEmpty()
+        initialBottomSnapDone = false
         jumpButtonVisible = false
         restoreBottomAfterImeClose = false
         suppressJumpButtonForImeTransition = false
-        LaunchUiGate.chatReady = initialLocalMessages.isEmpty()
+        restoreBottomAfterLifecycleResume = false
+        suppressJumpButtonForLifecycleResume = false
+        clearInputSelectionToolbar()
+        LaunchUiGate.chatReady = false
     }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
@@ -3701,21 +3872,27 @@ fun ChatScreen() {
         hasStartedConversation,
         messages.size,
         isStreaming,
-        bottomBarHeightPx,
+        startupLayoutReady,
         hasStreamingItem,
-        initialBottomSnapDone
+        initialBottomSnapDone,
+        historyHydrationComplete
     ) {
         if (hasStartedConversation) return@LaunchedEffect
         if (initialBottomSnapDone) return@LaunchedEffect
+        if (!historyHydrationComplete) return@LaunchedEffect
+        if (!startupLayoutReady) return@LaunchedEffect
+        if (messages.isEmpty() && !hasStreamingItem) {
+            jumpButtonVisible = false
+            initialBottomSnapDone = true
+            return@LaunchedEffect
+        }
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
-        if (bottomBarHeightPx <= 0) return@LaunchedEffect
         repeat(3) { withFrameNanos { } }
         repeat(4) { attempt ->
             scrollToBottom(animated = false)
             if (!listState.canScrollForward || isBottomSettled()) {
                 jumpButtonVisible = false
                 initialBottomSnapDone = true
-                LaunchUiGate.chatReady = true
                 return@LaunchedEffect
             }
             if (attempt < 3) {
@@ -3724,7 +3901,6 @@ fun ChatScreen() {
         }
         jumpButtonVisible = false
         initialBottomSnapDone = true
-        LaunchUiGate.chatReady = true
     }
 
     fun jumpToBottom() {
@@ -3844,7 +4020,12 @@ fun ChatScreen() {
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                            .onSizeChanged { inputChromeRowHeightPx = it.height }
+                            .onSizeChanged {
+                                inputChromeRowHeightPx = it.height
+                                if (it.height > 0) {
+                                    inputChromeMeasured = true
+                                }
+                            }
                             .padding(
                                 start = inputChromeHorizontalPadding,
                                 end = inputChromeHorizontalPadding,
@@ -3883,17 +4064,27 @@ fun ChatScreen() {
                                     spotColor = Color(0x14000000)
                                 )
                                 .onGloballyPositioned { coordinates ->
+                                    val bounds = coordinates.boundsInWindow()
+                                    inputFieldBoundsInWindow = bounds
                                     composerTopInViewportPx =
-                                        (coordinates.boundsInWindow().top - messageViewportTopPx).roundToInt()
+                                        (bounds.top - messageViewportTopPx).roundToInt()
+                                    composerMeasured = true
+                                    applyPendingInputSelectionToolbarIfReady(bounds)
                                 }
                         ) {
                             val exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
+                            val inputTextToolbar = remember(chatScopeId) {
+                                buildInputSelectionTextToolbar()
+                            }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
                             ) {
-                                CompositionLocalProvider(LocalTextSelectionColors provides inputSelectionColors) {
+                                CompositionLocalProvider(
+                                    LocalTextSelectionColors provides inputSelectionColors,
+                                    LocalTextToolbar provides inputTextToolbar
+                                ) {
                                     TextField(
                                         value = input.value,
                                         onValueChange = {
@@ -3987,6 +4178,13 @@ fun ChatScreen() {
                             )
                             val up = waitForUpIgnoringConsumption(pass = PointerEventPass.Initial)
                             if (up == null) return@awaitEachGesture
+                            val tapInWindow = Offset(
+                                x = up.position.x + messageViewportLeftPx,
+                                y = up.position.y + messageViewportTopPx
+                            )
+                            if (inputSelectionMenuBoundsInRoot?.containsPoint(tapInWindow) == true) {
+                                return@awaitEachGesture
+                            }
                             if (imeVisible) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()
@@ -3996,6 +4194,9 @@ fun ChatScreen() {
                     .onSizeChanged {
                         messageViewportWidthPx = it.width
                         messageViewportHeightPx = it.height
+                        if (it.width > 0 && it.height > 0) {
+                            messageViewportMeasured = true
+                        }
                     }
                     .onGloballyPositioned { coordinates ->
                         val bounds = coordinates.boundsInWindow()
@@ -4034,7 +4235,7 @@ fun ChatScreen() {
                         ),
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
-                        bottom = with(density) { bottomBarHeightPx.toDp() } +
+                        bottom = with(density) { effectiveBottomBarHeightPx.toDp() } +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE
                     )
                     ) {
@@ -4192,7 +4393,7 @@ fun ChatScreen() {
 
                 if (showWelcomePlaceholder) {
                     val welcomeBottomInset =
-                        with(density) { bottomBarHeightPx.toDp() } +
+                        with(density) { effectiveBottomBarHeightPx.toDp() } +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE +
                             24.dp
                     Box(
@@ -4243,7 +4444,7 @@ fun ChatScreen() {
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(with(density) { bottomBarHeightPx.toDp() })
+                        .height(with(density) { effectiveBottomBarHeightPx.toDp() })
                         .background(pageSurface)
                         .zIndex(45f)
                 )
@@ -4333,6 +4534,21 @@ fun ChatScreen() {
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                }
+            }
+
+            inputSelectionToolbarState?.let { state ->
+                val inputBounds = inputFieldBoundsInWindow
+                if (inputBounds != null) {
+                    InputSelectionMenuPopup(
+                        state = state,
+                        inputFieldBoundsInWindow = inputBounds,
+                        viewportLeftPx = chatRootLeftPx,
+                        viewportTopPx = chatRootTopPx,
+                        topChromeMaskBottomPx = topChromeMaskBottomPx,
+                        onMenuBoundsChanged = { bounds -> inputSelectionMenuBoundsInRoot = bounds },
+                        onDismiss = { clearInputSelectionToolbar() }
+                    )
                 }
             }
 
@@ -4459,6 +4675,140 @@ private fun MessageActionMenuCardContent(
                 minWidth = 0.dp,
                 horizontalPadding = 12.dp,
                 onClick = onCopyFull
+            )
+        }
+    }
+}
+
+private data class InputActionMenuItem(
+    val label: String,
+    val minWidth: Dp,
+    val horizontalPadding: Dp,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun InputActionMenuCardContent(
+    actions: List<InputActionMenuItem>,
+    modifier: Modifier = Modifier
+) {
+    if (actions.isEmpty()) return
+    Surface(
+        color = Color(0xFF111111),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 10.dp,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            actions.forEachIndexed { index, action ->
+                MessageActionMenuButton(
+                    label = action.label,
+                    minWidth = action.minWidth,
+                    horizontalPadding = action.horizontalPadding,
+                    onClick = action.onClick
+                )
+                if (index < actions.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(16.dp)
+                            .background(Color.White.copy(alpha = 0.16f))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InputSelectionMenuPopup(
+    state: InputSelectionToolbarState,
+    inputFieldBoundsInWindow: Rect,
+    viewportLeftPx: Float,
+    viewportTopPx: Float,
+    topChromeMaskBottomPx: Int,
+    onMenuBoundsChanged: (Rect?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val density = LocalDensity.current
+    val actions = remember(state) {
+        buildList {
+            state.onCopyRequested?.let {
+                add(InputActionMenuItem(label = "复制", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
+            }
+            state.onPasteRequested?.let {
+                add(InputActionMenuItem(label = "粘贴", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
+            }
+            state.onCutRequested?.let {
+                add(InputActionMenuItem(label = "剪切", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
+            }
+            state.onSelectAllRequested?.let {
+                add(InputActionMenuItem(label = "全选", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
+            }
+        }
+    }
+    if (actions.isEmpty()) {
+        SideEffect { onMenuBoundsChanged(null) }
+        return
+    }
+
+    val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
+    val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
+    val boundsLocal = Rect(
+        left = inputFieldBoundsInWindow.left - viewportLeftPx,
+        top = inputFieldBoundsInWindow.top - viewportTopPx,
+        right = inputFieldBoundsInWindow.right - viewportLeftPx,
+        bottom = inputFieldBoundsInWindow.bottom - viewportTopPx
+    )
+    val resolvedWidth =
+        if (cardSize.width > 0) cardSize.width else with(density) { 256.dp.roundToPx() }
+    val resolvedHeight =
+        if (cardSize.height > 0) cardSize.height else with(density) { MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT.roundToPx() }
+    val preferredCenterX = boundsLocal.left + boundsLocal.width * state.anchorXRatio
+    val minX = (boundsLocal.left + marginPx).roundToInt()
+    val maxX = (boundsLocal.right - resolvedWidth - marginPx).roundToInt().coerceAtLeast(minX)
+    val preferredX = (preferredCenterX - resolvedWidth / 2f).roundToInt().coerceIn(minX, maxX)
+    val protectedTop =
+        maxOf(
+            marginPx,
+            if (topChromeMaskBottomPx > 0) {
+                (topChromeMaskBottomPx - viewportTopPx.roundToInt()) + marginPx
+            } else {
+                marginPx
+            }
+        )
+    val preferredY =
+        (boundsLocal.top.roundToInt() - resolvedHeight - verticalSpacingPx).coerceAtLeast(protectedTop)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(47f)
+    ) {
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(preferredX, preferredY) }
+                .onGloballyPositioned { coordinates ->
+                    cardSize = coordinates.size
+                    onMenuBoundsChanged(coordinates.boundsInWindow())
+                }
+                .pointerInput(state.anchorXRatio, actions.size) {
+                    detectTapGestures(onTap = {})
+                }
+        ) {
+            InputActionMenuCardContent(
+                actions = actions.map { action ->
+                    action.copy(
+                        onClick = {
+                            action.onClick()
+                            onDismiss()
+                        }
+                    )
+                }
             )
         }
     }
