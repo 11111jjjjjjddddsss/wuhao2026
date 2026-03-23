@@ -2693,36 +2693,9 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val hasActiveMessageSelection = activeMessageSelectionState != null
     val activeMessageSelectionMessageId = activeMessageSelectionState?.messageId
-    val selectionHandleMaskGuardPx = with(density) { MESSAGE_SELECTION_HANDLE_MASK_GUARD.toPx() }
-    val selectionHandleColor =
-        remember(
-            activeMessageSelectionState,
-            topChromeMaskBottomPx,
-            composerTopInViewportPx,
-            messageViewportTopPx,
-            selectionHandleMaskGuardPx
-        ) {
-            val state = activeMessageSelectionState
-            if (state == null) {
-                CHAT_SELECTION_HANDLE_COLOR
-            } else {
-                val topMaskBottom = topChromeMaskBottomPx.takeIf { it > 0 }?.toFloat() ?: Float.NEGATIVE_INFINITY
-                val bottomMaskTop =
-                    composerTopInViewportPx
-                        .takeIf { it > 0 }
-                        ?.let { messageViewportTopPx + it }
-                        ?: Float.POSITIVE_INFINITY
-                val topHandleY = minOf(state.anchorY, state.selectionBottomY).toFloat()
-                val bottomHandleY = maxOf(state.anchorY, state.selectionBottomY).toFloat()
-                val overlapsMaskedZone =
-                    topHandleY <= topMaskBottom + selectionHandleMaskGuardPx ||
-                        bottomHandleY >= bottomMaskTop - selectionHandleMaskGuardPx
-                if (overlapsMaskedZone) Color.Transparent else CHAT_SELECTION_HANDLE_COLOR
-            }
-        }
-    val messageSelectionColors = remember(selectionHandleColor) {
+    val messageSelectionColors = remember {
         TextSelectionColors(
-            handleColor = selectionHandleColor,
+            handleColor = CHAT_SELECTION_HANDLE_COLOR,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
