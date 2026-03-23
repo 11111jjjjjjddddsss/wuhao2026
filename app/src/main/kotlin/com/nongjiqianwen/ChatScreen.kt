@@ -2638,9 +2638,14 @@ fun ChatScreen() {
             }
         }
     }
-    val showWelcomePlaceholder by remember(historyHydrationComplete, messages.size, hasStreamingItem) {
+    val showWelcomePlaceholder by remember(
+        startupLayoutReady,
+        historyHydrationComplete,
+        messages.size,
+        hasStreamingItem
+    ) {
         derivedStateOf {
-            historyHydrationComplete && messages.isEmpty() && !hasStreamingItem
+            startupLayoutReady && historyHydrationComplete && messages.isEmpty() && !hasStreamingItem
         }
     }
     val topInset = WindowInsets.safeDrawing
@@ -4184,6 +4189,11 @@ fun ChatScreen() {
                             )
                             if (inputSelectionMenuBoundsInRoot?.containsPoint(tapInWindow) == true) {
                                 return@awaitEachGesture
+                            }
+                            val tappedInsideInputField =
+                                inputFieldBoundsInWindow?.containsPoint(tapInWindow) == true
+                            if (inputSelectionToolbarState != null && !tappedInsideInputField) {
+                                clearInputSelectionToolbar()
                             }
                             if (imeVisible) {
                                 focusManager.clearFocus(force = true)
