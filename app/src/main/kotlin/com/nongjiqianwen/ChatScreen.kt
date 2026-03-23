@@ -2371,7 +2371,6 @@ fun ChatScreen() {
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
     var streamBottomFollowActive by remember { mutableStateOf(false) }
     var initialBottomSnapDone by remember(chatScopeId) { mutableStateOf(false) }
-    var initialListRevealConsumed by remember(chatScopeId) { mutableStateOf(false) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
@@ -2544,12 +2543,6 @@ fun ChatScreen() {
     val enableStreamingScrollLock by remember(isStreaming, activeStreamBottomSpacerPx) {
         derivedStateOf { isStreaming || activeStreamBottomSpacerPx > 0 }
     }
-    val hasStartupBottomViewport by remember(initialBottomViewport, initialLocalMessages.size) {
-        derivedStateOf {
-            initialBottomViewport != null &&
-                initialLocalMessages.isNotEmpty()
-        }
-    }
     fun isWithinBottomTolerance(): Boolean {
         if (!listState.canScrollForward) return true
         val info = listState.layoutInfo
@@ -2588,18 +2581,15 @@ fun ChatScreen() {
         hasStartedConversation,
         messages.size,
         hasStreamingItem,
-        hasStartupBottomViewport,
-        initialBottomSnapDone,
-        initialListRevealConsumed
+        initialBottomSnapDone
     ) {
         derivedStateOf {
             when {
                 hasStartedConversation -> true
                 messages.isEmpty() && !hasStreamingItem -> true
                 hasStreamingItem -> true
-                !hasStartupBottomViewport -> true
                 initialBottomSnapDone -> true
-                else -> initialListRevealConsumed
+                else -> false
             }
         }
     }
@@ -2829,11 +2819,10 @@ fun ChatScreen() {
 
     LaunchedEffect(chatScopeId) {
         initialBottomSnapDone = initialLocalMessages.isEmpty()
-        initialListRevealConsumed = initialLocalMessages.isEmpty() || !hasStartupBottomViewport
         jumpButtonVisible = false
         restoreBottomAfterImeClose = false
         suppressJumpButtonForImeTransition = false
-        LaunchUiGate.chatReady = initialLocalMessages.isEmpty() || !hasStartupBottomViewport
+        LaunchUiGate.chatReady = initialLocalMessages.isEmpty()
     }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
@@ -3330,7 +3319,6 @@ fun ChatScreen() {
         if (text.isEmpty() || isStreaming) return
         hasStartedConversation = true
         initialBottomSnapDone = true
-        initialListRevealConsumed = true
         LaunchUiGate.chatReady = true
         restoreBottomAfterImeClose = false
         suppressJumpButtonForImeTransition = true
@@ -3735,51 +3723,27 @@ fun ChatScreen() {
         isStreaming,
         bottomBarHeightPx,
         hasStreamingItem,
-        initialBottomSnapDone,
-        hasStartupBottomViewport
+        initialBottomSnapDone
     ) {
         if (hasStartedConversation) return@LaunchedEffect
         if (initialBottomSnapDone) return@LaunchedEffect
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (bottomBarHeightPx <= 0) return@LaunchedEffect
-        if (hasStartupBottomViewport) {
-            withFrameNanos { }
-            repeat(2) { attempt ->
-                scrollToBottom(animated = false)
-                if (!listState.canScrollForward) {
-                    jumpButtonVisible = false
-                    initialBottomSnapDone = true
-                    initialListRevealConsumed = true
-                    LaunchUiGate.chatReady = true
-                    return@LaunchedEffect
-                }
-                if (attempt < 1) {
-                    withFrameNanos { }
-                }
-            }
-            jumpButtonVisible = false
-            initialBottomSnapDone = true
-            initialListRevealConsumed = true
-            LaunchUiGate.chatReady = true
-            return@LaunchedEffect
-        }
-        repeat(if (hasStartupBottomViewport) 1 else 4) { withFrameNanos { } }
-        repeat(if (hasStartupBottomViewport) 5 else 4) { attempt ->
+        repeat(3) { withFrameNanos { } }
+        repeat(4) { attempt ->
             scrollToBottom(animated = false)
-            if (isBottomSettled()) {
+            if (!listState.canScrollForward || isBottomSettled()) {
                 jumpButtonVisible = false
                 initialBottomSnapDone = true
-                initialListRevealConsumed = true
                 LaunchUiGate.chatReady = true
                 return@LaunchedEffect
             }
-            if (attempt < if (hasStartupBottomViewport) 4 else 3) {
-                delay(if (hasStartupBottomViewport) 24 else 90)
+            if (attempt < 3) {
+                delay(60)
             }
         }
         jumpButtonVisible = false
         initialBottomSnapDone = true
-        initialListRevealConsumed = true
         LaunchUiGate.chatReady = true
     }
 
