@@ -2804,7 +2804,6 @@ fun ChatScreen() {
             messageSelectionBoundsById[state.messageId] ?: state.messageBoundsInWindow
         }
     val hasActiveMessageSelection = activeCustomMessageSelection != null
-    val activeMessageSelectionMessageId = activeCustomMessageSelection?.messageId
     fun copyTextToClipboard(label: String, text: String) {
         val normalized = text.trim()
         if (normalized.isEmpty()) return
@@ -4145,7 +4144,6 @@ fun ChatScreen() {
                             val fullCopyText = remember(msg.role, msg.content) {
                                 buildRenderedMessageCopyText(msg.role, msg.content)
                             }
-                            val isActiveSelectionMessage = activeMessageSelectionMessageId == msg.id
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -4196,13 +4194,6 @@ fun ChatScreen() {
                                                         }
                                                     }
                                                 )
-                                                .then(
-                                                    if (isActiveSelectionMessage) {
-                                                        Modifier.graphicsLayer(alpha = 0f)
-                                                    } else {
-                                                        Modifier
-                                                    }
-                                                )
                                         )
                                     } else {
                                         RenderedUserMessageBubble(
@@ -4210,12 +4201,6 @@ fun ChatScreen() {
                                             userBubbleMaxWidth = userBubbleMaxWidth,
                                             userBubbleColor = userBubbleColor,
                                             modifier = Modifier.then(
-                                                if (isActiveSelectionMessage) {
-                                                    Modifier.graphicsLayer(alpha = 0f)
-                                                } else {
-                                                    Modifier
-                                                }
-                                            ).then(
                                                 if (hasActiveMessageSelection) {
                                                     Modifier
                                                 } else {
@@ -4463,7 +4448,6 @@ fun ChatScreen() {
                     topChromeMaskBottomPx = topChromeMaskBottomPx,
                     composerTopInViewportPx = composerTopInViewportPx,
                     userBubbleMaxWidth = userBubbleMaxWidth,
-                    userBubbleColor = userBubbleColor,
                     onCopySelected = { selectedText ->
                         performButtonHaptic()
                         copyTextToClipboard(
@@ -4597,6 +4581,7 @@ private fun CustomSelectableTextBody(
     selectionRects: List<Rect>,
     onTextLayout: (TextLayoutResult) -> Unit,
     onTextBoundsChanged: (Rect) -> Unit,
+    textColor: Color = assistantParagraphTextStyle().color,
     modifier: Modifier = Modifier
 ) {
     Text(
@@ -4615,7 +4600,7 @@ private fun CustomSelectableTextBody(
                 }
                 drawContent()
             },
-        style = assistantParagraphTextStyle(),
+        style = assistantParagraphTextStyle().copy(color = textColor),
         textAlign = TextAlign.Start,
         onTextLayout = onTextLayout
     )
@@ -4634,7 +4619,6 @@ private fun CustomMessageSelectionOverlay(
     topChromeMaskBottomPx: Int,
     composerTopInViewportPx: Int,
     userBubbleMaxWidth: Dp,
-    userBubbleColor: Color,
     onCopySelected: (String) -> Unit,
     onCopyFull: () -> Unit,
     onDismiss: () -> Unit
@@ -4871,10 +4855,7 @@ private fun CustomMessageSelectionOverlay(
             if (state.role == ChatRole.USER) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
                         .widthIn(max = userBubbleMaxWidth)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(userBubbleColor)
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     CustomSelectableTextBody(
@@ -4882,32 +4863,19 @@ private fun CustomMessageSelectionOverlay(
                         selectionRects = selectionRectsLocal,
                         onTextLayout = { textLayoutResult = it },
                         onTextBoundsChanged = { textBoundsInWindow = it },
+                        textColor = Color.Transparent,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
             } else {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    CustomSelectableTextBody(
-                        text = model.annotatedText,
-                        selectionRects = selectionRectsLocal,
-                        onTextLayout = { textLayoutResult = it },
-                        onTextBoundsChanged = { textBoundsInWindow = it },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (model.showDisclaimer) {
-                        Text(
-                            text = AI_DISCLAIMER_TEXT,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            style = assistantDisclaimerTextStyle(),
-                            textAlign = TextAlign.Start
-                        )
-                    }
-                }
+                CustomSelectableTextBody(
+                    text = model.annotatedText,
+                    selectionRects = selectionRectsLocal,
+                    onTextLayout = { textLayoutResult = it },
+                    onTextBoundsChanged = { textBoundsInWindow = it },
+                    textColor = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
