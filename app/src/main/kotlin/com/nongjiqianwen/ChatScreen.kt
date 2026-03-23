@@ -214,6 +214,13 @@ private data class MessageSelectionToolbarState(
     val onCopyFullRequested: (() -> Unit)?
 )
 
+private data class PendingMessageSelectionToolbarState(
+    val messageId: String,
+    val rect: Rect,
+    val onCopyRequested: (() -> Unit)?,
+    val onCopyFullRequested: (() -> Unit)?
+)
+
 private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
 }
@@ -2617,11 +2624,38 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var messageSelectionToolbarState by remember { mutableStateOf<MessageSelectionToolbarState?>(null) }
+    var messageSelectionToolbarState by remember(chatScopeId) {
+        mutableStateOf<MessageSelectionToolbarState?>(null)
+    }
+    var pendingMessageSelectionToolbarState by remember(chatScopeId) {
+        mutableStateOf<PendingMessageSelectionToolbarState?>(null)
+    }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
-    val messageSelectionBoundsById = remember { mutableStateMapOf<String, Rect>() }
+    val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
+
+    fun buildResolvedMessageSelectionToolbarState(
+        messageId: String,
+        rect: Rect,
+        bounds: Rect,
+        onCopyRequested: (() -> Unit)?,
+        onCopyFullRequested: (() -> Unit)?
+    ): MessageSelectionToolbarState {
+        val width = bounds.width.coerceAtLeast(1f)
+        val height = bounds.height.coerceAtLeast(1f)
+        return MessageSelectionToolbarState(
+            messageId = messageId,
+            anchorX = rect.center.x.roundToInt(),
+            anchorY = rect.top.roundToInt(),
+            selectionBottomY = rect.bottom.roundToInt(),
+            anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
+            selectionTopRatio = ((rect.top - bounds.top) / height).coerceIn(0f, 1f),
+            selectionBottomRatio = ((rect.bottom - bounds.top) / height).coerceIn(0f, 1f),
+            onCopyRequested = onCopyRequested,
+            onCopyFullRequested = onCopyFullRequested
+        )
+    }
 
     fun resolveMessageSelectionToolbarState(state: MessageSelectionToolbarState): MessageSelectionToolbarState? {
         val bounds = currentSelectionMessageBounds(state) ?: return null
@@ -2636,7 +2670,21 @@ fun ChatScreen() {
 
     fun clearMessageSelection() {
         messageSelectionToolbarState = null
+        pendingMessageSelectionToolbarState = null
         messageSelectionResetEpoch++
+    }
+
+    fun applyPendingMessageSelectionToolbarIfReady(messageId: String, bounds: Rect) {
+        val pending = pendingMessageSelectionToolbarState ?: return
+        if (pending.messageId != messageId) return
+        pendingMessageSelectionToolbarState = null
+        messageSelectionToolbarState = buildResolvedMessageSelectionToolbarState(
+            messageId = pending.messageId,
+            rect = pending.rect,
+            bounds = bounds,
+            onCopyRequested = pending.onCopyRequested,
+            onCopyFullRequested = pending.onCopyFullRequested
+        )
     }
 
     fun selectionDismissTapModifier(vararg keys: Any): Modifier =
@@ -2711,30 +2759,38 @@ fun ChatScreen() {
                 onCutRequested: (() -> Unit)?,
                 onSelectAllRequested: (() -> Unit)?
             ) {
-                val bounds = messageSelectionBoundsById[messageId] ?: return
-                val width = bounds.width.coerceAtLeast(1f)
-                val height = bounds.height.coerceAtLeast(1f)
-                val nextState = MessageSelectionToolbarState(
+                val onCopyFull = {
+                    copyTextToClipboard(
+                        label = if (role == ChatRole.USER) "user_message_full_copy" else "assistant_message_full_copy",
+                        text = fullCopyText
+                    )
+                }
+                val bounds = messageSelectionBoundsById[messageId]
+                if (bounds == null) {
+                    pendingMessageSelectionToolbarState = PendingMessageSelectionToolbarState(
+                        messageId = messageId,
+                        rect = rect,
+                        onCopyRequested = onCopyRequested,
+                        onCopyFullRequested = onCopyFull
+                    )
+                    return
+                }
+                val nextState = buildResolvedMessageSelectionToolbarState(
                     messageId = messageId,
-                    anchorX = rect.center.x.roundToInt(),
-                    anchorY = rect.top.roundToInt(),
-                    selectionBottomY = rect.bottom.roundToInt(),
-                    anchorXRatio = ((rect.center.x - bounds.left) / width).coerceIn(0f, 1f),
-                    selectionTopRatio = ((rect.top - bounds.top) / height).coerceIn(0f, 1f),
-                    selectionBottomRatio = ((rect.bottom - bounds.top) / height).coerceIn(0f, 1f),
+                    rect = rect,
+                    bounds = bounds,
                     onCopyRequested = onCopyRequested,
-                    onCopyFullRequested = {
-                        copyTextToClipboard(
-                            label = if (role == ChatRole.USER) "user_message_full_copy" else "assistant_message_full_copy",
-                            text = fullCopyText
-                        )
-                    }
+                    onCopyFullRequested = onCopyFull
                 )
                 val resolvedState = resolveMessageSelectionToolbarState(nextState) ?: nextState
+                pendingMessageSelectionToolbarState = null
                 messageSelectionToolbarState = resolvedState
             }
 
             override fun hide() {
+                if (pendingMessageSelectionToolbarState?.messageId == messageId) {
+                    pendingMessageSelectionToolbarState = null
+                }
                 if (messageSelectionToolbarState?.messageId == messageId) {
                     messageSelectionToolbarState = null
                 }
@@ -4039,6 +4095,12 @@ fun ChatScreen() {
                             DisposableEffect(msg.id) {
                                 onDispose {
                                     messageSelectionBoundsById.remove(msg.id)
+                                    if (pendingMessageSelectionToolbarState?.messageId == msg.id) {
+                                        pendingMessageSelectionToolbarState = null
+                                    }
+                                    if (messageSelectionToolbarState?.messageId == msg.id) {
+                                        messageSelectionToolbarState = null
+                                    }
                                 }
                             }
                             val fullCopyText = remember(msg.role, msg.content) {
@@ -4080,6 +4142,10 @@ fun ChatScreen() {
                                                 if (messageSelectionBoundsById[msg.id] != bounds) {
                                                     messageSelectionBoundsById[msg.id] = bounds
                                                 }
+                                                applyPendingMessageSelectionToolbarIfReady(
+                                                    messageId = msg.id,
+                                                    bounds = bounds
+                                                )
                                             }
                                         }
                                 ) {
@@ -4103,6 +4169,12 @@ fun ChatScreen() {
                                             onBubbleBoundsChanged = { bounds ->
                                                 if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
                                                     messageSelectionBoundsById[msg.id] = bounds
+                                                }
+                                                if (bounds != null) {
+                                                    applyPendingMessageSelectionToolbarIfReady(
+                                                        messageId = msg.id,
+                                                        bounds = bounds
+                                                    )
                                                 }
                                             }
                                         )
