@@ -271,6 +271,7 @@ private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
+private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
@@ -2647,9 +2648,36 @@ fun ChatScreen() {
         messageSelectionToolbarState?.let(::resolveMessageSelectionToolbarState)
     val hasActiveMessageSelection = activeMessageSelectionState != null
     val activeMessageSelectionMessageId = activeMessageSelectionState?.messageId
-    val messageSelectionColors = remember {
+    val selectionHandleMaskGuardPx = with(density) { MESSAGE_SELECTION_HANDLE_MASK_GUARD.toPx() }
+    val selectionHandleColor =
+        remember(
+            activeMessageSelectionState,
+            topChromeMaskBottomPx,
+            composerTopInViewportPx,
+            messageViewportTopPx,
+            selectionHandleMaskGuardPx
+        ) {
+            val state = activeMessageSelectionState
+            if (state == null) {
+                CHAT_SELECTION_HANDLE_COLOR
+            } else {
+                val topMaskBottom = topChromeMaskBottomPx.takeIf { it > 0 }?.toFloat() ?: Float.NEGATIVE_INFINITY
+                val bottomMaskTop =
+                    composerTopInViewportPx
+                        .takeIf { it > 0 }
+                        ?.let { messageViewportTopPx + it }
+                        ?: Float.POSITIVE_INFINITY
+                val topHandleY = minOf(state.anchorY, state.selectionBottomY).toFloat()
+                val bottomHandleY = maxOf(state.anchorY, state.selectionBottomY).toFloat()
+                val overlapsMaskedZone =
+                    topHandleY <= topMaskBottom + selectionHandleMaskGuardPx ||
+                        bottomHandleY >= bottomMaskTop - selectionHandleMaskGuardPx
+                if (overlapsMaskedZone) Color.Transparent else CHAT_SELECTION_HANDLE_COLOR
+            }
+        }
+    val messageSelectionColors = remember(selectionHandleColor) {
         TextSelectionColors(
-            handleColor = CHAT_SELECTION_HANDLE_COLOR,
+            handleColor = selectionHandleColor,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
