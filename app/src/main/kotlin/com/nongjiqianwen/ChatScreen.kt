@@ -4478,6 +4478,7 @@ private fun MessageActionMenuButton(
     modifier: Modifier = Modifier,
     minWidth: Dp = 0.dp,
     horizontalPadding: Dp = 12.dp,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Box(
@@ -4487,14 +4488,18 @@ private fun MessageActionMenuButton(
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Transparent)
             .pointerInput(label) {
-                detectTapGestures(onTap = { onClick() })
+                detectTapGestures(onTap = {
+                    if (enabled) {
+                        onClick()
+                    }
+                })
             }
             .padding(horizontal = horizontalPadding, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            color = Color.White,
+            color = if (enabled) Color.White else Color.White.copy(alpha = 0.42f),
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -4504,6 +4509,7 @@ private fun MessageActionMenuButton(
 @Composable
 private fun MessageActionMenuCardContent(
     modifier: Modifier = Modifier,
+    copyEnabled: Boolean = true,
     onCopy: () -> Unit,
     onCopyFull: () -> Unit
 ) {
@@ -4521,6 +4527,7 @@ private fun MessageActionMenuCardContent(
                 label = "复制",
                 minWidth = 78.dp,
                 horizontalPadding = 17.dp,
+                enabled = copyEnabled,
                 onClick = onCopy
             )
             Box(
@@ -4541,6 +4548,15 @@ private fun MessageActionMenuCardContent(
 
 private fun Rect.containsPoint(offset: Offset): Boolean {
     return offset.x >= left && offset.x <= right && offset.y >= top && offset.y <= bottom
+}
+
+private fun clampPositionToRect(offset: Offset, rect: Rect): Offset {
+    val maxX = rect.width.coerceAtLeast(1f) - 1f
+    val maxY = rect.height.coerceAtLeast(1f) - 1f
+    return Offset(
+        x = offset.x.coerceIn(0f, maxX),
+        y = offset.y.coerceIn(0f, maxY)
+    )
 }
 
 @Composable
@@ -4710,6 +4726,18 @@ private fun CustomMessageSelectionOverlay(
             model.plainText.substring(selectionRange.min, selectionRange.max).trim()
         }
     }
+    val pressPositionInWindow = remember(messageBoundsInWindow, state.pressOffsetInMessage) {
+        Offset(
+            x = messageBoundsInWindow.left + state.pressOffsetInMessage.x,
+            y = messageBoundsInWindow.top + state.pressOffsetInMessage.y
+        )
+    }
+    val pressAnchorLocal = remember(pressPositionInWindow, viewportLeftPx, viewportTopPx) {
+        Offset(
+            x = pressPositionInWindow.x - viewportLeftPx,
+            y = pressPositionInWindow.y - viewportTopPx
+        )
+    }
     val safeTopLocal = if (topChromeMaskBottomPx > 0) {
         topChromeMaskBottomPx - viewportTopPx
     } else {
@@ -4738,7 +4766,8 @@ private fun CustomMessageSelectionOverlay(
         startVisible -> startHandleAnchor
         endVisible -> endHandleAnchor
         startHandleAnchor != null -> startHandleAnchor
-        else -> endHandleAnchor
+        endHandleAnchor != null -> endHandleAnchor
+        else -> pressAnchorLocal
     }
     val placeCardAbove = when (anchorForCard) {
         null -> true
@@ -4770,20 +4799,16 @@ private fun CustomMessageSelectionOverlay(
             endHandleRect?.let(::add)
         }
     }
-    val pressPositionInWindow = remember(messageBoundsInWindow, state.pressOffsetInMessage) {
-        Offset(
-            x = messageBoundsInWindow.left + state.pressOffsetInMessage.x,
-            y = messageBoundsInWindow.top + state.pressOffsetInMessage.y
-        )
-    }
-
     LaunchedEffect(textLayoutResult, textBoundsInWindow, pressPositionInWindow, model.plainText) {
         val layout = textLayoutResult ?: return@LaunchedEffect
         val textBounds = textBoundsInWindow ?: return@LaunchedEffect
         if (selectionRange.collapsed && model.plainText.isNotEmpty()) {
-            val localPress = Offset(
-                x = pressPositionInWindow.x - textBounds.left,
-                y = pressPositionInWindow.y - textBounds.top
+            val localPress = clampPositionToRect(
+                offset = Offset(
+                    x = pressPositionInWindow.x - textBounds.left,
+                    y = pressPositionInWindow.y - textBounds.top
+                ),
+                rect = textBounds
             )
             val startOffset = layout.getOffsetForPosition(localPress)
             selectionRange = resolveInitialSelectionRange(model.plainText, startOffset)
@@ -4793,9 +4818,12 @@ private fun CustomMessageSelectionOverlay(
     fun updateSelectionFromHandle(isStartHandle: Boolean, pointerPositionInRoot: Offset) {
         val layout = textLayoutResult ?: return
         val textBounds = textBoundsLocal ?: return
-        val local = Offset(
-            x = pointerPositionInRoot.x - textBounds.left,
-            y = pointerPositionInRoot.y - textBounds.top
+        val local = clampPositionToRect(
+            offset = Offset(
+                x = pointerPositionInRoot.x - textBounds.left,
+                y = pointerPositionInRoot.y - textBounds.top
+            ),
+            rect = textBounds
         )
         val targetOffset = layout.getOffsetForPosition(local).coerceIn(0, model.plainText.length)
         val nextRange = if (isStartHandle) {
@@ -4896,6 +4924,7 @@ private fun CustomMessageSelectionOverlay(
                     }
             ) {
                 MessageActionMenuCardContent(
+                    copyEnabled = selectedText.isNotEmpty(),
                     onCopy = {
                         if (selectedText.isNotEmpty()) {
                             onCopySelected(selectedText)
