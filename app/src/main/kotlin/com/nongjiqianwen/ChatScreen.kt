@@ -2945,7 +2945,11 @@ fun ChatScreen() {
     }
     BackHandler(enabled = messageSelectionToolbarState != null || inputSelectionToolbarState != null) {
         when {
-            inputSelectionToolbarState != null -> clearInputSelectionToolbar()
+            inputSelectionToolbarState != null -> {
+                clearInputSelectionToolbar()
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }
             messageSelectionToolbarState != null -> clearMessageSelection()
         }
     }
