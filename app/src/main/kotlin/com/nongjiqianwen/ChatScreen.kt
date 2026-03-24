@@ -3177,6 +3177,7 @@ fun ChatScreen() {
 
     LaunchedEffect(imeVisible, pendingSendFocusClear) {
         if (!pendingSendFocusClear || imeVisible) return@LaunchedEffect
+        withFrameNanos { }
         focusManager.clearFocus(force = true)
         pendingSendFocusClear = false
     }
