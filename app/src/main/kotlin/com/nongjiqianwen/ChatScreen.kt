@@ -308,6 +308,7 @@ private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
+private val FINAL_BOTTOM_SNAP_TOLERANCE = 24.dp
 private val LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD = 32.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
@@ -2500,12 +2501,13 @@ fun ChatScreen() {
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val finalBottomSnapTolerancePx = with(density) { FINAL_BOTTOM_SNAP_TOLERANCE.roundToPx() }
     val lifecycleResumeBottomSnapThresholdPx = with(density) { LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
-    val finalBottomSnapThresholdPx = remember(bottomPositionTolerancePx, assistantLineStepPx) {
-        maxOf(bottomPositionTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
+    val finalBottomSnapThresholdPx = remember(finalBottomSnapTolerancePx, assistantLineStepPx) {
+        maxOf(finalBottomSnapTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
     }
     val activeStreamBottomSpacerPx = if (
         isStreaming &&
@@ -2671,6 +2673,10 @@ fun ChatScreen() {
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= bottomPositionTolerancePx
+    }
+    fun isWithinFinalBottomSnapTolerance(): Boolean {
+        val overflowPx = currentBottomOverflowPx()
+        return overflowPx != Int.MAX_VALUE && overflowPx <= finalBottomSnapTolerancePx
     }
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
@@ -3756,11 +3762,11 @@ fun ChatScreen() {
         if (!pendingFinalBottomSnap || isStreaming) return@LaunchedEffect
         for (attempt in 0 until 4) {
             repeat(2) { withFrameNanos { } }
-            if (isWithinBottomTolerance()) {
+            if (isWithinFinalBottomSnapTolerance()) {
                 break
             }
             scrollToBottom(animated = false)
-            if (!listState.canScrollForward || isWithinBottomTolerance()) {
+            if (!listState.canScrollForward || isWithinFinalBottomSnapTolerance()) {
                 break
             }
             if (attempt < 3) {
