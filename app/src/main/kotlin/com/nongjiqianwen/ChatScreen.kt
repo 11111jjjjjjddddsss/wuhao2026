@@ -3609,12 +3609,9 @@ fun ChatScreen() {
         userDetachedFromBottom = false
         jumpButtonVisible = false
         isStreaming = true
-        pendingSendFocusClear = imeVisible
+        pendingSendFocusClear = false
+        focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        if (!imeVisible) {
-            focusManager.clearFocus(force = true)
-            pendingSendFocusClear = false
-        }
         input.value = TextFieldValue("")
 
         trimMessagesInPlace()
