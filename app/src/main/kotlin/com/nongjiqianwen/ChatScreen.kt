@@ -3359,7 +3359,8 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
-                !userDetachedFromBottom
+                !userDetachedFromBottom &&
+                    currentStreamingOverflowDelta() > bottomPositionTolerancePx
             streamRevealJob?.cancel()
             streamRevealJob = null
             if (streamingRevealBuffer.isNotEmpty()) {
@@ -3506,9 +3507,18 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
-        input.value = TextFieldValue("")
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
+        snackbarScope.launch {
+            if (imeVisible) {
+                repeat(2) { withFrameNanos { } }
+            } else {
+                withFrameNanos { }
+            }
+            if (isStreaming) {
+                input.value = TextFieldValue("")
+            }
+        }
 
         trimMessagesInPlace()
         persistTick++
@@ -3674,7 +3684,8 @@ fun ChatScreen() {
             val shouldSnapToBottomOnFinish =
                 autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
                     !userInteracting &&
-                    !userDetachedFromBottom
+                    !userDetachedFromBottom &&
+                    currentStreamingOverflowDelta() > bottomPositionTolerancePx
             val finalId = streamingMessageId ?: "assistant_${UUID.randomUUID()}"
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
             fakeStreamJob?.cancel()
