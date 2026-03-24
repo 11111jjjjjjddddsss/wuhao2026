@@ -4923,12 +4923,14 @@ private fun MessageActionMenuPopup(
             lockedSide = resolvedSide
         }
     }
-    val preferredY =
+    val rawPreferredY =
         if (resolvedSide == MessageActionMenuSide.Above) {
             preferredTop
         } else {
             belowCandidate
         }
+    val maxVisibleTop = (protectedBottomLimit - resolvedHeight).coerceAtLeast(protectedTopLimit)
+    val preferredY = rawPreferredY.coerceIn(protectedTopLimit, maxVisibleTop)
 
     Box(
         modifier = Modifier
