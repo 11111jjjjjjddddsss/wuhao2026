@@ -4007,7 +4007,6 @@ fun ChatScreen() {
                         .fillMaxWidth()
                         .navigationBarsPadding()
                         .imePadding()
-                        .background(pageSurface)
                 ) {
                     if (inputLimitHintVisible) {
                         Surface(
