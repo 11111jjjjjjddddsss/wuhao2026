@@ -2380,7 +2380,6 @@ fun ChatScreen() {
     var inputChromeRowHeightPx by remember(chatScopeId, startupInputChromeRowHeightEstimatePx) {
         mutableIntStateOf(startupInputChromeRowHeightEstimatePx)
     }
-    var sendCollapseFreezeHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var chatRootWidthPx by remember { mutableIntStateOf(0) }
     var chatRootHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportWidthPx by remember { mutableIntStateOf(0) }
@@ -2612,14 +2611,13 @@ fun ChatScreen() {
     val effectiveBottomBarHeightPx by remember(
         startupLayoutReady,
         bottomBarHeightPx,
-        startupBottomBarHeightEstimatePx,
-        sendCollapseFreezeHeightPx
+        startupBottomBarHeightEstimatePx
     ) {
         derivedStateOf {
             if (startupLayoutReady) {
-                maxOf(bottomBarHeightPx, sendCollapseFreezeHeightPx)
+                bottomBarHeightPx
             } else {
-                maxOf(startupBottomBarHeightEstimatePx, sendCollapseFreezeHeightPx)
+                startupBottomBarHeightEstimatePx
             }
         }
     }
@@ -2977,13 +2975,6 @@ fun ChatScreen() {
         ) {
             bottomBarHeightPx = stableBottomBarHeightPx
         }
-    }
-
-    LaunchedEffect(imeVisible, sendCollapseFreezeHeightPx) {
-        if (sendCollapseFreezeHeightPx <= 0) return@LaunchedEffect
-        if (imeVisible) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
-        sendCollapseFreezeHeightPx = 0
     }
 
     LaunchedEffect(chatScopeId) {
@@ -3362,6 +3353,7 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
+                autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
                 !userDetachedFromBottom &&
                     currentStreamingOverflowDelta() > finalBottomSnapThresholdPx
             streamRevealJob?.cancel()
@@ -3495,7 +3487,6 @@ fun ChatScreen() {
         LaunchUiGate.chatReady = true
         restoreBottomAfterImeClose = false
         suppressJumpButtonForImeTransition = true
-        sendCollapseFreezeHeightPx = maxOf(sendCollapseFreezeHeightPx, inputChromeRowHeightPx + safeBottomInsetPx)
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
         anchoredUserMessageId = userId
