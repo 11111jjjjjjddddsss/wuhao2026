@@ -3501,9 +3501,9 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
-        input.value = TextFieldValue("")
-        focusManager.clearFocus(force = true)
         keyboardController?.hide()
+        focusManager.clearFocus(force = true)
+        input.value = TextFieldValue("")
 
         trimMessagesInPlace()
         persistTick++
