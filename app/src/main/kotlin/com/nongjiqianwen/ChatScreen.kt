@@ -111,6 +111,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -1439,9 +1440,6 @@ private fun AssistantMessageContent(
     val shouldRenderDisclaimer = remember(content, showDisclaimer) {
         showDisclaimer && shouldShowAiDisclaimerRefined(content)
     }
-    val disclaimerPlaceholderHeight = with(LocalDensity.current) {
-        assistantDisclaimerTextStyle().lineHeight.toDp() + 16.dp
-    }
     val stableModifier = if (isStreaming) {
         modifier.heightIn(min = STREAMING_MESSAGE_MIN_HEIGHT)
     } else {
@@ -1477,10 +1475,14 @@ private fun AssistantMessageContent(
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (shouldRenderDisclaimer) {
-                        Spacer(
+                        Text(
+                            text = AI_DISCLAIMER_TEXT,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(disclaimerPlaceholderHeight)
+                                .padding(bottom = 16.dp)
+                                .alpha(0f),
+                            style = assistantDisclaimerTextStyle(),
+                            textAlign = TextAlign.Start
                         )
                     }
                 }
