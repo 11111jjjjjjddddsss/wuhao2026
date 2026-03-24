@@ -4923,9 +4923,6 @@ private fun MessageActionMenuPopup(
                 }
             }
         }
-    if (!canPlaceWithoutOverlap) {
-        return
-    }
     LaunchedEffect(
         state.messageId,
         resolvedSide,
@@ -4946,14 +4943,19 @@ private fun MessageActionMenuPopup(
         }
     val fullyVisibleMinTop = protectedTopLimit
     val fullyVisibleMaxTop = (protectedBottomLimit - resolvedHeight).coerceAtLeast(fullyVisibleMinTop)
+    val centeredFallbackTop =
+        ((protectedTopLimit + protectedBottomLimit - resolvedHeight) / 2)
+            .coerceIn(fullyVisibleMinTop, fullyVisibleMaxTop)
     val minAllowedTop =
         when {
+            !canPlaceWithoutOverlap -> centeredFallbackTop
             resolvedSide == MessageActionMenuSide.Above && canPlaceAbove -> aboveMinTop
             resolvedSide == MessageActionMenuSide.Below && canPlaceBelow -> belowMinTop
             else -> fullyVisibleMinTop
         }
     val maxAllowedTop =
         when {
+            !canPlaceWithoutOverlap -> centeredFallbackTop
             resolvedSide == MessageActionMenuSide.Above && canPlaceAbove -> aboveMaxTop.coerceAtLeast(minAllowedTop)
             resolvedSide == MessageActionMenuSide.Below && canPlaceBelow -> belowMaxTop.coerceAtLeast(minAllowedTop)
             else -> fullyVisibleMaxTop
