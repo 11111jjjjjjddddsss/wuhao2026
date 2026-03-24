@@ -3762,9 +3762,18 @@ fun ChatScreen() {
 
     LaunchedEffect(pendingFinalBottomSnap, messages.size, isStreaming) {
         if (!pendingFinalBottomSnap || isStreaming) return@LaunchedEffect
-        repeat(3) { withFrameNanos { } }
-        if (!isWithinFinalBottomSnapTolerance()) {
+        for (attempt in 0 until 4) {
+            repeat(2) { withFrameNanos { } }
+            if (isWithinFinalBottomSnapTolerance()) {
+                break
+            }
             scrollToBottom(animated = false)
+            if (!listState.canScrollForward || isWithinFinalBottomSnapTolerance()) {
+                break
+            }
+            if (attempt < 3) {
+                delay(24)
+            }
         }
         jumpButtonVisible = false
         pendingFinalBottomSnap = false
