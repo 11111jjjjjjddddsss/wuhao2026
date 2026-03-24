@@ -1096,7 +1096,38 @@ private fun shouldShowAiDisclaimer(content: String): Boolean {
 }
 
 private fun containsDisclaimerSensitiveAssistant(messages: List<ChatMessage>): Boolean {
-    return messages.any { it.role == ChatRole.ASSISTANT && shouldShowAiDisclaimer(it.content) }
+    return messages.any { it.role == ChatRole.ASSISTANT && shouldShowAiDisclaimerRefined(it.content) }
+}
+
+private fun shouldShowAiDisclaimerRefined(content: String): Boolean {
+    if (content.isBlank()) return false
+    val normalized = content.lowercase()
+    val actionKeywords = listOf(
+        "用药", "施药", "喷药", "喷施", "喷雾",
+        "灌根", "滴灌", "冲施", "施肥", "追肥"
+    )
+    val treatmentMaterialKeywords = listOf(
+        "农药", "药剂", "杀菌剂", "杀虫剂", "杀螨剂",
+        "除草剂", "叶面肥", "水溶肥", "冲施肥"
+    )
+    val dosageKeywords = listOf(
+        "剂量", "用量", "浓度", "稀释", "倍数", "倍液",
+        "配比", "配方", "ppm", "兑水", "每亩",
+        "间隔期", "安全期", "停药期", "采收期"
+    )
+    val dosageRegexes = listOf(
+        Regex("\\d+(\\.\\d+)?\\s*(克|kg|公斤)\\s*/\\s*(亩|升|l)"),
+        Regex("\\d+(\\.\\d+)?\\s*(毫升|ml|升|l)\\s*/\\s*(亩|升|l)"),
+        Regex("\\d+(\\.\\d+)?\\s*(克|毫升|ml|升|l|公斤|kg)\\s*(每亩|/亩)"),
+        Regex("\\d+(\\.\\d+)?\\s*(克|毫升|ml|升|l)\\s*兑\\s*\\d+(\\.\\d+)?\\s*(升|l)?\\s*水"),
+        Regex("\\d+(\\.\\d+)?\\s*ppm"),
+        Regex("\\d+(\\.\\d+)?\\s*倍液")
+    )
+    if (dosageRegexes.any { it.containsMatchIn(normalized) }) return true
+    val hasAction = actionKeywords.any { normalized.contains(it) }
+    val hasTreatmentMaterial = treatmentMaterialKeywords.any { normalized.contains(it) }
+    val hasDosage = dosageKeywords.any { normalized.contains(it) }
+    return (hasAction && hasDosage) || (hasAction && hasTreatmentMaterial)
 }
 
 private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
@@ -1359,7 +1390,10 @@ private fun AssistantMessageContent(
     modifier: Modifier = Modifier
 ) {
     val shouldRenderDisclaimer = remember(content, showDisclaimer) {
-        showDisclaimer && shouldShowAiDisclaimer(content)
+        showDisclaimer && shouldShowAiDisclaimerRefined(content)
+    }
+    val disclaimerPlaceholderHeight = with(LocalDensity.current) {
+        assistantDisclaimerTextStyle().lineHeight.toDp() + 16.dp
     }
     val stableModifier = if (isStreaming) {
         modifier.heightIn(min = STREAMING_MESSAGE_MIN_HEIGHT)
@@ -1396,13 +1430,10 @@ private fun AssistantMessageContent(
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (shouldRenderDisclaimer) {
-                        Text(
-                            text = AI_DISCLAIMER_TEXT,
+                        Spacer(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            style = assistantDisclaimerTextStyle(),
-                            textAlign = TextAlign.Start
+                                .height(disclaimerPlaceholderHeight)
                         )
                     }
                 }
