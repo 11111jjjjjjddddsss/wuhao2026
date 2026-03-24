@@ -371,6 +371,7 @@
 - 不要让键盘补底逻辑干扰发送后上抬和 streaming 跟随。
 - 不要让 streaming 结束后的 final bottom snap 在本来已经到底时仍然无脑补滚，否则尾段会多抖一下。
 - final bottom snap 只能在真的还没贴住底部时触发，不能把“已经到底”的完成态再推一小下。
+- final bottom snap 的触发阈值要比普通底部容差稍高一点；极小的尾段偏差优先容忍，不要为了补 1 点点差值再推一帧。
 - 不要把 `AnchorUser -> StreamAnchorFollow` 的切换提前到正文真正碰到工作线之前。
 - 不要让新鲜下一行在正式出现前先露字。
 - 不要把 `lineRevealLocked` 改回没有滞回的单阈值开关。

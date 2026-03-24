@@ -2416,6 +2416,9 @@ fun ChatScreen() {
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
+    val finalBottomSnapThresholdPx = remember(bottomPositionTolerancePx, assistantLineStepPx) {
+        maxOf(bottomPositionTolerancePx, (assistantLineStepPx * 0.22f).roundToInt().coerceAtLeast(8))
+    }
     val activeStreamBottomSpacerPx = if (
         isStreaming &&
         anchoredUserMessageId != null &&
@@ -3360,7 +3363,7 @@ fun ChatScreen() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
                 !userDetachedFromBottom &&
-                    currentStreamingOverflowDelta() > bottomPositionTolerancePx
+                    currentStreamingOverflowDelta() > finalBottomSnapThresholdPx
             streamRevealJob?.cancel()
             streamRevealJob = null
             if (streamingRevealBuffer.isNotEmpty()) {
@@ -3676,7 +3679,7 @@ fun ChatScreen() {
                 autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
                     !userInteracting &&
                     !userDetachedFromBottom &&
-                    currentStreamingOverflowDelta() > bottomPositionTolerancePx
+                    currentStreamingOverflowDelta() > finalBottomSnapThresholdPx
             val finalId = streamingMessageId ?: "assistant_${UUID.randomUUID()}"
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
             fakeStreamJob?.cancel()
