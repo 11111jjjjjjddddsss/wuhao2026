@@ -1395,6 +1395,16 @@ private fun AssistantMessageContent(
                         lineRevealLocked = lineRevealLocked,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    if (shouldRenderDisclaimer) {
+                        Text(
+                            text = AI_DISCLAIMER_TEXT,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            style = assistantDisclaimerTextStyle(),
+                            textAlign = TextAlign.Start
+                        )
+                    }
                 }
             }
         }
