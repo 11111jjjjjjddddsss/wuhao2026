@@ -2408,6 +2408,7 @@ fun ChatScreen() {
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
+    var pendingSendFocusClear by remember(chatScopeId) { mutableStateOf(false) }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
@@ -3083,6 +3084,13 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(imeVisible, pendingSendFocusClear) {
+        if (!pendingSendFocusClear || imeVisible) return@LaunchedEffect
+        withFrameNanos { }
+        focusManager.clearFocus(force = true)
+        pendingSendFocusClear = false
+    }
+
     LaunchedEffect(chatScopeId, listState, messages.size, hasStreamingItem) {
         snapshotFlow {
             if (!atBottom || (messages.isEmpty() && !hasStreamingItem)) {
@@ -3501,8 +3509,12 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
+        pendingSendFocusClear = imeVisible
         keyboardController?.hide()
-        focusManager.clearFocus(force = true)
+        if (!imeVisible) {
+            focusManager.clearFocus(force = true)
+            pendingSendFocusClear = false
+        }
         input.value = TextFieldValue("")
 
         trimMessagesInPlace()
