@@ -3509,6 +3509,7 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
+        isStreaming = true
         pendingSendFocusClear = imeVisible
         keyboardController?.hide()
         if (!imeVisible) {
@@ -3522,7 +3523,6 @@ fun ChatScreen() {
         snackbarScope.launch {
             context.saveLocalChatWindow(chatScopeId, messages)
         }
-        isStreaming = true
         streamingMessageId = "assistant_${UUID.randomUUID()}"
         streamingMessageContent = ""
         streamingRevealBuffer = ""
