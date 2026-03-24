@@ -240,6 +240,19 @@ private data class PendingInputSelectionToolbarState(
     val onSelectAllRequested: (() -> Unit)?
 )
 
+private enum class SendBlockReason {
+    None,
+    EmptyInput,
+    Streaming,
+    InputTooLong
+}
+
+private data class SendGateState(
+    val canPress: Boolean,
+    val canSubmit: Boolean,
+    val blockReason: SendBlockReason
+)
+
 private enum class MessageActionMenuSide { Above, Below }
 
 private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
@@ -295,6 +308,7 @@ private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
+private val LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD = 32.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
@@ -1099,6 +1113,36 @@ private fun shouldShowAiDisclaimer(content: String): Boolean {
 
 private fun containsDisclaimerSensitiveAssistant(messages: List<ChatMessage>): Boolean {
     return messages.any { it.role == ChatRole.ASSISTANT && shouldShowAiDisclaimerRefined(it.content) }
+}
+
+private fun buildSendGateState(
+    rawInput: String,
+    isStreaming: Boolean,
+    exceedsInputLimit: Boolean
+): SendGateState {
+    val hasText = rawInput.trim().isNotEmpty()
+    return when {
+        !hasText -> SendGateState(
+            canPress = false,
+            canSubmit = false,
+            blockReason = SendBlockReason.EmptyInput
+        )
+        isStreaming -> SendGateState(
+            canPress = false,
+            canSubmit = false,
+            blockReason = SendBlockReason.Streaming
+        )
+        exceedsInputLimit -> SendGateState(
+            canPress = true,
+            canSubmit = false,
+            blockReason = SendBlockReason.InputTooLong
+        )
+        else -> SendGateState(
+            canPress = true,
+            canSubmit = true,
+            blockReason = SendBlockReason.None
+        )
+    }
 }
 
 private fun shouldShowAiDisclaimerRefined(content: String): Boolean {
@@ -2456,6 +2500,7 @@ fun ChatScreen() {
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val lifecycleResumeBottomSnapThresholdPx = with(density) { LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -2615,14 +2660,17 @@ fun ChatScreen() {
     val enableStreamingScrollLock by remember(isStreaming, activeStreamBottomSpacerPx) {
         derivedStateOf { isStreaming || activeStreamBottomSpacerPx > 0 }
     }
-    fun isWithinBottomTolerance(): Boolean {
-        if (!listState.canScrollForward) return true
+    fun currentBottomOverflowPx(): Int {
+        if (!listState.canScrollForward) return 0
         val info = listState.layoutInfo
         val lastIndex = info.totalItemsCount - 1
-        if (lastIndex < 0) return true
-        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return false
-        val overflowPx = (lastVisible.offset + lastVisible.size - info.viewportEndOffset).coerceAtLeast(0)
-        return overflowPx <= bottomPositionTolerancePx
+        if (lastIndex < 0) return 0
+        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return Int.MAX_VALUE
+        return (lastVisible.offset + lastVisible.size - info.viewportEndOffset).coerceAtLeast(0)
+    }
+    fun isWithinBottomTolerance(): Boolean {
+        val overflowPx = currentBottomOverflowPx()
+        return overflowPx != Int.MAX_VALUE && overflowPx <= bottomPositionTolerancePx
     }
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
@@ -3599,9 +3647,14 @@ fun ChatScreen() {
     }
 
     fun sendMessage() {
-        val text = input.value.text.trim()
-        if (text.isEmpty() || isStreaming) return
-        commitSendMessage(text)
+        val text = input.value.text
+        val sendGate = buildSendGateState(
+            rawInput = text,
+            isStreaming = isStreaming,
+            exceedsInputLimit = text.length > INPUT_MAX_CHARS
+        )
+        if (!sendGate.canSubmit) return
+        commitSendMessage(text.trim())
     }
 
     suspend fun scrollToBottom(animated: Boolean, includeAnchorSpacer: Boolean = true) {
@@ -3814,15 +3867,13 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         repeat(2) { withFrameNanos { } }
-        if (!listState.isScrollInProgress && !programmaticScroll && !isWithinBottomTolerance()) {
-            scrollToBottom(
-                animated = false,
-                includeAnchorSpacer = true
-            )
-            jumpButtonVisible = false
-        }
-        repeat(2) { withFrameNanos { } }
-        if (!listState.isScrollInProgress && !programmaticScroll && !isWithinBottomTolerance()) {
+        val resumeBottomOverflowPx = currentBottomOverflowPx()
+        if (
+            !listState.isScrollInProgress &&
+            !programmaticScroll &&
+            resumeBottomOverflowPx != Int.MAX_VALUE &&
+            resumeBottomOverflowPx > lifecycleResumeBottomSnapThresholdPx
+        ) {
             scrollToBottom(
                 animated = false,
                 includeAnchorSpacer = true
@@ -4145,10 +4196,14 @@ fun ChatScreen() {
                                     applyPendingInputSelectionToolbarIfReady(bounds)
                                 }
                         ) {
-                            val exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
-                            val inputTextToolbar = remember(chatScopeId) {
-                                buildInputSelectionTextToolbar()
-                            }
+                                val sendGate = buildSendGateState(
+                                    rawInput = input.value.text,
+                                    isStreaming = isStreaming,
+                                    exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
+                                )
+                                val inputTextToolbar = remember(chatScopeId) {
+                                    buildInputSelectionTextToolbar()
+                                }
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -4193,8 +4248,8 @@ fun ChatScreen() {
                                         )
                                     )
                                 }
-                                val canPressSend = input.value.text.trim().isNotEmpty() && !isStreaming
-                                val canSend = canPressSend && !exceedsInputLimit
+                                val canPressSend = sendGate.canPress
+                                val canSend = sendGate.canSubmit
                                 val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
                                 val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
                                 val sendButtonInteractionSource = remember { MutableInteractionSource() }
@@ -4211,7 +4266,7 @@ fun ChatScreen() {
                                             indication = null
                                         ) {
                                             performButtonHaptic()
-                                            if (exceedsInputLimit) {
+                                            if (sendGate.blockReason == SendBlockReason.InputTooLong) {
                                                 inputLimitHintTick++
                                             } else if (canSend) {
                                                 sendMessage()
