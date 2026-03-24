@@ -2408,7 +2408,6 @@ fun ChatScreen() {
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
-    var sendInputVisualHold by remember(chatScopeId) { mutableStateOf(false) }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
@@ -3084,13 +3083,6 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(imeVisible, sendInputVisualHold) {
-        if (!sendInputVisualHold || imeVisible) return@LaunchedEffect
-        withFrameNanos { }
-        withFrameNanos { }
-        sendInputVisualHold = false
-    }
-
     LaunchedEffect(chatScopeId, listState, messages.size, hasStreamingItem) {
         snapshotFlow {
             if (!atBottom || (messages.isEmpty() && !hasStreamingItem)) {
@@ -3509,7 +3501,6 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
-        sendInputVisualHold = imeVisible
         input.value = TextFieldValue("")
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
@@ -4148,9 +4139,8 @@ fun ChatScreen() {
                                 }
                                 val canPressSend = input.value.text.trim().isNotEmpty() && !isStreaming
                                 val canSend = canPressSend && !exceedsInputLimit
-                                val sendButtonActiveVisual = canPressSend || sendInputVisualHold
-                                val actionBg = if (sendButtonActiveVisual) Color(0xFF111111) else Color(0xFFD3D4D6)
-                                val actionTint = if (sendButtonActiveVisual) Color.White else Color(0xFF7F8083)
+                                val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
+                                val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
 
                                 Box(
                                     modifier = Modifier
