@@ -120,6 +120,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -2500,7 +2501,8 @@ fun ChatScreen() {
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
-    var pendingSendFocusClear by remember(chatScopeId) { mutableStateOf(false) }
+    var inputFieldFocused by remember(chatScopeId) { mutableStateOf(false) }
+    var suppressInputCursor by remember(chatScopeId) { mutableStateOf(false) }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
@@ -3187,13 +3189,6 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(imeVisible, pendingSendFocusClear) {
-        if (!pendingSendFocusClear || imeVisible) return@LaunchedEffect
-        withFrameNanos { }
-        focusManager.clearFocus(force = true)
-        pendingSendFocusClear = false
-    }
-
     LaunchedEffect(chatScopeId, listState, messages.size, hasStreamingItem) {
         snapshotFlow {
             if (!atBottom || (messages.isEmpty() && !hasStreamingItem)) {
@@ -3615,7 +3610,7 @@ fun ChatScreen() {
         userDetachedFromBottom = false
         jumpButtonVisible = false
         isStreaming = true
-        pendingSendFocusClear = false
+        suppressInputCursor = true
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
         input.value = TextFieldValue("")
@@ -4260,11 +4255,18 @@ fun ChatScreen() {
                                             ) {
                                                 inputLimitHintTick++
                                             }
+                                            suppressInputCursor = false
                                             input.value = it
                                         },
                                         modifier = Modifier
                                             .weight(1f)
-                                            .padding(start = 2.dp),
+                                            .padding(start = 2.dp)
+                                            .onFocusChanged { focusState ->
+                                                inputFieldFocused = focusState.isFocused
+                                                if (focusState.isFocused) {
+                                                    suppressInputCursor = false
+                                                }
+                                            },
                                         placeholder = { Text("描述种植问题", color = Color(0xFFAEAFB4)) },
                                         singleLine = false,
                                         minLines = 1,
@@ -4280,7 +4282,17 @@ fun ChatScreen() {
                                             disabledContainerColor = Color.Transparent,
                                             focusedIndicatorColor = Color.Transparent,
                                             unfocusedIndicatorColor = Color.Transparent,
-                                            disabledIndicatorColor = Color.Transparent
+                                            disabledIndicatorColor = Color.Transparent,
+                                            cursorColor = if (inputFieldFocused && !suppressInputCursor) {
+                                                Color(0xFF111111)
+                                            } else {
+                                                Color.Transparent
+                                            },
+                                            errorCursorColor = if (inputFieldFocused && !suppressInputCursor) {
+                                                Color(0xFF111111)
+                                            } else {
+                                                Color.Transparent
+                                            }
                                         )
                                     )
                                 }
