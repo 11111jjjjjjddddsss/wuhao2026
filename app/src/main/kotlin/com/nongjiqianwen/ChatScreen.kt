@@ -2380,6 +2380,7 @@ fun ChatScreen() {
     var inputChromeRowHeightPx by remember(chatScopeId, startupInputChromeRowHeightEstimatePx) {
         mutableIntStateOf(startupInputChromeRowHeightEstimatePx)
     }
+    var sendCollapseFreezeHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var chatRootWidthPx by remember { mutableIntStateOf(0) }
     var chatRootHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportWidthPx by remember { mutableIntStateOf(0) }
@@ -2608,13 +2609,14 @@ fun ChatScreen() {
     val effectiveBottomBarHeightPx by remember(
         startupLayoutReady,
         bottomBarHeightPx,
-        startupBottomBarHeightEstimatePx
+        startupBottomBarHeightEstimatePx,
+        sendCollapseFreezeHeightPx
     ) {
         derivedStateOf {
             if (startupLayoutReady) {
-                bottomBarHeightPx
+                maxOf(bottomBarHeightPx, sendCollapseFreezeHeightPx)
             } else {
-                startupBottomBarHeightEstimatePx
+                maxOf(startupBottomBarHeightEstimatePx, sendCollapseFreezeHeightPx)
             }
         }
     }
@@ -2972,6 +2974,13 @@ fun ChatScreen() {
         ) {
             bottomBarHeightPx = stableBottomBarHeightPx
         }
+    }
+
+    LaunchedEffect(imeVisible, sendCollapseFreezeHeightPx) {
+        if (sendCollapseFreezeHeightPx <= 0) return@LaunchedEffect
+        if (imeVisible) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        sendCollapseFreezeHeightPx = 0
     }
 
     LaunchedEffect(chatScopeId) {
@@ -3482,6 +3491,7 @@ fun ChatScreen() {
         LaunchUiGate.chatReady = true
         restoreBottomAfterImeClose = false
         suppressJumpButtonForImeTransition = true
+        sendCollapseFreezeHeightPx = maxOf(sendCollapseFreezeHeightPx, inputChromeRowHeightPx + safeBottomInsetPx)
         val userId = "user_${UUID.randomUUID()}"
         messages.add(ChatMessage(userId, ChatRole.USER, text))
         anchoredUserMessageId = userId
@@ -4031,6 +4041,14 @@ fun ChatScreen() {
                             .align(Alignment.BottomCenter)
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
+                            .heightIn(
+                                min = with(density) {
+                                    maxOf(
+                                        startupInputChromeRowHeightEstimatePx,
+                                        sendCollapseFreezeHeightPx.coerceAtLeast(0) - safeBottomInsetPx
+                                    ).toDp()
+                                }
+                            )
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .onSizeChanged {
                                 inputChromeRowHeightPx = it.height
