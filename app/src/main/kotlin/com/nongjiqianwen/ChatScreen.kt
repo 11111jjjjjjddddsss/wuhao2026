@@ -2491,6 +2491,8 @@ fun ChatScreen() {
     var userDetachedFromBottom by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
+    var pendingCompletedAssistantMessage by remember(chatScopeId) { mutableStateOf<ChatMessage?>(null) }
+    var pendingCompletedAssistantSnap by remember(chatScopeId) { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
     var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
@@ -3119,6 +3121,8 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
+            pendingCompletedAssistantMessage = null
+            pendingCompletedAssistantSnap = false
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
             if (clearVisibleContent) {
@@ -3475,19 +3479,8 @@ fun ChatScreen() {
             }
             val finalContent = streamingMessageContent
             val finalId = streamingMessageId
-            if (finalContent.isNotBlank()) {
-                replaceMessages(
-                    appendCompletedAssistantMessage(
-                        source = messages,
-                        messageId = finalId.orEmpty(),
-                        content = finalContent
-                    )
-                )
-            }
             fakeStreamJob = null
             isStreaming = false
-            streamingMessageId = null
-            streamingMessageContent = ""
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -3501,8 +3494,21 @@ fun ChatScreen() {
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
             jumpButtonVisible = false
-            persistTick++
-            pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+            if (finalContent.isNotBlank()) {
+                pendingCompletedAssistantMessage = ChatMessage(
+                    id = finalId.orEmpty(),
+                    role = ChatRole.ASSISTANT,
+                    content = finalContent
+                )
+                pendingCompletedAssistantSnap = shouldSnapToBottomOnFinish
+            } else {
+                streamingMessageId = null
+                streamingMessageContent = ""
+                pendingCompletedAssistantMessage = null
+                pendingCompletedAssistantSnap = false
+                persistTick++
+                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+            }
         }
     }
 
@@ -3776,6 +3782,29 @@ fun ChatScreen() {
         pendingFinalBottomSnap = false
     }
 
+    LaunchedEffect(pendingCompletedAssistantMessage?.id) {
+        val completedMessage = pendingCompletedAssistantMessage ?: return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        replaceMessages(
+            appendCompletedAssistantMessage(
+                source = messages,
+                messageId = completedMessage.id,
+                content = completedMessage.content
+            )
+        )
+        streamingMessageId = null
+        streamingMessageContent = ""
+        pendingCompletedAssistantMessage = null
+        persistTick++
+        pendingFinalBottomSnap = pendingCompletedAssistantSnap
+        pendingCompletedAssistantSnap = false
+        context.saveLocalChatWindowSync(chatScopeId, messages)
+        context.clearLocalStreamingDraftSync(chatScopeId)
+        snackbarScope.launch {
+            prewarmAssistantMarkdown(messages.takeLast(2))
+        }
+    }
+
     fun completeStreamingImmediatelyFromBackground() {
         mainHandler.post {
             if (!isStreaming) return@post
@@ -3793,18 +3822,7 @@ fun ChatScreen() {
             streamingMessageId = finalId
             streamingMessageContent = finalContent
             streamingRevealBuffer = ""
-            if (finalContent.isNotBlank()) {
-                replaceMessages(
-                    appendCompletedAssistantMessage(
-                        source = messages,
-                        messageId = finalId,
-                        content = finalContent
-                    )
-                )
-            }
             isStreaming = false
-            streamingMessageId = null
-            streamingMessageContent = ""
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -3817,11 +3835,24 @@ fun ChatScreen() {
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
             jumpButtonVisible = false
-            pendingFinalBottomSnap = shouldSnapToBottomOnFinish
-            context.saveLocalChatWindowSync(chatScopeId, messages)
-            context.clearLocalStreamingDraftSync(chatScopeId)
-            snackbarScope.launch {
-                prewarmAssistantMarkdown(messages.takeLast(2))
+            if (finalContent.isNotBlank()) {
+                pendingCompletedAssistantMessage = ChatMessage(
+                    id = finalId,
+                    role = ChatRole.ASSISTANT,
+                    content = finalContent
+                )
+                pendingCompletedAssistantSnap = shouldSnapToBottomOnFinish
+            } else {
+                streamingMessageId = null
+                streamingMessageContent = ""
+                pendingCompletedAssistantMessage = null
+                pendingCompletedAssistantSnap = false
+                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                context.saveLocalChatWindowSync(chatScopeId, messages)
+                context.clearLocalStreamingDraftSync(chatScopeId)
+                snackbarScope.launch {
+                    prewarmAssistantMarkdown(messages.takeLast(2))
+                }
             }
         }
     }
