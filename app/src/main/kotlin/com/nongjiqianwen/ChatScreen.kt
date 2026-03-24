@@ -3643,8 +3643,11 @@ fun ChatScreen() {
         if (!pendingFinalBottomSnap || isStreaming) return@LaunchedEffect
         for (attempt in 0 until 4) {
             repeat(2) { withFrameNanos { } }
+            if (isWithinBottomTolerance()) {
+                break
+            }
             scrollToBottom(animated = false)
-            if (!listState.canScrollForward) {
+            if (!listState.canScrollForward || isWithinBottomTolerance()) {
                 break
             }
             if (attempt < 3) {
