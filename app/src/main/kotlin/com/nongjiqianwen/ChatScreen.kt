@@ -4884,14 +4884,22 @@ private fun MessageActionMenuPopup(
     val bottomHandleLocalY = maxOf(anchorLocalY, selectionBottomLocalY)
     val preferredTop = topHandleLocalY - resolvedHeight - verticalSpacingPx
     val belowCandidate = bottomHandleLocalY + verticalSpacingPx
+    val aboveMinTop = protectedTopLimit
+    val aboveMaxTop = minOf(
+        topHandleLocalY - verticalSpacingPx - resolvedHeight,
+        protectedBottomLimit - resolvedHeight
+    )
+    val belowMinTop = maxOf(bottomHandleLocalY + verticalSpacingPx, protectedTopLimit)
+    val belowMaxTop = protectedBottomLimit - resolvedHeight
     val topOverflow = (protectedTopLimit - preferredTop).coerceAtLeast(0)
     val bottomOverflow = (belowCandidate + resolvedHeight - protectedBottomLimit).coerceAtLeast(0)
-    val canPlaceAbove = topOverflow == 0
-    val canPlaceBelow = bottomOverflow == 0
+    val canPlaceAbove = aboveMaxTop >= aboveMinTop
+    val canPlaceBelow = belowMaxTop >= belowMinTop
+    val canPlaceWithoutOverlap = canPlaceAbove || canPlaceBelow
     val resolvedSide =
         when (lockedSide) {
             MessageActionMenuSide.Above -> {
-                if (topOverflow > switchThresholdPx && canPlaceBelow) {
+                if ((!canPlaceAbove || topOverflow > switchThresholdPx) && canPlaceBelow) {
                     MessageActionMenuSide.Below
                 } else {
                     MessageActionMenuSide.Above
@@ -4899,7 +4907,7 @@ private fun MessageActionMenuPopup(
             }
 
             MessageActionMenuSide.Below -> {
-                if (bottomOverflow > switchThresholdPx && canPlaceAbove) {
+                if ((!canPlaceBelow || bottomOverflow > switchThresholdPx) && canPlaceAbove) {
                     MessageActionMenuSide.Above
                 } else {
                     MessageActionMenuSide.Below
@@ -4915,6 +4923,9 @@ private fun MessageActionMenuPopup(
                 }
             }
         }
+    if (!canPlaceWithoutOverlap) {
+        return
+    }
     LaunchedEffect(
         state.messageId,
         resolvedSide,
@@ -4933,20 +4944,19 @@ private fun MessageActionMenuPopup(
         } else {
             belowCandidate
         }
+    val fullyVisibleMinTop = protectedTopLimit
+    val fullyVisibleMaxTop = (protectedBottomLimit - resolvedHeight).coerceAtLeast(fullyVisibleMinTop)
     val minAllowedTop =
-        if (resolvedSide == MessageActionMenuSide.Above) {
-            protectedTopLimit
-        } else {
-            (bottomHandleLocalY + verticalSpacingPx).coerceAtLeast(protectedTopLimit)
+        when {
+            resolvedSide == MessageActionMenuSide.Above && canPlaceAbove -> aboveMinTop
+            resolvedSide == MessageActionMenuSide.Below && canPlaceBelow -> belowMinTop
+            else -> fullyVisibleMinTop
         }
     val maxAllowedTop =
-        if (resolvedSide == MessageActionMenuSide.Above) {
-            minOf(
-                topHandleLocalY - verticalSpacingPx - resolvedHeight,
-                protectedBottomLimit - resolvedHeight
-            ).coerceAtLeast(minAllowedTop)
-        } else {
-            (protectedBottomLimit - resolvedHeight).coerceAtLeast(minAllowedTop)
+        when {
+            resolvedSide == MessageActionMenuSide.Above && canPlaceAbove -> aboveMaxTop.coerceAtLeast(minAllowedTop)
+            resolvedSide == MessageActionMenuSide.Below && canPlaceBelow -> belowMaxTop.coerceAtLeast(minAllowedTop)
+            else -> fullyVisibleMaxTop
         }
     val preferredY = rawPreferredY.coerceIn(minAllowedTop, maxAllowedTop)
 
