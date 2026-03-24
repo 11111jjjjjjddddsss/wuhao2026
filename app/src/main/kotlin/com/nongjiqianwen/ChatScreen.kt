@@ -3507,18 +3507,9 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         userDetachedFromBottom = false
         jumpButtonVisible = false
+        input.value = TextFieldValue("")
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        snackbarScope.launch {
-            if (imeVisible) {
-                repeat(2) { withFrameNanos { } }
-            } else {
-                withFrameNanos { }
-            }
-            if (isStreaming) {
-                input.value = TextFieldValue("")
-            }
-        }
 
         trimMessagesInPlace()
         persistTick++
