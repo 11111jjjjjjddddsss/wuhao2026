@@ -4933,8 +4933,22 @@ private fun MessageActionMenuPopup(
         } else {
             belowCandidate
         }
-    val maxVisibleTop = (protectedBottomLimit - resolvedHeight).coerceAtLeast(protectedTopLimit)
-    val preferredY = rawPreferredY.coerceIn(protectedTopLimit, maxVisibleTop)
+    val minAllowedTop =
+        if (resolvedSide == MessageActionMenuSide.Above) {
+            protectedTopLimit
+        } else {
+            (bottomHandleLocalY + verticalSpacingPx).coerceAtLeast(protectedTopLimit)
+        }
+    val maxAllowedTop =
+        if (resolvedSide == MessageActionMenuSide.Above) {
+            minOf(
+                topHandleLocalY - verticalSpacingPx - resolvedHeight,
+                protectedBottomLimit - resolvedHeight
+            ).coerceAtLeast(minAllowedTop)
+        } else {
+            (protectedBottomLimit - resolvedHeight).coerceAtLeast(minAllowedTop)
+        }
+    val preferredY = rawPreferredY.coerceIn(minAllowedTop, maxAllowedTop)
 
     Box(
         modifier = Modifier
