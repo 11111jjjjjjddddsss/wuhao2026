@@ -3750,7 +3750,7 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         repeat(2) { withFrameNanos { } }
-        if (!listState.isScrollInProgress && !programmaticScroll) {
+        if (!listState.isScrollInProgress && !programmaticScroll && !isWithinBottomTolerance()) {
             scrollToBottom(
                 animated = false,
                 includeAnchorSpacer = true
