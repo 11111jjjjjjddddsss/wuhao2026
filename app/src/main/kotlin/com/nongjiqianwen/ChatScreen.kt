@@ -4041,14 +4041,6 @@ fun ChatScreen() {
                             .align(Alignment.BottomCenter)
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
-                            .heightIn(
-                                min = with(density) {
-                                    maxOf(
-                                        startupInputChromeRowHeightEstimatePx,
-                                        sendCollapseFreezeHeightPx.coerceAtLeast(0) - safeBottomInsetPx
-                                    ).toDp()
-                                }
-                            )
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .onSizeChanged {
                                 inputChromeRowHeightPx = it.height
