@@ -4094,10 +4094,12 @@ fun ChatScreen() {
                             val inputTextToolbar = remember(chatScopeId) {
                                 buildInputSelectionTextToolbar()
                             }
-                            Box(
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
+                                    .padding(end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 CompositionLocalProvider(
                                     LocalTextSelectionColors provides inputSelectionColors,
@@ -4115,9 +4117,8 @@ fun ChatScreen() {
                                             input.value = it
                                         },
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .align(Alignment.CenterStart)
-                                            .padding(start = 2.dp, end = 58.dp),
+                                            .weight(1f)
+                                            .padding(start = 2.dp),
                                         placeholder = { Text("描述种植问题", color = Color(0xFFAEAFB4)) },
                                         singleLine = false,
                                         minLines = 1,
@@ -4144,8 +4145,7 @@ fun ChatScreen() {
 
                                 Box(
                                     modifier = Modifier
-                                        .align(Alignment.CenterEnd)
-                                        .padding(end = 8.dp)
+                                        .padding(start = 6.dp)
                                         .size(sendButtonSize)
                                         .clip(CircleShape)
                                         .background(actionBg),
