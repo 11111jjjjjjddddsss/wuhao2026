@@ -4469,7 +4469,7 @@ fun ChatScreen() {
                         }
                         if (hasStreamingItem) {
                             item(
-                                key = "streaming_item",
+                                key = streamingMessageId ?: "streaming_item",
                                 contentType = ChatRole.ASSISTANT
                             ) {
                                 Box(
