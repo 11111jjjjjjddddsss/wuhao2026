@@ -25,12 +25,14 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -4195,17 +4197,19 @@ fun ChatScreen() {
                                 val canSend = canPressSend && !exceedsInputLimit
                                 val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
                                 val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
+                                val sendButtonInteractionSource = remember { MutableInteractionSource() }
 
                                 Box(
                                     modifier = Modifier
                                         .padding(start = 6.dp)
                                         .size(sendButtonSize)
                                         .clip(CircleShape)
-                                        .background(actionBg),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    IconButton(
-                                        onClick = {
+                                        .background(actionBg)
+                                        .clickable(
+                                            enabled = canPressSend,
+                                            interactionSource = sendButtonInteractionSource,
+                                            indication = null
+                                        ) {
                                             performButtonHaptic()
                                             if (exceedsInputLimit) {
                                                 inputLimitHintTick++
@@ -4213,15 +4217,13 @@ fun ChatScreen() {
                                                 sendMessage()
                                             }
                                         },
-                                        enabled = canPressSend,
-                                        modifier = Modifier.fillMaxSize()
-                                    ) {
-                                        LongArrowIcon(
-                                            tint = actionTint,
-                                            directionUp = true,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    LongArrowIcon(
+                                        tint = actionTint,
+                                        directionUp = true,
+                                        modifier = Modifier.size(22.dp)
+                                    )
                                 }
                             }
                         }
