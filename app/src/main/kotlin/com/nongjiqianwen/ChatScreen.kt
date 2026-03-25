@@ -2519,6 +2519,7 @@ fun ChatScreen() {
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
     var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
     var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
+    var lifecycleResumeReady by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
@@ -3109,6 +3110,7 @@ fun ChatScreen() {
         suppressJumpButtonForImeTransition = false
         restoreBottomAfterLifecycleResume = false
         suppressJumpButtonForLifecycleResume = false
+        lifecycleResumeReady = false
         clearInputSelectionToolbar()
         LaunchUiGate.chatReady = false
     }
@@ -3878,6 +3880,7 @@ fun ChatScreen() {
     DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                lifecycleResumeReady = false
                 if (!isStreaming) {
                     restoreBottomAfterLifecycleResume =
                         atBottom &&
@@ -3897,6 +3900,7 @@ fun ChatScreen() {
                 keyboardController?.hide()
             } else if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
+                lifecycleResumeReady = true
                 if (isStreaming && fakeStreamJob?.isActive != true && streamRevealJob?.isActive != true) {
                     recoverStreamingAfterLifecycleLoss()
                 }
@@ -3910,23 +3914,29 @@ fun ChatScreen() {
 
     LaunchedEffect(
         restoreBottomAfterLifecycleResume,
+        lifecycleResumeReady,
         isStreaming,
         messages.size,
         hasStreamingItem
     ) {
-        if (!restoreBottomAfterLifecycleResume) return@LaunchedEffect
+        if (!restoreBottomAfterLifecycleResume || !lifecycleResumeReady) return@LaunchedEffect
         if (isStreaming || (messages.isEmpty() && !hasStreamingItem)) {
             restoreBottomAfterLifecycleResume = false
             suppressJumpButtonForLifecycleResume = false
             return@LaunchedEffect
         }
-        repeat(2) { withFrameNanos { } }
-        val resumeBottomOverflowPx = currentBottomOverflowPx()
+        var stableResumeOverflowPx = Int.MAX_VALUE
+        repeat(4) {
+            withFrameNanos { }
+            val overflowPx = currentBottomOverflowPx()
+            if (overflowPx == Int.MAX_VALUE) return@repeat
+            stableResumeOverflowPx = minOf(stableResumeOverflowPx, overflowPx)
+        }
         if (
             !listState.isScrollInProgress &&
             !programmaticScroll &&
-            resumeBottomOverflowPx != Int.MAX_VALUE &&
-            resumeBottomOverflowPx > lifecycleResumeBottomSnapThresholdPx
+            stableResumeOverflowPx != Int.MAX_VALUE &&
+            stableResumeOverflowPx > lifecycleResumeBottomSnapThresholdPx
         ) {
             scrollToBottom(
                 animated = false,
