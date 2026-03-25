@@ -1261,6 +1261,29 @@ private fun appendCompletedAssistantMessage(
     return sanitizeMessageWindow(merged)
 }
 
+private fun applyCompletedAssistantMessageInPlace(
+    target: MutableList<ChatMessage>,
+    messageId: String,
+    content: String
+) {
+    val normalizedContent = normalizeAssistantText(content)
+    if (normalizedContent.isBlank()) return
+    val finalId = messageId.ifBlank { "assistant_${UUID.randomUUID()}" }
+    val finalMessage = ChatMessage(finalId, ChatRole.ASSISTANT, normalizedContent)
+    val existingIndex = target.indexOfFirst { it.id == finalId }
+    if (existingIndex >= 0) {
+        if (target[existingIndex] != finalMessage) {
+            target[existingIndex] = finalMessage
+        }
+    } else {
+        target.add(finalMessage)
+    }
+    val trimCount = trimWindowStartIndex(target)
+    if (trimCount > 0) {
+        repeat(trimCount) { target.removeAt(0) }
+    }
+}
+
 private suspend fun Context.loadLocalChatWindow(chatScopeId: String): List<ChatMessage> = withContext(Dispatchers.IO) {
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", null)
@@ -3778,12 +3801,10 @@ fun ChatScreen() {
     LaunchedEffect(pendingCompletedAssistantMessage?.id) {
         val completedMessage = pendingCompletedAssistantMessage ?: return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
-        replaceMessages(
-            appendCompletedAssistantMessage(
-                source = messages,
-                messageId = completedMessage.id,
-                content = completedMessage.content
-            )
+        applyCompletedAssistantMessageInPlace(
+            target = messages,
+            messageId = completedMessage.id,
+            content = completedMessage.content
         )
         streamingMessageId = null
         streamingMessageContent = ""
