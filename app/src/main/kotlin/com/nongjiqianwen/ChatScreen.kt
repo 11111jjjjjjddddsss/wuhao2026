@@ -4539,6 +4539,27 @@ fun ChatScreen() {
                                 key = streamingMessageId ?: "streaming_item",
                                 contentType = ChatRole.ASSISTANT
                             ) {
+                                val settledStreamingMessage = pendingCompletedAssistantMessage
+                                val streamingSelectionMessageId =
+                                    settledStreamingMessage?.id ?: streamingMessageId.orEmpty()
+                                val streamingSelectionContent =
+                                    settledStreamingMessage?.content ?: streamingMessageContent
+                                val streamingSelectionFullCopyText = remember(streamingSelectionContent) {
+                                    buildRenderedMessageCopyText(
+                                        ChatRole.ASSISTANT,
+                                        streamingSelectionContent
+                                    )
+                                }
+                                val streamingTextToolbar = remember(
+                                    streamingSelectionMessageId,
+                                    streamingSelectionFullCopyText
+                                ) {
+                                    buildMessageSelectionTextToolbar(
+                                        messageId = streamingSelectionMessageId,
+                                        role = ChatRole.ASSISTANT,
+                                        fullCopyText = streamingSelectionFullCopyText
+                                    )
+                                }
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -4555,22 +4576,36 @@ fun ChatScreen() {
                                                     (bounds.top - messageViewportTopPx).roundToInt()
                                                 streamingContentBottomPx =
                                                     (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                if (streamingSelectionMessageId.isNotBlank()) {
+                                                    messageSelectionBoundsById[streamingSelectionMessageId] = bounds
+                                                }
                                             }
                                     ) {
-                                        AssistantMessageContent(
-                                            content = streamingMessageContent,
-                                            isStreaming = isStreaming,
-                                            streamingFreshStart = streamingFreshStart,
-                                            streamingFreshEnd = streamingFreshEnd,
-                                            streamingFreshTick = streamingFreshTick,
-                                            streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                            strictLineReveal =
-                                                isStreaming &&
-                                                    !userDetachedFromBottom &&
-                                                    !userInteracting,
-                                            lineRevealLocked = lineRevealLocked,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
+                                        if (settledStreamingMessage != null && !isStreaming) {
+                                            SelectableRenderedStaticMessageContent(
+                                                content = settledStreamingMessage.content,
+                                                textSelectionColors = messageSelectionColors,
+                                                textToolbar = streamingTextToolbar,
+                                                selectionResetKey = messageSelectionResetEpoch,
+                                                showDisclaimer = true,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        } else {
+                                            AssistantMessageContent(
+                                                content = streamingMessageContent,
+                                                isStreaming = isStreaming,
+                                                streamingFreshStart = streamingFreshStart,
+                                                streamingFreshEnd = streamingFreshEnd,
+                                                streamingFreshTick = streamingFreshTick,
+                                                streamingLineAdvanceTick = streamingLineAdvanceTick,
+                                                strictLineReveal =
+                                                    isStreaming &&
+                                                        !userDetachedFromBottom &&
+                                                        !userInteracting,
+                                                lineRevealLocked = lineRevealLocked,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                     }
                                 }
                             }
