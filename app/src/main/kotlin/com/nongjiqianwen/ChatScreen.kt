@@ -3812,10 +3812,12 @@ fun ChatScreen() {
         persistTick++
         pendingFinalBottomSnap = pendingCompletedAssistantSnap
         pendingCompletedAssistantSnap = false
-        context.saveLocalChatWindowSync(chatScopeId, messages)
-        context.clearLocalStreamingDraftSync(chatScopeId)
+        val persistedMessages = messages.toList()
+        val prewarmMessages = persistedMessages.takeLast(2)
         snackbarScope.launch {
-            prewarmAssistantMarkdown(messages.takeLast(2))
+            context.saveLocalChatWindow(chatScopeId, persistedMessages)
+            context.clearLocalStreamingDraft(chatScopeId)
+            prewarmAssistantMarkdown(prewarmMessages)
         }
     }
 
@@ -3862,10 +3864,12 @@ fun ChatScreen() {
                 pendingCompletedAssistantMessage = null
                 pendingCompletedAssistantSnap = false
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
-                context.saveLocalChatWindowSync(chatScopeId, messages)
-                context.clearLocalStreamingDraftSync(chatScopeId)
+                val persistedMessages = messages.toList()
+                val prewarmMessages = persistedMessages.takeLast(2)
                 snackbarScope.launch {
-                    prewarmAssistantMarkdown(messages.takeLast(2))
+                    context.saveLocalChatWindow(chatScopeId, persistedMessages)
+                    context.clearLocalStreamingDraft(chatScopeId)
+                    prewarmAssistantMarkdown(prewarmMessages)
                 }
             }
         }
