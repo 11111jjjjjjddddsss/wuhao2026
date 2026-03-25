@@ -2580,6 +2580,7 @@ fun ChatScreen() {
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
     var inputFieldFocused by remember(chatScopeId) { mutableStateOf(false) }
     var suppressInputCursor by remember(chatScopeId) { mutableStateOf(false) }
+    var sendUiSettling by remember(chatScopeId) { mutableStateOf(false) }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
@@ -3668,76 +3669,87 @@ fun ChatScreen() {
     }
 
     fun commitSendMessage(text: String) {
-        if (text.isEmpty() || isStreaming) return
+        if (text.isEmpty() || isStreaming || sendUiSettling) return
+        val hadActiveInputSession = imeVisible || inputFieldFocused
+        sendUiSettling = true
         suppressInputCursor = true
         inputFieldFocused = false
         clearInputSelectionToolbar()
         input.value = TextFieldValue("")
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
-        hasStartedConversation = true
-        initialBottomSnapDone = true
-        LaunchUiGate.chatReady = true
-        restoreBottomAfterImeClose = false
-        suppressJumpButtonForImeTransition = true
-        val userId = "user_${UUID.randomUUID()}"
-        messages.add(ChatMessage(userId, ChatRole.USER, text))
-        anchoredUserMessageId = userId
-        streamingAnchorTopPx = -1
-        streamingContentBottomPx = -1
-        streamBottomFollowActive = false
-        pendingResumeAutoFollow = false
-        pendingFinalBottomSnap = false
-        streamingFreshStart = -1
-        streamingFreshEnd = -1
-        streamingLineAdvanceTick = 0
-        lastStreamingFreshRevealMs = 0L
-        userDetachedFromBottom = false
-        jumpButtonVisible = false
-        isStreaming = true
-
-        trimMessagesInPlace()
-        persistTick++
         snackbarScope.launch {
-            context.saveLocalChatWindow(chatScopeId, messages)
-        }
-        streamingMessageId = "assistant_${UUID.randomUUID()}"
-        streamingMessageContent = ""
-        streamingRevealBuffer = ""
-        streamingFreshStart = -1
-        streamingFreshEnd = -1
-        streamingLineAdvanceTick = 0
-        lastStreamingFreshRevealMs = 0L
-        context.saveLocalStreamingDraftSync(
-            chatScopeId = chatScopeId,
-            draft = LocalStreamingDraft(
-                messageId = streamingMessageId.orEmpty(),
-                content = "",
-                revealBuffer = "",
-                anchoredUserMessageId = anchoredUserMessageId,
-                savedAtMs = SystemClock.uptimeMillis()
-            )
-        )
-        streamBottomSpacerPx = maxOf(
-            (messageViewportHeightPx * SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO).roundToInt(),
-            minSendAnchorExtraBottomSpacePx
-        )
-        streamingBackgrounded = false
-        autoScrollMode = AutoScrollMode.AnchorUser
-        userInteracting = false
-        sendTick++
+            try {
+                if (hadActiveInputSession) {
+                    withFrameNanos { }
+                }
+                hasStartedConversation = true
+                initialBottomSnapDone = true
+                LaunchUiGate.chatReady = true
+                restoreBottomAfterImeClose = false
+                suppressJumpButtonForImeTransition = true
+                val userId = "user_${UUID.randomUUID()}"
+                messages.add(ChatMessage(userId, ChatRole.USER, text))
+                anchoredUserMessageId = userId
+                streamingAnchorTopPx = -1
+                streamingContentBottomPx = -1
+                streamBottomFollowActive = false
+                pendingResumeAutoFollow = false
+                pendingFinalBottomSnap = false
+                streamingFreshStart = -1
+                streamingFreshEnd = -1
+                streamingLineAdvanceTick = 0
+                lastStreamingFreshRevealMs = 0L
+                userDetachedFromBottom = false
+                jumpButtonVisible = false
+                isStreaming = true
 
-        fakeStreamJob?.cancel()
-        streamRevealJob?.cancel()
-        streamRevealJob = null
-        launchLocalFakeStream(applyInitialDelay = true)
+                trimMessagesInPlace()
+                persistTick++
+                snackbarScope.launch {
+                    context.saveLocalChatWindow(chatScopeId, messages)
+                }
+                streamingMessageId = "assistant_${UUID.randomUUID()}"
+                streamingMessageContent = ""
+                streamingRevealBuffer = ""
+                streamingFreshStart = -1
+                streamingFreshEnd = -1
+                streamingLineAdvanceTick = 0
+                lastStreamingFreshRevealMs = 0L
+                context.saveLocalStreamingDraftSync(
+                    chatScopeId = chatScopeId,
+                    draft = LocalStreamingDraft(
+                        messageId = streamingMessageId.orEmpty(),
+                        content = "",
+                        revealBuffer = "",
+                        anchoredUserMessageId = anchoredUserMessageId,
+                        savedAtMs = SystemClock.uptimeMillis()
+                    )
+                )
+                streamBottomSpacerPx = maxOf(
+                    (messageViewportHeightPx * SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO).roundToInt(),
+                    minSendAnchorExtraBottomSpacePx
+                )
+                streamingBackgrounded = false
+                autoScrollMode = AutoScrollMode.AnchorUser
+                userInteracting = false
+                sendTick++
+
+                fakeStreamJob?.cancel()
+                streamRevealJob?.cancel()
+                streamRevealJob = null
+                launchLocalFakeStream(applyInitialDelay = true)
+            } finally {
+                sendUiSettling = false
+            }
+        }
     }
 
     fun sendMessage() {
         val text = input.value.text
         val sendGate = buildSendGateState(
             rawInput = text,
-            isStreaming = isStreaming,
+            isStreaming = isStreaming || sendUiSettling,
             exceedsInputLimit = text.length > INPUT_MAX_CHARS
         )
         if (!sendGate.canSubmit) return
@@ -4320,7 +4332,7 @@ fun ChatScreen() {
                         ) {
                                 val sendGate = buildSendGateState(
                                     rawInput = input.value.text,
-                                    isStreaming = isStreaming,
+                                    isStreaming = isStreaming || sendUiSettling,
                                     exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
                                 )
                                 val inputTextToolbar = remember(chatScopeId) {
