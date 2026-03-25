@@ -1480,7 +1480,6 @@ private fun AssistantMessageContent(
                             text = AI_DISCLAIMER_TEXT,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 16.dp)
                                 .alpha(0f),
                             style = assistantDisclaimerTextStyle(),
                             textAlign = TextAlign.Start
@@ -1509,8 +1508,7 @@ private fun AssistantMessageContent(
                 Text(
                     text = AI_DISCLAIMER_TEXT,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
+                        .fillMaxWidth(),
                     style = assistantDisclaimerTextStyle(),
                     textAlign = TextAlign.Start
                 )
