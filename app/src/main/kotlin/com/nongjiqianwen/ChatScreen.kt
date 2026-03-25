@@ -2864,6 +2864,7 @@ fun ChatScreen() {
         atBottom,
         messages.size,
         hasStreamingItem,
+        pendingCompletedAssistantMessage?.id,
         pendingFinalBottomSnap,
         isStreaming,
         userDetachedFromBottom,
@@ -2873,6 +2874,7 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             startupLayoutReady &&
+                pendingCompletedAssistantMessage == null &&
                 !pendingFinalBottomSnap &&
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
