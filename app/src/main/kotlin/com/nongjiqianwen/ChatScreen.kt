@@ -2580,6 +2580,9 @@ fun ChatScreen() {
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
     var inputFieldFocused by remember(chatScopeId) { mutableStateOf(false) }
     var suppressInputCursor by remember(chatScopeId) { mutableStateOf(false) }
+    var inputChromeFreezeHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var settledStreamingStickyHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var settledStreamingStickyMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
@@ -3203,6 +3206,9 @@ fun ChatScreen() {
             pendingFinalBottomSnap = false
             pendingCompletedAssistantMessage = null
             pendingCompletedAssistantSnap = false
+            settledStreamingStickyMessageId = null
+            settledStreamingStickyHeightPx = 0
+            inputChromeFreezeHeightPx = 0
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
             if (clearVisibleContent) {
@@ -3567,6 +3573,7 @@ fun ChatScreen() {
             autoScrollMode = AutoScrollMode.Idle
             jumpButtonVisible = false
             if (finalContent.isNotBlank()) {
+                settledStreamingStickyMessageId = finalId.orEmpty()
                 pendingCompletedAssistantMessage = ChatMessage(
                     id = finalId.orEmpty(),
                     role = ChatRole.ASSISTANT,
@@ -3578,6 +3585,8 @@ fun ChatScreen() {
                 streamingMessageContent = ""
                 pendingCompletedAssistantMessage = null
                 pendingCompletedAssistantSnap = false
+                settledStreamingStickyMessageId = null
+                settledStreamingStickyHeightPx = 0
                 persistTick++
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
             }
@@ -3670,6 +3679,9 @@ fun ChatScreen() {
         suppressInputCursor = true
         inputFieldFocused = false
         clearInputSelectionToolbar()
+        inputChromeFreezeHeightPx = inputChromeRowHeightPx.takeIf { it > 0 } ?: inputChromeFreezeHeightPx
+        settledStreamingStickyMessageId = null
+        settledStreamingStickyHeightPx = 0
         input.value = TextFieldValue("")
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
@@ -3837,6 +3849,12 @@ fun ChatScreen() {
         suppressJumpButtonForImeTransition = false
     }
 
+    LaunchedEffect(imeVisible, inputChromeFreezeHeightPx) {
+        if (inputChromeFreezeHeightPx <= 0 || imeVisible) return@LaunchedEffect
+        repeat(3) { withFrameNanos { } }
+        inputChromeFreezeHeightPx = 0
+    }
+
     LaunchedEffect(pendingFinalBottomSnap, messages.size, isStreaming) {
         if (!pendingFinalBottomSnap || isStreaming) return@LaunchedEffect
         for (attempt in 0 until 4) {
@@ -3880,6 +3898,16 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(settledStreamingStickyMessageId, pendingCompletedAssistantMessage?.id) {
+        val stickyMessageId = settledStreamingStickyMessageId ?: return@LaunchedEffect
+        if (pendingCompletedAssistantMessage != null) return@LaunchedEffect
+        repeat(3) { withFrameNanos { } }
+        if (pendingCompletedAssistantMessage == null && settledStreamingStickyMessageId == stickyMessageId) {
+            settledStreamingStickyMessageId = null
+            settledStreamingStickyHeightPx = 0
+        }
+    }
+
     fun completeStreamingImmediatelyFromBackground() {
         mainHandler.post {
             if (!isStreaming) return@post
@@ -3910,6 +3938,7 @@ fun ChatScreen() {
             autoScrollMode = AutoScrollMode.Idle
             jumpButtonVisible = false
             if (finalContent.isNotBlank()) {
+                settledStreamingStickyMessageId = finalId
                 pendingCompletedAssistantMessage = ChatMessage(
                     id = finalId,
                     role = ChatRole.ASSISTANT,
@@ -3921,6 +3950,8 @@ fun ChatScreen() {
                 streamingMessageContent = ""
                 pendingCompletedAssistantMessage = null
                 pendingCompletedAssistantSnap = false
+                settledStreamingStickyMessageId = null
+                settledStreamingStickyHeightPx = 0
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
                 val persistedMessages = messages.toList()
                 val prewarmMessages = persistedMessages.takeLast(2)
@@ -4327,7 +4358,13 @@ fun ChatScreen() {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
+                                    .then(
+                                        if (inputChromeFreezeHeightPx > 0) {
+                                            Modifier.height(with(density) { inputChromeFreezeHeightPx.toDp() })
+                                        } else {
+                                            Modifier.heightIn(min = inputBarHeight, max = inputBarMaxHeight)
+                                        }
+                                    )
                                     .padding(end = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -4574,13 +4611,24 @@ fun ChatScreen() {
                                         }
                                 ) {
                                     if (msg.role == ChatRole.ASSISTANT) {
+                                        val assistantStickyModifier =
+                                            if (
+                                                msg.id == settledStreamingStickyMessageId &&
+                                                settledStreamingStickyHeightPx > 0
+                                            ) {
+                                                Modifier.heightIn(min = with(density) { settledStreamingStickyHeightPx.toDp() })
+                                            } else {
+                                                Modifier
+                                            }
                                         SelectableRenderedStaticMessageContent(
                                             content = msg.content,
                                             textSelectionColors = messageSelectionColors,
                                             textToolbar = messageTextToolbar,
                                             selectionResetKey = messageSelectionResetEpoch,
                                             showDisclaimer = true,
-                                            modifier = Modifier.fillMaxWidth()
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .then(assistantStickyModifier)
                                         )
                                     } else {
                                         SelectableRenderedUserMessageBubble(
@@ -4637,17 +4685,34 @@ fun ChatScreen() {
                                         .fillMaxWidth()
                                         .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
                                 ) {
+                                    val settledStickyModifier =
+                                        if (
+                                            streamingSelectionMessageId == settledStreamingStickyMessageId &&
+                                            settledStreamingStickyHeightPx > 0
+                                        ) {
+                                            Modifier.heightIn(min = with(density) { settledStreamingStickyHeightPx.toDp() })
+                                        } else {
+                                            Modifier
+                                        }
                                     Box(
                                         modifier = Modifier
                                             .align(Alignment.Center)
                                             .widthIn(max = chromeMaxWidth)
                                             .fillMaxWidth()
+                                            .then(settledStickyModifier)
                                             .onGloballyPositioned { coordinates ->
                                                 val bounds = coordinates.boundsInWindow()
                                                 streamingAnchorTopPx =
                                                     (bounds.top - messageViewportTopPx).roundToInt()
                                                 streamingContentBottomPx =
                                                     (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                if (
+                                                    coordinates.size.height > 0 &&
+                                                    (isStreaming || settledStreamingMessage != null)
+                                                ) {
+                                                    settledStreamingStickyHeightPx =
+                                                        maxOf(settledStreamingStickyHeightPx, coordinates.size.height)
+                                                }
                                                 if (streamingSelectionMessageId.isNotBlank()) {
                                                     messageSelectionBoundsById[streamingSelectionMessageId] = bounds
                                                 }
