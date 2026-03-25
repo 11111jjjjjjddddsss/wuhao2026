@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
@@ -85,7 +86,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -118,6 +118,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.focus.onFocusChanged
@@ -1541,6 +1542,63 @@ private fun AssistantMessageContent(
 }
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
+private fun ChatInputField(
+    value: TextFieldValue,
+    focused: Boolean,
+    suppressCursor: Boolean,
+    onValueChange: (TextFieldValue) -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+    placeholder: (@Composable () -> Unit)? = null,
+    singleLine: Boolean = false,
+    minLines: Int = 1,
+    maxLines: Int = 6,
+    textStyle: TextStyle = TextStyle(
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
+        color = Color(0xFF111111)
+    ),
+    colors: Any? = null,
+    modifier: Modifier = Modifier
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier.onFocusChanged { focusState ->
+            onFocusChanged(focusState.isFocused)
+        },
+        textStyle = textStyle,
+        singleLine = singleLine,
+        minLines = minLines,
+        maxLines = maxLines,
+        cursorBrush = SolidColor(
+            if (focused && !suppressCursor) {
+                Color(0xFF111111)
+            } else {
+                Color.Transparent
+            }
+        ),
+        decorationBox = { innerTextField ->
+            if (colors != null) Unit
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 11.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (value.text.isEmpty()) {
+                    Text(
+                        text = "描述种植问题",
+                        color = Color(0xFFAEAFB4)
+                    )
+                }
+                innerTextField()
+            }
+        }
+    )
+}
+
+@Composable
 private fun AssistantStreamingWaitingIndicator(modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     val lineHeight = with(density) {
@@ -1596,15 +1654,12 @@ private fun AssistantStreamingContent(
     ) {
         completedModels.forEachIndexed { index, model ->
             key("streaming_completed_$index:${blockState.completedBlocks[index]}") {
-                AssistantStreamingActiveBlock(
+                AssistantStreamingCommittedBlock(
                     model = model,
                     showLeadingSectionDivider = shouldShowStreamingSectionDivider(
                         previous = completedModels.getOrNull(index - 1),
                         current = model
                     ),
-                    lineAdvanceTick = 0,
-                    strictLineReveal = false,
-                    lineRevealLocked = false,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -2538,7 +2593,7 @@ fun ChatScreen() {
         maxOf(finalBottomSnapTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
     }
     val activeStreamBottomSpacerPx = if (
-        isStreaming &&
+        (isStreaming || pendingCompletedAssistantMessage != null) &&
         anchoredUserMessageId != null &&
         !userDetachedFromBottom
     ) {
@@ -3364,7 +3419,7 @@ fun ChatScreen() {
 
     LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
         if (streamBottomSpacerPx <= 0) return@LaunchedEffect
-        if (!isStreaming || autoScrollMode == AutoScrollMode.Idle) {
+        if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && pendingCompletedAssistantMessage == null) {
             streamBottomSpacerPx = 0
         }
     }
@@ -3504,7 +3559,6 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             streamingAnchorTopPx = -1
-            streamBottomSpacerPx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
@@ -3613,6 +3667,12 @@ fun ChatScreen() {
 
     fun commitSendMessage(text: String) {
         if (text.isEmpty() || isStreaming) return
+        suppressInputCursor = true
+        inputFieldFocused = false
+        clearInputSelectionToolbar()
+        input.value = TextFieldValue("")
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         hasStartedConversation = true
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
@@ -3633,10 +3693,6 @@ fun ChatScreen() {
         userDetachedFromBottom = false
         jumpButtonVisible = false
         isStreaming = true
-        suppressInputCursor = true
-        focusManager.clearFocus(force = true)
-        keyboardController?.hide()
-        input.value = TextFieldValue("")
 
         trimMessagesInPlace()
         persistTick++
@@ -3808,6 +3864,7 @@ fun ChatScreen() {
             messageId = completedMessage.id,
             content = completedMessage.content
         )
+        streamBottomSpacerPx = 0
         streamingMessageId = null
         streamingMessageContent = ""
         pendingCompletedAssistantMessage = null
@@ -3845,7 +3902,6 @@ fun ChatScreen() {
             streamingFreshStart = -1
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
-            streamBottomSpacerPx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
@@ -4279,8 +4335,16 @@ fun ChatScreen() {
                                     LocalTextSelectionColors provides inputSelectionColors,
                                     LocalTextToolbar provides inputTextToolbar
                                 ) {
-                                    TextField(
+                                    ChatInputField(
                                         value = input.value,
+                                        focused = inputFieldFocused,
+                                        suppressCursor = suppressInputCursor,
+                                        onFocusChanged = { focused ->
+                                            inputFieldFocused = focused
+                                            if (focused) {
+                                                suppressInputCursor = false
+                                            }
+                                        },
                                         onValueChange = {
                                             if (
                                                 it.text.length > INPUT_MAX_CHARS &&
@@ -4293,13 +4357,7 @@ fun ChatScreen() {
                                         },
                                         modifier = Modifier
                                             .weight(1f)
-                                            .padding(start = 2.dp)
-                                            .onFocusChanged { focusState ->
-                                                inputFieldFocused = focusState.isFocused
-                                                if (focusState.isFocused) {
-                                                    suppressInputCursor = false
-                                                }
-                                            },
+                                            .padding(start = 2.dp),
                                         placeholder = { Text("描述种植问题", color = Color(0xFFAEAFB4)) },
                                         singleLine = false,
                                         minLines = 1,
