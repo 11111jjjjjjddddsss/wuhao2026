@@ -894,8 +894,86 @@ private fun StringBuilder.appendParagraphLine(line: String) {
     append(line)
 }
 
+private fun splitMarkdownTableCells(line: String): List<String> {
+    val trimmed = line.trim().removePrefix("|").removeSuffix("|")
+    if (trimmed.isBlank()) return emptyList()
+    return trimmed.split('|').map { it.trim() }
+}
+
+private fun isMarkdownTableSeparatorLine(line: String): Boolean {
+    val trimmed = line.trim()
+    if (!trimmed.contains('|')) return false
+    val normalized = trimmed.replace("|", "").replace(" ", "")
+    return normalized.isNotEmpty() && normalized.all { it == '-' || it == ':' }
+}
+
+private fun looksLikeMarkdownTableRow(line: String): Boolean {
+    val trimmed = line.trim()
+    if (trimmed.isBlank() || !trimmed.contains('|')) return false
+    if (isMarkdownTableSeparatorLine(trimmed)) return false
+    return splitMarkdownTableCells(trimmed).size >= 2
+}
+
+private fun fallbackMarkdownTableHeaders(headerCells: List<String>): List<String> {
+    return headerCells.mapIndexed { index, cell ->
+        cell.ifBlank { "\u5217${index + 1}" }
+    }
+}
+
+private fun convertMarkdownTableBlock(headerLine: String, rowLines: List<String>): List<String> {
+    val headers = fallbackMarkdownTableHeaders(splitMarkdownTableCells(headerLine))
+    if (headers.isEmpty()) return emptyList()
+    return rowLines.mapNotNull { rowLine ->
+        val values = splitMarkdownTableCells(rowLine)
+        if (values.isEmpty()) {
+            null
+        } else {
+            val pairs = headers.mapIndexedNotNull { index, header ->
+                val value = values.getOrNull(index)?.trim().orEmpty()
+                if (value.isBlank()) null else "$header\uff1a$value"
+            }
+            when {
+                pairs.isNotEmpty() -> "- ${pairs.joinToString("\uff1b")}"
+                else -> "- ${values.joinToString(" | ").trim()}"
+            }
+        }
+    }
+}
+
+private fun normalizeMarkdownTables(content: String): String {
+    val normalized = content.replace("\r\n", "\n")
+    if (!normalized.contains('|')) return normalized
+    val lines = normalized.lines()
+    if (lines.isEmpty()) return normalized
+    val result = mutableListOf<String>()
+    var index = 0
+    while (index < lines.size) {
+        val current = lines[index]
+        if (
+            index + 1 < lines.size &&
+            looksLikeMarkdownTableRow(current) &&
+            isMarkdownTableSeparatorLine(lines[index + 1])
+        ) {
+            val rowLines = mutableListOf<String>()
+            var cursor = index + 2
+            while (cursor < lines.size && looksLikeMarkdownTableRow(lines[cursor])) {
+                rowLines += lines[cursor]
+                cursor++
+            }
+            if (rowLines.isNotEmpty()) {
+                result += convertMarkdownTableBlock(current, rowLines)
+                index = cursor
+                continue
+            }
+        }
+        result += current
+        index++
+    }
+    return result.joinToString("\n")
+}
+
 private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
-    val normalized = normalizeAssistantText(content)
+    val normalized = normalizeAssistantText(normalizeMarkdownTables(content))
     if (normalized.isBlank()) return emptyList()
     val blocks = mutableListOf<MarkdownBlock>()
     val paragraph = StringBuilder()
