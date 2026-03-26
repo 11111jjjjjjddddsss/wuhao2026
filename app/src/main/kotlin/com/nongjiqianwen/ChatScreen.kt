@@ -1433,6 +1433,11 @@ private fun SessionSnapshot.findRoundByClientMessageId(clientMessageId: String):
             .firstOrNull { it.client_msg_id == clientMessageId }
 }
 
+private fun trailingRecoverableUserMessageId(source: List<ChatMessage>): String? =
+    source.lastOrNull()
+        ?.takeIf { it.role == ChatRole.USER && it.id.isNotBlank() }
+        ?.id
+
 private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = withContext(Dispatchers.Default) {
     messages
         .filter { it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
@@ -2543,6 +2548,9 @@ fun ChatScreen() {
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
     }
+    val startupRecoverableUserMessageId = remember(chatScopeId, initialLocalMessages, hasRemoteHistorySource) {
+        if (hasRemoteHistorySource) trailingRecoverableUserMessageId(initialLocalMessages) else null
+    }
     val messages = remember(chatScopeId) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
@@ -2614,6 +2622,7 @@ fun ChatScreen() {
     var userDetachedFromBottom by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
+    var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
     var pendingCompletedAssistantMessage by remember(chatScopeId) { mutableStateOf<ChatMessage?>(null) }
     var pendingCompletedAssistantSnap by remember(chatScopeId) { mutableStateOf(false) }
@@ -3218,6 +3227,7 @@ fun ChatScreen() {
     LaunchedEffect(chatScopeId) {
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
+        remoteRecoverySourceUserMessageId = null
         initialBottomSnapDone = false
         jumpButtonVisible = false
         restoreBottomAfterImeClose = false
@@ -3273,6 +3283,12 @@ fun ChatScreen() {
             .forEach { failedAssistantMessageStates.remove(it.key) }
     }
 
+    fun hasSettledAssistantMessageForUser(sourceUserMessageId: String): Boolean {
+        val assistantMessageId = assistantMessageIdForSourceUser(sourceUserMessageId)
+        return failedAssistantMessageStates[assistantMessageId] == null &&
+            messages.any { it.id == assistantMessageId && it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
+    }
+
     fun interruptedHintText(reason: String): String =
         when (reason) {
             "network" -> "\u7f51\u7edc\u6ce2\u52a8\uff0c\u56de\u590d\u672a\u5b8c\u6210"
@@ -3308,6 +3324,7 @@ fun ChatScreen() {
     fun applyRecoveredAssistantRound(sourceUserMessageId: String, recoveredRound: ARound) {
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
+        remoteRecoverySourceUserMessageId = null
         failedUserMessageStates.remove(sourceUserMessageId)
         clearFailedAssistantStateForUser(sourceUserMessageId)
         if (recoveredRound.user.isNotBlank()) {
@@ -3339,7 +3356,14 @@ fun ChatScreen() {
         fallbackContent: String,
         reason: String
     ) {
+        if (
+            remoteRecoverySourceUserMessageId == sourceUserMessageId &&
+            remoteRecoveryJob?.isActive == true
+        ) {
+            return
+        }
         remoteRecoveryJob?.cancel()
+        remoteRecoverySourceUserMessageId = sourceUserMessageId
         remoteRecoveryJob = snackbarScope.launch {
             var recoveredRound: ARound? = null
             for (attempt in 0 until REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS) {
@@ -3356,6 +3380,7 @@ fun ChatScreen() {
             if (matchedRound != null) {
                 applyRecoveredAssistantRound(sourceUserMessageId, matchedRound)
             } else {
+                remoteRecoverySourceUserMessageId = null
                 finalizeInterruptedAssistant(
                     sourceUserMessageId = sourceUserMessageId,
                     assistantMessageId = assistantMessageId,
@@ -3385,6 +3410,7 @@ fun ChatScreen() {
         mainHandler.post {
             remoteRecoveryJob?.cancel()
             remoteRecoveryJob = null
+            remoteRecoverySourceUserMessageId = null
             SessionApi.cancelCurrentStream()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
@@ -3450,6 +3476,27 @@ fun ChatScreen() {
         context.saveLocalChatWindow(chatScopeId, initialLocalMessages)
         context.clearLocalStreamingDraft(chatScopeId)
         jumpButtonVisible = false
+    }
+
+    LaunchedEffect(chatScopeId, historyHydrationComplete, startupRecoverableUserMessageId) {
+        val sourceUserMessageId = startupRecoverableUserMessageId ?: return@LaunchedEffect
+        if (!hasRemoteHistorySource || !historyHydrationComplete) return@LaunchedEffect
+        if (hasStartedConversation || isStreaming) return@LaunchedEffect
+        if (hasSettledAssistantMessageForUser(sourceUserMessageId)) return@LaunchedEffect
+        repeat(3) { attempt ->
+            val snapshot = awaitRemoteSnapshot()
+            val recoveredRound = snapshot
+                ?.findRoundByClientMessageId(sourceUserMessageId)
+                ?.takeIf { it.assistant.isNotBlank() }
+            if (recoveredRound != null) {
+                applyRecoveredAssistantRound(sourceUserMessageId, recoveredRound)
+                initialBottomSnapDone = false
+                return@LaunchedEffect
+            }
+            if (attempt < 2) {
+                delay(1100L * (attempt + 1))
+            }
+        }
     }
 
     LaunchedEffect(persistTick) {
@@ -4050,6 +4097,7 @@ fun ChatScreen() {
                 }
                 remoteRecoveryJob?.cancel()
                 remoteRecoveryJob = null
+                remoteRecoverySourceUserMessageId = null
                 streamingMessageId = assistantMessageIdForSourceUser(userId)
                 streamingMessageContent = ""
                 streamingRevealBuffer = ""
