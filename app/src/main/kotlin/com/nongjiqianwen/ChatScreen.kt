@@ -1735,8 +1735,12 @@ private fun ChatInputField(
     value: TextFieldValue,
     focused: Boolean,
     suppressCursor: Boolean,
+    settlingSnapshotText: String,
+    settlingSnapshotActive: Boolean,
+    settlingSnapshotHeightPx: Int,
     onValueChange: (TextFieldValue) -> Unit,
     onFocusChanged: (Boolean) -> Unit,
+    onContentHeightChanged: (Int) -> Unit,
     placeholder: (@Composable () -> Unit)? = null,
     singleLine: Boolean = false,
     minLines: Int = 1,
@@ -1749,6 +1753,10 @@ private fun ChatInputField(
     colors: Any? = null,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
+    val settlingSnapshotMinHeight = with(density) {
+        settlingSnapshotHeightPx.coerceAtLeast(0).toDp()
+    }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
@@ -1771,16 +1779,34 @@ private fun ChatInputField(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 11.dp),
+                    .padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 11.dp)
+                    .heightIn(min = settlingSnapshotMinHeight),
                 contentAlignment = Alignment.CenterStart
             ) {
-                if (value.text.isEmpty()) {
+                if (settlingSnapshotActive && settlingSnapshotText.isNotBlank()) {
+                    Text(
+                        text = settlingSnapshotText,
+                        modifier = Modifier.fillMaxWidth(),
+                        style = textStyle
+                    )
+                } else if (value.text.isEmpty()) {
                     Text(
                         text = "描述种植问题",
                         color = Color(0xFFAEAFB4)
                     )
                 }
-                innerTextField()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(if (settlingSnapshotActive) 0f else 1f)
+                        .onSizeChanged { size ->
+                            if (size.height > 0 && value.text.isNotBlank()) {
+                                onContentHeightChanged(size.height)
+                            }
+                        }
+                ) {
+                    innerTextField()
+                }
             }
         }
     )
@@ -2771,8 +2797,7 @@ fun ChatScreen() {
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
-    var pendingCompletedAssistantMessage by remember(chatScopeId) { mutableStateOf<ChatMessage?>(null) }
-    var pendingCompletedAssistantSnap by remember(chatScopeId) { mutableStateOf(false) }
+    var pendingStreamSpacerRelease by remember(chatScopeId) { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
     var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
@@ -2786,6 +2811,10 @@ fun ChatScreen() {
     var composerStatusHintText by remember { mutableStateOf("") }
     var inputFieldFocused by remember(chatScopeId) { mutableStateOf(false) }
     var suppressInputCursor by remember(chatScopeId) { mutableStateOf(false) }
+    var inputContentHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var composerSettlingSnapshotText by remember(chatScopeId) { mutableStateOf("") }
+    var composerSettlingSnapshotHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var composerSettlingSnapshotActive by remember(chatScopeId) { mutableStateOf(false) }
     var sendUiSettling by remember(chatScopeId) { mutableStateOf(false) }
     val failedUserMessageStates = remember(chatScopeId) { mutableStateMapOf<String, String>() }
     val failedAssistantMessageStates = remember(chatScopeId) {
@@ -2804,7 +2833,7 @@ fun ChatScreen() {
         maxOf(finalBottomSnapTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
     }
     val activeStreamBottomSpacerPx = if (
-        (isStreaming || pendingCompletedAssistantMessage != null) &&
+        (isStreaming || pendingStreamSpacerRelease) &&
         anchoredUserMessageId != null &&
         !userDetachedFromBottom
     ) {
@@ -2823,8 +2852,8 @@ fun ChatScreen() {
     val lineRevealUnlockThresholdPx = remember(assistantLineStepPx) {
         (assistantLineStepPx * 0.06f).roundToInt().coerceAtLeast(3)
     }
-    val hasStreamingItem by remember(isStreaming, streamingMessageContent) {
-        derivedStateOf { isStreaming || streamingMessageContent.isNotBlank() }
+    val hasStreamingItem by remember(isStreaming, pendingStreamSpacerRelease, streamingMessageId) {
+        derivedStateOf { isStreaming || pendingStreamSpacerRelease || !streamingMessageId.isNullOrBlank() }
     }
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,
@@ -3075,8 +3104,8 @@ fun ChatScreen() {
         atBottom,
         messages.size,
         hasStreamingItem,
-        pendingCompletedAssistantMessage?.id,
         pendingFinalBottomSnap,
+        pendingStreamSpacerRelease,
         isStreaming,
         userDetachedFromBottom,
         keyboardVisibleForJumpButton,
@@ -3085,7 +3114,7 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             startupLayoutReady &&
-                pendingCompletedAssistantMessage == null &&
+                !pendingStreamSpacerRelease &&
                 !pendingFinalBottomSnap &&
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
@@ -3408,7 +3437,21 @@ fun ChatScreen() {
             addAll(failedUserMessageStates.keys)
             addAll(failedAssistantMessageStates.keys)
         }
-        return messages.filterNot { it.id in failedIds }
+        val transientAssistantId = streamingMessageId
+        return messages.filterNot { message ->
+            message.id in failedIds ||
+                (
+                    message.role == ChatRole.ASSISTANT &&
+                        (
+                            message.content.isBlank() ||
+                                (
+                                    transientAssistantId != null &&
+                                        message.id == transientAssistantId &&
+                                        isStreaming
+                                    )
+                            )
+                    )
+        }
     }
 
     fun upsertUserMessage(messageId: String, content: String) {
@@ -3420,6 +3463,30 @@ fun ChatScreen() {
             }
         } else {
             messages.add(finalMessage)
+        }
+    }
+
+    fun upsertAssistantMessagePlaceholder(messageId: String, sourceUserMessageId: String) {
+        val placeholder = ChatMessage(messageId, ChatRole.ASSISTANT, "")
+        val existingIndex = messages.indexOfFirst { it.id == messageId }
+        if (existingIndex >= 0) {
+            if (messages[existingIndex] != placeholder) {
+                messages[existingIndex] = placeholder
+            }
+            return
+        }
+        val userIndex = messages.indexOfFirst { it.id == sourceUserMessageId && it.role == ChatRole.USER }
+        if (userIndex >= 0) {
+            messages.add(userIndex + 1, placeholder)
+        } else {
+            messages.add(placeholder)
+        }
+    }
+
+    fun removeMessageById(messageId: String) {
+        val index = messages.indexOfFirst { it.id == messageId }
+        if (index >= 0) {
+            messages.removeAt(index)
         }
     }
 
@@ -3575,10 +3642,12 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
-            pendingCompletedAssistantMessage = null
-            pendingCompletedAssistantSnap = false
+            pendingStreamSpacerRelease = false
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
+            composerSettlingSnapshotActive = false
+            composerSettlingSnapshotText = ""
+            composerSettlingSnapshotHeightPx = 0
             if (clearVisibleContent) {
                 streamingMessageContent = ""
             }
@@ -3825,7 +3894,7 @@ fun ChatScreen() {
 
     LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
         if (streamBottomSpacerPx <= 0) return@LaunchedEffect
-        if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && pendingCompletedAssistantMessage == null) {
+        if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && !pendingStreamSpacerRelease) {
             streamBottomSpacerPx = 0
         }
     }
@@ -3979,17 +4048,26 @@ fun ChatScreen() {
             autoScrollMode = AutoScrollMode.Idle
             jumpButtonVisible = false
             if (finalContent.isNotBlank()) {
-                pendingCompletedAssistantMessage = ChatMessage(
-                    id = finalId.orEmpty(),
-                    role = ChatRole.ASSISTANT,
+                applyCompletedAssistantMessageInPlace(
+                    target = messages,
+                    messageId = finalId.orEmpty(),
                     content = finalContent
                 )
-                pendingCompletedAssistantSnap = shouldSnapToBottomOnFinish
+                pendingStreamSpacerRelease = true
+                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                persistTick++
+                val persistedMessages = persistableMessagesSnapshot()
+                val prewarmMessages = persistedMessages.takeLast(2)
+                snackbarScope.launch {
+                    context.saveLocalChatWindow(chatScopeId, persistedMessages)
+                    context.clearLocalStreamingDraft(chatScopeId)
+                    prewarmAssistantMarkdown(prewarmMessages)
+                }
             } else {
+                finalId?.let(::removeMessageById)
                 streamingMessageId = null
                 streamingMessageContent = ""
-                pendingCompletedAssistantMessage = null
-                pendingCompletedAssistantSnap = false
+                pendingStreamSpacerRelease = false
                 persistTick++
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
             }
@@ -4102,8 +4180,7 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
-            pendingCompletedAssistantMessage = null
-            pendingCompletedAssistantSnap = false
+            pendingStreamSpacerRelease = false
             streamingBackgrounded = false
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
@@ -4116,6 +4193,8 @@ fun ChatScreen() {
                         messageId = finalId,
                         content = finalContent
                     )
+                } else {
+                    removeMessageById(finalId)
                 }
                 scheduleRemoteAssistantRecovery(
                     sourceUserMessageId = sourceUserMessageId,
@@ -4136,6 +4215,7 @@ fun ChatScreen() {
                 )
                 persistTick++
             } else {
+                removeMessageById(finalId)
                 showComposerStatusHint(
                     when (reason) {
                         "network" -> "网络波动，回复未完成"
@@ -4157,6 +4237,9 @@ fun ChatScreen() {
         val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
         sendUiSettling = true
         if (collapseComposer) {
+            composerSettlingSnapshotText = text
+            composerSettlingSnapshotHeightPx = inputContentHeightPx
+            composerSettlingSnapshotActive = text.isNotBlank()
             suppressInputCursor = true
             inputFieldFocused = false
             clearInputSelectionToolbar()
@@ -4200,6 +4283,9 @@ fun ChatScreen() {
         val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
         sendUiSettling = true
         if (collapseComposer) {
+            composerSettlingSnapshotText = text
+            composerSettlingSnapshotHeightPx = inputContentHeightPx
+            composerSettlingSnapshotActive = text.isNotBlank()
             suppressInputCursor = true
             inputFieldFocused = false
             clearInputSelectionToolbar()
@@ -4229,6 +4315,7 @@ fun ChatScreen() {
                 streamBottomFollowActive = false
                 pendingResumeAutoFollow = false
                 pendingFinalBottomSnap = false
+                pendingStreamSpacerRelease = false
                 streamingFreshStart = -1
                 streamingFreshEnd = -1
                 streamingLineAdvanceTick = 0
@@ -4237,6 +4324,12 @@ fun ChatScreen() {
                 jumpButtonVisible = false
                 isStreaming = true
 
+                val assistantId = assistantMessageIdForSourceUser(userId)
+                streamingMessageId = assistantId
+                upsertAssistantMessagePlaceholder(
+                    messageId = assistantId,
+                    sourceUserMessageId = userId
+                )
                 trimMessagesInPlace()
                 persistTick++
                 snackbarScope.launch {
@@ -4245,7 +4338,6 @@ fun ChatScreen() {
                 remoteRecoveryJob?.cancel()
                 remoteRecoveryJob = null
                 remoteRecoverySourceUserMessageId = null
-                streamingMessageId = assistantMessageIdForSourceUser(userId)
                 streamingMessageContent = ""
                 streamingRevealBuffer = ""
                 streamingFreshStart = -1
@@ -4325,6 +4417,29 @@ fun ChatScreen() {
             existingUserMessageId = sourceUserMessage.id,
             collapseComposer = false
         )
+    }
+
+    LaunchedEffect(
+        composerSettlingSnapshotActive,
+        sendUiSettling,
+        imeVisible,
+        inputFieldFocused,
+        input.value.text
+    ) {
+        if (!composerSettlingSnapshotActive) return@LaunchedEffect
+        if (input.value.text.isNotEmpty() || inputFieldFocused) {
+            composerSettlingSnapshotActive = false
+            composerSettlingSnapshotText = ""
+            composerSettlingSnapshotHeightPx = 0
+            return@LaunchedEffect
+        }
+        if (sendUiSettling || imeVisible) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        if (!sendUiSettling && !imeVisible && !inputFieldFocused && input.value.text.isEmpty()) {
+            composerSettlingSnapshotActive = false
+            composerSettlingSnapshotText = ""
+            composerSettlingSnapshotHeightPx = 0
+        }
     }
 
     fun sendMessage() {
@@ -4457,28 +4572,13 @@ fun ChatScreen() {
         pendingFinalBottomSnap = false
     }
 
-    LaunchedEffect(pendingCompletedAssistantMessage?.id) {
-        val completedMessage = pendingCompletedAssistantMessage ?: return@LaunchedEffect
+    LaunchedEffect(pendingStreamSpacerRelease, pendingFinalBottomSnap, isStreaming, streamingMessageId) {
+        if (!pendingStreamSpacerRelease || isStreaming || pendingFinalBottomSnap) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
-        applyCompletedAssistantMessageInPlace(
-            target = messages,
-            messageId = completedMessage.id,
-            content = completedMessage.content
-        )
         streamBottomSpacerPx = 0
+        pendingStreamSpacerRelease = false
         streamingMessageId = null
         streamingMessageContent = ""
-        pendingCompletedAssistantMessage = null
-        persistTick++
-        pendingFinalBottomSnap = pendingCompletedAssistantSnap
-        pendingCompletedAssistantSnap = false
-        val persistedMessages = persistableMessagesSnapshot()
-        val prewarmMessages = persistedMessages.takeLast(2)
-        snackbarScope.launch {
-            context.saveLocalChatWindow(chatScopeId, persistedMessages)
-            context.clearLocalStreamingDraft(chatScopeId)
-            prewarmAssistantMarkdown(prewarmMessages)
-        }
     }
 
     fun completeStreamingImmediatelyFromBackground() {
@@ -4513,18 +4613,14 @@ fun ChatScreen() {
             autoScrollMode = AutoScrollMode.Idle
             jumpButtonVisible = false
             if (finalContent.isNotBlank()) {
-                pendingCompletedAssistantMessage = ChatMessage(
-                    id = finalId,
-                    role = ChatRole.ASSISTANT,
+                applyCompletedAssistantMessageInPlace(
+                    target = messages,
+                    messageId = finalId,
                     content = finalContent
                 )
-                pendingCompletedAssistantSnap = shouldSnapToBottomOnFinish
-            } else {
-                streamingMessageId = null
-                streamingMessageContent = ""
-                pendingCompletedAssistantMessage = null
-                pendingCompletedAssistantSnap = false
+                pendingStreamSpacerRelease = true
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                persistTick++
                 val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
                 snackbarScope.launch {
@@ -4532,6 +4628,12 @@ fun ChatScreen() {
                     context.clearLocalStreamingDraft(chatScopeId)
                     prewarmAssistantMarkdown(prewarmMessages)
                 }
+            } else {
+                removeMessageById(finalId)
+                streamingMessageId = null
+                streamingMessageContent = ""
+                pendingStreamSpacerRelease = false
+                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
             }
         }
     }
@@ -4624,7 +4726,11 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             val anchorTop = assistantStartAnchorTopPx
-            val anchorIndex = (messages.size + if (hasStreamingItem) 1 else 0) - 1
+            val anchorIndex =
+                anchoredUserMessageId
+                    ?.let { userId -> messages.indexOfFirst { it.id == userId } }
+                    ?.takeIf { it >= 0 }
+                    ?: messages.lastIndex
             if (anchorIndex >= 0) {
                 listState.scrollToItem(anchorIndex, scrollOffset = -anchorTop)
                 repeat(6) { withFrameNanos { } }
@@ -4949,11 +5055,17 @@ fun ChatScreen() {
                                         value = input.value,
                                         focused = inputFieldFocused,
                                         suppressCursor = suppressInputCursor,
+                                        settlingSnapshotText = composerSettlingSnapshotText,
+                                        settlingSnapshotActive = composerSettlingSnapshotActive,
+                                        settlingSnapshotHeightPx = composerSettlingSnapshotHeightPx,
                                         onFocusChanged = { focused ->
                                             inputFieldFocused = focused
                                             if (focused) {
                                                 suppressInputCursor = false
                                             }
+                                        },
+                                        onContentHeightChanged = { height ->
+                                            inputContentHeightPx = height
                                         },
                                         onValueChange = {
                                             if (
@@ -5137,8 +5249,20 @@ fun ChatScreen() {
                                     }
                                 }
                             }
-                            val fullCopyText = remember(msg.role, msg.content) {
-                                buildRenderedMessageCopyText(msg.role, msg.content)
+                            val isActiveStreamingAssistant =
+                                msg.role == ChatRole.ASSISTANT &&
+                                    msg.id == streamingMessageId &&
+                                    (isStreaming || pendingStreamSpacerRelease)
+                            val assistantDisplayContent =
+                                if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
+                                    streamingMessageContent
+                                } else {
+                                    msg.content
+                                }
+                            val copySourceContent =
+                                if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
+                            val fullCopyText = remember(msg.role, copySourceContent) {
+                                buildRenderedMessageCopyText(msg.role, copySourceContent)
                             }
                             val messageTextToolbar = remember(msg.id, msg.role, fullCopyText) {
                                 buildMessageSelectionTextToolbar(
@@ -5173,6 +5297,12 @@ fun ChatScreen() {
                                         .onGloballyPositioned { coordinates ->
                                             if (msg.role == ChatRole.ASSISTANT) {
                                                 val bounds = coordinates.boundsInWindow()
+                                                if (isActiveStreamingAssistant) {
+                                                    streamingAnchorTopPx =
+                                                        (bounds.top - messageViewportTopPx).roundToInt()
+                                                    streamingContentBottomPx =
+                                                        (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                }
                                                 if (messageSelectionBoundsById[msg.id] != bounds) {
                                                     messageSelectionBoundsById[msg.id] = bounds
                                                 }
@@ -5190,14 +5320,40 @@ fun ChatScreen() {
                                             modifier = Modifier.fillMaxWidth(),
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
-                                            SelectableRenderedStaticMessageContent(
-                                                content = msg.content,
-                                                textSelectionColors = messageSelectionColors,
-                                                textToolbar = messageTextToolbar,
-                                                selectionResetKey = messageSelectionResetEpoch,
-                                                showDisclaimer = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
+                                            if (isActiveStreamingAssistant) {
+                                                CompositionLocalProvider(
+                                                    LocalTextSelectionColors provides messageSelectionColors,
+                                                    LocalTextToolbar provides messageTextToolbar
+                                                ) {
+                                                    key(messageSelectionResetEpoch) {
+                                                        AssistantMessageContent(
+                                                            content = assistantDisplayContent,
+                                                            isStreaming = isStreaming,
+                                                            streamingFreshStart = streamingFreshStart,
+                                                            streamingFreshEnd = streamingFreshEnd,
+                                                            streamingFreshTick = streamingFreshTick,
+                                                            streamingLineAdvanceTick = streamingLineAdvanceTick,
+                                                            strictLineReveal =
+                                                                isStreaming &&
+                                                                    !userDetachedFromBottom &&
+                                                                    !userInteracting,
+                                                            lineRevealLocked = lineRevealLocked,
+                                                            selectionEnabled = !isStreaming,
+                                                            showDisclaimer = true,
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        )
+                                                    }
+                                                }
+                                            } else {
+                                                SelectableRenderedStaticMessageContent(
+                                                    content = msg.content,
+                                                    textSelectionColors = messageSelectionColors,
+                                                    textToolbar = messageTextToolbar,
+                                                    selectionResetKey = messageSelectionResetEpoch,
+                                                    showDisclaimer = true,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
                                             if (failedAssistantState != null) {
                                                 MessageStatusFooter(
                                                     statusText = "回复未完成",
@@ -5244,82 +5400,6 @@ fun ChatScreen() {
                                                     }
                                                 )
                                             }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (hasStreamingItem) {
-                            item(
-                                key = streamingMessageId ?: "streaming_item",
-                                contentType = ChatRole.ASSISTANT
-                            ) {
-                                val settledStreamingMessage = pendingCompletedAssistantMessage
-                                val streamingSelectionMessageId =
-                                    settledStreamingMessage?.id ?: streamingMessageId.orEmpty()
-                                val streamingSelectionContent =
-                                    settledStreamingMessage?.content ?: streamingMessageContent
-                                val streamingSelectionFullCopyText = remember(streamingSelectionContent) {
-                                    buildRenderedMessageCopyText(
-                                        ChatRole.ASSISTANT,
-                                        streamingSelectionContent
-                                    )
-                                }
-                                val streamingTextToolbar = remember(
-                                    streamingSelectionMessageId,
-                                    streamingSelectionFullCopyText
-                                ) {
-                                    buildMessageSelectionTextToolbar(
-                                        messageId = streamingSelectionMessageId,
-                                        role = ChatRole.ASSISTANT,
-                                        fullCopyText = streamingSelectionFullCopyText
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.Center)
-                                            .widthIn(max = chromeMaxWidth)
-                                            .fillMaxWidth()
-                                            .onGloballyPositioned { coordinates ->
-                                                val bounds = coordinates.boundsInWindow()
-                                                streamingAnchorTopPx =
-                                                    (bounds.top - messageViewportTopPx).roundToInt()
-                                                streamingContentBottomPx =
-                                                    (bounds.bottom - messageViewportTopPx).roundToInt()
-                                                if (streamingSelectionMessageId.isNotBlank()) {
-                                                    messageSelectionBoundsById[streamingSelectionMessageId] = bounds
-                                                }
-                                            }
-                                    ) {
-                                        if (settledStreamingMessage != null && !isStreaming) {
-                                            SelectableRenderedStaticMessageContent(
-                                                content = settledStreamingMessage.content,
-                                                textSelectionColors = messageSelectionColors,
-                                                textToolbar = streamingTextToolbar,
-                                                selectionResetKey = messageSelectionResetEpoch,
-                                                showDisclaimer = true,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        } else {
-                                            AssistantMessageContent(
-                                                content = streamingMessageContent,
-                                                isStreaming = isStreaming,
-                                                streamingFreshStart = streamingFreshStart,
-                                                streamingFreshEnd = streamingFreshEnd,
-                                                streamingFreshTick = streamingFreshTick,
-                                                streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                                strictLineReveal =
-                                                    isStreaming &&
-                                                        !userDetachedFromBottom &&
-                                                        !userInteracting,
-                                                lineRevealLocked = lineRevealLocked,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
                                         }
                                     }
                                 }

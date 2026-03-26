@@ -285,6 +285,7 @@ Clean-State 定义：
 - streaming/completed 最后一项尽量共用稳定 key
 - 命中免责声明时，streaming 期间不提前显示免责声明文字
 - disclaimer 占位尽量靠真实完成态几何
+- 当前 assistant 最后一条消息已改成提前进入消息列表，同一条 item 内完成空态、streaming、completed 的切换，不再额外挂列表外 streaming item 再并回 completed item
 
 如果以后继续压文本微抖：
 - 优先从 streaming/completed 宿主共几何入手
@@ -329,6 +330,7 @@ Clean-State 定义：
 - 调整焦点、光标、键盘收起时序
 - 优化发送按钮禁用时机
 - 优化底部输入区内部运动一致性
+- 发送期允许在输入框内部使用短时稳定壳或文本快照遮住真实清空/回缩，但不允许改外壳样式和按钮样式
 
 当前不允许为了这件事乱动：
 - 输入框整体样式
