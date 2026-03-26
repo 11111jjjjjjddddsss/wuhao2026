@@ -147,6 +147,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextMeasurer
@@ -161,6 +162,7 @@ import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
@@ -352,6 +354,7 @@ private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
 
 private val quoteRegex = Regex("^>\\s+.*$")
 private val linkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
+private val bareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 private val inlineMarkdownCache = object : LinkedHashMap<String, AnnotatedString>(INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AnnotatedString>?): Boolean {
         return size > INLINE_MARKDOWN_CACHE_LIMIT
@@ -1029,10 +1032,27 @@ private fun markdownInlineSpanStyle(
     )
 }
 
+private fun normalizeLinkTarget(raw: String): String {
+    val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
+    if (trimmed.isBlank()) return raw.trim()
+    return if (
+        trimmed.startsWith("http://", ignoreCase = true) ||
+        trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        trimmed
+    } else {
+        "https://$trimmed"
+    }
+}
+
+private fun trimBareUrlDisplayText(raw: String): String {
+    val trailingPunctuation = ".,;:!?，。；：！？"
+    return raw.trimEnd { it in trailingPunctuation }
+}
+
 private fun buildMarkdownAnnotatedStringInternal(
     text: String
 ): AnnotatedString {
-    val normalized = text.replace(linkRegex, "$1")
     return buildAnnotatedString {
         var index = 0
         var bold = false
@@ -1046,30 +1066,69 @@ private fun buildMarkdownAnnotatedStringInternal(
             }
         }
 
-        while (index < normalized.length) {
+        fun appendLinked(displayText: String, url: String) {
+            if (displayText.isEmpty()) return
+            withLink(LinkAnnotation.Url(normalizeLinkTarget(url))) {
+                appendStyled(displayText)
+            }
+        }
+
+        while (index < text.length) {
+            if (!code) {
+                val markdownLink = linkRegex.find(text, index)?.takeIf { it.range.first == index }
+                if (markdownLink != null) {
+                    appendLinked(
+                        displayText = markdownLink.groupValues[1],
+                        url = markdownLink.groupValues[2]
+                    )
+                    index = markdownLink.range.last + 1
+                    continue
+                }
+                val bareUrl = bareUrlRegex.find(text, index)?.takeIf { it.range.first == index }
+                if (bareUrl != null) {
+                    val displayText = trimBareUrlDisplayText(bareUrl.value)
+                    if (displayText.isNotEmpty()) {
+                        appendLinked(displayText = displayText, url = displayText)
+                        index += displayText.length
+                        continue
+                    }
+                }
+            }
             when {
-                !code && normalized.startsWith("**", index) -> {
+                !code && text.startsWith("**", index) -> {
                     bold = !bold
                     index += 2
                 }
-                normalized[index] == '`' -> {
+                text[index] == '`' -> {
                     code = !code
                     index += 1
                 }
-                !code && normalized[index] == '*' -> {
+                !code && text[index] == '*' -> {
                     italic = !italic
                     index += 1
                 }
                 else -> {
                     val nextSpecial = buildList {
-                        val boldIndex = if (!code) normalized.indexOf("**", index).takeIf { it >= 0 } else null
-                        val codeIndex = normalized.indexOf('`', index).takeIf { it >= 0 }
-                        val italicIndex = if (!code) normalized.indexOf('*', index).takeIf { it >= 0 } else null
+                        val markdownLinkIndex = if (!code) {
+                            linkRegex.find(text, index)?.range?.first?.takeIf { it >= index }
+                        } else {
+                            null
+                        }
+                        val bareUrlIndex = if (!code) {
+                            bareUrlRegex.find(text, index)?.range?.first?.takeIf { it >= index }
+                        } else {
+                            null
+                        }
+                        val boldIndex = if (!code) text.indexOf("**", index).takeIf { it >= 0 } else null
+                        val codeIndex = text.indexOf('`', index).takeIf { it >= 0 }
+                        val italicIndex = if (!code) text.indexOf('*', index).takeIf { it >= 0 } else null
+                        if (markdownLinkIndex != null) add(markdownLinkIndex)
+                        if (bareUrlIndex != null) add(bareUrlIndex)
                         if (boldIndex != null) add(boldIndex)
                         if (codeIndex != null) add(codeIndex)
                         if (italicIndex != null) add(italicIndex)
-                    }.minOrNull() ?: normalized.length
-                    appendStyled(normalized.substring(index, nextSpecial))
+                    }.minOrNull() ?: text.length
+                    appendStyled(text.substring(index, nextSpecial))
                     index = nextSpecial
                 }
             }
@@ -2033,6 +2092,21 @@ private fun AssistantStreamingCommittedBlock(
     showLeadingSectionDivider: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    @Composable
+    fun RichText(
+        text: String,
+        modifier: Modifier = Modifier,
+        style: TextStyle
+    ) {
+        val annotated = remember(text) { getCachedAnnotatedString(text) }
+        Text(
+            text = annotated,
+            modifier = modifier,
+            style = style,
+            textAlign = TextAlign.Start
+        )
+    }
+
     when (model) {
         StreamingLineModel.Blank -> Spacer(modifier = modifier.height(MARKDOWN_BLOCK_SPACING))
         is StreamingLineModel.Heading -> Column(
@@ -2044,11 +2118,10 @@ private fun AssistantStreamingCommittedBlock(
                 MarkdownSectionDivider()
                 Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
             }
-            Text(
+            RichText(
                 text = model.text,
                 modifier = Modifier.fillMaxWidth(),
-                style = assistantStreamingHeadingTextStyle(model.level),
-                textAlign = TextAlign.Start
+                style = assistantStreamingHeadingTextStyle(model.level)
             )
         }
         is StreamingLineModel.Bullet -> Row(
@@ -2059,11 +2132,10 @@ private fun AssistantStreamingCommittedBlock(
                 text = "\u2022",
                 style = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
             )
-            Text(
+            RichText(
                 text = model.text,
                 modifier = Modifier.weight(1f),
-                style = assistantStreamingParagraphTextStyle(),
-                textAlign = TextAlign.Start
+                style = assistantStreamingParagraphTextStyle()
             )
         }
         is StreamingLineModel.Numbered -> Row(
@@ -2074,24 +2146,21 @@ private fun AssistantStreamingCommittedBlock(
                 text = "${model.number}.",
                 style = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
             )
-            Text(
+            RichText(
                 text = model.text,
                 modifier = Modifier.weight(1f),
-                style = assistantStreamingParagraphTextStyle(),
-                textAlign = TextAlign.Start
+                style = assistantStreamingParagraphTextStyle()
             )
         }
-        is StreamingLineModel.Quote -> Text(
+        is StreamingLineModel.Quote -> RichText(
             text = model.text,
             modifier = modifier.fillMaxWidth(),
-            style = assistantStreamingParagraphTextStyle(),
-            textAlign = TextAlign.Start
+            style = assistantStreamingParagraphTextStyle()
         )
-        is StreamingLineModel.Paragraph -> Text(
+        is StreamingLineModel.Paragraph -> RichText(
             text = model.text,
             modifier = modifier.fillMaxWidth(),
-            style = assistantStreamingParagraphTextStyle(),
-            textAlign = TextAlign.Start
+            style = assistantStreamingParagraphTextStyle()
         )
     }
 }
