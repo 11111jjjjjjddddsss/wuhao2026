@@ -5659,17 +5659,20 @@ private fun MessageStatusFooter(
     ) {
         Text(
             text = statusText,
-            fontSize = 12.sp,
+            fontSize = 13.sp,
             color = Color(0xFF7F8083)
         )
         Text(
             text = "  $actionText",
-            modifier = Modifier.clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = onActionClick
-            ),
-            fontSize = 12.sp,
+            modifier = Modifier
+                .padding(start = 2.dp)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    onClick = onActionClick
+                )
+                .padding(horizontal = 4.dp, vertical = 6.dp),
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = Color(0xFF111111)
         )
