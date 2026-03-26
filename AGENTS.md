@@ -88,6 +88,22 @@
   - 每轮必注入
   - 用于稳定系统规则
 
+### 主对话系统前置锚点
+
+- 主对话模型系统前置锚点唯一真源：
+  - 优先 `SYSTEM_ANCHOR` 环境变量
+  - 否则读取 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+- 以后旧版锚点正文不再并存保留；替换锚点时，以真源文件为准直接更新
+- 以后只要主对话模型锚点规则变更，必须同次同步：
+  - [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+  - [AGENTS.md](D:/wuhao/AGENTS.md)
+- 当前锚点执行重点：
+  - 当前轮输入优先，历史/摘要/联网仅作参考
+  - 特殊场景不解释系统/模型/来源细节，会员问题只引导会员中心，APP 问题引导设置内客服
+  - 信息不足时必须列 2–3 种可能性并追问 1–2 个关键问题
+  - 联网搜索仅在必要时使用，同一轮最多一次
+  - 证件/登记/备案/审定类不做真伪裁决，只提供权威平台查询方法
+
 ## 5. 图片规则
 
 - 单轮最多 4 张图片
