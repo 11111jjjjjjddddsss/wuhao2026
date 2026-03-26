@@ -3,6 +3,8 @@ package com.nongjiqianwen
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -196,6 +198,8 @@ private enum class AutoScrollMode { Idle, AnchorUser, StreamAnchorFollow }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 @Immutable
+private data class FailedAssistantMessageState(val sourceUserMessageId: String)
+@Immutable
 private data class LocalStreamingDraft(
     val messageId: String,
     val content: String,
@@ -301,6 +305,7 @@ private const val STREAM_AUTO_FOLLOW_DEBOUNCE_MS = 16L
 private const val PROGRAMMATIC_SCROLL_SETTLE_MS = 180L
 private const val INPUT_MAX_CHARS = 6000
 private const val INPUT_LIMIT_HINT_MS = 1600L
+private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
@@ -1359,6 +1364,18 @@ private suspend fun Context.clearLocalStreamingDraft(chatScopeId: String) = with
         .edit()
         .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
         .commit()
+}
+
+private fun Context.hasActiveNetworkConnection(): Boolean {
+    val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        (
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            )
 }
 
 private fun Context.loadLocalBottomViewportSync(chatScopeId: String): LocalBottomViewport? {
@@ -2578,9 +2595,16 @@ fun ChatScreen() {
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
+    var composerStatusHintVisible by remember { mutableStateOf(false) }
+    var composerStatusHintTick by remember { mutableIntStateOf(0) }
+    var composerStatusHintText by remember { mutableStateOf("") }
     var inputFieldFocused by remember(chatScopeId) { mutableStateOf(false) }
     var suppressInputCursor by remember(chatScopeId) { mutableStateOf(false) }
     var sendUiSettling by remember(chatScopeId) { mutableStateOf(false) }
+    val failedUserMessageStates = remember(chatScopeId) { mutableStateMapOf<String, String>() }
+    val failedAssistantMessageStates = remember(chatScopeId) {
+        mutableStateMapOf<String, FailedAssistantMessageState>()
+    }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
@@ -3173,10 +3197,55 @@ fun ChatScreen() {
         LaunchUiGate.chatReady = false
     }
 
+    fun showComposerStatusHint(text: String) {
+        composerStatusHintText = text
+        composerStatusHintTick++
+    }
+
+    fun pruneFailedMessageStates() {
+        val currentMessageIds = messages.mapTo(mutableSetOf()) { it.id }
+        failedUserMessageStates.keys
+            .toList()
+            .filterNot(currentMessageIds::contains)
+            .forEach(failedUserMessageStates::remove)
+        failedAssistantMessageStates.keys
+            .toList()
+            .filterNot(currentMessageIds::contains)
+            .forEach(failedAssistantMessageStates::remove)
+    }
+
+    fun persistableMessagesSnapshot(): List<ChatMessage> {
+        val failedIds = buildSet {
+            addAll(failedUserMessageStates.keys)
+            addAll(failedAssistantMessageStates.keys)
+        }
+        return messages.filterNot { it.id in failedIds }
+    }
+
+    fun upsertUserMessage(messageId: String, content: String) {
+        val finalMessage = ChatMessage(messageId, ChatRole.USER, content)
+        val existingIndex = messages.indexOfFirst { it.id == messageId }
+        if (existingIndex >= 0) {
+            if (messages[existingIndex] != finalMessage) {
+                messages[existingIndex] = finalMessage
+            }
+        } else {
+            messages.add(finalMessage)
+        }
+    }
+
+    fun clearFailedAssistantStateForUser(messageId: String) {
+        failedAssistantMessageStates.entries
+            .toList()
+            .filter { it.value.sourceUserMessageId == messageId }
+            .forEach { failedAssistantMessageStates.remove(it.key) }
+    }
+
     fun replaceMessages(newMessages: List<ChatMessage>) {
         val trimmed = sanitizeMessageWindow(newMessages)
         messages.clear()
         messages.addAll(trimmed)
+        pruneFailedMessageStates()
     }
 
     fun trimMessagesInPlace() {
@@ -3184,10 +3253,12 @@ fun ChatScreen() {
         if (startIndex > 0) {
             repeat(startIndex) { messages.removeAt(0) }
         }
+        pruneFailedMessageStates()
     }
 
     fun resetStreamingUiState(clearVisibleContent: Boolean) {
         mainHandler.post {
+            SessionApi.cancelCurrentStream()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
@@ -3257,7 +3328,7 @@ fun ChatScreen() {
     LaunchedEffect(persistTick) {
         if (persistTick == 0) return@LaunchedEffect
         delay(if (isStreaming) 220 else 80)
-        context.saveLocalChatWindow(chatScopeId, messages)
+        context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
     }
 
     LaunchedEffect(inputLimitHintTick) {
@@ -3267,6 +3338,17 @@ fun ChatScreen() {
         delay(INPUT_LIMIT_HINT_MS)
         if (inputLimitHintTick == currentTick) {
             inputLimitHintVisible = false
+        }
+    }
+
+    LaunchedEffect(composerStatusHintTick) {
+        if (composerStatusHintTick == 0 || composerStatusHintText.isBlank()) return@LaunchedEffect
+        val currentTick = composerStatusHintTick
+        composerStatusHintVisible = true
+        delay(COMPOSER_STATUS_HINT_MS)
+        if (composerStatusHintTick == currentTick) {
+            composerStatusHintVisible = false
+            composerStatusHintText = ""
         }
     }
 
@@ -3668,16 +3750,74 @@ fun ChatScreen() {
         }
     }
 
-    fun commitSendMessage(text: String) {
+    fun handleAssistantInterrupted(sourceUserMessageId: String, reason: String) {
+        mainHandler.post {
+            val finalId = streamingMessageId ?: "assistant_${UUID.randomUUID()}"
+            val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
+            fakeStreamJob?.cancel()
+            fakeStreamJob = null
+            streamRevealJob?.cancel()
+            streamRevealJob = null
+            isStreaming = false
+            streamingMessageId = null
+            streamingMessageContent = ""
+            streamingRevealBuffer = ""
+            streamingFreshStart = -1
+            streamingFreshEnd = -1
+            streamingLineAdvanceTick = 0
+            lastStreamingFreshRevealMs = 0L
+            streamBottomSpacerPx = 0
+            streamingAnchorTopPx = -1
+            streamingContentBottomPx = -1
+            streamBottomFollowActive = false
+            pendingResumeAutoFollow = false
+            pendingFinalBottomSnap = false
+            pendingCompletedAssistantMessage = null
+            pendingCompletedAssistantSnap = false
+            streamingBackgrounded = false
+            userDetachedFromBottom = false
+            autoScrollMode = AutoScrollMode.Idle
+            jumpButtonVisible = false
+            context.clearLocalStreamingDraftSync(chatScopeId)
+            if (finalContent.isNotBlank()) {
+                applyCompletedAssistantMessageInPlace(
+                    target = messages,
+                    messageId = finalId,
+                    content = finalContent
+                )
+                failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
+                    sourceUserMessageId = sourceUserMessageId
+                )
+                persistTick++
+            } else {
+                showComposerStatusHint(
+                    when (reason) {
+                        "network" -> "网络波动，回复未完成"
+                        "quota" -> "当前次数不足，请稍后再试"
+                        "rate_limit" -> "当前请求较多，请稍后重试"
+                        else -> "本次回复未完成，请重试"
+                    }
+                )
+            }
+        }
+    }
+
+    fun markUserMessageSendFailed(
+        text: String,
+        existingUserMessageId: String? = null,
+        collapseComposer: Boolean = true
+    ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        val hadActiveInputSession = imeVisible || inputFieldFocused
+        val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
         sendUiSettling = true
-        suppressInputCursor = true
-        inputFieldFocused = false
-        clearInputSelectionToolbar()
-        input.value = TextFieldValue("")
-        focusManager.clearFocus(force = true)
-        keyboardController?.hide()
+        if (collapseComposer) {
+            suppressInputCursor = true
+            inputFieldFocused = false
+            clearInputSelectionToolbar()
+            input.value = TextFieldValue("")
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
         snackbarScope.launch {
             try {
                 if (hadActiveInputSession) {
@@ -3686,10 +3826,57 @@ fun ChatScreen() {
                 hasStartedConversation = true
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
-                restoreBottomAfterImeClose = false
-                suppressJumpButtonForImeTransition = true
-                val userId = "user_${UUID.randomUUID()}"
-                messages.add(ChatMessage(userId, ChatRole.USER, text))
+                if (collapseComposer) {
+                    restoreBottomAfterImeClose = false
+                    suppressJumpButtonForImeTransition = true
+                }
+                val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
+                upsertUserMessage(userId, text)
+                failedUserMessageStates[userId] = "network"
+                clearFailedAssistantStateForUser(userId)
+                anchoredUserMessageId = userId
+                userDetachedFromBottom = false
+                jumpButtonVisible = false
+                trimMessagesInPlace()
+                showComposerStatusHint("当前网络不可用")
+            } finally {
+                sendUiSettling = false
+            }
+        }
+    }
+
+    fun commitSendMessage(
+        text: String,
+        existingUserMessageId: String? = null,
+        collapseComposer: Boolean = true
+    ) {
+        if (text.isEmpty() || isStreaming || sendUiSettling) return
+        val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
+        sendUiSettling = true
+        if (collapseComposer) {
+            suppressInputCursor = true
+            inputFieldFocused = false
+            clearInputSelectionToolbar()
+            input.value = TextFieldValue("")
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+        snackbarScope.launch {
+            try {
+                if (hadActiveInputSession) {
+                    withFrameNanos { }
+                }
+                hasStartedConversation = true
+                initialBottomSnapDone = true
+                LaunchUiGate.chatReady = true
+                if (collapseComposer) {
+                    restoreBottomAfterImeClose = false
+                    suppressJumpButtonForImeTransition = true
+                }
+                val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
+                failedUserMessageStates.remove(userId)
+                clearFailedAssistantStateForUser(userId)
+                upsertUserMessage(userId, text)
                 anchoredUserMessageId = userId
                 streamingAnchorTopPx = -1
                 streamingContentBottomPx = -1
@@ -3707,7 +3894,7 @@ fun ChatScreen() {
                 trimMessagesInPlace()
                 persistTick++
                 snackbarScope.launch {
-                    context.saveLocalChatWindow(chatScopeId, messages)
+                    context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
                 }
                 streamingMessageId = "assistant_${UUID.randomUUID()}"
                 streamingMessageContent = ""
@@ -3738,11 +3925,57 @@ fun ChatScreen() {
                 fakeStreamJob?.cancel()
                 streamRevealJob?.cancel()
                 streamRevealJob = null
-                launchLocalFakeStream(applyInitialDelay = true)
+                if (hasRemoteHistorySource) {
+                    SessionApi.cancelCurrentStream()
+                    SessionApi.streamChat(
+                        options = SessionApi.StreamOptions(
+                            clientMsgId = userId,
+                            text = text,
+                            images = emptyList()
+                        ),
+                        onChunk = { piece -> appendAssistantChunk(piece) },
+                        onComplete = { finishStreaming() },
+                        onInterrupted = { reason -> handleAssistantInterrupted(userId, reason) }
+                    )
+                } else {
+                    launchLocalFakeStream(applyInitialDelay = true)
+                }
             } finally {
                 sendUiSettling = false
             }
         }
+    }
+
+    fun retryFailedUserMessage(messageId: String) {
+        val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
+        if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
+            showComposerStatusHint("当前网络不可用")
+            return
+        }
+        commitSendMessage(
+            text = failedMessage.content,
+            existingUserMessageId = failedMessage.id,
+            collapseComposer = false
+        )
+    }
+
+    fun retryFailedAssistantMessage(assistantMessageId: String) {
+        val failedState = failedAssistantMessageStates[assistantMessageId] ?: return
+        val sourceUserMessage = messages.firstOrNull { it.id == failedState.sourceUserMessageId } ?: return
+        if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
+            showComposerStatusHint("当前网络不可用")
+            return
+        }
+        failedAssistantMessageStates.remove(assistantMessageId)
+        val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
+        if (existingAssistantIndex >= 0) {
+            messages.removeAt(existingAssistantIndex)
+        }
+        commitSendMessage(
+            text = sourceUserMessage.content,
+            existingUserMessageId = sourceUserMessage.id,
+            collapseComposer = false
+        )
     }
 
     fun sendMessage() {
@@ -3753,7 +3986,12 @@ fun ChatScreen() {
             exceedsInputLimit = text.length > INPUT_MAX_CHARS
         )
         if (!sendGate.canSubmit) return
-        commitSendMessage(text.trim())
+        val trimmedText = text.trim()
+        if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
+            markUserMessageSendFailed(trimmedText)
+            return
+        }
+        commitSendMessage(trimmedText)
     }
 
     suspend fun scrollToBottom(animated: Boolean, includeAnchorSpacer: Boolean = true) {
@@ -3885,7 +4123,7 @@ fun ChatScreen() {
         persistTick++
         pendingFinalBottomSnap = pendingCompletedAssistantSnap
         pendingCompletedAssistantSnap = false
-        val persistedMessages = messages.toList()
+        val persistedMessages = persistableMessagesSnapshot()
         val prewarmMessages = persistedMessages.takeLast(2)
         snackbarScope.launch {
             context.saveLocalChatWindow(chatScopeId, persistedMessages)
@@ -3936,7 +4174,7 @@ fun ChatScreen() {
                 pendingCompletedAssistantMessage = null
                 pendingCompletedAssistantSnap = false
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
-                val persistedMessages = messages.toList()
+                val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
                 snackbarScope.launch {
                     context.saveLocalChatWindow(chatScopeId, persistedMessages)
@@ -3964,7 +4202,9 @@ fun ChatScreen() {
                 }
                 if (isStreaming) {
                     streamingBackgrounded = true
-                    completeStreamingImmediatelyFromBackground()
+                    if (!hasRemoteHistorySource) {
+                        completeStreamingImmediatelyFromBackground()
+                    }
                 }
                 focusManager.clearFocus(force = true)
                 keyboardController?.hide()
@@ -4237,6 +4477,11 @@ fun ChatScreen() {
         val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
         val inputFieldSurface = Color.White
         val inputFieldBorder = Color(0xFFBCC2CA).copy(alpha = 0.88f)
+        val composerOverlayHintText = when {
+            composerStatusHintVisible && composerStatusHintText.isNotBlank() -> composerStatusHintText
+            inputLimitHintVisible -> "已超过6000字，暂时不能发送"
+            else -> null
+        }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
@@ -4249,7 +4494,7 @@ fun ChatScreen() {
                         .imePadding()
                         .background(pageSurface)
                 ) {
-                    if (inputLimitHintVisible) {
+                    if (composerOverlayHintText != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
                             color = Color(0xEE111111),
@@ -4265,7 +4510,7 @@ fun ChatScreen() {
                                 .offset { IntOffset(0, -inputLimitHintOffsetPx) }
                         ) {
                             Text(
-                                text = "已超过6000字，暂时不能发送",
+                                text = composerOverlayHintText,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                 color = Color.White,
                                 fontSize = 12.sp
@@ -4587,35 +4832,68 @@ fun ChatScreen() {
                                             }
                                         }
                                 ) {
+                                    val failedUserState = failedUserMessageStates[msg.id]
+                                    val failedAssistantState = failedAssistantMessageStates[msg.id]
                                     if (msg.role == ChatRole.ASSISTANT) {
-                                        SelectableRenderedStaticMessageContent(
-                                            content = msg.content,
-                                            textSelectionColors = messageSelectionColors,
-                                            textToolbar = messageTextToolbar,
-                                            selectionResetKey = messageSelectionResetEpoch,
-                                            showDisclaimer = true,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    } else {
-                                        SelectableRenderedUserMessageBubble(
-                                            content = msg.content,
-                                            textSelectionColors = messageSelectionColors,
-                                            textToolbar = messageTextToolbar,
-                                            selectionResetKey = messageSelectionResetEpoch,
-                                            userBubbleMaxWidth = userBubbleMaxWidth,
-                                            userBubbleColor = userBubbleColor,
-                                            onBubbleBoundsChanged = { bounds ->
-                                                if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
-                                                    messageSelectionBoundsById[msg.id] = bounds
-                                                }
-                                                if (bounds != null) {
-                                                    applyPendingMessageSelectionToolbarIfReady(
-                                                        messageId = msg.id,
-                                                        bounds = bounds
-                                                    )
-                                                }
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            SelectableRenderedStaticMessageContent(
+                                                content = msg.content,
+                                                textSelectionColors = messageSelectionColors,
+                                                textToolbar = messageTextToolbar,
+                                                selectionResetKey = messageSelectionResetEpoch,
+                                                showDisclaimer = true,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            if (failedAssistantState != null) {
+                                                MessageStatusFooter(
+                                                    statusText = "回复未完成",
+                                                    actionText = "重试",
+                                                    alignEnd = false,
+                                                    onActionClick = {
+                                                        retryFailedAssistantMessage(msg.id)
+                                                    }
+                                                )
                                             }
-                                        )
+                                        }
+                                    } else {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalAlignment = Alignment.End,
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            SelectableRenderedUserMessageBubble(
+                                                content = msg.content,
+                                                textSelectionColors = messageSelectionColors,
+                                                textToolbar = messageTextToolbar,
+                                                selectionResetKey = messageSelectionResetEpoch,
+                                                userBubbleMaxWidth = userBubbleMaxWidth,
+                                                userBubbleColor = userBubbleColor,
+                                                onBubbleBoundsChanged = { bounds ->
+                                                    if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
+                                                        messageSelectionBoundsById[msg.id] = bounds
+                                                    }
+                                                    if (bounds != null) {
+                                                        applyPendingMessageSelectionToolbarIfReady(
+                                                            messageId = msg.id,
+                                                            bounds = bounds
+                                                        )
+                                                    }
+                                                }
+                                            )
+                                            if (failedUserState != null) {
+                                                MessageStatusFooter(
+                                                    statusText = "未发送",
+                                                    actionText = "重发",
+                                                    alignEnd = true,
+                                                    onActionClick = {
+                                                        retryFailedUserMessage(msg.id)
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -5362,6 +5640,39 @@ private fun SelectableRenderedUserMessageBubble(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MessageStatusFooter(
+    statusText: String,
+    actionText: String,
+    alignEnd: Boolean,
+    onActionClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = statusText,
+            fontSize = 12.sp,
+            color = Color(0xFF7F8083)
+        )
+        Text(
+            text = "  $actionText",
+            modifier = Modifier.clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onActionClick
+            ),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF111111)
+        )
     }
 }
 
