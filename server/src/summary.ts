@@ -1,32 +1,12 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { FastifyBaseLogger } from 'fastify';
 import { hasBailianKeyConfigured, openBailianCompletion } from './bailian.js';
 import { setUserSummaryPending, writeUserBSummary, writeUserCSummary } from './db.js';
+import { getSummaryPrompt, type SummaryLayer } from './prompt-loader.js';
 import type { SessionSnapshot, Tier } from './types.js';
-
-type SummaryLayer = 'B' | 'C';
 
 interface SummaryIntervals {
   bEveryRounds: number;
   cEveryRounds: number;
-}
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const B_PROMPT_PATH = path.resolve(__dirname, '../assets/b_extraction_prompt.txt');
-const C_PROMPT_PATH = path.resolve(__dirname, '../assets/c_extraction_prompt.txt');
-
-let cachedBPrompt = '';
-let cachedCPrompt = '';
-
-function getPrompt(layer: SummaryLayer): string {
-  if (layer === 'B') {
-    if (!cachedBPrompt) cachedBPrompt = fs.readFileSync(B_PROMPT_PATH, 'utf8').trim();
-    return cachedBPrompt;
-  }
-  if (!cachedCPrompt) cachedCPrompt = fs.readFileSync(C_PROMPT_PATH, 'utf8').trim();
-  return cachedCPrompt;
 }
 
 function buildDialogueText(rounds: Array<{ user: string; assistant: string }>): string {
@@ -34,7 +14,7 @@ function buildDialogueText(rounds: Array<{ user: string; assistant: string }>): 
 }
 
 async function extractSummary(layer: SummaryLayer, oldSummary: string, dialogueText: string): Promise<string> {
-  const prompt = getPrompt(layer);
+  const prompt = getSummaryPrompt(layer);
   if (!prompt) throw new Error(`${layer}_PROMPT_MISSING`);
   const userContent = oldSummary
     ? `[历史摘要]\n${oldSummary}\n\n[对话]\n${dialogueText}`

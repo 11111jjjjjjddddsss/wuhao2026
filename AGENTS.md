@@ -91,8 +91,7 @@
 ### 主对话系统前置锚点
 
 - 主对话模型系统前置锚点唯一真源：
-  - 优先 `SYSTEM_ANCHOR` 环境变量
-  - 否则读取 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+  - [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
 - 以后旧版锚点正文不再并存保留；替换锚点时，以真源文件为准直接更新
 - 以后只要主对话模型锚点规则变更，必须同次同步：
   - [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
@@ -103,6 +102,19 @@
   - 信息不足时必须列 2–3 种可能性并追问 1–2 个关键问题
   - 联网搜索仅在必要时使用，同一轮最多一次
   - 证件/登记/备案/审定类不做真伪裁决，只提供权威平台查询方法
+
+### B/C 摘要提示词
+
+- B 层摘要提示词唯一真源：
+  - [server/assets/b_extraction_prompt.txt](D:/wuhao/server/assets/b_extraction_prompt.txt)
+- C 层摘要提示词唯一真源：
+  - [server/assets/c_extraction_prompt.txt](D:/wuhao/server/assets/c_extraction_prompt.txt)
+- B/C 提示词和主对话锚点不是同一模型职责，不允许混成一个文件
+- B/C 失败处理边界：
+  - 不拖垮主对话服务
+  - 轮次命中后若该层失败，必须保留对应 `pending_retry`
+  - 后续继续按层补账，不能因为错过触发轮次就丢失
+  - 提示词文件缺失或为空时，启动阶段应预检查并记录日志；真正运行失败时仍按层重试
 
 ## 5. 图片规则
 

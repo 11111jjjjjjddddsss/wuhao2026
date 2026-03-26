@@ -1,15 +1,13 @@
 import 'dotenv/config';
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
 import Fastify from 'fastify';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { fileURLToPath } from 'node:url';
 import { getClientIp, isAuthStrict, resolveAuthUserId } from './auth.js';
 import { openBailianStream } from './bailian.js';
 import { appendSessionRoundComplete, getSessionSnapshot, touchSessionContext, writeUserBSummary, writeUserCSummary } from './db.js';
 import { initMySql } from './db/mysql.js';
 import { formatShanghaiNowToSecond, parseRegionFromHeaders, resolveRegionByIp } from './geo.js';
+import { getSystemAnchor, getSystemAnchorPath, probeSummaryPrompt } from './prompt-loader.js';
 import { getSummaryIntervals, processSessionSummaries } from './summary.js';
 import { registerUploadRoutes } from './upload.js';
 import {
@@ -49,8 +47,6 @@ const app = Fastify({ logger: true, trustProxy: true });
 const SSE_HEARTBEAT_MS = 20_000;
 const CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
 const CHAT_RATE_LIMIT_MAX_REQUESTS = 20;
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ANCHOR_FILE_PATH = path.resolve(__dirname, '../assets/system_anchor.txt');
 const chatRateLimitBuckets = new Map<string, number[]>();
 
 function consumeChatRateLimit(userId: string, now = Date.now()): { allowed: boolean; retryAfterSec: number } {
@@ -72,18 +68,17 @@ function consumeChatRateLimit(userId: string, now = Date.now()): { allowed: bool
   return { allowed: true, retryAfterSec: 0 };
 }
 
-function resolveSystemAnchor(): string {
-  try {
-    const fileAnchor = fs.readFileSync(ANCHOR_FILE_PATH, 'utf8').trim();
-    if (fileAnchor) return fileAnchor;
-  } catch {
-    // Fall through to the explicit startup error below.
-  }
-  throw new Error('SYSTEM_ANCHOR missing in server/assets/system_anchor.txt');
-}
+const SYSTEM_ANCHOR = getSystemAnchor();
+app.log.info({ anchor_source: 'file', anchor_path: getSystemAnchorPath(), anchor_chars: SYSTEM_ANCHOR.length }, 'system anchor loaded');
 
-const SYSTEM_ANCHOR = resolveSystemAnchor();
-app.log.info({ anchor_source: 'file', anchor_chars: SYSTEM_ANCHOR.length }, 'system anchor loaded');
+for (const layer of ['B', 'C'] as const) {
+  const result = probeSummaryPrompt(layer);
+  if (result.ok) {
+    app.log.info({ layer, prompt_path: result.path, prompt_chars: result.chars }, 'summary prompt precheck ok');
+  } else {
+    app.log.warn({ layer, prompt_path: result.path, error: result.error }, 'summary prompt precheck failed');
+  }
+}
 
 function buildVisionUserContent(text: string, images: string[]): Array<Record<string, unknown>> {
   const content: Array<Record<string, unknown>> = [{ type: 'text', text }];
