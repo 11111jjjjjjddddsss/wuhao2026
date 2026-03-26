@@ -47,7 +47,126 @@ const app = Fastify({ logger: true, trustProxy: true });
 const SSE_HEARTBEAT_MS = 20_000;
 const CHAT_RATE_LIMIT_WINDOW_MS = 60_000;
 const CHAT_RATE_LIMIT_MAX_REQUESTS = 20;
+const UPSTREAM_STREAM_MAX_ATTEMPTS = 2;
+const UPSTREAM_STREAM_RETRY_DELAY_MS = 350;
 const chatRateLimitBuckets = new Map<string, number[]>();
+
+class UpstreamStreamOpenError extends Error {
+  constructor(
+    message: string,
+    readonly kind: 'request' | 'http' | 'protocol',
+    readonly statusCode?: number,
+    readonly responseBody?: string,
+    readonly contentType?: string,
+  ) {
+    super(message);
+  }
+}
+
+function isRetryableUpstreamStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+async function waitForRetryDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0) return;
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(new Error('retry delay aborted'));
+    };
+    if (signal) {
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+  });
+}
+
+async function openValidatedBailianStreamWithRetry(
+  request: FastifyRequest,
+  payload: ChatStreamRequest,
+  messages: BailianMessage[],
+  signal: AbortSignal,
+): Promise<Response> {
+  let lastError: UpstreamStreamOpenError | null = null;
+  for (let attempt = 1; attempt <= UPSTREAM_STREAM_MAX_ATTEMPTS; attempt++) {
+    try {
+      const upstream = await openBailianStream({ payload, messages, signal });
+      if (!upstream.ok) {
+        const errorBody = await upstream.text().catch(() => '');
+        const error = new UpstreamStreamOpenError(
+          `upstream http ${upstream.status}`,
+          'http',
+          upstream.status,
+          errorBody,
+        );
+        lastError = error;
+        if (attempt < UPSTREAM_STREAM_MAX_ATTEMPTS && isRetryableUpstreamStatus(upstream.status) && !signal.aborted) {
+          request.log.warn(
+            { attempt, maxAttempts: UPSTREAM_STREAM_MAX_ATTEMPTS, status: upstream.status, errorBody },
+            'upstream open retry scheduled after non-200 response',
+          );
+          await waitForRetryDelay(UPSTREAM_STREAM_RETRY_DELAY_MS * attempt, signal);
+          continue;
+        }
+        throw error;
+      }
+
+      const contentType = upstream.headers.get('content-type') || '';
+      if (!contentType.includes('text/event-stream')) {
+        const fallbackBody = await upstream.text().catch(() => '');
+        const error = new UpstreamStreamOpenError(
+          'upstream not SSE',
+          'protocol',
+          502,
+          fallbackBody,
+          contentType,
+        );
+        lastError = error;
+        if (attempt < UPSTREAM_STREAM_MAX_ATTEMPTS && !signal.aborted) {
+          request.log.warn(
+            { attempt, maxAttempts: UPSTREAM_STREAM_MAX_ATTEMPTS, contentType, fallbackBody },
+            'upstream open retry scheduled after non-SSE response',
+          );
+          await waitForRetryDelay(UPSTREAM_STREAM_RETRY_DELAY_MS * attempt, signal);
+          continue;
+        }
+        throw error;
+      }
+
+      if (attempt > 1) {
+        request.log.info({ attempt, maxAttempts: UPSTREAM_STREAM_MAX_ATTEMPTS }, 'upstream open recovered after retry');
+      }
+      return upstream;
+    } catch (error) {
+      if (error instanceof UpstreamStreamOpenError) {
+        throw error;
+      }
+      if (isAbortLikeError(error) || signal.aborted) {
+        throw error;
+      }
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      lastError = new UpstreamStreamOpenError('upstream request failed', 'request', 502, errorMessage);
+      if (attempt < UPSTREAM_STREAM_MAX_ATTEMPTS) {
+        request.log.warn(
+          { attempt, maxAttempts: UPSTREAM_STREAM_MAX_ATTEMPTS, error },
+          'upstream open retry scheduled after request failure',
+        );
+        await waitForRetryDelay(UPSTREAM_STREAM_RETRY_DELAY_MS * attempt, signal);
+        continue;
+      }
+      throw lastError;
+    }
+  }
+  throw lastError ?? new UpstreamStreamOpenError('upstream request failed', 'request', 502);
+}
 
 function consumeChatRateLimit(userId: string, now = Date.now()): { allowed: boolean; retryAfterSec: number } {
   const bucket = chatRateLimitBuckets.get(userId) ?? [];
@@ -421,27 +540,27 @@ app.post('/api/chat/stream', async (request, reply) => {
   const abortController = new AbortController();
   let upstream: Response;
   try {
-    upstream = await openBailianStream({
-      payload: { user_id: userId, client_msg_id: clientMsgId, text, images },
-      messages: prompt.messages,
-      signal: abortController.signal,
-    });
+    upstream = await openValidatedBailianStreamWithRetry(
+      request,
+      { user_id: userId, client_msg_id: clientMsgId, text, images },
+      prompt.messages,
+      abortController.signal,
+    );
   } catch (error) {
+    if (error instanceof UpstreamStreamOpenError) {
+      if (error.kind === 'http') {
+        request.log.error({ status: error.statusCode, errorBody: error.responseBody }, 'upstream non-200 after retry');
+        return reply.code(error.statusCode ?? 502).send({ error: error.responseBody || 'upstream error' });
+      }
+      if (error.kind === 'protocol') {
+        request.log.error({ contentType: error.contentType, fallbackBody: error.responseBody }, 'upstream is not SSE after retry');
+        return reply.code(502).send({ error: 'upstream not SSE' });
+      }
+      request.log.error({ error: error.responseBody || error.message }, 'upstream request failed after retry');
+      return reply.code(502).send({ error: 'upstream request failed' });
+    }
     request.log.error({ error }, 'upstream request failed');
     return reply.code(502).send({ error: 'upstream request failed' });
-  }
-
-  if (!upstream.ok) {
-    const errorBody = await upstream.text().catch(() => '');
-    request.log.error({ status: upstream.status, errorBody }, 'upstream non-200');
-    return reply.code(upstream.status).send({ error: errorBody || 'upstream error' });
-  }
-
-  const contentType = upstream.headers.get('content-type') || '';
-  if (!contentType.includes('text/event-stream')) {
-    const fallbackBody = await upstream.text().catch(() => '');
-    request.log.error({ contentType, fallbackBody }, 'upstream is not SSE');
-    return reply.code(502).send({ error: 'upstream not SSE' });
   }
 
   reply.hijack();
