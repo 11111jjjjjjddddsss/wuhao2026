@@ -31,6 +31,7 @@ export interface ConsumeResult {
 }
 
 export interface SessionRound {
+  client_msg_id?: string;
   user: string;
   user_images?: string[];
   assistant: string;

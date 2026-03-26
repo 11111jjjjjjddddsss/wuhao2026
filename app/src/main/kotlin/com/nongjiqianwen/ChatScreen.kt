@@ -183,6 +183,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
@@ -192,6 +193,7 @@ import java.util.LinkedHashMap
 import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
+import kotlin.coroutines.resume
 
 private enum class ChatRole { USER, ASSISTANT }
 private enum class AutoScrollMode { Idle, AnchorUser, StreamAnchorFollow }
@@ -319,6 +321,8 @@ private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val FINAL_BOTTOM_SNAP_TOLERANCE = 24.dp
 private val LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD = 32.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
+private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
+private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
@@ -1407,6 +1411,28 @@ private fun recoverStreamingDraftAsCompletedMessage(
     )
 }
 
+private fun assistantMessageIdForSourceUser(sourceUserMessageId: String): String =
+    "assistant_$sourceUserMessageId"
+
+private suspend fun awaitRemoteSnapshot(): SessionSnapshot? =
+    suspendCancellableCoroutine { continuation ->
+        SessionApi.getSnapshot { snapshot ->
+            if (continuation.isActive) {
+                continuation.resume(snapshot)
+            }
+        }
+    }
+
+private fun SessionSnapshot.findRoundByClientMessageId(clientMessageId: String): ARound? {
+    if (clientMessageId.isBlank()) return null
+    return a_rounds_full
+        .asReversed()
+        .firstOrNull { it.client_msg_id == clientMessageId }
+        ?: a_rounds_for_ui
+            .asReversed()
+            .firstOrNull { it.client_msg_id == clientMessageId }
+}
+
 private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = withContext(Dispatchers.Default) {
     messages
         .filter { it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
@@ -1417,8 +1443,11 @@ private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = with
 private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
     return rounds.flatMapIndexed { index, round ->
         buildList {
-            if (round.user.isNotBlank()) add(ChatMessage("remote_user_$index", ChatRole.USER, round.user))
-            if (round.assistant.isNotBlank()) add(ChatMessage("remote_assistant_$index", ChatRole.ASSISTANT, round.assistant))
+            val sourceUserMessageId = round.client_msg_id?.takeIf { it.isNotBlank() } ?: "remote_user_$index"
+            if (round.user.isNotBlank()) add(ChatMessage(sourceUserMessageId, ChatRole.USER, round.user))
+            if (round.assistant.isNotBlank()) {
+                add(ChatMessage(assistantMessageIdForSourceUser(sourceUserMessageId), ChatRole.ASSISTANT, round.assistant))
+            }
         }
     }
 }
@@ -2584,6 +2613,7 @@ fun ChatScreen() {
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
+    var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
     var pendingCompletedAssistantMessage by remember(chatScopeId) { mutableStateOf<ChatMessage?>(null) }
     var pendingCompletedAssistantSnap by remember(chatScopeId) { mutableStateOf(false) }
@@ -3186,6 +3216,8 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(chatScopeId) {
+        remoteRecoveryJob?.cancel()
+        remoteRecoveryJob = null
         initialBottomSnapDone = false
         jumpButtonVisible = false
         restoreBottomAfterImeClose = false
@@ -3241,6 +3273,99 @@ fun ChatScreen() {
             .forEach { failedAssistantMessageStates.remove(it.key) }
     }
 
+    fun interruptedHintText(reason: String): String =
+        when (reason) {
+            "network" -> "\u7f51\u7edc\u6ce2\u52a8\uff0c\u56de\u590d\u672a\u5b8c\u6210"
+            "quota" -> "\u5f53\u524d\u6b21\u6570\u4e0d\u8db3\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5"
+            "rate_limit" -> "\u5f53\u524d\u8bf7\u6c42\u8f83\u591a\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"
+            else -> "\u672c\u6b21\u56de\u590d\u672a\u5b8c\u6210\uff0c\u8bf7\u91cd\u8bd5"
+        }
+
+    fun canAttemptRemoteAssistantRecovery(reason: String): Boolean =
+        hasRemoteHistorySource && reason !in setOf("quota", "rate_limit", "auth", "model_unavailable", "replay")
+
+    fun finalizeInterruptedAssistant(
+        sourceUserMessageId: String,
+        assistantMessageId: String,
+        finalContent: String,
+        reason: String
+    ) {
+        if (finalContent.isNotBlank()) {
+            applyCompletedAssistantMessageInPlace(
+                target = messages,
+                messageId = assistantMessageId,
+                content = finalContent
+            )
+            failedAssistantMessageStates[assistantMessageId] = FailedAssistantMessageState(
+                sourceUserMessageId = sourceUserMessageId
+            )
+            persistTick++
+        } else {
+            showComposerStatusHint(interruptedHintText(reason))
+        }
+    }
+
+    fun applyRecoveredAssistantRound(sourceUserMessageId: String, recoveredRound: ARound) {
+        remoteRecoveryJob?.cancel()
+        remoteRecoveryJob = null
+        failedUserMessageStates.remove(sourceUserMessageId)
+        clearFailedAssistantStateForUser(sourceUserMessageId)
+        if (recoveredRound.user.isNotBlank()) {
+            upsertUserMessage(sourceUserMessageId, recoveredRound.user)
+        }
+        applyCompletedAssistantMessageInPlace(
+            target = messages,
+            messageId = assistantMessageIdForSourceUser(sourceUserMessageId),
+            content = recoveredRound.assistant
+        )
+        val startIndex = trimWindowStartIndex(messages)
+        if (startIndex > 0) {
+            repeat(startIndex) { messages.removeAt(0) }
+        }
+        pruneFailedMessageStates()
+        persistTick++
+        val persistedMessages = persistableMessagesSnapshot()
+        val prewarmMessages = persistedMessages.takeLast(2)
+        snackbarScope.launch {
+            context.saveLocalChatWindow(chatScopeId, persistedMessages)
+            context.clearLocalStreamingDraft(chatScopeId)
+            prewarmAssistantMarkdown(prewarmMessages)
+        }
+    }
+
+    fun scheduleRemoteAssistantRecovery(
+        sourceUserMessageId: String,
+        assistantMessageId: String,
+        fallbackContent: String,
+        reason: String
+    ) {
+        remoteRecoveryJob?.cancel()
+        remoteRecoveryJob = snackbarScope.launch {
+            var recoveredRound: ARound? = null
+            for (attempt in 0 until REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS) {
+                val snapshot = awaitRemoteSnapshot()
+                recoveredRound = snapshot
+                    ?.findRoundByClientMessageId(sourceUserMessageId)
+                    ?.takeIf { it.assistant.isNotBlank() }
+                if (recoveredRound != null) break
+                if (attempt < REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS - 1) {
+                    delay(REMOTE_STREAM_RECOVERY_DELAY_MS)
+                }
+            }
+            val matchedRound = recoveredRound
+            if (matchedRound != null) {
+                applyRecoveredAssistantRound(sourceUserMessageId, matchedRound)
+            } else {
+                finalizeInterruptedAssistant(
+                    sourceUserMessageId = sourceUserMessageId,
+                    assistantMessageId = assistantMessageId,
+                    finalContent = fallbackContent,
+                    reason = reason
+                )
+            }
+        }
+    }
+
     fun replaceMessages(newMessages: List<ChatMessage>) {
         val trimmed = sanitizeMessageWindow(newMessages)
         messages.clear()
@@ -3258,6 +3383,8 @@ fun ChatScreen() {
 
     fun resetStreamingUiState(clearVisibleContent: Boolean) {
         mainHandler.post {
+            remoteRecoveryJob?.cancel()
+            remoteRecoveryJob = null
             SessionApi.cancelCurrentStream()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
@@ -3546,7 +3673,9 @@ fun ChatScreen() {
                 }
                 streamingRevealBuffer = streamingRevealBuffer.drop(batch.text.length)
                 if (streamingMessageId.isNullOrBlank()) {
-                    streamingMessageId = "assistant_${UUID.randomUUID()}"
+                    streamingMessageId = anchoredUserMessageId
+                        ?.let(::assistantMessageIdForSourceUser)
+                        ?: "assistant_${UUID.randomUUID()}"
                 }
                 streamingFreshStart = streamingMessageContent.length
                 streamingMessageContent += batch.text
@@ -3570,7 +3699,9 @@ fun ChatScreen() {
         if (piece.isEmpty()) return
         mainHandler.post {
             if (streamingMessageId.isNullOrBlank()) {
-                streamingMessageId = "assistant_${UUID.randomUUID()}"
+                streamingMessageId = anchoredUserMessageId
+                    ?.let(::assistantMessageIdForSourceUser)
+                    ?: "assistant_${UUID.randomUUID()}"
             }
             streamingRevealBuffer += piece
             ensureStreamingRevealJob()
@@ -3629,7 +3760,9 @@ fun ChatScreen() {
             streamRevealJob = null
             if (streamingRevealBuffer.isNotEmpty()) {
                 if (streamingMessageId.isNullOrBlank()) {
-                    streamingMessageId = "assistant_${UUID.randomUUID()}"
+                    streamingMessageId = anchoredUserMessageId
+                        ?.let(::assistantMessageIdForSourceUser)
+                        ?: "assistant_${UUID.randomUUID()}"
                 }
                 streamingMessageContent += streamingRevealBuffer
                 streamingRevealBuffer = ""
@@ -3727,6 +3860,7 @@ fun ChatScreen() {
     fun recoverStreamingAfterLifecycleLoss() {
         mainHandler.post {
             if (!isStreaming) return@post
+            if (hasRemoteHistorySource) return@post
             autoScrollMode = AutoScrollMode.StreamAnchorFollow
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
@@ -3734,7 +3868,9 @@ fun ChatScreen() {
             }
             if (streamingRevealBuffer.isNotEmpty()) {
                 if (streamingMessageId.isNullOrBlank()) {
-                    streamingMessageId = "assistant_${UUID.randomUUID()}"
+                    streamingMessageId = anchoredUserMessageId
+                        ?.let(::assistantMessageIdForSourceUser)
+                        ?: "assistant_${UUID.randomUUID()}"
                 }
                 streamingMessageContent += streamingRevealBuffer
                 streamingRevealBuffer = ""
@@ -3752,7 +3888,7 @@ fun ChatScreen() {
 
     fun handleAssistantInterrupted(sourceUserMessageId: String, reason: String) {
         mainHandler.post {
-            val finalId = streamingMessageId ?: "assistant_${UUID.randomUUID()}"
+            val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
             fakeStreamJob?.cancel()
             fakeStreamJob = null
@@ -3779,6 +3915,22 @@ fun ChatScreen() {
             autoScrollMode = AutoScrollMode.Idle
             jumpButtonVisible = false
             context.clearLocalStreamingDraftSync(chatScopeId)
+            if (canAttemptRemoteAssistantRecovery(reason)) {
+                if (finalContent.isNotBlank()) {
+                    applyCompletedAssistantMessageInPlace(
+                        target = messages,
+                        messageId = finalId,
+                        content = finalContent
+                    )
+                }
+                scheduleRemoteAssistantRecovery(
+                    sourceUserMessageId = sourceUserMessageId,
+                    assistantMessageId = finalId,
+                    fallbackContent = finalContent,
+                    reason = reason
+                )
+                return@post
+            }
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
@@ -3896,7 +4048,9 @@ fun ChatScreen() {
                 snackbarScope.launch {
                     context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
                 }
-                streamingMessageId = "assistant_${UUID.randomUUID()}"
+                remoteRecoveryJob?.cancel()
+                remoteRecoveryJob = null
+                streamingMessageId = assistantMessageIdForSourceUser(userId)
                 streamingMessageContent = ""
                 streamingRevealBuffer = ""
                 streamingFreshStart = -1
@@ -4140,7 +4294,9 @@ fun ChatScreen() {
                     !userInteracting &&
                     !userDetachedFromBottom &&
                     currentStreamingOverflowDelta() > finalBottomSnapThresholdPx
-            val finalId = streamingMessageId ?: "assistant_${UUID.randomUUID()}"
+            val finalId = streamingMessageId
+                ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
+                ?: "assistant_${UUID.randomUUID()}"
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
             fakeStreamJob?.cancel()
             fakeStreamJob = null

@@ -162,8 +162,20 @@ object SessionApi {
                             val legacyList = json.a_rounds ?: emptyList()
                             val fullList = json.a_rounds_full ?: if (listFromAJson.isNotEmpty()) listFromAJson else legacyList
                             val forUiList = json.a_rounds_for_ui ?: fullList
-                            val full = fullList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
-                            val forUi = forUiList.map { r -> ARound(r.user ?: "", r.assistant ?: "") }
+                            val full = fullList.map { r ->
+                                ARound(
+                                    client_msg_id = r.client_msg_id,
+                                    user = r.user ?: "",
+                                    assistant = r.assistant ?: ""
+                                )
+                            }
+                            val forUi = forUiList.map { r ->
+                                ARound(
+                                    client_msg_id = r.client_msg_id,
+                                    user = r.user ?: "",
+                                    assistant = r.assistant ?: ""
+                                )
+                            }
                             onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi))
                         } catch (e: Exception) {
                             Log.e(TAG, "parse snapshot", e)
@@ -460,6 +472,7 @@ object SessionApi {
     )
 
     private data class ARoundJson(
+        @SerializedName("client_msg_id") val client_msg_id: String? = null,
         @SerializedName("user") val user: String?,
         @SerializedName("assistant") val assistant: String?
     )

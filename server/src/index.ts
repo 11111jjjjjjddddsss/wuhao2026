@@ -310,6 +310,8 @@ app.get('/api/session/snapshot', async (request, reply) => {
   return reply.send({
     user_id: safe.user_id,
     a_json: safe.a_rounds_full,
+    a_rounds_full: safe.a_rounds_full,
+    a_rounds_for_ui: safe.a_rounds_full,
     b_summary: safe.b_summary,
     c_summary: safe.c_summary,
     round_total: safe.round_total,
@@ -342,7 +344,7 @@ app.post('/api/session/round_complete', async (request, reply) => {
   const result = await appendSessionRoundComplete(
     userId,
     clientMsgId,
-    { user: userText, user_images: userImages, assistant: assistantText },
+    { client_msg_id: clientMsgId, user: userText, user_images: userImages, assistant: assistantText },
     aWindowRounds,
     summaryIntervals.bEveryRounds,
     summaryIntervals.cEveryRounds,
@@ -677,7 +679,7 @@ app.post('/api/chat/stream', async (request, reply) => {
         const result = await appendSessionRoundComplete(
           userId,
           clientMsgId,
-          { user: text, user_images: images, assistant: assistantText.trim() },
+          { client_msg_id: clientMsgId, user: text, user_images: images, assistant: assistantText.trim() },
           aWindowRounds,
           summaryIntervals.bEveryRounds,
           summaryIntervals.cEveryRounds,

@@ -19,6 +19,7 @@ data class SessionSnapshot(
 
 /** 单轮对话 (user, assistant) */
 data class ARound(
+    val client_msg_id: String? = null,
     val user: String,
     val assistant: String
 )
