@@ -3896,26 +3896,6 @@ fun ChatScreen() {
         pendingResumeAutoFollow = false
     }
 
-    LaunchedEffect(
-        isStreaming,
-        streamingMessageContent.length,
-        autoScrollMode,
-        userDetachedFromBottom,
-        userInteracting,
-        assistantLineStepPx
-    ) {
-        if (!isStreaming || streamingMessageContent.isBlank()) return@LaunchedEffect
-        if (streamBottomSpacerPx <= 0) return@LaunchedEffect
-        if (autoScrollMode != AutoScrollMode.StreamAnchorFollow) return@LaunchedEffect
-        if (userDetachedFromBottom || userInteracting) return@LaunchedEffect
-        withFrameNanos { }
-        val bleedStepPx = maxOf((assistantLineStepPx * 0.45f).roundToInt(), 12)
-        streamBottomSpacerPx = consumeStreamingBottomSpacer(
-            currentSpacerPx = streamBottomSpacerPx,
-            consumedScrollPx = bleedStepPx.toFloat()
-        )
-    }
-
     LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
         if (streamBottomSpacerPx <= 0) return@LaunchedEffect
         if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && !pendingStreamSpacerRelease) {
