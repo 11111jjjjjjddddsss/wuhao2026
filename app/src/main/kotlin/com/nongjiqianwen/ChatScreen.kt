@@ -4746,11 +4746,17 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             val anchorTop = assistantStartAnchorTopPx
-            val anchorIndex =
-                anchoredUserMessageId
-                    ?.let { userId -> messages.indexOfFirst { it.id == userId } }
+            val anchorIndex = run {
+                val sourceUserId = anchoredUserMessageId
+                sourceUserId
+                    ?.let(::assistantMessageIdForSourceUser)
+                    ?.let { assistantId -> messages.indexOfFirst { it.id == assistantId } }
                     ?.takeIf { it >= 0 }
+                    ?: sourceUserId
+                        ?.let { userId -> messages.indexOfFirst { it.id == userId } }
+                        ?.takeIf { it >= 0 }
                     ?: messages.lastIndex
+            }
             if (anchorIndex >= 0) {
                 listState.scrollToItem(anchorIndex, scrollOffset = -anchorTop)
                 repeat(6) { withFrameNanos { } }
