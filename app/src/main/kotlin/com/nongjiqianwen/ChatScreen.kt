@@ -4447,9 +4447,9 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (!composerSettlingSnapshotActive && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
-        if (sendUiSettling || imeVisible) return@LaunchedEffect
+        if (sendUiSettling) return@LaunchedEffect
         withFrameNanos { }
-        if (!sendUiSettling && !imeVisible && !inputFieldFocused && input.value.text.isEmpty()) {
+        if (!sendUiSettling && !inputFieldFocused && input.value.text.isEmpty()) {
             composerSettlingSnapshotActive = false
             composerSettlingSnapshotText = ""
             composerSettlingSnapshotHeightPx = 0
@@ -5095,7 +5095,10 @@ fun ChatScreen() {
                                         settlingSnapshotText = composerSettlingSnapshotText,
                                         settlingSnapshotActive = composerSettlingSnapshotActive,
                                         settlingSnapshotHeightPx = composerSettlingSnapshotHeightPx,
-                                        suppressPlaceholder = sendUiSettling || composerSettlingSnapshotActive,
+                                        suppressPlaceholder =
+                                            sendUiSettling ||
+                                                composerSettlingSnapshotActive ||
+                                                composerSettlingChromeHeightPx > 0,
                                         onFocusChanged = { focused ->
                                             inputFieldFocused = focused
                                             if (focused) {
