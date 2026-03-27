@@ -2819,6 +2819,7 @@ fun ChatScreen() {
     var composerSettlingSnapshotText by remember(chatScopeId) { mutableStateOf("") }
     var composerSettlingSnapshotHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var composerSettlingSnapshotActive by remember(chatScopeId) { mutableStateOf(false) }
+    var composerSettlingChromeHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var sendUiSettling by remember(chatScopeId) { mutableStateOf(false) }
     val failedUserMessageStates = remember(chatScopeId) { mutableStateMapOf<String, String>() }
     val failedAssistantMessageStates = remember(chatScopeId) {
@@ -3653,6 +3654,7 @@ fun ChatScreen() {
             composerSettlingSnapshotActive = false
             composerSettlingSnapshotText = ""
             composerSettlingSnapshotHeightPx = 0
+            composerSettlingChromeHeightPx = 0
             if (clearVisibleContent) {
                 streamingMessageContent = ""
             }
@@ -4248,6 +4250,7 @@ fun ChatScreen() {
             composerSettlingSnapshotText = text
             composerSettlingSnapshotHeightPx = inputContentHeightPx
             composerSettlingSnapshotActive = text.isNotBlank()
+            composerSettlingChromeHeightPx = inputChromeRowHeightPx
             suppressInputCursor = true
             inputFieldFocused = false
             clearInputSelectionToolbar()
@@ -4294,6 +4297,7 @@ fun ChatScreen() {
             composerSettlingSnapshotText = text
             composerSettlingSnapshotHeightPx = inputContentHeightPx
             composerSettlingSnapshotActive = text.isNotBlank()
+            composerSettlingChromeHeightPx = inputChromeRowHeightPx
             suppressInputCursor = true
             inputFieldFocused = false
             clearInputSelectionToolbar()
@@ -4429,24 +4433,27 @@ fun ChatScreen() {
 
     LaunchedEffect(
         composerSettlingSnapshotActive,
+        composerSettlingChromeHeightPx,
         sendUiSettling,
         imeVisible,
         inputFieldFocused,
         input.value.text
     ) {
-        if (!composerSettlingSnapshotActive) return@LaunchedEffect
         if (input.value.text.isNotEmpty() || inputFieldFocused) {
             composerSettlingSnapshotActive = false
             composerSettlingSnapshotText = ""
             composerSettlingSnapshotHeightPx = 0
+            composerSettlingChromeHeightPx = 0
             return@LaunchedEffect
         }
+        if (!composerSettlingSnapshotActive && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
         if (sendUiSettling || imeVisible) return@LaunchedEffect
         withFrameNanos { }
         if (!sendUiSettling && !imeVisible && !inputFieldFocused && input.value.text.isEmpty()) {
             composerSettlingSnapshotActive = false
             composerSettlingSnapshotText = ""
             composerSettlingSnapshotHeightPx = 0
+            composerSettlingChromeHeightPx = 0
         }
     }
 
@@ -4956,6 +4963,9 @@ fun ChatScreen() {
         }
         val inputChromeBottomPadding = 8.dp
         val inputLimitHintOffsetPx = with(density) { 14.dp.roundToPx() } + inputChromeRowHeightPx
+        val composerSettlingChromeMinHeight = with(density) {
+            composerSettlingChromeHeightPx.coerceAtLeast(0).toDp()
+        }
         val inputChromeSurface = Color.White
         val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
         val inputFieldSurface = Color.White
@@ -5006,6 +5016,7 @@ fun ChatScreen() {
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                            .heightIn(min = composerSettlingChromeMinHeight)
                             .onSizeChanged {
                                 inputChromeRowHeightPx = it.height
                                 if (it.height > 0) {
