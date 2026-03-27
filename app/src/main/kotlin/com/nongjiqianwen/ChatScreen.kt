@@ -5280,7 +5280,6 @@ fun ChatScreen() {
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
                         bottom = with(density) { effectiveBottomBarHeightPx.toDp() } +
-                            composerVisibleImeInset +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE
                     )
                     ) {
@@ -5475,7 +5474,6 @@ fun ChatScreen() {
                 if (showWelcomePlaceholder) {
                     val welcomeBottomInset =
                         with(density) { effectiveBottomBarHeightPx.toDp() } +
-                            composerVisibleImeInset +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE +
                             24.dp
                     Box(
