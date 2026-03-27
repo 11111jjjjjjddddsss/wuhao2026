@@ -4593,6 +4593,10 @@ fun ChatScreen() {
         composerCollapseOverlayVisible,
         sendUiSettling,
         imeVisible,
+        composerSettlingChromeHeightPx,
+        bottomBarHeightPx,
+        inputChromeRowHeightPx,
+        safeBottomInsetPx,
         inputFieldFocused,
         input.value.text
     ) {
@@ -4601,9 +4605,24 @@ fun ChatScreen() {
             composerCollapseOverlayVisible = false
             return@LaunchedEffect
         }
-        if (!sendUiSettling && !imeVisible) {
-            withFrameNanos { }
-            if (!sendUiSettling && !imeVisible && !inputFieldFocused && input.value.text.isEmpty()) {
+        val stableBottomBarHeightPx =
+            (inputChromeRowHeightPx + safeBottomInsetPx).coerceAtLeast(startupBottomBarHeightEstimatePx)
+        val bottomBarStable =
+            kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx) <= BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+        if (!sendUiSettling && !imeVisible && composerSettlingChromeHeightPx <= 0 && bottomBarStable) {
+            repeat(2) { withFrameNanos { } }
+            val settledBottomBarHeightPx =
+                (inputChromeRowHeightPx + safeBottomInsetPx).coerceAtLeast(startupBottomBarHeightEstimatePx)
+            val settledBottomBarStable =
+                kotlin.math.abs(bottomBarHeightPx - settledBottomBarHeightPx) <= BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+            if (
+                !sendUiSettling &&
+                !imeVisible &&
+                composerSettlingChromeHeightPx <= 0 &&
+                settledBottomBarStable &&
+                !inputFieldFocused &&
+                input.value.text.isEmpty()
+            ) {
                 composerCollapseOverlayVisible = false
             }
         }
