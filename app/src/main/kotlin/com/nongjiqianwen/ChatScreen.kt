@@ -1793,7 +1793,8 @@ private fun ChatInputField(
                             .alpha(0f),
                         style = textStyle
                     )
-                } else if (value.text.isEmpty() && !suppressPlaceholder) {
+                }
+                if (value.text.isEmpty() && !suppressPlaceholder) {
                     Text(
                         text = "描述种植问题",
                         color = Color(0xFFAEAFB4)
@@ -4591,7 +4592,10 @@ fun ChatScreen() {
         sendUiSettling,
         imeVisible,
         inputFieldFocused,
-        input.value.text
+        input.value.text,
+        bottomBarHeightPx,
+        inputChromeRowHeightPx,
+        safeBottomInsetPx
     ) {
         if (input.value.text.isNotEmpty() || inputFieldFocused) {
             composerSettlingSnapshotActive = false
@@ -4603,6 +4607,21 @@ fun ChatScreen() {
         if (!composerSettlingSnapshotActive && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
         if (sendUiSettling) return@LaunchedEffect
         if (!imeVisible) {
+            val stableBottomBarHeightPx =
+                (inputChromeRowHeightPx + safeBottomInsetPx)
+                    .coerceAtLeast(startupBottomBarHeightEstimatePx)
+            val bottomBarStable =
+                kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx) <=
+                    BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+            if (!bottomBarStable) return@LaunchedEffect
+            withFrameNanos { }
+            val settledBottomBarHeightPx =
+                (inputChromeRowHeightPx + safeBottomInsetPx)
+                    .coerceAtLeast(startupBottomBarHeightEstimatePx)
+            val settledBottomBarStable =
+                kotlin.math.abs(bottomBarHeightPx - settledBottomBarHeightPx) <=
+                    BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+            if (!settledBottomBarStable) return@LaunchedEffect
             composerSettlingSnapshotActive = false
             composerSettlingSnapshotText = ""
             composerSettlingSnapshotHeightPx = 0
@@ -4824,6 +4843,7 @@ fun ChatScreen() {
 
     LaunchedEffect(pendingFinalBottomSnap, messages.size, isStreaming) {
         if (!pendingFinalBottomSnap || isStreaming) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
         for (attempt in 0 until 4) {
             withFrameNanos { }
             if (isWithinFinalBottomSnapTolerance()) {
@@ -4850,7 +4870,7 @@ fun ChatScreen() {
     ) {
         if (!pendingStreamSpacerRelease || isStreaming || pendingFinalBottomSnap) return@LaunchedEffect
         if (streamBottomSpacerPx > 0) {
-            withFrameNanos { }
+            repeat(2) { withFrameNanos { } }
         }
         streamBottomSpacerPx = 0
         pendingStreamSpacerRelease = false
