@@ -2927,6 +2927,7 @@ fun ChatScreen() {
     var pendingStreamSpacerRelease by remember(chatScopeId) { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
+    var suppressJumpButtonForManualJump by remember { mutableStateOf(false) }
     var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
     var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
     var lifecycleResumeReady by remember { mutableStateOf(false) }
@@ -3241,6 +3242,7 @@ fun ChatScreen() {
         userDetachedFromBottom,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
+        suppressJumpButtonForManualJump,
         suppressJumpButtonForLifecycleResume
     ) {
         derivedStateOf {
@@ -3249,6 +3251,7 @@ fun ChatScreen() {
                 !pendingFinalBottomSnap &&
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
+                !suppressJumpButtonForManualJump &&
                 !suppressJumpButtonForLifecycleResume &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (!isStreaming || userDetachedFromBottom) &&
@@ -5037,6 +5040,7 @@ fun ChatScreen() {
         snackbarScope.launch {
             if (messages.isEmpty() && !hasStreamingItem) return@launch
             val jumpingIntoStreaming = isStreaming && hasStreamingItem
+            suppressJumpButtonForManualJump = true
             autoScrollMode = if (jumpingIntoStreaming) {
                 AutoScrollMode.StreamAnchorFollow
             } else {
@@ -5052,6 +5056,8 @@ fun ChatScreen() {
                 userDetachedFromBottom = false
                 scrollToBottom(animated = false)
             }
+            repeat(2) { withFrameNanos { } }
+            suppressJumpButtonForManualJump = false
         }
     }
 
