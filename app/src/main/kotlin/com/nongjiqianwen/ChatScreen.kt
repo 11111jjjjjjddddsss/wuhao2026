@@ -2797,6 +2797,7 @@ fun ChatScreen() {
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
+    var pendingFinalBottomSnapAfterSpacer by remember(chatScopeId) { mutableStateOf(false) }
     var pendingStreamSpacerRelease by remember(chatScopeId) { mutableStateOf(false) }
     var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
@@ -3642,6 +3643,7 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
+            pendingFinalBottomSnapAfterSpacer = false
             pendingStreamSpacerRelease = false
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
@@ -4054,7 +4056,8 @@ fun ChatScreen() {
                     content = finalContent
                 )
                 pendingStreamSpacerRelease = true
-                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                pendingFinalBottomSnap = false
+                pendingFinalBottomSnapAfterSpacer = shouldSnapToBottomOnFinish
                 persistTick++
                 val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
@@ -4070,6 +4073,7 @@ fun ChatScreen() {
                 pendingStreamSpacerRelease = false
                 persistTick++
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                pendingFinalBottomSnapAfterSpacer = false
             }
         }
     }
@@ -4180,6 +4184,7 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
+            pendingFinalBottomSnapAfterSpacer = false
             pendingStreamSpacerRelease = false
             streamingBackgrounded = false
             userDetachedFromBottom = false
@@ -4424,7 +4429,9 @@ fun ChatScreen() {
         sendUiSettling,
         imeVisible,
         inputFieldFocused,
-        input.value.text
+        input.value.text,
+        isStreaming,
+        streamingMessageContent.length
     ) {
         if (!composerSettlingSnapshotActive) return@LaunchedEffect
         if (input.value.text.isNotEmpty() || inputFieldFocused) {
@@ -4434,6 +4441,7 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (sendUiSettling || imeVisible) return@LaunchedEffect
+        if (isStreaming && streamingMessageContent.isBlank()) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
         if (!sendUiSettling && !imeVisible && !inputFieldFocused && input.value.text.isEmpty()) {
             composerSettlingSnapshotActive = false
@@ -4577,6 +4585,8 @@ fun ChatScreen() {
         repeat(2) { withFrameNanos { } }
         streamBottomSpacerPx = 0
         pendingStreamSpacerRelease = false
+        pendingFinalBottomSnap = pendingFinalBottomSnapAfterSpacer
+        pendingFinalBottomSnapAfterSpacer = false
         streamingMessageId = null
         streamingMessageContent = ""
     }
@@ -4619,7 +4629,8 @@ fun ChatScreen() {
                     content = finalContent
                 )
                 pendingStreamSpacerRelease = true
-                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                pendingFinalBottomSnap = false
+                pendingFinalBottomSnapAfterSpacer = shouldSnapToBottomOnFinish
                 persistTick++
                 val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
@@ -4634,6 +4645,7 @@ fun ChatScreen() {
                 streamingMessageContent = ""
                 pendingStreamSpacerRelease = false
                 pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                pendingFinalBottomSnapAfterSpacer = false
             }
         }
     }
