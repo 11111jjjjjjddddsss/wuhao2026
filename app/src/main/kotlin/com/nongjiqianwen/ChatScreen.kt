@@ -60,6 +60,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -4955,12 +4956,6 @@ fun ChatScreen() {
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding()
-        val imeBottomInset: Dp = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
-        val composerImeTravelInset: Dp =
-            (imeBottomInset - navigationBottomInset).coerceAtLeast(0.dp)
-        val composerVisibleImeInset: Dp =
-            if (sendUiSettling || composerSettlingSnapshotActive) 0.dp else composerImeTravelInset
-        val composerVisibleImeOffsetPx = with(density) { composerVisibleImeInset.roundToPx() }
         val inputChromeHorizontalPadding = when {
             maxWidth < 360.dp -> 8.dp
             maxWidth < 600.dp -> 10.dp
@@ -4989,18 +4984,9 @@ fun ChatScreen() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
+                        .imePadding()
                         .background(pageSurface)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(
-                                with(density) { effectiveBottomBarHeightPx.toDp() } +
-                                    composerVisibleImeInset
-                            )
-                            .background(pageSurface)
-                    )
                     if (composerOverlayHintText != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -5009,7 +4995,6 @@ fun ChatScreen() {
                             shadowElevation = 1.2.dp,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .offset { IntOffset(0, -composerVisibleImeOffsetPx) }
                                 .widthIn(max = chromeMaxWidth)
                                 .padding(
                                     start = inputChromeHorizontalPadding,
@@ -5025,14 +5010,9 @@ fun ChatScreen() {
                             )
                         }
                     }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .offset { IntOffset(0, -composerVisibleImeOffsetPx) }
-                            .background(pageSurface)
-                    ) {
                     Row(
                         modifier = Modifier
+                            .align(Alignment.BottomCenter)
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -5199,10 +5179,9 @@ fun ChatScreen() {
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
+                                }
                             }
                         }
-                    }
-                }
                 }
             },
             snackbarHost = {
@@ -5532,7 +5511,6 @@ fun ChatScreen() {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset { IntOffset(0, -composerVisibleImeOffsetPx) }
                         .fillMaxWidth()
                         .height(with(density) { effectiveBottomBarHeightPx.toDp() })
                         .background(pageSurface)
