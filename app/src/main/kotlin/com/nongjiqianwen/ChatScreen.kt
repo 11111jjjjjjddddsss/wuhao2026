@@ -4989,6 +4989,14 @@ fun ChatScreen() {
                         .navigationBarsPadding()
                         .background(pageSurface)
                 ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .offset { IntOffset(0, -composerVisibleImeOffsetPx) }
+                            .fillMaxWidth()
+                            .height(with(density) { effectiveBottomBarHeightPx.toDp() })
+                            .background(pageSurface)
+                    )
                     if (composerOverlayHintText != null) {
                         Surface(
                             shape = RoundedCornerShape(12.dp),
@@ -5517,6 +5525,7 @@ fun ChatScreen() {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .offset { IntOffset(0, -composerVisibleImeOffsetPx) }
                         .fillMaxWidth()
                         .height(with(density) { effectiveBottomBarHeightPx.toDp() })
                         .background(pageSurface)
