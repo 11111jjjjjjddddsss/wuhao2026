@@ -52,6 +52,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -2684,6 +2685,128 @@ private fun FrostedCircleButton(
 }
 
 @Composable
+private fun ComposerSendActionButton(
+    size: Dp,
+    backgroundColor: Color,
+    tint: Color,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .padding(start = 6.dp)
+            .size(size)
+            .clip(CircleShape)
+            .background(backgroundColor)
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = null
+            ) {
+                onClick()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        LongArrowIcon(
+            tint = tint,
+            directionUp = true,
+            modifier = Modifier.size(22.dp)
+        )
+    }
+}
+
+@Composable
+private fun ComposerInputShell(
+    modifier: Modifier = Modifier,
+    inputFieldSurface: Color,
+    inputFieldBorder: Color,
+    inputBarHeight: Dp,
+    inputBarMaxHeight: Dp,
+    content: @Composable RowScope.() -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(30.dp),
+        color = inputFieldSurface,
+        border = BorderStroke(1.22.dp, inputFieldBorder.copy(alpha = 0.98f)),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+        modifier = modifier
+            .shadow(
+                elevation = 1.35.dp,
+                shape = RoundedCornerShape(30.dp),
+                ambientColor = Color(0x14000000),
+                spotColor = Color(0x14000000)
+            )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
+                .padding(end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun ComposerChromeRow(
+    modifier: Modifier = Modifier,
+    addButtonSize: Dp,
+    addIconSize: Dp,
+    sendButtonSize: Dp,
+    inputChromeSurface: Color,
+    inputChromeBorder: Color,
+    inputFieldSurface: Color,
+    inputFieldBorder: Color,
+    inputBarHeight: Dp,
+    inputBarMaxHeight: Dp,
+    onAddClick: () -> Unit,
+    inputShellModifier: Modifier = Modifier,
+    inputContent: @Composable RowScope.() -> Unit,
+    sendButtonEnabled: Boolean,
+    sendButtonBackgroundColor: Color,
+    sendButtonTint: Color,
+    onSendClick: () -> Unit
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        FrostedCircleButton(
+            size = addButtonSize,
+            surfaceColor = inputChromeSurface,
+            borderColor = inputChromeBorder,
+            onClick = onAddClick
+        ) {
+            PlusCrossIcon(
+                tint = Color(0xFF6F7277),
+                modifier = Modifier.size(addIconSize)
+            )
+        }
+
+        ComposerInputShell(
+            modifier = Modifier.weight(1f).then(inputShellModifier),
+            inputFieldSurface = inputFieldSurface,
+            inputFieldBorder = inputFieldBorder,
+            inputBarHeight = inputBarHeight,
+            inputBarMaxHeight = inputBarMaxHeight,
+            content = inputContent
+        )
+
+        ComposerSendActionButton(
+            size = sendButtonSize,
+            backgroundColor = sendButtonBackgroundColor,
+            tint = sendButtonTint,
+            enabled = sendButtonEnabled,
+            onClick = onSendClick
+        )
+    }
+}
+
+@Composable
 @OptIn(
     ExperimentalComposeUiApi::class,
     ExperimentalFoundationApi::class,
@@ -4999,10 +5122,6 @@ fun ChatScreen() {
             composerHostBounds?.let { with(density) { it.width.toDp() } }
         val composerCollapseOverlayHostHeight =
             composerHostBounds?.let { with(density) { it.height.toDp() } }
-        val composerCollapseOverlayTop =
-            composerChromeBounds?.let { with(density) { (it.top - chatRootTopPx).toDp() } }
-        val composerCollapseOverlayStart =
-            composerChromeBounds?.let { with(density) { (it.left - chatRootLeftPx).toDp() } }
         val composerCollapseOverlayWidth =
             composerChromeBounds?.let { with(density) { it.width.toDp() } }
         val composerCollapseOverlayHeight =
@@ -5063,7 +5182,19 @@ fun ChatScreen() {
                             )
                         }
                     }
-                    Row(
+                    val sendGate = buildSendGateState(
+                        rawInput = input.value.text,
+                        isStreaming = isStreaming || sendUiSettling,
+                        exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
+                    )
+                    val inputTextToolbar = remember(chatScopeId) {
+                        buildInputSelectionTextToolbar()
+                    }
+                    val canPressSend = sendGate.canPress
+                    val canSend = sendGate.canSubmit
+                    val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
+                    val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
+                    ComposerChromeRow(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .widthIn(max = chromeMaxWidth)
@@ -5085,162 +5216,104 @@ fun ChatScreen() {
                                 top = 0.dp,
                                 bottom = inputChromeBottomPadding
                             ),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        FrostedCircleButton(
-                            size = addButtonSize,
-                            surfaceColor = inputChromeSurface,
-                            borderColor = inputChromeBorder,
-                            onClick = {
-                                performButtonHaptic()
-                            }
-                        ) {
-                            PlusCrossIcon(
-                                tint = Color(0xFF6F7277),
-                                modifier = Modifier.size(addIconSize)
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(30.dp),
-                            color = inputFieldSurface,
-                            border = BorderStroke(1.22.dp, inputFieldBorder.copy(alpha = 0.98f)),
-                            tonalElevation = 0.dp,
-                            shadowElevation = 0.dp,
-                            modifier = Modifier
-                                .weight(1f)
-                                .shadow(
-                                    elevation = 1.35.dp,
-                                    shape = RoundedCornerShape(30.dp),
-                                    ambientColor = Color(0x14000000),
-                                    spotColor = Color(0x14000000)
-                                )
-                                .onGloballyPositioned { coordinates ->
-                                    val bounds = coordinates.boundsInWindow()
-                                    inputFieldBoundsInWindow = bounds
-                                    composerTopInViewportPx =
-                                        (bounds.top - messageViewportTopPx).roundToInt()
-                                    composerMeasured = true
-                                    applyPendingInputSelectionToolbarIfReady(bounds)
-                                }
-                        ) {
-                                val sendGate = buildSendGateState(
-                                    rawInput = input.value.text,
-                                    isStreaming = isStreaming || sendUiSettling,
-                                    exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
-                                )
-                                val inputTextToolbar = remember(chatScopeId) {
-                                    buildInputSelectionTextToolbar()
-                                }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
-                                    .padding(end = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        addButtonSize = addButtonSize,
+                        addIconSize = addIconSize,
+                        sendButtonSize = sendButtonSize,
+                        inputChromeSurface = inputChromeSurface,
+                        inputChromeBorder = inputChromeBorder,
+                        inputFieldSurface = inputFieldSurface,
+                        inputFieldBorder = inputFieldBorder,
+                        inputBarHeight = inputBarHeight,
+                        inputBarMaxHeight = inputBarMaxHeight,
+                        onAddClick = { performButtonHaptic() },
+                        inputShellModifier = Modifier.onGloballyPositioned { coordinates ->
+                            val bounds = coordinates.boundsInWindow()
+                            inputFieldBoundsInWindow = bounds
+                            composerTopInViewportPx =
+                                (bounds.top - messageViewportTopPx).roundToInt()
+                            composerMeasured = true
+                            applyPendingInputSelectionToolbarIfReady(bounds)
+                        },
+                        inputContent = {
+                            CompositionLocalProvider(
+                                LocalTextSelectionColors provides inputSelectionColors,
+                                LocalTextToolbar provides inputTextToolbar
                             ) {
-                                CompositionLocalProvider(
-                                    LocalTextSelectionColors provides inputSelectionColors,
-                                    LocalTextToolbar provides inputTextToolbar
-                                ) {
-                                    ChatInputField(
-                                        value = input.value,
-                                        focused = inputFieldFocused,
-                                        suppressCursor = suppressInputCursor,
-                                        settlingSnapshotText = composerSettlingSnapshotText,
-                                        settlingSnapshotActive = composerSettlingSnapshotActive,
-                                        settlingSnapshotHeightPx = composerSettlingSnapshotHeightPx,
-                                        suppressPlaceholder =
-                                            sendUiSettling ||
-                                                composerSettlingSnapshotActive ||
-                                                composerSettlingChromeHeightPx > 0,
-                                        onFocusChanged = { focused ->
-                                            inputFieldFocused = focused
-                                            if (focused) {
-                                                suppressInputCursor = false
-                                            }
-                                        },
-                                        onContentHeightChanged = { height ->
-                                            inputContentHeightPx = height
-                                        },
-                                        onValueChange = {
-                                            if (
-                                                it.text.length > INPUT_MAX_CHARS &&
-                                                input.value.text.length <= INPUT_MAX_CHARS
-                                            ) {
-                                                inputLimitHintTick++
-                                            }
+                                ChatInputField(
+                                    value = input.value,
+                                    focused = inputFieldFocused,
+                                    suppressCursor = suppressInputCursor,
+                                    settlingSnapshotText = composerSettlingSnapshotText,
+                                    settlingSnapshotActive = composerSettlingSnapshotActive,
+                                    settlingSnapshotHeightPx = composerSettlingSnapshotHeightPx,
+                                    suppressPlaceholder =
+                                        sendUiSettling ||
+                                            composerSettlingSnapshotActive ||
+                                            composerSettlingChromeHeightPx > 0,
+                                    onFocusChanged = { focused ->
+                                        inputFieldFocused = focused
+                                        if (focused) {
                                             suppressInputCursor = false
-                                            input.value = it
-                                        },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .padding(start = 2.dp),
-                                        placeholder = { Text("描述种植问题", color = Color(0xFFAEAFB4)) },
-                                        singleLine = false,
-                                        minLines = 1,
-                                        maxLines = 6,
-                                        textStyle = TextStyle(
-                                            fontSize = 16.sp,
-                                            lineHeight = 22.sp,
-                                            color = Color(0xFF111111)
-                                        ),
-                                        colors = TextFieldDefaults.colors(
-                                            focusedContainerColor = Color.Transparent,
-                                            unfocusedContainerColor = Color.Transparent,
-                                            disabledContainerColor = Color.Transparent,
-                                            focusedIndicatorColor = Color.Transparent,
-                                            unfocusedIndicatorColor = Color.Transparent,
-                                            disabledIndicatorColor = Color.Transparent,
-                                            cursorColor = if (inputFieldFocused && !suppressInputCursor) {
-                                                Color(0xFF111111)
-                                            } else {
-                                                Color.Transparent
-                                            },
-                                            errorCursorColor = if (inputFieldFocused && !suppressInputCursor) {
-                                                Color(0xFF111111)
-                                            } else {
-                                                Color.Transparent
-                                            }
-                                        )
-                                    )
-                                }
-                                val canPressSend = sendGate.canPress
-                                val canSend = sendGate.canSubmit
-                                val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
-                                val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
-                                val sendButtonInteractionSource = remember { MutableInteractionSource() }
-
-                                Box(
-                                    modifier = Modifier
-                                        .padding(start = 6.dp)
-                                        .size(sendButtonSize)
-                                        .clip(CircleShape)
-                                        .background(actionBg)
-                                        .clickable(
-                                            enabled = canPressSend,
-                                            interactionSource = sendButtonInteractionSource,
-                                            indication = null
+                                        }
+                                    },
+                                    onContentHeightChanged = { height ->
+                                        inputContentHeightPx = height
+                                    },
+                                    onValueChange = {
+                                        if (
+                                            it.text.length > INPUT_MAX_CHARS &&
+                                            input.value.text.length <= INPUT_MAX_CHARS
                                         ) {
-                                            performButtonHaptic()
-                                            if (sendGate.blockReason == SendBlockReason.InputTooLong) {
-                                                inputLimitHintTick++
-                                            } else if (canSend) {
-                                                sendMessage()
-                                            }
+                                            inputLimitHintTick++
+                                        }
+                                        suppressInputCursor = false
+                                        input.value = it
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 2.dp),
+                                    placeholder = { Text("描述种植问题", color = Color(0xFFAEAFB4)) },
+                                    singleLine = false,
+                                    minLines = 1,
+                                    maxLines = 6,
+                                    textStyle = TextStyle(
+                                        fontSize = 16.sp,
+                                        lineHeight = 22.sp,
+                                        color = Color(0xFF111111)
+                                    ),
+                                    colors = TextFieldDefaults.colors(
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                        disabledContainerColor = Color.Transparent,
+                                        focusedIndicatorColor = Color.Transparent,
+                                        unfocusedIndicatorColor = Color.Transparent,
+                                        disabledIndicatorColor = Color.Transparent,
+                                        cursorColor = if (inputFieldFocused && !suppressInputCursor) {
+                                            Color(0xFF111111)
+                                        } else {
+                                            Color.Transparent
                                         },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    LongArrowIcon(
-                                        tint = actionTint,
-                                        directionUp = true,
-                                        modifier = Modifier.size(22.dp)
+                                        errorCursorColor = if (inputFieldFocused && !suppressInputCursor) {
+                                            Color(0xFF111111)
+                                        } else {
+                                            Color.Transparent
+                                        }
                                     )
-                                }
-                                }
+                                )
+                            }
+                        },
+                        sendButtonEnabled = canPressSend,
+                        sendButtonBackgroundColor = actionBg,
+                        sendButtonTint = actionTint,
+                        onSendClick = {
+                            performButtonHaptic()
+                            if (sendGate.blockReason == SendBlockReason.InputTooLong) {
+                                inputLimitHintTick++
+                            } else if (canSend) {
+                                sendMessage()
                             }
                         }
+                    )
                 }
             },
             snackbarHost = {
@@ -5564,8 +5637,6 @@ fun ChatScreen() {
                     composerCollapseOverlayHostHeight != null &&
                     composerCollapseOverlayRowTop != null &&
                     composerCollapseOverlayRowStart != null &&
-                    composerCollapseOverlayTop != null &&
-                    composerCollapseOverlayStart != null &&
                     composerCollapseOverlayWidth != null
                 ) {
                     Box(
@@ -5579,7 +5650,7 @@ fun ChatScreen() {
                             .height(composerCollapseOverlayHostHeight)
                             .background(pageSurface)
                     ) {
-                        Row(
+                        ComposerChromeRow(
                             modifier = Modifier
                                 .offset(
                                     x = composerCollapseOverlayRowStart,
@@ -5587,67 +5658,32 @@ fun ChatScreen() {
                                 )
                                 .width(composerCollapseOverlayWidth)
                                 .heightIn(min = composerCollapseOverlayHeight ?: 0.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            FrostedCircleButton(
-                                size = addButtonSize,
-                                surfaceColor = inputChromeSurface,
-                                borderColor = inputChromeBorder,
-                                onClick = {}
-                            ) {
-                                PlusCrossIcon(
-                                    tint = Color(0xFF6F7277),
-                                    modifier = Modifier.size(addIconSize)
-                                )
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(30.dp),
-                                color = inputFieldSurface,
-                                border = BorderStroke(1.22.dp, inputFieldBorder.copy(alpha = 0.98f)),
-                                tonalElevation = 0.dp,
-                                shadowElevation = 0.dp,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .shadow(
-                                        elevation = 1.35.dp,
-                                        shape = RoundedCornerShape(30.dp),
-                                        ambientColor = Color(0x14000000),
-                                        spotColor = Color(0x14000000)
-                                    )
-                            ) {
-                                Row(
+                            addButtonSize = addButtonSize,
+                            addIconSize = addIconSize,
+                            sendButtonSize = sendButtonSize,
+                            inputChromeSurface = inputChromeSurface,
+                            inputChromeBorder = inputChromeBorder,
+                            inputFieldSurface = inputFieldSurface,
+                            inputFieldBorder = inputFieldBorder,
+                            inputBarHeight = inputBarHeight,
+                            inputBarMaxHeight = inputBarMaxHeight,
+                            onAddClick = {},
+                            inputContent = {
+                                Text(
+                                    text = "描述种植问题",
+                                    color = Color(0xFFAEAFB4),
+                                    fontSize = 16.sp,
+                                    lineHeight = 22.sp,
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
-                                        .padding(start = 18.dp, end = 14.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "描述种植问题",
-                                        color = Color(0xFFAEAFB4),
-                                        fontSize = 16.sp,
-                                        lineHeight = 22.sp,
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(start = 6.dp)
-                                            .size(sendButtonSize)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFFD3D4D6)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        LongArrowIcon(
-                                            tint = Color(0xFF7F8083),
-                                            directionUp = true,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                                        .weight(1f)
+                                        .padding(start = 18.dp)
+                                )
+                            },
+                            sendButtonEnabled = false,
+                            sendButtonBackgroundColor = Color(0xFFD3D4D6),
+                            sendButtonTint = Color(0xFF7F8083),
+                            onSendClick = {}
+                        )
                     }
                 }
 
