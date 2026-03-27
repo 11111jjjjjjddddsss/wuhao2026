@@ -1804,7 +1804,7 @@ private fun ChatInputField(
                         .fillMaxWidth()
                         .alpha(if (settlingSnapshotActive) 0f else 1f)
                         .onSizeChanged { size ->
-                            if (size.height > 0 && value.text.isNotBlank()) {
+                            if (size.height > 0) {
                                 onContentHeightChanged(size.height)
                             }
                         }
@@ -2887,6 +2887,7 @@ fun ChatScreen() {
     val density = LocalDensity.current
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
+    val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
 
     var isStreaming by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var streamingMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
@@ -2948,7 +2949,9 @@ fun ChatScreen() {
     var composerStatusHintText by remember { mutableStateOf("") }
     var inputFieldFocused by remember(chatScopeId) { mutableStateOf(false) }
     var suppressInputCursor by remember(chatScopeId) { mutableStateOf(false) }
-    var inputContentHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var inputContentHeightPx by remember(chatScopeId, startupInputContentHeightEstimatePx) {
+        mutableIntStateOf(startupInputContentHeightEstimatePx)
+    }
     var composerSettlingSnapshotText by remember(chatScopeId) { mutableStateOf("") }
     var composerSettlingSnapshotHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var composerSettlingSnapshotActive by remember(chatScopeId) { mutableStateOf(false) }
@@ -4401,7 +4404,8 @@ fun ChatScreen() {
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
-            composerSettlingSnapshotHeightPx = inputContentHeightPx
+            composerSettlingSnapshotHeightPx =
+                inputContentHeightPx.coerceAtLeast(startupInputContentHeightEstimatePx)
             composerSettlingSnapshotActive = text.isNotBlank()
             composerSettlingChromeHeightPx = inputChromeRowHeightPx
             suppressInputCursor = true
@@ -4446,7 +4450,8 @@ fun ChatScreen() {
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
-            composerSettlingSnapshotHeightPx = inputContentHeightPx
+            composerSettlingSnapshotHeightPx =
+                inputContentHeightPx.coerceAtLeast(startupInputContentHeightEstimatePx)
             composerSettlingSnapshotActive = text.isNotBlank()
             composerSettlingChromeHeightPx = inputChromeRowHeightPx
             suppressInputCursor = true
@@ -5371,6 +5376,9 @@ fun ChatScreen() {
                                         inputFieldFocused = focused
                                         if (focused) {
                                             suppressInputCursor = false
+                                            inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
+                                                startupInputContentHeightEstimatePx
+                                            )
                                         }
                                     },
                                     onContentHeightChanged = { height ->
