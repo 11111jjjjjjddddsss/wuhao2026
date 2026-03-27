@@ -3221,9 +3221,6 @@ fun ChatScreen() {
             .calculateBottomPadding()
             .roundToPx()
     }
-    val jumpButtonBottomPadding = with(density) {
-        effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
-    }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -3239,6 +3236,23 @@ fun ChatScreen() {
     var composerHostBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerChromeBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerCollapseOverlayVisible by remember(chatScopeId) { mutableStateOf(false) }
+    var composerCollapseOverlayBottomHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    val bottomContentReservedHeightPx by remember(
+        composerCollapseOverlayVisible,
+        composerCollapseOverlayBottomHeightPx,
+        effectiveBottomBarHeightPx
+    ) {
+        derivedStateOf {
+            if (composerCollapseOverlayVisible && composerCollapseOverlayBottomHeightPx > 0) {
+                composerCollapseOverlayBottomHeightPx
+            } else {
+                effectiveBottomBarHeightPx
+            }
+        }
+    }
+    val jumpButtonBottomPadding = with(density) {
+        effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
+    }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
     val shouldOfferJumpButton by remember(
         startupLayoutReady,
@@ -4381,7 +4395,11 @@ fun ChatScreen() {
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
-        composerCollapseOverlayVisible = hadActiveInputSession && composerChromeBoundsInWindow != null
+        val showComposerCollapseOverlay = hadActiveInputSession && composerChromeBoundsInWindow != null
+        composerCollapseOverlayVisible = showComposerCollapseOverlay
+        if (showComposerCollapseOverlay) {
+            composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
+        }
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
@@ -4426,7 +4444,11 @@ fun ChatScreen() {
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
-        composerCollapseOverlayVisible = hadActiveInputSession && composerChromeBoundsInWindow != null
+        val showComposerCollapseOverlay = hadActiveInputSession && composerChromeBoundsInWindow != null
+        composerCollapseOverlayVisible = showComposerCollapseOverlay
+        if (showComposerCollapseOverlay) {
+            composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
+        }
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
@@ -4625,6 +4647,12 @@ fun ChatScreen() {
             ) {
                 composerCollapseOverlayVisible = false
             }
+        }
+    }
+
+    LaunchedEffect(composerCollapseOverlayVisible) {
+        if (!composerCollapseOverlayVisible) {
+            composerCollapseOverlayBottomHeightPx = 0
         }
     }
 
@@ -5428,7 +5456,7 @@ fun ChatScreen() {
                         ),
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
-                        bottom = with(density) { effectiveBottomBarHeightPx.toDp() } +
+                        bottom = with(density) { bottomContentReservedHeightPx.toDp() } +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE
                     )
                     ) {
@@ -5622,7 +5650,7 @@ fun ChatScreen() {
 
                 if (showWelcomePlaceholder) {
                     val welcomeBottomInset =
-                        with(density) { effectiveBottomBarHeightPx.toDp() } +
+                        with(density) { bottomContentReservedHeightPx.toDp() } +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE +
                             24.dp
                     Box(
@@ -5731,7 +5759,7 @@ fun ChatScreen() {
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(with(density) { effectiveBottomBarHeightPx.toDp() })
+                        .height(with(density) { bottomContentReservedHeightPx.toDp() })
                         .background(pageSurface)
                         .zIndex(45f)
                 )
