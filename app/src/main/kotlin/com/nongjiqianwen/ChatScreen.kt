@@ -4857,6 +4857,9 @@ fun ChatScreen() {
                 delay(16)
             }
         }
+        if (isWithinFinalBottomSnapTolerance()) {
+            repeat(2) { withFrameNanos { } }
+        }
         jumpButtonVisible = false
         pendingFinalBottomSnap = false
     }
@@ -5390,7 +5393,7 @@ fun ChatScreen() {
                                     settlingSnapshotHeightPx = composerSettlingSnapshotHeightPx,
                                     suppressPlaceholder =
                                         sendUiSettling ||
-                                            composerSettlingSnapshotActive ||
+                                            (imeVisible && composerSettlingSnapshotActive) ||
                                             composerSettlingChromeHeightPx > 0,
                                     onFocusChanged = { focused ->
                                         inputFieldFocused = focused
