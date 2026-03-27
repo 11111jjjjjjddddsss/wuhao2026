@@ -2723,7 +2723,12 @@ private fun ComposerInputShell(
     inputFieldBorder: Color,
     inputBarHeight: Dp,
     inputBarMaxHeight: Dp,
-    content: @Composable RowScope.() -> Unit
+    content: @Composable RowScope.() -> Unit,
+    sendButtonSize: Dp,
+    sendButtonEnabled: Boolean,
+    sendButtonBackgroundColor: Color,
+    sendButtonTint: Color,
+    onSendClick: () -> Unit
 ) {
     Surface(
         shape = RoundedCornerShape(30.dp),
@@ -2745,8 +2750,16 @@ private fun ComposerInputShell(
                 .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
                 .padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            content = content
-        )
+        ) {
+            content()
+            ComposerSendActionButton(
+                size = sendButtonSize,
+                backgroundColor = sendButtonBackgroundColor,
+                tint = sendButtonTint,
+                enabled = sendButtonEnabled,
+                onClick = onSendClick
+            )
+        }
     }
 }
 
@@ -2793,15 +2806,12 @@ private fun ComposerChromeRow(
             inputFieldBorder = inputFieldBorder,
             inputBarHeight = inputBarHeight,
             inputBarMaxHeight = inputBarMaxHeight,
-            content = inputContent
-        )
-
-        ComposerSendActionButton(
-            size = sendButtonSize,
-            backgroundColor = sendButtonBackgroundColor,
-            tint = sendButtonTint,
-            enabled = sendButtonEnabled,
-            onClick = onSendClick
+            content = inputContent,
+            sendButtonSize = sendButtonSize,
+            sendButtonEnabled = sendButtonEnabled,
+            sendButtonBackgroundColor = sendButtonBackgroundColor,
+            sendButtonTint = sendButtonTint,
+            onSendClick = onSendClick
         )
     }
 }
