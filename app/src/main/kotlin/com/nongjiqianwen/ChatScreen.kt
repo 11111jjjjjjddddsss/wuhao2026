@@ -3236,6 +3236,8 @@ fun ChatScreen() {
     var composerHostBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerChromeBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerCollapseOverlayVisible by remember(chatScopeId) { mutableStateOf(false) }
+    var composerCollapseOverlayHostBoundsSnapshot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    var composerCollapseOverlayChromeBoundsSnapshot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerCollapseOverlayBottomHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     val bottomContentReservedHeightPx by remember(
         composerCollapseOverlayVisible,
@@ -4399,6 +4401,8 @@ fun ChatScreen() {
         composerCollapseOverlayVisible = showComposerCollapseOverlay
         if (showComposerCollapseOverlay) {
             composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
+            composerCollapseOverlayHostBoundsSnapshot = composerHostBoundsInWindow
+            composerCollapseOverlayChromeBoundsSnapshot = composerChromeBoundsInWindow
         }
         sendUiSettling = true
         if (collapseComposer) {
@@ -4448,6 +4452,8 @@ fun ChatScreen() {
         composerCollapseOverlayVisible = showComposerCollapseOverlay
         if (showComposerCollapseOverlay) {
             composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
+            composerCollapseOverlayHostBoundsSnapshot = composerHostBoundsInWindow
+            composerCollapseOverlayChromeBoundsSnapshot = composerChromeBoundsInWindow
         }
         sendUiSettling = true
         if (collapseComposer) {
@@ -4653,6 +4659,8 @@ fun ChatScreen() {
     LaunchedEffect(composerCollapseOverlayVisible) {
         if (!composerCollapseOverlayVisible) {
             composerCollapseOverlayBottomHeightPx = 0
+            composerCollapseOverlayHostBoundsSnapshot = null
+            composerCollapseOverlayChromeBoundsSnapshot = null
         }
     }
 
@@ -5169,8 +5177,18 @@ fun ChatScreen() {
         val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
         val inputFieldSurface = Color.White
         val inputFieldBorder = Color(0xFFBCC2CA).copy(alpha = 0.88f)
-        val composerHostBounds = composerHostBoundsInWindow
-        val composerChromeBounds = composerChromeBoundsInWindow
+        val composerHostBounds =
+            if (composerCollapseOverlayVisible) {
+                composerCollapseOverlayHostBoundsSnapshot ?: composerHostBoundsInWindow
+            } else {
+                composerHostBoundsInWindow
+            }
+        val composerChromeBounds =
+            if (composerCollapseOverlayVisible) {
+                composerCollapseOverlayChromeBoundsSnapshot ?: composerChromeBoundsInWindow
+            } else {
+                composerChromeBoundsInWindow
+            }
         val composerCollapseOverlayHostTop =
             composerHostBounds?.let { with(density) { (it.top - chatRootTopPx).toDp() } }
         val composerCollapseOverlayHostStart =
