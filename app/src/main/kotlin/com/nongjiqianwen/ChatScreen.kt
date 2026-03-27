@@ -1738,6 +1738,7 @@ private fun ChatInputField(
     settlingSnapshotText: String,
     settlingSnapshotActive: Boolean,
     settlingSnapshotHeightPx: Int,
+    suppressPlaceholder: Boolean,
     onValueChange: (TextFieldValue) -> Unit,
     onFocusChanged: (Boolean) -> Unit,
     onContentHeightChanged: (Int) -> Unit,
@@ -1791,7 +1792,7 @@ private fun ChatInputField(
                             .alpha(0f),
                         style = textStyle
                     )
-                } else if (value.text.isEmpty()) {
+                } else if (value.text.isEmpty() && !suppressPlaceholder) {
                     Text(
                         text = "描述种植问题",
                         color = Color(0xFFAEAFB4)
@@ -5077,6 +5078,7 @@ fun ChatScreen() {
                                         settlingSnapshotText = composerSettlingSnapshotText,
                                         settlingSnapshotActive = composerSettlingSnapshotActive,
                                         settlingSnapshotHeightPx = composerSettlingSnapshotHeightPx,
+                                        suppressPlaceholder = sendUiSettling || composerSettlingSnapshotActive || isStreaming,
                                         onFocusChanged = { focused ->
                                             inputFieldFocused = focused
                                             if (focused) {
