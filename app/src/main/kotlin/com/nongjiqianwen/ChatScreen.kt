@@ -60,7 +60,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -4956,6 +4955,10 @@ fun ChatScreen() {
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding()
+        val imeBottomInset: Dp = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+        val composerVisibleImeInset: Dp =
+            if (sendUiSettling || composerSettlingSnapshotActive) 0.dp else imeBottomInset
+        val composerVisibleImeOffsetPx = with(density) { composerVisibleImeInset.roundToPx() }
         val inputChromeHorizontalPadding = when {
             maxWidth < 360.dp -> 8.dp
             maxWidth < 600.dp -> 10.dp
@@ -4984,7 +4987,6 @@ fun ChatScreen() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .imePadding()
                         .background(pageSurface)
                 ) {
                     if (composerOverlayHintText != null) {
@@ -4995,6 +4997,7 @@ fun ChatScreen() {
                             shadowElevation = 1.2.dp,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
+                                .offset { IntOffset(0, -composerVisibleImeOffsetPx) }
                                 .widthIn(max = chromeMaxWidth)
                                 .padding(
                                     start = inputChromeHorizontalPadding,
@@ -5013,6 +5016,7 @@ fun ChatScreen() {
                     Row(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            .offset { IntOffset(0, -composerVisibleImeOffsetPx) }
                             .widthIn(max = chromeMaxWidth)
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -5268,6 +5272,7 @@ fun ChatScreen() {
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
                         bottom = with(density) { effectiveBottomBarHeightPx.toDp() } +
+                            composerVisibleImeInset +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE
                     )
                     ) {
@@ -5462,6 +5467,7 @@ fun ChatScreen() {
                 if (showWelcomePlaceholder) {
                     val welcomeBottomInset =
                         with(density) { effectiveBottomBarHeightPx.toDp() } +
+                            composerVisibleImeInset +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE +
                             24.dp
                     Box(
