@@ -4397,14 +4397,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
-        val showComposerCollapseOverlay = hadActiveInputSession && composerChromeBoundsInWindow != null
-        composerCollapseOverlayVisible = showComposerCollapseOverlay
-        if (showComposerCollapseOverlay) {
-            composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
-            composerCollapseOverlayHostBoundsSnapshot = composerHostBoundsInWindow
-            composerCollapseOverlayChromeBoundsSnapshot = composerChromeBoundsInWindow
-        }
+        composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
@@ -4448,14 +4441,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
-        val showComposerCollapseOverlay = hadActiveInputSession && composerChromeBoundsInWindow != null
-        composerCollapseOverlayVisible = showComposerCollapseOverlay
-        if (showComposerCollapseOverlay) {
-            composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
-            composerCollapseOverlayHostBoundsSnapshot = composerHostBoundsInWindow
-            composerCollapseOverlayChromeBoundsSnapshot = composerChromeBoundsInWindow
-        }
+        composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
