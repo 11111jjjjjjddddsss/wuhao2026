@@ -4658,24 +4658,40 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(
-        startupLayoutReady,
         composerCollapseOverlayVisible,
         composerHostBoundsInWindow,
         composerChromeBoundsInWindow,
         effectiveBottomBarHeightPx,
-        imeVisible,
-        inputFieldFocused,
         composerCollapseOverlayPrewarmed
     ) {
         if (composerCollapseOverlayVisible) return@LaunchedEffect
-        if (!startupLayoutReady) return@LaunchedEffect
         val hostBounds = composerHostBoundsInWindow ?: return@LaunchedEffect
         val chromeBounds = composerChromeBoundsInWindow ?: return@LaunchedEffect
-        val shouldRefreshPrewarm =
-            !composerCollapseOverlayPrewarmed ||
-                imeVisible ||
-                inputFieldFocused
-        if (!shouldRefreshPrewarm) return@LaunchedEffect
+        if (composerCollapseOverlayPrewarmed) return@LaunchedEffect
+        composerCollapseOverlayHostBoundsSnapshot = hostBounds
+        composerCollapseOverlayChromeBoundsSnapshot = chromeBounds
+        composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
+        composerCollapseOverlayPrewarmed = true
+    }
+
+    LaunchedEffect(
+        imeVisible,
+        inputFieldFocused,
+        composerCollapseOverlayVisible,
+        composerHostBoundsInWindow,
+        composerChromeBoundsInWindow,
+        effectiveBottomBarHeightPx
+    ) {
+        if (composerCollapseOverlayVisible) return@LaunchedEffect
+        if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
+        if (composerHostBoundsInWindow == null || composerChromeBoundsInWindow == null) {
+            return@LaunchedEffect
+        }
+        repeat(2) { withFrameNanos { } }
+        if (composerCollapseOverlayVisible) return@LaunchedEffect
+        if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
+        val hostBounds = composerHostBoundsInWindow ?: return@LaunchedEffect
+        val chromeBounds = composerChromeBoundsInWindow ?: return@LaunchedEffect
         composerCollapseOverlayHostBoundsSnapshot = hostBounds
         composerCollapseOverlayChromeBoundsSnapshot = chromeBounds
         composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
