@@ -4956,8 +4956,10 @@ fun ChatScreen() {
             .asPaddingValues()
             .calculateBottomPadding()
         val imeBottomInset: Dp = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+        val composerImeTravelInset: Dp =
+            (imeBottomInset - navigationBottomInset).coerceAtLeast(0.dp)
         val composerVisibleImeInset: Dp =
-            if (sendUiSettling || composerSettlingSnapshotActive) 0.dp else imeBottomInset
+            if (sendUiSettling || composerSettlingSnapshotActive) 0.dp else composerImeTravelInset
         val composerVisibleImeOffsetPx = with(density) { composerVisibleImeInset.roundToPx() }
         val inputChromeHorizontalPadding = when {
             maxWidth < 360.dp -> 8.dp
