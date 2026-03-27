@@ -4428,6 +4428,7 @@ fun ChatScreen() {
                 userDetachedFromBottom = false
                 jumpButtonVisible = false
                 trimMessagesInPlace()
+                sendUiSettling = false
                 showComposerStatusHint("当前网络不可用")
             } finally {
                 sendUiSettling = false
@@ -4490,6 +4491,7 @@ fun ChatScreen() {
                     sourceUserMessageId = userId
                 )
                 trimMessagesInPlace()
+                sendUiSettling = false
                 persistTick++
                 snackbarScope.launch {
                     context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
@@ -4595,6 +4597,13 @@ fun ChatScreen() {
         }
         if (!composerSettlingSnapshotActive && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
         if (sendUiSettling) return@LaunchedEffect
+        if (!imeVisible) {
+            composerSettlingSnapshotActive = false
+            composerSettlingSnapshotText = ""
+            composerSettlingSnapshotHeightPx = 0
+            composerSettlingChromeHeightPx = 0
+            return@LaunchedEffect
+        }
         withFrameNanos { }
         if (!sendUiSettling && !inputFieldFocused && input.value.text.isEmpty()) {
             composerSettlingSnapshotActive = false
