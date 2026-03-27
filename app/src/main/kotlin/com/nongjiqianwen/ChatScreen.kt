@@ -4264,9 +4264,6 @@ fun ChatScreen() {
         }
         snackbarScope.launch {
             try {
-                if (hadActiveInputSession) {
-                    withFrameNanos { }
-                }
                 hasStartedConversation = true
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
@@ -4312,9 +4309,6 @@ fun ChatScreen() {
         }
         snackbarScope.launch {
             try {
-                if (hadActiveInputSession) {
-                    withFrameNanos { }
-                }
                 hasStartedConversation = true
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
@@ -4596,7 +4590,7 @@ fun ChatScreen() {
     LaunchedEffect(pendingFinalBottomSnap, messages.size, isStreaming) {
         if (!pendingFinalBottomSnap || isStreaming) return@LaunchedEffect
         for (attempt in 0 until 4) {
-            repeat(2) { withFrameNanos { } }
+            withFrameNanos { }
             if (isWithinFinalBottomSnapTolerance()) {
                 break
             }
@@ -4605,7 +4599,7 @@ fun ChatScreen() {
                 break
             }
             if (attempt < 3) {
-                delay(24)
+                delay(16)
             }
         }
         jumpButtonVisible = false
