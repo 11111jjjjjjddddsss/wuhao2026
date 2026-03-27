@@ -500,3 +500,9 @@ Clean-State 定义：
 
 如果这些参考文档与本文件冲突：
 - 以 [AGENTS.md](D:/wuhao/AGENTS.md) 为准
+
+## 20. 主锚点更新记录
+
+- 当前主对话锚点真源仍为 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+- 2026-03-27 起，最新口径已收紧为“农业种植相关问题”，并将输出结构明确为“禁止表格，关键点少量加粗”
+- 这次更新只改主对话锚点，不影响 B 层与 C 层摘要提示词文件
