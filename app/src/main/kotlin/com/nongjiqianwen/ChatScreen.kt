@@ -1786,7 +1786,9 @@ private fun ChatInputField(
                 if (settlingSnapshotActive && settlingSnapshotText.isNotBlank()) {
                     Text(
                         text = settlingSnapshotText,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .alpha(0f),
                         style = textStyle
                     )
                 } else if (value.text.isEmpty()) {
@@ -3894,6 +3896,26 @@ fun ChatScreen() {
         pendingResumeAutoFollow = false
     }
 
+    LaunchedEffect(
+        isStreaming,
+        streamingMessageContent.length,
+        autoScrollMode,
+        userDetachedFromBottom,
+        userInteracting,
+        assistantLineStepPx
+    ) {
+        if (!isStreaming || streamingMessageContent.isBlank()) return@LaunchedEffect
+        if (streamBottomSpacerPx <= 0) return@LaunchedEffect
+        if (autoScrollMode != AutoScrollMode.StreamAnchorFollow) return@LaunchedEffect
+        if (userDetachedFromBottom || userInteracting) return@LaunchedEffect
+        withFrameNanos { }
+        val bleedStepPx = maxOf((assistantLineStepPx * 0.45f).roundToInt(), 12)
+        streamBottomSpacerPx = consumeStreamingBottomSpacer(
+            currentSpacerPx = streamBottomSpacerPx,
+            consumedScrollPx = bleedStepPx.toFloat()
+        )
+    }
+
     LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
         if (streamBottomSpacerPx <= 0) return@LaunchedEffect
         if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && !pendingStreamSpacerRelease) {
@@ -4429,9 +4451,7 @@ fun ChatScreen() {
         sendUiSettling,
         imeVisible,
         inputFieldFocused,
-        input.value.text,
-        isStreaming,
-        streamingMessageContent.length
+        input.value.text
     ) {
         if (!composerSettlingSnapshotActive) return@LaunchedEffect
         if (input.value.text.isNotEmpty() || inputFieldFocused) {
@@ -4441,7 +4461,6 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (sendUiSettling || imeVisible) return@LaunchedEffect
-        if (isStreaming && streamingMessageContent.isBlank()) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
         if (!sendUiSettling && !imeVisible && !inputFieldFocused && input.value.text.isEmpty()) {
             composerSettlingSnapshotActive = false
@@ -4580,9 +4599,17 @@ fun ChatScreen() {
         pendingFinalBottomSnap = false
     }
 
-    LaunchedEffect(pendingStreamSpacerRelease, pendingFinalBottomSnap, isStreaming, streamingMessageId) {
+    LaunchedEffect(
+        pendingStreamSpacerRelease,
+        pendingFinalBottomSnap,
+        isStreaming,
+        streamingMessageId,
+        streamBottomSpacerPx
+    ) {
         if (!pendingStreamSpacerRelease || isStreaming || pendingFinalBottomSnap) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
+        if (streamBottomSpacerPx > 0) {
+            withFrameNanos { }
+        }
         streamBottomSpacerPx = 0
         pendingStreamSpacerRelease = false
         pendingFinalBottomSnap = pendingFinalBottomSnapAfterSpacer
