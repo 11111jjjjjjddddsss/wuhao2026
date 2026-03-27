@@ -3239,6 +3239,7 @@ fun ChatScreen() {
     var composerCollapseOverlayHostBoundsSnapshot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerCollapseOverlayChromeBoundsSnapshot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerCollapseOverlayBottomHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var composerCollapseOverlayPrewarmed by remember(chatScopeId) { mutableStateOf(false) }
     val bottomContentReservedHeightPx by remember(
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
@@ -4656,11 +4657,41 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(composerCollapseOverlayVisible) {
-        if (!composerCollapseOverlayVisible) {
-            composerCollapseOverlayBottomHeightPx = 0
-            composerCollapseOverlayHostBoundsSnapshot = null
-            composerCollapseOverlayChromeBoundsSnapshot = null
+    LaunchedEffect(
+        startupLayoutReady,
+        composerCollapseOverlayVisible,
+        composerHostBoundsInWindow,
+        composerChromeBoundsInWindow,
+        effectiveBottomBarHeightPx,
+        imeVisible,
+        inputFieldFocused,
+        composerCollapseOverlayPrewarmed
+    ) {
+        if (composerCollapseOverlayVisible) return@LaunchedEffect
+        if (!startupLayoutReady) return@LaunchedEffect
+        val hostBounds = composerHostBoundsInWindow ?: return@LaunchedEffect
+        val chromeBounds = composerChromeBoundsInWindow ?: return@LaunchedEffect
+        val shouldRefreshPrewarm =
+            !composerCollapseOverlayPrewarmed ||
+                imeVisible ||
+                inputFieldFocused
+        if (!shouldRefreshPrewarm) return@LaunchedEffect
+        composerCollapseOverlayHostBoundsSnapshot = hostBounds
+        composerCollapseOverlayChromeBoundsSnapshot = chromeBounds
+        composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
+        composerCollapseOverlayPrewarmed = true
+    }
+
+    LaunchedEffect(chatScopeId) {
+        composerCollapseOverlayBottomHeightPx = 0
+        composerCollapseOverlayHostBoundsSnapshot = null
+        composerCollapseOverlayChromeBoundsSnapshot = null
+        composerCollapseOverlayPrewarmed = false
+    }
+
+    LaunchedEffect(startupLayoutReady) {
+        if (!startupLayoutReady) {
+            composerCollapseOverlayPrewarmed = false
         }
     }
 
