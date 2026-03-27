@@ -3103,6 +3103,8 @@ fun ChatScreen() {
     }
     var inputSelectionMenuBoundsInRoot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var inputFieldBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    var composerChromeBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    var composerCollapseOverlayVisible by remember(chatScopeId) { mutableStateOf(false) }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
     val shouldOfferJumpButton by remember(
         startupLayoutReady,
@@ -4245,6 +4247,7 @@ fun ChatScreen() {
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
+        composerCollapseOverlayVisible = hadActiveInputSession && composerChromeBoundsInWindow != null
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
@@ -4292,6 +4295,7 @@ fun ChatScreen() {
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         val hadActiveInputSession = collapseComposer && (imeVisible || inputFieldFocused)
+        composerCollapseOverlayVisible = hadActiveInputSession && composerChromeBoundsInWindow != null
         sendUiSettling = true
         if (collapseComposer) {
             composerSettlingSnapshotText = text
@@ -4454,6 +4458,26 @@ fun ChatScreen() {
             composerSettlingSnapshotText = ""
             composerSettlingSnapshotHeightPx = 0
             composerSettlingChromeHeightPx = 0
+        }
+    }
+
+    LaunchedEffect(
+        composerCollapseOverlayVisible,
+        sendUiSettling,
+        imeVisible,
+        inputFieldFocused,
+        input.value.text
+    ) {
+        if (!composerCollapseOverlayVisible) return@LaunchedEffect
+        if (input.value.text.isNotEmpty() || inputFieldFocused) {
+            composerCollapseOverlayVisible = false
+            return@LaunchedEffect
+        }
+        if (!sendUiSettling && !imeVisible) {
+            withFrameNanos { }
+            if (!sendUiSettling && !imeVisible && !inputFieldFocused && input.value.text.isEmpty()) {
+                composerCollapseOverlayVisible = false
+            }
         }
     }
 
@@ -4970,6 +4994,15 @@ fun ChatScreen() {
         val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
         val inputFieldSurface = Color.White
         val inputFieldBorder = Color(0xFFBCC2CA).copy(alpha = 0.88f)
+        val composerChromeBounds = composerChromeBoundsInWindow
+        val composerCollapseOverlayTop =
+            composerChromeBounds?.let { with(density) { (it.top - chatRootTopPx).toDp() } }
+        val composerCollapseOverlayStart =
+            composerChromeBounds?.let { with(density) { (it.left - chatRootLeftPx).toDp() } }
+        val composerCollapseOverlayWidth =
+            composerChromeBounds?.let { with(density) { it.width.toDp() } }
+        val composerCollapseOverlayHeight =
+            composerChromeBounds?.let { with(density) { it.height.toDp() } }
         val composerOverlayHintText = when {
             composerStatusHintVisible && composerStatusHintText.isNotBlank() -> composerStatusHintText
             inputLimitHintVisible -> "已超过6000字，暂时不能发送"
@@ -5017,11 +5050,15 @@ fun ChatScreen() {
                             .fillMaxWidth()
                             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .heightIn(min = composerSettlingChromeMinHeight)
+                            .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
                             .onSizeChanged {
                                 inputChromeRowHeightPx = it.height
                                 if (it.height > 0) {
                                     inputChromeMeasured = true
                                 }
+                            }
+                            .onGloballyPositioned { coordinates ->
+                                composerChromeBoundsInWindow = coordinates.boundsInWindow()
                             }
                             .padding(
                                 start = inputChromeHorizontalPadding,
@@ -5496,6 +5533,81 @@ fun ChatScreen() {
                                 lineHeight = 31.sp,
                                 textAlign = TextAlign.Center
                             )
+                        }
+                    }
+                }
+
+                if (
+                    composerCollapseOverlayVisible &&
+                    composerCollapseOverlayTop != null &&
+                    composerCollapseOverlayStart != null &&
+                    composerCollapseOverlayWidth != null
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .zIndex(44f)
+                            .offset(x = composerCollapseOverlayStart, y = composerCollapseOverlayTop)
+                            .width(composerCollapseOverlayWidth)
+                            .heightIn(min = composerCollapseOverlayHeight ?: 0.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        FrostedCircleButton(
+                            size = addButtonSize,
+                            surfaceColor = inputChromeSurface,
+                            borderColor = inputChromeBorder,
+                            onClick = {}
+                        ) {
+                            PlusCrossIcon(
+                                tint = Color(0xFF6F7277),
+                                modifier = Modifier.size(addIconSize)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(30.dp),
+                            color = inputFieldSurface,
+                            border = BorderStroke(1.22.dp, inputFieldBorder.copy(alpha = 0.98f)),
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp,
+                            modifier = Modifier
+                                .weight(1f)
+                                .shadow(
+                                    elevation = 1.35.dp,
+                                    shape = RoundedCornerShape(30.dp),
+                                    ambientColor = Color(0x14000000),
+                                    spotColor = Color(0x14000000)
+                                )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
+                                    .padding(start = 18.dp, end = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "描述种植问题",
+                                    color = Color(0xFFAEAFB4),
+                                    fontSize = 16.sp,
+                                    lineHeight = 22.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = 6.dp)
+                                        .size(sendButtonSize)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFD3D4D6)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    LongArrowIcon(
+                                        tint = Color(0xFF7F8083),
+                                        directionUp = true,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
