@@ -4032,8 +4032,9 @@ fun ChatScreen() {
                 when {
                     movedTowardBottom -> {
                         if (currentBottomOverflowPx() <= lifecycleResumeBottomSnapThresholdPx) {
-                            pendingResumeAutoFollow = true
+                            pendingResumeAutoFollow = false
                             userDetachedFromBottom = false
+                            autoScrollMode = AutoScrollMode.StreamAnchorFollow
                             jumpButtonVisible = false
                         } else {
                             // Keep manual browsing detached until the user is close enough to the real bottom.
