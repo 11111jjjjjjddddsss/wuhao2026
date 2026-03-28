@@ -3048,14 +3048,22 @@ fun ChatScreen() {
         streamingMessageContent,
         activeStreamBottomSpacerPx,
         autoScrollMode,
-        userDetachedFromBottom
+        userDetachedFromBottom,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        bottomPositionTolerancePx
     ) {
         derivedStateOf {
             isStreaming &&
                 streamingMessageContent.isNotBlank() &&
                 activeStreamBottomSpacerPx > 0 &&
                 autoScrollMode != AutoScrollMode.Idle &&
-                !userDetachedFromBottom
+                !userDetachedFromBottom &&
+                (
+                    streamingContentBottomPx <= 0 ||
+                        streamingWorklineBottomPx <= 0 ||
+                        streamingContentBottomPx < (streamingWorklineBottomPx - bottomPositionTolerancePx)
+                    )
         }
     }
     LaunchedEffect(
