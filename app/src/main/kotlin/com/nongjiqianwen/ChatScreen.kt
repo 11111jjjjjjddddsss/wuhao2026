@@ -2974,16 +2974,58 @@ fun ChatScreen() {
     val finalBottomSnapThresholdPx = remember(finalBottomSnapTolerancePx, assistantLineStepPx) {
         maxOf(finalBottomSnapTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
     }
-    val activeStreamBottomSpacerPx = if (
-        (isStreaming || pendingStreamSpacerRelease) &&
-        anchoredUserMessageId != null &&
-        !userDetachedFromBottom
-    ) {
-        streamBottomSpacerPx
-    } else {
-        0
-    }
     val imeVisible = WindowInsets.isImeVisible
+    val activeStreamBottomSpacerPx by remember(
+        isStreaming,
+        pendingStreamSpacerRelease,
+        anchoredUserMessageId,
+        userDetachedFromBottom,
+        streamBottomSpacerPx,
+        streamingMessageContent,
+        streamingContentBottomPx,
+        messageViewportHeightPx,
+        bottomBarHeightPx,
+        composerTopInViewportPx,
+        streamVisibleBottomGapPx,
+        imeVisible
+    ) {
+        derivedStateOf {
+            if (
+                !(isStreaming || pendingStreamSpacerRelease) ||
+                anchoredUserMessageId == null ||
+                userDetachedFromBottom
+            ) {
+                return@derivedStateOf 0
+            }
+            if (streamBottomSpacerPx <= 0) {
+                return@derivedStateOf 0
+            }
+            if (streamingMessageContent.isBlank()) {
+                return@derivedStateOf streamBottomSpacerPx
+            }
+            val visibleBottomPx =
+                if (!imeVisible && composerTopInViewportPx > 0) {
+                    (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+                } else {
+                    (
+                        messageViewportHeightPx -
+                            bottomBarHeightPx -
+                            streamVisibleBottomGapPx
+                        ).coerceAtLeast(0)
+                }
+            val visibleOverflowPx =
+                if (streamingContentBottomPx > 0 && visibleBottomPx > 0) {
+                    (streamingContentBottomPx - visibleBottomPx).coerceAtLeast(0)
+                } else {
+                    0
+                }
+            if (visibleOverflowPx <= 0) {
+                0
+            } else {
+                streamBottomSpacerPx.coerceAtMost(visibleOverflowPx)
+            }
+        }
+    }
     val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
     val hasStreamAnchorSpacer by remember(activeStreamBottomSpacerPx) {
         derivedStateOf { activeStreamBottomSpacerPx > 0 }
