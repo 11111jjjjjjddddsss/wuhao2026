@@ -4683,7 +4683,7 @@ fun ChatScreen() {
         effectiveBottomBarHeightPx,
         composerCollapseOverlayPrewarmed
     ) {
-        if (composerCollapseOverlayVisible) return@LaunchedEffect
+        if (!composerCollapseOverlayVisible) return@LaunchedEffect
         val hostBounds = composerHostBoundsInWindow ?: return@LaunchedEffect
         val chromeBounds = composerChromeBoundsInWindow ?: return@LaunchedEffect
         if (composerCollapseOverlayPrewarmed) return@LaunchedEffect
@@ -4701,7 +4701,7 @@ fun ChatScreen() {
         composerChromeBoundsInWindow,
         effectiveBottomBarHeightPx
     ) {
-        if (composerCollapseOverlayVisible) return@LaunchedEffect
+        if (!composerCollapseOverlayVisible) return@LaunchedEffect
         if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
         if (composerHostBoundsInWindow == null || composerChromeBoundsInWindow == null) {
             return@LaunchedEffect
