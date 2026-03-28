@@ -3108,10 +3108,6 @@ fun ChatScreen() {
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
     }
-    fun isAtStreamingFollowLine(): Boolean {
-        if (streamingContentBottomPx <= 0 || streamingWorklineBottomPx <= 0) return false
-        return streamingContentBottomPx >= (streamingWorklineBottomPx - bottomPositionTolerancePx)
-    }
     val streamingDirectionLock = remember(
         lockUserScrollDuringBall,
         lockBottomBlankDuringStreaming,
@@ -3120,14 +3116,6 @@ fun ChatScreen() {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
-                if (
-                    isStreaming &&
-                    activeStreamBottomSpacerPx > 0 &&
-                    available.y > 0f &&
-                    isAtStreamingFollowLine()
-                ) {
-                    return Offset(x = 0f, y = available.y)
-                }
                 if (lockUserScrollDuringBall && available.y < 0f) {
                     return Offset(x = 0f, y = available.y)
                 }
@@ -3155,14 +3143,6 @@ fun ChatScreen() {
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (
-                    isStreaming &&
-                    activeStreamBottomSpacerPx > 0 &&
-                    available.y > 0f &&
-                    isAtStreamingFollowLine()
-                ) {
-                    return available
-                }
                 if (
                     (lockUserScrollDuringBall || lockBottomBlankDuringStreaming) &&
                     available.y < 0f
@@ -4069,15 +4049,9 @@ fun ChatScreen() {
                 }
                 when {
                     movedTowardBottom -> {
-                        if (isAtStreamingFollowLine()) {
-                            pendingResumeAutoFollow = false
-                            userDetachedFromBottom = false
-                            autoScrollMode = AutoScrollMode.StreamAnchorFollow
-                        } else {
-                            // Keep manual browsing detached until the user reaches the current streaming line.
-                            pendingResumeAutoFollow = false
-                            userDetachedFromBottom = true
-                        }
+                        // Keep manual browsing detached until the user reaches the real bottom.
+                        pendingResumeAutoFollow = false
+                        userDetachedFromBottom = true
                         jumpButtonVisible = false
                     }
 
