@@ -4824,7 +4824,7 @@ fun ChatScreen() {
         }
 
         if (restoreBottomAfterImeClose && !isStreaming && !hasStreamAnchorSpacer) {
-            repeat(2) { withFrameNanos { } }
+            withFrameNanos { }
             if (!userDetachedFromBottom && !listState.isScrollInProgress && !programmaticScroll) {
                 scrollToBottom(
                     animated = false,
@@ -5043,7 +5043,7 @@ fun ChatScreen() {
             }
             if (anchorIndex >= 0) {
                 listState.scrollToItem(anchorIndex, scrollOffset = -anchorTop)
-                repeat(6) { withFrameNanos { } }
+                repeat(4) { withFrameNanos { } }
             }
         } finally {
             programmaticScroll = false
