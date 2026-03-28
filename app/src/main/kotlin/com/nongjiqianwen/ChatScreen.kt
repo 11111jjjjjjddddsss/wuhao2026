@@ -3079,14 +3079,39 @@ fun ChatScreen() {
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
     }
+    fun currentBottomRealContentGapPx(): Int {
+        val info = listState.layoutInfo
+        val lastContentIndex = info.totalItemsCount - 1 - if (hasStreamAnchorSpacer) 1 else 0
+        if (lastContentIndex < 0) return 0
+        val lastContentVisible = info.visibleItemsInfo.lastOrNull { it.index == lastContentIndex } ?: return 0
+        return (info.viewportEndOffset - (lastContentVisible.offset + lastContentVisible.size)).coerceAtLeast(0)
+    }
     val streamingDirectionLock = remember(
         lockUserScrollDuringBall,
         lockBottomBlankDuringStreaming,
-        lineRevealLockThresholdPx
+        lineRevealLockThresholdPx,
+        hasStreamAnchorSpacer
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
+                if (
+                    available.y > 0f &&
+                    hasStreamAnchorSpacer &&
+                    currentBottomRealContentGapPx() > 0
+                ) {
+                    pendingResumeAutoFollow = false
+                    userDetachedFromBottom = false
+                    jumpButtonVisible = false
+                    if (isStreaming && hasStreamingItem) {
+                        autoScrollMode = if (streamingMessageContent.isNotBlank()) {
+                            AutoScrollMode.StreamAnchorFollow
+                        } else {
+                            AutoScrollMode.AnchorUser
+                        }
+                    }
+                    return Offset(x = 0f, y = available.y)
+                }
                 if (
                     available.y < -4f &&
                     (lockUserScrollDuringBall || lockBottomBlankDuringStreaming)
@@ -3980,6 +4005,13 @@ fun ChatScreen() {
             userDetachedFromBottom = false
             pendingResumeAutoFollow = false
             jumpButtonVisible = false
+            if (isStreaming && hasStreamingItem) {
+                autoScrollMode = if (streamingMessageContent.isNotBlank()) {
+                    AutoScrollMode.StreamAnchorFollow
+                } else {
+                    AutoScrollMode.AnchorUser
+                }
+            }
         }
     }
 
