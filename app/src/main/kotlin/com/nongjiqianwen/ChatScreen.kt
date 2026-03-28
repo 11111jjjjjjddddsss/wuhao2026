@@ -2916,7 +2916,7 @@ fun ChatScreen() {
     var chatRootHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportWidthPx by remember { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
-    var streamBottomSpacerPx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
+    var streamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var chatRootLeftPx by remember { mutableStateOf(0f) }
     var chatRootTopPx by remember { mutableStateOf(0f) }
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
@@ -2974,12 +2974,19 @@ fun ChatScreen() {
     val finalBottomSnapThresholdPx = remember(finalBottomSnapTolerancePx, assistantLineStepPx) {
         maxOf(finalBottomSnapTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
     }
-    val activeStreamBottomSpacerPx = if (
-        (isStreaming || pendingStreamSpacerRelease) &&
-        anchoredUserMessageId != null &&
-        !userDetachedFromBottom
+    // Keep anchor reserve and visible spacer as separate concepts.
+    // The reserve supports send/start anchoring; the visible spacer is only the current presentation.
+    val streamAnchorReserveActive by remember(
+        isStreaming,
+        pendingStreamSpacerRelease,
+        anchoredUserMessageId
     ) {
-        streamBottomSpacerPx
+        derivedStateOf {
+            (isStreaming || pendingStreamSpacerRelease) && anchoredUserMessageId != null
+        }
+    }
+    val activeStreamBottomSpacerPx = if (streamAnchorReserveActive && !userDetachedFromBottom) {
+        streamAnchorReservePx
     } else {
         0
     }
@@ -3097,9 +3104,9 @@ fun ChatScreen() {
                     available.y < 0f
                 ) {
                     val dragPx = -available.y
-                    val consumePx = dragPx.coerceAtMost(streamBottomSpacerPx.toFloat())
+                    val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
                     if (consumePx > 0f) {
-                        streamBottomSpacerPx = consumeStreamingBottomSpacer(streamBottomSpacerPx, consumePx)
+                        streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
                         return Offset(x = 0f, y = available.y)
                     }
                 }
@@ -3799,7 +3806,7 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
-            streamBottomSpacerPx = 0
+            streamAnchorReservePx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
@@ -4057,9 +4064,9 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
-        if (streamBottomSpacerPx <= 0) return@LaunchedEffect
+        if (streamAnchorReservePx <= 0) return@LaunchedEffect
         if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && !pendingStreamSpacerRelease) {
-            streamBottomSpacerPx = 0
+            streamAnchorReservePx = 0
         }
     }
 
@@ -4340,7 +4347,7 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
-            streamBottomSpacerPx = 0
+            streamAnchorReservePx = 0
             streamingAnchorTopPx = -1
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
@@ -4521,7 +4528,7 @@ fun ChatScreen() {
                         savedAtMs = SystemClock.uptimeMillis()
                     )
                 )
-                streamBottomSpacerPx = maxOf(
+                streamAnchorReservePx = maxOf(
                     (messageViewportHeightPx * SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO).roundToInt(),
                     minSendAnchorExtraBottomSpacePx
                 )
@@ -4869,13 +4876,13 @@ fun ChatScreen() {
         pendingFinalBottomSnap,
         isStreaming,
         streamingMessageId,
-        streamBottomSpacerPx
+        streamAnchorReservePx
     ) {
         if (!pendingStreamSpacerRelease || isStreaming || pendingFinalBottomSnap) return@LaunchedEffect
-        if (streamBottomSpacerPx > 0) {
+        if (streamAnchorReservePx > 0) {
             repeat(2) { withFrameNanos { } }
         }
-        streamBottomSpacerPx = 0
+        streamAnchorReservePx = 0
         pendingStreamSpacerRelease = false
         pendingFinalBottomSnap = pendingFinalBottomSnapAfterSpacer
         pendingFinalBottomSnapAfterSpacer = false

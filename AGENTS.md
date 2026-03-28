@@ -290,6 +290,7 @@ Clean-State 定义：
 如果以后继续压文本微抖：
 - 优先从 streaming/completed 宿主共几何入手
 - completed 并回消息列表后，最后一拍的 spacer 释放和 final snap 应给 completed 宿主 1–2 帧测量稳定时间，不要在同一拍里全部回收
+- 流式阶段底部锚点保留空间与当前可见 spacer 应保持两层语义：前者服务发送锚点和首段 streaming，后者只负责当前展示，不要再把两者混成同一个状态直接互相驱动
 - 不要再乱调无关参数
 - 不要顺手改输入区
 
