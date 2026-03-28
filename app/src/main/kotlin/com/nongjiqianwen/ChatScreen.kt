@@ -4761,8 +4761,7 @@ fun ChatScreen() {
             withFrameNanos { }
             val lastIndex = (
                 messages.size +
-                    if (hasStreamingItem) 1 else 0 +
-                    if (hasStreamAnchorSpacer && includeAnchorSpacer) 1 else 0
+                    if (hasStreamingItem) 1 else 0
                 ) - 1
             if (lastIndex < 0) return
             if (animated) {
@@ -4804,8 +4803,7 @@ fun ChatScreen() {
             withFrameNanos { }
             val lastIndex = (
                 messages.size +
-                    if (hasStreamingItem) 1 else 0 +
-                    if (hasStreamAnchorSpacer) 1 else 0
+                    if (hasStreamingItem) 1 else 0
                 ) - 1
             if (lastIndex < 0) return
             listState.scrollToItem(lastIndex)
@@ -5555,6 +5553,7 @@ fun ChatScreen() {
                     contentPadding = PaddingValues(
                         top = topBarReservedHeight,
                         bottom = with(density) { bottomContentReservedHeightPx.toDp() } +
+                            streamBottomSpacerDp +
                             BOTTOM_OVERLAY_CONTENT_CLEARANCE
                     )
                     ) {
@@ -5728,18 +5727,6 @@ fun ChatScreen() {
                                         }
                                     }
                                 }
-                            }
-                        }
-                        if (hasStreamAnchorSpacer) {
-                            item(
-                                key = "stream_anchor_spacer",
-                                contentType = "stream_anchor_spacer"
-                            ) {
-                                Spacer(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(streamBottomSpacerDp)
-                                )
                             }
                         }
                     }
