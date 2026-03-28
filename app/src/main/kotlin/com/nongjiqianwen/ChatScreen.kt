@@ -3018,25 +3018,15 @@ fun ChatScreen() {
         streamAnchorReserveActive,
         pendingStreamSpacerRelease,
         userDetachedFromBottom,
-        streamAnchorReservePx,
-        streamingMessageContent,
-        streamingAnchorTopPx,
-        streamingContentBottomPx
+        streamAnchorReservePx
     ) {
         derivedStateOf {
             if (!streamAnchorReserveActive || userDetachedFromBottom) {
                 0
-            } else if (
-                pendingStreamSpacerRelease ||
-                streamingMessageContent.isBlank() ||
-                streamingAnchorTopPx < 0 ||
-                streamingContentBottomPx <= streamingAnchorTopPx
-            ) {
+            } else if (pendingStreamSpacerRelease) {
                 streamAnchorReservePx
             } else {
-                val revealedContentHeightPx =
-                    (streamingContentBottomPx - streamingAnchorTopPx).coerceAtLeast(0)
-                (streamAnchorReservePx - revealedContentHeightPx).coerceAtLeast(0)
+                streamAnchorReservePx
             }
         }
     }
@@ -3064,7 +3054,7 @@ fun ChatScreen() {
             isStreaming &&
                 streamingMessageContent.isNotBlank() &&
                 activeStreamBottomSpacerPx > 0 &&
-                autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
+                autoScrollMode != AutoScrollMode.Idle &&
                 !userDetachedFromBottom
         }
     }
