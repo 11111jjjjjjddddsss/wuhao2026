@@ -2985,7 +2985,16 @@ fun ChatScreen() {
             (isStreaming || pendingStreamSpacerRelease) && anchoredUserMessageId != null
         }
     }
+    val activeStreamBottomSpacerPx = if (streamAnchorReserveActive && !userDetachedFromBottom) {
+        streamAnchorReservePx
+    } else {
+        0
+    }
     val imeVisible = WindowInsets.isImeVisible
+    val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
+    val hasStreamAnchorSpacer by remember(activeStreamBottomSpacerPx) {
+        derivedStateOf { activeStreamBottomSpacerPx > 0 }
+    }
     val lineRevealLockThresholdPx = remember(assistantLineStepPx) {
         (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(6)
     }
@@ -3013,37 +3022,6 @@ fun ChatScreen() {
                     ).coerceAtLeast(0)
             }
         }
-    }
-    val visibleStreamAnchorSpacerPx by remember(
-        streamAnchorReserveActive,
-        pendingStreamSpacerRelease,
-        userDetachedFromBottom,
-        streamAnchorReservePx,
-        streamingMessageContent,
-        streamingAnchorTopPx,
-        streamingContentBottomPx
-    ) {
-        derivedStateOf {
-            if (!streamAnchorReserveActive || userDetachedFromBottom) {
-                0
-            } else if (
-                pendingStreamSpacerRelease ||
-                streamingMessageContent.isBlank() ||
-                streamingAnchorTopPx < 0 ||
-                streamingContentBottomPx <= streamingAnchorTopPx
-            ) {
-                streamAnchorReservePx
-            } else {
-                val revealedContentHeightPx =
-                    (streamingContentBottomPx - streamingAnchorTopPx).coerceAtLeast(0)
-                (streamAnchorReservePx - revealedContentHeightPx).coerceAtLeast(0)
-            }
-        }
-    }
-    val activeStreamBottomSpacerPx = visibleStreamAnchorSpacerPx
-    val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
-    val hasStreamAnchorSpacer by remember(activeStreamBottomSpacerPx) {
-        derivedStateOf { activeStreamBottomSpacerPx > 0 }
     }
     var lineRevealLocked by remember(chatScopeId) { mutableStateOf(false) }
     val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
