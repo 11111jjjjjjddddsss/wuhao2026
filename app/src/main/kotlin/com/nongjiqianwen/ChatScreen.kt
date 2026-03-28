@@ -2974,7 +2974,6 @@ fun ChatScreen() {
     val finalBottomSnapThresholdPx = remember(finalBottomSnapTolerancePx, assistantLineStepPx) {
         maxOf(finalBottomSnapTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
     }
-    val imeVisible = WindowInsets.isImeVisible
     val activeStreamBottomSpacerPx = if (
         (isStreaming || pendingStreamSpacerRelease) &&
         anchoredUserMessageId != null &&
@@ -2984,6 +2983,7 @@ fun ChatScreen() {
     } else {
         0
     }
+    val imeVisible = WindowInsets.isImeVisible
     val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
     val hasStreamAnchorSpacer by remember(activeStreamBottomSpacerPx) {
         derivedStateOf { activeStreamBottomSpacerPx > 0 }
@@ -3079,39 +3079,14 @@ fun ChatScreen() {
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
     }
-    fun currentBottomRealContentGapPx(): Int {
-        val info = listState.layoutInfo
-        val lastContentIndex = info.totalItemsCount - 1 - if (hasStreamAnchorSpacer) 1 else 0
-        if (lastContentIndex < 0) return 0
-        val lastContentVisible = info.visibleItemsInfo.lastOrNull { it.index == lastContentIndex } ?: return 0
-        return (info.viewportEndOffset - (lastContentVisible.offset + lastContentVisible.size)).coerceAtLeast(0)
-    }
     val streamingDirectionLock = remember(
         lockUserScrollDuringBall,
         lockBottomBlankDuringStreaming,
-        lineRevealLockThresholdPx,
-        hasStreamAnchorSpacer
+        lineRevealLockThresholdPx
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
-                if (
-                    available.y > 0f &&
-                    hasStreamAnchorSpacer &&
-                    currentBottomRealContentGapPx() > 0
-                ) {
-                    pendingResumeAutoFollow = false
-                    userDetachedFromBottom = false
-                    jumpButtonVisible = false
-                    if (isStreaming && hasStreamingItem) {
-                        autoScrollMode = if (streamingMessageContent.isNotBlank()) {
-                            AutoScrollMode.StreamAnchorFollow
-                        } else {
-                            AutoScrollMode.AnchorUser
-                        }
-                    }
-                    return Offset(x = 0f, y = available.y)
-                }
                 if (
                     available.y < -4f &&
                     (lockUserScrollDuringBall || lockBottomBlankDuringStreaming)
@@ -4005,13 +3980,6 @@ fun ChatScreen() {
             userDetachedFromBottom = false
             pendingResumeAutoFollow = false
             jumpButtonVisible = false
-            if (isStreaming && hasStreamingItem) {
-                autoScrollMode = if (streamingMessageContent.isNotBlank()) {
-                    AutoScrollMode.StreamAnchorFollow
-                } else {
-                    AutoScrollMode.AnchorUser
-                }
-            }
         }
     }
 
@@ -4063,17 +4031,10 @@ fun ChatScreen() {
                 }
                 when {
                     movedTowardBottom -> {
-                        if (currentBottomOverflowPx() <= lifecycleResumeBottomSnapThresholdPx) {
-                            pendingResumeAutoFollow = false
-                            userDetachedFromBottom = false
-                            autoScrollMode = AutoScrollMode.StreamAnchorFollow
-                            jumpButtonVisible = false
-                        } else {
-                            // Keep manual browsing detached until the user is close enough to the real bottom.
-                            pendingResumeAutoFollow = false
-                            userDetachedFromBottom = true
-                            jumpButtonVisible = false
-                        }
+                        // Keep manual browsing detached until the user reaches the real bottom.
+                        pendingResumeAutoFollow = false
+                        userDetachedFromBottom = true
+                        jumpButtonVisible = false
                     }
 
                     movedTowardTop -> {
