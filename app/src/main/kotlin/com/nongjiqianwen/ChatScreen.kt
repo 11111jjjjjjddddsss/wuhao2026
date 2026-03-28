@@ -3087,6 +3087,17 @@ fun ChatScreen() {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
+                if (
+                    available.y < -4f &&
+                    (lockUserScrollDuringBall || lockBottomBlankDuringStreaming)
+                ) {
+                    pendingResumeAutoFollow = false
+                    userDetachedFromBottom = true
+                    userInteracting = true
+                    autoScrollMode = AutoScrollMode.Idle
+                    streamBottomFollowActive = false
+                    return Offset.Zero
+                }
                 if (lockUserScrollDuringBall && available.y < 0f) {
                     return Offset(x = 0f, y = available.y)
                 }
