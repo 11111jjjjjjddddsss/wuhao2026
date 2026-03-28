@@ -3086,6 +3086,31 @@ fun ChatScreen() {
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
     }
+    suspend fun scrollToStreamingFollowLine() {
+        if (messages.isEmpty() && !hasStreamingItem) return
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        programmaticScroll = true
+        try {
+            withFrameNanos { }
+            val lastIndex = (messages.size + if (hasStreamingItem) 1 else 0) - 1
+            if (lastIndex < 0) return
+            listState.scrollToItem(lastIndex)
+            val stickyStepPx = messageViewportHeightPx
+                .takeIf { it > 0 }
+                ?.let { (it * 0.56f).roundToInt() }
+                ?.coerceAtLeast(STREAM_STICKY_SCROLL_STEP_PX)
+                ?: STREAM_STICKY_SCROLL_STEP_PX
+            repeat(72) {
+                if (!listState.canScrollForward) return
+                val consumed = listState.scrollBy(stickyStepPx.toFloat())
+                if (consumed <= 0f) return
+            }
+            withFrameNanos { }
+        } finally {
+            programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        }
+    }
     val streamingDirectionLock = remember(
         lockUserScrollDuringBall,
         lockBottomBlankDuringStreaming,
@@ -4027,10 +4052,20 @@ fun ChatScreen() {
                 }
                 when {
                     movedTowardBottom -> {
-                        // Keep manual browsing detached until the user reaches the real bottom.
-                        pendingResumeAutoFollow = false
-                        userDetachedFromBottom = true
-                        jumpButtonVisible = false
+                        val reachedStreamingFollowLine =
+                            userDetachedFromBottom &&
+                                streamingMessageContent.isNotBlank() &&
+                                currentStreamingOverflowSnapshot() <= lineRevealLockThresholdPx
+                        if (reachedStreamingFollowLine) {
+                            pendingResumeAutoFollow = true
+                            jumpButtonVisible = false
+                        } else {
+                            // Keep manual browsing detached until the user reaches the current
+                            // streaming follow line, not the tail spacer's real bottom.
+                            pendingResumeAutoFollow = false
+                            userDetachedFromBottom = true
+                            jumpButtonVisible = false
+                        }
                     }
 
                     movedTowardTop -> {
@@ -4056,10 +4091,10 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
+        scrollToStreamingFollowLine()
         autoScrollMode = AutoScrollMode.StreamAnchorFollow
         userDetachedFromBottom = false
         jumpButtonVisible = false
-        repeat(2) { withFrameNanos { } }
         pendingResumeAutoFollow = false
     }
 
