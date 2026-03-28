@@ -3093,6 +3093,18 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     activeStreamBottomSpacerPx > 0 &&
+                    available.y < 0f &&
+                    !userDetachedFromBottom
+                ) {
+                    pendingResumeAutoFollow = false
+                    userDetachedFromBottom = true
+                    autoScrollMode = AutoScrollMode.Idle
+                    jumpButtonVisible = false
+                    return Offset.Zero
+                }
+                if (
+                    isStreaming &&
+                    activeStreamBottomSpacerPx > 0 &&
                     available.y > 0f &&
                     isAtStreamingFollowLine()
                 ) {
