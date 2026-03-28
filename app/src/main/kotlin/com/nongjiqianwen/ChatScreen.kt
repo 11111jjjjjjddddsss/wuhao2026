@@ -3036,36 +3036,6 @@ fun ChatScreen() {
         derivedStateOf { activeStreamBottomSpacerPx > 0 }
     }
     var lineRevealLocked by remember(chatScopeId) { mutableStateOf(false) }
-    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
-        derivedStateOf {
-            isStreaming &&
-                streamingMessageContent.isBlank() &&
-                activeStreamBottomSpacerPx > 0
-        }
-    }
-    val lockBottomBlankDuringStreaming by remember(
-        isStreaming,
-        streamingMessageContent,
-        activeStreamBottomSpacerPx,
-        autoScrollMode,
-        userDetachedFromBottom,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx,
-        bottomPositionTolerancePx
-    ) {
-        derivedStateOf {
-            isStreaming &&
-                streamingMessageContent.isNotBlank() &&
-                activeStreamBottomSpacerPx > 0 &&
-                autoScrollMode != AutoScrollMode.Idle &&
-                !userDetachedFromBottom &&
-                (
-                    streamingContentBottomPx <= 0 ||
-                        streamingWorklineBottomPx <= 0 ||
-                        streamingContentBottomPx < (streamingWorklineBottomPx - bottomPositionTolerancePx)
-                    )
-        }
-    }
     LaunchedEffect(
         isStreaming,
         userDetachedFromBottom,
@@ -3111,9 +3081,11 @@ fun ChatScreen() {
         return streamingContentBottomPx >= (streamingWorklineBottomPx - bottomPositionTolerancePx)
     }
     val streamingDirectionLock = remember(
-        lockUserScrollDuringBall,
-        lockBottomBlankDuringStreaming,
-        lineRevealLockThresholdPx
+        activeStreamBottomSpacerPx,
+        isStreaming,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        bottomPositionTolerancePx
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -3126,29 +3098,6 @@ fun ChatScreen() {
                 ) {
                     return Offset(x = 0f, y = available.y)
                 }
-                if (lockUserScrollDuringBall && available.y < 0f) {
-                    return Offset(x = 0f, y = available.y)
-                }
-                if (
-                    isStreaming &&
-                    streamingMessageContent.isBlank() &&
-                    activeStreamBottomSpacerPx > 0 &&
-                    available.y < 0f
-                ) {
-                    val dragPx = -available.y
-                    val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
-                    if (consumePx > 0f) {
-                        streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
-                        return Offset(x = 0f, y = available.y)
-                    }
-                }
-                if (
-                    lockBottomBlankDuringStreaming &&
-                    available.y < 0f &&
-                    currentStreamingOverflowSnapshot() <= lineRevealLockThresholdPx
-                ) {
-                    return Offset(x = 0f, y = available.y)
-                }
                 return Offset.Zero
             }
 
@@ -3158,12 +3107,6 @@ fun ChatScreen() {
                     activeStreamBottomSpacerPx > 0 &&
                     available.y > 0f &&
                     isAtStreamingFollowLine()
-                ) {
-                    return available
-                }
-                if (
-                    (lockUserScrollDuringBall || lockBottomBlankDuringStreaming) &&
-                    available.y < 0f
                 ) {
                     return available
                 }
