@@ -4031,10 +4031,16 @@ fun ChatScreen() {
                 }
                 when {
                     movedTowardBottom -> {
-                        // Keep manual browsing detached until the user reaches the real bottom.
-                        pendingResumeAutoFollow = false
-                        userDetachedFromBottom = true
-                        jumpButtonVisible = false
+                        if (currentBottomOverflowPx() <= lifecycleResumeBottomSnapThresholdPx) {
+                            pendingResumeAutoFollow = true
+                            userDetachedFromBottom = false
+                            jumpButtonVisible = false
+                        } else {
+                            // Keep manual browsing detached until the user is close enough to the real bottom.
+                            pendingResumeAutoFollow = false
+                            userDetachedFromBottom = true
+                            jumpButtonVisible = false
+                        }
                     }
 
                     movedTowardTop -> {
