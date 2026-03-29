@@ -3164,9 +3164,6 @@ fun ChatScreen() {
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                if (userDetachedFromBottom && available.y < 0f && guardedStreamBottomSpacerPx > 0) {
-                    streamAnchorReservePx = 0
-                }
                 if (
                     lockBottomBlankDuringStreaming &&
                     available.y < 0f
@@ -4100,7 +4097,10 @@ fun ChatScreen() {
                 listState.firstVisibleItemIndex,
                 listState.firstVisibleItemScrollOffset,
                 if (listState.isScrollInProgress) 1 else 0,
-                streamTick
+                streamTick,
+                streamingWorklineBottomPx,
+                currentStreamingVisualBottomPx(),
+                streamAnchorReservePx
             )
         }.collect { state ->
             val currentIndex = state[0]
@@ -4302,6 +4302,30 @@ fun ChatScreen() {
                 withFrameNanos { }
                 if (!listState.canScrollForward) return
                 val consumed = listState.scrollBy(STREAM_BOTTOM_FOLLOW_STEP_PX.toFloat())
+                if (consumed <= 0f) return
+            }
+        } finally {
+            programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        }
+    }
+
+    suspend fun scrollToStreamingFollowBoundary(maxFrames: Int = 180) {
+        if (messages.isEmpty() && !hasStreamingItem) return
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        programmaticScroll = true
+        try {
+            val stickyStepPx = messageViewportHeightPx
+                .takeIf { it > 0 }
+                ?.let { (it * 0.24f).roundToInt() }
+                ?.coerceAtLeast(STREAM_STICKY_SCROLL_STEP_PX)
+                ?: STREAM_STICKY_SCROLL_STEP_PX
+            repeat(maxFrames) {
+                withFrameNanos { }
+                val overflow = currentStreamingOverflowDelta()
+                if (overflow <= bottomPositionTolerancePx) return
+                val stepPx = overflow.coerceAtMost(stickyStepPx).coerceAtLeast(1)
+                val consumed = listState.scrollBy(stepPx.toFloat())
                 if (consumed <= 0f) return
             }
         } finally {
@@ -5275,8 +5299,8 @@ fun ChatScreen() {
             pendingResumeAutoFollow = false
             jumpButtonVisible = false
             if (jumpingIntoStreaming) {
-                scrollToBottom(animated = false, includeAnchorSpacer = false)
                 userDetachedFromBottom = false
+                scrollToStreamingFollowBoundary()
             } else {
                 userDetachedFromBottom = false
                 scrollToBottom(animated = false)
