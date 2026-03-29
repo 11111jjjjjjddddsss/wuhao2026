@@ -3139,6 +3139,11 @@ fun ChatScreen() {
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
     }
+    fun isNearStreamingReturnLine(): Boolean {
+        if (!isStreaming || !hasStreamingItem) return atBottom
+        if (streamingWorklineBottomPx <= 0 || streamingContentBottomPx <= 0) return atBottom
+        return streamingContentBottomPx >= (streamingWorklineBottomPx - bottomPositionTolerancePx)
+    }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -4030,9 +4035,15 @@ fun ChatScreen() {
                 }
                 when {
                     movedTowardBottom -> {
-                        // Keep manual browsing detached until the user reaches the real bottom.
-                        pendingResumeAutoFollow = false
-                        userDetachedFromBottom = true
+                        if (isNearStreamingReturnLine()) {
+                            pendingResumeAutoFollow = false
+                            userDetachedFromBottom = false
+                            autoScrollMode = AutoScrollMode.StreamAnchorFollow
+                        } else {
+                            // Keep manual browsing detached until the user reaches the streaming return line.
+                            pendingResumeAutoFollow = false
+                            userDetachedFromBottom = true
+                        }
                         jumpButtonVisible = false
                     }
 
