@@ -3133,9 +3133,9 @@ fun ChatScreen() {
                 if (
                     lockUserScrollDuringBall &&
                     guardedStreamBottomSpacerPx > 0 &&
-                    available.y < 0f
+                    available.y > 0f
                 ) {
-                    val dragPx = -available.y
+                    val dragPx = available.y
                     val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
                     if (consumePx > 0f) {
                         streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
@@ -3144,7 +3144,7 @@ fun ChatScreen() {
                 }
                 if (
                     lockBottomBlankDuringStreaming &&
-                    available.y < 0f &&
+                    available.y > 0f &&
                     visibleStreamingBottomBlankPx > 0
                 ) {
                     return Offset(x = 0f, y = available.y)
@@ -3155,7 +3155,7 @@ fun ChatScreen() {
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (
                     lockBottomBlankDuringStreaming &&
-                    available.y < 0f
+                    available.y > 0f
                 ) {
                     return available
                 }
