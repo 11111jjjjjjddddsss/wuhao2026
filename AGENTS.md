@@ -306,6 +306,7 @@ Clean-State 定义：
 - 生成期保留自动跟随（`StreamAnchorFollow`），但自动跟随 LaunchedEffect 的 keys 里**不允许**放 `streamingContentBottomPx` 或 `lineRevealLocked`，只用 `streamTick` 驱动；否则测量更新会反复触发 effect 形成反馈震荡，导致文字抖动重影
 - 自动跟随 effect 内必须先 `withFrameNanos {}` 等一帧再读 overflow，保证测量值已随新内容稳定
 - `isNearStreamingReturnLine()` 必须用 `listState.layoutInfo` 判断 streaming item 的实时位置，不能用 `streamingContentBottomPx`；item 离屏后 `streamingContentBottomPx` 是残值，会导致用户明明没到生成行却被提前拖回
+- 流式阶段恢复自动跟随的边界，必须看“是否回到生成工作线/返回线”，不能再额外强绑原始 `atBottom`；否则文本即使已经到输入框上方工作线，也不会继续自动跟随下滚
 - 用户上滑看历史后向下 drag 或 fling 时，`streamAnchorReservePx` 必须被主动消费/清零，防止用户滑入底部空白区
 - 生成期如果正文还没吃到返回线/生成线，状态机应保持 `AnchorUser` 但**不要**把用户误判成 `detached`；否则自动跟随会被错误关死，后续即使正文吃完锚点空白也接不回来
 - 生成期状态机不能只盯列表 index/offset；streaming 正文长高本身也必须触发重算。正文吃完锚点空白、真正回到返回线后，才允许从 `AnchorUser` 切回 `StreamAnchorFollow`

@@ -3173,8 +3173,7 @@ fun ChatScreen() {
         return itemBottom >= (worklineBottom - bottomPositionTolerancePx)
     }
     fun isAtStreamingFollowBoundary(): Boolean {
-        if (!atBottom) return false
-        if (!isStreaming || !hasStreamingItem) return true
+        if (!isStreaming || !hasStreamingItem) return atBottom
         if (streamingMessageContent.isBlank()) return true
         if (streamingWorklineBottomPx <= 0) return false
         return isNearStreamingReturnLine()
