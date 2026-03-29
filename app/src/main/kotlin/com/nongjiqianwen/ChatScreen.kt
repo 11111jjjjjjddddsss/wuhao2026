@@ -3176,7 +3176,7 @@ fun ChatScreen() {
         if (!atBottom) return false
         if (!isStreaming || !hasStreamingItem) return true
         if (streamingMessageContent.isBlank()) return true
-        if (streamingWorklineBottomPx <= 0) return false
+        if (streamingWorklineBottomPx <= 0 || streamingContentBottomPx <= 0) return false
         return isNearStreamingReturnLine()
     }
     fun resolveStreamingIdleMode(): AutoScrollMode {
@@ -4049,17 +4049,12 @@ fun ChatScreen() {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
         snapshotFlow {
-            listOf(
+            Triple(
                 listState.firstVisibleItemIndex,
                 listState.firstVisibleItemScrollOffset,
-                if (listState.isScrollInProgress) 1 else 0,
-                streamTick,
-                streamingContentBottomPx
+                listState.isScrollInProgress
             )
-        }.collect { state ->
-            val currentIndex = state[0]
-            val currentOffset = state[1]
-            val scrollInProgress = state[2] == 1
+        }.collect { (currentIndex, currentOffset, scrollInProgress) ->
             if (programmaticScroll) {
                 previousIndex = currentIndex
                 previousOffset = currentOffset
@@ -4072,7 +4067,7 @@ fun ChatScreen() {
                 currentIndex < previousIndex ||
                     (currentIndex == previousIndex && currentOffset < previousOffset)
             val atFollowBoundary = isAtStreamingFollowBoundary()
-            if (atFollowBoundary && !scrollInProgress) {
+            if (atFollowBoundary) {
                 applyStreamingScrollState(
                     detached = false,
                     mode = resolveStreamingIdleMode()
@@ -4133,9 +4128,9 @@ fun ChatScreen() {
                     !atFollowBoundary
                 ) {
                     applyStreamingScrollState(
-                        detached = false,
+                        detached = true,
                         mode = AutoScrollMode.AnchorUser,
-                        hideJumpButton = true
+                        hideJumpButton = false
                     )
                 } else {
                     autoScrollMode = idleMode
