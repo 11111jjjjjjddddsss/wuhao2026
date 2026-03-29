@@ -1675,6 +1675,7 @@ private fun AssistantMessageContent(
     lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
+    onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -1698,23 +1699,37 @@ private fun AssistantMessageContent(
             contentAlignment = Alignment.TopStart
         ) {
             if (content.isBlank()) {
-                AssistantStreamingWaitingIndicator(modifier = Modifier.fillMaxWidth())
+                AssistantStreamingWaitingIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
+                        }
+                )
             } else {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    AssistantStreamingContent(
-                        content = content,
-                        streamingFreshStart = streamingFreshStart,
-                        streamingFreshEnd = streamingFreshEnd,
-                        streamingFreshTick = streamingFreshTick,
-                        streamingLineAdvanceTick = streamingLineAdvanceTick,
-                        strictLineReveal = strictLineReveal,
-                        lineRevealLocked = lineRevealLocked,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned { coordinates ->
+                                onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
+                            }
+                    ) {
+                        AssistantStreamingContent(
+                            content = content,
+                            streamingFreshStart = streamingFreshStart,
+                            streamingFreshEnd = streamingFreshEnd,
+                            streamingFreshTick = streamingFreshTick,
+                            streamingLineAdvanceTick = streamingLineAdvanceTick,
+                            strictLineReveal = strictLineReveal,
+                            lineRevealLocked = lineRevealLocked,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     if (shouldRenderDisclaimer) {
                         Text(
                             text = AI_DISCLAIMER_TEXT,
@@ -3184,17 +3199,26 @@ fun ChatScreen() {
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
     }
+    fun currentStreamingVisualBottomPx(): Int {
+        if (streamingContentBottomPx > 0) return streamingContentBottomPx
+        val streamingItemIndex = messages.size - 1
+        val info = listState.layoutInfo
+        if (streamingItemIndex >= 0) {
+            val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
+            if (streamingLayoutItem != null) {
+                return streamingLayoutItem.offset + streamingLayoutItem.size
+            }
+        }
+        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return -1
+        return lastVisible.offset + lastVisible.size
+    }
     fun isNearStreamingReturnLine(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
         val worklineBottom = streamingWorklineBottomPx
         if (worklineBottom <= 0) return atBottom
-        val streamingItemIndex = messages.size - 1
-        if (streamingItemIndex < 0) return atBottom
-        val info = listState.layoutInfo
-        val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
-            ?: return false
-        val itemBottom = streamingLayoutItem.offset + streamingLayoutItem.size
-        return itemBottom >= (worklineBottom - bottomPositionTolerancePx)
+        val contentBottom = currentStreamingVisualBottomPx()
+        if (contentBottom <= 0) return false
+        return contentBottom >= (worklineBottom - bottomPositionTolerancePx)
     }
     fun isAtStreamingFollowBoundary(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
@@ -4249,24 +4273,17 @@ fun ChatScreen() {
 
     fun currentStreamingOverflowDelta(): Int {
         val worklineBottom = streamingWorklineBottomPx
-        val streamingItemIndex = messages.size - 1
         val info = listState.layoutInfo
-        if (streamingItemIndex >= 0) {
-            val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
-            if (streamingLayoutItem != null) {
-                val visibleBottom = worklineBottom.takeIf { it > 0 }
-                    ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
-                val itemBottom = streamingLayoutItem.offset + streamingLayoutItem.size
-                return (itemBottom - visibleBottom).coerceAtLeast(0)
-            }
-        }
         val lastIndex = info.totalItemsCount - 1
         if (lastIndex < 0) return 0
-        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
         val visibleBottom = worklineBottom.takeIf { it > 0 }
             ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
-        val itemBottom = lastVisible.offset + lastVisible.size
-        return (itemBottom - visibleBottom).coerceAtLeast(0)
+        val contentBottom = currentStreamingVisualBottomPx()
+        if (contentBottom > 0) {
+            return (contentBottom - visibleBottom).coerceAtLeast(0)
+        }
+        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
+        return (lastVisible.offset + lastVisible.size - visibleBottom).coerceAtLeast(0)
     }
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
@@ -5723,12 +5740,6 @@ fun ChatScreen() {
                                         .onGloballyPositioned { coordinates ->
                                             if (msg.role == ChatRole.ASSISTANT) {
                                                 val bounds = coordinates.boundsInWindow()
-                                                if (isActiveStreamingAssistant) {
-                                                    streamingAnchorTopPx =
-                                                        (bounds.top - messageViewportTopPx).roundToInt()
-                                                    streamingContentBottomPx =
-                                                        (bounds.bottom - messageViewportTopPx).roundToInt()
-                                                }
                                                 if (messageSelectionBoundsById[msg.id] != bounds) {
                                                     messageSelectionBoundsById[msg.id] = bounds
                                                 }
@@ -5766,6 +5777,14 @@ fun ChatScreen() {
                                                             lineRevealLocked = lineRevealLocked,
                                                             selectionEnabled = !isStreaming,
                                                             showDisclaimer = true,
+                                                            onStreamingContentBoundsChanged = { bounds ->
+                                                                if (bounds != null) {
+                                                                    streamingAnchorTopPx =
+                                                                        (bounds.top - messageViewportTopPx).roundToInt()
+                                                                    streamingContentBottomPx =
+                                                                        (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                                }
+                                                            },
                                                             modifier = Modifier.fillMaxWidth()
                                                         )
                                                     }
