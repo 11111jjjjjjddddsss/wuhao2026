@@ -4035,7 +4035,7 @@ fun ChatScreen() {
                 }
                 when {
                     movedTowardBottom -> {
-                        if (isNearStreamingReturnLine()) {
+                        if (!listState.canScrollForward || isWithinBottomTolerance() || isNearStreamingReturnLine()) {
                             pendingResumeAutoFollow = false
                             userDetachedFromBottom = false
                             autoScrollMode = AutoScrollMode.StreamAnchorFollow
