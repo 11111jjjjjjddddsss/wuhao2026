@@ -306,6 +306,7 @@ Clean-State 定义：
 - 流式阶段如果用户已进入手动浏览态后又快速下滑回底部，一旦已经接近当前流式返回线，应立即解除 `userDetachedFromBottom` 并切回 `StreamAnchorFollow`，不要继续拖着 detached 状态把 reserve 空白带出来
 - 生成期滚动状态机必须保持单一入口：`userDetachedFromBottom`、`autoScrollMode`、`回到底部` 按钮状态只允许由同一条滚动状态链统一决策；用户拖动过程中不允许另一条独立 effect 抢回自动跟随，只有手势结束并重新回到返回线/底部附近后，才允许重新接管 follow
 - 生成期浏览态下，“已回到底部”的判定不能直接复用列表原始 `atBottom`；`detached` 恢复、`回到底部` 按钮隐藏、自动跟随重新接管，必须以流式返回线/生成线边界为准，避免没到生成行就被提前拖回
+- 生成期手势结束后，如果仍未回到流式返回线/生成线边界，必须继续保持 `detached + AnchorUser`；不能仅因为正文已经开始生成，就自动切回 `StreamAnchorFollow`
 - 流式尾部提亮如果出现“像闪两次”的体感，优先先减提亮时长、提亮覆盖字符数和 fresh line settle 帧数，不优先改亮度颜色本身
 - 不要再乱调无关参数
 - 不要顺手改输入区

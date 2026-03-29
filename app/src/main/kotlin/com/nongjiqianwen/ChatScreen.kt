@@ -3150,7 +3150,9 @@ fun ChatScreen() {
     fun isAtStreamingFollowBoundary(): Boolean {
         if (!atBottom) return false
         if (!isStreaming || !hasStreamingItem) return true
-        return !userDetachedFromBottom || isNearStreamingReturnLine()
+        if (streamingMessageContent.isBlank()) return true
+        if (streamingWorklineBottomPx <= 0 || streamingContentBottomPx <= 0) return false
+        return isNearStreamingReturnLine()
     }
     fun resolveStreamingIdleMode(): AutoScrollMode {
         return if (
@@ -4095,7 +4097,19 @@ fun ChatScreen() {
                     autoScrollMode = AutoScrollMode.AnchorUser
                 }
             } else {
-                autoScrollMode = resolveStreamingIdleMode()
+                val idleMode = resolveStreamingIdleMode()
+                if (
+                    idleMode == AutoScrollMode.StreamAnchorFollow &&
+                    !atFollowBoundary
+                ) {
+                    applyStreamingScrollState(
+                        detached = true,
+                        mode = AutoScrollMode.AnchorUser,
+                        hideJumpButton = false
+                    )
+                } else {
+                    autoScrollMode = idleMode
+                }
             }
             previousIndex = currentIndex
             previousOffset = currentOffset
@@ -5124,11 +5138,6 @@ fun ChatScreen() {
         autoScrollMode = AutoScrollMode.AnchorUser
         userInteracting = false
         scrollAfterSendAnchor()
-        autoScrollMode = if (isStreaming && streamingMessageContent.isNotBlank()) {
-            AutoScrollMode.StreamAnchorFollow
-        } else {
-            AutoScrollMode.AnchorUser
-        }
     }
 
     LaunchedEffect(
