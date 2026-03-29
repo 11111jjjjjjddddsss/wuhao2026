@@ -2929,6 +2929,7 @@ fun ChatScreen() {
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
     var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
     var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
+    var uiDebugPanelExpanded by rememberSaveable(chatScopeId) { mutableStateOf(true) }
     var lifecycleResumeReady by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
@@ -5334,6 +5335,33 @@ fun ChatScreen() {
             inputLimitHintVisible -> "已超过6000字，暂时不能发送"
             else -> null
         }
+        val uiDebugLines =
+            if (BuildConfig.DEBUG) {
+                buildList {
+                    add("mode=$autoScrollMode det=$userDetachedFromBottom interact=$userInteracting stream=$isStreaming")
+                    add("atBottom=$atBottom nearReturn=${isNearStreamingReturnLine()} follow=${isAtStreamingFollowBoundary()}")
+                    add(
+                        "work=$streamingWorklineBottomPx content=$streamingContentBottomPx " +
+                            "blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx overflow=${currentStreamingOverflowDelta()}"
+                    )
+                    add(
+                        "ime=$imeVisible bottomBar=$bottomBarHeightPx composerTop=$composerTopInViewportPx " +
+                            "safeInset=$safeBottomInsetPx reserved=$bottomContentReservedHeightPx"
+                    )
+                    add(
+                        "chars=${streamingMessageContent.length} revealBuf=${streamingRevealBuffer.length} " +
+                            "tick=$streamTick fresh=$streamingFreshTick lineAdvance=$streamingLineAdvanceTick"
+                    )
+                    add("revealLocked=$lineRevealLocked followActive=$streamBottomFollowActive jump=$jumpButtonVisible")
+                    add(
+                        "pendingSpacer=$pendingStreamSpacerRelease pendingSnap=$pendingFinalBottomSnap " +
+                            "afterSpacer=$pendingFinalBottomSnapAfterSpacer"
+                    )
+                    add("viewportH=$messageViewportHeightPx rootH=$chatRootHeightPx rootW=$chatRootWidthPx")
+                }
+            } else {
+                emptyList()
+            }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
@@ -5889,6 +5917,21 @@ fun ChatScreen() {
                 )
             }
 
+            if (BuildConfig.DEBUG) {
+                UiDebugPanel(
+                    expanded = uiDebugPanelExpanded,
+                    lines = uiDebugLines,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(
+                            top = topBarReservedHeight + 8.dp,
+                            end = chromeHorizontalPadding
+                        )
+                        .zIndex(70f),
+                    onToggleExpanded = { uiDebugPanelExpanded = !uiDebugPanelExpanded }
+                )
+            }
+
             if (hasActiveMessageSelection) {
                 Box(
                     modifier = Modifier
@@ -6415,6 +6458,46 @@ private fun MessageActionMenuPopup(
                 }
         ) {
             MessageActionMenuCardContent(onCopy = onCopy, onCopyFull = onCopyFull)
+        }
+    }
+}
+
+@Composable
+private fun UiDebugPanel(
+    expanded: Boolean,
+    lines: List<String>,
+    modifier: Modifier = Modifier,
+    onToggleExpanded: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xCC111111),
+        border = BorderStroke(0.6.dp, Color.White.copy(alpha = 0.18f)),
+        modifier = modifier.widthIn(max = 320.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .clickable(onClick = onToggleExpanded)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = if (expanded) "UI DEBUG 收起" else "UI DEBUG 展开",
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (expanded) {
+                lines.forEach { line ->
+                    Text(
+                        text = line,
+                        color = Color.White.copy(alpha = 0.92f),
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
         }
     }
 }
