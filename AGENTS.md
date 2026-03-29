@@ -308,6 +308,7 @@ Clean-State 定义：
 - 流式阶段恢复自动跟随的边界，必须看“是否回到生成工作线/返回线”，不能再额外强绑原始 `atBottom`；否则文本即使已经到输入框上方工作线，也不会继续自动跟随
 - 生成期如果正文还没吃到返回线/生成线，状态机应保持 `AnchorUser` 但不要把用户误判成 `detached`；否则自动跟随会被错误关死，后续即使正文吃完锚点空白也接不回来
 - 生成期状态机不能只盯列表 index/offset；streaming 正文长高本身也必须触发重算。正文吃完锚点空白、真正回到返回线后，才允许从 `AnchorUser` 切回 `StreamAnchorFollow`
+- 自动跟随执行器不能只在新 token 到来时滚一步；进入 `StreamAnchorFollow` 后，应按帧持续读取当前工作线和 overflow，动态跟随输入框与正文几何变化
 - 自动跟随的 overflow 判定优先使用 `listState.layoutInfo` 中 streaming item 的实时可视位置，不优先依赖 `streamingContentBottomPx`；否则测量回写会带出正文抖动和重影体感
 - 生成期滚动状态机必须保持单一入口：`userDetachedFromBottom`、`autoScrollMode`、`回到底部` 按钮状态只允许由同一条滚动状态链统一决策；用户拖动过程中不允许另一条独立 effect 抢回自动跟随，只有手势结束并重新回到返回线/底部附近后，才允许重新接管 follow
 - 生成期浏览态下，“已回到底部”的判定不能直接复用列表原始 `atBottom`；`detached` 恢复、`回到底部` 按钮隐藏、自动跟随重新接管，必须以流式返回线/生成线边界为准，避免没到生成行就被提前拖回

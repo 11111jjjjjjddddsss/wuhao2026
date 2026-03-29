@@ -5155,55 +5155,46 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         userInteracting,
-        userDetachedFromBottom,
-        streamTick
+        userDetachedFromBottom
     ) {
         if (!hasStreamingItem || !isStreaming) {
             streamBottomFollowActive = false
             debugUiTrace(context, "follow_skip|reason=no_stream_item")
             return@LaunchedEffect
         }
-        if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting || userDetachedFromBottom) {
-            streamBottomFollowActive = false
-            debugUiTrace(
-                context,
-                "follow_skip|reason=state_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
-            )
-            return@LaunchedEffect
-        }
-        if (streamingMessageContent.isBlank()) {
-            streamBottomFollowActive = false
-            debugUiTrace(context, "follow_skip|reason=blank_content")
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        if (userInteracting || userDetachedFromBottom || autoScrollMode != AutoScrollMode.StreamAnchorFollow) {
-            debugUiTrace(
-                context,
-                "follow_skip|reason=post_frame_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
-            )
-            return@LaunchedEffect
-        }
-        val overflow = currentStreamingOverflowDelta()
-        val stepPx = resolveStreamingFollowStepPx(overflow)
-        if (stepPx <= 0) {
-            streamBottomFollowActive = false
-            debugUiTrace(context, "follow_skip|reason=no_step overflow=$overflow")
-            return@LaunchedEffect
-        }
-        streamBottomFollowActive = true
-        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-        programmaticScroll = true
-        try {
-            val consumed = listState.scrollBy(stepPx.toFloat())
-            debugUiTrace(context, "follow_step|overflow=$overflow step=$stepPx consumed=${consumed.roundToInt()}")
-            if (consumed > 0f) {
-                streamingLineAdvanceTick++
+        while (isActive && hasStreamingItem && isStreaming) {
+            withFrameNanos { }
+            if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting || userDetachedFromBottom) {
+                streamBottomFollowActive = false
+                debugUiTrace(
+                    context,
+                    "follow_skip|reason=state_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
+                )
+                return@LaunchedEffect
             }
-        } finally {
-            programmaticScroll = false
+            if (streamingMessageContent.isBlank()) {
+                streamBottomFollowActive = false
+                continue
+            }
+            val overflow = currentStreamingOverflowDelta()
+            val stepPx = resolveStreamingFollowStepPx(overflow)
+            if (stepPx <= 0) {
+                streamBottomFollowActive = false
+                continue
+            }
+            streamBottomFollowActive = true
             lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-            streamBottomFollowActive = false
+            programmaticScroll = true
+            try {
+                val consumed = listState.scrollBy(stepPx.toFloat())
+                if (consumed > 0f) {
+                    streamingLineAdvanceTick++
+                }
+            } finally {
+                programmaticScroll = false
+                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                streamBottomFollowActive = false
+            }
         }
     }
 
