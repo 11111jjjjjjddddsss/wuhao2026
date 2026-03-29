@@ -3163,15 +3163,34 @@ fun ChatScreen() {
     var historyHydrationComplete by remember(chatScopeId) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
     }
-    val startupLayoutReady by remember(
+    val startupHydrationBarrierSatisfied by remember(
         historyHydrationComplete,
+        shouldHydrateRemoteHistory,
+        initialLocalMessages.size,
+        startupRecoverableUserMessageId,
+        hasStartedConversation,
+        hasStreamingItem
+    ) {
+        derivedStateOf {
+            historyHydrationComplete ||
+                (
+                    shouldHydrateRemoteHistory &&
+                        initialLocalMessages.isEmpty() &&
+                        startupRecoverableUserMessageId == null &&
+                        !hasStartedConversation &&
+                        !hasStreamingItem
+                    )
+        }
+    }
+    val startupLayoutReady by remember(
+        startupHydrationBarrierSatisfied,
         messageViewportMeasured,
         inputChromeMeasured,
         composerMeasured,
         bottomBarHeightPx
     ) {
         derivedStateOf {
-            historyHydrationComplete &&
+            startupHydrationBarrierSatisfied &&
                 messageViewportMeasured &&
                 inputChromeMeasured &&
                 composerMeasured &&
@@ -3193,7 +3212,7 @@ fun ChatScreen() {
     }
     val shouldRevealMessageList by remember(
         startupLayoutReady,
-        historyHydrationComplete,
+        startupHydrationBarrierSatisfied,
         hasStartedConversation,
         messages.size,
         hasStreamingItem,
@@ -3201,7 +3220,7 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             when {
-                !historyHydrationComplete -> false
+                !startupHydrationBarrierSatisfied -> false
                 !startupLayoutReady -> false
                 hasStartedConversation -> true
                 hasStreamingItem -> true
@@ -3213,12 +3232,12 @@ fun ChatScreen() {
     }
     val showWelcomePlaceholder by remember(
         startupLayoutReady,
-        historyHydrationComplete,
+        startupHydrationBarrierSatisfied,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
-            startupLayoutReady && historyHydrationComplete && messages.isEmpty() && !hasStreamingItem
+            startupLayoutReady && startupHydrationBarrierSatisfied && messages.isEmpty() && !hasStreamingItem
         }
     }
     val topInset = WindowInsets.safeDrawing
@@ -3295,7 +3314,7 @@ fun ChatScreen() {
     }
     LaunchedEffect(
         startupLayoutReady,
-        historyHydrationComplete,
+        startupHydrationBarrierSatisfied,
         hasStartedConversation,
         messages.size,
         hasStreamingItem,
@@ -3303,7 +3322,7 @@ fun ChatScreen() {
     ) {
         LaunchUiGate.chatReady =
             when {
-                !historyHydrationComplete -> false
+                !startupHydrationBarrierSatisfied -> false
                 !startupLayoutReady -> false
                 hasStartedConversation -> true
                 hasStreamingItem -> true
@@ -5128,11 +5147,11 @@ fun ChatScreen() {
         startupLayoutReady,
         hasStreamingItem,
         initialBottomSnapDone,
-        historyHydrationComplete
+        startupHydrationBarrierSatisfied
     ) {
         if (hasStartedConversation) return@LaunchedEffect
         if (initialBottomSnapDone) return@LaunchedEffect
-        if (!historyHydrationComplete) return@LaunchedEffect
+        if (!startupHydrationBarrierSatisfied) return@LaunchedEffect
         if (!startupLayoutReady) return@LaunchedEffect
         if (messages.isEmpty() && !hasStreamingItem) {
             jumpButtonVisible = false
