@@ -297,6 +297,7 @@ private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 3
 private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
+private const val STREAM_RETURN_TO_FOLLOW_SETTLE_MS = 48L
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
@@ -2921,6 +2922,8 @@ fun ChatScreen() {
     var userDetachedFromBottom by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var pendingStreamingReturnSnap by remember { mutableStateOf(false) }
+    var lastUserScrollInteractionEndMs by remember { mutableStateOf(0L) }
+    var wasUserScrollInProgress by remember { mutableStateOf(false) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
@@ -3977,12 +3980,17 @@ fun ChatScreen() {
     LaunchedEffect(listState.isScrollInProgress, programmaticScroll, atBottom) {
         if (programmaticScroll) {
             userInteracting = false
+            wasUserScrollInProgress = false
             return@LaunchedEffect
         }
         if (listState.isScrollInProgress && imeVisible) {
             keyboardController?.hide()
             focusManager.clearFocus(force = true)
         }
+        if (wasUserScrollInProgress && !listState.isScrollInProgress) {
+            lastUserScrollInteractionEndMs = SystemClock.uptimeMillis()
+        }
+        wasUserScrollInProgress = listState.isScrollInProgress
         userInteracting = listState.isScrollInProgress
         if (atBottom) {
             userDetachedFromBottom = false
@@ -5121,6 +5129,7 @@ fun ChatScreen() {
         autoScrollMode,
         userDetachedFromBottom,
         userInteracting,
+        lastUserScrollInteractionEndMs,
         streamingContentBottomPx,
         streamingWorklineBottomPx
     ) {
@@ -5131,6 +5140,15 @@ fun ChatScreen() {
         if (streamingMessageContent.isBlank()) return@LaunchedEffect
         if (streamingContentBottomPx <= 0 || streamingWorklineBottomPx <= 0) return@LaunchedEffect
         if (streamingContentBottomPx <= streamingWorklineBottomPx) return@LaunchedEffect
+        val settleRemainingMs =
+            (STREAM_RETURN_TO_FOLLOW_SETTLE_MS - (SystemClock.uptimeMillis() - lastUserScrollInteractionEndMs))
+                .coerceAtLeast(0L)
+        if (settleRemainingMs > 0L) {
+            delay(settleRemainingMs)
+            if (userDetachedFromBottom || userInteracting || listState.isScrollInProgress || programmaticScroll) {
+                return@LaunchedEffect
+            }
+        }
         autoScrollMode = AutoScrollMode.StreamAnchorFollow
     }
 
