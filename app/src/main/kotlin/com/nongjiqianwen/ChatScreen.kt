@@ -3147,14 +3147,16 @@ fun ChatScreen() {
         if (streamingWorklineBottomPx <= 0 || streamingContentBottomPx <= 0) return atBottom
         return streamingContentBottomPx >= (streamingWorklineBottomPx - bottomPositionTolerancePx)
     }
+    fun isAtStreamingFollowBoundary(): Boolean {
+        if (!atBottom) return false
+        if (!isStreaming || !hasStreamingItem) return true
+        return !userDetachedFromBottom || isNearStreamingReturnLine()
+    }
     fun resolveStreamingIdleMode(): AutoScrollMode {
         return if (
             isStreaming &&
             hasStreamingItem &&
-            streamingMessageContent.isNotBlank() &&
-            streamingContentBottomPx > 0 &&
-            streamingWorklineBottomPx > 0 &&
-            streamingContentBottomPx > streamingWorklineBottomPx
+            streamingMessageContent.isNotBlank()
         ) {
             AutoScrollMode.StreamAnchorFollow
         } else if (isStreaming && hasStreamingItem) {
@@ -3312,17 +3314,20 @@ fun ChatScreen() {
     val shouldOfferJumpButton by remember(
         startupLayoutReady,
         atBottom,
-        messages.size,
+        isStreaming,
         hasStreamingItem,
+        userDetachedFromBottom,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        messages.size,
         pendingFinalBottomSnap,
         pendingStreamSpacerRelease,
-        isStreaming,
-        userDetachedFromBottom,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume
     ) {
         derivedStateOf {
+            val atFollowBoundary = isAtStreamingFollowBoundary()
             startupLayoutReady &&
                 !pendingStreamSpacerRelease &&
                 !pendingFinalBottomSnap &&
@@ -3331,7 +3336,7 @@ fun ChatScreen() {
                 !suppressJumpButtonForLifecycleResume &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (!isStreaming || userDetachedFromBottom) &&
-                !atBottom
+                !atFollowBoundary
         }
     }
     LaunchedEffect(
@@ -4001,7 +4006,7 @@ fun ChatScreen() {
         )
     }
 
-    LaunchedEffect(listState.isScrollInProgress, programmaticScroll, atBottom) {
+    LaunchedEffect(listState.isScrollInProgress, programmaticScroll) {
         if (programmaticScroll) {
             userInteracting = false
             return@LaunchedEffect
@@ -4011,11 +4016,6 @@ fun ChatScreen() {
             focusManager.clearFocus(force = true)
         }
         userInteracting = listState.isScrollInProgress
-        if (atBottom) {
-            userDetachedFromBottom = false
-            pendingResumeAutoFollow = false
-            jumpButtonVisible = false
-        }
     }
 
     LaunchedEffect(listState, isStreaming, hasStreamingItem) {
@@ -4039,7 +4039,8 @@ fun ChatScreen() {
             val movedTowardTop =
                 currentIndex < previousIndex ||
                     (currentIndex == previousIndex && currentOffset < previousOffset)
-            if (atBottom) {
+            val atFollowBoundary = isAtStreamingFollowBoundary()
+            if (atFollowBoundary) {
                 applyStreamingScrollState(
                     detached = false,
                     mode = resolveStreamingIdleMode()
@@ -4068,18 +4069,11 @@ fun ChatScreen() {
             } else if (scrollInProgress) {
                 when {
                     movedTowardBottom -> {
-                        if (!listState.canScrollForward || isWithinBottomTolerance() || isNearStreamingReturnLine()) {
-                            applyStreamingScrollState(
-                                detached = false,
-                                mode = AutoScrollMode.AnchorUser
-                            )
-                        } else {
-                            applyStreamingScrollState(
-                                detached = true,
-                                mode = AutoScrollMode.AnchorUser,
-                                hideJumpButton = false
-                            )
-                        }
+                        applyStreamingScrollState(
+                            detached = userDetachedFromBottom,
+                            mode = AutoScrollMode.AnchorUser,
+                            hideJumpButton = userDetachedFromBottom.not()
+                        )
                     }
 
                     movedTowardTop -> {
@@ -4091,7 +4085,15 @@ fun ChatScreen() {
                     }
                 }
             } else if (userDetachedFromBottom) {
-                autoScrollMode = AutoScrollMode.AnchorUser
+                val canReattachToStreaming = atFollowBoundary
+                if (canReattachToStreaming) {
+                    applyStreamingScrollState(
+                        detached = false,
+                        mode = resolveStreamingIdleMode()
+                    )
+                } else {
+                    autoScrollMode = AutoScrollMode.AnchorUser
+                }
             } else {
                 autoScrollMode = resolveStreamingIdleMode()
             }
