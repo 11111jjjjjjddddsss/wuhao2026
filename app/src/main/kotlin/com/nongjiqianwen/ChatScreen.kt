@@ -3142,10 +3142,15 @@ fun ChatScreen() {
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
     }
-    fun isNearStreamingReturnLine(): Boolean {
-        if (!isStreaming || !hasStreamingItem) return atBottom
-        if (streamingWorklineBottomPx <= 0 || streamingContentBottomPx <= 0) return atBottom
-        return streamingContentBottomPx >= (streamingWorklineBottomPx - bottomPositionTolerancePx)
+    fun isNearStreamingReturnLine(
+        contentBottomPx: Int = streamingContentBottomPx,
+        worklineBottomPx: Int = streamingWorklineBottomPx,
+        streamingActive: Boolean = isStreaming,
+        hasStreaming: Boolean = hasStreamingItem
+    ): Boolean {
+        if (!streamingActive || !hasStreaming) return atBottom
+        if (worklineBottomPx <= 0 || contentBottomPx <= 0) return atBottom
+        return contentBottomPx >= (worklineBottomPx - bottomPositionTolerancePx)
     }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
@@ -3990,16 +3995,31 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(listState, isStreaming, hasStreamingItem, autoScrollMode) {
+    LaunchedEffect(listState, isStreaming, hasStreamingItem) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
         snapshotFlow {
-            Triple(
+            listOf(
                 listState.firstVisibleItemIndex,
                 listState.firstVisibleItemScrollOffset,
-                listState.isScrollInProgress
+                if (listState.isScrollInProgress) 1 else 0,
+                if (atBottom) 1 else 0,
+                if (isStreaming) 1 else 0,
+                if (hasStreamingItem) 1 else 0,
+                if (streamingMessageContent.isNotBlank()) 1 else 0,
+                streamingContentBottomPx,
+                streamingWorklineBottomPx
             )
-        }.collect { (currentIndex, currentOffset, scrollInProgress) ->
+        }.collect { snapshot ->
+            val currentIndex = snapshot[0]
+            val currentOffset = snapshot[1]
+            val scrollInProgress = snapshot[2] == 1
+            val nowAtBottom = snapshot[3] == 1
+            val streamingActive = snapshot[4] == 1
+            val hasStreaming = snapshot[5] == 1
+            val hasStreamingText = snapshot[6] == 1
+            val contentBottomPx = snapshot[7]
+            val worklineBottomPx = snapshot[8]
             if (programmaticScroll) {
                 previousIndex = currentIndex
                 previousOffset = currentOffset
@@ -4011,11 +4031,14 @@ fun ChatScreen() {
             val movedTowardTop =
                 currentIndex < previousIndex ||
                     (currentIndex == previousIndex && currentOffset < previousOffset)
-            if (atBottom) {
+            if (nowAtBottom) {
                 userDetachedFromBottom = false
                 pendingResumeAutoFollow = false
                 jumpButtonVisible = false
-            } else if (!isStreaming || !hasStreamingItem) {
+                if (streamingActive && hasStreaming && hasStreamingText) {
+                    autoScrollMode = AutoScrollMode.StreamAnchorFollow
+                }
+            } else if (!streamingActive || !hasStreaming) {
                 pendingResumeAutoFollow = false
                 when {
                     movedTowardBottom -> {
@@ -4027,25 +4050,27 @@ fun ChatScreen() {
                         userDetachedFromBottom = true
                     }
                 }
+                autoScrollMode = AutoScrollMode.Idle
             } else if (scrollInProgress) {
-                if (autoScrollMode == AutoScrollMode.AnchorUser) {
-                    pendingResumeAutoFollow = false
-                    userDetachedFromBottom = false
-                    jumpButtonVisible = false
-                    previousIndex = currentIndex
-                    previousOffset = currentOffset
-                    return@collect
-                }
                 when {
                     movedTowardBottom -> {
-                        if (!listState.canScrollForward || isWithinBottomTolerance() || isNearStreamingReturnLine()) {
+                        if (
+                            !listState.canScrollForward ||
+                            isWithinBottomTolerance() ||
+                            isNearStreamingReturnLine(
+                                contentBottomPx = contentBottomPx,
+                                worklineBottomPx = worklineBottomPx,
+                                streamingActive = streamingActive,
+                                hasStreaming = hasStreaming
+                            )
+                        ) {
                             pendingResumeAutoFollow = false
                             userDetachedFromBottom = false
                             autoScrollMode = AutoScrollMode.StreamAnchorFollow
                         } else {
-                            // Keep manual browsing detached until the user reaches the streaming return line.
                             pendingResumeAutoFollow = false
                             userDetachedFromBottom = true
+                            autoScrollMode = AutoScrollMode.AnchorUser
                         }
                         jumpButtonVisible = false
                     }
@@ -4053,7 +4078,21 @@ fun ChatScreen() {
                     movedTowardTop -> {
                         pendingResumeAutoFollow = false
                         userDetachedFromBottom = true
+                        autoScrollMode = AutoScrollMode.AnchorUser
                     }
+                }
+            } else {
+                if (userDetachedFromBottom) {
+                    autoScrollMode = AutoScrollMode.AnchorUser
+                } else if (
+                    hasStreamingText &&
+                    contentBottomPx > 0 &&
+                    worklineBottomPx > 0 &&
+                    contentBottomPx > worklineBottomPx
+                ) {
+                    autoScrollMode = AutoScrollMode.StreamAnchorFollow
+                } else {
+                    autoScrollMode = AutoScrollMode.AnchorUser
                 }
             }
             previousIndex = currentIndex
@@ -5088,25 +5127,6 @@ fun ChatScreen() {
         } else {
             AutoScrollMode.AnchorUser
         }
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        streamingMessageContent.isNotBlank(),
-        autoScrollMode,
-        userDetachedFromBottom,
-        userInteracting,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx
-    ) {
-        if (!isStreaming) return@LaunchedEffect
-        if (autoScrollMode != AutoScrollMode.AnchorUser) return@LaunchedEffect
-        if (userDetachedFromBottom) return@LaunchedEffect
-        if (userInteracting || listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
-        if (streamingMessageContent.isBlank()) return@LaunchedEffect
-        if (streamingContentBottomPx <= 0 || streamingWorklineBottomPx <= 0) return@LaunchedEffect
-        if (streamingContentBottomPx <= streamingWorklineBottomPx) return@LaunchedEffect
-        autoScrollMode = AutoScrollMode.StreamAnchorFollow
     }
 
     LaunchedEffect(

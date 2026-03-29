@@ -304,6 +304,7 @@ Clean-State 定义：
 - 上滑浏览历史不应由这条空白限制逻辑去抢手
 - 静态文本阶段不启用这条流式空白限制
 - 流式阶段如果用户已进入手动浏览态后又快速下滑回底部，一旦已经接近当前流式返回线，应立即解除 `userDetachedFromBottom` 并切回 `StreamAnchorFollow`，不要继续拖着 detached 状态把 reserve 空白带出来
+- 生成期滚动状态机必须保持单一入口：`userDetachedFromBottom`、`autoScrollMode`、`回到底部` 按钮状态只允许由同一条滚动状态链统一决策，不允许滚动监听和另一条独立 effect 同时抢接管时机
 - 流式尾部提亮如果出现“像闪两次”的体感，优先先减提亮时长、提亮覆盖字符数和 fresh line settle 帧数，不优先改亮度颜色本身
 - 不要再乱调无关参数
 - 不要顺手改输入区
