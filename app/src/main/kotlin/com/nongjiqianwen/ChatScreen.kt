@@ -4157,13 +4157,11 @@ fun ChatScreen() {
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         if (overflow <= 0) return 0
-        val minStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(6)
-        val triggerThresholdPx = (minStepPx * 0.5f).roundToInt().coerceAtLeast(3)
+        val minStepPx = (assistantLineStepPx * 0.14f).roundToInt().coerceAtLeast(8)
+        val triggerThresholdPx = (minStepPx * 0.45f).roundToInt().coerceAtLeast(3)
         if (overflow < triggerThresholdPx) return 0
-        val smoothCapPx = (assistantLineStepPx * 0.32f).roundToInt().coerceAtLeast(minStepPx)
-        return overflow
-            .coerceAtMost(smoothCapPx)
-            .coerceAtLeast(minStepPx)
+        val steadyStepPx = (assistantLineStepPx * 0.2f).roundToInt().coerceAtLeast(minStepPx)
+        return overflow.coerceAtMost(steadyStepPx)
     }
 
     suspend fun smoothCatchUpToBottom(maxFrames: Int = 480) {
@@ -5070,7 +5068,7 @@ fun ChatScreen() {
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
-            val followPasses = if (overflow >= assistantLineStepPx) 3 else 2
+            val followPasses = if (lineRevealLocked) 1 else 2
             repeat(followPasses) { pass ->
                 val pendingOverflow = currentStreamingOverflowDelta()
                 val pendingStepPx = resolveStreamingFollowStepPx(pendingOverflow)
