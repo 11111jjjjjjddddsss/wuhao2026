@@ -3147,6 +3147,34 @@ fun ChatScreen() {
         if (streamingWorklineBottomPx <= 0 || streamingContentBottomPx <= 0) return atBottom
         return streamingContentBottomPx >= (streamingWorklineBottomPx - bottomPositionTolerancePx)
     }
+    fun resolveStreamingIdleMode(): AutoScrollMode {
+        return if (
+            isStreaming &&
+            hasStreamingItem &&
+            streamingMessageContent.isNotBlank() &&
+            streamingContentBottomPx > 0 &&
+            streamingWorklineBottomPx > 0 &&
+            streamingContentBottomPx > streamingWorklineBottomPx
+        ) {
+            AutoScrollMode.StreamAnchorFollow
+        } else if (isStreaming && hasStreamingItem) {
+            AutoScrollMode.AnchorUser
+        } else {
+            AutoScrollMode.Idle
+        }
+    }
+    fun applyStreamingScrollState(
+        detached: Boolean,
+        mode: AutoScrollMode,
+        hideJumpButton: Boolean = true
+    ) {
+        pendingResumeAutoFollow = false
+        userDetachedFromBottom = detached
+        autoScrollMode = mode
+        if (hideJumpButton) {
+            jumpButtonVisible = false
+        }
+    }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -3990,7 +4018,7 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(listState, isStreaming, hasStreamingItem, autoScrollMode) {
+    LaunchedEffect(listState, isStreaming, hasStreamingItem) {
         var previousIndex = listState.firstVisibleItemIndex
         var previousOffset = listState.firstVisibleItemScrollOffset
         snapshotFlow {
@@ -4012,49 +4040,60 @@ fun ChatScreen() {
                 currentIndex < previousIndex ||
                     (currentIndex == previousIndex && currentOffset < previousOffset)
             if (atBottom) {
-                userDetachedFromBottom = false
-                pendingResumeAutoFollow = false
-                jumpButtonVisible = false
+                applyStreamingScrollState(
+                    detached = false,
+                    mode = resolveStreamingIdleMode()
+                )
             } else if (!isStreaming || !hasStreamingItem) {
-                pendingResumeAutoFollow = false
                 when {
                     movedTowardBottom -> {
-                        userDetachedFromBottom = false
-                        jumpButtonVisible = false
+                        applyStreamingScrollState(
+                            detached = false,
+                            mode = AutoScrollMode.Idle
+                        )
                     }
 
                     movedTowardTop -> {
-                        userDetachedFromBottom = true
+                        applyStreamingScrollState(
+                            detached = true,
+                            mode = AutoScrollMode.Idle,
+                            hideJumpButton = false
+                        )
+                    }
+
+                    else -> {
+                        autoScrollMode = AutoScrollMode.Idle
                     }
                 }
             } else if (scrollInProgress) {
-                if (autoScrollMode == AutoScrollMode.AnchorUser) {
-                    pendingResumeAutoFollow = false
-                    userDetachedFromBottom = false
-                    jumpButtonVisible = false
-                    previousIndex = currentIndex
-                    previousOffset = currentOffset
-                    return@collect
-                }
                 when {
                     movedTowardBottom -> {
                         if (!listState.canScrollForward || isWithinBottomTolerance() || isNearStreamingReturnLine()) {
-                            pendingResumeAutoFollow = false
-                            userDetachedFromBottom = false
-                            autoScrollMode = AutoScrollMode.StreamAnchorFollow
+                            applyStreamingScrollState(
+                                detached = false,
+                                mode = AutoScrollMode.AnchorUser
+                            )
                         } else {
-                            // Keep manual browsing detached until the user reaches the streaming return line.
-                            pendingResumeAutoFollow = false
-                            userDetachedFromBottom = true
+                            applyStreamingScrollState(
+                                detached = true,
+                                mode = AutoScrollMode.AnchorUser,
+                                hideJumpButton = false
+                            )
                         }
-                        jumpButtonVisible = false
                     }
 
                     movedTowardTop -> {
-                        pendingResumeAutoFollow = false
-                        userDetachedFromBottom = true
+                        applyStreamingScrollState(
+                            detached = true,
+                            mode = AutoScrollMode.AnchorUser,
+                            hideJumpButton = false
+                        )
                     }
                 }
+            } else if (userDetachedFromBottom) {
+                autoScrollMode = AutoScrollMode.AnchorUser
+            } else {
+                autoScrollMode = resolveStreamingIdleMode()
             }
             previousIndex = currentIndex
             previousOffset = currentOffset
@@ -5088,25 +5127,6 @@ fun ChatScreen() {
         } else {
             AutoScrollMode.AnchorUser
         }
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        streamingMessageContent.isNotBlank(),
-        autoScrollMode,
-        userDetachedFromBottom,
-        userInteracting,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx
-    ) {
-        if (!isStreaming) return@LaunchedEffect
-        if (autoScrollMode != AutoScrollMode.AnchorUser) return@LaunchedEffect
-        if (userDetachedFromBottom) return@LaunchedEffect
-        if (userInteracting || listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
-        if (streamingMessageContent.isBlank()) return@LaunchedEffect
-        if (streamingContentBottomPx <= 0 || streamingWorklineBottomPx <= 0) return@LaunchedEffect
-        if (streamingContentBottomPx <= streamingWorklineBottomPx) return@LaunchedEffect
-        autoScrollMode = AutoScrollMode.StreamAnchorFollow
     }
 
     LaunchedEffect(
