@@ -3096,12 +3096,8 @@ fun ChatScreen() {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
-                if (lockUserScrollDuringBall && available.y < 0f) {
-                    return Offset(x = 0f, y = available.y)
-                }
                 if (
-                    isStreaming &&
-                    streamingMessageContent.isBlank() &&
+                    lockUserScrollDuringBall &&
                     activeStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
@@ -3124,7 +3120,7 @@ fun ChatScreen() {
 
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (
-                    (lockUserScrollDuringBall || lockBottomBlankDuringStreaming) &&
+                    lockBottomBlankDuringStreaming &&
                     available.y < 0f
                 ) {
                     return available
