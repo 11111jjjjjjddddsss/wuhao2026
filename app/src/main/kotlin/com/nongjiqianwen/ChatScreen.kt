@@ -1736,9 +1736,7 @@ private fun ChatInputField(
     value: TextFieldValue,
     focused: Boolean,
     suppressCursor: Boolean,
-    settlingSnapshotText: String,
-    settlingSnapshotActive: Boolean,
-    settlingSnapshotHeightPx: Int,
+    settlingMinHeightPx: Int,
     suppressPlaceholder: Boolean,
     onValueChange: (TextFieldValue) -> Unit,
     onFocusChanged: (Boolean) -> Unit,
@@ -1757,7 +1755,7 @@ private fun ChatInputField(
 ) {
     val density = LocalDensity.current
     val settlingSnapshotMinHeight = with(density) {
-        settlingSnapshotHeightPx.coerceAtLeast(0).toDp()
+        settlingMinHeightPx.coerceAtLeast(0).toDp()
     }
     BasicTextField(
         value = value,
@@ -1785,15 +1783,6 @@ private fun ChatInputField(
                     .heightIn(min = settlingSnapshotMinHeight),
                 contentAlignment = Alignment.CenterStart
             ) {
-                if (settlingSnapshotActive && settlingSnapshotText.isNotBlank()) {
-                    Text(
-                        text = settlingSnapshotText,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(0f),
-                        style = textStyle
-                    )
-                }
                 if (value.text.isEmpty() && !suppressPlaceholder) {
                     Text(
                         text = "描述种植问题",
@@ -1803,7 +1792,6 @@ private fun ChatInputField(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(if (settlingSnapshotActive) 0f else 1f)
                         .onSizeChanged { size ->
                             if (size.height > 0) {
                                 onContentHeightChanged(size.height)
@@ -2953,9 +2941,7 @@ fun ChatScreen() {
     var inputContentHeightPx by remember(chatScopeId, startupInputContentHeightEstimatePx) {
         mutableIntStateOf(startupInputContentHeightEstimatePx)
     }
-    var composerSettlingSnapshotText by remember(chatScopeId) { mutableStateOf("") }
-    var composerSettlingSnapshotHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var composerSettlingSnapshotActive by remember(chatScopeId) { mutableStateOf(false) }
+    var composerSettlingMinHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var composerSettlingChromeHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var sendUiSettling by remember(chatScopeId) { mutableStateOf(false) }
     val failedUserMessageStates = remember(chatScopeId) { mutableStateMapOf<String, String>() }
@@ -3834,9 +3820,7 @@ fun ChatScreen() {
             pendingStreamSpacerRelease = false
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
-            composerSettlingSnapshotActive = false
-            composerSettlingSnapshotText = ""
-            composerSettlingSnapshotHeightPx = 0
+            composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             if (clearVisibleContent) {
                 streamingMessageContent = ""
@@ -4411,10 +4395,8 @@ fun ChatScreen() {
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
-            composerSettlingSnapshotText = text
-            composerSettlingSnapshotHeightPx =
+            composerSettlingMinHeightPx =
                 inputContentHeightPx.coerceAtLeast(startupInputContentHeightEstimatePx)
-            composerSettlingSnapshotActive = text.isNotBlank()
             composerSettlingChromeHeightPx = inputChromeRowHeightPx
             suppressInputCursor = true
             inputFieldFocused = false
@@ -4457,10 +4439,8 @@ fun ChatScreen() {
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
-            composerSettlingSnapshotText = text
-            composerSettlingSnapshotHeightPx =
+            composerSettlingMinHeightPx =
                 inputContentHeightPx.coerceAtLeast(startupInputContentHeightEstimatePx)
-            composerSettlingSnapshotActive = text.isNotBlank()
             composerSettlingChromeHeightPx = inputChromeRowHeightPx
             suppressInputCursor = true
             inputFieldFocused = false
@@ -4594,7 +4574,7 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(
-        composerSettlingSnapshotActive,
+        composerSettlingMinHeightPx,
         composerSettlingChromeHeightPx,
         sendUiSettling,
         imeVisible,
@@ -4605,13 +4585,11 @@ fun ChatScreen() {
         safeBottomInsetPx
     ) {
         if (input.value.text.isNotEmpty() || inputFieldFocused) {
-            composerSettlingSnapshotActive = false
-            composerSettlingSnapshotText = ""
-            composerSettlingSnapshotHeightPx = 0
+            composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             return@LaunchedEffect
         }
-        if (!composerSettlingSnapshotActive && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
+        if (composerSettlingMinHeightPx <= 0 && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
         if (sendUiSettling) return@LaunchedEffect
         if (!imeVisible) {
             val stableBottomBarHeightPx =
@@ -4629,17 +4607,13 @@ fun ChatScreen() {
                 kotlin.math.abs(bottomBarHeightPx - settledBottomBarHeightPx) <=
                     BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
             if (!settledBottomBarStable) return@LaunchedEffect
-            composerSettlingSnapshotActive = false
-            composerSettlingSnapshotText = ""
-            composerSettlingSnapshotHeightPx = 0
+            composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             return@LaunchedEffect
         }
         withFrameNanos { }
         if (!sendUiSettling && !inputFieldFocused && input.value.text.isEmpty()) {
-            composerSettlingSnapshotActive = false
-            composerSettlingSnapshotText = ""
-            composerSettlingSnapshotHeightPx = 0
+            composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
         }
     }
@@ -5395,12 +5369,10 @@ fun ChatScreen() {
                                     value = input.value,
                                     focused = inputFieldFocused,
                                     suppressCursor = suppressInputCursor,
-                                    settlingSnapshotText = composerSettlingSnapshotText,
-                                    settlingSnapshotActive = composerSettlingSnapshotActive,
-                                    settlingSnapshotHeightPx = composerSettlingSnapshotHeightPx,
+                                    settlingMinHeightPx = composerSettlingMinHeightPx,
                                     suppressPlaceholder =
                                         sendUiSettling ||
-                                            (imeVisible && composerSettlingSnapshotActive) ||
+                                            (imeVisible && composerSettlingMinHeightPx > 0) ||
                                             composerSettlingChromeHeightPx > 0,
                                     onFocusChanged = { focused ->
                                         inputFieldFocused = focused
