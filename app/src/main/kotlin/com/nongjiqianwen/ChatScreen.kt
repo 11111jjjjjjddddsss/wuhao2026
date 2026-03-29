@@ -5067,17 +5067,9 @@ fun ChatScreen() {
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
-            val followPasses = 2
-            repeat(followPasses) { pass ->
-                val pendingOverflow = currentStreamingOverflowDelta()
-                val pendingStepPx = resolveStreamingFollowStepPx(pendingOverflow)
-                if (pendingStepPx <= 0) return@repeat
-                val consumed = listState.scrollBy(pendingStepPx.toFloat())
-                if (consumed <= 0f) return@repeat
+            val consumed = listState.scrollBy(stepPx.toFloat())
+            if (consumed > 0f) {
                 streamingLineAdvanceTick++
-                if (pass < followPasses - 1 && pendingOverflow > pendingStepPx) {
-                    withFrameNanos { }
-                }
             }
         } finally {
             programmaticScroll = false
