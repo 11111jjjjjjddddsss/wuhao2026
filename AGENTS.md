@@ -307,6 +307,8 @@ Clean-State 定义：
 - 自动跟随 effect 内必须先 `withFrameNanos {}` 等一帧再读 overflow，保证测量值已随新内容稳定
 - `isNearStreamingReturnLine()` 必须用 `listState.layoutInfo` 判断 streaming item 的实时位置，不能用 `streamingContentBottomPx`；item 离屏后 `streamingContentBottomPx` 是残值，会导致用户明明没到生成行却被提前拖回
 - 用户上滑看历史后向下 drag 或 fling 时，`streamAnchorReservePx` 必须被主动消费/清零，防止用户滑入底部空白区
+- 生成期如果正文还没吃到返回线/生成线，状态机应保持 `AnchorUser` 但**不要**把用户误判成 `detached`；否则自动跟随会被错误关死，后续即使正文吃完锚点空白也接不回来
+- 生成期状态机不能只盯列表 index/offset；streaming 正文长高本身也必须触发重算。正文吃完锚点空白、真正回到返回线后，才允许从 `AnchorUser` 切回 `StreamAnchorFollow`
 - 生成期滚动状态机必须保持单一入口：`userDetachedFromBottom`、`autoScrollMode`、`回到底部` 按钮状态只允许由同一条滚动状态链统一决策
 - 尾部锚点 spacer 的可见几何不能直接跟 `detached` 状态一起瞬间清零或重现；否则会带出”用户消息往下掉”的跳变
 - 流式尾部提亮如果出现“像闪两次”的体感，优先先减提亮时长、提亮覆盖字符数和 fresh line settle 帧数，不优先改亮度颜色本身
@@ -541,6 +543,7 @@ Clean-State 定义：
 - 自动跟随（`StreamAnchorFollow`）保留，但修复两个根因：
   1. 移除 `streamingContentBottomPx` 出 LaunchedEffect keys，用 `streamTick` 驱动，消除测量反馈震荡
   2. `isNearStreamingReturnLine()` 改用 `listState.layoutInfo` 判断，消除 item 离屏后残值导致的提前接管/被拽抖动
+- 后续补充修正：未到返回线前保持 `AnchorUser` 但不误置 `userDetachedFromBottom = true`，并在 streaming 内容长高时持续重算状态；保证“正文先吃完锚点空白，到生成行后再继续自动跟随”
 
 ## 21. 主锚点更新记录
 
