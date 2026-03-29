@@ -8,7 +8,6 @@ import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -193,7 +192,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import java.io.File
 import java.util.LinkedHashMap
 import kotlin.random.Random
 import kotlin.math.roundToInt
@@ -316,9 +314,6 @@ private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
-private const val UI_TRACE_TAG = "ChatUiTrace"
-private const val UI_TRACE_FILE_NAME = "ui_trace_ring.txt"
-private const val UI_TRACE_RING_LIMIT = 60
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
@@ -354,8 +349,6 @@ private val SECTION_DIVIDER_TOP_EXTRA_GAP = 16.dp
 private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
-private val uiTraceRingType = object : TypeToken<List<String>>() {}.type
-private val uiTraceLock = Any()
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
 private val bulletRegex = Regex("^[*-]\\s+.*$")
 private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
@@ -1525,26 +1518,6 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
             )
-}
-
-private fun debugUiTrace(context: Context, message: String) {
-    if (!BuildConfig.DEBUG) return
-    val entry = "${SystemClock.uptimeMillis()}|$message"
-    Log.d(UI_TRACE_TAG, entry)
-    runCatching {
-        synchronized(uiTraceLock) {
-            val traceFile = File(context.applicationContext.filesDir, UI_TRACE_FILE_NAME)
-            val existing = if (traceFile.exists()) traceFile.readText(Charsets.UTF_8) else "[]"
-            val ring = runCatching {
-                chatCacheGson.fromJson<List<String>>(existing, uiTraceRingType)
-            }.getOrDefault(emptyList()).toMutableList()
-            ring.add(entry)
-            while (ring.size > UI_TRACE_RING_LIMIT) {
-                ring.removeAt(0)
-            }
-            traceFile.writeText(chatCacheGson.toJson(ring), Charsets.UTF_8)
-        }
-    }
 }
 
 private fun Context.loadLocalBottomViewportSync(chatScopeId: String): LocalBottomViewport? {
@@ -2973,7 +2946,6 @@ fun ChatScreen() {
     var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
     var lifecycleResumeReady by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    var lastGestureTraceMs by remember { mutableStateOf(0L) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
     var composerStatusHintVisible by remember { mutableStateOf(false) }
@@ -3131,17 +3103,6 @@ fun ChatScreen() {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput) return Offset.Zero
-                val now = SystemClock.uptimeMillis()
-                if (
-                    now - lastGestureTraceMs >= 120L &&
-                    kotlin.math.abs(available.y) >= 12f
-                ) {
-                    lastGestureTraceMs = now
-                    debugUiTrace(
-                        context,
-                        "gesture_raw|phase=drag y=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom mode=$autoScrollMode"
-                    )
-                }
                 if (
                     lockUserScrollDuringBall &&
                     guardedStreamBottomSpacerPx > 0 &&
@@ -3150,10 +3111,6 @@ fun ChatScreen() {
                     val dragPx = -available.y
                     val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
                     if (consumePx > 0f) {
-                        debugUiTrace(
-                            context,
-                            "gesture_lock|phase=ball_drag y=${available.y} reserve=$streamAnchorReservePx blank=$visibleStreamingBottomBlankPx det=$userDetachedFromBottom"
-                        )
                         streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
                         return Offset(x = 0f, y = available.y)
                     }
@@ -3170,10 +3127,6 @@ fun ChatScreen() {
                             contentBottom > 0 &&
                             contentBottom >= (worklineBottom - bottomPositionTolerancePx)
                     if (!nearReturnLine) {
-                        debugUiTrace(
-                            context,
-                            "gesture_lock|phase=detached_drag y=${available.y} reserve=$streamAnchorReservePx blank=$visibleStreamingBottomBlankPx work=$worklineBottom content=$contentBottom"
-                        )
                         return Offset(x = 0f, y = available.y)
                     }
                 }
@@ -3182,20 +3135,12 @@ fun ChatScreen() {
                     available.y < 0f &&
                     visibleStreamingBottomBlankPx > 0
                 ) {
-                    debugUiTrace(
-                        context,
-                        "gesture_lock|phase=blank_drag y=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom"
-                    )
                     return Offset(x = 0f, y = available.y)
                 }
                 return Offset.Zero
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                debugUiTrace(
-                    context,
-                    "gesture_raw|phase=fling vy=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom mode=$autoScrollMode"
-                )
                 if (
                     userDetachedFromBottom &&
                     guardedStreamBottomSpacerPx > 0 &&
@@ -3208,10 +3153,6 @@ fun ChatScreen() {
                             contentBottom > 0 &&
                             contentBottom >= (worklineBottom - bottomPositionTolerancePx)
                     if (!nearReturnLine) {
-                        debugUiTrace(
-                            context,
-                            "gesture_lock|phase=detached_fling vy=${available.y} reserve=$streamAnchorReservePx blank=$visibleStreamingBottomBlankPx work=$worklineBottom content=$contentBottom"
-                        )
                         return available
                     }
                 }
@@ -3219,10 +3160,6 @@ fun ChatScreen() {
                     lockBottomBlankDuringStreaming &&
                     available.y < 0f
                 ) {
-                    debugUiTrace(
-                        context,
-                        "gesture_lock|phase=blank_fling vy=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom"
-                    )
                     return available
                 }
                 return Velocity.Zero
@@ -5258,7 +5195,6 @@ fun ChatScreen() {
             }
             if (anchorIndex >= 0) {
                 listState.scrollToItem(anchorIndex, scrollOffset = -anchorTop)
-                debugUiTrace(context, "send_anchor|index=$anchorIndex anchorTop=$anchorTop reserve=$streamAnchorReservePx")
                 repeat(4) { withFrameNanos { } }
             }
         } finally {
@@ -5276,17 +5212,12 @@ fun ChatScreen() {
     ) {
         if (!hasStreamingItem || !isStreaming) {
             streamBottomFollowActive = false
-            debugUiTrace(context, "follow_skip|reason=no_stream_item")
             return@LaunchedEffect
         }
         while (isActive && hasStreamingItem && isStreaming) {
             withFrameNanos { }
             if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting || userDetachedFromBottom) {
                 streamBottomFollowActive = false
-                debugUiTrace(
-                    context,
-                    "follow_skip|reason=state_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
-                )
                 return@LaunchedEffect
             }
             if (streamingMessageContent.isBlank()) {
@@ -5481,39 +5412,6 @@ fun ChatScreen() {
             composerStatusHintVisible && composerStatusHintText.isNotBlank() -> composerStatusHintText
             inputLimitHintVisible -> "已超过6000字，暂时不能发送"
             else -> null
-        }
-        val uiDebugLines =
-            if (BuildConfig.DEBUG) {
-                buildList {
-                    add("mode=$autoScrollMode det=$userDetachedFromBottom interact=$userInteracting stream=$isStreaming")
-                    add("atBottom=$atBottom nearReturn=${isNearStreamingReturnLine()} follow=${isAtStreamingFollowBoundary()}")
-                    add(
-                        "work=$streamingWorklineBottomPx content=$streamingContentBottomPx " +
-                            "blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx overflow=${currentStreamingOverflowDelta()}"
-                    )
-                    add(
-                        "ime=$imeVisible bottomBar=$bottomBarHeightPx composerTop=$composerTopInViewportPx " +
-                            "safeInset=$safeBottomInsetPx reserved=$bottomContentReservedHeightPx"
-                    )
-                    add(
-                        "chars=${streamingMessageContent.length} revealBuf=${streamingRevealBuffer.length} " +
-                            "tick=$streamTick fresh=$streamingFreshTick lineAdvance=$streamingLineAdvanceTick"
-                    )
-                    add("revealLocked=$lineRevealLocked followActive=$streamBottomFollowActive jump=$jumpButtonVisible")
-                    add(
-                        "pendingSpacer=$pendingStreamSpacerRelease pendingSnap=$pendingFinalBottomSnap " +
-                            "afterSpacer=$pendingFinalBottomSnapAfterSpacer"
-                    )
-                    add("viewportH=$messageViewportHeightPx rootH=$chatRootHeightPx rootW=$chatRootWidthPx")
-                }
-            } else {
-                emptyList()
-            }
-        val uiDebugSnapshot = if (BuildConfig.DEBUG) uiDebugLines.joinToString(" | ") else ""
-        LaunchedEffect(uiDebugSnapshot) {
-            if (uiDebugSnapshot.isNotBlank()) {
-                debugUiTrace(context, "state|$uiDebugSnapshot")
-            }
         }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
