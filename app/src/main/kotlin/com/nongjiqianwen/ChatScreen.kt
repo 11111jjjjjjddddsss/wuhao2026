@@ -193,6 +193,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import java.io.File
 import java.util.LinkedHashMap
 import kotlin.random.Random
 import kotlin.math.roundToInt
@@ -316,6 +317,8 @@ private const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private const val UI_TRACE_TAG = "ChatUiTrace"
+private const val UI_TRACE_FILE_NAME = "ui_trace_ring.txt"
+private const val UI_TRACE_RING_LIMIT = 20
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
@@ -351,6 +354,8 @@ private val SECTION_DIVIDER_TOP_EXTRA_GAP = 16.dp
 private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
+private val uiTraceRingType = object : TypeToken<List<String>>() {}.type
+private val uiTraceLock = Any()
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
 private val bulletRegex = Regex("^[*-]\\s+.*$")
 private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
@@ -1522,9 +1527,24 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
             )
 }
 
-private fun debugUiTrace(message: String) {
+private fun debugUiTrace(context: Context, message: String) {
     if (!BuildConfig.DEBUG) return
-    Log.d(UI_TRACE_TAG, "${SystemClock.uptimeMillis()}|$message")
+    val entry = "${SystemClock.uptimeMillis()}|$message"
+    Log.d(UI_TRACE_TAG, entry)
+    runCatching {
+        synchronized(uiTraceLock) {
+            val traceFile = File(context.applicationContext.filesDir, UI_TRACE_FILE_NAME)
+            val existing = if (traceFile.exists()) traceFile.readText(Charsets.UTF_8) else "[]"
+            val ring = runCatching {
+                chatCacheGson.fromJson<List<String>>(existing, uiTraceRingType)
+            }.getOrDefault(emptyList()).toMutableList()
+            ring.add(entry)
+            while (ring.size > UI_TRACE_RING_LIMIT) {
+                ring.removeAt(0)
+            }
+            traceFile.writeText(chatCacheGson.toJson(ring), Charsets.UTF_8)
+        }
+    }
 }
 
 private fun Context.loadLocalBottomViewportSync(chatScopeId: String): LocalBottomViewport? {
@@ -5121,7 +5141,7 @@ fun ChatScreen() {
             }
             if (anchorIndex >= 0) {
                 listState.scrollToItem(anchorIndex, scrollOffset = -anchorTop)
-                debugUiTrace("send_anchor|index=$anchorIndex anchorTop=$anchorTop reserve=$streamAnchorReservePx")
+                debugUiTrace(context, "send_anchor|index=$anchorIndex anchorTop=$anchorTop reserve=$streamAnchorReservePx")
                 repeat(4) { withFrameNanos { } }
             }
         } finally {
@@ -5140,24 +5160,26 @@ fun ChatScreen() {
     ) {
         if (!hasStreamingItem || !isStreaming) {
             streamBottomFollowActive = false
-            debugUiTrace("follow_skip|reason=no_stream_item")
+            debugUiTrace(context, "follow_skip|reason=no_stream_item")
             return@LaunchedEffect
         }
         if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting || userDetachedFromBottom) {
             streamBottomFollowActive = false
             debugUiTrace(
+                context,
                 "follow_skip|reason=state_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
             )
             return@LaunchedEffect
         }
         if (streamingMessageContent.isBlank()) {
             streamBottomFollowActive = false
-            debugUiTrace("follow_skip|reason=blank_content")
+            debugUiTrace(context, "follow_skip|reason=blank_content")
             return@LaunchedEffect
         }
         withFrameNanos { }
         if (userInteracting || userDetachedFromBottom || autoScrollMode != AutoScrollMode.StreamAnchorFollow) {
             debugUiTrace(
+                context,
                 "follow_skip|reason=post_frame_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
             )
             return@LaunchedEffect
@@ -5166,7 +5188,7 @@ fun ChatScreen() {
         val stepPx = resolveStreamingFollowStepPx(overflow)
         if (stepPx <= 0) {
             streamBottomFollowActive = false
-            debugUiTrace("follow_skip|reason=no_step overflow=$overflow")
+            debugUiTrace(context, "follow_skip|reason=no_step overflow=$overflow")
             return@LaunchedEffect
         }
         streamBottomFollowActive = true
@@ -5174,7 +5196,7 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             val consumed = listState.scrollBy(stepPx.toFloat())
-            debugUiTrace("follow_step|overflow=$overflow step=$stepPx consumed=${consumed.roundToInt()}")
+            debugUiTrace(context, "follow_step|overflow=$overflow step=$stepPx consumed=${consumed.roundToInt()}")
             if (consumed > 0f) {
                 streamingLineAdvanceTick++
             }
@@ -5382,7 +5404,7 @@ fun ChatScreen() {
         val uiDebugSnapshot = if (BuildConfig.DEBUG) uiDebugLines.joinToString(" | ") else ""
         LaunchedEffect(uiDebugSnapshot) {
             if (uiDebugSnapshot.isNotBlank()) {
-                debugUiTrace("state|$uiDebugSnapshot")
+                debugUiTrace(context, "state|$uiDebugSnapshot")
             }
         }
         Scaffold(
