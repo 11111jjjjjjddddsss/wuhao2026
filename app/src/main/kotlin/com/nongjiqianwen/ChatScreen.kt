@@ -3013,7 +3013,7 @@ fun ChatScreen() {
             (isStreaming || pendingStreamSpacerRelease) && anchoredUserMessageId != null
         }
     }
-    val activeStreamBottomSpacerPx = if (streamAnchorReserveActive && !userDetachedFromBottom) {
+    val activeStreamBottomSpacerPx = if (streamAnchorReserveActive) {
         streamAnchorReservePx
     } else {
         0
@@ -3140,17 +3140,6 @@ fun ChatScreen() {
                     if (consumePx > 0f) {
                         streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
                         return Offset(x = 0f, y = available.y)
-                    }
-                }
-                if (
-                    userDetachedFromBottom &&
-                    guardedStreamBottomSpacerPx > 0 &&
-                    available.y < 0f
-                ) {
-                    val dragPx = -available.y
-                    val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
-                    if (consumePx > 0f) {
-                        streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
                     }
                 }
                 if (
