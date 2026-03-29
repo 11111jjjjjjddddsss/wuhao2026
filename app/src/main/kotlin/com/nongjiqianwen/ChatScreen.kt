@@ -3095,6 +3095,19 @@ fun ChatScreen() {
             lineRevealLocked = nextLocked
         }
     }
+    fun currentStreamingMeasuredBottomPx(): Int {
+        if (streamingContentBottomPx > 0) return streamingContentBottomPx
+        val streamingItemIndex = messages.size - 1
+        val info = listState.layoutInfo
+        if (streamingItemIndex >= 0) {
+            val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
+            if (streamingLayoutItem != null) {
+                return streamingLayoutItem.offset + streamingLayoutItem.size
+            }
+        }
+        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return -1
+        return lastVisible.offset + lastVisible.size
+    }
     val streamingDirectionLock = remember(
         lockUserScrollDuringBall,
         lockBottomBlankDuringStreaming,
@@ -3121,7 +3134,7 @@ fun ChatScreen() {
                     available.y < 0f
                 ) {
                     val worklineBottom = streamingWorklineBottomPx
-                    val contentBottom = streamingContentBottomPx
+                    val contentBottom = currentStreamingMeasuredBottomPx()
                     val nearReturnLine =
                         worklineBottom > 0 &&
                             contentBottom > 0 &&
@@ -3147,7 +3160,7 @@ fun ChatScreen() {
                     available.y < 0f
                 ) {
                     val worklineBottom = streamingWorklineBottomPx
-                    val contentBottom = streamingContentBottomPx
+                    val contentBottom = currentStreamingMeasuredBottomPx()
                     val nearReturnLine =
                         worklineBottom > 0 &&
                             contentBottom > 0 &&
@@ -3166,8 +3179,24 @@ fun ChatScreen() {
             }
         }
     }
-    val enableStreamingScrollLock by remember(lockUserScrollDuringBall) {
-        derivedStateOf { lockUserScrollDuringBall }
+    val enableStreamingScrollLock by remember(
+        lockUserScrollDuringBall,
+        lockBottomBlankDuringStreaming,
+        isStreaming,
+        hasStreamingItem,
+        userDetachedFromBottom,
+        guardedStreamBottomSpacerPx
+    ) {
+        derivedStateOf {
+            lockUserScrollDuringBall ||
+                lockBottomBlankDuringStreaming ||
+                (
+                    isStreaming &&
+                        hasStreamingItem &&
+                        userDetachedFromBottom &&
+                        guardedStreamBottomSpacerPx > 0
+                    )
+        }
     }
     fun currentBottomOverflowPx(): Int {
         if (!listState.canScrollForward) return 0
@@ -3189,17 +3218,7 @@ fun ChatScreen() {
         derivedStateOf { isWithinBottomTolerance() }
     }
     fun currentStreamingVisualBottomPx(): Int {
-        if (streamingContentBottomPx > 0) return streamingContentBottomPx
-        val streamingItemIndex = messages.size - 1
-        val info = listState.layoutInfo
-        if (streamingItemIndex >= 0) {
-            val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
-            if (streamingLayoutItem != null) {
-                return streamingLayoutItem.offset + streamingLayoutItem.size
-            }
-        }
-        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return -1
-        return lastVisible.offset + lastVisible.size
+        return currentStreamingMeasuredBottomPx()
     }
     fun isNearStreamingReturnLine(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
