@@ -3086,13 +3086,6 @@ fun ChatScreen() {
         val itemBottom = lastVisible.offset + lastVisible.size
         return (itemBottom - visibleBottom).coerceAtLeast(0)
     }
-    fun isAtStreamingWorkline(): Boolean {
-        if (!isStreaming || streamingMessageContent.isBlank()) return false
-        val contentBottom = streamingContentBottomPx
-        val worklineBottom = streamingWorklineBottomPx
-        if (contentBottom <= 0 || worklineBottom <= 0) return false
-        return contentBottom <= worklineBottom + lineRevealLockThresholdPx
-    }
     suspend fun scrollToStreamingFollowLine() {
         if (messages.isEmpty() && !hasStreamingItem) return
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
@@ -3141,15 +3134,6 @@ fun ChatScreen() {
                         streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
                         return Offset(x = 0f, y = available.y)
                     }
-                }
-                val hitStreamingWorkline =
-                    isStreaming &&
-                        activeStreamBottomSpacerPx > 0 &&
-                        available.y < 0f &&
-                        isAtStreamingWorkline()
-                if (hitStreamingWorkline) {
-                    pendingResumeAutoFollow = true
-                    return Offset(x = 0f, y = available.y)
                 }
                 if (
                     lockBottomBlankDuringStreaming &&
@@ -4068,14 +4052,12 @@ fun ChatScreen() {
                 }
                 when {
                     movedTowardBottom -> {
-                        val reachedStreamingWorkline =
+                        val reachedStreamingFollowLine =
                             userDetachedFromBottom &&
-                                isAtStreamingWorkline()
-                        if (reachedStreamingWorkline) {
+                                streamingMessageContent.isNotBlank() &&
+                                currentStreamingOverflowSnapshot() <= lineRevealLockThresholdPx
+                        if (reachedStreamingFollowLine) {
                             pendingResumeAutoFollow = true
-                            userDetachedFromBottom = true
-                            jumpButtonVisible = false
-                        } else if (pendingResumeAutoFollow) {
                             jumpButtonVisible = false
                         } else {
                             // Keep manual browsing detached until the user reaches the current
