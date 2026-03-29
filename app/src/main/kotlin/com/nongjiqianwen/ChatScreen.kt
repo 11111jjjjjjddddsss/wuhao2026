@@ -2976,6 +2976,11 @@ fun ChatScreen() {
     } else {
         0
     }
+    val guardedStreamBottomSpacerPx = if (streamAnchorReserveActive) {
+        streamAnchorReservePx
+    } else {
+        0
+    }
     val imeVisible = WindowInsets.isImeVisible
     val streamBottomSpacerDp = with(density) { activeStreamBottomSpacerPx.toDp() }
     val hasStreamAnchorSpacer by remember(activeStreamBottomSpacerPx) {
@@ -3012,7 +3017,7 @@ fun ChatScreen() {
     val visibleStreamingBottomBlankPx by remember(
         isStreaming,
         streamingMessageContent,
-        activeStreamBottomSpacerPx,
+        guardedStreamBottomSpacerPx,
         streamingContentBottomPx,
         streamingWorklineBottomPx
     ) {
@@ -3020,7 +3025,7 @@ fun ChatScreen() {
             if (
                 !isStreaming ||
                 streamingMessageContent.isBlank() ||
-                activeStreamBottomSpacerPx <= 0
+                guardedStreamBottomSpacerPx <= 0
             ) {
                 return@derivedStateOf 0
             }
@@ -3031,11 +3036,11 @@ fun ChatScreen() {
         }
     }
     var lineRevealLocked by remember(chatScopeId) { mutableStateOf(false) }
-    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
+    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, guardedStreamBottomSpacerPx) {
         derivedStateOf {
             isStreaming &&
                 streamingMessageContent.isBlank() &&
-                activeStreamBottomSpacerPx > 0
+                guardedStreamBottomSpacerPx > 0
         }
     }
     val lockBottomBlankDuringStreaming by remember(
@@ -3084,7 +3089,7 @@ fun ChatScreen() {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
                 if (
                     lockUserScrollDuringBall &&
-                    activeStreamBottomSpacerPx > 0 &&
+                    guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
                     val dragPx = -available.y
