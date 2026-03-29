@@ -338,6 +338,7 @@ Clean-State 定义：
   - 底部输入区 / IME / composer 几何
   - 生成期滚动状态机 / 工作线 / reserve / overflow
   - 渲染生成链 / reveal buffer / 完成态最后一拍
+- 如果问题涉及“上滑抢手”“下滑露空白”“拖动方向和预期相反”，后台日志还必须补记 nested scroll 真正触发拦截时的 drag / fling 方向与关键状态，不能只看静态状态快照
 - 如果需要 debug 面板：
   - 只能作为调试辅助，不是主链
   - 默认不应长期遮挡用户界面

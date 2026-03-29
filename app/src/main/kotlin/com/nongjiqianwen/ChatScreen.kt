@@ -3138,6 +3138,10 @@ fun ChatScreen() {
                     val dragPx = -available.y
                     val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
                     if (consumePx > 0f) {
+                        debugUiTrace(
+                            context,
+                            "gesture_lock|phase=ball_drag y=${available.y} reserve=$streamAnchorReservePx blank=$visibleStreamingBottomBlankPx det=$userDetachedFromBottom"
+                        )
                         streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
                         return Offset(x = 0f, y = available.y)
                     }
@@ -3154,6 +3158,10 @@ fun ChatScreen() {
                             contentBottom > 0 &&
                             contentBottom >= (worklineBottom - bottomPositionTolerancePx)
                     if (!nearReturnLine) {
+                        debugUiTrace(
+                            context,
+                            "gesture_lock|phase=detached_drag y=${available.y} reserve=$streamAnchorReservePx blank=$visibleStreamingBottomBlankPx work=$worklineBottom content=$contentBottom"
+                        )
                         return Offset(x = 0f, y = available.y)
                     }
                 }
@@ -3162,6 +3170,10 @@ fun ChatScreen() {
                     available.y < 0f &&
                     visibleStreamingBottomBlankPx > 0
                 ) {
+                    debugUiTrace(
+                        context,
+                        "gesture_lock|phase=blank_drag y=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom"
+                    )
                     return Offset(x = 0f, y = available.y)
                 }
                 return Offset.Zero
@@ -3180,6 +3192,10 @@ fun ChatScreen() {
                             contentBottom > 0 &&
                             contentBottom >= (worklineBottom - bottomPositionTolerancePx)
                     if (!nearReturnLine) {
+                        debugUiTrace(
+                            context,
+                            "gesture_lock|phase=detached_fling vy=${available.y} reserve=$streamAnchorReservePx blank=$visibleStreamingBottomBlankPx work=$worklineBottom content=$contentBottom"
+                        )
                         return available
                     }
                 }
@@ -3187,6 +3203,10 @@ fun ChatScreen() {
                     lockBottomBlankDuringStreaming &&
                     available.y < 0f
                 ) {
+                    debugUiTrace(
+                        context,
+                        "gesture_lock|phase=blank_fling vy=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom"
+                    )
                     return available
                 }
                 return Velocity.Zero
