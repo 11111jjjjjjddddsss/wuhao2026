@@ -305,6 +305,7 @@ Clean-State 定义：
 - 静态文本阶段不启用这条流式空白限制
 - 流式阶段如果用户已进入手动浏览态后又快速下滑回底部，一旦已经接近当前流式返回线，应立即解除 `userDetachedFromBottom` 并切回 `StreamAnchorFollow`，不要继续拖着 detached 状态把 reserve 空白带出来
 - `AnchorUser` 只应服务发送后的初始锚定和小球空文本阶段；正文一旦开始输出，用户上滑浏览历史时应允许及时进入 detached，用户下滑回到底部时只在重新接近返回线或真实底部时才恢复 `StreamAnchorFollow`
+- `AnchorUser` 进入 detached 不应过于敏感：正文阶段轻微上滑不应立刻让锚点 reserve 消失并导致用户消息下掉，只有离开底部超过一小段稳定阈值后，才应真正切入 detached / 显示回到底部按钮
 - 流式尾部提亮如果出现“像闪两次”的体感，优先先减提亮时长、提亮覆盖字符数和 fresh line settle 帧数，不优先改亮度颜色本身
 - 不要再乱调无关参数
 - 不要顺手改输入区

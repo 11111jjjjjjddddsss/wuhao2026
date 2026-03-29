@@ -2960,6 +2960,12 @@ fun ChatScreen() {
     val finalBottomSnapThresholdPx = remember(finalBottomSnapTolerancePx, assistantLineStepPx) {
         maxOf(finalBottomSnapTolerancePx, (assistantLineStepPx * 0.28f).roundToInt().coerceAtLeast(10))
     }
+    val anchorUserDetachThresholdPx = remember(bottomPositionTolerancePx, assistantLineStepPx) {
+        maxOf(
+            bottomPositionTolerancePx,
+            (assistantLineStepPx * 0.65f).roundToInt().coerceAtLeast(14)
+        )
+    }
     // Keep anchor reserve and visible spacer as separate concepts.
     // The reserve supports send/start anchoring; the visible spacer is only the current presentation.
     val streamAnchorReserveActive by remember(
@@ -4037,8 +4043,11 @@ fun ChatScreen() {
                         previousOffset = currentOffset
                         return@collect
                     }
+                    val bottomOverflowPx = currentBottomOverflowPx()
                     when {
-                        movedTowardTop -> {
+                        movedTowardTop &&
+                            bottomOverflowPx != Int.MAX_VALUE &&
+                            bottomOverflowPx > anchorUserDetachThresholdPx -> {
                             userDetachedFromBottom = true
                         }
 
@@ -4052,7 +4061,10 @@ fun ChatScreen() {
                             userDetachedFromBottom = true
                         }
                     }
-                    jumpButtonVisible = userDetachedFromBottom && !atBottom
+                    jumpButtonVisible =
+                        userDetachedFromBottom &&
+                            bottomOverflowPx != Int.MAX_VALUE &&
+                            bottomOverflowPx > anchorUserDetachThresholdPx
                     previousIndex = currentIndex
                     previousOffset = currentOffset
                     return@collect
