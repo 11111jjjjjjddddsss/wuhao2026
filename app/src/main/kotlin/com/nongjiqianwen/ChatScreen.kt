@@ -4157,7 +4157,7 @@ fun ChatScreen() {
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         if (overflow <= 0) return 0
-        val steadyStepPx = (assistantLineStepPx * 0.18f).roundToInt().coerceAtLeast(8)
+        val steadyStepPx = (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(7)
         val triggerThresholdPx = (steadyStepPx * 0.4f).roundToInt().coerceAtLeast(3)
         if (overflow < triggerThresholdPx) return 0
         return overflow.coerceAtMost(steadyStepPx)
