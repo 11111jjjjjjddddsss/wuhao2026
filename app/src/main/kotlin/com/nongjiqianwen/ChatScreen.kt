@@ -3055,14 +3055,12 @@ fun ChatScreen() {
     val lockBottomBlankDuringStreaming by remember(
         isStreaming,
         streamingMessageContent,
-        activeStreamBottomSpacerPx,
         visibleStreamingBottomBlankPx
     ) {
         derivedStateOf {
             isStreaming &&
                 streamingMessageContent.isNotBlank() &&
-                activeStreamBottomSpacerPx > 0 &&
-                visibleStreamingBottomBlankPx > lineRevealLockThresholdPx
+                visibleStreamingBottomBlankPx > 0
         }
     }
     LaunchedEffect(
@@ -3091,24 +3089,9 @@ fun ChatScreen() {
             lineRevealLocked = nextLocked
         }
     }
-    fun currentStreamingOverflowSnapshot(): Int {
-        val worklineBottom = streamingWorklineBottomPx
-        if (streamingContentBottomPx > 0 && worklineBottom > 0) {
-            return (streamingContentBottomPx - worklineBottom).coerceAtLeast(0)
-        }
-        val info = listState.layoutInfo
-        val lastIndex = info.totalItemsCount - 1
-        if (lastIndex < 0) return 0
-        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
-        val visibleBottom = worklineBottom.takeIf { it > 0 }
-            ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
-        val itemBottom = lastVisible.offset + lastVisible.size
-        return (itemBottom - visibleBottom).coerceAtLeast(0)
-    }
     val streamingDirectionLock = remember(
         lockUserScrollDuringBall,
-        lockBottomBlankDuringStreaming,
-        lineRevealLockThresholdPx
+        lockBottomBlankDuringStreaming
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -3132,7 +3115,7 @@ fun ChatScreen() {
                 if (
                     lockBottomBlankDuringStreaming &&
                     available.y < 0f &&
-                    visibleStreamingBottomBlankPx > lineRevealLockThresholdPx
+                    visibleStreamingBottomBlankPx > 0
                 ) {
                     return Offset(x = 0f, y = available.y)
                 }
@@ -4061,25 +4044,6 @@ fun ChatScreen() {
             previousIndex = currentIndex
             previousOffset = currentOffset
         }
-    }
-
-    LaunchedEffect(
-        pendingResumeAutoFollow,
-        listState.isScrollInProgress,
-        isStreaming,
-        hasStreamingItem
-    ) {
-        if (!pendingResumeAutoFollow) return@LaunchedEffect
-        if (!isStreaming || !hasStreamingItem) {
-            pendingResumeAutoFollow = false
-            return@LaunchedEffect
-        }
-        if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
-        autoScrollMode = AutoScrollMode.StreamAnchorFollow
-        userDetachedFromBottom = false
-        jumpButtonVisible = false
-        repeat(2) { withFrameNanos { } }
-        pendingResumeAutoFollow = false
     }
 
     LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
