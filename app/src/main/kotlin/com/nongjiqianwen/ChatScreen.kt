@@ -4030,29 +4030,8 @@ fun ChatScreen() {
             } else if (scrollInProgress) {
                 if (autoScrollMode == AutoScrollMode.AnchorUser) {
                     pendingResumeAutoFollow = false
-                    if (streamingMessageContent.isBlank()) {
-                        userDetachedFromBottom = false
-                        jumpButtonVisible = false
-                        previousIndex = currentIndex
-                        previousOffset = currentOffset
-                        return@collect
-                    }
-                    when {
-                        movedTowardTop -> {
-                            userDetachedFromBottom = true
-                        }
-
-                        movedTowardBottom &&
-                            (!listState.canScrollForward || isWithinBottomTolerance() || isNearStreamingReturnLine()) -> {
-                            userDetachedFromBottom = false
-                            autoScrollMode = AutoScrollMode.StreamAnchorFollow
-                        }
-
-                        movedTowardBottom -> {
-                            userDetachedFromBottom = true
-                        }
-                    }
-                    jumpButtonVisible = userDetachedFromBottom && !atBottom
+                    userDetachedFromBottom = false
+                    jumpButtonVisible = false
                     previousIndex = currentIndex
                     previousOffset = currentOffset
                     return@collect
