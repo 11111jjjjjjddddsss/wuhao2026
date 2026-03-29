@@ -3229,8 +3229,8 @@ fun ChatScreen() {
             }
         }
     }
-    val enableStreamingScrollLock by remember(isStreaming, activeStreamBottomSpacerPx) {
-        derivedStateOf { isStreaming || activeStreamBottomSpacerPx > 0 }
+    val enableStreamingScrollLock by remember(lockUserScrollDuringBall) {
+        derivedStateOf { lockUserScrollDuringBall }
     }
     fun currentBottomOverflowPx(): Int {
         if (!listState.canScrollForward) return 0
@@ -4173,6 +4173,27 @@ fun ChatScreen() {
                 currentIndex < previousIndex ||
                     (currentIndex == previousIndex && currentOffset < previousOffset)
             val atFollowBoundary = isAtStreamingFollowBoundary()
+            if (
+                isStreaming &&
+                hasStreamingItem &&
+                scrollInProgress &&
+                movedTowardBottom &&
+                visibleStreamingBottomBlankPx > 0 &&
+                !atFollowBoundary
+            ) {
+                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                programmaticScroll = true
+                try {
+                    listState.scrollToItem(previousIndex, previousOffset)
+                } finally {
+                    programmaticScroll = false
+                    lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                }
+                autoScrollMode = AutoScrollMode.AnchorUser
+                previousIndex = listState.firstVisibleItemIndex
+                previousOffset = listState.firstVisibleItemScrollOffset
+                return@collect
+            }
             if (atFollowBoundary && !scrollInProgress) {
                 applyStreamingScrollState(
                     detached = false,
