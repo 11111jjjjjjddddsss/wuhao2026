@@ -4599,14 +4599,6 @@ fun ChatScreen() {
                 kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx) <=
                     BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
             if (!bottomBarStable) return@LaunchedEffect
-            withFrameNanos { }
-            val settledBottomBarHeightPx =
-                (inputChromeRowHeightPx + safeBottomInsetPx)
-                    .coerceAtLeast(startupBottomBarHeightEstimatePx)
-            val settledBottomBarStable =
-                kotlin.math.abs(bottomBarHeightPx - settledBottomBarHeightPx) <=
-                    BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-            if (!settledBottomBarStable) return@LaunchedEffect
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             return@LaunchedEffect
