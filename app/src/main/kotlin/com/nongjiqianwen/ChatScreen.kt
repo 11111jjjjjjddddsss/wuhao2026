@@ -2971,7 +2971,7 @@ fun ChatScreen() {
             (isStreaming || pendingStreamSpacerRelease) && anchoredUserMessageId != null
         }
     }
-    val activeStreamBottomSpacerPx = if (streamAnchorReserveActive && !userDetachedFromBottom) {
+    val activeStreamBottomSpacerPx = if (streamAnchorReserveActive) {
         streamAnchorReservePx
     } else {
         0
