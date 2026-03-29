@@ -2920,7 +2920,6 @@ fun ChatScreen() {
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
-    var pendingStreamingReturnSnap by remember { mutableStateOf(false) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingFinalBottomSnap by remember { mutableStateOf(false) }
@@ -4006,7 +4005,6 @@ fun ChatScreen() {
                 previousOffset = currentOffset
                 return@collect
             }
-            val wasDetached = userDetachedFromBottom
             val movedTowardBottom =
                 currentIndex > previousIndex ||
                     (currentIndex == previousIndex && currentOffset > previousOffset)
@@ -4044,9 +4042,6 @@ fun ChatScreen() {
                             pendingResumeAutoFollow = false
                             userDetachedFromBottom = false
                             autoScrollMode = AutoScrollMode.StreamAnchorFollow
-                            if (wasDetached && hasStreamAnchorSpacer) {
-                                pendingStreamingReturnSnap = true
-                            }
                         } else {
                             // Keep manual browsing detached until the user reaches the streaming return line.
                             pendingResumeAutoFollow = false
@@ -4796,26 +4791,6 @@ fun ChatScreen() {
             programmaticScroll = false
             lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         }
-    }
-
-    LaunchedEffect(
-        pendingStreamingReturnSnap,
-        isStreaming,
-        hasStreamAnchorSpacer,
-        userDetachedFromBottom,
-        programmaticScroll
-    ) {
-        if (
-            !pendingStreamingReturnSnap ||
-                !isStreaming ||
-                !hasStreamAnchorSpacer ||
-                userDetachedFromBottom ||
-                programmaticScroll
-        ) {
-            return@LaunchedEffect
-        }
-        pendingStreamingReturnSnap = false
-        scrollToBottom(animated = false, includeAnchorSpacer = false)
     }
 
     LaunchedEffect(imeVisible) {
