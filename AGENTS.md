@@ -294,7 +294,7 @@ Clean-State 定义：
 - 流式阶段底部锚点保留空间与当前可见 spacer 应保持两层语义：前者服务发送锚点和首段 streaming，后者只负责当前展示，不要再把两者混成同一个状态直接互相驱动
 - 流式阶段如果当前视口底部到工作线之间已经出现可见空白，应只拦截继续往空白方向拖动本身，不要顺手改正文几何或恢复跟随主链
 - 围绕流式底部空白的限制应尽量保持单一规则：正文阶段只看“可见空白是否仍大于 0”，不要再混入旧的恢复跟随死链或额外阈值分支
-- 自动跟随滚动步长应尽量均匀；当前用 `resolveStreamingFollowStepPx()` 做小步推进，每次只推当前 overflow 的一小部分，避免一拍里多次补滚导致节奏跳变
+- 流式正文自动跟随的滚动节奏应尽量均匀，优先使用更稳定、略偏小的固定步长与单次恒定推进；小溢出也应更早被平滑吃掉，不要在一拍里多次补滚，也不要因为 overflow、大标题、分割线或块级高度变化去动态改快改慢，避免“眼花”的节奏跳变
 - 如果尾部提亮仍然偏闪眼，优先继续压提亮时长、最少覆盖字符数和触发间隔，不先改亮度颜色
 - 当前流式滚动链基线：
   - 小球空文本阶段，锚点 reserve 仍可见时，继续往底部空白方向拖动应被直接消费，不让空白继续被拖出来
@@ -303,12 +303,11 @@ Clean-State 定义：
 - 这条底部空白保护的判定源，应继续看锚点 reserve 本身，不允许因为进入手动浏览态就把用于判定的 spacer 直接清零；展示层可以隐藏 spacer，但保护判定不能跟着一起失真
 - 上滑浏览历史不应由这条空白限制逻辑去抢手
 - 静态文本阶段不启用这条流式空白限制
-- 生成期保留自动跟随（`StreamAnchorFollow`），但自动跟随 LaunchedEffect 的 keys 里**不允许**放 `streamingContentBottomPx` 或 `lineRevealLocked`，只用 `streamTick` 驱动；否则测量更新会反复触发 effect 形成反馈震荡，导致文字抖动重影
-- 自动跟随 effect 内必须先 `withFrameNanos {}` 等一帧再读 overflow，保证测量值已随新内容稳定
-- `isNearStreamingReturnLine()` 必须用 `listState.layoutInfo` 判断 streaming item 的实时位置，不能用 `streamingContentBottomPx`；item 离屏后 `streamingContentBottomPx` 是残值，会导致用户明明没到生成行却被提前拖回
-- 用户上滑看历史后向下 drag 或 fling 时，`streamAnchorReservePx` 必须被主动消费/清零，防止用户滑入底部空白区
-- 生成期滚动状态机必须保持单一入口：`userDetachedFromBottom`、`autoScrollMode`、`回到底部` 按钮状态只允许由同一条滚动状态链统一决策
-- 尾部锚点 spacer 的可见几何不能直接跟 `detached` 状态一起瞬间清零或重现；否则会带出”用户消息往下掉”的跳变
+- 流式阶段如果用户已进入手动浏览态后又快速下滑回底部，一旦已经接近当前流式返回线，应立即解除 `userDetachedFromBottom` 并切回 `StreamAnchorFollow`，不要继续拖着 detached 状态把 reserve 空白带出来
+- 生成期滚动状态机必须保持单一入口：`userDetachedFromBottom`、`autoScrollMode`、`回到底部` 按钮状态只允许由同一条滚动状态链统一决策；用户拖动过程中不允许另一条独立 effect 抢回自动跟随，只有手势结束并重新回到返回线/底部附近后，才允许重新接管 follow
+- 生成期浏览态下，“已回到底部”的判定不能直接复用列表原始 `atBottom`；`detached` 恢复、`回到底部` 按钮隐藏、自动跟随重新接管，必须以流式返回线/生成线边界为准，避免没到生成行就被提前拖回
+- 生成期手势结束后，如果仍未回到流式返回线/生成线边界，必须继续保持 `detached + AnchorUser`；不能仅因为正文已经开始生成，就自动切回 `StreamAnchorFollow`
+- 尾部锚点 spacer 的可见几何不能直接跟 `detached` 状态一起瞬间清零或重现；否则会带出“用户消息往下掉”和“回底部时大空白突然冒出来”的跳变
 - 流式尾部提亮如果出现“像闪两次”的体感，优先先减提亮时长、提亮覆盖字符数和 fresh line settle 帧数，不优先改亮度颜色本身
 - 不要再乱调无关参数
 - 不要顺手改输入区
@@ -529,20 +528,14 @@ Clean-State 定义：
 ## 19. 参考文档
 
 以下文档只作为参考，不再承担主规则职责：
+- [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)
+- [docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)
 - [docs/backend-boundaries.md](D:/wuhao/docs/backend-boundaries.md)
 
-如果参考文档与本文件冲突：
+如果这些参考文档与本文件冲突：
 - 以 [AGENTS.md](D:/wuhao/AGENTS.md) 为准
 
-## 20. 流式交互变更记录（2026-03-29）
-
-- `ASSISTANT_START_ANCHOR_TOP` 从 196dp 调整为 120dp
-- 用户上滑后向下 drag/fling 时主动消费 spacer，修复先上后下偶发大空白问题
-- 自动跟随（`StreamAnchorFollow`）保留，但修复两个根因：
-  1. 移除 `streamingContentBottomPx` 出 LaunchedEffect keys，用 `streamTick` 驱动，消除测量反馈震荡
-  2. `isNearStreamingReturnLine()` 改用 `listState.layoutInfo` 判断，消除 item 离屏后残值导致的提前接管/被拽抖动
-
-## 21. 主锚点更新记录
+## 20. 主锚点更新记录
 
 - 当前主对话锚点真源仍为 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
 - 2026-03-27 起，最新口径已收紧为“农业种植相关问题”，并将输出结构明确为“禁止表格，关键点少量加粗”

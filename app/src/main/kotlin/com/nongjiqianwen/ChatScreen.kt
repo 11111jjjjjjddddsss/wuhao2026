@@ -317,7 +317,7 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
-private val ASSISTANT_START_ANCHOR_TOP = 120.dp
+private val ASSISTANT_START_ANCHOR_TOP = 196.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
@@ -3082,8 +3082,7 @@ fun ChatScreen() {
     }
     val streamingDirectionLock = remember(
         lockUserScrollDuringBall,
-        lockBottomBlankDuringStreaming,
-        userDetachedFromBottom
+        lockBottomBlankDuringStreaming
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -3100,18 +3099,6 @@ fun ChatScreen() {
                         return Offset(x = 0f, y = available.y)
                     }
                 }
-                // 用户已脱离底部向下拖回时，同步消费 spacer，防止滑入空白区
-                if (
-                    userDetachedFromBottom &&
-                    guardedStreamBottomSpacerPx > 0 &&
-                    available.y < 0f
-                ) {
-                    val dragPx = -available.y
-                    val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
-                    if (consumePx > 0f) {
-                        streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
-                    }
-                }
                 if (
                     lockBottomBlankDuringStreaming &&
                     available.y < 0f &&
@@ -3123,10 +3110,6 @@ fun ChatScreen() {
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
-                // 用户已脱离底部向下 fling 时，立即清除 spacer，防止惯性滑入空白区
-                if (userDetachedFromBottom && available.y < 0f && guardedStreamBottomSpacerPx > 0) {
-                    streamAnchorReservePx = 0
-                }
                 if (
                     lockBottomBlankDuringStreaming &&
                     available.y < 0f
@@ -3161,16 +3144,8 @@ fun ChatScreen() {
     }
     fun isNearStreamingReturnLine(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
-        val worklineBottom = streamingWorklineBottomPx
-        if (worklineBottom <= 0) return atBottom
-        // 用 layoutInfo 判断 streaming item 实时位置，避免 onGloballyPositioned 残值误判
-        val streamingItemIndex = messages.size - 1
-        if (streamingItemIndex < 0) return atBottom
-        val info = listState.layoutInfo
-        val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
-            ?: return false // item 不在可视区，肯定没到返回线
-        val itemBottom = streamingLayoutItem.offset + streamingLayoutItem.size
-        return itemBottom >= (worklineBottom - bottomPositionTolerancePx)
+        if (streamingWorklineBottomPx <= 0 || streamingContentBottomPx <= 0) return atBottom
+        return streamingContentBottomPx >= (streamingWorklineBottomPx - bottomPositionTolerancePx)
     }
     fun isAtStreamingFollowBoundary(): Boolean {
         if (!atBottom) return false
@@ -4366,7 +4341,7 @@ fun ChatScreen() {
             for (attempt in 0 until 18) {
                 if (!isActive || !isStreaming) break
                 val overflow = currentStreamingOverflowDelta()
-                if (overflow <= lineRevealUnlockThresholdPx) {
+                if (!streamBottomFollowActive && overflow <= lineRevealUnlockThresholdPx) {
                     break
                 }
                 if (attempt < 17) {
@@ -5115,15 +5090,15 @@ fun ChatScreen() {
         }
     }
 
-    // 自动跟随：只用 streamTick 驱动，不把 streamingContentBottomPx 放入 keys
-    // 避免"测量更新 → 触发 → 滚动 → 测量更新 → 再触发"的反馈震荡
     LaunchedEffect(
         autoScrollMode,
         isStreaming,
         hasStreamingItem,
         userInteracting,
         userDetachedFromBottom,
-        streamTick
+        streamTick,
+        streamingContentBottomPx,
+        lineRevealLocked
     ) {
         if (!hasStreamingItem || !isStreaming) {
             streamBottomFollowActive = false
@@ -5135,11 +5110,6 @@ fun ChatScreen() {
         }
         if (streamingMessageContent.isBlank()) {
             streamBottomFollowActive = false
-            return@LaunchedEffect
-        }
-        // 等一帧让 layout 在新内容到来后稳定，再读测量值
-        withFrameNanos { }
-        if (userInteracting || userDetachedFromBottom || autoScrollMode != AutoScrollMode.StreamAnchorFollow) {
             return@LaunchedEffect
         }
         val overflow = currentStreamingOverflowDelta()
