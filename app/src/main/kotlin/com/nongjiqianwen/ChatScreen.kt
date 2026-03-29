@@ -4157,10 +4157,9 @@ fun ChatScreen() {
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         if (overflow <= 0) return 0
-        val minStepPx = (assistantLineStepPx * 0.14f).roundToInt().coerceAtLeast(8)
-        val triggerThresholdPx = (minStepPx * 0.45f).roundToInt().coerceAtLeast(3)
+        val steadyStepPx = (assistantLineStepPx * 0.18f).roundToInt().coerceAtLeast(8)
+        val triggerThresholdPx = (steadyStepPx * 0.4f).roundToInt().coerceAtLeast(3)
         if (overflow < triggerThresholdPx) return 0
-        val steadyStepPx = (assistantLineStepPx * 0.2f).roundToInt().coerceAtLeast(minStepPx)
         return overflow.coerceAtMost(steadyStepPx)
     }
 
@@ -5068,7 +5067,7 @@ fun ChatScreen() {
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
-            val followPasses = if (lineRevealLocked) 1 else 2
+            val followPasses = 2
             repeat(followPasses) { pass ->
                 val pendingOverflow = currentStreamingOverflowDelta()
                 val pendingStepPx = resolveStreamingFollowStepPx(pendingOverflow)
