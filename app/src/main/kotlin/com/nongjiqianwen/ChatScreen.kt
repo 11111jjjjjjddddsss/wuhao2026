@@ -4030,22 +4030,7 @@ fun ChatScreen() {
             } else if (scrollInProgress) {
                 if (autoScrollMode == AutoScrollMode.AnchorUser) {
                     pendingResumeAutoFollow = false
-                    val bottomOverflowPx = currentBottomOverflowPx()
-                    when {
-                        movedTowardTop &&
-                            bottomOverflowPx != Int.MAX_VALUE &&
-                            bottomOverflowPx > bottomPositionTolerancePx -> {
-                            userDetachedFromBottom = true
-                        }
-
-                        movedTowardBottom && (
-                            !listState.canScrollForward ||
-                                isWithinBottomTolerance() ||
-                                isNearStreamingReturnLine()
-                            ) -> {
-                            userDetachedFromBottom = false
-                        }
-                    }
+                    userDetachedFromBottom = false
                     jumpButtonVisible = false
                     previousIndex = currentIndex
                     previousOffset = currentOffset
