@@ -4115,7 +4115,7 @@ fun ChatScreen() {
                 hasStreamingItem &&
                 scrollInProgress &&
                 movedTowardBottom &&
-                visibleStreamingBottomBlankPx > 0 &&
+                guardedStreamBottomSpacerPx > 0 &&
                 !atFollowBoundary
             ) {
                 lastProgrammaticScrollMs = SystemClock.uptimeMillis()
@@ -5208,7 +5208,8 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         userInteracting,
-        userDetachedFromBottom
+        userDetachedFromBottom,
+        listState.isScrollInProgress
     ) {
         if (!hasStreamingItem || !isStreaming) {
             streamBottomFollowActive = false
@@ -5216,7 +5217,12 @@ fun ChatScreen() {
         }
         while (isActive && hasStreamingItem && isStreaming) {
             withFrameNanos { }
-            if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting || userDetachedFromBottom) {
+            if (
+                autoScrollMode != AutoScrollMode.StreamAnchorFollow ||
+                listState.isScrollInProgress ||
+                userInteracting ||
+                userDetachedFromBottom
+            ) {
                 streamBottomFollowActive = false
                 return@LaunchedEffect
             }
