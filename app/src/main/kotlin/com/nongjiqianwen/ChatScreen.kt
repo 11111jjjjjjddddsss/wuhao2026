@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -314,6 +315,7 @@ private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
+private const val UI_TRACE_TAG = "ChatUiTrace"
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
@@ -1518,6 +1520,11 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
                 capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
             )
+}
+
+private fun debugUiTrace(message: String) {
+    if (!BuildConfig.DEBUG) return
+    Log.d(UI_TRACE_TAG, "${SystemClock.uptimeMillis()}|$message")
 }
 
 private fun Context.loadLocalBottomViewportSync(chatScopeId: String): LocalBottomViewport? {
@@ -2929,7 +2936,6 @@ fun ChatScreen() {
     var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
     var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
     var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
-    var uiDebugPanelExpanded by rememberSaveable(chatScopeId) { mutableStateOf(true) }
     var lifecycleResumeReady by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
@@ -5115,6 +5121,7 @@ fun ChatScreen() {
             }
             if (anchorIndex >= 0) {
                 listState.scrollToItem(anchorIndex, scrollOffset = -anchorTop)
+                debugUiTrace("send_anchor|index=$anchorIndex anchorTop=$anchorTop reserve=$streamAnchorReservePx")
                 repeat(4) { withFrameNanos { } }
             }
         } finally {
@@ -5133,24 +5140,33 @@ fun ChatScreen() {
     ) {
         if (!hasStreamingItem || !isStreaming) {
             streamBottomFollowActive = false
+            debugUiTrace("follow_skip|reason=no_stream_item")
             return@LaunchedEffect
         }
         if (autoScrollMode != AutoScrollMode.StreamAnchorFollow || userInteracting || userDetachedFromBottom) {
             streamBottomFollowActive = false
+            debugUiTrace(
+                "follow_skip|reason=state_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
+            )
             return@LaunchedEffect
         }
         if (streamingMessageContent.isBlank()) {
             streamBottomFollowActive = false
+            debugUiTrace("follow_skip|reason=blank_content")
             return@LaunchedEffect
         }
         withFrameNanos { }
         if (userInteracting || userDetachedFromBottom || autoScrollMode != AutoScrollMode.StreamAnchorFollow) {
+            debugUiTrace(
+                "follow_skip|reason=post_frame_guard mode=$autoScrollMode interact=$userInteracting detached=$userDetachedFromBottom"
+            )
             return@LaunchedEffect
         }
         val overflow = currentStreamingOverflowDelta()
         val stepPx = resolveStreamingFollowStepPx(overflow)
         if (stepPx <= 0) {
             streamBottomFollowActive = false
+            debugUiTrace("follow_skip|reason=no_step overflow=$overflow")
             return@LaunchedEffect
         }
         streamBottomFollowActive = true
@@ -5158,6 +5174,7 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             val consumed = listState.scrollBy(stepPx.toFloat())
+            debugUiTrace("follow_step|overflow=$overflow step=$stepPx consumed=${consumed.roundToInt()}")
             if (consumed > 0f) {
                 streamingLineAdvanceTick++
             }
@@ -5362,6 +5379,12 @@ fun ChatScreen() {
             } else {
                 emptyList()
             }
+        val uiDebugSnapshot = if (BuildConfig.DEBUG) uiDebugLines.joinToString(" | ") else ""
+        LaunchedEffect(uiDebugSnapshot) {
+            if (uiDebugSnapshot.isNotBlank()) {
+                debugUiTrace("state|$uiDebugSnapshot")
+            }
+        }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
@@ -5917,21 +5940,6 @@ fun ChatScreen() {
                 )
             }
 
-            if (BuildConfig.DEBUG) {
-                UiDebugPanel(
-                    expanded = uiDebugPanelExpanded,
-                    lines = uiDebugLines,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(
-                            top = topBarReservedHeight + 8.dp,
-                            end = chromeHorizontalPadding
-                        )
-                        .zIndex(70f),
-                    onToggleExpanded = { uiDebugPanelExpanded = !uiDebugPanelExpanded }
-                )
-            }
-
             if (hasActiveMessageSelection) {
                 Box(
                     modifier = Modifier
@@ -6458,46 +6466,6 @@ private fun MessageActionMenuPopup(
                 }
         ) {
             MessageActionMenuCardContent(onCopy = onCopy, onCopyFull = onCopyFull)
-        }
-    }
-}
-
-@Composable
-private fun UiDebugPanel(
-    expanded: Boolean,
-    lines: List<String>,
-    modifier: Modifier = Modifier,
-    onToggleExpanded: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = Color(0xCC111111),
-        border = BorderStroke(0.6.dp, Color.White.copy(alpha = 0.18f)),
-        modifier = modifier.widthIn(max = 320.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .clickable(onClick = onToggleExpanded)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = if (expanded) "UI DEBUG 收起" else "UI DEBUG 展开",
-                color = Color.White,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            if (expanded) {
-                lines.forEach { line ->
-                    Text(
-                        text = line,
-                        color = Color.White.copy(alpha = 0.92f),
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
         }
     }
 }
