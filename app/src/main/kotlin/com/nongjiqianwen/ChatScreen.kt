@@ -317,8 +317,8 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
-private val ASSISTANT_START_ANCHOR_TOP = 120.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 44.dp
+private val ASSISTANT_START_ANCHOR_TOP = 96.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 72.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val FINAL_BOTTOM_SNAP_TOLERANCE = 24.dp
@@ -4049,8 +4049,7 @@ fun ChatScreen() {
                 listState.firstVisibleItemIndex,
                 listState.firstVisibleItemScrollOffset,
                 if (listState.isScrollInProgress) 1 else 0,
-                streamTick,
-                streamingContentBottomPx
+                streamTick
             )
         }.collect { state ->
             val currentIndex = state[0]
@@ -4223,10 +4222,17 @@ fun ChatScreen() {
 
     fun currentStreamingOverflowDelta(): Int {
         val worklineBottom = streamingWorklineBottomPx
-        if (streamingContentBottomPx > 0 && worklineBottom > 0) {
-            return (streamingContentBottomPx - worklineBottom).coerceAtLeast(0)
-        }
+        val streamingItemIndex = messages.size - 1
         val info = listState.layoutInfo
+        if (streamingItemIndex >= 0) {
+            val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
+            if (streamingLayoutItem != null) {
+                val visibleBottom = worklineBottom.takeIf { it > 0 }
+                    ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
+                val itemBottom = streamingLayoutItem.offset + streamingLayoutItem.size
+                return (itemBottom - visibleBottom).coerceAtLeast(0)
+            }
+        }
         val lastIndex = info.totalItemsCount - 1
         if (lastIndex < 0) return 0
         val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
