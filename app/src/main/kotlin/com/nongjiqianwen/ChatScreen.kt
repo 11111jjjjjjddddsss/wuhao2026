@@ -318,7 +318,7 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private const val UI_TRACE_TAG = "ChatUiTrace"
 private const val UI_TRACE_FILE_NAME = "ui_trace_ring.txt"
-private const val UI_TRACE_RING_LIMIT = 20
+private const val UI_TRACE_RING_LIMIT = 60
 private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 160.dp
@@ -2973,6 +2973,7 @@ fun ChatScreen() {
     var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
     var lifecycleResumeReady by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
+    var lastGestureTraceMs by remember { mutableStateOf(0L) }
     var inputLimitHintVisible by remember { mutableStateOf(false) }
     var inputLimitHintTick by remember { mutableIntStateOf(0) }
     var composerStatusHintVisible by remember { mutableStateOf(false) }
@@ -3130,6 +3131,17 @@ fun ChatScreen() {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.Drag) return Offset.Zero
+                val now = SystemClock.uptimeMillis()
+                if (
+                    now - lastGestureTraceMs >= 120L &&
+                    kotlin.math.abs(available.y) >= 12f
+                ) {
+                    lastGestureTraceMs = now
+                    debugUiTrace(
+                        context,
+                        "gesture_raw|phase=drag y=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom mode=$autoScrollMode"
+                    )
+                }
                 if (
                     lockUserScrollDuringBall &&
                     guardedStreamBottomSpacerPx > 0 &&
@@ -3180,6 +3192,10 @@ fun ChatScreen() {
             }
 
             override suspend fun onPreFling(available: Velocity): Velocity {
+                debugUiTrace(
+                    context,
+                    "gesture_raw|phase=fling vy=${available.y} blank=$visibleStreamingBottomBlankPx reserve=$streamAnchorReservePx det=$userDetachedFromBottom mode=$autoScrollMode"
+                )
                 if (
                     userDetachedFromBottom &&
                     guardedStreamBottomSpacerPx > 0 &&
