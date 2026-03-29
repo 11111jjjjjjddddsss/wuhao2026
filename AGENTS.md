@@ -297,7 +297,7 @@ Clean-State 定义：
 - 当前流式滚动链基线：
   - 小球空文本阶段，锚点 reserve 仍可见时，继续往底部空白方向拖动应被直接消费，不让空白继续被拖出来
   - assistant 正文一旦开始输出，小球阶段的强锁应立即解除；之后只保留 `visibleStreamingBottomBlankPx > 0` 这一条轻限制
-- 用户一旦已进入手动浏览态（`userDetachedFromBottom = true`），正文阶段这条底部空白轻限制不应继续抢手
+- 正文阶段的底部空白轻限制，不允许因为 `userDetachedFromBottom = true` 就整体失效；只要小球锚点造成的可见空白还没被正文吃完，这条保护就应继续生效
 - 上滑浏览历史不应由这条空白限制逻辑去抢手
 - 静态文本阶段不启用这条流式空白限制
 - 流式阶段如果用户已进入手动浏览态后又快速下滑回底部，一旦已经接近当前流式返回线，应立即解除 `userDetachedFromBottom` 并切回 `StreamAnchorFollow`，不要继续拖着 detached 状态把 reserve 空白带出来
