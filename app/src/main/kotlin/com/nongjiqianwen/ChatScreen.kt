@@ -3023,6 +3023,27 @@ fun ChatScreen() {
             }
         }
     }
+    val visibleStreamingBottomBlankPx by remember(
+        isStreaming,
+        streamingMessageContent,
+        activeStreamBottomSpacerPx,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx
+    ) {
+        derivedStateOf {
+            if (
+                !isStreaming ||
+                streamingMessageContent.isBlank() ||
+                activeStreamBottomSpacerPx <= 0
+            ) {
+                return@derivedStateOf 0
+            }
+            if (streamingContentBottomPx <= 0 || streamingWorklineBottomPx <= 0) {
+                return@derivedStateOf 0
+            }
+            (streamingWorklineBottomPx - streamingContentBottomPx).coerceAtLeast(0)
+        }
+    }
     var lineRevealLocked by remember(chatScopeId) { mutableStateOf(false) }
     val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, activeStreamBottomSpacerPx) {
         derivedStateOf {
@@ -3035,15 +3056,13 @@ fun ChatScreen() {
         isStreaming,
         streamingMessageContent,
         activeStreamBottomSpacerPx,
-        autoScrollMode,
-        userDetachedFromBottom
+        visibleStreamingBottomBlankPx
     ) {
         derivedStateOf {
             isStreaming &&
                 streamingMessageContent.isNotBlank() &&
                 activeStreamBottomSpacerPx > 0 &&
-                autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
-                !userDetachedFromBottom
+                visibleStreamingBottomBlankPx > lineRevealLockThresholdPx
         }
     }
     LaunchedEffect(
@@ -3113,7 +3132,7 @@ fun ChatScreen() {
                 if (
                     lockBottomBlankDuringStreaming &&
                     available.y < 0f &&
-                    currentStreamingOverflowSnapshot() <= lineRevealLockThresholdPx
+                    visibleStreamingBottomBlankPx > lineRevealLockThresholdPx
                 ) {
                     return Offset(x = 0f, y = available.y)
                 }
