@@ -3055,11 +3055,13 @@ fun ChatScreen() {
     val lockBottomBlankDuringStreaming by remember(
         isStreaming,
         streamingMessageContent,
-        visibleStreamingBottomBlankPx
+        visibleStreamingBottomBlankPx,
+        userDetachedFromBottom
     ) {
         derivedStateOf {
             isStreaming &&
                 streamingMessageContent.isNotBlank() &&
+                !userDetachedFromBottom &&
                 visibleStreamingBottomBlankPx > 0
         }
     }
