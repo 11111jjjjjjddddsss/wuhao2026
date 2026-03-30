@@ -3109,6 +3109,9 @@ fun ChatScreen() {
         return lastVisible.offset + lastVisible.size
     }
     val streamingDirectionLock = remember(
+        autoScrollMode,
+        isStreaming,
+        hasStreamingItem,
         lockUserScrollDuringBall,
         lockBottomBlankDuringStreaming,
         userDetachedFromBottom
@@ -3116,6 +3119,18 @@ fun ChatScreen() {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput) return Offset.Zero
+                if (
+                    isStreaming &&
+                    hasStreamingItem &&
+                    autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
+                    available.y > 0f
+                ) {
+                    pendingResumeAutoFollow = false
+                    userDetachedFromBottom = true
+                    autoScrollMode = AutoScrollMode.AnchorUser
+                    jumpButtonVisible = false
+                    return Offset.Zero
+                }
                 if (
                     lockUserScrollDuringBall &&
                     guardedStreamBottomSpacerPx > 0 &&
@@ -3155,6 +3170,18 @@ fun ChatScreen() {
 
             override suspend fun onPreFling(available: Velocity): Velocity {
                 if (
+                    isStreaming &&
+                    hasStreamingItem &&
+                    autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
+                    available.y > 0f
+                ) {
+                    pendingResumeAutoFollow = false
+                    userDetachedFromBottom = true
+                    autoScrollMode = AutoScrollMode.AnchorUser
+                    jumpButtonVisible = false
+                    return Velocity.Zero
+                }
+                if (
                     userDetachedFromBottom &&
                     guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
@@ -3184,12 +3211,14 @@ fun ChatScreen() {
         lockBottomBlankDuringStreaming,
         isStreaming,
         hasStreamingItem,
+        autoScrollMode,
         userDetachedFromBottom,
         guardedStreamBottomSpacerPx
     ) {
         derivedStateOf {
             lockUserScrollDuringBall ||
                 lockBottomBlankDuringStreaming ||
+                (isStreaming && hasStreamingItem && autoScrollMode == AutoScrollMode.StreamAnchorFollow) ||
                 (
                     isStreaming &&
                         hasStreamingItem &&
