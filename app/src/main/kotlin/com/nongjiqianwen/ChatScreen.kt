@@ -2922,6 +2922,7 @@ fun ChatScreen() {
     var messageViewportWidthPx by remember { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
     var streamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
+    var initialStreamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var chatRootLeftPx by remember { mutableStateOf(0f) }
     var chatRootTopPx by remember { mutableStateOf(0f) }
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
@@ -2966,6 +2967,7 @@ fun ChatScreen() {
         mutableStateMapOf<String, FailedAssistantMessageState>()
     }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
+    val streamAnchorReleaseThresholdPx = with(density) { 50.dp.toPx().roundToInt() }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
@@ -3490,8 +3492,7 @@ fun ChatScreen() {
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (
                     !isStreaming ||
-                        scrollMode == ScrollMode.UserBrowsing ||
-                        scrollMode == ScrollMode.Returning
+                        scrollMode == ScrollMode.UserBrowsing
                     ) &&
                 !atFollowBoundary
         }
@@ -4010,6 +4011,7 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
             streamAnchorReservePx = 0
+            initialStreamAnchorReservePx = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
@@ -4301,6 +4303,7 @@ fun ChatScreen() {
         if (streamAnchorReservePx <= 0) return@LaunchedEffect
         if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && !pendingStreamSpacerRelease) {
             streamAnchorReservePx = 0
+            initialStreamAnchorReservePx = 0
         }
     }
 
@@ -4605,6 +4608,7 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
             streamAnchorReservePx = 0
+            initialStreamAnchorReservePx = 0
             streamingAnchorTopPx = -1
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
@@ -4786,6 +4790,7 @@ fun ChatScreen() {
                     (messageViewportHeightPx * SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO).roundToInt(),
                     minSendAnchorExtraBottomSpacePx
                 )
+                initialStreamAnchorReservePx = streamAnchorReservePx
                 streamingBackgrounded = false
                 scrollMode = ScrollMode.Idle
                 autoScrollMode = AutoScrollMode.AnchorUser
@@ -5124,6 +5129,7 @@ fun ChatScreen() {
             repeat(2) { withFrameNanos { } }
         }
         streamAnchorReservePx = 0
+        initialStreamAnchorReservePx = 0
         pendingStreamSpacerRelease = false
         pendingFinalBottomSnap = pendingFinalBottomSnapAfterSpacer
         pendingFinalBottomSnapAfterSpacer = false
@@ -5363,6 +5369,31 @@ fun ChatScreen() {
             AutoScrollMode.StreamAnchorFollow
         } else {
             AutoScrollMode.AnchorUser
+        }
+    }
+
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        streamAnchorReservePx,
+        initialStreamAnchorReservePx,
+        streamingMessageContent.length,
+        listState.isScrollInProgress,
+        userInteracting
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        if (scrollMode != ScrollMode.Idle) return@LaunchedEffect
+        if (streamingMessageContent.isBlank()) return@LaunchedEffect
+        if (userInteracting || listState.isScrollInProgress) return@LaunchedEffect
+        val initialReservePx = initialStreamAnchorReservePx
+        if (initialReservePx <= 0) return@LaunchedEffect
+        val releaseThresholdPx = maxOf(
+            (initialReservePx * 0.1f).roundToInt(),
+            streamAnchorReleaseThresholdPx
+        )
+        if (streamAnchorReservePx <= releaseThresholdPx) {
+            scrollMode = ScrollMode.AutoFollow
         }
     }
 
