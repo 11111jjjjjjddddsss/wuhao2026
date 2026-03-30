@@ -581,3 +581,4 @@ Clean-State 定义：
 - 2026-03-27 起，最新口径已收紧为“农业种植相关问题”，并将输出结构明确为“禁止表格，关键点少量加粗”
 - 这次更新只改主对话锚点，不影响 B 层与 C 层摘要提示词文件
 - 2026-03-30 起，发送后的 `Idle` 锚点阶段视为滚动状态机保护区；只要仍处于 `isStreaming && ScrollMode.Idle`，旧的 detached / `autoScrollMode` 翻译器不允许再写滚动状态，`Idle` 的唯一合法出口是 reserve/spacer 被正文吃到阈值后切回 `AutoFollow`
+- 2026-03-30 进一步收口：`Idle -> AutoFollow` 的恢复信号优先看“正在生成的消息是否已进入视口且已回到生成工作线/返回线附近”，不再依赖 reserve 数值本身；`UserBrowsing` 浏览态下不允许仅因正文继续生成就自动重新接管 follow，只有 `Returning` 回到底部途中并真正回到返回线后才允许恢复；底部空白保护要同时覆盖 drag 和 fling

@@ -3121,6 +3121,16 @@ fun ChatScreen() {
         val contentItem = info.visibleItemsInfo.lastOrNull { it.index == contentIndex } ?: return Int.MAX_VALUE
         return (contentItem.offset + contentItem.size - info.viewportEndOffset).coerceAtLeast(0)
     }
+    fun isStreamingMessageVisibleInViewport(): Boolean {
+        if (!isStreaming || !hasStreamingItem) return false
+        val targetMessageId =
+            streamingMessageId
+                ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
+                ?: return false
+        val targetIndex = messages.indexOfFirst { it.id == targetMessageId }
+        if (targetIndex < 0) return false
+        return listState.layoutInfo.visibleItemsInfo.any { it.index == targetIndex }
+    }
     val streamingDirectionLock = remember(
         scrollMode,
         isStreaming,
@@ -3204,6 +3214,9 @@ fun ChatScreen() {
                     userDetachedFromBottom = true
                     autoScrollMode = AutoScrollMode.AnchorUser
                     jumpButtonVisible = false
+                    if (available.y < 0f && guardedStreamBottomSpacerPx > 0) {
+                        return available
+                    }
                     return Velocity.Zero
                 }
                 if (
@@ -3213,7 +3226,22 @@ fun ChatScreen() {
                     available.y < 0f
                 ) {
                     val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
-                    if (distanceToSpacer != Int.MAX_VALUE) {
+                    val atStreamingBoundaryNow =
+                        if (streamingMessageContent.isBlank()) {
+                            true
+                        } else if (streamingWorklineBottomPx <= 0) {
+                            false
+                        } else {
+                            currentStreamingMeasuredBottomPx() >=
+                                (streamingWorklineBottomPx - bottomPositionTolerancePx)
+                        }
+                    if (
+                        distanceToSpacer != Int.MAX_VALUE ||
+                        (
+                            (scrollMode == ScrollMode.UserBrowsing || scrollMode == ScrollMode.Returning) &&
+                                !atStreamingBoundaryNow
+                            )
+                    ) {
                         return available
                     }
                 }
@@ -4283,14 +4311,19 @@ fun ChatScreen() {
                     }
                 }
             } else if (userDetachedFromBottom) {
-                val canReattachToStreaming = atFollowBoundary
+                val canReattachToStreaming =
+                    scrollMode == ScrollMode.Returning && atFollowBoundary
                 if (canReattachToStreaming) {
                     applyStreamingScrollState(
                         detached = false,
                         mode = resolveStreamingIdleMode()
                     )
                 } else {
-                    scrollMode = ScrollMode.UserBrowsing
+                    scrollMode = if (scrollMode == ScrollMode.Returning) {
+                        ScrollMode.Returning
+                    } else {
+                        ScrollMode.UserBrowsing
+                    }
                     autoScrollMode = AutoScrollMode.AnchorUser
                 }
             } else {
@@ -4411,6 +4444,7 @@ fun ChatScreen() {
     }
 
     suspend fun smoothCatchUpToBottom(maxFrames: Int = 480) {
+        if (isStreaming && scrollMode != ScrollMode.AutoFollow) return
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
@@ -4428,6 +4462,7 @@ fun ChatScreen() {
 
     suspend fun scrollToStreamingFollowBoundary(maxFrames: Int = 180) {
         if (messages.isEmpty() && !hasStreamingItem) return
+        if (isStreaming && scrollMode != ScrollMode.AutoFollow) return
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
@@ -5380,9 +5415,13 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         scrollMode,
-        streamAnchorReservePx,
-        initialStreamAnchorReservePx,
+        streamTick,
+        streamingMessageId,
         streamingMessageContent.length,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
         listState.isScrollInProgress,
         userInteracting
     ) {
@@ -5390,13 +5429,7 @@ fun ChatScreen() {
         if (scrollMode != ScrollMode.Idle) return@LaunchedEffect
         if (streamingMessageContent.isBlank()) return@LaunchedEffect
         if (userInteracting || listState.isScrollInProgress) return@LaunchedEffect
-        val initialReservePx = initialStreamAnchorReservePx
-        if (initialReservePx <= 0) return@LaunchedEffect
-        val releaseThresholdPx = maxOf(
-            (initialReservePx * 0.1f).roundToInt(),
-            streamAnchorReleaseThresholdPx
-        )
-        if (streamAnchorReservePx <= releaseThresholdPx) {
+        if (isStreamingMessageVisibleInViewport() && isAtStreamingFollowBoundary()) {
             scrollMode = ScrollMode.AutoFollow
         }
     }
