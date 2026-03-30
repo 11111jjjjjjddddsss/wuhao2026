@@ -200,7 +200,7 @@ import kotlin.coroutines.resume
 
 private enum class ChatRole { USER, ASSISTANT }
 private enum class AutoScrollMode { Idle, AnchorUser, StreamAnchorFollow }
-private enum class ScrollMode { Idle, AutoFollow, UserBrowsing, Returning }
+private enum class ScrollMode { Idle, AutoFollow, UserBrowsing }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 @Immutable
@@ -2937,8 +2937,6 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
-    var browsingTowardBottomStreak by remember { mutableIntStateOf(0) }
-    var browsingTowardBottomAccumulatedPx by remember { mutableFloatStateOf(0f) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
@@ -2969,13 +2967,6 @@ fun ChatScreen() {
         mutableStateMapOf<String, FailedAssistantMessageState>()
     }
     val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
-    val streamAnchorReleaseThresholdPx = with(density) { 50.dp.toPx().roundToInt() }
-    val returningActivationDistancePx = remember(messageViewportHeightPx, density) {
-        maxOf(
-            (messageViewportHeightPx * 0.5f).roundToInt(),
-            with(density) { 120.dp.roundToPx() }
-        )
-    }
     val assistantStartAnchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.toPx().roundToInt() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
@@ -3235,10 +3226,7 @@ fun ChatScreen() {
                         }
                     if (
                         distanceToSpacer == 0 ||
-                        (
-                            (scrollMode == ScrollMode.UserBrowsing || scrollMode == ScrollMode.Returning) &&
-                                !atStreamingBoundaryNow
-                            )
+                        (scrollMode == ScrollMode.UserBrowsing && !atStreamingBoundaryNow)
                     ) {
                         return available
                     }
@@ -3334,8 +3322,7 @@ fun ChatScreen() {
         scrollMode = when {
             mode == AutoScrollMode.Idle -> ScrollMode.Idle
             mode == AutoScrollMode.StreamAnchorFollow && !detached -> ScrollMode.AutoFollow
-            detached -> ScrollMode.UserBrowsing
-            else -> ScrollMode.Returning
+            else -> ScrollMode.UserBrowsing
         }
         pendingResumeAutoFollow = false
         userDetachedFromBottom = detached
@@ -3348,7 +3335,7 @@ fun ChatScreen() {
         val derivedAutoScrollMode = when (scrollMode) {
             ScrollMode.Idle -> if (isStreaming && hasStreamingItem) AutoScrollMode.AnchorUser else AutoScrollMode.Idle
             ScrollMode.AutoFollow -> AutoScrollMode.StreamAnchorFollow
-            ScrollMode.UserBrowsing, ScrollMode.Returning -> AutoScrollMode.AnchorUser
+            ScrollMode.UserBrowsing -> AutoScrollMode.AnchorUser
         }
         val derivedDetached = scrollMode == ScrollMode.UserBrowsing
         if (autoScrollMode != derivedAutoScrollMode) {
@@ -3521,8 +3508,7 @@ fun ChatScreen() {
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (
                     !isStreaming ||
-                        scrollMode == ScrollMode.UserBrowsing ||
-                        scrollMode == ScrollMode.Returning
+                        scrollMode == ScrollMode.UserBrowsing
                     ) &&
                 !atFollowBoundary
         }
@@ -4235,12 +4221,6 @@ fun ChatScreen() {
                 previousOffset = currentOffset
                 return@collect
             }
-            val towardBottomDeltaPx = when {
-                currentIndex > previousIndex -> messageViewportHeightPx.toFloat().coerceAtLeast(0f)
-                currentIndex == previousIndex && currentOffset > previousOffset ->
-                    (currentOffset - previousOffset).toFloat()
-                else -> 0f
-            }
             val movedTowardBottom =
                 currentIndex > previousIndex ||
                     (currentIndex == previousIndex && currentOffset > previousOffset)
@@ -4248,18 +4228,7 @@ fun ChatScreen() {
                 currentIndex < previousIndex ||
                     (currentIndex == previousIndex && currentOffset < previousOffset)
             val atFollowBoundary = isAtStreamingFollowBoundary()
-            if (scrollMode == ScrollMode.Returning && atFollowBoundary && !scrollInProgress) {
-                applyStreamingScrollState(
-                    detached = false,
-                    mode = resolveStreamingIdleMode()
-                )
-            } else if (scrollMode == ScrollMode.Returning && !scrollInProgress) {
-                applyStreamingScrollState(
-                    detached = true,
-                    mode = AutoScrollMode.AnchorUser,
-                    hideJumpButton = false
-                )
-            } else if (scrollMode == ScrollMode.UserBrowsing && !scrollInProgress) {
+            if (scrollMode == ScrollMode.UserBrowsing && !scrollInProgress) {
                 userDetachedFromBottom = true
                 autoScrollMode = AutoScrollMode.AnchorUser
             } else if (atFollowBoundary && !scrollInProgress) {
@@ -4292,20 +4261,8 @@ fun ChatScreen() {
             } else if (scrollInProgress) {
                 when {
                     movedTowardBottom -> {
-                        if (scrollMode == ScrollMode.UserBrowsing || scrollMode == ScrollMode.Returning) {
-                            browsingTowardBottomStreak += 1
-                            browsingTowardBottomAccumulatedPx += towardBottomDeltaPx
-                            if (
-                                scrollMode == ScrollMode.Returning ||
-                                (
-                                    browsingTowardBottomStreak >= 3 &&
-                                        browsingTowardBottomAccumulatedPx >= returningActivationDistancePx
-                                    )
-                            ) {
-                                scrollMode = ScrollMode.Returning
-                            } else {
-                                scrollMode = ScrollMode.UserBrowsing
-                            }
+                        if (scrollMode == ScrollMode.UserBrowsing) {
+                            scrollMode = ScrollMode.UserBrowsing
                             pendingResumeAutoFollow = false
                             userDetachedFromBottom = true
                             autoScrollMode = AutoScrollMode.AnchorUser
@@ -4319,8 +4276,6 @@ fun ChatScreen() {
                     }
 
                     movedTowardTop -> {
-                        browsingTowardBottomStreak = 0
-                        browsingTowardBottomAccumulatedPx = 0f
                         applyStreamingScrollState(
                             detached = true,
                             mode = AutoScrollMode.AnchorUser,
@@ -4329,28 +4284,20 @@ fun ChatScreen() {
                     }
                 }
             } else if (userDetachedFromBottom) {
-                if (scrollMode == ScrollMode.UserBrowsing) {
-                    browsingTowardBottomStreak = 0
-                    browsingTowardBottomAccumulatedPx = 0f
-                }
                 val canReattachToStreaming =
-                    scrollMode == ScrollMode.Returning && atFollowBoundary
+                    scrollMode == ScrollMode.UserBrowsing &&
+                        atFollowBoundary &&
+                        isStreamingMessageVisibleInViewport()
                 if (canReattachToStreaming) {
                     applyStreamingScrollState(
                         detached = false,
                         mode = resolveStreamingIdleMode()
                     )
                 } else {
-                    scrollMode = if (scrollMode == ScrollMode.Returning) {
-                        ScrollMode.Returning
-                    } else {
-                        ScrollMode.UserBrowsing
-                    }
+                    scrollMode = ScrollMode.UserBrowsing
                     autoScrollMode = AutoScrollMode.AnchorUser
                 }
             } else {
-                browsingTowardBottomStreak = 0
-                browsingTowardBottomAccumulatedPx = 0f
                 val idleMode = resolveStreamingIdleMode()
                 scrollMode = when (idleMode) {
                     AutoScrollMode.StreamAnchorFollow -> ScrollMode.AutoFollow
