@@ -4298,9 +4298,9 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(autoScrollMode, streamingMessageContent.length, userDetachedFromBottom, userInteracting) {
+    LaunchedEffect(scrollMode, isStreaming, hasStreamingItem, streamAnchorReservePx, pendingStreamSpacerRelease) {
         if (streamAnchorReservePx <= 0) return@LaunchedEffect
-        if ((!isStreaming || autoScrollMode == AutoScrollMode.Idle) && !pendingStreamSpacerRelease) {
+        if ((!isStreaming || (!hasStreamingItem && scrollMode == ScrollMode.Idle)) && !pendingStreamSpacerRelease) {
             streamAnchorReservePx = 0
             initialStreamAnchorReservePx = 0
         }
@@ -4450,8 +4450,7 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
-                autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
-                !userDetachedFromBottom &&
+                scrollMode == ScrollMode.AutoFollow &&
                     currentStreamingOverflowDelta() > finalBottomSnapThresholdPx
             streamRevealJob?.cancel()
             streamRevealJob = null
@@ -5148,9 +5147,8 @@ fun ChatScreen() {
         mainHandler.post {
             if (!isStreaming) return@post
             val shouldSnapToBottomOnFinish =
-                autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
+                scrollMode == ScrollMode.AutoFollow &&
                     !userInteracting &&
-                    !userDetachedFromBottom &&
                     currentStreamingOverflowDelta() > finalBottomSnapThresholdPx
             val finalId = streamingMessageId
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
@@ -5915,7 +5913,7 @@ fun ChatScreen() {
                                                             streamingLineAdvanceTick = streamingLineAdvanceTick,
                                                             strictLineReveal =
                                                                 isStreaming &&
-                                                                    !userDetachedFromBottom &&
+                                                                    scrollMode != ScrollMode.UserBrowsing &&
                                                                     !userInteracting,
                                                             lineRevealLocked = lineRevealLocked,
                                                             selectionEnabled = !isStreaming,
