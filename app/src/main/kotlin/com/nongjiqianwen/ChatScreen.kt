@@ -3152,9 +3152,6 @@ fun ChatScreen() {
                     userInteracting = true
                     streamBottomFollowActive = false
                     scrollMode = ScrollMode.UserBrowsing
-                    pendingResumeAutoFollow = false
-                    userDetachedFromBottom = true
-                    autoScrollMode = AutoScrollMode.AnchorUser
                     return Offset.Zero
                 }
                 if (
@@ -3198,9 +3195,6 @@ fun ChatScreen() {
                     userInteracting = true
                     streamBottomFollowActive = false
                     scrollMode = ScrollMode.UserBrowsing
-                    pendingResumeAutoFollow = false
-                    userDetachedFromBottom = true
-                    autoScrollMode = AutoScrollMode.AnchorUser
                     if (available.y < 0f && guardedStreamBottomSpacerPx > 0) {
                         return available
                     }
@@ -4245,9 +4239,6 @@ fun ChatScreen() {
                 when {
                     scrollInProgress && (movedTowardTop || movedTowardBottom) -> {
                         scrollMode = ScrollMode.UserBrowsing
-                        pendingResumeAutoFollow = false
-                        userDetachedFromBottom = true
-                        autoScrollMode = AutoScrollMode.AnchorUser
                     }
 
                     scrollMode == ScrollMode.UserBrowsing -> {
@@ -4256,18 +4247,7 @@ fun ChatScreen() {
                                 isStreamingReadyForAutoFollow()
                         if (canResumeAutoFollow) {
                             scrollMode = ScrollMode.AutoFollow
-                            pendingResumeAutoFollow = false
-                            userDetachedFromBottom = false
-                            autoScrollMode = AutoScrollMode.StreamAnchorFollow
-                        } else {
-                            userDetachedFromBottom = true
-                            autoScrollMode = AutoScrollMode.AnchorUser
                         }
-                    }
-
-                    scrollMode == ScrollMode.AutoFollow -> {
-                        userDetachedFromBottom = false
-                        autoScrollMode = AutoScrollMode.StreamAnchorFollow
                     }
                 }
             } else {
@@ -5362,15 +5342,9 @@ fun ChatScreen() {
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
         scrollMode = ScrollMode.Idle
-        autoScrollMode = AutoScrollMode.AnchorUser
         userInteracting = false
         scrollAfterSendAnchor()
         scrollMode = ScrollMode.Idle
-        autoScrollMode = if (isStreaming && hasStreamingItem) {
-            AutoScrollMode.AnchorUser
-        } else {
-            AutoScrollMode.Idle
-        }
     }
 
     LaunchedEffect(
@@ -5440,19 +5414,11 @@ fun ChatScreen() {
             } else {
                 ScrollMode.Idle
             }
-            autoScrollMode = if (jumpingIntoStreaming) {
-                AutoScrollMode.StreamAnchorFollow
-            } else {
-                AutoScrollMode.Idle
-            }
             userInteracting = false
-            pendingResumeAutoFollow = false
             jumpButtonVisible = false
             if (jumpingIntoStreaming) {
-                userDetachedFromBottom = false
                 scrollToStreamingFollowBoundary()
             } else {
-                userDetachedFromBottom = false
                 scrollToBottom(animated = false)
             }
         }

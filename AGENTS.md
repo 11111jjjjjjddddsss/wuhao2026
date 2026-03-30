@@ -582,6 +582,7 @@ Clean-State 定义：
 - 这次更新只改主对话锚点，不影响 B 层与 C 层摘要提示词文件
 - 2026-03-30 会诊主方案继续执行：生成期滚动控制只保留 `Idle / AutoFollow / UserBrowsing` 三态，`Returning` 不再作为真相源状态使用
 - 2026-03-30 生成期间 `ScrollMode` 是滚动控制唯一真相源；旧的 `applyStreamingScrollState(...)` 在 `isStreaming && hasStreamingItem` 时禁止再写状态
+- 2026-03-30 生成期间旧的 `autoScrollMode / userDetachedFromBottom / pendingResumeAutoFollow` 只保留兼容和派生用途，不再作为主状态写入口参与滚动决策
 - 2026-03-30 `Idle -> AutoFollow` 的恢复条件继续收口为“生成消息已进入视口且已回到生成工作线/返回线附近”
 - 2026-03-30 生成阶段 `回到底部` 按钮只认 `scrollMode == UserBrowsing`
 - 2026-03-30 所有生成期 programmatic scroll 在执行前都必须先通过 `scrollMode == AutoFollow` 守卫，避免浏览态被程序慢慢带走
