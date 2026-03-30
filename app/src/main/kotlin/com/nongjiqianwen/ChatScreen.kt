@@ -3125,6 +3125,8 @@ fun ChatScreen() {
                     autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
                     available.y != 0f
                 ) {
+                    userInteracting = true
+                    streamBottomFollowActive = false
                     pendingResumeAutoFollow = false
                     userDetachedFromBottom = true
                     autoScrollMode = AutoScrollMode.AnchorUser
@@ -3175,6 +3177,8 @@ fun ChatScreen() {
                     autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
                     available.y != 0f
                 ) {
+                    userInteracting = true
+                    streamBottomFollowActive = false
                     pendingResumeAutoFollow = false
                     userDetachedFromBottom = true
                     autoScrollMode = AutoScrollMode.AnchorUser
