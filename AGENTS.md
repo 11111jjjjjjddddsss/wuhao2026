@@ -316,10 +316,10 @@ Clean-State 定义：
 - 用户一开始手动拖动列表时，自动跟随必须立即停；不要再只等一条延后的 `userInteracting` 派生状态，否则就会出现“往上看时被程序抢手”的体感
 - 生成过程中不要先赌用户手势方向；只要用户原始拖动一进入，就应先立即退出 `StreamAnchorFollow`。手势结束后，再根据是否回到生成线/返回线决定是否恢复自动跟随
 - 这一步不能只切 `autoScrollMode`；还要在原始手势入口立即把交互态置真，避免 `listState.isScrollInProgress` 晚一拍才变化，导致 follow 线程多抢一帧
-- 当前滚动控制如果继续收敛，优先新增一个小枚举作为唯一真相源，例如 `AutoFollow / UserBrowsing / Returning / Idle`；旧的布尔状态先保留，但降级为从属/显示用途，不再作为“是否执行 follow”的主决策
-- 发送后的初始锚点阶段，不应误记成 `Returning`；`Returning` 只表示“用户浏览后正在往回到底部/生成线途中”，否则会把 `回到底部` 按钮和恢复时机一起搞乱
+- 当前滚动控制如果继续收敛，优先使用一个小枚举作为唯一真相源；当前实现以 `Idle / AutoFollow / UserBrowsing` 三态为准，旧的布尔状态先保留，但降级为从属/显示用途，不再作为“是否执行 follow”的主决策
+- 发送后的初始锚点阶段必须稳定停在 `Idle` 保护区，不允许再引入新的“回底途中”中间真相态去污染 `回到底部` 按钮和恢复时机
 - 生成开始后，只要用户还没进入浏览态，就算正文还没吃到生成线，也仍应保持在 auto-follow 主链里等待继续跟随；不要把“未到生成线”误判成“用户已脱底”，否则会同时造成按钮误出现和 follow 起不来
-- `回到底部` 按钮显示条件应直接看 `ScrollMode`：仅 `UserBrowsing / Returning` 允许显示，`Idle / AutoFollow` 必须隐藏，不再依赖旧的 `userDetachedFromBottom`
+- `回到底部` 按钮显示条件应直接看 `ScrollMode`：仅 `UserBrowsing` 允许显示，`Idle / AutoFollow` 必须隐藏，不再依赖旧的 `userDetachedFromBottom`
 - 更精确地说，生成阶段 `回到底部` 按钮默认只应在 `UserBrowsing` 显示；发送后的 `Idle` 锚点阶段和 `AutoFollow` 阶段必须隐藏，避免刚生成就乱冒按钮
 - 锚点阶段结束的判定，必须基于 reserve/spacer 被正文吃掉多少，而不是“正文是否开始生成”；只有当 `ScrollMode == Idle` 且 reserve 剩余高度低于阈值时，才允许切回 `AutoFollow`
 - 这个阈值优先使用“初始 reserve 的比例阈值”和“绝对像素阈值”中的较大者，避免不同屏幕下过早或过晚恢复 follow
@@ -580,9 +580,14 @@ Clean-State 定义：
 - 当前主对话锚点真源仍为 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
 - 2026-03-27 起，最新口径已收紧为“农业种植相关问题”，并将输出结构明确为“禁止表格，关键点少量加粗”
 - 这次更新只改主对话锚点，不影响 B 层与 C 层摘要提示词文件
+- 2026-03-30 会诊主方案继续执行：生成期滚动控制只保留 `Idle / AutoFollow / UserBrowsing` 三态，`Returning` 不再作为真相源状态使用
+- 2026-03-30 生成期间 `ScrollMode` 是滚动控制唯一真相源；旧的 `applyStreamingScrollState(...)` 在 `isStreaming && hasStreamingItem` 时禁止再写状态
+- 2026-03-30 `Idle -> AutoFollow` 的恢复条件继续收口为“生成消息已进入视口且已回到生成工作线/返回线附近”
+- 2026-03-30 生成阶段 `回到底部` 按钮只认 `scrollMode == UserBrowsing`
+- 2026-03-30 所有生成期 programmatic scroll 在执行前都必须先通过 `scrollMode == AutoFollow` 守卫，避免浏览态被程序慢慢带走
 - 2026-03-30 起，发送后的 `Idle` 锚点阶段视为滚动状态机保护区；只要仍处于 `isStreaming && ScrollMode.Idle`，旧的 detached / `autoScrollMode` 翻译器不允许再写滚动状态，`Idle` 的唯一合法出口是 reserve/spacer 被正文吃到阈值后切回 `AutoFollow`
-- 2026-03-30 进一步收口：`Idle -> AutoFollow` 的恢复信号优先看“正在生成的消息是否已进入视口且已回到生成工作线/返回线附近”，不再依赖 reserve 数值本身；`UserBrowsing` 浏览态下不允许仅因正文继续生成就自动重新接管 follow，只有 `Returning` 回到底部途中并真正回到返回线后才允许恢复；底部空白保护要同时覆盖 drag 和 fling
+- 2026-03-30 进一步收口：`Idle -> AutoFollow` 的恢复信号优先看“正在生成的消息是否已进入视口且已回到生成工作线/返回线附近”，不再依赖 reserve 数值本身；`UserBrowsing` 浏览态下不允许仅因正文继续生成就自动重新接管 follow，只有“列表停稳 + 生成消息重新进入视口 + 回到生成工作线/返回线附近”三者同时满足时才允许直接恢复 `AutoFollow`；底部空白保护要同时覆盖 drag 和 fling
 - 2026-03-30 再次收口：生成期往底部方向的空白保护不应做成整段粘手；只允许消费“超出安全距离、会露出空白”的那一小段 delta，安全距离内的下滑必须完全透传
-- `UserBrowsing -> Returning` 不应因为单个向下 delta 就立刻切换；至少应加入持续向下方向和累计回底距离门槛，避免生成阶段 `回到底部` 按钮忽隐忽现
+- 当前三态主方案下，不再引入单独的 `Returning` 真相态；用户浏览后只允许保留 `UserBrowsing`，直到“列表停稳 + 生成消息重新进入视口 + 回到生成工作线/返回线附近”三者同时满足时，才直接恢复 `AutoFollow`
 - 底部空白 clamp 在拿不到最后内容 item 的稳定测量时，应优先走保守退路，不要把“拿不到测量”直接当成“距离空白还很远”
 - 2026-03-30 起，生成期滚动控制主方案继续收敛为三态：`Idle / AutoFollow / UserBrowsing`；`Returning` 不再作为当前真相源状态保留。用户浏览后只有在“列表停稳 + 生成消息重新进入视口 + 回到生成工作线/返回线附近”三者同时满足时，才允许直接从 `UserBrowsing` 切回 `AutoFollow`
