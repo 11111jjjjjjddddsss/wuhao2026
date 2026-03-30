@@ -3313,6 +3313,23 @@ fun ChatScreen() {
             jumpButtonVisible = false
         }
     }
+    LaunchedEffect(scrollMode) {
+        val derivedAutoScrollMode = when (scrollMode) {
+            ScrollMode.Idle -> AutoScrollMode.Idle
+            ScrollMode.AutoFollow -> AutoScrollMode.StreamAnchorFollow
+            ScrollMode.UserBrowsing, ScrollMode.Returning -> AutoScrollMode.AnchorUser
+        }
+        val derivedDetached = scrollMode == ScrollMode.UserBrowsing
+        if (autoScrollMode != derivedAutoScrollMode) {
+            autoScrollMode = derivedAutoScrollMode
+        }
+        if (userDetachedFromBottom != derivedDetached) {
+            userDetachedFromBottom = derivedDetached
+        }
+        if (scrollMode == ScrollMode.Idle || scrollMode == ScrollMode.AutoFollow) {
+            jumpButtonVisible = false
+        }
+    }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -3473,7 +3490,7 @@ fun ChatScreen() {
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (
                     !isStreaming ||
-                        userDetachedFromBottom ||
+                        scrollMode == ScrollMode.UserBrowsing ||
                         scrollMode == ScrollMode.Returning
                     ) &&
                 !atFollowBoundary
@@ -5300,8 +5317,7 @@ fun ChatScreen() {
             if (
                 scrollMode != ScrollMode.AutoFollow ||
                 listState.isScrollInProgress ||
-                userInteracting ||
-                userDetachedFromBottom
+                userInteracting
             ) {
                 streamBottomFollowActive = false
                 return@LaunchedEffect
@@ -5347,6 +5363,31 @@ fun ChatScreen() {
             AutoScrollMode.StreamAnchorFollow
         } else {
             AutoScrollMode.AnchorUser
+        }
+    }
+
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        streamingMessageContent.length,
+        streamTick,
+        listState.isScrollInProgress,
+        userInteracting
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        if (streamingMessageContent.isBlank()) return@LaunchedEffect
+        if (userInteracting || listState.isScrollInProgress) return@LaunchedEffect
+        when (scrollMode) {
+            ScrollMode.Idle -> {
+                scrollMode = ScrollMode.AutoFollow
+            }
+            ScrollMode.Returning -> {
+                if (isAtStreamingFollowBoundary()) {
+                    scrollMode = ScrollMode.AutoFollow
+                }
+            }
+            else -> Unit
         }
     }
 
