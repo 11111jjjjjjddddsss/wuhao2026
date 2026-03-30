@@ -580,3 +580,4 @@ Clean-State 定义：
 - 当前主对话锚点真源仍为 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
 - 2026-03-27 起，最新口径已收紧为“农业种植相关问题”，并将输出结构明确为“禁止表格，关键点少量加粗”
 - 这次更新只改主对话锚点，不影响 B 层与 C 层摘要提示词文件
+- 2026-03-30 起，发送后的 `Idle` 锚点阶段视为滚动状态机保护区；只要仍处于 `isStreaming && ScrollMode.Idle`，旧的 detached / `autoScrollMode` 翻译器不允许再写滚动状态，`Idle` 的唯一合法出口是 reserve/spacer 被正文吃到阈值后切回 `AutoFollow`

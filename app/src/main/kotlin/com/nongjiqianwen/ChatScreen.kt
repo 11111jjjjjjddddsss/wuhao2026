@@ -3137,7 +3137,7 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    scrollMode == ScrollMode.AutoFollow &&
+                    (scrollMode == ScrollMode.AutoFollow || scrollMode == ScrollMode.Idle) &&
                     available.y != 0f
                 ) {
                     userInteracting = true
@@ -3194,7 +3194,7 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    scrollMode == ScrollMode.AutoFollow &&
+                    (scrollMode == ScrollMode.AutoFollow || scrollMode == ScrollMode.Idle) &&
                     available.y != 0f
                 ) {
                     userInteracting = true
@@ -3302,6 +3302,9 @@ fun ChatScreen() {
         mode: AutoScrollMode,
         hideJumpButton: Boolean = true
     ) {
+        if (isStreaming && hasStreamingItem && scrollMode == ScrollMode.Idle) {
+            return
+        }
         scrollMode = when {
             mode == AutoScrollMode.Idle -> ScrollMode.Idle
             mode == AutoScrollMode.StreamAnchorFollow && !detached -> ScrollMode.AutoFollow
@@ -3315,9 +3318,9 @@ fun ChatScreen() {
             jumpButtonVisible = false
         }
     }
-    LaunchedEffect(scrollMode) {
+    LaunchedEffect(scrollMode, isStreaming, hasStreamingItem) {
         val derivedAutoScrollMode = when (scrollMode) {
-            ScrollMode.Idle -> AutoScrollMode.Idle
+            ScrollMode.Idle -> if (isStreaming && hasStreamingItem) AutoScrollMode.AnchorUser else AutoScrollMode.Idle
             ScrollMode.AutoFollow -> AutoScrollMode.StreamAnchorFollow
             ScrollMode.UserBrowsing, ScrollMode.Returning -> AutoScrollMode.AnchorUser
         }
@@ -4196,6 +4199,11 @@ fun ChatScreen() {
             val currentOffset = state[1]
             val scrollInProgress = state[2] == 1
             if (programmaticScroll) {
+                previousIndex = currentIndex
+                previousOffset = currentOffset
+                return@collect
+            }
+            if (isStreaming && hasStreamingItem && scrollMode == ScrollMode.Idle) {
                 previousIndex = currentIndex
                 previousOffset = currentOffset
                 return@collect
@@ -5360,15 +5368,11 @@ fun ChatScreen() {
         autoScrollMode = AutoScrollMode.AnchorUser
         userInteracting = false
         scrollAfterSendAnchor()
-        scrollMode = if (isStreaming && streamingMessageContent.isNotBlank()) {
-            ScrollMode.AutoFollow
-        } else {
-            ScrollMode.Idle
-        }
-        autoScrollMode = if (isStreaming && streamingMessageContent.isNotBlank()) {
-            AutoScrollMode.StreamAnchorFollow
-        } else {
+        scrollMode = ScrollMode.Idle
+        autoScrollMode = if (isStreaming && hasStreamingItem) {
             AutoScrollMode.AnchorUser
+        } else {
+            AutoScrollMode.Idle
         }
     }
 
