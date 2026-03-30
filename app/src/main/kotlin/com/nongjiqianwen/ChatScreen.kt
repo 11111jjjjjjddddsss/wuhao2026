@@ -3108,13 +3108,24 @@ fun ChatScreen() {
         val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return -1
         return lastVisible.offset + lastVisible.size
     }
+    fun distanceToStreamAnchorSpacerRevealPx(): Int {
+        if (!hasStreamAnchorSpacer || guardedStreamBottomSpacerPx <= 0) return Int.MAX_VALUE
+        val spacerIndex = messages.size
+        val contentIndex = spacerIndex - 1
+        if (contentIndex < 0) return 0
+        val info = listState.layoutInfo
+        val contentItem = info.visibleItemsInfo.lastOrNull { it.index == contentIndex } ?: return Int.MAX_VALUE
+        return (contentItem.offset + contentItem.size - info.viewportEndOffset).coerceAtLeast(0)
+    }
     val streamingDirectionLock = remember(
         autoScrollMode,
         isStreaming,
         hasStreamingItem,
         lockUserScrollDuringBall,
         lockBottomBlankDuringStreaming,
-        userDetachedFromBottom
+        userDetachedFromBottom,
+        guardedStreamBottomSpacerPx,
+        hasStreamAnchorSpacer
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -3134,6 +3145,25 @@ fun ChatScreen() {
                     return Offset.Zero
                 }
                 if (
+                    isStreaming &&
+                    hasStreamingItem &&
+                    guardedStreamBottomSpacerPx > 0 &&
+                    available.y < 0f
+                ) {
+                    val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
+                    if (distanceToSpacer != Int.MAX_VALUE) {
+                        val requestedPx = -available.y
+                        val allowedPx = distanceToSpacer.toFloat()
+                        if (allowedPx <= 0f) {
+                            return Offset(x = 0f, y = available.y)
+                        }
+                        if (requestedPx > allowedPx) {
+                            val consumedPx = requestedPx - allowedPx
+                            return Offset(x = 0f, y = -consumedPx)
+                        }
+                    }
+                }
+                if (
                     lockUserScrollDuringBall &&
                     guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
@@ -3142,21 +3172,6 @@ fun ChatScreen() {
                     val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
                     if (consumePx > 0f) {
                         streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
-                        return Offset(x = 0f, y = available.y)
-                    }
-                }
-                if (
-                    userDetachedFromBottom &&
-                    guardedStreamBottomSpacerPx > 0 &&
-                    available.y < 0f
-                ) {
-                    val worklineBottom = streamingWorklineBottomPx
-                    val contentBottom = currentStreamingMeasuredBottomPx()
-                    val nearReturnLine =
-                        worklineBottom > 0 &&
-                            contentBottom > 0 &&
-                            contentBottom >= (worklineBottom - bottomPositionTolerancePx)
-                    if (!nearReturnLine) {
                         return Offset(x = 0f, y = available.y)
                     }
                 }
@@ -3186,17 +3201,13 @@ fun ChatScreen() {
                     return Velocity.Zero
                 }
                 if (
-                    userDetachedFromBottom &&
+                    isStreaming &&
+                    hasStreamingItem &&
                     guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
-                    val worklineBottom = streamingWorklineBottomPx
-                    val contentBottom = currentStreamingMeasuredBottomPx()
-                    val nearReturnLine =
-                        worklineBottom > 0 &&
-                            contentBottom > 0 &&
-                            contentBottom >= (worklineBottom - bottomPositionTolerancePx)
-                    if (!nearReturnLine) {
+                    val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
+                    if (distanceToSpacer != Int.MAX_VALUE) {
                         return available
                     }
                 }
@@ -4162,27 +4173,6 @@ fun ChatScreen() {
                 currentIndex < previousIndex ||
                     (currentIndex == previousIndex && currentOffset < previousOffset)
             val atFollowBoundary = isAtStreamingFollowBoundary()
-            if (
-                isStreaming &&
-                hasStreamingItem &&
-                scrollInProgress &&
-                movedTowardBottom &&
-                guardedStreamBottomSpacerPx > 0 &&
-                !atFollowBoundary
-            ) {
-                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-                programmaticScroll = true
-                try {
-                    listState.scrollToItem(previousIndex, previousOffset)
-                } finally {
-                    programmaticScroll = false
-                    lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-                }
-                autoScrollMode = AutoScrollMode.AnchorUser
-                previousIndex = listState.firstVisibleItemIndex
-                previousOffset = listState.firstVisibleItemScrollOffset
-                return@collect
-            }
             if (atFollowBoundary && !scrollInProgress) {
                 applyStreamingScrollState(
                     detached = false,
