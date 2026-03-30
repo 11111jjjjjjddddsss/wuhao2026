@@ -4268,23 +4268,12 @@ fun ChatScreen() {
                 }
             } else {
                 val idleMode = resolveStreamingIdleMode()
-                if (
-                    idleMode == AutoScrollMode.StreamAnchorFollow &&
-                    !atFollowBoundary
-                ) {
-                    applyStreamingScrollState(
-                        detached = false,
-                        mode = AutoScrollMode.AnchorUser,
-                        hideJumpButton = true
-                    )
-                } else {
-                    scrollMode = when (idleMode) {
-                        AutoScrollMode.StreamAnchorFollow -> ScrollMode.AutoFollow
-                        AutoScrollMode.AnchorUser -> if (userDetachedFromBottom) ScrollMode.UserBrowsing else ScrollMode.Idle
-                        AutoScrollMode.Idle -> ScrollMode.Idle
-                    }
-                    autoScrollMode = idleMode
+                scrollMode = when (idleMode) {
+                    AutoScrollMode.StreamAnchorFollow -> ScrollMode.AutoFollow
+                    AutoScrollMode.AnchorUser -> if (userDetachedFromBottom) ScrollMode.UserBrowsing else ScrollMode.Idle
+                    AutoScrollMode.Idle -> ScrollMode.Idle
                 }
+                autoScrollMode = idleMode
             }
             previousIndex = currentIndex
             previousOffset = currentOffset
