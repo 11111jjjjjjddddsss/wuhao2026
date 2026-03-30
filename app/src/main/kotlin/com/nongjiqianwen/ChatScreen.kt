@@ -3473,7 +3473,7 @@ fun ChatScreen() {
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 (
                     !isStreaming ||
-                        scrollMode == ScrollMode.UserBrowsing ||
+                        userDetachedFromBottom ||
                         scrollMode == ScrollMode.Returning
                     ) &&
                 !atFollowBoundary
@@ -4280,7 +4280,7 @@ fun ChatScreen() {
                 } else {
                     scrollMode = when (idleMode) {
                         AutoScrollMode.StreamAnchorFollow -> ScrollMode.AutoFollow
-                        AutoScrollMode.AnchorUser -> ScrollMode.Returning
+                        AutoScrollMode.AnchorUser -> if (userDetachedFromBottom) ScrollMode.UserBrowsing else ScrollMode.Idle
                         AutoScrollMode.Idle -> ScrollMode.Idle
                     }
                     autoScrollMode = idleMode
