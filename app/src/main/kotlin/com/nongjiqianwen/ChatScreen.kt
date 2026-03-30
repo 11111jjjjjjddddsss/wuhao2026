@@ -5367,31 +5367,6 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        scrollMode,
-        streamingMessageContent.length,
-        streamTick,
-        listState.isScrollInProgress,
-        userInteracting
-    ) {
-        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
-        if (streamingMessageContent.isBlank()) return@LaunchedEffect
-        if (userInteracting || listState.isScrollInProgress) return@LaunchedEffect
-        when (scrollMode) {
-            ScrollMode.Idle -> {
-                scrollMode = ScrollMode.AutoFollow
-            }
-            ScrollMode.Returning -> {
-                if (isAtStreamingFollowBoundary()) {
-                    scrollMode = ScrollMode.AutoFollow
-                }
-            }
-            else -> Unit
-        }
-    }
-
-    LaunchedEffect(
         hasStartedConversation,
         messages.size,
         isStreaming,
