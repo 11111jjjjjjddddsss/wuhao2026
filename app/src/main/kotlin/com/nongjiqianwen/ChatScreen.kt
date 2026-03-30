@@ -3123,7 +3123,7 @@ fun ChatScreen() {
                     isStreaming &&
                     hasStreamingItem &&
                     autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
-                    available.y > 0f
+                    available.y != 0f
                 ) {
                     pendingResumeAutoFollow = false
                     userDetachedFromBottom = true
@@ -3173,7 +3173,7 @@ fun ChatScreen() {
                     isStreaming &&
                     hasStreamingItem &&
                     autoScrollMode == AutoScrollMode.StreamAnchorFollow &&
-                    available.y > 0f
+                    available.y != 0f
                 ) {
                     pendingResumeAutoFollow = false
                     userDetachedFromBottom = true
