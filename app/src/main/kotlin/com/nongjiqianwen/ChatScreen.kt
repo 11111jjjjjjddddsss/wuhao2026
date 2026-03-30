@@ -3452,7 +3452,7 @@ fun ChatScreen() {
         atBottom,
         isStreaming,
         hasStreamingItem,
-        userDetachedFromBottom,
+        scrollMode,
         streamingContentBottomPx,
         streamingWorklineBottomPx,
         messages.size,
@@ -3471,7 +3471,11 @@ fun ChatScreen() {
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
-                (!isStreaming || userDetachedFromBottom) &&
+                (
+                    !isStreaming ||
+                        scrollMode == ScrollMode.UserBrowsing ||
+                        scrollMode == ScrollMode.Returning
+                    ) &&
                 !atFollowBoundary
         }
     }
@@ -4195,6 +4199,9 @@ fun ChatScreen() {
                     mode = AutoScrollMode.AnchorUser,
                     hideJumpButton = false
                 )
+            } else if (scrollMode == ScrollMode.UserBrowsing && !scrollInProgress) {
+                userDetachedFromBottom = true
+                autoScrollMode = AutoScrollMode.AnchorUser
             } else if (atFollowBoundary && !scrollInProgress) {
                 applyStreamingScrollState(
                     detached = false,
@@ -4774,7 +4781,7 @@ fun ChatScreen() {
                     minSendAnchorExtraBottomSpacePx
                 )
                 streamingBackgrounded = false
-                scrollMode = ScrollMode.Returning
+                scrollMode = ScrollMode.Idle
                 autoScrollMode = AutoScrollMode.AnchorUser
                 userInteracting = false
                 sendTick++
@@ -5338,14 +5345,14 @@ fun ChatScreen() {
 
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
-        scrollMode = ScrollMode.Returning
+        scrollMode = ScrollMode.Idle
         autoScrollMode = AutoScrollMode.AnchorUser
         userInteracting = false
         scrollAfterSendAnchor()
         scrollMode = if (isStreaming && streamingMessageContent.isNotBlank()) {
             ScrollMode.AutoFollow
         } else {
-            ScrollMode.Returning
+            ScrollMode.Idle
         }
         autoScrollMode = if (isStreaming && streamingMessageContent.isNotBlank()) {
             AutoScrollMode.StreamAnchorFollow
