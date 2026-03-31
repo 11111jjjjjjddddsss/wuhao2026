@@ -3280,21 +3280,7 @@ fun ChatScreen() {
     fun isStreamingReadyForAutoFollow(): Boolean {
         return isStreaming &&
             hasStreamingItem &&
-            isStreamingMessageVisibleInViewport() &&
-            isAtStreamingFollowBoundary()
-    }
-    fun resolveStreamingIdleMode(): AutoScrollMode {
-        return if (
-            isStreaming &&
-            hasStreamingItem &&
-            streamingMessageContent.isNotBlank()
-        ) {
-            AutoScrollMode.StreamAnchorFollow
-        } else if (isStreaming && hasStreamingItem) {
-            AutoScrollMode.AnchorUser
-        } else {
-            AutoScrollMode.Idle
-        }
+            isStreamingMessageVisibleInViewport()
     }
     fun applyStreamingScrollState(
         detached: Boolean,
@@ -3496,6 +3482,15 @@ fun ChatScreen() {
                     }
                     ) &&
                 (!isStreaming || !atBottom)
+        }
+    }
+    val effectiveJumpButtonVisible by remember(isStreaming, shouldOfferJumpButton, jumpButtonVisible) {
+        derivedStateOf {
+            if (isStreaming) {
+                shouldOfferJumpButton
+            } else {
+                jumpButtonVisible
+            }
         }
     }
     LaunchedEffect(
@@ -4265,7 +4260,6 @@ fun ChatScreen() {
 
     LaunchedEffect(shouldOfferJumpButton, listState.isScrollInProgress, programmaticScroll) {
         if (isStreaming) {
-            jumpButtonVisible = shouldOfferJumpButton
             return@LaunchedEffect
         }
         if (programmaticScroll || listState.isScrollInProgress) {
@@ -6067,7 +6061,7 @@ fun ChatScreen() {
                 )
             }
 
-            if (jumpButtonVisible && shouldRevealMessageList) {
+            if (effectiveJumpButtonVisible && shouldRevealMessageList) {
                 Surface(
                     onClick = { jumpToBottom() },
                     shape = CircleShape,
