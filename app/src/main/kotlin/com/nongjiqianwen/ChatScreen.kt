@@ -4291,6 +4291,7 @@ fun ChatScreen() {
     LaunchedEffect(
         isStreaming,
         hasStreamingItem,
+        scrollMode,
         listState.isScrollInProgress,
         programmaticScroll,
         streamingContentBottomPx,
@@ -4298,6 +4299,7 @@ fun ChatScreen() {
         composerTopInViewportPx
     ) {
         if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        if (scrollMode == ScrollMode.Idle) return@LaunchedEffect
         if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
         val blankExposurePx = currentStreamingBlankExposurePx()
         if (blankExposurePx <= 0) return@LaunchedEffect
