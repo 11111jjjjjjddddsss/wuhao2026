@@ -3290,7 +3290,8 @@ fun ChatScreen() {
     fun isStreamingReadyForAutoFollow(): Boolean {
         return isStreaming &&
             hasStreamingItem &&
-            isStreamingMessageVisibleInViewport()
+            isStreamingMessageVisibleInViewport() &&
+            currentStreamingBlankExposurePx() <= bottomPositionTolerancePx
     }
     fun applyStreamingScrollState(
         detached: Boolean,
