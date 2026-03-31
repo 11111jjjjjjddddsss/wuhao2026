@@ -2933,6 +2933,7 @@ fun ChatScreen() {
     var streamingAnchorTopPx by remember { mutableIntStateOf(-1) }
     var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
     var streamBottomFollowActive by remember { mutableStateOf(false) }
+    var browsingEnteredAtMs by remember { mutableStateOf(0L) }
     var initialBottomSnapDone by remember(chatScopeId) { mutableStateOf(false) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
@@ -3117,7 +3118,7 @@ fun ChatScreen() {
         val contentIndex = spacerIndex - 1
         if (contentIndex < 0) return 0
         val info = listState.layoutInfo
-        val contentItem = info.visibleItemsInfo.lastOrNull { it.index == contentIndex } ?: return Int.MAX_VALUE
+        val contentItem = info.visibleItemsInfo.lastOrNull { it.index == contentIndex } ?: return 0
         return (contentItem.offset + contentItem.size - info.viewportEndOffset).coerceAtLeast(0)
     }
     fun isStreamingMessageVisibleInViewport(): Boolean {
@@ -3151,6 +3152,9 @@ fun ChatScreen() {
                 ) {
                     userInteracting = true
                     streamBottomFollowActive = false
+                    if (scrollMode != ScrollMode.UserBrowsing) {
+                        browsingEnteredAtMs = SystemClock.uptimeMillis()
+                    }
                     scrollMode = ScrollMode.UserBrowsing
                     return Offset.Zero
                 }
@@ -3161,13 +3165,11 @@ fun ChatScreen() {
                     available.y < 0f
                 ) {
                     val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
-                    if (distanceToSpacer != Int.MAX_VALUE) {
-                        val requestedPx = -available.y
-                        val safeDistancePx = distanceToSpacer.toFloat().coerceAtLeast(0f)
-                        if (requestedPx > safeDistancePx) {
-                            val consumedPx = requestedPx - safeDistancePx
-                            return Offset(x = 0f, y = -consumedPx)
-                        }
+                    val requestedPx = -available.y
+                    val safeDistancePx = distanceToSpacer.toFloat().coerceAtLeast(0f)
+                    if (requestedPx > safeDistancePx) {
+                        val consumedPx = requestedPx - safeDistancePx
+                        return Offset(x = 0f, y = -consumedPx)
                     }
                 }
                 if (
@@ -3194,6 +3196,9 @@ fun ChatScreen() {
                 ) {
                     userInteracting = true
                     streamBottomFollowActive = false
+                    if (scrollMode != ScrollMode.UserBrowsing) {
+                        browsingEnteredAtMs = SystemClock.uptimeMillis()
+                    }
                     scrollMode = ScrollMode.UserBrowsing
                     if (available.y < 0f && guardedStreamBottomSpacerPx > 0) {
                         return available
@@ -3493,6 +3498,7 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         scrollMode,
+        visibleStreamingBottomBlankPx,
         streamingContentBottomPx,
         streamingWorklineBottomPx,
         messages.size,
@@ -3504,6 +3510,7 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             val atFollowBoundary = isAtStreamingFollowBoundary()
+            val bottomBlankExposed = visibleStreamingBottomBlankPx > 0
             startupLayoutReady &&
                 !pendingStreamSpacerRelease &&
                 !pendingFinalBottomSnap &&
@@ -3518,6 +3525,7 @@ fun ChatScreen() {
                         true
                     }
                     ) &&
+                !bottomBlankExposed &&
                 !atFollowBoundary
         }
     }
@@ -4238,12 +4246,18 @@ fun ChatScreen() {
             if (isStreaming && hasStreamingItem) {
                 when {
                     scrollInProgress && (movedTowardTop || movedTowardBottom) -> {
+                        if (scrollMode != ScrollMode.UserBrowsing) {
+                            browsingEnteredAtMs = SystemClock.uptimeMillis()
+                        }
                         scrollMode = ScrollMode.UserBrowsing
                     }
 
                     scrollMode == ScrollMode.UserBrowsing -> {
+                        val browsingSettledLongEnough =
+                            (SystemClock.uptimeMillis() - browsingEnteredAtMs) >= 1500L
                         val canResumeAutoFollow =
                             !scrollInProgress &&
+                                browsingSettledLongEnough &&
                                 isStreamingReadyForAutoFollow()
                         if (canResumeAutoFollow) {
                             scrollMode = ScrollMode.AutoFollow
