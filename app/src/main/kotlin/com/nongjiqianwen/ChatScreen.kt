@@ -286,6 +286,7 @@ private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
 private const val CHAT_BOTTOM_VIEWPORT_KEY_PREFIX = "bottom_viewport_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
+private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 320L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
@@ -3517,11 +3518,24 @@ fun ChatScreen() {
         }
     }
     val effectiveJumpButtonVisible by remember(
+        jumpButtonVisible,
         showStreamingJumpButton,
         showStaticJumpButton
     ) {
         derivedStateOf {
-            showStreamingJumpButton || showStaticJumpButton
+            jumpButtonVisible && (showStreamingJumpButton || showStaticJumpButton)
+        }
+    }
+    LaunchedEffect(showStreamingJumpButton, showStaticJumpButton) {
+        val shouldOfferJumpButton = showStreamingJumpButton || showStaticJumpButton
+        if (!shouldOfferJumpButton) {
+            jumpButtonVisible = false
+            return@LaunchedEffect
+        }
+        jumpButtonVisible = true
+        delay(JUMP_BUTTON_AUTO_HIDE_MS)
+        if (showStreamingJumpButton || showStaticJumpButton) {
+            jumpButtonVisible = false
         }
     }
     LaunchedEffect(
