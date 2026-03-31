@@ -286,7 +286,6 @@ private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
 private const val CHAT_BOTTOM_VIEWPORT_KEY_PREFIX = "bottom_viewport_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
-private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 320L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
@@ -332,6 +331,7 @@ private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
 private val MESSAGE_ACTION_MENU_SWITCH_THRESHOLD = 28.dp
 private val JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE = 32.dp
+private val STATIC_JUMP_SHOW_THRESHOLD = 96.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -3101,24 +3101,30 @@ fun ChatScreen() {
     fun currentStreamingMeasuredBottomPx(): Int {
         if (streamingContentBottomPx > 0) return streamingContentBottomPx
         val streamingItemIndex = messages.size - 1
+        if (streamingItemIndex < 0) return -1
         val info = listState.layoutInfo
-        if (streamingItemIndex >= 0) {
-            val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
-            if (streamingLayoutItem != null) {
-                return streamingLayoutItem.offset + streamingLayoutItem.size
-            }
-        }
-        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return -1
-        return lastVisible.offset + lastVisible.size
+        val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
+            ?: return -1
+        return streamingLayoutItem.offset + streamingLayoutItem.size
+    }
+    fun currentStreamingLegalBottomPx(): Int {
+        val worklineBottom = streamingWorklineBottomPx
+        if (worklineBottom > 0) return worklineBottom
+        if (composerTopInViewportPx <= 0) return -1
+        return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+    }
+    fun currentStreamingBlankExposurePx(): Int {
+        val legalBottom = currentStreamingLegalBottomPx()
+        val contentBottom = currentStreamingMeasuredBottomPx()
+        if (legalBottom <= 0 || contentBottom <= 0) return 0
+        return (legalBottom - contentBottom).coerceAtLeast(0)
     }
     fun distanceToStreamAnchorSpacerRevealPx(): Int {
         if (!hasStreamAnchorSpacer || guardedStreamBottomSpacerPx <= 0) return Int.MAX_VALUE
-        val spacerIndex = messages.size
-        val contentIndex = spacerIndex - 1
-        if (contentIndex < 0) return 0
-        val info = listState.layoutInfo
-        val contentItem = info.visibleItemsInfo.lastOrNull { it.index == contentIndex } ?: return Int.MAX_VALUE
-        return (info.viewportEndOffset - (contentItem.offset + contentItem.size)).coerceAtLeast(0)
+        val legalBottom = currentStreamingLegalBottomPx()
+        val contentBottom = currentStreamingMeasuredBottomPx()
+        if (legalBottom <= 0 || contentBottom <= 0) return Int.MAX_VALUE
+        return (contentBottom - legalBottom).coerceAtLeast(0)
     }
     fun isStreamingMessageVisibleInViewport(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
@@ -3163,6 +3169,9 @@ fun ChatScreen() {
                     available.y < 0f
                 ) {
                     val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
+                    if (distanceToSpacer == Int.MAX_VALUE) {
+                        return Offset.Zero
+                    }
                     val requestedPx = -available.y
                     val safeDistancePx = distanceToSpacer.toFloat().coerceAtLeast(0f)
                     if (requestedPx > safeDistancePx) {
@@ -3209,6 +3218,7 @@ fun ChatScreen() {
                     val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
                     val shouldClampBottomFling =
                         when {
+                            currentStreamingBlankExposurePx() > 0 -> true
                             distanceToSpacer == Int.MAX_VALUE -> false
                             distanceToSpacer < 150 -> true
                             else -> false
@@ -3452,10 +3462,10 @@ fun ChatScreen() {
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
+    val staticJumpShowThresholdPx = with(density) { STATIC_JUMP_SHOW_THRESHOLD.roundToPx() }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
-    val shouldOfferJumpButton by remember(
+    val showStreamingJumpButton by remember(
         startupLayoutReady,
-        atBottom,
         isStreaming,
         hasStreamingItem,
         scrollMode,
@@ -3474,23 +3484,43 @@ fun ChatScreen() {
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
                 (messages.isNotEmpty() || hasStreamingItem) &&
-                (
-                    if (isStreaming) {
-                        scrollMode == ScrollMode.UserBrowsing && !isStreamingMessageVisibleInViewport()
-                    } else {
-                        true
-                    }
-                    ) &&
-                (!isStreaming || !atBottom)
+                isStreaming &&
+                scrollMode == ScrollMode.UserBrowsing &&
+                currentStreamingBlankExposurePx() == 0 &&
+                !isStreamingMessageVisibleInViewport()
         }
     }
-    val effectiveJumpButtonVisible by remember(isStreaming, shouldOfferJumpButton, jumpButtonVisible) {
+    val showStaticJumpButton by remember(
+        startupLayoutReady,
+        isStreaming,
+        pendingFinalBottomSnap,
+        pendingStreamSpacerRelease,
+        keyboardVisibleForJumpButton,
+        suppressJumpButtonForImeTransition,
+        suppressJumpButtonForLifecycleResume,
+        messages.size,
+        staticJumpShowThresholdPx
+    ) {
         derivedStateOf {
-            if (isStreaming) {
-                shouldOfferJumpButton
-            } else {
-                jumpButtonVisible
-            }
+            startupLayoutReady &&
+                !isStreaming &&
+                !pendingStreamSpacerRelease &&
+                !pendingFinalBottomSnap &&
+                !keyboardVisibleForJumpButton &&
+                !suppressJumpButtonForImeTransition &&
+                !suppressJumpButtonForLifecycleResume &&
+                messages.isNotEmpty() &&
+                currentBottomOverflowPx().let { overflow ->
+                    overflow != Int.MAX_VALUE && overflow > staticJumpShowThresholdPx
+                }
+        }
+    }
+    val effectiveJumpButtonVisible by remember(
+        showStreamingJumpButton,
+        showStaticJumpButton
+    ) {
+        derivedStateOf {
+            showStreamingJumpButton || showStaticJumpButton
         }
     }
     LaunchedEffect(
@@ -4258,26 +4288,28 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(shouldOfferJumpButton, listState.isScrollInProgress, programmaticScroll) {
-        if (isStreaming) {
-            return@LaunchedEffect
-        }
-        if (programmaticScroll || listState.isScrollInProgress) {
-            jumpButtonVisible = false
-            return@LaunchedEffect
-        }
-        if (shouldOfferJumpButton) {
-            jumpButtonVisible = true
-            delay(JUMP_BUTTON_AUTO_HIDE_MS)
-            if (!listState.isScrollInProgress && !programmaticScroll && shouldOfferJumpButton) {
-                jumpButtonVisible = false
-            }
-            return@LaunchedEffect
-        }
-        if (!jumpButtonVisible) return@LaunchedEffect
-        delay(JUMP_BUTTON_AUTO_HIDE_MS)
-        if (!listState.isScrollInProgress && !programmaticScroll && !shouldOfferJumpButton) {
-            jumpButtonVisible = false
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        listState.isScrollInProgress,
+        programmaticScroll,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        composerTopInViewportPx
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
+        val blankExposurePx = currentStreamingBlankExposurePx()
+        if (blankExposurePx <= 0) return@LaunchedEffect
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        programmaticScroll = true
+        try {
+            withFrameNanos { }
+            listState.scrollBy((-blankExposurePx).toFloat())
+            withFrameNanos { }
+        } finally {
+            programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         }
     }
 
@@ -4335,17 +4367,11 @@ fun ChatScreen() {
 
     fun currentStreamingOverflowDelta(): Int {
         val worklineBottom = streamingWorklineBottomPx
-        val info = listState.layoutInfo
-        val lastIndex = info.totalItemsCount - 1
-        if (lastIndex < 0) return 0
         val visibleBottom = worklineBottom.takeIf { it > 0 }
-            ?: (info.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
+            ?: (listState.layoutInfo.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
         val contentBottom = currentStreamingVisualBottomPx()
-        if (contentBottom > 0) {
-            return (contentBottom - visibleBottom).coerceAtLeast(0)
-        }
-        val lastVisible = info.visibleItemsInfo.lastOrNull() ?: return 0
-        return (lastVisible.offset + lastVisible.size - visibleBottom).coerceAtLeast(0)
+        if (contentBottom <= 0) return 0
+        return (contentBottom - visibleBottom).coerceAtLeast(0)
     }
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
