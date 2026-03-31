@@ -3118,7 +3118,7 @@ fun ChatScreen() {
         val contentIndex = spacerIndex - 1
         if (contentIndex < 0) return 0
         val info = listState.layoutInfo
-        val contentItem = info.visibleItemsInfo.lastOrNull { it.index == contentIndex } ?: return 0
+        val contentItem = info.visibleItemsInfo.lastOrNull { it.index == contentIndex } ?: return Int.MAX_VALUE
         return (contentItem.offset + contentItem.size - info.viewportEndOffset).coerceAtLeast(0)
     }
     fun isStreamingMessageVisibleInViewport(): Boolean {
