@@ -3169,6 +3169,9 @@ fun ChatScreen() {
                     guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
+                    if (currentStreamingBlankExposurePx() > 0) {
+                        return available
+                    }
                     val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
                     if (distanceToSpacer == Int.MAX_VALUE) {
                         return Offset.Zero
@@ -3526,7 +3529,12 @@ fun ChatScreen() {
             jumpButtonVisible && (showStreamingJumpButton || showStaticJumpButton)
         }
     }
-    LaunchedEffect(showStreamingJumpButton, showStaticJumpButton) {
+    LaunchedEffect(
+        showStreamingJumpButton,
+        showStaticJumpButton,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset
+    ) {
         val shouldOfferJumpButton = showStreamingJumpButton || showStaticJumpButton
         if (!shouldOfferJumpButton) {
             jumpButtonVisible = false
