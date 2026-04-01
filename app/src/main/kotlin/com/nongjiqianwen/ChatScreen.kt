@@ -3164,7 +3164,6 @@ fun ChatScreen() {
                     userInteracting = true
                     streamBottomFollowActive = false
                     scrollMode = ScrollMode.UserBrowsing
-                    return Offset.Zero
                 }
                 if (
                     isStreaming &&
@@ -3200,10 +3199,6 @@ fun ChatScreen() {
                     userInteracting = true
                     streamBottomFollowActive = false
                     scrollMode = ScrollMode.UserBrowsing
-                    if (available.y < 0f && guardedStreamBottomSpacerPx > 0) {
-                        return available
-                    }
-                    return Velocity.Zero
                 }
                 if (
                     isStreaming &&
@@ -3229,8 +3224,8 @@ fun ChatScreen() {
                         }
                     val shouldClampBottomFling =
                         when {
-                            currentStreamingBlankExposurePx() > 0 -> true
                             remainingToBoundaryPx == Int.MAX_VALUE -> false
+                            remainingToBoundaryPx <= 0 -> true
                             remainingToBoundaryPx < 150 -> true
                             else -> false
                         }
