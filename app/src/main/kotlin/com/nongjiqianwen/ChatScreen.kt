@@ -2924,6 +2924,7 @@ fun ChatScreen() {
     var messageViewportHeightPx by remember { mutableIntStateOf(0) }
     var streamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var initialStreamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
+    var streamAnchorBlankConsumed by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var chatRootLeftPx by remember { mutableStateOf(0f) }
     var chatRootTopPx by remember { mutableStateOf(0f) }
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
@@ -3166,9 +3167,11 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    streamingMessageContent.isNotBlank() &&
                     available.y < 0f
                 ) {
+                    if (!streamAnchorBlankConsumed) {
+                        return available
+                    }
                     val legalBottom = currentStreamingLegalBottomPx()
                     val contentBottom = currentStreamingMeasuredBottomPx()
                     if (legalBottom > 0 && contentBottom > 0) {
@@ -3213,9 +3216,11 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    streamingMessageContent.isNotBlank() &&
                     available.y < 0f
                 ) {
+                    if (!streamAnchorBlankConsumed) {
+                        return available
+                    }
                     val legalBottom = currentStreamingLegalBottomPx()
                     val contentBottom = currentStreamingMeasuredBottomPx()
                     val remainingToBoundaryPx =
@@ -3298,6 +3303,7 @@ fun ChatScreen() {
     fun isStreamingReadyForAutoFollow(): Boolean {
         return isStreaming &&
             hasStreamingItem &&
+            streamAnchorBlankConsumed &&
             isStreamingMessageVisibleInViewport() &&
             currentStreamingBlankExposurePx() <= bottomPositionTolerancePx
     }
@@ -4319,6 +4325,7 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         scrollMode,
+        streamAnchorBlankConsumed,
         listState.isScrollInProgress,
         programmaticScroll,
         streamingContentBottomPx,
@@ -4328,6 +4335,7 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
         if (scrollMode == ScrollMode.Idle) return@LaunchedEffect
         if (scrollMode != ScrollMode.AutoFollow) return@LaunchedEffect
+        if (!streamAnchorBlankConsumed) return@LaunchedEffect
         if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
         val blankExposurePx = currentStreamingBlankExposurePx()
         if (blankExposurePx <= finalBottomSnapTolerancePx) return@LaunchedEffect
@@ -5369,10 +5377,35 @@ fun ChatScreen() {
 
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
+        streamAnchorBlankConsumed = false
         scrollMode = ScrollMode.Idle
         userInteracting = false
         scrollAfterSendAnchor()
         scrollMode = ScrollMode.Idle
+    }
+
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamTick,
+        streamingMessageContent.length,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        composerTopInViewportPx
+    ) {
+        if (!isStreaming) {
+            streamAnchorBlankConsumed = false
+            return@LaunchedEffect
+        }
+        if (streamAnchorBlankConsumed) return@LaunchedEffect
+        if (!hasStreamingItem) return@LaunchedEffect
+        if (streamingMessageContent.isBlank()) return@LaunchedEffect
+        val legalBottom = currentStreamingLegalBottomPx()
+        val contentBottom = currentStreamingMeasuredBottomPx()
+        if (legalBottom <= 0 || contentBottom <= 0) return@LaunchedEffect
+        if ((legalBottom - contentBottom).coerceAtLeast(0) <= bottomPositionTolerancePx) {
+            streamAnchorBlankConsumed = true
+        }
     }
 
     LaunchedEffect(
