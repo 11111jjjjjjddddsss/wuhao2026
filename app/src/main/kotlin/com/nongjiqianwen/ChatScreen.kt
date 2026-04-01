@@ -3125,7 +3125,7 @@ fun ChatScreen() {
         val legalBottom = currentStreamingLegalBottomPx()
         val contentBottom = currentStreamingMeasuredBottomPx()
         if (legalBottom <= 0 || contentBottom <= 0) return Int.MAX_VALUE
-        return (legalBottom - contentBottom).coerceAtLeast(0)
+        return (contentBottom - legalBottom).coerceAtLeast(0)
     }
     fun isStreamingMessageVisibleInViewport(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
@@ -3223,7 +3223,7 @@ fun ChatScreen() {
                     val contentBottom = currentStreamingMeasuredBottomPx()
                     val distanceToSpacer =
                         if (legalBottom > 0 && contentBottom > 0) {
-                            (legalBottom - contentBottom).coerceAtLeast(0)
+                            (contentBottom - legalBottom).coerceAtLeast(0)
                         } else {
                             Int.MAX_VALUE
                         }
