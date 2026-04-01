@@ -3083,13 +3083,6 @@ fun ChatScreen() {
         if (legalBottom <= 0 || contentBottom <= 0) return 0
         return (legalBottom - contentBottom).coerceAtLeast(0)
     }
-    fun distanceToStreamAnchorSpacerRevealPx(): Int {
-        if (!hasStreamAnchorSpacer || guardedStreamBottomSpacerPx <= 0) return Int.MAX_VALUE
-        val legalBottom = currentStreamingLegalBottomPx()
-        val contentBottom = currentStreamingMeasuredBottomPx()
-        if (legalBottom <= 0 || contentBottom <= 0) return Int.MAX_VALUE
-        return (contentBottom - legalBottom).coerceAtLeast(0)
-    }
     fun isStreamingMessageVisibleInViewport(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
         val inputBarTopInRoot =
@@ -3127,9 +3120,6 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
-                    if (!streamAnchorBlankConsumed) {
-                        return available
-                    }
                     val contentBottom = currentStreamingMeasuredBottomPx()
                     val activeBoundaryBottom = currentStreamingLegalBottomPx()
                     if (activeBoundaryBottom > 0 && contentBottom > 0) {
@@ -3160,18 +3150,11 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
-                    if (!streamAnchorBlankConsumed) {
-                        return available
-                    }
                     val contentBottom = currentStreamingMeasuredBottomPx()
+                    val activeBoundaryBottom = currentStreamingLegalBottomPx()
                     val remainingToBoundaryPx =
-                        if (contentBottom > 0) {
-                            val activeBoundaryBottom = currentStreamingLegalBottomPx()
-                            if (activeBoundaryBottom > 0) {
-                                (activeBoundaryBottom - contentBottom).coerceAtLeast(0)
-                            } else {
-                                Int.MAX_VALUE
-                            }
+                        if (contentBottom > 0 && activeBoundaryBottom > 0) {
+                            (activeBoundaryBottom - contentBottom).coerceAtLeast(0)
                         } else {
                             Int.MAX_VALUE
                         }
