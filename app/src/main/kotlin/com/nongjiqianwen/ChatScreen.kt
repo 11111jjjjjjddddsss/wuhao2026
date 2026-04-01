@@ -2939,6 +2939,7 @@ fun ChatScreen() {
     var initialBottomSnapDone by remember(chatScopeId) { mutableStateOf(false) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var jumpButtonVisible by remember { mutableStateOf(false) }
+    var jumpButtonPulseVisible by remember { mutableStateOf(false) }
     var userDetachedFromBottom by remember { mutableStateOf(false) }
     var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
@@ -3186,18 +3187,6 @@ fun ChatScreen() {
                         }
                     }
                 }
-                if (
-                    lockUserScrollDuringBall &&
-                    guardedStreamBottomSpacerPx > 0 &&
-                    available.y < 0f
-                ) {
-                    val dragPx = -available.y
-                    val consumePx = dragPx.coerceAtMost(streamAnchorReservePx.toFloat())
-                    if (consumePx > 0f) {
-                        streamAnchorReservePx = consumeStreamingBottomSpacer(streamAnchorReservePx, consumePx)
-                        return Offset(x = 0f, y = available.y)
-                    }
-                }
                 return Offset.Zero
             }
 
@@ -3254,23 +3243,11 @@ fun ChatScreen() {
         }
     }
     val enableStreamingScrollLock by remember(
-        lockUserScrollDuringBall,
-        lockBottomBlankDuringStreaming,
         isStreaming,
-        hasStreamingItem,
-        scrollMode,
-        guardedStreamBottomSpacerPx
+        hasStreamingItem
     ) {
         derivedStateOf {
-            lockUserScrollDuringBall ||
-                lockBottomBlankDuringStreaming ||
-                (isStreaming && hasStreamingItem && scrollMode == ScrollMode.AutoFollow) ||
-                (
-                    isStreaming &&
-                        hasStreamingItem &&
-                        scrollMode == ScrollMode.UserBrowsing &&
-                        guardedStreamBottomSpacerPx > 0
-                    )
+            isStreaming && hasStreamingItem
         }
     }
     fun currentBottomOverflowPx(): Int {
@@ -3528,7 +3505,6 @@ fun ChatScreen() {
                 (messages.isNotEmpty() || hasStreamingItem) &&
                 isStreaming &&
                 scrollMode == ScrollMode.UserBrowsing &&
-                currentStreamingBlankExposurePx() == 0 &&
                 !isStreamingMessageVisibleInViewport()
         }
     }
@@ -3558,12 +3534,12 @@ fun ChatScreen() {
         }
     }
     val effectiveJumpButtonVisible by remember(
-        jumpButtonVisible,
+        jumpButtonPulseVisible,
         showStreamingJumpButton,
         showStaticJumpButton
     ) {
         derivedStateOf {
-            jumpButtonVisible && (showStreamingJumpButton || showStaticJumpButton)
+            jumpButtonPulseVisible && (showStreamingJumpButton || showStaticJumpButton)
         }
     }
     LaunchedEffect(
@@ -3574,13 +3550,13 @@ fun ChatScreen() {
     ) {
         val shouldOfferJumpButton = showStreamingJumpButton || showStaticJumpButton
         if (!shouldOfferJumpButton) {
-            jumpButtonVisible = false
+            jumpButtonPulseVisible = false
             return@LaunchedEffect
         }
-        jumpButtonVisible = true
+        jumpButtonPulseVisible = true
         delay(JUMP_BUTTON_AUTO_HIDE_MS)
         if (showStreamingJumpButton || showStaticJumpButton) {
-            jumpButtonVisible = false
+            jumpButtonPulseVisible = false
         }
     }
     LaunchedEffect(
@@ -5513,6 +5489,7 @@ fun ChatScreen() {
                 ScrollMode.Idle
             }
             userInteracting = false
+            jumpButtonPulseVisible = false
             jumpButtonVisible = false
             if (jumpingIntoStreaming) {
                 scrollToStreamingFollowBoundary()
