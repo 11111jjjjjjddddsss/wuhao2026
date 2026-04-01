@@ -3102,12 +3102,12 @@ fun ChatScreen() {
         }
     }
     fun currentStreamingMeasuredBottomPx(): Int {
-        if (streamingContentBottomPx > 0) return streamingContentBottomPx
         val streamingItemIndex = messages.size - 1
         if (streamingItemIndex < 0) return -1
         val info = listState.layoutInfo
         val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
             ?: return -1
+        if (streamingContentBottomPx > 0) return streamingContentBottomPx
         return streamingLayoutItem.offset + streamingLayoutItem.size
     }
     fun currentStreamingLegalBottomPx(): Int {
@@ -3303,6 +3303,24 @@ fun ChatScreen() {
         if (contentBottom <= 0) return false
         return contentBottom >= (worklineBottom - bottomPositionTolerancePx)
     }
+
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageId,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        val streamingItemIndex = messages.size - 1
+        if (streamingItemIndex < 0) return@LaunchedEffect
+        val visible =
+            listState.layoutInfo.visibleItemsInfo.any { it.index == streamingItemIndex }
+        if (!visible && streamingContentBottomPx != -1) {
+            streamingContentBottomPx = -1
+        }
+    }
+
     fun isAtStreamingFollowBoundary(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
         if (streamingMessageContent.isBlank()) return true
