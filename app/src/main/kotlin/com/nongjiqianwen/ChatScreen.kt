@@ -3166,13 +3166,9 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    guardedStreamBottomSpacerPx > 0 &&
+                    streamingMessageContent.isNotBlank() &&
                     available.y < 0f
                 ) {
-                    val blankExposurePx = currentStreamingBlankExposurePx()
-                    if (blankExposurePx > 0) {
-                        return available
-                    }
                     val legalBottom = currentStreamingLegalBottomPx()
                     val contentBottom = currentStreamingMeasuredBottomPx()
                     if (legalBottom > 0 && contentBottom > 0) {
@@ -3217,26 +3213,22 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    guardedStreamBottomSpacerPx > 0 &&
+                    streamingMessageContent.isNotBlank() &&
                     available.y < 0f
                 ) {
-                    val blankExposurePx = currentStreamingBlankExposurePx()
-                    if (blankExposurePx > 0) {
-                        return available
-                    }
                     val legalBottom = currentStreamingLegalBottomPx()
                     val contentBottom = currentStreamingMeasuredBottomPx()
-                    val distanceToSpacer =
+                    val remainingToBoundaryPx =
                         if (legalBottom > 0 && contentBottom > 0) {
-                            (contentBottom - legalBottom).coerceAtLeast(0)
+                            (legalBottom - contentBottom).coerceAtLeast(0)
                         } else {
                             Int.MAX_VALUE
                         }
                     val shouldClampBottomFling =
                         when {
                             currentStreamingBlankExposurePx() > 0 -> true
-                            distanceToSpacer == Int.MAX_VALUE -> false
-                            distanceToSpacer < 150 -> true
+                            remainingToBoundaryPx == Int.MAX_VALUE -> false
+                            remainingToBoundaryPx < 150 -> true
                             else -> false
                         }
                     if (shouldClampBottomFling) {
@@ -4335,6 +4327,7 @@ fun ChatScreen() {
     ) {
         if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
         if (scrollMode == ScrollMode.Idle) return@LaunchedEffect
+        if (scrollMode != ScrollMode.AutoFollow) return@LaunchedEffect
         if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
         val blankExposurePx = currentStreamingBlankExposurePx()
         if (blankExposurePx <= finalBottomSnapTolerancePx) return@LaunchedEffect
