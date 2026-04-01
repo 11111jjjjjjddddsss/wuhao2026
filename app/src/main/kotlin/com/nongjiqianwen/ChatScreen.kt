@@ -2925,6 +2925,7 @@ fun ChatScreen() {
     var streamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var initialStreamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var streamAnchorBlankConsumed by rememberSaveable(chatScopeId) { mutableStateOf(false) }
+    var streamAnchorPhaseBoundaryBottomPx by rememberSaveable(chatScopeId) { mutableStateOf(-1) }
     var chatRootLeftPx by remember { mutableStateOf(0f) }
     var chatRootTopPx by remember { mutableStateOf(0f) }
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
@@ -3169,14 +3170,16 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
-                    if (!streamAnchorBlankConsumed) {
-                        return available
-                    }
-                    val legalBottom = currentStreamingLegalBottomPx()
                     val contentBottom = currentStreamingMeasuredBottomPx()
-                    if (legalBottom > 0 && contentBottom > 0) {
+                    val activeBoundaryBottom =
+                        if (!streamAnchorBlankConsumed) {
+                            streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 } ?: contentBottom
+                        } else {
+                            currentStreamingLegalBottomPx()
+                        }
+                    if (activeBoundaryBottom > 0 && contentBottom > 0) {
                         val projectedBottom = contentBottom - available.y
-                        val overflowPx = (projectedBottom - legalBottom).coerceAtLeast(0f)
+                        val overflowPx = (projectedBottom - activeBoundaryBottom).coerceAtLeast(0f)
                         if (overflowPx > 0f) {
                             val consumedPx = overflowPx.coerceAtMost(-available.y)
                             return Offset(x = 0f, y = -consumedPx)
@@ -3218,14 +3221,20 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
-                    if (!streamAnchorBlankConsumed) {
-                        return available
-                    }
-                    val legalBottom = currentStreamingLegalBottomPx()
                     val contentBottom = currentStreamingMeasuredBottomPx()
                     val remainingToBoundaryPx =
-                        if (legalBottom > 0 && contentBottom > 0) {
-                            (legalBottom - contentBottom).coerceAtLeast(0)
+                        if (contentBottom > 0) {
+                            val activeBoundaryBottom =
+                                if (!streamAnchorBlankConsumed) {
+                                    streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 } ?: contentBottom
+                                } else {
+                                    currentStreamingLegalBottomPx()
+                                }
+                            if (activeBoundaryBottom > 0) {
+                                (activeBoundaryBottom - contentBottom).coerceAtLeast(0)
+                            } else {
+                                Int.MAX_VALUE
+                            }
                         } else {
                             Int.MAX_VALUE
                         }
@@ -5378,6 +5387,7 @@ fun ChatScreen() {
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
         streamAnchorBlankConsumed = false
+        streamAnchorPhaseBoundaryBottomPx = -1
         scrollMode = ScrollMode.Idle
         userInteracting = false
         scrollAfterSendAnchor()
@@ -5391,10 +5401,14 @@ fun ChatScreen() {
         streamingMessageContent.length,
         streamingContentBottomPx,
         streamingWorklineBottomPx,
-        composerTopInViewportPx
+        composerTopInViewportPx,
+        userInteracting,
+        listState.isScrollInProgress,
+        programmaticScroll
     ) {
         if (!isStreaming) {
             streamAnchorBlankConsumed = false
+            streamAnchorPhaseBoundaryBottomPx = -1
             return@LaunchedEffect
         }
         if (streamAnchorBlankConsumed) return@LaunchedEffect
@@ -5403,8 +5417,13 @@ fun ChatScreen() {
         val legalBottom = currentStreamingLegalBottomPx()
         val contentBottom = currentStreamingMeasuredBottomPx()
         if (legalBottom <= 0 || contentBottom <= 0) return@LaunchedEffect
+        if (!userInteracting && !listState.isScrollInProgress && !programmaticScroll) {
+            streamAnchorPhaseBoundaryBottomPx =
+                maxOf(streamAnchorPhaseBoundaryBottomPx, contentBottom.coerceAtMost(legalBottom))
+        }
         if ((legalBottom - contentBottom).coerceAtLeast(0) <= bottomPositionTolerancePx) {
             streamAnchorBlankConsumed = true
+            streamAnchorPhaseBoundaryBottomPx = -1
         }
     }
 
