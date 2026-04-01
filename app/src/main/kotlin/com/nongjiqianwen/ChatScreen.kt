@@ -2925,7 +2925,6 @@ fun ChatScreen() {
     var streamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var initialStreamAnchorReservePx by rememberSaveable(chatScopeId) { mutableStateOf(0) }
     var streamAnchorBlankConsumed by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    var streamAnchorPhaseBoundaryBottomPx by rememberSaveable(chatScopeId) { mutableStateOf(-1) }
     var chatRootLeftPx by remember { mutableStateOf(0f) }
     var chatRootTopPx by remember { mutableStateOf(0f) }
     var messageViewportLeftPx by remember { mutableStateOf(0f) }
@@ -3036,46 +3035,7 @@ fun ChatScreen() {
             }
         }
     }
-    val visibleStreamingBottomBlankPx by remember(
-        isStreaming,
-        streamingMessageContent,
-        guardedStreamBottomSpacerPx,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx
-    ) {
-        derivedStateOf {
-            if (
-                !isStreaming ||
-                streamingMessageContent.isBlank() ||
-                guardedStreamBottomSpacerPx <= 0
-            ) {
-                return@derivedStateOf 0
-            }
-            if (streamingContentBottomPx <= 0 || streamingWorklineBottomPx <= 0) {
-                return@derivedStateOf 0
-            }
-            (streamingWorklineBottomPx - streamingContentBottomPx).coerceAtLeast(0)
-        }
-    }
     var lineRevealLocked by remember(chatScopeId) { mutableStateOf(false) }
-    val lockUserScrollDuringBall by remember(isStreaming, streamingMessageContent, guardedStreamBottomSpacerPx) {
-        derivedStateOf {
-            isStreaming &&
-                streamingMessageContent.isBlank() &&
-                guardedStreamBottomSpacerPx > 0
-        }
-    }
-    val lockBottomBlankDuringStreaming by remember(
-        isStreaming,
-        streamingMessageContent,
-        visibleStreamingBottomBlankPx
-    ) {
-        derivedStateOf {
-            isStreaming &&
-                streamingMessageContent.isNotBlank() &&
-                visibleStreamingBottomBlankPx > 0
-        }
-    }
     LaunchedEffect(
         isStreaming,
         userDetachedFromBottom,
@@ -3146,11 +3106,8 @@ fun ChatScreen() {
         scrollMode,
         isStreaming,
         hasStreamingItem,
-        lockUserScrollDuringBall,
-        lockBottomBlankDuringStreaming,
         userDetachedFromBottom,
-        guardedStreamBottomSpacerPx,
-        hasStreamAnchorSpacer
+        guardedStreamBottomSpacerPx
     ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -3170,13 +3127,11 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
+                    if (!streamAnchorBlankConsumed) {
+                        return available
+                    }
                     val contentBottom = currentStreamingMeasuredBottomPx()
-                    val activeBoundaryBottom =
-                        if (!streamAnchorBlankConsumed) {
-                            streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 } ?: contentBottom
-                        } else {
-                            currentStreamingLegalBottomPx()
-                        }
+                    val activeBoundaryBottom = currentStreamingLegalBottomPx()
                     if (activeBoundaryBottom > 0 && contentBottom > 0) {
                         val projectedBottom = contentBottom - available.y
                         val overflowPx = (projectedBottom - activeBoundaryBottom).coerceAtLeast(0f)
@@ -3205,15 +3160,13 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
+                    if (!streamAnchorBlankConsumed) {
+                        return available
+                    }
                     val contentBottom = currentStreamingMeasuredBottomPx()
                     val remainingToBoundaryPx =
                         if (contentBottom > 0) {
-                            val activeBoundaryBottom =
-                                if (!streamAnchorBlankConsumed) {
-                                    streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 } ?: contentBottom
-                                } else {
-                                    currentStreamingLegalBottomPx()
-                                }
+                            val activeBoundaryBottom = currentStreamingLegalBottomPx()
                             if (activeBoundaryBottom > 0) {
                                 (activeBoundaryBottom - contentBottom).coerceAtLeast(0)
                             } else {
@@ -3303,8 +3256,7 @@ fun ChatScreen() {
         return isStreaming &&
             hasStreamingItem &&
             streamAnchorBlankConsumed &&
-            isStreamingMessageVisibleInViewport() &&
-            currentStreamingBlankExposurePx() <= bottomPositionTolerancePx
+            isStreamingMessageVisibleInViewport()
     }
     fun applyStreamingScrollState(
         detached: Boolean,
@@ -5376,7 +5328,6 @@ fun ChatScreen() {
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
         streamAnchorBlankConsumed = false
-        streamAnchorPhaseBoundaryBottomPx = -1
         scrollMode = ScrollMode.Idle
         userInteracting = false
         scrollAfterSendAnchor()
@@ -5397,7 +5348,6 @@ fun ChatScreen() {
     ) {
         if (!isStreaming) {
             streamAnchorBlankConsumed = false
-            streamAnchorPhaseBoundaryBottomPx = -1
             return@LaunchedEffect
         }
         if (streamAnchorBlankConsumed) return@LaunchedEffect
@@ -5406,13 +5356,8 @@ fun ChatScreen() {
         val legalBottom = currentStreamingLegalBottomPx()
         val contentBottom = currentStreamingMeasuredBottomPx()
         if (legalBottom <= 0 || contentBottom <= 0) return@LaunchedEffect
-        if (!userInteracting && !listState.isScrollInProgress && !programmaticScroll) {
-            streamAnchorPhaseBoundaryBottomPx =
-                maxOf(streamAnchorPhaseBoundaryBottomPx, contentBottom.coerceAtMost(legalBottom))
-        }
         if ((legalBottom - contentBottom).coerceAtLeast(0) <= bottomPositionTolerancePx) {
             streamAnchorBlankConsumed = true
-            streamAnchorPhaseBoundaryBottomPx = -1
         }
     }
 
