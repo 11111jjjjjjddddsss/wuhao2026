@@ -3169,15 +3169,18 @@ fun ChatScreen() {
                     guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
-                    val legalBottom = currentStreamingLegalBottomPx()
-                    val contentBottom = currentStreamingMeasuredBottomPx()
-                    if (legalBottom > 0 && contentBottom > 0) {
-                        val projectedBottom = contentBottom - available.y
-                        val overflowPx = (projectedBottom - legalBottom).coerceAtLeast(0f)
-                        if (overflowPx > 0f) {
-                            val consumedPx = overflowPx.coerceAtMost(-available.y)
-                            return Offset(x = 0f, y = -consumedPx)
-                        }
+                    if (currentStreamingBlankExposurePx() > 0) {
+                        return available
+                    }
+                    val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
+                    if (distanceToSpacer == Int.MAX_VALUE) {
+                        return Offset.Zero
+                    }
+                    val requestedPx = -available.y
+                    val safeDistancePx = distanceToSpacer.toFloat().coerceAtLeast(0f)
+                    if (requestedPx > safeDistancePx) {
+                        val consumedPx = requestedPx - safeDistancePx
+                        return Offset(x = 0f, y = -consumedPx)
                     }
                 }
                 if (
