@@ -3125,7 +3125,7 @@ fun ChatScreen() {
         val legalBottom = currentStreamingLegalBottomPx()
         val contentBottom = currentStreamingMeasuredBottomPx()
         if (legalBottom <= 0 || contentBottom <= 0) return Int.MAX_VALUE
-        return (contentBottom - legalBottom).coerceAtLeast(0)
+        return (legalBottom - contentBottom).coerceAtLeast(0)
     }
     fun isStreamingMessageVisibleInViewport(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
@@ -3169,18 +3169,15 @@ fun ChatScreen() {
                     guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
-                    if (currentStreamingBlankExposurePx() > 0) {
-                        return available
-                    }
-                    val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
-                    if (distanceToSpacer == Int.MAX_VALUE) {
-                        return Offset.Zero
-                    }
-                    val requestedPx = -available.y
-                    val safeDistancePx = distanceToSpacer.toFloat().coerceAtLeast(0f)
-                    if (requestedPx > safeDistancePx) {
-                        val consumedPx = requestedPx - safeDistancePx
-                        return Offset(x = 0f, y = -consumedPx)
+                    val legalBottom = currentStreamingLegalBottomPx()
+                    val contentBottom = currentStreamingMeasuredBottomPx()
+                    if (legalBottom > 0 && contentBottom > 0) {
+                        val projectedBottom = contentBottom - available.y
+                        val overflowPx = (projectedBottom - legalBottom).coerceAtLeast(0f)
+                        if (overflowPx > 0f) {
+                            val consumedPx = overflowPx.coerceAtMost(-available.y)
+                            return Offset(x = 0f, y = -consumedPx)
+                        }
                     }
                 }
                 if (
@@ -3219,7 +3216,14 @@ fun ChatScreen() {
                     guardedStreamBottomSpacerPx > 0 &&
                     available.y < 0f
                 ) {
-                    val distanceToSpacer = distanceToStreamAnchorSpacerRevealPx()
+                    val legalBottom = currentStreamingLegalBottomPx()
+                    val contentBottom = currentStreamingMeasuredBottomPx()
+                    val distanceToSpacer =
+                        if (legalBottom > 0 && contentBottom > 0) {
+                            (legalBottom - contentBottom).coerceAtLeast(0)
+                        } else {
+                            Int.MAX_VALUE
+                        }
                     val shouldClampBottomFling =
                         when {
                             currentStreamingBlankExposurePx() > 0 -> true
@@ -4325,10 +4329,11 @@ fun ChatScreen() {
         if (scrollMode == ScrollMode.Idle) return@LaunchedEffect
         if (listState.isScrollInProgress || programmaticScroll) return@LaunchedEffect
         val blankExposurePx = currentStreamingBlankExposurePx()
-        if (blankExposurePx <= 0) return@LaunchedEffect
+        if (blankExposurePx <= bottomPositionTolerancePx) return@LaunchedEffect
         lastProgrammaticScrollMs = SystemClock.uptimeMillis()
         programmaticScroll = true
         try {
+            repeat(2) { withFrameNanos { } }
             withFrameNanos { }
             listState.scrollBy((-blankExposurePx).toFloat())
             withFrameNanos { }
