@@ -3045,6 +3045,7 @@ fun ChatScreen() {
         return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
     }
     fun currentStreamingGuardBoundaryBottomPx(): Int = currentStreamingLegalBottomPx()
+    fun currentStreamingGuardContentBottomPx(): Int = currentStreamingTailBottomPx()
     fun isStreamingMessageVisibleInViewport(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
         val streamingBottomInViewport = currentStreamingTailBottomPx()
@@ -3076,7 +3077,7 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
-                    val contentBottom = currentStreamingTailBottomPx().takeIf { it > 0 } ?: currentStreamingMeasuredBottomPx()
+                    val contentBottom = currentStreamingGuardContentBottomPx()
                     val activeBoundaryBottom = currentStreamingGuardBoundaryBottomPx()
                     if (activeBoundaryBottom > 0 && contentBottom > 0) {
                         val projectedBottom = contentBottom - available.y
@@ -3106,7 +3107,7 @@ fun ChatScreen() {
                     hasStreamingItem &&
                     available.y < 0f
                 ) {
-                    val contentBottom = currentStreamingTailBottomPx().takeIf { it > 0 } ?: currentStreamingMeasuredBottomPx()
+                    val contentBottom = currentStreamingGuardContentBottomPx()
                     val activeBoundaryBottom = currentStreamingGuardBoundaryBottomPx()
                     val remainingToBoundaryPx =
                         if (contentBottom > 0 && activeBoundaryBottom > 0) {
@@ -4865,6 +4866,25 @@ fun ChatScreen() {
         }
     }
 
+    suspend fun snapStreamingToWorkline() {
+        if (!isStreaming || !hasStreamingItem) {
+            scrollToBottom(animated = false)
+            return
+        }
+        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        programmaticScroll = true
+        try {
+            withFrameNanos { }
+            val lastIndex = messages.size
+            if (lastIndex < 0) return
+            listState.scrollToItem(lastIndex)
+            withFrameNanos { }
+        } finally {
+            programmaticScroll = false
+            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+        }
+    }
+
     LaunchedEffect(imeVisible) {
         if (imeVisible) {
             restoreBottomAfterImeClose =
@@ -5095,7 +5115,7 @@ fun ChatScreen() {
         userInteracting = false
         scrollMode = ScrollMode.AutoFollow
         autoScrollMode = AutoScrollMode.StreamAnchorFollow
-        scrollToBottom(animated = false)
+        snapStreamingToWorkline()
     }
 
     LaunchedEffect(
@@ -5165,7 +5185,11 @@ fun ChatScreen() {
             }
             userInteracting = false
             jumpButtonPulseVisible = false
-            scrollToBottom(animated = false)
+            if (jumpingIntoStreaming) {
+                snapStreamingToWorkline()
+            } else {
+                scrollToBottom(animated = false)
+            }
         }
     }
 
