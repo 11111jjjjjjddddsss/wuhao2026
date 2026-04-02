@@ -3071,6 +3071,9 @@ fun ChatScreen() {
         if (streamingContentBottomPx > 0) return streamingContentBottomPx
         return streamingLayoutItem.offset + streamingLayoutItem.size
     }
+    fun currentStreamingTailBottomPx(): Int {
+        return streamingContentBottomPx.takeIf { it > 0 } ?: -1
+    }
     fun currentStreamingLegalBottomPx(): Int {
         val worklineBottom = streamingWorklineBottomPx
         if (worklineBottom > 0) return worklineBottom
@@ -3079,11 +3082,15 @@ fun ChatScreen() {
     }
     fun currentStreamingGuardBoundaryBottomPx(): Int {
         if (!streamAnchorBlankConsumed) {
-            val legalBottom = currentStreamingLegalBottomPx()
             return streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 }
-                ?: legalBottom
+                ?: currentStreamingMeasuredBottomPx().takeIf { it > 0 }
+                ?: currentStreamingLegalBottomPx()
         }
-        return currentStreamingMeasuredBottomPx()
+        val legalBottom = currentStreamingLegalBottomPx()
+        val tailBottom = currentStreamingTailBottomPx()
+        if (legalBottom <= 0 || tailBottom <= 0) return -1
+        if (tailBottom > legalBottom + bottomPositionTolerancePx) return -1
+        return tailBottom
     }
     fun currentStreamingBlankExposurePx(): Int {
         val legalBottom = currentStreamingLegalBottomPx()
@@ -3093,7 +3100,7 @@ fun ChatScreen() {
     }
     fun isStreamingMessageVisibleInViewport(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
-        val streamingBottomInViewport = currentStreamingMeasuredBottomPx()
+        val streamingBottomInViewport = currentStreamingTailBottomPx()
         val legalBottom = currentStreamingLegalBottomPx()
         if (streamingBottomInViewport <= 0 || legalBottom <= 0) return false
         return streamingBottomInViewport <= legalBottom
@@ -5296,7 +5303,9 @@ fun ChatScreen() {
         scrollMode = ScrollMode.Idle
         userInteracting = false
         scrollAfterSendAnchor()
-        val initialBoundaryBottom = currentStreamingLegalBottomPx()
+        val initialBoundaryBottom =
+            currentStreamingMeasuredBottomPx().takeIf { it > 0 }
+                ?: currentStreamingLegalBottomPx()
         if (initialBoundaryBottom > 0) {
             streamAnchorPhaseBoundaryBottomPx = initialBoundaryBottom
         }
