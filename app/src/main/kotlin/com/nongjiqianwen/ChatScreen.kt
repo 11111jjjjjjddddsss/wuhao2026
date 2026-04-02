@@ -5340,7 +5340,12 @@ fun ChatScreen() {
             streamAnchorPhaseBoundaryBottomPx = legalBottom
         }
         val phaseBoundaryBottom = streamAnchorPhaseBoundaryBottomPx
-        if (phaseBoundaryBottom > 0 && tailBottom >= (phaseBoundaryBottom - bottomPositionTolerancePx)) {
+        val blankExposurePx = currentStreamingBlankExposurePx()
+        if (
+            phaseBoundaryBottom > 0 &&
+            tailBottom >= (phaseBoundaryBottom - bottomPositionTolerancePx) &&
+            blankExposurePx <= bottomPositionTolerancePx
+        ) {
             streamAnchorBlankConsumed = true
             streamAnchorPhaseBoundaryBottomPx = -1
         }
