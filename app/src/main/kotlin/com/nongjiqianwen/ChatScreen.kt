@@ -1703,16 +1703,6 @@ private fun AssistantMessageContent(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
-                    if (shouldRenderDisclaimer) {
-                        Text(
-                            text = AI_DISCLAIMER_TEXT,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(0f),
-                            style = assistantDisclaimerTextStyle(),
-                            textAlign = TextAlign.Start
-                        )
-                    }
                 }
             }
         }
@@ -5120,8 +5110,9 @@ fun ChatScreen() {
     LaunchedEffect(sendTick) {
         if (messages.isEmpty()) return@LaunchedEffect
         userInteracting = false
-        scrollMode = ScrollMode.AutoFollow
-        autoScrollMode = AutoScrollMode.StreamAnchorFollow
+        scrollMode = ScrollMode.Idle
+        autoScrollMode = AutoScrollMode.Idle
+        repeat(2) { withFrameNanos { } }
         snapStreamingToWorkline()
     }
 
