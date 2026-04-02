@@ -3078,12 +3078,12 @@ fun ChatScreen() {
         return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
     }
     fun currentStreamingGuardBoundaryBottomPx(): Int {
-        val legalBottom = currentStreamingLegalBottomPx()
         if (!streamAnchorBlankConsumed) {
+            val legalBottom = currentStreamingLegalBottomPx()
             return streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 }
                 ?: legalBottom
         }
-        return legalBottom
+        return currentStreamingMeasuredBottomPx()
     }
     fun currentStreamingBlankExposurePx(): Int {
         val legalBottom = currentStreamingLegalBottomPx()
