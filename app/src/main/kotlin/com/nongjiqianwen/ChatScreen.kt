@@ -3081,7 +3081,7 @@ fun ChatScreen() {
         val contentBottom = currentStreamingMeasuredBottomPx()
         val legalBottom = currentStreamingLegalBottomPx()
         if (contentBottom <= 0) return -1
-        return if (!streamAnchorBlankConsumed) {
+        return if (!streamAnchorBlankConsumed && scrollMode != ScrollMode.UserBrowsing) {
             streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 }
                 ?: contentBottom.coerceAtMost(legalBottom.takeIf { it > 0 } ?: contentBottom)
         } else {
