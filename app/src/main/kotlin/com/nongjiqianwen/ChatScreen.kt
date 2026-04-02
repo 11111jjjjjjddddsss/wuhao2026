@@ -3046,6 +3046,14 @@ fun ChatScreen() {
     }
     fun currentStreamingGuardBoundaryBottomPx(): Int = currentStreamingLegalBottomPx()
     fun currentStreamingGuardContentBottomPx(): Int = currentStreamingTailBottomPx()
+    fun isStreamingTailNearGuardBoundary(): Boolean {
+        val tailBottom = currentStreamingTailBottomPx()
+        val boundaryBottom = currentStreamingGuardBoundaryBottomPx()
+        if (tailBottom <= 0 || boundaryBottom <= 0) return false
+        val activationRangePx = (messageViewportHeightPx * 0.45f).roundToInt()
+            .coerceAtLeast(assistantLineStepPx * 2)
+        return tailBottom >= (boundaryBottom - activationRangePx)
+    }
     fun isStreamingMessageVisibleInViewport(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
         val streamingBottomInViewport = currentStreamingTailBottomPx()
@@ -3075,7 +3083,8 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    available.y < 0f
+                    available.y < 0f &&
+                    isStreamingTailNearGuardBoundary()
                 ) {
                     val contentBottom = currentStreamingGuardContentBottomPx()
                     val activeBoundaryBottom = currentStreamingGuardBoundaryBottomPx()
@@ -3105,7 +3114,8 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     hasStreamingItem &&
-                    available.y < 0f
+                    available.y < 0f &&
+                    isStreamingTailNearGuardBoundary()
                 ) {
                     val contentBottom = currentStreamingGuardContentBottomPx()
                     val activeBoundaryBottom = currentStreamingGuardBoundaryBottomPx()
@@ -4238,8 +4248,8 @@ fun ChatScreen() {
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         if (overflow <= 0) return 0
-        val steadyStepPx = (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(7)
-        val triggerThresholdPx = (steadyStepPx * 0.3f).roundToInt().coerceAtLeast(2)
+        val steadyStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(5)
+        val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
         if (overflow < triggerThresholdPx) return 0
         return overflow.coerceAtMost(steadyStepPx)
     }
@@ -4830,10 +4840,7 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             withFrameNanos { }
-            val lastIndex = (
-                messages.size +
-                    if (hasStreamingItem) 1 else 0
-                ) - 1
+            val lastIndex = messages.lastIndex
             if (lastIndex < 0) return
             if (animated) {
                 listState.animateScrollToItem(lastIndex)
@@ -4875,7 +4882,7 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             withFrameNanos { }
-            val lastIndex = messages.size
+            val lastIndex = messages.lastIndex
             if (lastIndex < 0) return
             listState.scrollToItem(lastIndex)
             withFrameNanos { }
