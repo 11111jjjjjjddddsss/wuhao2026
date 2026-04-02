@@ -5334,12 +5334,13 @@ fun ChatScreen() {
         if (streamingMessageContent.isBlank()) return@LaunchedEffect
         val legalBottom = currentStreamingLegalBottomPx()
         val contentBottom = currentStreamingMeasuredBottomPx()
-        if (legalBottom <= 0 || contentBottom <= 0) return@LaunchedEffect
+        val tailBottom = currentStreamingTailBottomPx()
+        if (legalBottom <= 0 || contentBottom <= 0 || tailBottom <= 0) return@LaunchedEffect
         if (streamAnchorPhaseBoundaryBottomPx <= 0 && !userInteracting && !listState.isScrollInProgress && !programmaticScroll) {
             streamAnchorPhaseBoundaryBottomPx = legalBottom
         }
         val phaseBoundaryBottom = streamAnchorPhaseBoundaryBottomPx
-        if (phaseBoundaryBottom > 0 && contentBottom >= (phaseBoundaryBottom - bottomPositionTolerancePx)) {
+        if (phaseBoundaryBottom > 0 && tailBottom >= (phaseBoundaryBottom - bottomPositionTolerancePx)) {
             streamAnchorBlankConsumed = true
             streamAnchorPhaseBoundaryBottomPx = -1
         }
