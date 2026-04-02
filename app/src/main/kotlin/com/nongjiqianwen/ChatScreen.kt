@@ -3078,15 +3078,12 @@ fun ChatScreen() {
         return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
     }
     fun currentStreamingGuardBoundaryBottomPx(): Int {
-        val contentBottom = currentStreamingMeasuredBottomPx()
         val legalBottom = currentStreamingLegalBottomPx()
-        if (contentBottom <= 0) return -1
-        return if (!streamAnchorBlankConsumed && scrollMode != ScrollMode.UserBrowsing) {
-            streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 }
-                ?: contentBottom.coerceAtMost(legalBottom.takeIf { it > 0 } ?: contentBottom)
-        } else {
-            legalBottom
+        if (!streamAnchorBlankConsumed) {
+            return streamAnchorPhaseBoundaryBottomPx.takeIf { it > 0 }
+                ?: legalBottom
         }
+        return legalBottom
     }
     fun currentStreamingBlankExposurePx(): Int {
         val legalBottom = currentStreamingLegalBottomPx()
@@ -5299,6 +5296,10 @@ fun ChatScreen() {
         scrollMode = ScrollMode.Idle
         userInteracting = false
         scrollAfterSendAnchor()
+        val initialBoundaryBottom = currentStreamingLegalBottomPx()
+        if (initialBoundaryBottom > 0) {
+            streamAnchorPhaseBoundaryBottomPx = initialBoundaryBottom
+        }
         scrollMode = ScrollMode.Idle
     }
 
@@ -5325,14 +5326,11 @@ fun ChatScreen() {
         val legalBottom = currentStreamingLegalBottomPx()
         val contentBottom = currentStreamingMeasuredBottomPx()
         if (legalBottom <= 0 || contentBottom <= 0) return@LaunchedEffect
-        if (!userInteracting && !listState.isScrollInProgress && !programmaticScroll) {
-            streamAnchorPhaseBoundaryBottomPx =
-                maxOf(
-                    streamAnchorPhaseBoundaryBottomPx,
-                    contentBottom.coerceAtMost(legalBottom)
-                )
+        if (streamAnchorPhaseBoundaryBottomPx <= 0 && !userInteracting && !listState.isScrollInProgress && !programmaticScroll) {
+            streamAnchorPhaseBoundaryBottomPx = legalBottom
         }
-        if ((legalBottom - contentBottom).coerceAtLeast(0) <= bottomPositionTolerancePx) {
+        val phaseBoundaryBottom = streamAnchorPhaseBoundaryBottomPx
+        if (phaseBoundaryBottom > 0 && contentBottom >= (phaseBoundaryBottom - bottomPositionTolerancePx)) {
             streamAnchorBlankConsumed = true
             streamAnchorPhaseBoundaryBottomPx = -1
         }
