@@ -315,7 +315,7 @@ private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
-private val STREAMING_MESSAGE_MIN_HEIGHT = 76.dp
+private val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 40.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
@@ -1675,9 +1675,6 @@ private fun AssistantMessageContent(
                 AssistantStreamingWaitingIndicator(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onGloballyPositioned { coordinates ->
-                            onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
-                        }
                 )
             } else {
                 Column(
@@ -2892,6 +2889,7 @@ fun ChatScreen() {
     var userInteracting by remember { mutableStateOf(false) }
     var streamTick by remember { mutableIntStateOf(0) }
     var streamingLineAdvanceTick by remember { mutableIntStateOf(0) }
+    var streamingFollowArmed by remember { mutableStateOf(false) }
     var streamingFreshStart by remember { mutableIntStateOf(-1) }
     var streamingFreshEnd by remember { mutableIntStateOf(-1) }
     var streamingFreshTick by remember { mutableIntStateOf(0) }
@@ -3040,7 +3038,7 @@ fun ChatScreen() {
         val tailBottom = currentStreamingTailBottomPx()
         val boundaryBottom = currentStreamingGuardBoundaryBottomPx()
         if (tailBottom <= 0 || boundaryBottom <= 0) return false
-        val activationRangePx = (messageViewportHeightPx * 0.45f).roundToInt()
+        val activationRangePx = (messageViewportHeightPx * 0.22f).roundToInt()
             .coerceAtLeast(assistantLineStepPx * 2)
         return tailBottom >= (boundaryBottom - activationRangePx)
     }
@@ -3185,9 +3183,39 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageContent.length,
+        streamingContentBottomPx
+    ) {
+        if (!isStreaming || !hasStreamingItem) {
+            streamingFollowArmed = false
+            return@LaunchedEffect
+        }
+        if (streamingMessageContent.isBlank()) {
+            streamingFollowArmed = false
+            return@LaunchedEffect
+        }
+        val firstBottom = currentStreamingTailBottomPx()
+        if (firstBottom <= 0) {
+            streamingFollowArmed = false
+            return@LaunchedEffect
+        }
+        repeat(2) { withFrameNanos { } }
+        val secondBottom = currentStreamingTailBottomPx()
+        streamingFollowArmed =
+            isStreaming &&
+                hasStreamingItem &&
+                streamingMessageContent.isNotBlank() &&
+                secondBottom > 0 &&
+                kotlin.math.abs(secondBottom - firstBottom) <= bottomPositionTolerancePx
+    }
+
     fun isStreamingReadyForAutoFollow(): Boolean {
         return isStreaming &&
             hasStreamingItem &&
+            streamingFollowArmed &&
             isStreamingMessageVisibleInViewport()
     }
     fun applyStreamingScrollState(
@@ -3939,6 +3967,7 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
             streamingContentBottomPx = -1
+            streamingFollowArmed = false
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
@@ -4312,6 +4341,7 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             streamingContentBottomPx = -1
+            streamingFollowArmed = false
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             streamingBackgrounded = false
@@ -4447,6 +4477,7 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
             streamingContentBottomPx = -1
+            streamingFollowArmed = false
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
@@ -4574,6 +4605,7 @@ fun ChatScreen() {
                 upsertUserMessage(userId, text)
                 anchoredUserMessageId = userId
                 streamingContentBottomPx = -1
+                streamingFollowArmed = false
                 streamBottomFollowActive = false
                 pendingResumeAutoFollow = false
                 pendingFinalBottomSnap = false
@@ -4954,6 +4986,7 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             streamingContentBottomPx = -1
+            streamingFollowArmed = false
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             streamingBackgrounded = false
@@ -5076,7 +5109,8 @@ fun ChatScreen() {
             if (
                 scrollMode != ScrollMode.AutoFollow ||
                 listState.isScrollInProgress ||
-                userInteracting
+                userInteracting ||
+                !streamingFollowArmed
             ) {
                 streamBottomFollowActive = false
                 return@LaunchedEffect
