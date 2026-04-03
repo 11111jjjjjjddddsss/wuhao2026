@@ -523,6 +523,16 @@ Clean-State 定义：
 - 链接能力必须继续作为消息正文内部能力存在，不允许新增悬浮层、底部条或额外覆盖层去承接点击
 - 当前不要求 streaming 阶段提供链接点击；以 completed 完成态稳定可点为准
 
+## 14.8 聊天框分层边界
+
+- 聊天框动态交互后续默认按两层拆分：
+  - `app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt`
+  - `app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt`
+- `ChatScrollCoordinator.kt` 只负责滚动决策、发送后锚点落位、底部护栏、回到底部按钮这类列表行为
+- `ChatStreamingRenderer.kt` 只负责 waiting 小球、streaming 文本显示、行级 reveal、fresh suffix 提亮这类渲染表现
+- `ChatScreen.kt` 只负责页面组装、测量值采集、状态接线，不再继续新增“滚动决策 + 渲染表现”混写主逻辑
+- 以后聊天框动态问题优先先判断属于滚动层还是渲染层，再进对应文件修改；不要再直接在 `ChatScreen.kt` 主体里混着下刀
+
 ## 15. 开发风险边界
 
 ### 15.1 改代码原则

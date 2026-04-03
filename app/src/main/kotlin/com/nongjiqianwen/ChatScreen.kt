@@ -1,4 +1,4 @@
-package com.nongjiqianwen
+﻿package com.nongjiqianwen
 
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -199,8 +199,6 @@ import java.util.UUID
 import kotlin.coroutines.resume
 
 private enum class ChatRole { USER, ASSISTANT }
-private enum class AutoScrollMode { Idle, AnchorUser, StreamAnchorFollow }
-private enum class ScrollMode { Idle, AutoFollow, UserBrowsing }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 @Immutable
@@ -293,10 +291,10 @@ private const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 private const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
 private const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 4
 private const val STREAM_DELAY_MULTIPLIER = 1.18
-private const val STREAM_FRESH_LINE_SETTLE_FRAMES = 4
-private const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 3
-private const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
-private const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
+internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 4
+internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 3
+internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
+internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 private const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
@@ -312,11 +310,12 @@ private const val PROGRAMMATIC_SCROLL_SETTLE_MS = 180L
 private const val INPUT_MAX_CHARS = 6000
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
-private const val GPT_BALL_PULSE_MS = 720
+internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
-private val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
+internal val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
+private val ASSISTANT_START_ANCHOR_TOP = 96.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 40.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
@@ -333,20 +332,20 @@ private val JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE = 32.dp
 private val STATIC_JUMP_SHOW_THRESHOLD = 96.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
-private val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
+internal val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
 private val STATIC_SELECTION_CACHE_WINDOW = 6000.dp
 private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
-private val GPT_BALL_SIZE = 14.dp
-private val GPT_BALL_CONTAINER_SIZE = 24.dp
-private val GPT_BALL_START_PADDING = 0.dp
-private val MARKDOWN_BLOCK_SPACING = 12.dp
-private val SECTION_DIVIDER_GAP = 28.dp
-private val SECTION_DIVIDER_TOP_EXTRA_GAP = 16.dp
-private const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
+internal val GPT_BALL_SIZE = 14.dp
+internal val GPT_BALL_CONTAINER_SIZE = 24.dp
+internal val GPT_BALL_START_PADDING = 0.dp
+internal val MARKDOWN_BLOCK_SPACING = 12.dp
+internal val SECTION_DIVIDER_GAP = 28.dp
+internal val SECTION_DIVIDER_TOP_EXTRA_GAP = 16.dp
+internal const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -373,7 +372,7 @@ private fun normalizeAssistantText(content: String): String {
         .trim()
 }
 
-private data class StreamingMarkdownParts(
+internal data class StreamingMarkdownParts(
     val completedContent: String,
     val tailContent: String
 )
@@ -576,7 +575,7 @@ private fun resolveTypewriterDelay(token: String, remainingBuffer: String): Long
     return scaleStreamingDelay(baseDelay)
 }
 
-private data class StreamingTypewriterStep(
+internal data class StreamingTypewriterStep(
     val text: String,
     val delayMs: Long
 )
@@ -593,27 +592,27 @@ private fun nextStreamingTypewriterStep(buffer: String): StreamingTypewriterStep
     )
 }
 
-private data class StreamingRevealBatch(
+internal data class StreamingRevealBatch(
     val text: String,
     val delayMs: Long
 )
 
-private data class StreamingRenderedLines(
+internal data class StreamingRenderedLines(
     val stableLines: List<AnnotatedString>,
     val activeLine: AnnotatedString?
 )
 
-private data class StreamingLogicalLines(
+internal data class StreamingLogicalLines(
     val completedLines: List<String>,
     val activeLine: String?
 )
 
-private data class StreamingBlockState(
+internal data class StreamingBlockState(
     val completedBlocks: List<String>,
     val activeBlock: String?
 )
 
-private sealed interface StreamingLineModel {
+internal sealed interface StreamingLineModel {
     data object Blank : StreamingLineModel
     data class Heading(val level: Int, val text: String) : StreamingLineModel
     data class Bullet(val text: String) : StreamingLineModel
@@ -622,7 +621,7 @@ private sealed interface StreamingLineModel {
     data class Paragraph(val text: String) : StreamingLineModel
 }
 
-private fun buildLockedStreamingActivePreview(
+internal fun buildLockedStreamingActivePreview(
     activeLine: AnnotatedString,
     maxVisibleChars: Int
 ): AnnotatedString {
@@ -693,7 +692,7 @@ private fun isStructuralActiveStreamingLine(line: String): Boolean {
     }
 }
 
-private fun splitStreamingBlockState(content: String): StreamingBlockState {
+internal fun splitStreamingBlockState(content: String): StreamingBlockState {
     val logicalLines = splitStreamingLogicalLines(content)
     val completedBlocks = mutableListOf<String>()
     val paragraph = StringBuilder()
@@ -747,7 +746,7 @@ private fun splitStreamingBlockState(content: String): StreamingBlockState {
     )
 }
 
-private fun classifyStreamingLine(line: String): StreamingLineModel {
+internal fun classifyStreamingLine(line: String): StreamingLineModel {
     if (line.isBlank()) return StreamingLineModel.Blank
     val trimmed = line.trimStart()
     return when {
@@ -765,7 +764,7 @@ private fun classifyStreamingLine(line: String): StreamingLineModel {
     }
 }
 
-private fun classifyActiveStreamingLine(line: String): StreamingLineModel {
+internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     if (line.isBlank()) return StreamingLineModel.Blank
     val trimmed = line.trimStart()
     val headingMarker = trimmed.takeWhile { it == '#' }
@@ -803,7 +802,7 @@ private fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     return StreamingLineModel.Paragraph(line)
 }
 
-private fun shouldShowStreamingSectionDivider(
+internal fun shouldShowStreamingSectionDivider(
     previous: StreamingLineModel?,
     current: StreamingLineModel
 ): Boolean {
@@ -845,7 +844,7 @@ private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
     )
 }
 
-private fun buildStableStreamingLineBuffer(
+internal fun buildStableStreamingLineBuffer(
     text: AnnotatedString,
     style: TextStyle,
     availableWidthPx: Int,
@@ -1145,7 +1144,7 @@ private fun buildStreamingAnnotatedString(text: String): AnnotatedString {
     return buildMarkdownAnnotatedStringInternal(text = text)
 }
 
-private fun getCachedAnnotatedString(text: String): AnnotatedString {
+internal fun getCachedAnnotatedString(text: String): AnnotatedString {
     synchronized(inlineMarkdownCache) {
         inlineMarkdownCache[text]?.let { return it }
     }
@@ -1211,7 +1210,7 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
     }
 }
 
-private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
+internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     fontSize = 17.sp,
     lineHeight = 28.sp,
     letterSpacing = 0.05.sp,
@@ -1220,13 +1219,13 @@ private fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     lineBreak = LineBreak.Paragraph
 )
 
-private fun assistantStreamingParagraphTextStyle(): TextStyle =
+internal fun assistantStreamingParagraphTextStyle(): TextStyle =
     assistantParagraphTextStyle().copy(
         lineHeight = 30.sp,
         lineBreak = LineBreak.Simple
     )
 
-private fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
+internal fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
     fontSize = 14.sp,
     lineHeight = 20.sp,
     color = Color(0xFF94979D),
@@ -1296,7 +1295,7 @@ private fun buildSendGateState(
     }
 }
 
-private fun shouldShowAiDisclaimerRefined(content: String): Boolean {
+internal fun shouldShowAiDisclaimerRefined(content: String): Boolean {
     if (content.isBlank()) return false
     val normalized = content.lowercase()
     val actionKeywords = listOf(
@@ -1327,7 +1326,7 @@ private fun shouldShowAiDisclaimerRefined(content: String): Boolean {
     return (hasAction && hasDosage) || (hasAction && hasTreatmentMaterial)
 }
 
-private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
+internal fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     fontSize = if (level <= 2) 20.sp else 18.sp,
     lineHeight = if (level <= 2) 31.sp else 28.sp,
     fontWeight = FontWeight.Bold,
@@ -1336,7 +1335,7 @@ private fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
     lineBreak = LineBreak.Heading
 )
 
-private fun assistantStreamingHeadingTextStyle(level: Int): TextStyle =
+internal fun assistantStreamingHeadingTextStyle(level: Int): TextStyle =
     assistantHeadingTextStyle(level).copy(lineBreak = LineBreak.Simple)
 
 private fun consumeStreamingBottomSpacer(currentSpacerPx: Int, consumedScrollPx: Float): Int {
@@ -1627,112 +1626,6 @@ private fun shouldShowMarkdownSectionDivider(
 }
 
 @Composable
-private fun MarkdownSectionDivider() {
-    HorizontalDivider(
-        modifier = Modifier
-            .fillMaxWidth(),
-        thickness = 1.dp,
-        color = Color(0xFFE7E9ED)
-    )
-}
-
-@Composable
-private fun AssistantMessageContent(
-    content: String,
-    isStreaming: Boolean,
-    streamingFreshStart: Int = -1,
-    streamingFreshEnd: Int = -1,
-    streamingFreshTick: Int = 0,
-    streamingLineAdvanceTick: Int = 0,
-    strictLineReveal: Boolean = false,
-    lineRevealLocked: Boolean = false,
-    selectionEnabled: Boolean = false,
-    showDisclaimer: Boolean = true,
-    onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
-    expandToFullWidth: Boolean = true,
-    modifier: Modifier = Modifier
-) {
-    val shouldRenderDisclaimer = remember(content, showDisclaimer) {
-        showDisclaimer && shouldShowAiDisclaimerRefined(content)
-    }
-    val stableModifier = if (isStreaming) {
-        modifier.heightIn(min = STREAMING_MESSAGE_MIN_HEIGHT)
-    } else {
-        modifier
-    }
-    if (isStreaming) {
-        // Streaming: NO animateContentSize, NO AnimatedVisibility crossfade.
-        // Simple conditional switch: ball OR text. Eliminates jitter/ghosting.
-        Box(
-            modifier = if (expandToFullWidth) {
-                stableModifier.fillMaxWidth()
-            } else {
-                stableModifier
-            },
-            contentAlignment = Alignment.TopStart
-        ) {
-            if (content.isBlank()) {
-                AssistantStreamingWaitingIndicator(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                )
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onGloballyPositioned { coordinates ->
-                                onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
-                            }
-                    ) {
-                        AssistantStreamingContent(
-                            content = content,
-                            streamingFreshStart = streamingFreshStart,
-                            streamingFreshEnd = streamingFreshEnd,
-                            streamingFreshTick = streamingFreshTick,
-                            streamingLineAdvanceTick = streamingLineAdvanceTick,
-                            strictLineReveal = strictLineReveal,
-                            lineRevealLocked = lineRevealLocked,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-        }
-    } else {
-        Column(
-            modifier = if (expandToFullWidth) {
-                modifier.fillMaxWidth()
-            } else {
-                modifier
-            },
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (selectionEnabled) {
-                SelectionContainer {
-                    AssistantMarkdownContent(content = content)
-                }
-            } else {
-                AssistantMarkdownContent(content = content)
-            }
-            if (shouldRenderDisclaimer) {
-                Text(
-                    text = AI_DISCLAIMER_TEXT,
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    style = assistantDisclaimerTextStyle(),
-                    textAlign = TextAlign.Start
-                )
-            }
-        }
-    }
-}
-
-@Composable
 @Suppress("UNUSED_PARAMETER")
 private fun ChatInputField(
     value: TextFieldValue,
@@ -1805,735 +1698,6 @@ private fun ChatInputField(
             }
         }
     )
-}
-
-@Composable
-private fun AssistantStreamingWaitingIndicator(modifier: Modifier = Modifier) {
-    val density = LocalDensity.current
-    val lineHeight = with(density) {
-        assistantParagraphTextStyle().lineHeight.toDp()
-    }
-    Box(
-        modifier = modifier
-            .height(lineHeight)
-            .padding(start = GPT_BALL_START_PADDING),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        GPTBreathingBall()
-    }
-}
-
-@Composable
-@Suppress("UNUSED_PARAMETER")
-private fun AssistantStreamingContent(
-    content: String,
-    streamingFreshStart: Int,
-    streamingFreshEnd: Int,
-    streamingFreshTick: Int,
-    streamingLineAdvanceTick: Int,
-    strictLineReveal: Boolean,
-    lineRevealLocked: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val blockState = remember(content) { splitStreamingBlockState(content) }
-    val completedModels = remember(blockState.completedBlocks) {
-        blockState.completedBlocks.map(::classifyStreamingLine)
-    }
-    val activeModel = remember(blockState.activeBlock) {
-        blockState.activeBlock?.let(::classifyActiveStreamingLine)
-    }
-    val activeFreshTailChars = remember(
-        content,
-        streamingFreshStart,
-        streamingFreshEnd,
-        streamingFreshTick,
-        blockState.activeBlock
-    ) {
-        if (streamingFreshTick <= 0 || blockState.activeBlock.isNullOrEmpty()) {
-            0
-        } else {
-            (streamingFreshEnd - streamingFreshStart)
-                .coerceAtLeast(0)
-                .coerceAtMost(blockState.activeBlock.length)
-        }
-    }
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
-    ) {
-        completedModels.forEachIndexed { index, model ->
-            key("streaming_completed_$index:${blockState.completedBlocks[index]}") {
-                AssistantStreamingCommittedBlock(
-                    model = model,
-                    showLeadingSectionDivider = shouldShowStreamingSectionDivider(
-                        previous = completedModels.getOrNull(index - 1),
-                        current = model
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-        activeModel?.let { model ->
-            AssistantStreamingActiveBlock(
-                model = model,
-                showLeadingSectionDivider = shouldShowStreamingSectionDivider(
-                    previous = completedModels.lastOrNull(),
-                    current = model
-                ),
-                freshTailChars = activeFreshTailChars,
-                freshTick = streamingFreshTick,
-                lineAdvanceTick = streamingLineAdvanceTick,
-                strictLineReveal = strictLineReveal,
-                lineRevealLocked = lineRevealLocked,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
-}
-
-@Composable
-private fun StreamingSingleActiveLineText(
-    lines: StreamingRenderedLines,
-    style: TextStyle,
-    emptyLineHeight: Dp,
-    freshTailChars: Int = 0,
-    freshTick: Int = 0,
-    modifier: Modifier = Modifier
-) {
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        lines.stableLines.forEach { line ->
-            if (line.text.isEmpty()) {
-                Spacer(modifier = Modifier.height(emptyLineHeight))
-            } else {
-                Text(
-                    text = line,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = emptyLineHeight),
-                    style = style,
-                    textAlign = TextAlign.Start,
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-        }
-        lines.activeLine?.let { line ->
-            if (line.text.isEmpty()) {
-                Spacer(modifier = Modifier.height(emptyLineHeight))
-            } else {
-                StreamingAnimatedLineText(
-                    text = line,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = emptyLineHeight),
-                    style = style,
-                    freshTailChars = freshTailChars,
-                    freshTick = freshTick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun StreamingAnimatedLineText(
-    text: AnnotatedString,
-    style: TextStyle,
-    freshTailChars: Int = 0,
-    freshTick: Int = 0,
-    modifier: Modifier = Modifier
-) {
-    val effectiveFreshTailChars = freshTailChars.coerceIn(0, text.length)
-    if (effectiveFreshTailChars <= 0 || freshTick <= 0) {
-        Text(
-            text = text,
-            modifier = modifier,
-            style = style,
-            textAlign = TextAlign.Start,
-            maxLines = 1,
-            softWrap = false
-        )
-        return
-    }
-    val highlightedTailChars = maxOf(
-        effectiveFreshTailChars,
-        STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS
-    ).coerceAtMost(text.length)
-
-    var freshRevealTarget by remember(freshTick) {
-        mutableFloatStateOf(0f)
-    }
-    LaunchedEffect(freshTick) {
-        freshRevealTarget = 1f
-    }
-    val freshRevealProgress by animateFloatAsState(
-        targetValue = freshRevealTarget,
-        animationSpec = tween(
-            durationMillis = STREAM_FRESH_SUFFIX_HIGHLIGHT_MS,
-            easing = LinearOutSlowInEasing
-        ),
-        label = "streamFreshSuffixReveal"
-    )
-    val renderedText = remember(text, highlightedTailChars, freshRevealProgress, style.color) {
-        val stableEnd = (text.length - highlightedTailChars).coerceAtLeast(0)
-        val baseColor = style.color
-        val settledProgress = FastOutSlowInEasing.transform(freshRevealProgress)
-        val freshColor =
-            if (baseColor != Color.Unspecified) {
-                lerp(
-                    STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR,
-                    baseColor,
-                    settledProgress
-                )
-            } else {
-                Color.Unspecified
-            }
-        buildAnnotatedString {
-            append(text.subSequence(0, stableEnd))
-            withStyle(
-                SpanStyle(
-                    color = freshColor
-                )
-            ) {
-                append(text.subSequence(stableEnd, text.length))
-            }
-        }
-    }
-    Text(
-        text = renderedText,
-        modifier = modifier,
-        style = style,
-        textAlign = TextAlign.Start,
-        maxLines = 1,
-        softWrap = false
-    )
-}
-
-@Composable
-private fun rememberLockedStreamingRenderedLines(
-    lines: StreamingRenderedLines,
-    strictLineReveal: Boolean,
-    lineRevealLocked: Boolean,
-    lineAdvanceTick: Int,
-    maxVisibleCharsWhenLocked: Int
-): StreamingRenderedLines {
-    if (!strictLineReveal || lines.activeLine == null || lines.stableLines.isEmpty()) {
-        return lines
-    }
-    var activeLineUnlockedOnce by remember(lines.stableLines.size) { mutableStateOf(false) }
-    var pendingFreshLineRelease by remember(lines.stableLines.size) { mutableStateOf(true) }
-    var pendingFreshLineTick by remember(lines.stableLines.size) { mutableIntStateOf(lineAdvanceTick) }
-
-    LaunchedEffect(lines.stableLines.size) {
-        pendingFreshLineRelease = true
-        pendingFreshLineTick = lineAdvanceTick
-        activeLineUnlockedOnce = false
-    }
-
-    LaunchedEffect(lines.stableLines.size, lineRevealLocked, lineAdvanceTick) {
-        if (activeLineUnlockedOnce) return@LaunchedEffect
-        if (!pendingFreshLineRelease) {
-            if (!lineRevealLocked) {
-                activeLineUnlockedOnce = true
-            }
-            return@LaunchedEffect
-        }
-        if (lineRevealLocked) return@LaunchedEffect
-        val settleFrames = if (lineAdvanceTick > pendingFreshLineTick) {
-            STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES
-        } else {
-            STREAM_FRESH_LINE_SETTLE_FRAMES
-        }
-        repeat(settleFrames) { withFrameNanos { } }
-        if (!lineRevealLocked) {
-            pendingFreshLineRelease = false
-            activeLineUnlockedOnce = true
-        }
-    }
-
-    return remember(
-        lines,
-        lineRevealLocked,
-        lineAdvanceTick,
-        activeLineUnlockedOnce,
-        pendingFreshLineRelease,
-        maxVisibleCharsWhenLocked
-    ) {
-        when {
-            activeLineUnlockedOnce -> lines
-            pendingFreshLineRelease || lineRevealLocked -> lines.copy(
-                activeLine = buildLockedStreamingActivePreview(
-                    activeLine = lines.activeLine,
-                    maxVisibleChars = maxVisibleCharsWhenLocked
-                )
-            )
-            else -> lines
-        }
-    }
-}
-
-@Composable
-private fun StreamingCommittedTextBlock(
-    text: String,
-    style: TextStyle,
-    emptyLineHeight: Dp,
-    modifier: Modifier = Modifier
-) {
-    val density = LocalDensity.current
-    val textMeasurer = rememberTextMeasurer()
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val maxWidthPx = with(density) { maxWidth.roundToPx() }
-        val measured = remember(text, style, maxWidthPx) {
-            val lines = buildStableStreamingLineBuffer(
-                text = AnnotatedString(text),
-                style = style,
-                availableWidthPx = maxWidthPx,
-                textMeasurer = textMeasurer
-            )
-            StreamingRenderedLines(
-                stableLines = if (lines.activeLine != null) lines.stableLines + lines.activeLine else lines.stableLines,
-                activeLine = null
-            )
-        }
-        StreamingSingleActiveLineText(
-            lines = measured,
-            style = style,
-            emptyLineHeight = emptyLineHeight,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-private fun AssistantStreamingCommittedBlock(
-    model: StreamingLineModel,
-    showLeadingSectionDivider: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    @Composable
-    fun RichText(
-        text: String,
-        modifier: Modifier = Modifier,
-        style: TextStyle
-    ) {
-        val annotated = remember(text) { getCachedAnnotatedString(text) }
-        Text(
-            text = annotated,
-            modifier = modifier,
-            style = style,
-            textAlign = TextAlign.Start
-        )
-    }
-
-    when (model) {
-        StreamingLineModel.Blank -> Spacer(modifier = modifier.height(MARKDOWN_BLOCK_SPACING))
-        is StreamingLineModel.Heading -> Column(
-            modifier = modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            if (showLeadingSectionDivider && model.level <= 2) {
-                Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
-                MarkdownSectionDivider()
-                Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
-            }
-            RichText(
-                text = model.text,
-                modifier = Modifier.fillMaxWidth(),
-                style = assistantStreamingHeadingTextStyle(model.level)
-            )
-        }
-        is StreamingLineModel.Bullet -> Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "\u2022",
-                style = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
-            )
-            RichText(
-                text = model.text,
-                modifier = Modifier.weight(1f),
-                style = assistantStreamingParagraphTextStyle()
-            )
-        }
-        is StreamingLineModel.Numbered -> Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "${model.number}.",
-                style = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
-            )
-            RichText(
-                text = model.text,
-                modifier = Modifier.weight(1f),
-                style = assistantStreamingParagraphTextStyle()
-            )
-        }
-        is StreamingLineModel.Quote -> RichText(
-            text = model.text,
-            modifier = modifier.fillMaxWidth(),
-            style = assistantStreamingParagraphTextStyle()
-        )
-        is StreamingLineModel.Paragraph -> RichText(
-            text = model.text,
-            modifier = modifier.fillMaxWidth(),
-            style = assistantStreamingParagraphTextStyle()
-        )
-    }
-}
-
-@Composable
-private fun AssistantStreamingActiveBlock(
-    model: StreamingLineModel,
-    showLeadingSectionDivider: Boolean = false,
-    freshTailChars: Int = 0,
-    freshTick: Int = 0,
-    lineAdvanceTick: Int = 0,
-    strictLineReveal: Boolean = true,
-    lineRevealLocked: Boolean = false,
-    modifier: Modifier = Modifier
-) {
-    val textMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
-    val spacingPx = with(density) { 8.dp.roundToPx() }
-    val paragraphLineHeight = with(density) { assistantStreamingParagraphTextStyle().lineHeight.toDp() }
-    fun resolveRenderedLines(
-        text: String,
-        style: TextStyle,
-        availableWidthPx: Int
-    ): StreamingRenderedLines {
-        return buildStableStreamingLineBuffer(
-            text = AnnotatedString(text),
-            style = style,
-            availableWidthPx = availableWidthPx,
-            textMeasurer = textMeasurer
-        )
-    }
-    val animatedModifier = modifier.fillMaxWidth()
-
-    BoxWithConstraints(modifier = animatedModifier) {
-        val maxWidthPx = with(density) { maxWidth.roundToPx() }
-        when (model) {
-            StreamingLineModel.Blank -> Unit
-            is StreamingLineModel.Heading -> {
-                val headingStyle = assistantStreamingHeadingTextStyle(model.level)
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    if (showLeadingSectionDivider && model.level <= 2) {
-                        Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
-                        MarkdownSectionDivider()
-                        Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
-                    }
-                    val rawLines = remember(model.text, maxWidthPx) {
-                        resolveRenderedLines(model.text, headingStyle, maxWidthPx)
-                    }
-                    val lines = rememberLockedStreamingRenderedLines(
-                        lines = rawLines,
-                        strictLineReveal = strictLineReveal,
-                        lineRevealLocked = lineRevealLocked,
-                        lineAdvanceTick = lineAdvanceTick,
-                        maxVisibleCharsWhenLocked = 0
-                    )
-                    StreamingSingleActiveLineText(
-                        lines = lines,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = headingStyle,
-                        emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() },
-                        freshTailChars = freshTailChars,
-                        freshTick = freshTick
-                    )
-                }
-            }
-            is StreamingLineModel.Bullet -> {
-                val bulletStyle = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
-                val bodyStyle = assistantStreamingParagraphTextStyle()
-                val bulletWidthPx = remember(textMeasurer, bulletStyle) {
-                    textMeasurer.measure(AnnotatedString("\u2022"), style = bulletStyle).size.width
-                }
-                val bodyWidthPx = (maxWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
-                val gutterWidth = with(density) { (bulletWidthPx + spacingPx).toDp() }
-                val rawLines = remember(model.text, bodyWidthPx) {
-                    resolveRenderedLines(model.text, bodyStyle, bodyWidthPx)
-                }
-                val lines = rememberLockedStreamingRenderedLines(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    if (lines.activeLine != null || lines.stableLines.isNotEmpty()) {
-                        val firstLine = lines.stableLines.firstOrNull() ?: lines.activeLine
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = paragraphLineHeight),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "\u2022",
-                                style = bulletStyle
-                            )
-                            firstLine?.let { line ->
-                                StreamingAnimatedLineText(
-                                    text = line,
-                                    modifier = Modifier.weight(1f),
-                                    style = bodyStyle,
-                                    freshTailChars = if (lines.stableLines.isEmpty()) freshTailChars else 0,
-                                    freshTick = if (lines.stableLines.isEmpty()) freshTick else 0
-                                )
-                            }
-                        }
-                        lines.stableLines.drop(1).forEach { line ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = paragraphLineHeight)
-                            ) {
-                                Spacer(modifier = Modifier.width(gutterWidth))
-                                Text(
-                                    text = line,
-                                    modifier = Modifier.weight(1f),
-                                    style = bodyStyle,
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-                        if (lines.stableLines.isNotEmpty()) {
-                            lines.activeLine?.let { line ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = paragraphLineHeight)
-                                ) {
-                                    Spacer(modifier = Modifier.width(gutterWidth))
-                                    StreamingAnimatedLineText(
-                                        text = line,
-                                        modifier = Modifier.weight(1f),
-                                        style = bodyStyle,
-                                        freshTailChars = freshTailChars,
-                                        freshTick = freshTick
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            is StreamingLineModel.Numbered -> {
-                val numberStyle = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
-                val bodyStyle = assistantStreamingParagraphTextStyle()
-                val numberWidthPx = remember(textMeasurer, model.number, numberStyle) {
-                    textMeasurer.measure(AnnotatedString("${model.number}."), style = numberStyle).size.width
-                }
-                val bodyWidthPx = (maxWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
-                val gutterWidth = with(density) { (numberWidthPx + spacingPx).toDp() }
-                val rawLines = remember(model.text, bodyWidthPx) {
-                    resolveRenderedLines(model.text, bodyStyle, bodyWidthPx)
-                }
-                val lines = rememberLockedStreamingRenderedLines(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    if (lines.activeLine != null || lines.stableLines.isNotEmpty()) {
-                        val firstLine = lines.stableLines.firstOrNull() ?: lines.activeLine
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = paragraphLineHeight),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "${model.number}.",
-                                style = numberStyle
-                            )
-                            firstLine?.let { line ->
-                                StreamingAnimatedLineText(
-                                    text = line,
-                                    modifier = Modifier.weight(1f),
-                                    style = bodyStyle,
-                                    freshTailChars = if (lines.stableLines.isEmpty()) freshTailChars else 0,
-                                    freshTick = if (lines.stableLines.isEmpty()) freshTick else 0
-                                )
-                            }
-                        }
-                        lines.stableLines.drop(1).forEach { line ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = paragraphLineHeight)
-                            ) {
-                                Spacer(modifier = Modifier.width(gutterWidth))
-                                Text(
-                                    text = line,
-                                    modifier = Modifier.weight(1f),
-                                    style = bodyStyle,
-                                    textAlign = TextAlign.Start,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
-                        }
-                        if (lines.stableLines.isNotEmpty()) {
-                            lines.activeLine?.let { line ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .heightIn(min = paragraphLineHeight)
-                                ) {
-                                    Spacer(modifier = Modifier.width(gutterWidth))
-                                    StreamingAnimatedLineText(
-                                        text = line,
-                                        modifier = Modifier.weight(1f),
-                                        style = bodyStyle,
-                                        freshTailChars = freshTailChars,
-                                        freshTick = freshTick
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            is StreamingLineModel.Quote -> {
-                val quoteStyle = assistantStreamingParagraphTextStyle()
-                val rawLines = remember(model.text, maxWidthPx) {
-                    resolveRenderedLines(model.text, quoteStyle, maxWidthPx)
-                }
-                val lines = rememberLockedStreamingRenderedLines(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
-                StreamingSingleActiveLineText(
-                    lines = lines,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = quoteStyle,
-                    emptyLineHeight = paragraphLineHeight,
-                    freshTailChars = freshTailChars,
-                    freshTick = freshTick
-                )
-            }
-            is StreamingLineModel.Paragraph -> {
-                val paragraphStyle = assistantStreamingParagraphTextStyle()
-                val rawLines = remember(model.text, maxWidthPx) {
-                    resolveRenderedLines(model.text, paragraphStyle, maxWidthPx)
-                }
-                val lines = rememberLockedStreamingRenderedLines(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
-                StreamingSingleActiveLineText(
-                    lines = lines,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = paragraphStyle,
-                    emptyLineHeight = paragraphLineHeight,
-                    freshTailChars = freshTailChars,
-                    freshTick = freshTick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AssistantMarkdownContent(content: String, modifier: Modifier = Modifier) {
-    val blockState = remember(content) { splitStreamingBlockState(content) }
-    val completedModels = remember(blockState) {
-        buildList {
-            addAll(blockState.completedBlocks.map(::classifyStreamingLine))
-            blockState.activeBlock?.let { add(classifyStreamingLine(it)) }
-        }
-    }
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
-    ) {
-        completedModels.forEachIndexed { index, model ->
-            key("markdown_completed_$index:${model.hashCode()}") {
-                val showLeadingSectionDivider = shouldShowStreamingSectionDivider(
-                    previous = completedModels.getOrNull(index - 1),
-                    current = model
-                )
-                if (index == completedModels.lastIndex) {
-                    AssistantStreamingActiveBlock(
-                        model = model,
-                        showLeadingSectionDivider = showLeadingSectionDivider,
-                        lineAdvanceTick = 0,
-                        strictLineReveal = false,
-                        lineRevealLocked = false,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    AssistantStreamingCommittedBlock(
-                        model = model,
-                        showLeadingSectionDivider = showLeadingSectionDivider,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GPTBreathingBall(modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "assistantBreathingDot")
-    val scale by transition.animateFloat(
-        initialValue = 0.68f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = GPT_BALL_PULSE_MS,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "assistantBreathingDotScale"
-    )
-    Box(
-        modifier = modifier.size(GPT_BALL_CONTAINER_SIZE),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(
-            modifier = Modifier
-                .size(GPT_BALL_CONTAINER_SIZE)
-        ) {
-            val baseRadius = GPT_BALL_SIZE.toPx() / 2f
-            val radius = baseRadius * scale
-            val center = this.center
-
-            drawCircle(
-                color = Color.Black,
-                radius = radius,
-                center = center
-            )
-        }
-    }
 }
 
 @Composable
@@ -3043,91 +2207,32 @@ fun ChatScreen() {
         return tailBottom >= (boundaryBottom - activationRangePx)
     }
     fun isStreamingMessageVisibleInViewport(): Boolean {
-        if (!isStreaming || !hasStreamingItem) return false
-        val streamingBottomInViewport = currentStreamingTailBottomPx()
-        val legalBottom = currentStreamingLegalBottomPx()
-        if (streamingBottomInViewport <= 0 || legalBottom <= 0) return false
-        return streamingBottomInViewport <= legalBottom
+        return com.nongjiqianwen.isStreamingReadyForAutoFollow(
+            isStreaming = isStreaming,
+            hasStreamingItem = hasStreamingItem,
+            streamingFollowArmed = true,
+            streamingBottomInViewport = currentStreamingTailBottomPx(),
+            legalBottomPx = currentStreamingLegalBottomPx()
+        )
     }
-    val streamingDirectionLock = remember(
-        scrollMode,
-        isStreaming,
-        hasStreamingItem,
-        userDetachedFromBottom
-    ) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source != NestedScrollSource.UserInput) return Offset.Zero
-                if (
-                    isStreaming &&
-                    hasStreamingItem &&
-                    scrollMode == ScrollMode.AutoFollow &&
-                    available.y != 0f
-                ) {
-                    userInteracting = true
-                    streamBottomFollowActive = false
-                    scrollMode = ScrollMode.UserBrowsing
-                }
-                if (
-                    isStreaming &&
-                    hasStreamingItem &&
-                    available.y < 0f &&
-                    isStreamingTailNearGuardBoundary()
-                ) {
-                    val contentBottom = currentStreamingGuardContentBottomPx()
-                    val activeBoundaryBottom = currentStreamingGuardBoundaryBottomPx()
-                    if (activeBoundaryBottom > 0 && contentBottom > 0) {
-                        val projectedBottom = contentBottom - available.y
-                        val overflowPx = (projectedBottom - activeBoundaryBottom).coerceAtLeast(0f)
-                        if (overflowPx > 0f) {
-                            val consumedPx = overflowPx.coerceAtMost(-available.y)
-                            return Offset(x = 0f, y = -consumedPx)
-                        }
-                    }
-                }
-                return Offset.Zero
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (
-                    isStreaming &&
-                    hasStreamingItem &&
-                    scrollMode == ScrollMode.AutoFollow &&
-                    available.y != 0f
-                ) {
-                    userInteracting = true
-                    streamBottomFollowActive = false
-                    scrollMode = ScrollMode.UserBrowsing
-                }
-                if (
-                    isStreaming &&
-                    hasStreamingItem &&
-                    available.y < 0f &&
-                    isStreamingTailNearGuardBoundary()
-                ) {
-                    val contentBottom = currentStreamingGuardContentBottomPx()
-                    val activeBoundaryBottom = currentStreamingGuardBoundaryBottomPx()
-                    val remainingToBoundaryPx =
-                        if (contentBottom > 0 && activeBoundaryBottom > 0) {
-                            (activeBoundaryBottom - contentBottom).coerceAtLeast(0)
-                        } else {
-                            Int.MAX_VALUE
-                        }
-                    val shouldClampBottomFling =
-                        when {
-                            remainingToBoundaryPx == Int.MAX_VALUE -> false
-                            remainingToBoundaryPx <= 0 -> true
-                            remainingToBoundaryPx < 150 -> true
-                            else -> false
-                        }
-                    if (shouldClampBottomFling) {
-                        return Velocity(x = 0f, y = available.y)
-                    }
-                }
-                return Velocity.Zero
-            }
+    val streamingDirectionLock = rememberStreamingDirectionLock(
+        snapshotProvider = {
+            StreamingGuardSnapshot(
+                isStreaming = isStreaming,
+                hasStreamingItem = hasStreamingItem,
+                scrollModeAutoFollow = scrollMode == ScrollMode.AutoFollow,
+                tailBottomPx = currentStreamingGuardContentBottomPx(),
+                legalBottomPx = currentStreamingGuardBoundaryBottomPx(),
+                viewportHeightPx = messageViewportHeightPx,
+                assistantLineStepPx = assistantLineStepPx
+            )
+        },
+        onInterruptAutoFollow = {
+            userInteracting = true
+            streamBottomFollowActive = false
+            scrollMode = ScrollMode.UserBrowsing
         }
-    }
+    )
     val enableStreamingScrollLock by remember(
         isStreaming,
         hasStreamingItem
@@ -3213,10 +2318,13 @@ fun ChatScreen() {
     }
 
     fun isStreamingReadyForAutoFollow(): Boolean {
-        return isStreaming &&
-            hasStreamingItem &&
-            streamingFollowArmed &&
-            isStreamingMessageVisibleInViewport()
+        return com.nongjiqianwen.isStreamingReadyForAutoFollow(
+            isStreaming = isStreaming,
+            hasStreamingItem = hasStreamingItem,
+            streamingFollowArmed = streamingFollowArmed,
+            streamingBottomInViewport = currentStreamingTailBottomPx(),
+            legalBottomPx = currentStreamingLegalBottomPx()
+        )
     }
     fun applyStreamingScrollState(
         detached: Boolean,
@@ -4261,16 +3369,17 @@ fun ChatScreen() {
         val visibleBottom = worklineBottom.takeIf { it > 0 }
             ?: (listState.layoutInfo.viewportEndOffset - streamVisibleBottomGapPx).coerceAtLeast(0)
         val contentBottom = currentStreamingVisualBottomPx()
-        if (contentBottom <= 0) return 0
-        return (contentBottom - visibleBottom).coerceAtLeast(0)
+        return com.nongjiqianwen.currentStreamingOverflowDelta(
+            contentBottom = contentBottom,
+            visibleBottom = visibleBottom
+        )
     }
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
-        if (overflow <= 0) return 0
-        val steadyStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(5)
-        val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
-        if (overflow < triggerThresholdPx) return 0
-        return overflow.coerceAtMost(steadyStepPx)
+        return com.nongjiqianwen.resolveStreamingFollowStepPx(
+            overflow = overflow,
+            assistantLineStepPx = assistantLineStepPx
+        )
     }
 
     suspend fun smoothCatchUpToBottom(maxFrames: Int = 480) {
@@ -4904,10 +4013,20 @@ fun ChatScreen() {
         programmaticScroll = true
         try {
             withFrameNanos { }
-            val lastIndex = messages.lastIndex
-            if (lastIndex < 0) return
-            listState.scrollToItem(lastIndex)
-            withFrameNanos { }
+            val anchorIndex = findSendAnchorIndex(
+                messages = messages,
+                anchoredUserMessageId = anchoredUserMessageId,
+                messageIdProvider = { (it as ChatMessage).id },
+                assistantIdProvider = ::assistantMessageIdForSourceUser
+            )
+            if (anchorIndex < 0) return
+            val anchorTop = with(density) { ASSISTANT_START_ANCHOR_TOP.roundToPx() }
+            snapStreamingToSendAnchor(
+                listState = listState,
+                anchorIndex = anchorIndex,
+                anchorTopPx = anchorTop
+            )
+            repeat(2) { withFrameNanos { } }
         } finally {
             programmaticScroll = false
             lastProgrammaticScrollMs = SystemClock.uptimeMillis()
@@ -5671,18 +4790,27 @@ fun ChatScreen() {
                                                     LocalTextToolbar provides messageTextToolbar
                                                 ) {
                                                     key(messageSelectionResetEpoch) {
-                                                        AssistantMessageContent(
+                                                        val renderMode = when {
+                                                            isStreaming && assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
+                                                            isStreaming -> StreamingRenderMode.Streaming
+                                                            else -> StreamingRenderMode.Settled
+                                                        }
+                                                        val revealMode = when {
+                                                            !isStreaming -> StreamingRevealMode.Free
+                                                            scrollMode == ScrollMode.UserBrowsing || userInteracting -> StreamingRevealMode.Free
+                                                            lineRevealLocked -> StreamingRevealMode.Conservative
+                                                            else -> StreamingRevealMode.Free
+                                                        }
+                                                        ChatStreamingRenderer(
                                                             content = assistantDisplayContent,
-                                                            isStreaming = isStreaming,
+                                                            renderMode = renderMode,
+                                                            revealMode = revealMode,
+                                                            freshSuffixEnabled = isStreaming,
+                                                            showWaitingBall = renderMode == StreamingRenderMode.Waiting,
                                                             streamingFreshStart = streamingFreshStart,
                                                             streamingFreshEnd = streamingFreshEnd,
                                                             streamingFreshTick = streamingFreshTick,
                                                             streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                                            strictLineReveal =
-                                                                isStreaming &&
-                                                                    scrollMode != ScrollMode.UserBrowsing &&
-                                                                    !userInteracting,
-                                                            lineRevealLocked = lineRevealLocked,
                                                             selectionEnabled = !isStreaming,
                                                             showDisclaimer = true,
                                                             onStreamingContentBoundsChanged = { bounds ->
@@ -6412,11 +5540,19 @@ private fun SelectableRenderedStaticMessageContent(
         LocalTextToolbar provides textToolbar
     ) {
         key(selectionResetKey) {
-            AssistantMessageContent(
+            ChatStreamingRenderer(
                 content = content,
-                isStreaming = false,
+                renderMode = StreamingRenderMode.Settled,
+                revealMode = StreamingRevealMode.Free,
+                freshSuffixEnabled = false,
+                showWaitingBall = false,
+                streamingFreshStart = -1,
+                streamingFreshEnd = -1,
+                streamingFreshTick = 0,
+                streamingLineAdvanceTick = 0,
                 selectionEnabled = true,
                 showDisclaimer = showDisclaimer,
+                onStreamingContentBoundsChanged = null,
                 expandToFullWidth = expandToFullWidth,
                 modifier = modifier
             )
