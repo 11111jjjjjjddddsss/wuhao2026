@@ -2130,6 +2130,19 @@ fun ChatScreen() {
             .calculateBottomPadding()
             .roundToPx()
     }
+    val stableComposerBottomBarHeightPx by remember(
+        inputChromeRowHeightPx,
+        safeBottomInsetPx,
+        startupBottomBarHeightEstimatePx
+    ) {
+        derivedStateOf {
+            deriveComposerStableBottomBarHeightPx(
+                inputChromeRowHeightPx = inputChromeRowHeightPx,
+                safeBottomInsetPx = safeBottomInsetPx,
+                startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx
+            )
+        }
+    }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -2155,11 +2168,11 @@ fun ChatScreen() {
         effectiveBottomBarHeightPx
     ) {
         derivedStateOf {
-            if (composerCollapseOverlayVisible && composerCollapseOverlayBottomHeightPx > 0) {
-                composerCollapseOverlayBottomHeightPx
-            } else {
-                effectiveBottomBarHeightPx
-            }
+            resolveBottomContentReservedHeightPx(
+                overlayVisible = composerCollapseOverlayVisible,
+                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx
+            )
         }
     }
     val jumpButtonBottomPadding = with(density) {
@@ -2502,15 +2515,15 @@ fun ChatScreen() {
 
     LaunchedEffect(inputChromeMeasured, inputChromeRowHeightPx, safeBottomInsetPx) {
         if (!inputChromeMeasured) return@LaunchedEffect
-        val stableBottomBarHeightPx =
-            (inputChromeRowHeightPx + safeBottomInsetPx)
-                .coerceAtLeast(startupBottomBarHeightEstimatePx)
-        val deltaPx = kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx)
         if (
-            bottomBarHeightPx != stableBottomBarHeightPx &&
-            (imeVisible || deltaPx > BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX)
+            shouldApplyComposerBottomBarHeight(
+                currentBottomBarHeightPx = bottomBarHeightPx,
+                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
+                imeVisible = imeVisible,
+                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+            )
         ) {
-            bottomBarHeightPx = stableBottomBarHeightPx
+            bottomBarHeightPx = stableComposerBottomBarHeightPx
         }
     }
 
@@ -3330,15 +3343,21 @@ fun ChatScreen() {
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
-            composerSettlingMinHeightPx =
-                inputContentHeightPx.coerceAtLeast(startupInputContentHeightEstimatePx)
-            composerSettlingChromeHeightPx = inputChromeRowHeightPx
-            suppressInputCursor = true
+            val collapsePreparation = prepareComposerCollapse(
+                inputContentHeightPx = inputContentHeightPx,
+                startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
+                inputChromeRowHeightPx = inputChromeRowHeightPx
+            )
+            composerSettlingMinHeightPx = collapsePreparation.settlingMinHeightPx
+            composerSettlingChromeHeightPx = collapsePreparation.settlingChromeHeightPx
+            suppressInputCursor = collapsePreparation.shouldSuppressCursor
             inputFieldFocused = false
             clearInputSelectionToolbar()
             input.value = TextFieldValue("")
-            focusManager.clearFocus(force = true)
-            keyboardController?.hide()
+            if (collapsePreparation.shouldClearFocus) {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }
         }
         snackbarScope.launch {
             try {
@@ -3373,15 +3392,21 @@ fun ChatScreen() {
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
-            composerSettlingMinHeightPx =
-                inputContentHeightPx.coerceAtLeast(startupInputContentHeightEstimatePx)
-            composerSettlingChromeHeightPx = inputChromeRowHeightPx
-            suppressInputCursor = true
+            val collapsePreparation = prepareComposerCollapse(
+                inputContentHeightPx = inputContentHeightPx,
+                startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
+                inputChromeRowHeightPx = inputChromeRowHeightPx
+            )
+            composerSettlingMinHeightPx = collapsePreparation.settlingMinHeightPx
+            composerSettlingChromeHeightPx = collapsePreparation.settlingChromeHeightPx
+            suppressInputCursor = collapsePreparation.shouldSuppressCursor
             inputFieldFocused = false
             clearInputSelectionToolbar()
             input.value = TextFieldValue("")
-            focusManager.clearFocus(force = true)
-            keyboardController?.hide()
+            if (collapsePreparation.shouldClearFocus) {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }
         }
         snackbarScope.launch {
             try {
@@ -3518,20 +3543,26 @@ fun ChatScreen() {
             composerSettlingChromeHeightPx = 0
             return@LaunchedEffect
         }
-        if (composerSettlingMinHeightPx <= 0 && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
-        if (sendUiSettling) return@LaunchedEffect
-        if (!imeVisible) {
-            val stableBottomBarHeightPx =
-                (inputChromeRowHeightPx + safeBottomInsetPx)
-                    .coerceAtLeast(startupBottomBarHeightEstimatePx)
-            val bottomBarStable =
-                kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx) <=
-                    BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-            if (!bottomBarStable) return@LaunchedEffect
+        if (
+            shouldReleaseComposerSettling(
+                inputText = input.value.text,
+                inputFieldFocused = inputFieldFocused,
+                composerSettlingMinHeightPx = composerSettlingMinHeightPx,
+                composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+                sendUiSettling = sendUiSettling,
+                imeVisible = imeVisible,
+                bottomBarHeightPx = bottomBarHeightPx,
+                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
+                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+            )
+        ) {
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             return@LaunchedEffect
         }
+        if (composerSettlingMinHeightPx <= 0 && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
+        if (sendUiSettling) return@LaunchedEffect
+        if (!imeVisible) return@LaunchedEffect
         withFrameNanos { }
         if (!sendUiSettling && !inputFieldFocused && input.value.text.isEmpty()) {
             composerSettlingMinHeightPx = 0
@@ -3550,28 +3581,53 @@ fun ChatScreen() {
         inputFieldFocused,
         input.value.text
     ) {
+        if (
+            shouldDismissComposerCollapseOverlay(
+                overlayVisible = composerCollapseOverlayVisible,
+                inputText = input.value.text,
+                inputFieldFocused = inputFieldFocused,
+                sendUiSettling = sendUiSettling,
+                imeVisible = imeVisible,
+                composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+                bottomBarHeightPx = bottomBarHeightPx,
+                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
+                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+            )
+        ) {
+            composerCollapseOverlayVisible = false
+            return@LaunchedEffect
+        }
         if (!composerCollapseOverlayVisible) return@LaunchedEffect
         if (input.value.text.isNotEmpty() || inputFieldFocused) {
             composerCollapseOverlayVisible = false
             return@LaunchedEffect
         }
-        val stableBottomBarHeightPx =
-            (inputChromeRowHeightPx + safeBottomInsetPx).coerceAtLeast(startupBottomBarHeightEstimatePx)
-        val bottomBarStable =
-            kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx) <= BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-        if (!sendUiSettling && !imeVisible && composerSettlingChromeHeightPx <= 0 && bottomBarStable) {
+        if (
+            shouldDismissComposerCollapseOverlay(
+                overlayVisible = composerCollapseOverlayVisible,
+                inputText = input.value.text,
+                inputFieldFocused = inputFieldFocused,
+                sendUiSettling = sendUiSettling,
+                imeVisible = imeVisible,
+                composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+                bottomBarHeightPx = bottomBarHeightPx,
+                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
+                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+            )
+        ) {
             repeat(2) { withFrameNanos { } }
-            val settledBottomBarHeightPx =
-                (inputChromeRowHeightPx + safeBottomInsetPx).coerceAtLeast(startupBottomBarHeightEstimatePx)
-            val settledBottomBarStable =
-                kotlin.math.abs(bottomBarHeightPx - settledBottomBarHeightPx) <= BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
             if (
-                !sendUiSettling &&
-                !imeVisible &&
-                composerSettlingChromeHeightPx <= 0 &&
-                settledBottomBarStable &&
-                !inputFieldFocused &&
-                input.value.text.isEmpty()
+                shouldDismissComposerCollapseOverlay(
+                    overlayVisible = composerCollapseOverlayVisible,
+                    inputText = input.value.text,
+                    inputFieldFocused = inputFieldFocused,
+                    sendUiSettling = sendUiSettling,
+                    imeVisible = imeVisible,
+                    composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+                    bottomBarHeightPx = bottomBarHeightPx,
+                    stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
+                    jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+                )
             ) {
                 composerCollapseOverlayVisible = false
             }
@@ -3586,13 +3642,17 @@ fun ChatScreen() {
         composerCollapseOverlayPrewarmed
     ) {
         if (composerCollapseOverlayVisible) return@LaunchedEffect
-        val hostBounds = composerHostBoundsInWindow ?: return@LaunchedEffect
-        val chromeBounds = composerChromeBoundsInWindow ?: return@LaunchedEffect
         if (composerCollapseOverlayPrewarmed) return@LaunchedEffect
-        composerCollapseOverlayHostBoundsSnapshot = hostBounds
-        composerCollapseOverlayChromeBoundsSnapshot = chromeBounds
-        composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
-        composerCollapseOverlayPrewarmed = true
+        captureComposerOverlaySnapshot(
+            hostBoundsInWindow = composerHostBoundsInWindow,
+            chromeBoundsInWindow = composerChromeBoundsInWindow,
+            bottomHeightPx = effectiveBottomBarHeightPx
+        )?.let { snapshot ->
+            composerCollapseOverlayHostBoundsSnapshot = snapshot.hostBoundsInWindow
+            composerCollapseOverlayChromeBoundsSnapshot = snapshot.chromeBoundsInWindow
+            composerCollapseOverlayBottomHeightPx = snapshot.bottomHeightPx
+            composerCollapseOverlayPrewarmed = true
+        }
     }
 
     LaunchedEffect(
@@ -3611,12 +3671,16 @@ fun ChatScreen() {
         repeat(2) { withFrameNanos { } }
         if (composerCollapseOverlayVisible) return@LaunchedEffect
         if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
-        val hostBounds = composerHostBoundsInWindow ?: return@LaunchedEffect
-        val chromeBounds = composerChromeBoundsInWindow ?: return@LaunchedEffect
-        composerCollapseOverlayHostBoundsSnapshot = hostBounds
-        composerCollapseOverlayChromeBoundsSnapshot = chromeBounds
-        composerCollapseOverlayBottomHeightPx = effectiveBottomBarHeightPx
-        composerCollapseOverlayPrewarmed = true
+        captureComposerOverlaySnapshot(
+            hostBoundsInWindow = composerHostBoundsInWindow,
+            chromeBoundsInWindow = composerChromeBoundsInWindow,
+            bottomHeightPx = effectiveBottomBarHeightPx
+        )?.let { snapshot ->
+            composerCollapseOverlayHostBoundsSnapshot = snapshot.hostBoundsInWindow
+            composerCollapseOverlayChromeBoundsSnapshot = snapshot.chromeBoundsInWindow
+            composerCollapseOverlayBottomHeightPx = snapshot.bottomHeightPx
+            composerCollapseOverlayPrewarmed = true
+        }
     }
 
     LaunchedEffect(chatScopeId) {
@@ -4121,11 +4185,11 @@ fun ChatScreen() {
             } else {
                 null
             }
-        val composerOverlayHintText = when {
-            composerStatusHintVisible && composerStatusHintText.isNotBlank() -> composerStatusHintText
-            inputLimitHintVisible -> "已超过6000字，暂时不能发送"
-            else -> null
-        }
+        val composerOverlayHintText = resolveComposerOverlayHintText(
+            composerStatusHintVisible = composerStatusHintVisible,
+            composerStatusHintText = composerStatusHintText,
+            inputLimitHintVisible = inputLimitHintVisible
+        )
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,

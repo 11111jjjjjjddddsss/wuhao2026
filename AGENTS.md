@@ -525,13 +525,15 @@ Clean-State 定义：
 
 ## 14.8 聊天框分层边界
 
-- 聊天框动态交互后续默认按两层拆分：
+- 聊天框动态交互后续默认按三条主链拆分：
   - `app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt`
   - `app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt`
+- `app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt`
 - `ChatScrollCoordinator.kt` 只负责滚动决策、发送后锚点落位、底部护栏、回到底部按钮这类列表行为
 - `ChatStreamingRenderer.kt` 只负责 waiting 小球、streaming 文本显示、行级 reveal、fresh suffix 提亮这类渲染表现
-- `ChatScreen.kt` 只负责页面组装、测量值采集、状态接线，不再继续新增“滚动决策 + 渲染表现”混写主逻辑
-- 以后聊天框动态问题优先先判断属于滚动层还是渲染层，再进对应文件修改；不要再直接在 `ChatScreen.kt` 主体里混着下刀
+- `ChatComposerCoordinator.kt` 只负责输入框底部宿主、IME 弹起回缩、发送收口稳定壳、底部 overlay/hint 这类 composer 动态行为
+- `ChatScreen.kt` 只负责页面组装、测量值采集、状态接线，不再继续新增“滚动决策 + 渲染表现 + 输入框动态”混写主逻辑
+- 以后聊天框动态问题优先先判断属于滚动链、渲染链、输入框链中的哪一条，再进对应文件修改；不要再直接在 `ChatScreen.kt` 主体里混着下刀
 
 ## 15. 开发风险边界
 
