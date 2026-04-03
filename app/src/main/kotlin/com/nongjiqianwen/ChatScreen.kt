@@ -235,33 +235,12 @@ private data class PendingMessageSelectionToolbarState(
     val onCopyFullRequested: (() -> Unit)?
 )
 
-private data class InputSelectionToolbarState(
-    val anchorXRatio: Float,
-    val onCopyRequested: (() -> Unit)?,
-    val onPasteRequested: (() -> Unit)?,
-    val onCutRequested: (() -> Unit)?,
-    val onSelectAllRequested: (() -> Unit)?
-)
-
 private data class PendingInputSelectionToolbarState(
     val rect: Rect,
     val onCopyRequested: (() -> Unit)?,
     val onPasteRequested: (() -> Unit)?,
     val onCutRequested: (() -> Unit)?,
     val onSelectAllRequested: (() -> Unit)?
-)
-
-private enum class SendBlockReason {
-    None,
-    EmptyInput,
-    Streaming,
-    InputTooLong
-}
-
-private data class SendGateState(
-    val canPress: Boolean,
-    val canSubmit: Boolean,
-    val blockReason: SendBlockReason
 )
 
 private enum class MessageActionMenuSide { Above, Below }
@@ -947,36 +926,6 @@ private fun containsDisclaimerSensitiveAssistant(messages: List<ChatMessage>): B
     return messages.any { it.role == ChatRole.ASSISTANT && shouldShowAiDisclaimerRefined(it.content) }
 }
 
-private fun buildSendGateState(
-    rawInput: String,
-    isStreaming: Boolean,
-    exceedsInputLimit: Boolean
-): SendGateState {
-    val hasText = rawInput.trim().isNotEmpty()
-    return when {
-        !hasText -> SendGateState(
-            canPress = false,
-            canSubmit = false,
-            blockReason = SendBlockReason.EmptyInput
-        )
-        isStreaming -> SendGateState(
-            canPress = false,
-            canSubmit = false,
-            blockReason = SendBlockReason.Streaming
-        )
-        exceedsInputLimit -> SendGateState(
-            canPress = true,
-            canSubmit = false,
-            blockReason = SendBlockReason.InputTooLong
-        )
-        else -> SendGateState(
-            canPress = true,
-            canSubmit = true,
-            blockReason = SendBlockReason.None
-        )
-    }
-}
-
 internal fun shouldShowAiDisclaimerRefined(content: String): Boolean {
     if (content.isBlank()) return false
     val normalized = content.lowercase()
@@ -1308,81 +1257,6 @@ private fun shouldShowMarkdownSectionDivider(
 }
 
 @Composable
-@Suppress("UNUSED_PARAMETER")
-private fun ChatInputField(
-    value: TextFieldValue,
-    focused: Boolean,
-    suppressCursor: Boolean,
-    settlingMinHeightPx: Int,
-    suppressPlaceholder: Boolean,
-    onValueChange: (TextFieldValue) -> Unit,
-    onFocusChanged: (Boolean) -> Unit,
-    onContentHeightChanged: (Int) -> Unit,
-    placeholder: (@Composable () -> Unit)? = null,
-    singleLine: Boolean = false,
-    minLines: Int = 1,
-    maxLines: Int = 6,
-    textStyle: TextStyle = TextStyle(
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
-        color = Color(0xFF111111)
-    ),
-    colors: Any? = null,
-    modifier: Modifier = Modifier
-) {
-    val density = LocalDensity.current
-    val settlingSnapshotMinHeight = with(density) {
-        settlingMinHeightPx.coerceAtLeast(0).toDp()
-    }
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.onFocusChanged { focusState ->
-            onFocusChanged(focusState.isFocused)
-        },
-        textStyle = textStyle,
-        singleLine = singleLine,
-        minLines = minLines,
-        maxLines = maxLines,
-        cursorBrush = SolidColor(
-            if (focused && !suppressCursor) {
-                Color(0xFF111111)
-            } else {
-                Color.Transparent
-            }
-        ),
-        decorationBox = { innerTextField ->
-            if (colors != null) Unit
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 11.dp)
-                    .heightIn(min = settlingSnapshotMinHeight),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                if (value.text.isEmpty() && !suppressPlaceholder) {
-                    Text(
-                        text = "描述种植问题",
-                        color = Color(0xFFAEAFB4)
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onSizeChanged { size ->
-                            if (size.height > 0) {
-                                onContentHeightChanged(size.height)
-                            }
-                        }
-                ) {
-                    innerTextField()
-                }
-            }
-        }
-    )
-}
-
-@Composable
 private fun LongArrowIcon(
     tint: Color,
     directionUp: Boolean,
@@ -1518,138 +1392,6 @@ private fun FrostedCircleButton(
         ) {
             Box(contentAlignment = Alignment.Center, content = icon)
         }
-    }
-}
-
-@Composable
-private fun ComposerSendActionButton(
-    size: Dp,
-    backgroundColor: Color,
-    tint: Color,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Box(
-        modifier = Modifier
-            .padding(start = 6.dp)
-            .size(size)
-            .clip(CircleShape)
-            .background(backgroundColor)
-            .clickable(
-                enabled = enabled,
-                interactionSource = interactionSource,
-                indication = null
-            ) {
-                onClick()
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        LongArrowIcon(
-            tint = tint,
-            directionUp = true,
-            modifier = Modifier.size(22.dp)
-        )
-    }
-}
-
-@Composable
-private fun ComposerInputShell(
-    modifier: Modifier = Modifier,
-    inputFieldSurface: Color,
-    inputFieldBorder: Color,
-    inputBarHeight: Dp,
-    inputBarMaxHeight: Dp,
-    content: @Composable RowScope.() -> Unit,
-    sendButtonSize: Dp,
-    sendButtonEnabled: Boolean,
-    sendButtonBackgroundColor: Color,
-    sendButtonTint: Color,
-    onSendClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(30.dp),
-        color = inputFieldSurface,
-        border = BorderStroke(1.22.dp, inputFieldBorder.copy(alpha = 0.98f)),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
-        modifier = modifier
-            .shadow(
-                elevation = 1.35.dp,
-                shape = RoundedCornerShape(30.dp),
-                ambientColor = Color(0x14000000),
-                spotColor = Color(0x14000000)
-            )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
-                .padding(end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            content()
-            ComposerSendActionButton(
-                size = sendButtonSize,
-                backgroundColor = sendButtonBackgroundColor,
-                tint = sendButtonTint,
-                enabled = sendButtonEnabled,
-                onClick = onSendClick
-            )
-        }
-    }
-}
-
-@Composable
-private fun ComposerChromeRow(
-    modifier: Modifier = Modifier,
-    addButtonSize: Dp,
-    addIconSize: Dp,
-    sendButtonSize: Dp,
-    inputChromeSurface: Color,
-    inputChromeBorder: Color,
-    inputFieldSurface: Color,
-    inputFieldBorder: Color,
-    inputBarHeight: Dp,
-    inputBarMaxHeight: Dp,
-    onAddClick: () -> Unit,
-    inputShellModifier: Modifier = Modifier,
-    inputContent: @Composable RowScope.() -> Unit,
-    sendButtonEnabled: Boolean,
-    sendButtonBackgroundColor: Color,
-    sendButtonTint: Color,
-    onSendClick: () -> Unit
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        FrostedCircleButton(
-            size = addButtonSize,
-            surfaceColor = inputChromeSurface,
-            borderColor = inputChromeBorder,
-            onClick = onAddClick
-        ) {
-            PlusCrossIcon(
-                tint = Color(0xFF6F7277),
-                modifier = Modifier.size(addIconSize)
-            )
-        }
-
-        ComposerInputShell(
-            modifier = Modifier.weight(1f).then(inputShellModifier),
-            inputFieldSurface = inputFieldSurface,
-            inputFieldBorder = inputFieldBorder,
-            inputBarHeight = inputBarHeight,
-            inputBarMaxHeight = inputBarMaxHeight,
-            content = inputContent,
-            sendButtonSize = sendButtonSize,
-            sendButtonEnabled = sendButtonEnabled,
-            sendButtonBackgroundColor = sendButtonBackgroundColor,
-            sendButtonTint = sendButtonTint,
-            onSendClick = onSendClick
-        )
     }
 }
 
@@ -4141,10 +3883,6 @@ fun ChatScreen() {
             else -> chromeHorizontalPadding
         }
         val inputChromeBottomPadding = 8.dp
-        val inputLimitHintOffsetPx = with(density) { 14.dp.roundToPx() } + inputChromeRowHeightPx
-        val composerSettlingChromeMinHeight = with(density) {
-            composerSettlingChromeHeightPx.coerceAtLeast(0).toDp()
-        }
         val inputChromeSurface = Color.White
         val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
         val inputFieldSurface = Color.White
@@ -4161,208 +3899,94 @@ fun ChatScreen() {
             } else {
                 composerChromeBoundsInWindow
             }
-        val composerCollapseOverlayHostTop =
-            composerHostBounds?.let { with(density) { (it.top - chatRootTopPx).toDp() } }
-        val composerCollapseOverlayHostStart =
-            composerHostBounds?.let { with(density) { (it.left - chatRootLeftPx).toDp() } }
-        val composerCollapseOverlayHostWidth =
-            composerHostBounds?.let { with(density) { it.width.toDp() } }
-        val composerCollapseOverlayHostHeight =
-            composerHostBounds?.let { with(density) { it.height.toDp() } }
-        val composerCollapseOverlayWidth =
-            composerChromeBounds?.let { with(density) { it.width.toDp() } }
-        val composerCollapseOverlayHeight =
-            composerChromeBounds?.let { with(density) { it.height.toDp() } }
-        val composerCollapseOverlayRowTop =
-            if (composerHostBounds != null && composerChromeBounds != null) {
-                with(density) { (composerChromeBounds.top - composerHostBounds.top).toDp() }
-            } else {
-                null
-            }
-        val composerCollapseOverlayRowStart =
-            if (composerHostBounds != null && composerChromeBounds != null) {
-                with(density) { (composerChromeBounds.left - composerHostBounds.left).toDp() }
-            } else {
-                null
-            }
         val composerOverlayHintText = resolveComposerOverlayHintText(
             composerStatusHintVisible = composerStatusHintVisible,
             composerStatusHintText = composerStatusHintText,
             inputLimitHintVisible = inputLimitHintVisible
         )
+        val inputTextToolbar = remember(chatScopeId) {
+            buildInputSelectionTextToolbar()
+        }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
-                Box(
-                    modifier = Modifier
+                ChatComposerBottomBar(
+                    inputValue = input.value,
+                    inputSelectionColors = inputSelectionColors,
+                    inputTextToolbar = inputTextToolbar,
+                    inputFieldFocused = inputFieldFocused,
+                    suppressInputCursor = suppressInputCursor,
+                    composerSettlingMinHeightPx = composerSettlingMinHeightPx,
+                    composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+                    startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
+                    inputChromeRowHeightPx = inputChromeRowHeightPx,
+                    imeVisible = imeVisible,
+                    isStreamingOrSettling = isStreaming || sendUiSettling,
+                    inputMaxChars = INPUT_MAX_CHARS,
+                    chromeMaxWidth = chromeMaxWidth,
+                    inputChromeHorizontalPadding = inputChromeHorizontalPadding,
+                    inputChromeBottomPadding = inputChromeBottomPadding,
+                    addButtonSize = addButtonSize,
+                    addIconSize = addIconSize,
+                    sendButtonSize = sendButtonSize,
+                    inputBarHeight = inputBarHeight,
+                    inputBarMaxHeight = inputBarMaxHeight,
+                    inputChromeSurface = inputChromeSurface,
+                    inputChromeBorder = inputChromeBorder,
+                    inputFieldSurface = inputFieldSurface,
+                    inputFieldBorder = inputFieldBorder,
+                    overlayHintText = composerOverlayHintText,
+                    hostModifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
                         .imePadding()
                         .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
                         .onGloballyPositioned { coordinates ->
                             composerHostBoundsInWindow = coordinates.boundsInWindow()
+                        },
+                    onChromeMeasured = { height ->
+                        inputChromeRowHeightPx = height
+                        if (height > 0) {
+                            inputChromeMeasured = true
                         }
-                        .background(pageSurface)
-                ) {
-                    if (composerOverlayHintText != null) {
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = Color(0xEE111111),
-                            border = BorderStroke(0.8.dp, Color.Black),
-                            shadowElevation = 1.2.dp,
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .widthIn(max = chromeMaxWidth)
-                                .padding(
-                                    start = inputChromeHorizontalPadding,
-                                    end = inputChromeHorizontalPadding
-                                )
-                                .offset { IntOffset(0, -inputLimitHintOffsetPx) }
-                        ) {
-                            Text(
-                                text = composerOverlayHintText,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                color = Color.White,
-                                fontSize = 12.sp
+                    },
+                    onChromeBoundsChanged = { bounds ->
+                        composerChromeBoundsInWindow = bounds
+                    },
+                    onInputBoundsChanged = { bounds ->
+                        inputFieldBoundsInWindow = bounds
+                        composerTopInViewportPx =
+                            (bounds.top - messageViewportTopPx).roundToInt()
+                        composerMeasured = true
+                        applyPendingInputSelectionToolbarIfReady(bounds)
+                    },
+                    onInputFocused = { focused ->
+                        inputFieldFocused = focused
+                        if (focused) {
+                            suppressInputCursor = false
+                            inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
+                                startupInputContentHeightEstimatePx
                             )
                         }
+                    },
+                    onInputContentHeightChanged = { height ->
+                        inputContentHeightPx = height
+                    },
+                    onInputValueChange = {
+                        suppressInputCursor = false
+                        input.value = it
+                    },
+                    onInputLimitExceeded = {
+                        inputLimitHintTick++
+                    },
+                    onAddClick = { performButtonHaptic() },
+                    onSendClick = {
+                        performButtonHaptic()
+                        sendMessage()
                     }
-                    val sendGate = buildSendGateState(
-                        rawInput = input.value.text,
-                        isStreaming = isStreaming || sendUiSettling,
-                        exceedsInputLimit = input.value.text.length > INPUT_MAX_CHARS
-                    )
-                    val inputTextToolbar = remember(chatScopeId) {
-                        buildInputSelectionTextToolbar()
-                    }
-                    val canPressSend = sendGate.canPress
-                    val canSend = sendGate.canSubmit
-                    val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
-                    val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
-                    ComposerChromeRow(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .widthIn(max = chromeMaxWidth)
-                            .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                            .heightIn(min = composerSettlingChromeMinHeight)
-                            .onSizeChanged {
-                                inputChromeRowHeightPx = it.height
-                                if (it.height > 0) {
-                                    inputChromeMeasured = true
-                                }
-                            }
-                            .onGloballyPositioned { coordinates ->
-                                composerChromeBoundsInWindow = coordinates.boundsInWindow()
-                            }
-                            .padding(
-                                start = inputChromeHorizontalPadding,
-                                end = inputChromeHorizontalPadding,
-                                top = 0.dp,
-                                bottom = inputChromeBottomPadding
-                            ),
-                        addButtonSize = addButtonSize,
-                        addIconSize = addIconSize,
-                        sendButtonSize = sendButtonSize,
-                        inputChromeSurface = inputChromeSurface,
-                        inputChromeBorder = inputChromeBorder,
-                        inputFieldSurface = inputFieldSurface,
-                        inputFieldBorder = inputFieldBorder,
-                        inputBarHeight = inputBarHeight,
-                        inputBarMaxHeight = inputBarMaxHeight,
-                        onAddClick = { performButtonHaptic() },
-                        inputShellModifier = Modifier.onGloballyPositioned { coordinates ->
-                            val bounds = coordinates.boundsInWindow()
-                            inputFieldBoundsInWindow = bounds
-                            composerTopInViewportPx =
-                                (bounds.top - messageViewportTopPx).roundToInt()
-                            composerMeasured = true
-                            applyPendingInputSelectionToolbarIfReady(bounds)
-                        },
-                        inputContent = {
-                            CompositionLocalProvider(
-                                LocalTextSelectionColors provides inputSelectionColors,
-                                LocalTextToolbar provides inputTextToolbar
-                            ) {
-                                ChatInputField(
-                                    value = input.value,
-                                    focused = inputFieldFocused,
-                                    suppressCursor = suppressInputCursor,
-                                    settlingMinHeightPx = composerSettlingMinHeightPx,
-                                    suppressPlaceholder =
-                                        sendUiSettling ||
-                                            (imeVisible && composerSettlingMinHeightPx > 0) ||
-                                            composerSettlingChromeHeightPx > 0,
-                                    onFocusChanged = { focused ->
-                                        inputFieldFocused = focused
-                                        if (focused) {
-                                            suppressInputCursor = false
-                                            inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
-                                                startupInputContentHeightEstimatePx
-                                            )
-                                        }
-                                    },
-                                    onContentHeightChanged = { height ->
-                                        inputContentHeightPx = height
-                                    },
-                                    onValueChange = {
-                                        if (
-                                            it.text.length > INPUT_MAX_CHARS &&
-                                            input.value.text.length <= INPUT_MAX_CHARS
-                                        ) {
-                                            inputLimitHintTick++
-                                        }
-                                        suppressInputCursor = false
-                                        input.value = it
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(start = 2.dp),
-                                    placeholder = { Text("描述种植问题", color = Color(0xFFAEAFB4)) },
-                                    singleLine = false,
-                                    minLines = 1,
-                                    maxLines = 6,
-                                    textStyle = TextStyle(
-                                        fontSize = 16.sp,
-                                        lineHeight = 22.sp,
-                                        color = Color(0xFF111111)
-                                    ),
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        disabledContainerColor = Color.Transparent,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent,
-                                        disabledIndicatorColor = Color.Transparent,
-                                        cursorColor = if (inputFieldFocused && !suppressInputCursor) {
-                                            Color(0xFF111111)
-                                        } else {
-                                            Color.Transparent
-                                        },
-                                        errorCursorColor = if (inputFieldFocused && !suppressInputCursor) {
-                                            Color(0xFF111111)
-                                        } else {
-                                            Color.Transparent
-                                        }
-                                    )
-                                )
-                            }
-                        },
-                        sendButtonEnabled = canPressSend,
-                        sendButtonBackgroundColor = actionBg,
-                        sendButtonTint = actionTint,
-                        onSendClick = {
-                            performButtonHaptic()
-                            if (sendGate.blockReason == SendBlockReason.InputTooLong) {
-                                inputLimitHintTick++
-                            } else if (canSend) {
-                                sendMessage()
-                            }
-                        }
-                    )
-                }
+                )
             },
             snackbarHost = {
                 SnackbarHost(
@@ -4668,63 +4292,23 @@ fun ChatScreen() {
                     }
                 }
 
-                if (
-                    composerCollapseOverlayVisible &&
-                    composerCollapseOverlayHostTop != null &&
-                    composerCollapseOverlayHostStart != null &&
-                    composerCollapseOverlayHostWidth != null &&
-                    composerCollapseOverlayHostHeight != null &&
-                    composerCollapseOverlayRowTop != null &&
-                    composerCollapseOverlayRowStart != null &&
-                    composerCollapseOverlayWidth != null
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .zIndex(44f)
-                            .offset(
-                                x = composerCollapseOverlayHostStart,
-                                y = composerCollapseOverlayHostTop
-                            )
-                            .width(composerCollapseOverlayHostWidth)
-                            .height(composerCollapseOverlayHostHeight)
-                            .background(pageSurface)
-                    ) {
-                        ComposerChromeRow(
-                            modifier = Modifier
-                                .offset(
-                                    x = composerCollapseOverlayRowStart,
-                                    y = composerCollapseOverlayRowTop
-                                )
-                                .width(composerCollapseOverlayWidth)
-                                .heightIn(min = composerCollapseOverlayHeight ?: 0.dp),
-                            addButtonSize = addButtonSize,
-                            addIconSize = addIconSize,
-                            sendButtonSize = sendButtonSize,
-                            inputChromeSurface = inputChromeSurface,
-                            inputChromeBorder = inputChromeBorder,
-                            inputFieldSurface = inputFieldSurface,
-                            inputFieldBorder = inputFieldBorder,
-                            inputBarHeight = inputBarHeight,
-                            inputBarMaxHeight = inputBarMaxHeight,
-                            onAddClick = {},
-                            inputContent = {
-                                Text(
-                                    text = "描述种植问题",
-                                    color = Color(0xFFAEAFB4),
-                                    fontSize = 16.sp,
-                                    lineHeight = 22.sp,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(start = 18.dp)
-                                )
-                            },
-                            sendButtonEnabled = false,
-                            sendButtonBackgroundColor = Color(0xFFD3D4D6),
-                            sendButtonTint = Color(0xFF7F8083),
-                            onSendClick = {}
-                        )
-                    }
-                }
+                ChatComposerCollapseOverlay(
+                    visible = composerCollapseOverlayVisible,
+                    chatRootLeftPx = chatRootLeftPx,
+                    chatRootTopPx = chatRootTopPx,
+                    hostBoundsInWindow = composerHostBounds,
+                    chromeBoundsInWindow = composerChromeBounds,
+                    pageSurface = pageSurface,
+                    addButtonSize = addButtonSize,
+                    addIconSize = addIconSize,
+                    sendButtonSize = sendButtonSize,
+                    inputChromeSurface = inputChromeSurface,
+                    inputChromeBorder = inputChromeBorder,
+                    inputFieldSurface = inputFieldSurface,
+                    inputFieldBorder = inputFieldBorder,
+                    inputBarHeight = inputBarHeight,
+                    inputBarMaxHeight = inputBarMaxHeight
+                )
 
             if (navigationBottomInset > 0.dp) {
                 Box(
@@ -4972,140 +4556,6 @@ private fun MessageActionMenuCardContent(
                 minWidth = 0.dp,
                 horizontalPadding = 12.dp,
                 onClick = onCopyFull
-            )
-        }
-    }
-}
-
-private data class InputActionMenuItem(
-    val label: String,
-    val minWidth: Dp,
-    val horizontalPadding: Dp,
-    val onClick: () -> Unit
-)
-
-@Composable
-private fun InputActionMenuCardContent(
-    actions: List<InputActionMenuItem>,
-    modifier: Modifier = Modifier
-) {
-    if (actions.isEmpty()) return
-    Surface(
-        color = Color(0xFF111111),
-        shape = RoundedCornerShape(16.dp),
-        shadowElevation = 10.dp,
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            actions.forEachIndexed { index, action ->
-                MessageActionMenuButton(
-                    label = action.label,
-                    minWidth = action.minWidth,
-                    horizontalPadding = action.horizontalPadding,
-                    onClick = action.onClick
-                )
-                if (index < actions.lastIndex) {
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .height(16.dp)
-                            .background(Color.White.copy(alpha = 0.16f))
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InputSelectionMenuPopup(
-    state: InputSelectionToolbarState,
-    inputFieldBoundsInWindow: Rect,
-    viewportLeftPx: Float,
-    viewportTopPx: Float,
-    topChromeMaskBottomPx: Int,
-    onMenuBoundsChanged: (Rect?) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val density = LocalDensity.current
-    val actions = remember(state) {
-        buildList {
-            state.onCopyRequested?.let {
-                add(InputActionMenuItem(label = "复制", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
-            }
-            state.onPasteRequested?.let {
-                add(InputActionMenuItem(label = "粘贴", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
-            }
-            state.onCutRequested?.let {
-                add(InputActionMenuItem(label = "剪切", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
-            }
-            state.onSelectAllRequested?.let {
-                add(InputActionMenuItem(label = "全选", minWidth = 64.dp, horizontalPadding = 14.dp, onClick = it))
-            }
-        }
-    }
-    if (actions.isEmpty()) {
-        SideEffect { onMenuBoundsChanged(null) }
-        return
-    }
-
-    val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
-    val marginPx = with(density) { MESSAGE_ACTION_MENU_MARGIN.roundToPx() }
-    var cardSize by remember { mutableStateOf(IntSize.Zero) }
-    val boundsLocal = Rect(
-        left = inputFieldBoundsInWindow.left - viewportLeftPx,
-        top = inputFieldBoundsInWindow.top - viewportTopPx,
-        right = inputFieldBoundsInWindow.right - viewportLeftPx,
-        bottom = inputFieldBoundsInWindow.bottom - viewportTopPx
-    )
-    val resolvedWidth =
-        if (cardSize.width > 0) cardSize.width else with(density) { 256.dp.roundToPx() }
-    val resolvedHeight =
-        if (cardSize.height > 0) cardSize.height else with(density) { MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT.roundToPx() }
-    val preferredCenterX = boundsLocal.left + boundsLocal.width * state.anchorXRatio
-    val minX = (boundsLocal.left + marginPx).roundToInt()
-    val maxX = (boundsLocal.right - resolvedWidth - marginPx).roundToInt().coerceAtLeast(minX)
-    val preferredX = (preferredCenterX - resolvedWidth / 2f).roundToInt().coerceIn(minX, maxX)
-    val protectedTop =
-        maxOf(
-            marginPx,
-            if (topChromeMaskBottomPx > 0) {
-                (topChromeMaskBottomPx - viewportTopPx.roundToInt()) + marginPx
-            } else {
-                marginPx
-            }
-        )
-    val preferredY =
-        (boundsLocal.top.roundToInt() - resolvedHeight - verticalSpacingPx).coerceAtLeast(protectedTop)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(47f)
-    ) {
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(preferredX, preferredY) }
-                .onGloballyPositioned { coordinates ->
-                    cardSize = coordinates.size
-                    onMenuBoundsChanged(coordinates.boundsInWindow())
-                }
-                .pointerInput(state.anchorXRatio, actions.size) {
-                    detectTapGestures(onTap = {})
-                }
-        ) {
-            InputActionMenuCardContent(
-                actions = actions.map { action ->
-                    action.copy(
-                        onClick = {
-                            action.onClick()
-                            onDismiss()
-                        }
-                    )
-                }
             )
         }
     }
