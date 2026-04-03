@@ -53,6 +53,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.text.TextMeasurer
+import kotlin.math.max
+import kotlin.random.Random
 
 internal enum class StreamingRenderMode {
     Waiting,
@@ -63,6 +67,562 @@ internal enum class StreamingRenderMode {
 internal enum class StreamingRevealMode {
     Free,
     Conservative
+}
+
+private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
+private val rendererBulletRegex = Regex("^[*-]\\s+.*$")
+private val rendererNumberedRegex = Regex("^\\d+\\.\\s+.*$")
+private val rendererQuoteRegex = Regex("^>\\s+.*$")
+
+internal data class StreamingTypewriterStep(
+    val text: String,
+    val delayMs: Long
+)
+
+internal data class StreamingRevealBatch(
+    val text: String,
+    val delayMs: Long
+)
+
+internal data class StreamingRenderedLines(
+    val stableLines: List<AnnotatedString>,
+    val activeLine: AnnotatedString?
+)
+
+private data class StreamingLogicalLines(
+    val completedLines: List<String>,
+    val activeLine: String?
+)
+
+internal data class StreamingBlockState(
+    val completedBlocks: List<String>,
+    val activeBlock: String?
+)
+
+internal sealed interface StreamingLineModel {
+    data object Blank : StreamingLineModel
+    data class Heading(val level: Int, val text: String) : StreamingLineModel
+    data class Bullet(val text: String) : StreamingLineModel
+    data class Numbered(val number: String, val text: String) : StreamingLineModel
+    data class Quote(val text: String) : StreamingLineModel
+    data class Paragraph(val text: String) : StreamingLineModel
+}
+
+internal data class QueuedStreamingChunk(
+    val messageId: String,
+    val revealBuffer: String
+)
+
+internal data class StreamingRevealAdvance(
+    val messageId: String,
+    val content: String,
+    val revealBuffer: String,
+    val freshStart: Int,
+    val freshEnd: Int,
+    val freshTick: Int,
+    val lastFreshRevealMs: Long,
+    val delayMs: Long
+)
+
+internal data class FlushedStreamingRenderBuffer(
+    val messageId: String,
+    val content: String
+)
+
+internal fun queueStreamingChunk(
+    currentMessageId: String?,
+    currentRevealBuffer: String,
+    piece: String,
+    anchoredUserMessageId: String?,
+    assistantIdProvider: (String) -> String,
+    fallbackIdProvider: () -> String
+): QueuedStreamingChunk? {
+    if (piece.isEmpty()) return null
+    val messageId = ensureStreamingMessageId(
+        currentMessageId = currentMessageId,
+        anchoredUserMessageId = anchoredUserMessageId,
+        assistantIdProvider = assistantIdProvider,
+        fallbackIdProvider = fallbackIdProvider
+    )
+    return QueuedStreamingChunk(
+        messageId = messageId,
+        revealBuffer = currentRevealBuffer + piece
+    )
+}
+
+internal fun consumeStreamingRevealBatch(
+    currentMessageId: String?,
+    currentContent: String,
+    currentRevealBuffer: String,
+    currentFreshTick: Int,
+    lastFreshRevealMs: Long,
+    anchoredUserMessageId: String?,
+    assistantIdProvider: (String) -> String,
+    fallbackIdProvider: () -> String,
+    nowMs: Long
+): StreamingRevealAdvance? {
+    if (currentRevealBuffer.isEmpty()) return null
+    val batch = buildStreamingRevealBatch(currentRevealBuffer)
+    if (batch.text.isEmpty()) {
+        return StreamingRevealAdvance(
+            messageId = ensureStreamingMessageId(
+                currentMessageId = currentMessageId,
+                anchoredUserMessageId = anchoredUserMessageId,
+                assistantIdProvider = assistantIdProvider,
+                fallbackIdProvider = fallbackIdProvider
+            ),
+            content = currentContent,
+            revealBuffer = currentRevealBuffer,
+            freshStart = currentContent.length,
+            freshEnd = currentContent.length,
+            freshTick = currentFreshTick,
+            lastFreshRevealMs = lastFreshRevealMs,
+            delayMs = batch.delayMs
+        )
+    }
+    val messageId = ensureStreamingMessageId(
+        currentMessageId = currentMessageId,
+        anchoredUserMessageId = anchoredUserMessageId,
+        assistantIdProvider = assistantIdProvider,
+        fallbackIdProvider = fallbackIdProvider
+    )
+    val nextContent = currentContent + batch.text
+    val nextFreshTick = if (
+        currentFreshTick <= 0 ||
+        nowMs - lastFreshRevealMs >= STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS ||
+        batch.text.indexOf('\n') >= 0
+    ) {
+        currentFreshTick + 1
+    } else {
+        currentFreshTick
+    }
+    val nextFreshRevealMs = if (nextFreshTick != currentFreshTick) nowMs else lastFreshRevealMs
+    return StreamingRevealAdvance(
+        messageId = messageId,
+        content = nextContent,
+        revealBuffer = currentRevealBuffer.drop(batch.text.length),
+        freshStart = currentContent.length,
+        freshEnd = nextContent.length,
+        freshTick = nextFreshTick,
+        lastFreshRevealMs = nextFreshRevealMs,
+        delayMs = batch.delayMs
+    )
+}
+
+internal fun flushStreamingRevealBuffer(
+    currentMessageId: String?,
+    currentContent: String,
+    currentRevealBuffer: String,
+    anchoredUserMessageId: String?,
+    assistantIdProvider: (String) -> String,
+    fallbackIdProvider: () -> String
+): FlushedStreamingRenderBuffer? {
+    if (currentRevealBuffer.isEmpty()) return null
+    return FlushedStreamingRenderBuffer(
+        messageId = ensureStreamingMessageId(
+            currentMessageId = currentMessageId,
+            anchoredUserMessageId = anchoredUserMessageId,
+            assistantIdProvider = assistantIdProvider,
+            fallbackIdProvider = fallbackIdProvider
+        ),
+        content = currentContent + currentRevealBuffer
+    )
+}
+
+internal fun buildLockedStreamingActivePreview(
+    activeLine: AnnotatedString,
+    maxVisibleChars: Int
+): AnnotatedString {
+    if (maxVisibleChars <= 0 || activeLine.text.isEmpty()) {
+        return AnnotatedString("")
+    }
+    val visibleCharCount = activeLine.text.count { !it.isWhitespace() }
+    if (visibleCharCount <= maxVisibleChars) return activeLine
+
+    val preview = StringBuilder()
+    var remaining = activeLine.text
+    var revealedVisibleChars = 0
+    while (remaining.isNotEmpty() && revealedVisibleChars < maxVisibleChars) {
+        val token = takeRendererTypewriterToken(remaining).ifEmpty { remaining.first().toString() }
+        preview.append(token)
+        revealedVisibleChars += token.count { !it.isWhitespace() }
+        remaining = remaining.drop(token.length.coerceAtLeast(1))
+    }
+    return AnnotatedString(preview.toString())
+}
+
+internal fun splitStreamingBlockState(content: String): StreamingBlockState {
+    val logicalLines = splitRendererStreamingLogicalLines(content)
+    val completedBlocks = mutableListOf<String>()
+    val paragraph = StringBuilder()
+
+    fun flushParagraphBlock() {
+        val text = paragraph.toString().trim()
+        if (text.isNotEmpty()) {
+            completedBlocks += text
+        }
+        paragraph.clear()
+    }
+
+    logicalLines.completedLines.forEach { line ->
+        val trimmed = line.trim()
+        when {
+            trimmed.isBlank() -> flushParagraphBlock()
+            isStructuralRendererStreamingLine(trimmed) -> {
+                flushParagraphBlock()
+                completedBlocks += trimmed
+            }
+            else -> paragraph.appendRendererParagraphLine(trimmed)
+        }
+    }
+
+    val activeBlock = logicalLines.activeLine?.let { line ->
+        val trimmed = line.trim()
+        val activeLooksStructural = trimmed.isNotBlank() && isStructuralRendererActiveStreamingLine(line)
+        when {
+            paragraph.isNotEmpty() && activeLooksStructural -> {
+                flushParagraphBlock()
+                trimmed.ifEmpty { null }
+            }
+            paragraph.isNotEmpty() -> buildString {
+                append(paragraph.toString())
+                if (trimmed.isNotBlank()) {
+                    if (isNotEmpty()) {
+                        appendRendererParagraphLine(trimmed)
+                    } else {
+                        append(trimmed)
+                    }
+                }
+            }.trim().ifEmpty { null }
+            trimmed.isBlank() -> null
+            else -> trimmed
+        }
+    } ?: paragraph.toString().trim().ifEmpty { null }
+
+    return StreamingBlockState(
+        completedBlocks = completedBlocks,
+        activeBlock = activeBlock
+    )
+}
+
+internal fun classifyStreamingLine(line: String): StreamingLineModel {
+    if (line.isBlank()) return StreamingLineModel.Blank
+    val trimmed = line.trimStart()
+    return when {
+        trimmed.matches(rendererHeadingRegex) -> {
+            val marker = trimmed.takeWhile { it == '#' }
+            StreamingLineModel.Heading(marker.length, trimmed.drop(marker.length).trimStart())
+        }
+        trimmed.matches(rendererBulletRegex) -> StreamingLineModel.Bullet(trimmed.drop(1).trimStart())
+        trimmed.matches(rendererNumberedRegex) -> StreamingLineModel.Numbered(
+            number = trimmed.substringBefore('.'),
+            text = trimmed.substringAfter('.').trimStart()
+        )
+        trimmed.matches(rendererQuoteRegex) -> StreamingLineModel.Quote(trimmed.drop(1).trimStart())
+        else -> StreamingLineModel.Paragraph(line)
+    }
+}
+
+internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
+    if (line.isBlank()) return StreamingLineModel.Blank
+    val trimmed = line.trimStart()
+    val headingMarker = trimmed.takeWhile { it == '#' }
+    if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
+        val remainder = trimmed.drop(headingMarker.length)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Heading(
+                level = headingMarker.length,
+                text = remainder.trimStart()
+            )
+        }
+    }
+    if (trimmed.startsWith(">")) {
+        val remainder = trimmed.drop(1)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Quote(remainder.trimStart())
+        }
+    }
+    if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
+        val remainder = trimmed.drop(1)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Bullet(remainder.trimStart())
+        }
+    }
+    val numberedPrefix = trimmed.takeWhile { it.isDigit() }
+    if (numberedPrefix.isNotEmpty() && trimmed.drop(numberedPrefix.length).startsWith(".")) {
+        val remainder = trimmed.drop(numberedPrefix.length + 1)
+        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+            return StreamingLineModel.Numbered(
+                number = numberedPrefix,
+                text = remainder.trimStart()
+            )
+        }
+    }
+    return StreamingLineModel.Paragraph(line)
+}
+
+internal fun shouldShowStreamingSectionDivider(
+    previous: StreamingLineModel?,
+    current: StreamingLineModel
+): Boolean {
+    val heading = current as? StreamingLineModel.Heading ?: return false
+    return previous != null && heading.level <= 2
+}
+
+internal fun buildStableStreamingLineBuffer(
+    text: AnnotatedString,
+    style: TextStyle,
+    availableWidthPx: Int,
+    textMeasurer: TextMeasurer
+): StreamingRenderedLines {
+    if (text.isEmpty()) return StreamingRenderedLines(emptyList(), null)
+    if (availableWidthPx <= 0) return StreamingRenderedLines(emptyList(), text)
+    val raw = text.text
+    val layout = textMeasurer.measure(
+        text = text,
+        style = style,
+        constraints = Constraints(maxWidth = availableWidthPx)
+    )
+    if (layout.lineCount <= 0) {
+        return StreamingRenderedLines(
+            stableLines = emptyList(),
+            activeLine = if (raw.endsWith('\n')) AnnotatedString("") else text
+        )
+    }
+
+    val stableLines = buildList {
+        for (lineIndex in 0 until (layout.lineCount - 1)) {
+            val lineStart = layout.getLineStart(lineIndex).coerceIn(0, raw.length)
+            val lineEnd = layout.getLineEnd(lineIndex, visibleEnd = true).coerceIn(lineStart, raw.length)
+            add(text.subSequence(lineStart, lineEnd))
+        }
+    }
+    val activeLine = when {
+        raw.endsWith('\n') -> AnnotatedString("")
+        else -> {
+            val activeIndex = layout.lineCount - 1
+            val lineStart = layout.getLineStart(activeIndex).coerceIn(0, raw.length)
+            val lineEnd = layout.getLineEnd(activeIndex, visibleEnd = true).coerceIn(lineStart, raw.length)
+            if (lineStart >= lineEnd) null else text.subSequence(lineStart, lineEnd)
+        }
+    }
+
+    return StreamingRenderedLines(stableLines = stableLines, activeLine = activeLine)
+}
+
+private fun ensureStreamingMessageId(
+    currentMessageId: String?,
+    anchoredUserMessageId: String?,
+    assistantIdProvider: (String) -> String,
+    fallbackIdProvider: () -> String
+): String {
+    return currentMessageId
+        ?: anchoredUserMessageId?.let(assistantIdProvider)
+        ?: fallbackIdProvider()
+}
+
+private fun Char.isRendererCjkUnifiedIdeograph(): Boolean {
+    val code = code
+    return code in 0x4E00..0x9FFF ||
+        code in 0x3400..0x4DBF ||
+        code in 0x20000..0x2A6DF ||
+        code in 0x2A700..0x2B73F ||
+        code in 0x2B740..0x2B81F ||
+        code in 0x2B820..0x2CEAF
+}
+
+private fun Char.isRendererStrongPausePunctuation(): Boolean = this in setOf('。', '！', '？', '!', '?', ';', '；', ':', '：')
+
+private fun Char.isRendererWeakPausePunctuation(): Boolean = this in setOf('，', ',', '、', '·')
+
+private fun Char.isRendererStructuralMarkdownChar(): Boolean = this == '#' || this == '-' || this == '*' || this == '>' || this == '`'
+
+private fun takeRendererMarkdownPrefixToken(buffer: String): String? {
+    if (buffer.isEmpty()) return null
+    return when {
+        buffer.startsWith("```") -> "```"
+        buffer.startsWith("## ") -> "## "
+        buffer.startsWith("# ") -> "# "
+        buffer.startsWith("- ") -> "- "
+        buffer.startsWith("* ") -> "* "
+        buffer.startsWith("> ") -> "> "
+        else -> {
+            val digits = buffer.takeWhile { it.isDigit() }
+            if (digits.isNotEmpty() && buffer.drop(digits.length).startsWith(". ")) {
+                "$digits. "
+            } else {
+                null
+            }
+        }
+    }
+}
+
+private fun takeRendererTypewriterToken(buffer: String): String {
+    if (buffer.isEmpty()) return ""
+    val first = buffer.first()
+    val markdownPrefix = takeRendererMarkdownPrefixToken(buffer)
+    if (markdownPrefix != null) return markdownPrefix
+    if (first == '\n') return "\n"
+    if (first.isRendererStructuralMarkdownChar()) {
+        return buffer.takeWhile { it.isRendererStructuralMarkdownChar() }.ifEmpty { first.toString() }
+    }
+    if (first.isRendererCjkUnifiedIdeograph()) {
+        return first.toString()
+    }
+    if (first.isWhitespace()) {
+        return buffer.takeWhile { it.isWhitespace() && it != '\n' }.ifEmpty { first.toString() }
+    }
+
+    val token = StringBuilder()
+    for (ch in buffer) {
+        if (token.isEmpty()) {
+            token.append(ch)
+            if (ch.isRendererWeakPausePunctuation() || ch.isRendererStrongPausePunctuation()) {
+                break
+            }
+            continue
+        }
+        if (
+            ch.isWhitespace() ||
+            ch.isRendererCjkUnifiedIdeograph() ||
+            ch.isRendererStructuralMarkdownChar() ||
+            ch.isRendererWeakPausePunctuation() ||
+            ch.isRendererStrongPausePunctuation()
+        ) {
+            break
+        }
+        token.append(ch)
+    }
+    return token.toString()
+}
+
+private fun scaleRendererStreamingDelay(delayMs: Long): Long {
+    val scale = if (BuildConfig.DEBUG) 0.72f else 1f
+    return max(6L, (delayMs * scale).toLong())
+}
+
+private fun hasRendererStructuralMarkdownPrefix(text: String): Boolean {
+    val trimmed = text.trimStart()
+    return trimmed.startsWith("#") ||
+        trimmed.startsWith("- ") ||
+        trimmed.startsWith("* ") ||
+        trimmed.startsWith("> ") ||
+        rendererNumberedRegex.matches(trimmed)
+}
+
+private fun resolveRendererTypewriterDelay(token: String, remainingBuffer: String): Long {
+    val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
+    val baseDelay = when {
+        lastChar == '\n' -> if (hasRendererStructuralMarkdownPrefix(remainingBuffer)) 64L else 48L
+        lastChar.isRendererStrongPausePunctuation() -> 28L
+        lastChar.isRendererWeakPausePunctuation() -> 16L
+        token.length >= 7 -> 8L
+        token.length >= 5 -> 10L
+        token.length >= 3 -> 12L
+        token.length == 2 -> 13L
+        else -> if (lastChar.isRendererCjkUnifiedIdeograph()) 14L else 12L
+    }
+    return scaleRendererStreamingDelay(baseDelay)
+}
+
+private fun nextStreamingTypewriterStep(buffer: String): StreamingTypewriterStep {
+    if (buffer.isEmpty()) {
+        return StreamingTypewriterStep("", STREAM_TYPEWRITER_IDLE_POLL_MS)
+    }
+    val text = takeRendererTypewriterToken(buffer)
+    val remaining = buffer.drop(text.length)
+    return StreamingTypewriterStep(
+        text = text,
+        delayMs = resolveRendererTypewriterDelay(text, remaining)
+    )
+}
+
+private fun splitRendererStreamingLogicalLines(content: String): StreamingLogicalLines {
+    val normalized = content.replace("\r\n", "\n")
+    if (normalized.isEmpty()) return StreamingLogicalLines(emptyList(), null)
+
+    val lines = mutableListOf<String>()
+    var start = 0
+    normalized.forEachIndexed { index, ch ->
+        if (ch == '\n') {
+            lines += normalized.substring(start, index)
+            start = index + 1
+        }
+    }
+
+    return if (normalized.last() == '\n') {
+        lines += ""
+        StreamingLogicalLines(completedLines = lines, activeLine = null)
+    } else {
+        StreamingLogicalLines(
+            completedLines = lines,
+            activeLine = normalized.substring(start)
+        )
+    }
+}
+
+private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
+    return trimmed.matches(rendererHeadingRegex) ||
+        trimmed.matches(rendererBulletRegex) ||
+        trimmed.matches(rendererNumberedRegex) ||
+        trimmed.matches(rendererQuoteRegex)
+}
+
+private fun isStructuralRendererActiveStreamingLine(line: String): Boolean {
+    return when (classifyActiveStreamingLine(line)) {
+        StreamingLineModel.Blank,
+        is StreamingLineModel.Paragraph -> false
+        is StreamingLineModel.Heading,
+        is StreamingLineModel.Bullet,
+        is StreamingLineModel.Numbered,
+        is StreamingLineModel.Quote -> true
+    }
+}
+
+private fun needsRendererParagraphJoinSpace(previous: Char, next: Char): Boolean {
+    if (previous.isWhitespace() || next.isWhitespace()) return false
+    if (previous.isRendererCjkUnifiedIdeograph() || next.isRendererCjkUnifiedIdeograph()) return false
+    if (previous.isRendererWeakPausePunctuation() || previous.isRendererStrongPausePunctuation()) return true
+    return previous.isLetterOrDigit() && next.isLetterOrDigit()
+}
+
+private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
+    if (buffer.isEmpty()) return StreamingRevealBatch("", STREAM_TYPEWRITER_IDLE_POLL_MS)
+    val text = StringBuilder()
+    var consumedDelay = 0L
+    var remaining = buffer
+    var tokenCount = 0
+
+    while (remaining.isNotEmpty() && tokenCount < STREAM_REVEAL_MAX_TOKENS_PER_BATCH) {
+        val step = nextStreamingTypewriterStep(remaining)
+        if (step.text.isEmpty()) break
+        text.append(step.text)
+        remaining = remaining.drop(step.text.length)
+        consumedDelay += step.delayMs
+        tokenCount++
+        val tail = step.text.lastOrNull()
+        val hitPause = tail == '\n' || tail?.isRendererStrongPausePunctuation() == true
+        if (hitPause || consumedDelay >= STREAM_REVEAL_FRAME_BUDGET_MS) {
+            break
+        }
+    }
+
+    return StreamingRevealBatch(
+        text = text.toString(),
+        delayMs = consumedDelay.coerceAtLeast(STREAM_TYPEWRITER_IDLE_POLL_MS)
+    )
+}
+
+private fun StringBuilder.appendRendererParagraphLine(line: String) {
+    if (line.isBlank()) return
+    if (isNotEmpty()) {
+        val previous = this[lastIndex]
+        val next = line.first()
+        if (needsRendererParagraphJoinSpace(previous, next)) {
+            append(' ')
+        }
+    }
+    append(line)
 }
 
 @Composable
@@ -89,6 +649,7 @@ internal fun ChatStreamingRenderer(
         streamingFreshEnd = streamingFreshEnd,
         streamingFreshTick = if (freshSuffixEnabled) streamingFreshTick else 0,
         streamingLineAdvanceTick = streamingLineAdvanceTick,
+        showWaitingBall = showWaitingBall,
         strictLineReveal = renderMode != StreamingRenderMode.Settled &&
             revealMode != StreamingRevealMode.Free,
         lineRevealLocked = revealMode == StreamingRevealMode.Conservative,
@@ -108,6 +669,7 @@ private fun RendererAssistantMessageContentImpl(
     streamingFreshEnd: Int = -1,
     streamingFreshTick: Int = 0,
     streamingLineAdvanceTick: Int = 0,
+    showWaitingBall: Boolean = false,
     strictLineReveal: Boolean = false,
     lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
@@ -133,7 +695,7 @@ private fun RendererAssistantMessageContentImpl(
             },
             contentAlignment = Alignment.TopStart
         ) {
-            if (content.isBlank()) {
+            if (showWaitingBall || content.isBlank()) {
                 RendererAssistantStreamingWaitingIndicatorImpl(
                     modifier = Modifier.fillMaxWidth()
                 )

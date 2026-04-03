@@ -92,6 +92,41 @@ internal fun isStreamingReadyForAutoFollow(
     return streamingBottomInViewport <= legalBottomPx
 }
 
+internal fun deriveStreamingRevealMode(
+    isStreaming: Boolean,
+    scrollMode: ScrollMode,
+    userInteracting: Boolean,
+    streamBottomFollowActive: Boolean,
+    streamingTailBottomPx: Int,
+    worklineBottomPx: Int,
+    assistantLineStepPx: Int,
+    currentMode: StreamingRevealMode
+): StreamingRevealMode {
+    if (!isStreaming) return StreamingRevealMode.Free
+    if (scrollMode == ScrollMode.UserBrowsing || userInteracting) {
+        return StreamingRevealMode.Free
+    }
+    if (streamBottomFollowActive) {
+        return StreamingRevealMode.Conservative
+    }
+    val overflowPx = if (streamingTailBottomPx > 0 && worklineBottomPx > 0) {
+        (streamingTailBottomPx - worklineBottomPx).coerceAtLeast(0)
+    } else {
+        0
+    }
+    if (overflowPx <= 0) return StreamingRevealMode.Free
+    val lockThresholdPx = (assistantLineStepPx * 0.16f).roundToInt().coerceAtLeast(6)
+    val unlockThresholdPx = (assistantLineStepPx * 0.06f).roundToInt().coerceAtLeast(3)
+    return when (currentMode) {
+        StreamingRevealMode.Conservative -> {
+            if (overflowPx > unlockThresholdPx) StreamingRevealMode.Conservative else StreamingRevealMode.Free
+        }
+        StreamingRevealMode.Free -> {
+            if (overflowPx > lockThresholdPx) StreamingRevealMode.Conservative else StreamingRevealMode.Free
+        }
+    }
+}
+
 internal suspend fun snapStreamingToSendAnchor(
     listState: LazyListState,
     anchorIndex: Int,
