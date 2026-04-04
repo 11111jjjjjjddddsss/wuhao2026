@@ -3880,6 +3880,17 @@ fun ChatScreen() {
         }
         anchorPhase = AnchorPhase.None
         frozenBottomPx = -1
+        if (
+            isStreaming &&
+            hasStreamingItem &&
+            streamingMessageContent.isNotBlank() &&
+            !userInteracting &&
+            !listState.isScrollInProgress &&
+            scrollMode != ScrollMode.UserBrowsing
+        ) {
+            scrollMode = ScrollMode.AutoFollow
+            autoScrollMode = AutoScrollMode.StreamAnchorFollow
+        }
     }
 
     LaunchedEffect(

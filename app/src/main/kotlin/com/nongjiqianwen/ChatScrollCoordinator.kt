@@ -124,7 +124,7 @@ internal fun findSendAnchorIndex(
 internal fun isStreamingTailNearGuardBoundary(snapshot: StreamingGuardSnapshot): Boolean {
     if (!snapshot.isStreaming || !snapshot.hasStreamingItem) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
-    val activationRangePx = (snapshot.viewportHeightPx * 0.22f).roundToInt()
+    val activationRangePx = (snapshot.viewportHeightPx * 0.08f).roundToInt()
         .coerceAtLeast(snapshot.assistantLineStepPx * 2)
     return snapshot.tailBottomPx >= (snapshot.legalBottomPx - activationRangePx)
 }
