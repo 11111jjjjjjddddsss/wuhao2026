@@ -1751,13 +1751,8 @@ fun ChatScreen() {
 
     fun isStreamingReadyForAutoFollow(): Boolean {
         if (anchorPhase == AnchorPhase.FrozenBottom) return false
-        return com.nongjiqianwen.isStreamingReadyForAutoFollow(
-            isStreaming = isStreaming,
-            hasStreamingItem = hasStreamingItem,
-            streamingFollowArmed = streamingFollowArmed,
-            streamingBottomInViewport = currentStreamingTailBottomPx(),
-            legalBottomPx = currentStreamingLegalBottomPx()
-        )
+        if (!isStreaming || !hasStreamingItem || !streamingFollowArmed) return false
+        return isNearStreamingReturnLine()
     }
     fun applyStreamingScrollState(
         detached: Boolean,
@@ -3880,17 +3875,6 @@ fun ChatScreen() {
         }
         anchorPhase = AnchorPhase.None
         frozenBottomPx = -1
-        if (
-            isStreaming &&
-            hasStreamingItem &&
-            streamingMessageContent.isNotBlank() &&
-            !userInteracting &&
-            !listState.isScrollInProgress &&
-            scrollMode != ScrollMode.UserBrowsing
-        ) {
-            scrollMode = ScrollMode.AutoFollow
-            autoScrollMode = AutoScrollMode.StreamAnchorFollow
-        }
     }
 
     LaunchedEffect(
@@ -3938,6 +3922,15 @@ fun ChatScreen() {
         if (streamingMessageContent.isBlank()) return@LaunchedEffect
         if (userInteracting || listState.isScrollInProgress) return@LaunchedEffect
         if (isStreamingReadyForAutoFollow()) {
+            repeat(2) { withFrameNanos { } }
+            if (
+                userInteracting ||
+                listState.isScrollInProgress ||
+                anchorPhase == AnchorPhase.FrozenBottom ||
+                !isStreamingReadyForAutoFollow()
+            ) {
+                return@LaunchedEffect
+            }
             scrollMode = ScrollMode.AutoFollow
             autoScrollMode = AutoScrollMode.StreamAnchorFollow
         }

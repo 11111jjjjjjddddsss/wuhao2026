@@ -178,7 +178,7 @@ internal fun isStreamingReadyForAutoFollow(
 ): Boolean {
     if (!isStreaming || !hasStreamingItem || !streamingFollowArmed) return false
     if (streamingBottomInViewport <= 0 || legalBottomPx <= 0) return false
-    return streamingBottomInViewport <= legalBottomPx
+    return streamingBottomInViewport >= legalBottomPx
 }
 
 internal fun deriveStreamingRevealMode(
@@ -194,6 +194,14 @@ internal fun deriveStreamingRevealMode(
     if (!isStreaming) return StreamingRevealMode.Free
     if (scrollMode == ScrollMode.UserBrowsing || userInteracting) {
         return StreamingRevealMode.Free
+    }
+    if (
+        scrollMode == ScrollMode.AutoFollow &&
+        streamingTailBottomPx > 0 &&
+        worklineBottomPx > 0 &&
+        streamingTailBottomPx >= (worklineBottomPx - assistantLineStepPx.coerceAtLeast(8))
+    ) {
+        return StreamingRevealMode.Conservative
     }
     if (streamBottomFollowActive) {
         return StreamingRevealMode.Conservative
