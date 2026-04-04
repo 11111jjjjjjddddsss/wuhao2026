@@ -1463,40 +1463,71 @@ fun ChatScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember { mutableStateOf<Job?>(null) }
-    var streamRevealJob by remember { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
+    val streamingRuntime = rememberChatStreamingRuntimeState(chatScopeId)
+    var isStreaming by streamingRuntime.isStreaming
+    var streamingMessageId by streamingRuntime.streamingMessageId
+    var streamingMessageContent by streamingRuntime.streamingMessageContent
+    var streamingRevealBuffer by streamingRuntime.streamingRevealBuffer
+    var streamRevealJob by streamingRuntime.streamRevealJob
+    var streamingLineAdvanceTick by streamingRuntime.streamingLineAdvanceTick
+    var streamingFollowArmed by streamingRuntime.streamingFollowArmed
+    var streamingFreshStart by streamingRuntime.streamingFreshStart
+    var streamingFreshEnd by streamingRuntime.streamingFreshEnd
+    var streamingFreshTick by streamingRuntime.streamingFreshTick
+    var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
+    var streamingRevealMode by streamingRuntime.streamingRevealMode
 
-    var isStreaming by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    var streamingMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
-    var streamingMessageContent by rememberSaveable(chatScopeId) { mutableStateOf("") }
-    var streamingRevealBuffer by rememberSaveable(chatScopeId) { mutableStateOf("") }
-    var anchorPhase by remember { mutableStateOf(AnchorPhase.None) }
-    var frozenBottomPx by remember { mutableIntStateOf(-1) }
-    var pendingFrozenBottomCapture by remember { mutableStateOf(false) }
-    var retainedBottomGapPx by remember { mutableIntStateOf(0) }
-    var scrollMode by remember { mutableStateOf(ScrollMode.Idle) }
-    var autoScrollMode by remember { mutableStateOf(AutoScrollMode.Idle) }
-    var userInteracting by remember { mutableStateOf(false) }
-    var streamTick by remember { mutableIntStateOf(0) }
-    var streamingLineAdvanceTick by remember { mutableIntStateOf(0) }
-    var streamingFollowArmed by remember { mutableStateOf(false) }
-    var streamingFreshStart by remember { mutableIntStateOf(-1) }
-    var streamingFreshEnd by remember { mutableIntStateOf(-1) }
-    var streamingFreshTick by remember { mutableIntStateOf(0) }
-    var lastStreamingFreshRevealMs by remember { mutableStateOf(0L) }
-    var sendTick by remember { mutableIntStateOf(0) }
-    var programmaticScroll by remember { mutableStateOf(false) }
-    var lastProgrammaticScrollMs by remember { mutableStateOf(0L) }
+    val scrollRuntime = rememberChatScrollRuntimeState(
+        chatScopeId = chatScopeId,
+        startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx,
+        startupInputChromeRowHeightEstimatePx = startupInputChromeRowHeightEstimatePx
+    )
+    var anchorPhase by scrollRuntime.anchorPhase
+    var frozenBottomPx by scrollRuntime.frozenBottomPx
+    var pendingFrozenBottomCapture by scrollRuntime.pendingFrozenBottomCapture
+    var retainedBottomGapPx by scrollRuntime.retainedBottomGapPx
+    var scrollMode by scrollRuntime.scrollMode
+    var autoScrollMode by scrollRuntime.autoScrollMode
+    var userInteracting by scrollRuntime.userInteracting
+    var streamTick by scrollRuntime.streamTick
+    var sendTick by scrollRuntime.sendTick
+    var programmaticScroll by scrollRuntime.programmaticScroll
+    var lastProgrammaticScrollMs by scrollRuntime.lastProgrammaticScrollMs
+    var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
+    var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
+    var initialBottomSnapDone by scrollRuntime.initialBottomSnapDone
+    var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
+    var userDetachedFromBottom by scrollRuntime.userDetachedFromBottom
+    var pendingResumeAutoFollow by scrollRuntime.pendingResumeAutoFollow
+    var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
+    var restoreBottomAfterImeClose by scrollRuntime.restoreBottomAfterImeClose
+    var suppressJumpButtonForImeTransition by scrollRuntime.suppressJumpButtonForImeTransition
+    var restoreBottomAfterLifecycleResume by scrollRuntime.restoreBottomAfterLifecycleResume
+    var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
+    var lifecycleResumeReady by scrollRuntime.lifecycleResumeReady
+    var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
+    var inputChromeRowHeightPx by scrollRuntime.inputChromeRowHeightPx
+
+    val composerRuntime = rememberChatComposerRuntimeState(
+        chatScopeId = chatScopeId,
+        startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx
+    )
+    var inputLimitHintVisible by composerRuntime.inputLimitHintVisible
+    var inputLimitHintTick by composerRuntime.inputLimitHintTick
+    var composerStatusHintVisible by composerRuntime.composerStatusHintVisible
+    var composerStatusHintTick by composerRuntime.composerStatusHintTick
+    var composerStatusHintText by composerRuntime.composerStatusHintText
+    var inputFieldFocused by composerRuntime.inputFieldFocused
+    var suppressInputCursor by composerRuntime.suppressInputCursor
+    var inputContentHeightPx by composerRuntime.inputContentHeightPx
+    var composerSettlingMinHeightPx by composerRuntime.composerSettlingMinHeightPx
+    var composerSettlingChromeHeightPx by composerRuntime.composerSettlingChromeHeightPx
+    var sendUiSettling by composerRuntime.sendUiSettling
     var persistTick by remember { mutableIntStateOf(0) }
-    var bottomBarHeightPx by remember(chatScopeId, startupBottomBarHeightEstimatePx) {
-        mutableIntStateOf(startupBottomBarHeightEstimatePx)
-    }
-    var inputChromeRowHeightPx by remember(chatScopeId, startupInputChromeRowHeightEstimatePx) {
-        mutableIntStateOf(startupInputChromeRowHeightEstimatePx)
-    }
     var chatRootWidthPx by remember { mutableIntStateOf(0) }
     var chatRootHeightPx by remember { mutableIntStateOf(0) }
     var messageViewportWidthPx by remember { mutableIntStateOf(0) }
@@ -1508,35 +1539,10 @@ fun ChatScreen() {
     var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
     var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
-    var streamingContentBottomPx by remember { mutableIntStateOf(-1) }
-    var streamBottomFollowActive by remember { mutableStateOf(false) }
-    var initialBottomSnapDone by remember(chatScopeId) { mutableStateOf(false) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    var jumpButtonPulseVisible by remember { mutableStateOf(false) }
-    var userDetachedFromBottom by remember { mutableStateOf(false) }
-    var pendingResumeAutoFollow by remember { mutableStateOf(false) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
-    var pendingFinalBottomSnap by remember { mutableStateOf(false) }
-    var restoreBottomAfterImeClose by remember { mutableStateOf(false) }
-    var suppressJumpButtonForImeTransition by remember { mutableStateOf(false) }
-    var restoreBottomAfterLifecycleResume by remember { mutableStateOf(false) }
-    var suppressJumpButtonForLifecycleResume by remember { mutableStateOf(false) }
-    var lifecycleResumeReady by remember { mutableStateOf(false) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    var inputLimitHintVisible by remember { mutableStateOf(false) }
-    var inputLimitHintTick by remember { mutableIntStateOf(0) }
-    var composerStatusHintVisible by remember { mutableStateOf(false) }
-    var composerStatusHintTick by remember { mutableIntStateOf(0) }
-    var composerStatusHintText by remember { mutableStateOf("") }
-    var inputFieldFocused by remember(chatScopeId) { mutableStateOf(false) }
-    var suppressInputCursor by remember(chatScopeId) { mutableStateOf(false) }
-    var inputContentHeightPx by remember(chatScopeId, startupInputContentHeightEstimatePx) {
-        mutableIntStateOf(startupInputContentHeightEstimatePx)
-    }
-    var composerSettlingMinHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var composerSettlingChromeHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var sendUiSettling by remember(chatScopeId) { mutableStateOf(false) }
     val failedUserMessageStates = remember(chatScopeId) { mutableStateMapOf<String, String>() }
     val failedAssistantMessageStates = remember(chatScopeId) {
         mutableStateMapOf<String, FailedAssistantMessageState>()
@@ -1578,7 +1584,6 @@ fun ChatScreen() {
             }
         }
     }
-    var streamingRevealMode by remember(chatScopeId) { mutableStateOf(StreamingRevealMode.Free) }
     LaunchedEffect(
         isStreaming,
         scrollMode,
@@ -1911,14 +1916,14 @@ fun ChatScreen() {
         mutableStateOf<PendingInputSelectionToolbarState?>(null)
     }
     var inputSelectionMenuBoundsInRoot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    var inputFieldBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    var composerHostBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    var composerChromeBoundsInWindow by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    var composerCollapseOverlayVisible by remember(chatScopeId) { mutableStateOf(false) }
-    var composerCollapseOverlayHostBoundsSnapshot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    var composerCollapseOverlayChromeBoundsSnapshot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    var composerCollapseOverlayBottomHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var composerCollapseOverlayPrewarmed by remember(chatScopeId) { mutableStateOf(false) }
+    var inputFieldBoundsInWindow by composerRuntime.inputFieldBoundsInWindow
+    var composerHostBoundsInWindow by composerRuntime.composerHostBoundsInWindow
+    var composerChromeBoundsInWindow by composerRuntime.composerChromeBoundsInWindow
+    var composerCollapseOverlayVisible by composerRuntime.composerCollapseOverlayVisible
+    var composerCollapseOverlayHostBoundsSnapshot by composerRuntime.composerCollapseOverlayHostBoundsSnapshot
+    var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
+    var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
+    var composerCollapseOverlayPrewarmed by composerRuntime.composerCollapseOverlayPrewarmed
     val keepSendAnchorReserve by remember(
         isStreaming,
         hasStreamingItem,

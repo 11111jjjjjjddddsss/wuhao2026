@@ -26,12 +26,15 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -67,6 +70,53 @@ internal enum class StreamingRenderMode {
 internal enum class StreamingRevealMode {
     Free,
     Conservative
+}
+
+internal data class ChatStreamingRuntimeState(
+    val isStreaming: MutableState<Boolean>,
+    val streamingMessageId: MutableState<String?>,
+    val streamingMessageContent: MutableState<String>,
+    val streamingRevealBuffer: MutableState<String>,
+    val streamRevealJob: MutableState<kotlinx.coroutines.Job?>,
+    val streamingLineAdvanceTick: MutableIntState,
+    val streamingFollowArmed: MutableState<Boolean>,
+    val streamingFreshStart: MutableIntState,
+    val streamingFreshEnd: MutableIntState,
+    val streamingFreshTick: MutableIntState,
+    val lastStreamingFreshRevealMs: MutableState<Long>,
+    val streamingRevealMode: MutableState<StreamingRevealMode>
+)
+
+@Composable
+internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreamingRuntimeState {
+    val isStreaming = rememberSaveable(chatScopeId) { mutableStateOf(false) }
+    val streamingMessageId = rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
+    val streamingMessageContent = rememberSaveable(chatScopeId) { mutableStateOf("") }
+    val streamingRevealBuffer = rememberSaveable(chatScopeId) { mutableStateOf("") }
+    val streamRevealJob = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val streamingLineAdvanceTick = remember { mutableIntStateOf(0) }
+    val streamingFollowArmed = remember { mutableStateOf(false) }
+    val streamingFreshStart = remember { mutableIntStateOf(-1) }
+    val streamingFreshEnd = remember { mutableIntStateOf(-1) }
+    val streamingFreshTick = remember { mutableIntStateOf(0) }
+    val lastStreamingFreshRevealMs = remember { mutableStateOf(0L) }
+    val streamingRevealMode = remember(chatScopeId) { mutableStateOf(StreamingRevealMode.Free) }
+    return remember(chatScopeId) {
+        ChatStreamingRuntimeState(
+            isStreaming = isStreaming,
+            streamingMessageId = streamingMessageId,
+            streamingMessageContent = streamingMessageContent,
+            streamingRevealBuffer = streamingRevealBuffer,
+            streamRevealJob = streamRevealJob,
+            streamingLineAdvanceTick = streamingLineAdvanceTick,
+            streamingFollowArmed = streamingFollowArmed,
+            streamingFreshStart = streamingFreshStart,
+            streamingFreshEnd = streamingFreshEnd,
+            streamingFreshTick = streamingFreshTick,
+            lastStreamingFreshRevealMs = lastStreamingFreshRevealMs,
+            streamingRevealMode = streamingRevealMode
+        )
+    }
 }
 
 private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")

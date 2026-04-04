@@ -648,3 +648,4 @@ Clean-State 定义：
 - 2026-03-30 起，生成期滚动控制主方案继续收敛为三态：`Idle / AutoFollow / UserBrowsing`；`Returning` 不再作为当前真相源状态保留。用户浏览后只有在“列表停稳 + 生成消息重新进入视口 + 回到生成工作线/返回线附近”三者同时满足时，才允许直接从 `UserBrowsing` 切回 `AutoFollow`
 - 2026-04-04 当前滚动链真实边界补充：`ChatScrollCoordinator.kt` 负责纯滚动规则、几何 helper、护栏与按钮派生；`ChatScreen.kt` 仍持有 Compose 状态、`LaunchedEffect` 状态机接线和 `LazyListState` 实际调用。后续若继续下沉，只允许把这些运行时接线继续往滚动层收，不允许把渲染逻辑或底部 UI 逻辑重新混回滚动链
 - 2026-04-04 当前恢复 follow 口径补充：用户上滑进入 `UserBrowsing` 后，只有在“列表停稳 + 真实 streaming 正文尾部重新回到工作线/返回线附近”同时满足时，才允许恢复 `AutoFollow`；一旦重新贴线，正文应持续沿工作线稳定上推，不允许一拍上推后一拍掉回
+- 2026-04-04 当前动态链进一步收口：滚动、渲染、底部输入区三条链的 runtime state holder 已分别下沉到 `ChatScrollCoordinator.kt`、`ChatStreamingRenderer.kt`、`ChatComposerCoordinator.kt`；`ChatScreen.kt` 当前主要保留页面组装、测量采集和 `LaunchedEffect/snapshotFlow` 运行时接线，不再自己持有那批主链 `remember` 状态

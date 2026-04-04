@@ -1,6 +1,85 @@
 package com.nongjiqianwen
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Rect
+
+internal data class ChatComposerRuntimeState(
+    val inputLimitHintVisible: MutableState<Boolean>,
+    val inputLimitHintTick: MutableIntState,
+    val composerStatusHintVisible: MutableState<Boolean>,
+    val composerStatusHintTick: MutableIntState,
+    val composerStatusHintText: MutableState<String>,
+    val inputFieldFocused: MutableState<Boolean>,
+    val suppressInputCursor: MutableState<Boolean>,
+    val inputContentHeightPx: MutableIntState,
+    val composerSettlingMinHeightPx: MutableIntState,
+    val composerSettlingChromeHeightPx: MutableIntState,
+    val sendUiSettling: MutableState<Boolean>,
+    val inputFieldBoundsInWindow: MutableState<Rect?>,
+    val composerHostBoundsInWindow: MutableState<Rect?>,
+    val composerChromeBoundsInWindow: MutableState<Rect?>,
+    val composerCollapseOverlayVisible: MutableState<Boolean>,
+    val composerCollapseOverlayHostBoundsSnapshot: MutableState<Rect?>,
+    val composerCollapseOverlayChromeBoundsSnapshot: MutableState<Rect?>,
+    val composerCollapseOverlayBottomHeightPx: MutableIntState,
+    val composerCollapseOverlayPrewarmed: MutableState<Boolean>
+)
+
+@Composable
+internal fun rememberChatComposerRuntimeState(
+    chatScopeId: String,
+    startupInputContentHeightEstimatePx: Int
+): ChatComposerRuntimeState {
+    val inputLimitHintVisible = remember { mutableStateOf(false) }
+    val inputLimitHintTick = remember { mutableIntStateOf(0) }
+    val composerStatusHintVisible = remember { mutableStateOf(false) }
+    val composerStatusHintTick = remember { mutableIntStateOf(0) }
+    val composerStatusHintText = remember { mutableStateOf("") }
+    val inputFieldFocused = remember(chatScopeId) { mutableStateOf(false) }
+    val suppressInputCursor = remember(chatScopeId) { mutableStateOf(false) }
+    val inputContentHeightPx = remember(chatScopeId, startupInputContentHeightEstimatePx) {
+        mutableIntStateOf(startupInputContentHeightEstimatePx)
+    }
+    val composerSettlingMinHeightPx = remember(chatScopeId) { mutableIntStateOf(0) }
+    val composerSettlingChromeHeightPx = remember(chatScopeId) { mutableIntStateOf(0) }
+    val sendUiSettling = remember(chatScopeId) { mutableStateOf(false) }
+    val inputFieldBoundsInWindow = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    val composerHostBoundsInWindow = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    val composerChromeBoundsInWindow = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    val composerCollapseOverlayVisible = remember(chatScopeId) { mutableStateOf(false) }
+    val composerCollapseOverlayHostBoundsSnapshot = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    val composerCollapseOverlayChromeBoundsSnapshot = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    val composerCollapseOverlayBottomHeightPx = remember(chatScopeId) { mutableIntStateOf(0) }
+    val composerCollapseOverlayPrewarmed = remember(chatScopeId) { mutableStateOf(false) }
+    return remember(chatScopeId, startupInputContentHeightEstimatePx) {
+        ChatComposerRuntimeState(
+            inputLimitHintVisible = inputLimitHintVisible,
+            inputLimitHintTick = inputLimitHintTick,
+            composerStatusHintVisible = composerStatusHintVisible,
+            composerStatusHintTick = composerStatusHintTick,
+            composerStatusHintText = composerStatusHintText,
+            inputFieldFocused = inputFieldFocused,
+            suppressInputCursor = suppressInputCursor,
+            inputContentHeightPx = inputContentHeightPx,
+            composerSettlingMinHeightPx = composerSettlingMinHeightPx,
+            composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+            sendUiSettling = sendUiSettling,
+            inputFieldBoundsInWindow = inputFieldBoundsInWindow,
+            composerHostBoundsInWindow = composerHostBoundsInWindow,
+            composerChromeBoundsInWindow = composerChromeBoundsInWindow,
+            composerCollapseOverlayVisible = composerCollapseOverlayVisible,
+            composerCollapseOverlayHostBoundsSnapshot = composerCollapseOverlayHostBoundsSnapshot,
+            composerCollapseOverlayChromeBoundsSnapshot = composerCollapseOverlayChromeBoundsSnapshot,
+            composerCollapseOverlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+            composerCollapseOverlayPrewarmed = composerCollapseOverlayPrewarmed
+        )
+    }
+}
 
 internal data class ComposerCollapsePreparation(
     val settlingMinHeightPx: Int,

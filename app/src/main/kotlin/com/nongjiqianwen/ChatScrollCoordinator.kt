@@ -1,6 +1,10 @@
 package com.nongjiqianwen
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableIntState
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -24,6 +28,104 @@ internal enum class ScrollMode {
     Idle,
     AutoFollow,
     UserBrowsing
+}
+
+internal data class ChatScrollRuntimeState(
+    val anchorPhase: MutableState<AnchorPhase>,
+    val frozenBottomPx: MutableIntState,
+    val pendingFrozenBottomCapture: MutableState<Boolean>,
+    val retainedBottomGapPx: MutableIntState,
+    val scrollMode: MutableState<ScrollMode>,
+    val autoScrollMode: MutableState<AutoScrollMode>,
+    val userInteracting: MutableState<Boolean>,
+    val streamTick: MutableIntState,
+    val sendTick: MutableIntState,
+    val programmaticScroll: MutableState<Boolean>,
+    val lastProgrammaticScrollMs: MutableState<Long>,
+    val streamingContentBottomPx: MutableIntState,
+    val streamBottomFollowActive: MutableState<Boolean>,
+    val initialBottomSnapDone: MutableState<Boolean>,
+    val jumpButtonPulseVisible: MutableState<Boolean>,
+    val userDetachedFromBottom: MutableState<Boolean>,
+    val pendingResumeAutoFollow: MutableState<Boolean>,
+    val pendingFinalBottomSnap: MutableState<Boolean>,
+    val restoreBottomAfterImeClose: MutableState<Boolean>,
+    val suppressJumpButtonForImeTransition: MutableState<Boolean>,
+    val restoreBottomAfterLifecycleResume: MutableState<Boolean>,
+    val suppressJumpButtonForLifecycleResume: MutableState<Boolean>,
+    val lifecycleResumeReady: MutableState<Boolean>,
+    val bottomBarHeightPx: MutableIntState,
+    val inputChromeRowHeightPx: MutableIntState
+)
+
+@Composable
+internal fun rememberChatScrollRuntimeState(
+    chatScopeId: String,
+    startupBottomBarHeightEstimatePx: Int,
+    startupInputChromeRowHeightEstimatePx: Int
+): ChatScrollRuntimeState {
+    val anchorPhase = remember { mutableStateOf(AnchorPhase.None) }
+    val frozenBottomPx = remember { mutableIntStateOf(-1) }
+    val pendingFrozenBottomCapture = remember { mutableStateOf(false) }
+    val retainedBottomGapPx = remember { mutableIntStateOf(0) }
+    val scrollMode = remember { mutableStateOf(ScrollMode.Idle) }
+    val autoScrollMode = remember { mutableStateOf(AutoScrollMode.Idle) }
+    val userInteracting = remember { mutableStateOf(false) }
+    val streamTick = remember { mutableIntStateOf(0) }
+    val sendTick = remember { mutableIntStateOf(0) }
+    val programmaticScroll = remember { mutableStateOf(false) }
+    val lastProgrammaticScrollMs = remember { mutableStateOf(0L) }
+    val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
+    val streamBottomFollowActive = remember { mutableStateOf(false) }
+    val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
+    val jumpButtonPulseVisible = remember { mutableStateOf(false) }
+    val userDetachedFromBottom = remember { mutableStateOf(false) }
+    val pendingResumeAutoFollow = remember { mutableStateOf(false) }
+    val pendingFinalBottomSnap = remember { mutableStateOf(false) }
+    val restoreBottomAfterImeClose = remember { mutableStateOf(false) }
+    val suppressJumpButtonForImeTransition = remember { mutableStateOf(false) }
+    val restoreBottomAfterLifecycleResume = remember { mutableStateOf(false) }
+    val suppressJumpButtonForLifecycleResume = remember { mutableStateOf(false) }
+    val lifecycleResumeReady = remember { mutableStateOf(false) }
+    val bottomBarHeightPx = remember(chatScopeId, startupBottomBarHeightEstimatePx) {
+        mutableIntStateOf(startupBottomBarHeightEstimatePx)
+    }
+    val inputChromeRowHeightPx = remember(chatScopeId, startupInputChromeRowHeightEstimatePx) {
+        mutableIntStateOf(startupInputChromeRowHeightEstimatePx)
+    }
+    return remember(
+        chatScopeId,
+        startupBottomBarHeightEstimatePx,
+        startupInputChromeRowHeightEstimatePx
+    ) {
+        ChatScrollRuntimeState(
+            anchorPhase = anchorPhase,
+            frozenBottomPx = frozenBottomPx,
+            pendingFrozenBottomCapture = pendingFrozenBottomCapture,
+            retainedBottomGapPx = retainedBottomGapPx,
+            scrollMode = scrollMode,
+            autoScrollMode = autoScrollMode,
+            userInteracting = userInteracting,
+            streamTick = streamTick,
+            sendTick = sendTick,
+            programmaticScroll = programmaticScroll,
+            lastProgrammaticScrollMs = lastProgrammaticScrollMs,
+            streamingContentBottomPx = streamingContentBottomPx,
+            streamBottomFollowActive = streamBottomFollowActive,
+            initialBottomSnapDone = initialBottomSnapDone,
+            jumpButtonPulseVisible = jumpButtonPulseVisible,
+            userDetachedFromBottom = userDetachedFromBottom,
+            pendingResumeAutoFollow = pendingResumeAutoFollow,
+            pendingFinalBottomSnap = pendingFinalBottomSnap,
+            restoreBottomAfterImeClose = restoreBottomAfterImeClose,
+            suppressJumpButtonForImeTransition = suppressJumpButtonForImeTransition,
+            restoreBottomAfterLifecycleResume = restoreBottomAfterLifecycleResume,
+            suppressJumpButtonForLifecycleResume = suppressJumpButtonForLifecycleResume,
+            lifecycleResumeReady = lifecycleResumeReady,
+            bottomBarHeightPx = bottomBarHeightPx,
+            inputChromeRowHeightPx = inputChromeRowHeightPx
+        )
+    }
 }
 
 internal fun resolveSendAnchorExtraBottomSpacePx(
