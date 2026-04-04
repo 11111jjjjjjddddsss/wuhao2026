@@ -277,6 +277,13 @@ internal fun resolveStreamingFollowStepPx(
     return overflow.coerceAtMost(steadyStepPx)
 }
 
+internal fun shouldShowScrollToBottomButton(
+    overflowPx: Int,
+    staticJumpShowThresholdPx: Int
+): Boolean {
+    return overflowPx == Int.MAX_VALUE || overflowPx > staticJumpShowThresholdPx
+}
+
 internal fun isStreamingReadyForAutoFollow(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
@@ -332,6 +339,34 @@ internal fun deriveStreamingRevealMode(
     }
 }
 
+@Composable
+internal fun BindJumpButtonPulseEffect(
+    showStreamingJumpButton: Boolean,
+    showStaticJumpButton: Boolean,
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    jumpButtonPulseVisibleState: MutableState<Boolean>,
+    autoHideMs: Long
+) {
+    LaunchedEffect(
+        showStreamingJumpButton,
+        showStaticJumpButton,
+        firstVisibleItemIndex,
+        firstVisibleItemScrollOffset
+    ) {
+        val shouldOfferJumpButton = showStreamingJumpButton || showStaticJumpButton
+        if (!shouldOfferJumpButton) {
+            jumpButtonPulseVisibleState.value = false
+            return@LaunchedEffect
+        }
+        jumpButtonPulseVisibleState.value = true
+        kotlinx.coroutines.delay(autoHideMs)
+        if (showStreamingJumpButton || showStaticJumpButton) {
+            jumpButtonPulseVisibleState.value = false
+        }
+    }
+}
+
 internal suspend fun snapStreamingToSendAnchor(
     listState: LazyListState,
     anchorIndex: Int,
@@ -339,6 +374,130 @@ internal suspend fun snapStreamingToSendAnchor(
 ) {
     if (anchorIndex < 0) return
     listState.scrollToItem(anchorIndex, scrollOffset = -anchorTopPx)
+}
+
+internal suspend fun performScrollToBottom(
+    listState: LazyListState,
+    isStreaming: Boolean,
+    scrollMode: ScrollMode,
+    messagesSize: Int,
+    hasStreamingItem: Boolean,
+    messageViewportHeightPx: Int,
+    stickyScrollStepPx: Int,
+    animated: Boolean,
+    onProgrammaticScrollStart: () -> Unit,
+    onProgrammaticScrollEnd: () -> Unit
+) {
+    if (isStreaming && scrollMode != ScrollMode.AutoFollow) return
+    if (messagesSize <= 0 && !hasStreamingItem) return
+    onProgrammaticScrollStart()
+    try {
+        withFrameNanos { }
+        val lastIndex = messagesSize - 1
+        if (lastIndex < 0) return
+        if (animated) {
+            listState.animateScrollToItem(lastIndex)
+        } else {
+            listState.scrollToItem(lastIndex)
+        }
+        val stickyStep = messageViewportHeightPx
+            .takeIf { it > 0 }
+            ?.let { (it * 0.56f).roundToInt() }
+            ?.coerceAtLeast(stickyScrollStepPx)
+            ?: stickyScrollStepPx
+        if (animated) {
+            repeat(72) {
+                withFrameNanos { }
+                if (!listState.canScrollForward) return
+                val consumed = listState.scrollBy(stickyStep.toFloat())
+                if (consumed <= 0f) return
+            }
+        } else {
+            repeat(72) {
+                if (!listState.canScrollForward) return
+                val consumed = listState.scrollBy(stickyStep.toFloat())
+                if (consumed <= 0f) return
+            }
+        }
+        withFrameNanos { }
+    } finally {
+        onProgrammaticScrollEnd()
+    }
+}
+
+internal suspend fun performSnapStreamingToWorkline(
+    listState: LazyListState,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    messages: List<Any>,
+    anchoredUserMessageId: String?,
+    messageIdProvider: (Any) -> String,
+    assistantIdProvider: (String) -> String,
+    anchorTopPx: Int,
+    scrollToBottom: suspend (Boolean) -> Unit,
+    onProgrammaticScrollStart: () -> Unit,
+    onProgrammaticScrollEnd: () -> Unit
+) {
+    if (!isStreaming || !hasStreamingItem) {
+        scrollToBottom(false)
+        return
+    }
+    onProgrammaticScrollStart()
+    try {
+        withFrameNanos { }
+        val anchorIndex = findSendAnchorIndex(
+            messages = messages,
+            anchoredUserMessageId = anchoredUserMessageId,
+            messageIdProvider = messageIdProvider,
+            assistantIdProvider = assistantIdProvider
+        )
+        if (anchorIndex < 0) return
+        snapStreamingToSendAnchor(
+            listState = listState,
+            anchorIndex = anchorIndex,
+            anchorTopPx = anchorTopPx
+        )
+        repeat(2) { withFrameNanos { } }
+    } finally {
+        onProgrammaticScrollEnd()
+    }
+}
+
+internal suspend fun captureFrozenBottomAfterSendAnchor(
+    listState: LazyListState,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    pendingFrozenBottomCapture: Boolean,
+    programmaticScroll: Boolean,
+    currentStreamingLegalBottomPx: () -> Int,
+    currentStreamingMeasuredBottomPx: () -> Int,
+    onCaptured: (Int) -> Unit,
+    onClearPending: () -> Unit
+) {
+    if (!isStreaming || !hasStreamingItem || !pendingFrozenBottomCapture) return
+    repeat(2) { withFrameNanos { } }
+    var capturedBottom = -1
+    val worklineBottom = currentStreamingLegalBottomPx()
+    repeat(6) {
+        withFrameNanos { }
+        if (listState.isScrollInProgress || programmaticScroll) return@repeat
+        val measuredBottom = currentStreamingMeasuredBottomPx()
+        if (measuredBottom > 0) {
+            capturedBottom = if (worklineBottom > 0) {
+                maxOf(measuredBottom, worklineBottom)
+            } else {
+                measuredBottom
+            }
+            return@repeat
+        }
+    }
+    if (capturedBottom <= 0) {
+        capturedBottom = worklineBottom
+    }
+    if (capturedBottom > 0) {
+        onCaptured(capturedBottom)
+    }
+    onClearPending()
 }
 
 @Composable
