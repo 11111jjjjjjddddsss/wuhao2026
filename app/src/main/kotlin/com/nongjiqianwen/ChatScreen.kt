@@ -295,6 +295,7 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 internal val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val ASSISTANT_START_ANCHOR_TOP = 96.dp
+private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 220.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 40.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
@@ -1540,6 +1541,7 @@ fun ChatScreen() {
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val finalBottomSnapTolerancePx = with(density) { FINAL_BOTTOM_SNAP_TOLERANCE.roundToPx() }
     val lifecycleResumeBottomSnapThresholdPx = with(density) { LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD.roundToPx() }
+    val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -1904,16 +1906,38 @@ fun ChatScreen() {
     var composerCollapseOverlayChromeBoundsSnapshot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
     var composerCollapseOverlayBottomHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var composerCollapseOverlayPrewarmed by remember(chatScopeId) { mutableStateOf(false) }
+    val sendAnchorExtraBottomSpacePx by remember(
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        userInteracting,
+        messageViewportHeightPx,
+        minSendAnchorExtraBottomSpacePx
+    ) {
+        derivedStateOf {
+            resolveSendAnchorExtraBottomSpacePx(
+                isStreaming = isStreaming,
+                hasStreamingItem = hasStreamingItem,
+                scrollMode = scrollMode,
+                userInteracting = userInteracting,
+                viewportHeightPx = messageViewportHeightPx,
+                extraBottomSpaceRatio = SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO,
+                minExtraBottomSpacePx = minSendAnchorExtraBottomSpacePx
+            )
+        }
+    }
     val bottomContentReservedHeightPx by remember(
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
-        effectiveBottomBarHeightPx
+        effectiveBottomBarHeightPx,
+        sendAnchorExtraBottomSpacePx
     ) {
         derivedStateOf {
             resolveBottomContentReservedHeightPx(
                 overlayVisible = composerCollapseOverlayVisible,
                 overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx
+                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
+                extraReservedHeightPx = sendAnchorExtraBottomSpacePx
             )
         }
     }

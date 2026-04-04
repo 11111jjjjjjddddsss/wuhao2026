@@ -26,6 +26,24 @@ internal enum class ScrollMode {
     UserBrowsing
 }
 
+internal fun resolveSendAnchorExtraBottomSpacePx(
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    scrollMode: ScrollMode,
+    userInteracting: Boolean,
+    viewportHeightPx: Int,
+    extraBottomSpaceRatio: Float,
+    minExtraBottomSpacePx: Int
+): Int {
+    if (!isStreaming || !hasStreamingItem) return 0
+    if (scrollMode != ScrollMode.Idle || userInteracting) return 0
+    if (viewportHeightPx <= 0) return 0
+    return maxOf(
+        (viewportHeightPx * extraBottomSpaceRatio).roundToInt(),
+        minExtraBottomSpacePx
+    )
+}
+
 internal data class StreamingGuardSnapshot(
     val isStreaming: Boolean,
     val hasStreamingItem: Boolean,

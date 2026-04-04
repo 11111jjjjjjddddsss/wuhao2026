@@ -87,13 +87,15 @@ internal fun shouldDismissComposerCollapseOverlay(
 internal fun resolveBottomContentReservedHeightPx(
     overlayVisible: Boolean,
     overlayBottomHeightPx: Int,
-    effectiveBottomBarHeightPx: Int
+    effectiveBottomBarHeightPx: Int,
+    extraReservedHeightPx: Int
 ): Int {
-    return if (overlayVisible && overlayBottomHeightPx > 0) {
+    val baseReservedHeightPx = if (overlayVisible && overlayBottomHeightPx > 0) {
         overlayBottomHeightPx
     } else {
         effectiveBottomBarHeightPx
     }
+    return baseReservedHeightPx + extraReservedHeightPx.coerceAtLeast(0)
 }
 
 internal fun resolveComposerOverlayHintText(
