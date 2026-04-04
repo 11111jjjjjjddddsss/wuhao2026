@@ -27,21 +27,57 @@ internal enum class ScrollMode {
 }
 
 internal fun resolveSendAnchorExtraBottomSpacePx(
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    scrollMode: ScrollMode,
-    userInteracting: Boolean,
+    keepAnchorReserve: Boolean,
     viewportHeightPx: Int,
     extraBottomSpaceRatio: Float,
     minExtraBottomSpacePx: Int
 ): Int {
-    if (!isStreaming || !hasStreamingItem) return 0
-    if (scrollMode != ScrollMode.Idle || userInteracting) return 0
+    if (!keepAnchorReserve) return 0
     if (viewportHeightPx <= 0) return 0
     return maxOf(
         (viewportHeightPx * extraBottomSpaceRatio).roundToInt(),
         minExtraBottomSpacePx
     )
+}
+
+internal fun resolveStreamingLegalBottomPx(
+    anchorPhase: AnchorPhase,
+    frozenBottomPx: Int,
+    worklineBottomPx: Int,
+    composerTopInViewportPx: Int,
+    streamVisibleBottomGapPx: Int
+): Int {
+    if (anchorPhase == AnchorPhase.FrozenBottom && frozenBottomPx > 0) {
+        return frozenBottomPx
+    }
+    if (worklineBottomPx > 0) return worklineBottomPx
+    if (composerTopInViewportPx <= 0) return -1
+    return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+}
+
+internal fun resolveStreamingGuardContentBottomPx(
+    anchorPhase: AnchorPhase,
+    tailBottomPx: Int,
+    measuredBottomPx: Int
+): Int {
+    if (tailBottomPx > 0) return tailBottomPx
+    if (anchorPhase == AnchorPhase.FrozenBottom) {
+        return measuredBottomPx.takeIf { it > 0 } ?: -1
+    }
+    return -1
+}
+
+internal fun shouldExitFrozenBottomPhase(
+    anchorPhase: AnchorPhase,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    tailBottomPx: Int,
+    frozenBottomPx: Int
+): Boolean {
+    if (anchorPhase != AnchorPhase.FrozenBottom) return false
+    if (!isStreaming || !hasStreamingItem) return true
+    if (tailBottomPx <= 0 || frozenBottomPx <= 0) return false
+    return tailBottomPx >= frozenBottomPx
 }
 
 internal data class StreamingGuardSnapshot(
@@ -77,6 +113,26 @@ internal fun isStreamingTailNearGuardBoundary(snapshot: StreamingGuardSnapshot):
     val activationRangePx = (snapshot.viewportHeightPx * 0.22f).roundToInt()
         .coerceAtLeast(snapshot.assistantLineStepPx * 2)
     return snapshot.tailBottomPx >= (snapshot.legalBottomPx - activationRangePx)
+}
+
+internal fun resolveBottomDragOverflowPx(
+    tailBottomPx: Int,
+    legalBottomPx: Int,
+    deltaY: Float
+): Float {
+    if (deltaY >= 0f || tailBottomPx <= 0 || legalBottomPx <= 0) return 0f
+    val projectedBottom = tailBottomPx - deltaY
+    return (projectedBottom - legalBottomPx).coerceAtLeast(0f)
+}
+
+internal fun shouldConsumeBottomFling(
+    snapshot: StreamingGuardSnapshot,
+    velocityY: Float
+): Boolean {
+    if (velocityY >= 0f) return false
+    if (!isStreamingTailNearGuardBoundary(snapshot)) return false
+    if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
+    return snapshot.tailBottomPx >= snapshot.legalBottomPx
 }
 
 internal fun currentStreamingOverflowDelta(
@@ -178,8 +234,11 @@ internal fun rememberStreamingDirectionLock(
                     available.y < 0f &&
                     isStreamingTailNearGuardBoundary(snapshot)
                 ) {
-                    val projectedBottom = snapshot.tailBottomPx - available.y
-                    val overflowPx = (projectedBottom - snapshot.legalBottomPx).coerceAtLeast(0f)
+                    val overflowPx = resolveBottomDragOverflowPx(
+                        tailBottomPx = snapshot.tailBottomPx,
+                        legalBottomPx = snapshot.legalBottomPx,
+                        deltaY = available.y
+                    )
                     if (overflowPx > 0f) {
                         val consumedPx = overflowPx.coerceAtMost(-available.y)
                         return Offset(x = 0f, y = -consumedPx)
@@ -201,25 +260,9 @@ internal fun rememberStreamingDirectionLock(
                 if (
                     snapshot.isStreaming &&
                     snapshot.hasStreamingItem &&
-                    available.y < 0f &&
-                    isStreamingTailNearGuardBoundary(snapshot)
+                    shouldConsumeBottomFling(snapshot, available.y)
                 ) {
-                    val remainingToBoundaryPx =
-                        if (snapshot.tailBottomPx > 0 && snapshot.legalBottomPx > 0) {
-                            (snapshot.legalBottomPx - snapshot.tailBottomPx).coerceAtLeast(0)
-                        } else {
-                            Int.MAX_VALUE
-                        }
-                    val shouldClampBottomFling =
-                        when {
-                            remainingToBoundaryPx == Int.MAX_VALUE -> false
-                            remainingToBoundaryPx <= 0 -> true
-                            remainingToBoundaryPx < 150 -> true
-                            else -> false
-                        }
-                    if (shouldClampBottomFling) {
-                        return Velocity(x = 0f, y = available.y)
-                    }
+                    return Velocity(x = 0f, y = available.y)
                 }
                 return Velocity.Zero
             }
