@@ -57,17 +57,12 @@ internal fun resolveStreamingLegalBottomPx(
 
 internal fun resolveStreamingGuardContentBottomPx(
     anchorPhase: AnchorPhase,
-    frozenBottomPx: Int,
     tailBottomPx: Int,
     fallbackBottomPx: Int
 ): Int {
     if (tailBottomPx > 0) return tailBottomPx
     if (anchorPhase == AnchorPhase.FrozenBottom) {
-        return when {
-            frozenBottomPx > 0 -> frozenBottomPx
-            fallbackBottomPx > 0 -> fallbackBottomPx
-            else -> -1
-        }
+        return fallbackBottomPx.takeIf { it > 0 } ?: -1
     }
     return -1
 }
@@ -149,6 +144,7 @@ internal fun shouldConsumeBottomFling(
     velocityY: Float
 ): Boolean {
     if (velocityY >= 0f) return false
+    if (!snapshot.scrollModeAutoFollow) return false
     if (!isStreamingTailNearGuardBoundary(snapshot)) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
     return snapshot.tailBottomPx >= snapshot.legalBottomPx

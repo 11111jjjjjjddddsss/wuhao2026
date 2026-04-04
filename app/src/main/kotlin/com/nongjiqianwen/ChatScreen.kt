@@ -1627,7 +1627,6 @@ fun ChatScreen() {
     fun currentStreamingGuardContentBottomPx(): Int =
         resolveStreamingGuardContentBottomPx(
             anchorPhase = anchorPhase,
-            frozenBottomPx = frozenBottomPx,
             tailBottomPx = currentStreamingTailBottomPx(),
             fallbackBottomPx = currentStreamingMeasuredBottomPx()
         )
@@ -3597,17 +3596,22 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem || !pendingFrozenBottomCapture) return
         repeat(2) { withFrameNanos { } }
         var capturedBottom = -1
+        val worklineBottom = currentStreamingLegalBottomPx()
         repeat(6) {
             withFrameNanos { }
             if (listState.isScrollInProgress || programmaticScroll) return@repeat
             val measuredBottom = currentStreamingMeasuredBottomPx()
             if (measuredBottom > 0) {
-                capturedBottom = measuredBottom
+                capturedBottom = if (worklineBottom > 0) {
+                    maxOf(measuredBottom, worklineBottom)
+                } else {
+                    measuredBottom
+                }
                 return@repeat
             }
         }
         if (capturedBottom <= 0) {
-            capturedBottom = currentStreamingLegalBottomPx()
+            capturedBottom = worklineBottom
         }
         if (capturedBottom > 0) {
             frozenBottomPx = capturedBottom
