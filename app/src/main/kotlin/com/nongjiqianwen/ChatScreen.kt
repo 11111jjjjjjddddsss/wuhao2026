@@ -1741,12 +1741,17 @@ fun ChatScreen() {
         }
         repeat(2) { withFrameNanos { } }
         val secondBottom = currentStreamingTailBottomPx()
-        streamingFollowArmed =
+        val canArmFollow =
             isStreaming &&
                 hasStreamingItem &&
                 streamingMessageContent.isNotBlank() &&
                 secondBottom > 0 &&
                 kotlin.math.abs(secondBottom - firstBottom) <= bottomPositionTolerancePx
+        if (canArmFollow) {
+            streamingFollowArmed = true
+        } else if (!streamingFollowArmed) {
+            streamingFollowArmed = false
+        }
     }
 
     fun isStreamingReadyForAutoFollow(): Boolean {
@@ -2762,6 +2767,7 @@ fun ChatScreen() {
                     scrollMode == ScrollMode.UserBrowsing -> {
                         val canResumeAutoFollow =
                             !scrollInProgress &&
+                                currentStreamingVisualBottomPx() > 0 &&
                                 isStreamingReadyForAutoFollow()
                         if (canResumeAutoFollow) {
                             scrollMode = ScrollMode.AutoFollow
