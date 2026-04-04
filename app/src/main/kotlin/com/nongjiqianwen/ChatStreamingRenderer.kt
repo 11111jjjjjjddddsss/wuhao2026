@@ -1,5 +1,7 @@
 package com.nongjiqianwen
 
+import android.os.Handler
+import android.os.SystemClock
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -58,6 +60,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.TextMeasurer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.random.Random
 
@@ -116,6 +123,119 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
             lastStreamingFreshRevealMs = lastStreamingFreshRevealMs,
             streamingRevealMode = streamingRevealMode
         )
+    }
+}
+
+@Composable
+internal fun BindStreamingRevealModeEffect(
+    isStreaming: Boolean,
+    scrollMode: ScrollMode,
+    userInteracting: Boolean,
+    streamBottomFollowActive: Boolean,
+    streamingContentBottomPx: Int,
+    streamingWorklineBottomPx: Int,
+    assistantLineStepPx: Int,
+    streamingRevealModeState: MutableState<StreamingRevealMode>
+) {
+    LaunchedEffect(
+        isStreaming,
+        scrollMode,
+        userInteracting,
+        streamBottomFollowActive,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        assistantLineStepPx
+    ) {
+        val nextMode = deriveStreamingRevealMode(
+            isStreaming = isStreaming,
+            scrollMode = scrollMode,
+            userInteracting = userInteracting,
+            streamBottomFollowActive = streamBottomFollowActive,
+            streamingTailBottomPx = streamingContentBottomPx,
+            worklineBottomPx = streamingWorklineBottomPx,
+            assistantLineStepPx = assistantLineStepPx,
+            currentMode = streamingRevealModeState.value
+        )
+        if (streamingRevealModeState.value != nextMode) {
+            streamingRevealModeState.value = nextMode
+        }
+    }
+}
+
+internal fun ensureStreamingRevealJob(
+    currentJob: Job?,
+    setJob: (Job?) -> Unit,
+    scope: CoroutineScope,
+    isStreaming: () -> Boolean,
+    currentMessageId: () -> String?,
+    currentContent: () -> String,
+    currentRevealBuffer: () -> String,
+    currentFreshTick: () -> Int,
+    currentLastFreshRevealMs: () -> Long,
+    anchoredUserMessageId: () -> String?,
+    assistantIdProvider: (String) -> String,
+    fallbackIdProvider: () -> String,
+    onAdvance: (StreamingRevealAdvance) -> Unit,
+    onTick: () -> Unit
+) {
+    if (currentJob?.isActive == true) return
+    setJob(
+        scope.launch {
+            while (isActive) {
+                val advance = consumeStreamingRevealBatch(
+                    currentMessageId = currentMessageId(),
+                    currentContent = currentContent(),
+                    currentRevealBuffer = currentRevealBuffer(),
+                    currentFreshTick = currentFreshTick(),
+                    lastFreshRevealMs = currentLastFreshRevealMs(),
+                    anchoredUserMessageId = anchoredUserMessageId(),
+                    assistantIdProvider = assistantIdProvider,
+                    fallbackIdProvider = fallbackIdProvider,
+                    nowMs = SystemClock.uptimeMillis()
+                )
+                if (advance == null) {
+                    if (!isStreaming()) break
+                    delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+                    continue
+                }
+                if (
+                    advance.content == currentContent() &&
+                    advance.revealBuffer == currentRevealBuffer()
+                ) {
+                    delay(advance.delayMs)
+                    continue
+                }
+                onAdvance(advance)
+                onTick()
+                delay(advance.delayMs)
+            }
+        }
+    )
+}
+
+internal fun appendAssistantChunk(
+    piece: String,
+    mainHandler: Handler,
+    currentMessageId: () -> String?,
+    currentRevealBuffer: () -> String,
+    anchoredUserMessageId: () -> String?,
+    assistantIdProvider: (String) -> String,
+    fallbackIdProvider: () -> String,
+    onQueued: (QueuedStreamingChunk) -> Unit,
+    ensureRevealJob: () -> Unit
+) {
+    if (piece.isEmpty()) return
+    mainHandler.post {
+        val queued = queueStreamingChunk(
+            currentMessageId = currentMessageId(),
+            currentRevealBuffer = currentRevealBuffer(),
+            piece = piece,
+            anchoredUserMessageId = anchoredUserMessageId(),
+            assistantIdProvider = assistantIdProvider,
+            fallbackIdProvider = fallbackIdProvider
+        ) ?: return@post
+        onQueued(queued)
+        ensureRevealJob()
     }
 }
 

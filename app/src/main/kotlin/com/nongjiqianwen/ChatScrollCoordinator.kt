@@ -1,16 +1,22 @@
 package com.nongjiqianwen
 
+import android.os.SystemClock
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.ui.unit.Velocity
+import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 
 internal enum class AnchorPhase {
@@ -390,6 +396,473 @@ internal fun rememberStreamingDirectionLock(
                     return Velocity(x = 0f, y = available.y)
                 }
                 return Velocity.Zero
+            }
+        }
+    }
+}
+
+@Composable
+internal fun BindChatScrollRuntimeEffects(
+    listState: LazyListState,
+    messagesSize: Int,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    streamingMessageId: String?,
+    streamingMessageContent: String,
+    streamingContentBottomPxState: MutableIntState,
+    streamingFollowArmedState: MutableState<Boolean>,
+    scrollModeState: MutableState<ScrollMode>,
+    autoScrollModeState: MutableState<AutoScrollMode>,
+    userInteractingState: MutableState<Boolean>,
+    userDetachedFromBottomState: MutableState<Boolean>,
+    streamBottomFollowActiveState: MutableState<Boolean>,
+    streamTick: Int,
+    sendTick: Int,
+    anchorPhaseState: MutableState<AnchorPhase>,
+    frozenBottomPxState: MutableIntState,
+    programmaticScrollState: MutableState<Boolean>,
+    lastProgrammaticScrollMsState: MutableState<Long>,
+    streamingLineAdvanceTickState: MutableIntState,
+    bottomPositionTolerancePx: Int,
+    streamingWorklineBottomPx: Int,
+    currentStreamingTailBottomPx: () -> Int,
+    currentStreamingVisualBottomPx: () -> Int,
+    currentStreamingGuardContentBottomPx: () -> Int,
+    currentStreamingLegalBottomPx: () -> Int,
+    currentStreamingOverflowDelta: () -> Int,
+    resolveStreamingFollowStepPx: (Int) -> Int,
+    isStreamingReadyForAutoFollow: () -> Boolean,
+    snapStreamingToWorkline: suspend () -> Unit,
+    captureFrozenBottomAfterSendAnchor: suspend () -> Unit
+) {
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageId,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        val streamingItemIndex = messagesSize - 1
+        if (streamingItemIndex < 0) return@LaunchedEffect
+        val visible = listState.layoutInfo.visibleItemsInfo.any { it.index == streamingItemIndex }
+        if (!visible && streamingContentBottomPxState.intValue != -1) {
+            streamingContentBottomPxState.intValue = -1
+        }
+    }
+
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageContent.length,
+        streamingContentBottomPxState.intValue
+    ) {
+        if (!isStreaming || !hasStreamingItem) {
+            streamingFollowArmedState.value = false
+            return@LaunchedEffect
+        }
+        if (streamingMessageContent.isBlank()) {
+            streamingFollowArmedState.value = false
+            return@LaunchedEffect
+        }
+        val firstBottom = currentStreamingTailBottomPx()
+        if (firstBottom <= 0) {
+            streamingFollowArmedState.value = false
+            return@LaunchedEffect
+        }
+        repeat(2) { withFrameNanos { } }
+        val secondBottom = currentStreamingTailBottomPx()
+        val canArmFollow =
+            isStreaming &&
+                hasStreamingItem &&
+                streamingMessageContent.isNotBlank() &&
+                secondBottom > 0 &&
+                kotlin.math.abs(secondBottom - firstBottom) <= bottomPositionTolerancePx
+        if (canArmFollow) {
+            streamingFollowArmedState.value = true
+        } else if (!streamingFollowArmedState.value) {
+            streamingFollowArmedState.value = false
+        }
+    }
+
+    LaunchedEffect(scrollModeState.value, isStreaming, hasStreamingItem) {
+        val derivedAutoScrollMode = when (scrollModeState.value) {
+            ScrollMode.Idle -> if (isStreaming && hasStreamingItem) AutoScrollMode.AnchorUser else AutoScrollMode.Idle
+            ScrollMode.AutoFollow -> AutoScrollMode.StreamAnchorFollow
+            ScrollMode.UserBrowsing -> AutoScrollMode.AnchorUser
+        }
+        val derivedDetached = scrollModeState.value == ScrollMode.UserBrowsing
+        if (autoScrollModeState.value != derivedAutoScrollMode) {
+            autoScrollModeState.value = derivedAutoScrollMode
+        }
+        if (userDetachedFromBottomState.value != derivedDetached) {
+            userDetachedFromBottomState.value = derivedDetached
+        }
+    }
+
+    LaunchedEffect(listState.isScrollInProgress, programmaticScrollState.value) {
+        if (programmaticScrollState.value) {
+            userInteractingState.value = false
+            return@LaunchedEffect
+        }
+        userInteractingState.value = listState.isScrollInProgress
+    }
+
+    LaunchedEffect(listState, isStreaming, hasStreamingItem) {
+        var previousIndex = listState.firstVisibleItemIndex
+        var previousOffset = listState.firstVisibleItemScrollOffset
+        snapshotFlow {
+            listOf(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                if (listState.isScrollInProgress) 1 else 0,
+                streamTick,
+                streamingWorklineBottomPx,
+                currentStreamingVisualBottomPx()
+            )
+        }.collect { state ->
+            val currentIndex = state[0]
+            val currentOffset = state[1]
+            val scrollInProgress = state[2] == 1
+            if (programmaticScrollState.value) {
+                previousIndex = currentIndex
+                previousOffset = currentOffset
+                return@collect
+            }
+            if (isStreaming && hasStreamingItem && scrollModeState.value == ScrollMode.Idle) {
+                previousIndex = currentIndex
+                previousOffset = currentOffset
+                return@collect
+            }
+            val movedTowardBottom =
+                currentIndex > previousIndex ||
+                    (currentIndex == previousIndex && currentOffset > previousOffset)
+            val movedTowardTop =
+                currentIndex < previousIndex ||
+                    (currentIndex == previousIndex && currentOffset < previousOffset)
+            if (isStreaming && hasStreamingItem) {
+                when {
+                    scrollInProgress &&
+                        (movedTowardTop || movedTowardBottom) &&
+                        scrollModeState.value == ScrollMode.AutoFollow -> {
+                        scrollModeState.value = ScrollMode.UserBrowsing
+                    }
+
+                    scrollModeState.value == ScrollMode.UserBrowsing -> {
+                        val canResumeAutoFollow =
+                            !scrollInProgress &&
+                                currentStreamingVisualBottomPx() > 0 &&
+                                isStreamingReadyForAutoFollow()
+                        if (canResumeAutoFollow) {
+                            scrollModeState.value = ScrollMode.AutoFollow
+                        }
+                    }
+                }
+            } else {
+                when {
+                    movedTowardBottom -> {
+                        scrollModeState.value = ScrollMode.Idle
+                        autoScrollModeState.value = AutoScrollMode.Idle
+                        userDetachedFromBottomState.value = false
+                    }
+                    movedTowardTop -> {
+                        scrollModeState.value = ScrollMode.UserBrowsing
+                        autoScrollModeState.value = AutoScrollMode.Idle
+                        userDetachedFromBottomState.value = true
+                    }
+                    else -> {
+                        scrollModeState.value = ScrollMode.Idle
+                        autoScrollModeState.value = AutoScrollMode.Idle
+                    }
+                }
+            }
+            previousIndex = currentIndex
+            previousOffset = currentOffset
+        }
+    }
+
+    LaunchedEffect(
+        scrollModeState.value,
+        isStreaming,
+        hasStreamingItem,
+        userInteractingState.value,
+        userDetachedFromBottomState.value,
+        listState.isScrollInProgress
+    ) {
+        if (!hasStreamingItem || !isStreaming) {
+            streamBottomFollowActiveState.value = false
+            return@LaunchedEffect
+        }
+        while (isActive && hasStreamingItem && isStreaming) {
+            withFrameNanos { }
+            if (
+                scrollModeState.value != ScrollMode.AutoFollow ||
+                listState.isScrollInProgress ||
+                userInteractingState.value ||
+                !streamingFollowArmedState.value
+            ) {
+                streamBottomFollowActiveState.value = false
+                return@LaunchedEffect
+            }
+            if (streamingMessageContent.isBlank()) {
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            val overflow = currentStreamingOverflowDelta()
+            val stepPx = resolveStreamingFollowStepPx(overflow)
+            if (stepPx <= 0) {
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            streamBottomFollowActiveState.value = true
+            lastProgrammaticScrollMsState.value = SystemClock.uptimeMillis()
+            programmaticScrollState.value = true
+            try {
+                val consumed = listState.scrollBy(stepPx.toFloat())
+                if (consumed > 0f) {
+                    streamingLineAdvanceTickState.intValue++
+                }
+            } finally {
+                programmaticScrollState.value = false
+                lastProgrammaticScrollMsState.value = SystemClock.uptimeMillis()
+                streamBottomFollowActiveState.value = false
+            }
+        }
+    }
+
+    LaunchedEffect(sendTick) {
+        if (messagesSize <= 0) return@LaunchedEffect
+        userInteractingState.value = false
+        scrollModeState.value = ScrollMode.Idle
+        autoScrollModeState.value = AutoScrollMode.Idle
+        repeat(2) { withFrameNanos { } }
+        snapStreamingToWorkline()
+        captureFrozenBottomAfterSendAnchor()
+    }
+
+    LaunchedEffect(
+        anchorPhaseState.value,
+        isStreaming,
+        hasStreamingItem,
+        streamingContentBottomPxState.intValue,
+        frozenBottomPxState.intValue
+    ) {
+        if (!shouldExitFrozenBottomPhase(
+                anchorPhase = anchorPhaseState.value,
+                isStreaming = isStreaming,
+                hasStreamingItem = hasStreamingItem,
+                tailBottomPx = currentStreamingTailBottomPx(),
+                frozenBottomPx = frozenBottomPxState.intValue
+            )
+        ) {
+            return@LaunchedEffect
+        }
+        anchorPhaseState.value = AnchorPhase.None
+        frozenBottomPxState.intValue = -1
+    }
+
+    LaunchedEffect(
+        anchorPhaseState.value,
+        isStreaming,
+        hasStreamingItem,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset,
+        listState.isScrollInProgress,
+        streamingContentBottomPxState.intValue
+    ) {
+        if (anchorPhaseState.value != AnchorPhase.FrozenBottom || !isStreaming || !hasStreamingItem) {
+            return@LaunchedEffect
+        }
+        if (listState.isScrollInProgress || programmaticScrollState.value || userInteractingState.value) {
+            return@LaunchedEffect
+        }
+        val guardBottom = currentStreamingGuardContentBottomPx()
+        val legalBottom = currentStreamingLegalBottomPx()
+        if (guardBottom <= 0 || legalBottom <= 0) return@LaunchedEffect
+        val overflowPx = (guardBottom - legalBottom).coerceAtLeast(0)
+        if (overflowPx <= bottomPositionTolerancePx) return@LaunchedEffect
+        lastProgrammaticScrollMsState.value = SystemClock.uptimeMillis()
+        programmaticScrollState.value = true
+        try {
+            listState.scrollBy(overflowPx.toFloat())
+        } finally {
+            programmaticScrollState.value = false
+            lastProgrammaticScrollMsState.value = SystemClock.uptimeMillis()
+        }
+    }
+
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        scrollModeState.value,
+        streamTick,
+        streamingMessageId,
+        streamingMessageContent.length,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset,
+        streamingContentBottomPxState.intValue,
+        streamingWorklineBottomPx,
+        listState.isScrollInProgress,
+        userInteractingState.value
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        if (scrollModeState.value != ScrollMode.Idle && scrollModeState.value != ScrollMode.UserBrowsing) {
+            return@LaunchedEffect
+        }
+        if (streamingMessageContent.isBlank()) return@LaunchedEffect
+        if (userInteractingState.value || listState.isScrollInProgress) return@LaunchedEffect
+        if (isStreamingReadyForAutoFollow()) {
+            repeat(2) { withFrameNanos { } }
+            if (
+                userInteractingState.value ||
+                listState.isScrollInProgress ||
+                anchorPhaseState.value == AnchorPhase.FrozenBottom ||
+                !isStreamingReadyForAutoFollow()
+            ) {
+                return@LaunchedEffect
+            }
+            scrollModeState.value = ScrollMode.AutoFollow
+            autoScrollModeState.value = AutoScrollMode.StreamAnchorFollow
+        }
+    }
+}
+
+@Composable
+internal fun BindChatScrollAuxiliaryEffects(
+    listState: LazyListState,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    messagesSize: Int,
+    atBottom: Boolean,
+    imeVisible: Boolean,
+    startupLayoutReady: Boolean,
+    startupHydrationBarrierSatisfied: Boolean,
+    hasStartedConversation: Boolean,
+    currentBottomOverflowPx: () -> Int,
+    isWithinFinalBottomSnapTolerance: () -> Boolean,
+    isBottomSettled: suspend () -> Boolean,
+    scrollToBottom: suspend (Boolean) -> Unit,
+    lifecycleResumeBottomSnapThresholdPx: Int,
+    userDetachedFromBottomState: MutableState<Boolean>,
+    initialBottomSnapDoneState: MutableState<Boolean>,
+    pendingFinalBottomSnapState: MutableState<Boolean>,
+    restoreBottomAfterImeCloseState: MutableState<Boolean>,
+    suppressJumpButtonForImeTransitionState: MutableState<Boolean>,
+    restoreBottomAfterLifecycleResumeState: MutableState<Boolean>,
+    suppressJumpButtonForLifecycleResumeState: MutableState<Boolean>,
+    lifecycleResumeReadyState: MutableState<Boolean>,
+    programmaticScrollState: MutableState<Boolean>
+) {
+    LaunchedEffect(imeVisible) {
+        if (imeVisible) {
+            restoreBottomAfterImeCloseState.value =
+                atBottom &&
+                    !isStreaming &&
+                    !userDetachedFromBottomState.value &&
+                    !listState.isScrollInProgress &&
+                    !programmaticScrollState.value
+            suppressJumpButtonForImeTransitionState.value = true
+            return@LaunchedEffect
+        }
+
+        if (restoreBottomAfterImeCloseState.value && !isStreaming) {
+            withFrameNanos { }
+            if (!userDetachedFromBottomState.value && !listState.isScrollInProgress && !programmaticScrollState.value) {
+                scrollToBottom(false)
+            }
+            restoreBottomAfterImeCloseState.value = false
+        } else {
+            restoreBottomAfterImeCloseState.value = false
+        }
+
+        repeat(2) { withFrameNanos { } }
+        suppressJumpButtonForImeTransitionState.value = false
+    }
+
+    LaunchedEffect(pendingFinalBottomSnapState.value, messagesSize, isStreaming) {
+        if (!pendingFinalBottomSnapState.value || isStreaming) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        for (attempt in 0 until 4) {
+            withFrameNanos { }
+            if (isWithinFinalBottomSnapTolerance()) {
+                break
+            }
+            scrollToBottom(false)
+            if (!listState.canScrollForward || isWithinFinalBottomSnapTolerance()) {
+                break
+            }
+            if (attempt < 3) {
+                kotlinx.coroutines.delay(16)
+            }
+        }
+        if (isWithinFinalBottomSnapTolerance()) {
+            repeat(2) { withFrameNanos { } }
+        }
+        pendingFinalBottomSnapState.value = false
+    }
+
+    LaunchedEffect(
+        restoreBottomAfterLifecycleResumeState.value,
+        lifecycleResumeReadyState.value,
+        isStreaming,
+        messagesSize,
+        hasStreamingItem
+    ) {
+        if (!restoreBottomAfterLifecycleResumeState.value || !lifecycleResumeReadyState.value) {
+            return@LaunchedEffect
+        }
+        if (isStreaming || (messagesSize == 0 && !hasStreamingItem)) {
+            restoreBottomAfterLifecycleResumeState.value = false
+            suppressJumpButtonForLifecycleResumeState.value = false
+            return@LaunchedEffect
+        }
+        var stableResumeOverflowPx = Int.MAX_VALUE
+        repeat(4) {
+            withFrameNanos { }
+            val overflowPx = currentBottomOverflowPx()
+            if (overflowPx == Int.MAX_VALUE) return@repeat
+            stableResumeOverflowPx = minOf(stableResumeOverflowPx, overflowPx)
+        }
+        if (
+            !listState.isScrollInProgress &&
+            !programmaticScrollState.value &&
+            stableResumeOverflowPx != Int.MAX_VALUE &&
+            stableResumeOverflowPx > lifecycleResumeBottomSnapThresholdPx
+        ) {
+            scrollToBottom(false)
+        }
+        repeat(2) { withFrameNanos { } }
+        suppressJumpButtonForLifecycleResumeState.value = false
+        restoreBottomAfterLifecycleResumeState.value = false
+    }
+
+    LaunchedEffect(
+        hasStartedConversation,
+        messagesSize,
+        isStreaming,
+        startupLayoutReady,
+        hasStreamingItem,
+        initialBottomSnapDoneState.value,
+        startupHydrationBarrierSatisfied
+    ) {
+        if (hasStartedConversation) return@LaunchedEffect
+        if (initialBottomSnapDoneState.value) return@LaunchedEffect
+        if (!startupHydrationBarrierSatisfied) return@LaunchedEffect
+        if (!startupLayoutReady) return@LaunchedEffect
+        if (messagesSize == 0 && !hasStreamingItem) {
+            initialBottomSnapDoneState.value = true
+            return@LaunchedEffect
+        }
+        if (messagesSize == 0 || isStreaming || hasStreamingItem) return@LaunchedEffect
+        repeat(3) { withFrameNanos { } }
+        repeat(4) { attempt ->
+            scrollToBottom(false)
+            if (!listState.canScrollForward || isBottomSettled()) {
+                initialBottomSnapDoneState.value = true
+                return@LaunchedEffect
+            }
+            if (attempt < 3) {
+                kotlinx.coroutines.delay(60)
             }
         }
     }

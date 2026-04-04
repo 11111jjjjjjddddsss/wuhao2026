@@ -1584,29 +1584,16 @@ fun ChatScreen() {
             }
         }
     }
-    LaunchedEffect(
-        isStreaming,
-        scrollMode,
-        userInteracting,
-        streamBottomFollowActive,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx,
-        assistantLineStepPx
-    ) {
-        val nextMode = deriveStreamingRevealMode(
-            isStreaming = isStreaming,
-            scrollMode = scrollMode,
-            userInteracting = userInteracting,
-            streamBottomFollowActive = streamBottomFollowActive,
-            streamingTailBottomPx = streamingContentBottomPx,
-            worklineBottomPx = streamingWorklineBottomPx,
-            assistantLineStepPx = assistantLineStepPx,
-            currentMode = streamingRevealMode
-        )
-        if (streamingRevealMode != nextMode) {
-            streamingRevealMode = nextMode
-        }
-    }
+    BindStreamingRevealModeEffect(
+        isStreaming = isStreaming,
+        scrollMode = scrollMode,
+        userInteracting = userInteracting,
+        streamBottomFollowActive = streamBottomFollowActive,
+        streamingContentBottomPx = streamingContentBottomPx,
+        streamingWorklineBottomPx = streamingWorklineBottomPx,
+        assistantLineStepPx = assistantLineStepPx,
+        streamingRevealModeState = streamingRuntime.streamingRevealMode
+    )
     fun currentStreamingMeasuredBottomPx(): Int {
         val streamingItemIndex = messages.size - 1
         if (streamingItemIndex < 0) return -1
@@ -1708,57 +1695,6 @@ fun ChatScreen() {
         return contentBottom >= (worklineBottom - bottomPositionTolerancePx)
     }
 
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageId,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset
-    ) {
-        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
-        val streamingItemIndex = messages.size - 1
-        if (streamingItemIndex < 0) return@LaunchedEffect
-        val visible =
-            listState.layoutInfo.visibleItemsInfo.any { it.index == streamingItemIndex }
-        if (!visible && streamingContentBottomPx != -1) {
-            streamingContentBottomPx = -1
-        }
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageContent.length,
-        streamingContentBottomPx
-    ) {
-        if (!isStreaming || !hasStreamingItem) {
-            streamingFollowArmed = false
-            return@LaunchedEffect
-        }
-        if (streamingMessageContent.isBlank()) {
-            streamingFollowArmed = false
-            return@LaunchedEffect
-        }
-        val firstBottom = currentStreamingTailBottomPx()
-        if (firstBottom <= 0) {
-            streamingFollowArmed = false
-            return@LaunchedEffect
-        }
-        repeat(2) { withFrameNanos { } }
-        val secondBottom = currentStreamingTailBottomPx()
-        val canArmFollow =
-            isStreaming &&
-                hasStreamingItem &&
-                streamingMessageContent.isNotBlank() &&
-                secondBottom > 0 &&
-                kotlin.math.abs(secondBottom - firstBottom) <= bottomPositionTolerancePx
-        if (canArmFollow) {
-            streamingFollowArmed = true
-        } else if (!streamingFollowArmed) {
-            streamingFollowArmed = false
-        }
-    }
-
     fun isStreamingReadyForAutoFollow(): Boolean {
         if (anchorPhase == AnchorPhase.FrozenBottom) return false
         if (!isStreaming || !hasStreamingItem || !streamingFollowArmed) return false
@@ -1779,20 +1715,6 @@ fun ChatScreen() {
         pendingResumeAutoFollow = false
         userDetachedFromBottom = detached
         autoScrollMode = mode
-    }
-    LaunchedEffect(scrollMode, isStreaming, hasStreamingItem) {
-        val derivedAutoScrollMode = when (scrollMode) {
-            ScrollMode.Idle -> if (isStreaming && hasStreamingItem) AutoScrollMode.AnchorUser else AutoScrollMode.Idle
-            ScrollMode.AutoFollow -> AutoScrollMode.StreamAnchorFollow
-            ScrollMode.UserBrowsing -> AutoScrollMode.AnchorUser
-        }
-        val derivedDetached = scrollMode == ScrollMode.UserBrowsing
-        if (autoScrollMode != derivedAutoScrollMode) {
-            autoScrollMode = derivedAutoScrollMode
-        }
-        if (userDetachedFromBottom != derivedDetached) {
-            userDetachedFromBottom = derivedDetached
-        }
     }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
@@ -1923,7 +1845,29 @@ fun ChatScreen() {
     var composerCollapseOverlayHostBoundsSnapshot by composerRuntime.composerCollapseOverlayHostBoundsSnapshot
     var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
     var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
-    var composerCollapseOverlayPrewarmed by composerRuntime.composerCollapseOverlayPrewarmed
+    BindComposerRuntimeEffects(
+        chatScopeId = chatScopeId,
+        inputChromeMeasured = inputChromeMeasured,
+        inputText = input.value.text,
+        inputFieldFocused = inputFieldFocused,
+        composerSettlingMinHeightPxState = composerRuntime.composerSettlingMinHeightPx,
+        composerSettlingChromeHeightPxState = composerRuntime.composerSettlingChromeHeightPx,
+        sendUiSettling = sendUiSettling,
+        imeVisible = imeVisible,
+        bottomBarHeightPxState = scrollRuntime.bottomBarHeightPx,
+        inputChromeRowHeightPx = inputChromeRowHeightPx,
+        stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
+        jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX,
+        composerCollapseOverlayVisibleState = composerRuntime.composerCollapseOverlayVisible,
+        composerHostBoundsInWindow = composerHostBoundsInWindow,
+        composerChromeBoundsInWindow = composerChromeBoundsInWindow,
+        effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
+        composerCollapseOverlayHostBoundsSnapshotState = composerRuntime.composerCollapseOverlayHostBoundsSnapshot,
+        composerCollapseOverlayChromeBoundsSnapshotState = composerRuntime.composerCollapseOverlayChromeBoundsSnapshot,
+        composerCollapseOverlayBottomHeightPxState = composerRuntime.composerCollapseOverlayBottomHeightPx,
+        composerCollapseOverlayPrewarmedState = composerRuntime.composerCollapseOverlayPrewarmed,
+        startupLayoutReady = startupLayoutReady
+    )
     val keepSendAnchorReserve by remember(
         isStreaming,
         hasStreamingItem,
@@ -2301,20 +2245,6 @@ fun ChatScreen() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        }
-    }
-
-    LaunchedEffect(inputChromeMeasured, inputChromeRowHeightPx, safeBottomInsetPx) {
-        if (!inputChromeMeasured) return@LaunchedEffect
-        if (
-            shouldApplyComposerBottomBarHeight(
-                currentBottomBarHeightPx = bottomBarHeightPx,
-                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
-                imeVisible = imeVisible,
-                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-            )
-        ) {
-            bottomBarHeightPx = stableComposerBottomBarHeightPx
         }
     }
 
@@ -2719,117 +2649,28 @@ fun ChatScreen() {
         )
     }
 
-    LaunchedEffect(listState.isScrollInProgress, programmaticScroll) {
-        if (programmaticScroll) {
-            userInteracting = false
-            return@LaunchedEffect
-        }
-        if (listState.isScrollInProgress && imeVisible) {
+    LaunchedEffect(listState.isScrollInProgress, programmaticScroll, imeVisible) {
+        if (!programmaticScroll && listState.isScrollInProgress && imeVisible) {
             keyboardController?.hide()
             focusManager.clearFocus(force = true)
         }
-        userInteracting = listState.isScrollInProgress
     }
 
-    LaunchedEffect(listState, isStreaming, hasStreamingItem) {
-        var previousIndex = listState.firstVisibleItemIndex
-        var previousOffset = listState.firstVisibleItemScrollOffset
-        snapshotFlow {
-            listOf(
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset,
-                if (listState.isScrollInProgress) 1 else 0,
-                streamTick,
-                streamingWorklineBottomPx,
-                currentStreamingVisualBottomPx()
-            )
-        }.collect { state ->
-            val currentIndex = state[0]
-            val currentOffset = state[1]
-            val scrollInProgress = state[2] == 1
-            if (programmaticScroll) {
-                previousIndex = currentIndex
-                previousOffset = currentOffset
-                return@collect
-            }
-            if (isStreaming && hasStreamingItem && scrollMode == ScrollMode.Idle) {
-                previousIndex = currentIndex
-                previousOffset = currentOffset
-                return@collect
-            }
-            val movedTowardBottom =
-                currentIndex > previousIndex ||
-                    (currentIndex == previousIndex && currentOffset > previousOffset)
-            val movedTowardTop =
-                currentIndex < previousIndex ||
-                    (currentIndex == previousIndex && currentOffset < previousOffset)
-            if (isStreaming && hasStreamingItem) {
-                when {
-                    scrollInProgress && (movedTowardTop || movedTowardBottom) && scrollMode == ScrollMode.AutoFollow -> {
-                        scrollMode = ScrollMode.UserBrowsing
-                    }
-
-                    scrollMode == ScrollMode.UserBrowsing -> {
-                        val canResumeAutoFollow =
-                            !scrollInProgress &&
-                                currentStreamingVisualBottomPx() > 0 &&
-                                isStreamingReadyForAutoFollow()
-                        if (canResumeAutoFollow) {
-                            scrollMode = ScrollMode.AutoFollow
-                        }
-                    }
-                }
-            } else {
-                when {
-                    movedTowardBottom -> {
-                        applyStreamingScrollState(
-                            detached = false,
-                            mode = AutoScrollMode.Idle
-                        )
-                    }
-
-                    movedTowardTop -> {
-                        applyStreamingScrollState(
-                            detached = true,
-                            mode = AutoScrollMode.Idle
-                        )
-                    }
-
-                    else -> {
-                        scrollMode = ScrollMode.Idle
-                        autoScrollMode = AutoScrollMode.Idle
-                    }
-                }
-            }
-            previousIndex = currentIndex
-            previousOffset = currentOffset
-        }
-    }
-
-    fun ensureStreamingRevealJob() {
-        if (streamRevealJob?.isActive == true) return
-        streamRevealJob = snackbarScope.launch {
-            while (isActive) {
-                val advance = consumeStreamingRevealBatch(
-                    currentMessageId = streamingMessageId,
-                    currentContent = streamingMessageContent,
-                    currentRevealBuffer = streamingRevealBuffer,
-                    currentFreshTick = streamingFreshTick,
-                    lastFreshRevealMs = lastStreamingFreshRevealMs,
-                    anchoredUserMessageId = anchoredUserMessageId,
-                    assistantIdProvider = ::assistantMessageIdForSourceUser,
-                    fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
-                    nowMs = SystemClock.uptimeMillis()
-                )
-                if (advance == null) {
-                    if (!isStreaming) break
-                    delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
-                    continue
-                }
-                if (advance.content == streamingMessageContent && advance.revealBuffer == streamingRevealBuffer) {
-                    delay(advance.delayMs)
-                    continue
-                }
+    val ensureStreamingRevealJob = {
+        com.nongjiqianwen.ensureStreamingRevealJob(
+            currentJob = streamRevealJob,
+            setJob = { streamRevealJob = it },
+            scope = snackbarScope,
+            isStreaming = { isStreaming },
+            currentMessageId = { streamingMessageId },
+            currentContent = { streamingMessageContent },
+            currentRevealBuffer = { streamingRevealBuffer },
+            currentFreshTick = { streamingFreshTick },
+            currentLastFreshRevealMs = { lastStreamingFreshRevealMs },
+            anchoredUserMessageId = { anchoredUserMessageId },
+            assistantIdProvider = ::assistantMessageIdForSourceUser,
+            fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
+            onAdvance = { advance ->
                 streamingMessageId = advance.messageId
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
@@ -2837,27 +2678,26 @@ fun ChatScreen() {
                 streamingFreshEnd = advance.freshEnd
                 streamingFreshTick = advance.freshTick
                 lastStreamingFreshRevealMs = advance.lastFreshRevealMs
-                streamTick++
-                delay(advance.delayMs)
-            }
-        }
+            },
+            onTick = { streamTick++ }
+        )
     }
 
-    fun appendAssistantChunk(piece: String) {
-        if (piece.isEmpty()) return
-        mainHandler.post {
-            val queued = queueStreamingChunk(
-                currentMessageId = streamingMessageId,
-                currentRevealBuffer = streamingRevealBuffer,
-                piece = piece,
-                anchoredUserMessageId = anchoredUserMessageId,
-                assistantIdProvider = ::assistantMessageIdForSourceUser,
-                fallbackIdProvider = { "assistant_${UUID.randomUUID()}" }
-            ) ?: return@post
-            streamingMessageId = queued.messageId
-            streamingRevealBuffer = queued.revealBuffer
-            ensureStreamingRevealJob()
-        }
+    val appendAssistantChunk: (String) -> Unit = { piece ->
+        com.nongjiqianwen.appendAssistantChunk(
+            piece = piece,
+            mainHandler = mainHandler,
+            currentMessageId = { streamingMessageId },
+            currentRevealBuffer = { streamingRevealBuffer },
+            anchoredUserMessageId = { anchoredUserMessageId },
+            assistantIdProvider = ::assistantMessageIdForSourceUser,
+            fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
+            onQueued = { queued ->
+                streamingMessageId = queued.messageId
+                streamingRevealBuffer = queued.revealBuffer
+            },
+            ensureRevealJob = ensureStreamingRevealJob
+        )
     }
 
     fun currentStreamingOverflowDelta(): Int {
@@ -3344,175 +3184,6 @@ fun ChatScreen() {
         )
     }
 
-    LaunchedEffect(
-        composerSettlingMinHeightPx,
-        composerSettlingChromeHeightPx,
-        sendUiSettling,
-        imeVisible,
-        inputFieldFocused,
-        input.value.text,
-        bottomBarHeightPx,
-        inputChromeRowHeightPx,
-        safeBottomInsetPx
-    ) {
-        if (input.value.text.isNotEmpty() || inputFieldFocused) {
-            composerSettlingMinHeightPx = 0
-            composerSettlingChromeHeightPx = 0
-            return@LaunchedEffect
-        }
-        if (
-            shouldReleaseComposerSettling(
-                inputText = input.value.text,
-                inputFieldFocused = inputFieldFocused,
-                composerSettlingMinHeightPx = composerSettlingMinHeightPx,
-                composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
-                sendUiSettling = sendUiSettling,
-                imeVisible = imeVisible,
-                bottomBarHeightPx = bottomBarHeightPx,
-                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
-                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-            )
-        ) {
-            composerSettlingMinHeightPx = 0
-            composerSettlingChromeHeightPx = 0
-            return@LaunchedEffect
-        }
-        if (composerSettlingMinHeightPx <= 0 && composerSettlingChromeHeightPx <= 0) return@LaunchedEffect
-        if (sendUiSettling) return@LaunchedEffect
-        if (!imeVisible) return@LaunchedEffect
-        withFrameNanos { }
-        if (!sendUiSettling && !inputFieldFocused && input.value.text.isEmpty()) {
-            composerSettlingMinHeightPx = 0
-            composerSettlingChromeHeightPx = 0
-        }
-    }
-
-    LaunchedEffect(
-        composerCollapseOverlayVisible,
-        sendUiSettling,
-        imeVisible,
-        composerSettlingChromeHeightPx,
-        bottomBarHeightPx,
-        inputChromeRowHeightPx,
-        safeBottomInsetPx,
-        inputFieldFocused,
-        input.value.text
-    ) {
-        if (
-            shouldDismissComposerCollapseOverlay(
-                overlayVisible = composerCollapseOverlayVisible,
-                inputText = input.value.text,
-                inputFieldFocused = inputFieldFocused,
-                sendUiSettling = sendUiSettling,
-                imeVisible = imeVisible,
-                composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
-                bottomBarHeightPx = bottomBarHeightPx,
-                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
-                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-            )
-        ) {
-            composerCollapseOverlayVisible = false
-            return@LaunchedEffect
-        }
-        if (!composerCollapseOverlayVisible) return@LaunchedEffect
-        if (input.value.text.isNotEmpty() || inputFieldFocused) {
-            composerCollapseOverlayVisible = false
-            return@LaunchedEffect
-        }
-        if (
-            shouldDismissComposerCollapseOverlay(
-                overlayVisible = composerCollapseOverlayVisible,
-                inputText = input.value.text,
-                inputFieldFocused = inputFieldFocused,
-                sendUiSettling = sendUiSettling,
-                imeVisible = imeVisible,
-                composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
-                bottomBarHeightPx = bottomBarHeightPx,
-                stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
-                jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-            )
-        ) {
-            repeat(2) { withFrameNanos { } }
-            if (
-                shouldDismissComposerCollapseOverlay(
-                    overlayVisible = composerCollapseOverlayVisible,
-                    inputText = input.value.text,
-                    inputFieldFocused = inputFieldFocused,
-                    sendUiSettling = sendUiSettling,
-                    imeVisible = imeVisible,
-                    composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
-                    bottomBarHeightPx = bottomBarHeightPx,
-                    stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
-                    jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
-                )
-            ) {
-                composerCollapseOverlayVisible = false
-            }
-        }
-    }
-
-    LaunchedEffect(
-        composerCollapseOverlayVisible,
-        composerHostBoundsInWindow,
-        composerChromeBoundsInWindow,
-        effectiveBottomBarHeightPx,
-        composerCollapseOverlayPrewarmed
-    ) {
-        if (composerCollapseOverlayVisible) return@LaunchedEffect
-        if (composerCollapseOverlayPrewarmed) return@LaunchedEffect
-        captureComposerOverlaySnapshot(
-            hostBoundsInWindow = composerHostBoundsInWindow,
-            chromeBoundsInWindow = composerChromeBoundsInWindow,
-            bottomHeightPx = effectiveBottomBarHeightPx
-        )?.let { snapshot ->
-            composerCollapseOverlayHostBoundsSnapshot = snapshot.hostBoundsInWindow
-            composerCollapseOverlayChromeBoundsSnapshot = snapshot.chromeBoundsInWindow
-            composerCollapseOverlayBottomHeightPx = snapshot.bottomHeightPx
-            composerCollapseOverlayPrewarmed = true
-        }
-    }
-
-    LaunchedEffect(
-        imeVisible,
-        inputFieldFocused,
-        composerCollapseOverlayVisible,
-        composerHostBoundsInWindow,
-        composerChromeBoundsInWindow,
-        effectiveBottomBarHeightPx
-    ) {
-        if (composerCollapseOverlayVisible) return@LaunchedEffect
-        if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
-        if (composerHostBoundsInWindow == null || composerChromeBoundsInWindow == null) {
-            return@LaunchedEffect
-        }
-        repeat(2) { withFrameNanos { } }
-        if (composerCollapseOverlayVisible) return@LaunchedEffect
-        if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
-        captureComposerOverlaySnapshot(
-            hostBoundsInWindow = composerHostBoundsInWindow,
-            chromeBoundsInWindow = composerChromeBoundsInWindow,
-            bottomHeightPx = effectiveBottomBarHeightPx
-        )?.let { snapshot ->
-            composerCollapseOverlayHostBoundsSnapshot = snapshot.hostBoundsInWindow
-            composerCollapseOverlayChromeBoundsSnapshot = snapshot.chromeBoundsInWindow
-            composerCollapseOverlayBottomHeightPx = snapshot.bottomHeightPx
-            composerCollapseOverlayPrewarmed = true
-        }
-    }
-
-    LaunchedEffect(chatScopeId) {
-        composerCollapseOverlayBottomHeightPx = 0
-        composerCollapseOverlayHostBoundsSnapshot = null
-        composerCollapseOverlayChromeBoundsSnapshot = null
-        composerCollapseOverlayPrewarmed = false
-    }
-
-    LaunchedEffect(startupLayoutReady) {
-        if (!startupLayoutReady) {
-            composerCollapseOverlayPrewarmed = false
-        }
-    }
-
     fun sendMessage() {
         val text = input.value.text
         val sendGate = buildSendGateState(
@@ -3626,53 +3297,39 @@ fun ChatScreen() {
         pendingFrozenBottomCapture = false
     }
 
-    LaunchedEffect(imeVisible) {
-        if (imeVisible) {
-            restoreBottomAfterImeClose =
-                atBottom &&
-                    !isStreaming &&
-                    !userDetachedFromBottom &&
-                    !listState.isScrollInProgress &&
-                    !programmaticScroll
-            suppressJumpButtonForImeTransition = true
-            return@LaunchedEffect
-        }
-
-        if (restoreBottomAfterImeClose && !isStreaming) {
-            withFrameNanos { }
-            if (!userDetachedFromBottom && !listState.isScrollInProgress && !programmaticScroll) {
-                scrollToBottom(animated = false)
-            }
-            restoreBottomAfterImeClose = false
-        } else {
-            restoreBottomAfterImeClose = false
-        }
-
-        repeat(2) { withFrameNanos { } }
-        suppressJumpButtonForImeTransition = false
-    }
-
-    LaunchedEffect(pendingFinalBottomSnap, messages.size, isStreaming) {
-        if (!pendingFinalBottomSnap || isStreaming) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
-        for (attempt in 0 until 4) {
-            withFrameNanos { }
-            if (isWithinFinalBottomSnapTolerance()) {
-                break
-            }
-            scrollToBottom(animated = false)
-            if (!listState.canScrollForward || isWithinFinalBottomSnapTolerance()) {
-                break
-            }
-            if (attempt < 3) {
-                delay(16)
-            }
-        }
-        if (isWithinFinalBottomSnapTolerance()) {
-            repeat(2) { withFrameNanos { } }
-        }
-        pendingFinalBottomSnap = false
-    }
+    BindChatScrollRuntimeEffects(
+        listState = listState,
+        messagesSize = messages.size,
+        isStreaming = isStreaming,
+        hasStreamingItem = hasStreamingItem,
+        streamingMessageId = streamingMessageId,
+        streamingMessageContent = streamingMessageContent,
+        streamingContentBottomPxState = scrollRuntime.streamingContentBottomPx,
+        streamingFollowArmedState = streamingRuntime.streamingFollowArmed,
+        scrollModeState = scrollRuntime.scrollMode,
+        autoScrollModeState = scrollRuntime.autoScrollMode,
+        userInteractingState = scrollRuntime.userInteracting,
+        userDetachedFromBottomState = scrollRuntime.userDetachedFromBottom,
+        streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+        streamTick = streamTick,
+        sendTick = sendTick,
+        anchorPhaseState = scrollRuntime.anchorPhase,
+        frozenBottomPxState = scrollRuntime.frozenBottomPx,
+        programmaticScrollState = scrollRuntime.programmaticScroll,
+        lastProgrammaticScrollMsState = scrollRuntime.lastProgrammaticScrollMs,
+        streamingLineAdvanceTickState = streamingRuntime.streamingLineAdvanceTick,
+        bottomPositionTolerancePx = bottomPositionTolerancePx,
+        streamingWorklineBottomPx = streamingWorklineBottomPx,
+        currentStreamingTailBottomPx = ::currentStreamingTailBottomPx,
+        currentStreamingVisualBottomPx = ::currentStreamingVisualBottomPx,
+        currentStreamingGuardContentBottomPx = ::currentStreamingGuardContentBottomPx,
+        currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
+        currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
+        resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
+        isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+        snapStreamingToWorkline = ::snapStreamingToWorkline,
+        captureFrozenBottomAfterSendAnchor = ::captureFrozenBottomAfterSendAnchor
+    )
 
     fun completeStreamingImmediatelyFromBackground() {
         mainHandler.post {
@@ -3767,39 +3424,6 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(
-        restoreBottomAfterLifecycleResume,
-        lifecycleResumeReady,
-        isStreaming,
-        messages.size,
-        hasStreamingItem
-    ) {
-        if (!restoreBottomAfterLifecycleResume || !lifecycleResumeReady) return@LaunchedEffect
-        if (isStreaming || (messages.isEmpty() && !hasStreamingItem)) {
-            restoreBottomAfterLifecycleResume = false
-            suppressJumpButtonForLifecycleResume = false
-            return@LaunchedEffect
-        }
-        var stableResumeOverflowPx = Int.MAX_VALUE
-        repeat(4) {
-            withFrameNanos { }
-            val overflowPx = currentBottomOverflowPx()
-            if (overflowPx == Int.MAX_VALUE) return@repeat
-            stableResumeOverflowPx = minOf(stableResumeOverflowPx, overflowPx)
-        }
-        if (
-            !listState.isScrollInProgress &&
-            !programmaticScroll &&
-            stableResumeOverflowPx != Int.MAX_VALUE &&
-            stableResumeOverflowPx > lifecycleResumeBottomSnapThresholdPx
-        ) {
-            scrollToBottom(animated = false)
-        }
-        repeat(2) { withFrameNanos { } }
-        suppressJumpButtonForLifecycleResume = false
-        restoreBottomAfterLifecycleResume = false
-    }
-
     suspend fun isBottomSettled(stableFrames: Int = 4): Boolean {
         repeat(stableFrames) {
             withFrameNanos { }
@@ -3808,176 +3432,31 @@ fun ChatScreen() {
         return true
     }
 
-    LaunchedEffect(
-        scrollMode,
-        isStreaming,
-        hasStreamingItem,
-        userInteracting,
-        userDetachedFromBottom,
-        listState.isScrollInProgress
-    ) {
-        if (!hasStreamingItem || !isStreaming) {
-            streamBottomFollowActive = false
-            return@LaunchedEffect
-        }
-        while (isActive && hasStreamingItem && isStreaming) {
-            withFrameNanos { }
-            if (
-                scrollMode != ScrollMode.AutoFollow ||
-                listState.isScrollInProgress ||
-                userInteracting ||
-                !streamingFollowArmed
-            ) {
-                streamBottomFollowActive = false
-                return@LaunchedEffect
-            }
-            if (streamingMessageContent.isBlank()) {
-                streamBottomFollowActive = false
-                continue
-            }
-            val overflow = currentStreamingOverflowDelta()
-            val stepPx = resolveStreamingFollowStepPx(overflow)
-            if (stepPx <= 0) {
-                streamBottomFollowActive = false
-                continue
-            }
-            streamBottomFollowActive = true
-            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-            programmaticScroll = true
-            try {
-                val consumed = listState.scrollBy(stepPx.toFloat())
-                if (consumed > 0f) {
-                    streamingLineAdvanceTick++
-                }
-            } finally {
-                programmaticScroll = false
-                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-                streamBottomFollowActive = false
-            }
-        }
-    }
-
-    LaunchedEffect(sendTick) {
-        if (messages.isEmpty()) return@LaunchedEffect
-        userInteracting = false
-        scrollMode = ScrollMode.Idle
-        autoScrollMode = AutoScrollMode.Idle
-        repeat(2) { withFrameNanos { } }
-        snapStreamingToWorkline()
-        captureFrozenBottomAfterSendAnchor()
-    }
-
-    LaunchedEffect(
-        anchorPhase,
-        isStreaming,
-        hasStreamingItem,
-        streamingContentBottomPx,
-        frozenBottomPx
-    ) {
-        if (!shouldExitFrozenBottomPhase(
-                anchorPhase = anchorPhase,
-                isStreaming = isStreaming,
-                hasStreamingItem = hasStreamingItem,
-                tailBottomPx = currentStreamingTailBottomPx(),
-                frozenBottomPx = frozenBottomPx
-            )
-        ) {
-            return@LaunchedEffect
-        }
-        anchorPhase = AnchorPhase.None
-        frozenBottomPx = -1
-    }
-
-    LaunchedEffect(
-        anchorPhase,
-        isStreaming,
-        hasStreamingItem,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset,
-        listState.isScrollInProgress,
-        streamingContentBottomPx
-    ) {
-        if (anchorPhase != AnchorPhase.FrozenBottom || !isStreaming || !hasStreamingItem) return@LaunchedEffect
-        if (listState.isScrollInProgress || programmaticScroll || userInteracting) return@LaunchedEffect
-        val guardBottom = currentStreamingGuardContentBottomPx()
-        val legalBottom = currentStreamingLegalBottomPx()
-        if (guardBottom <= 0 || legalBottom <= 0) return@LaunchedEffect
-        val overflowPx = (guardBottom - legalBottom).coerceAtLeast(0)
-        if (overflowPx <= bottomPositionTolerancePx) return@LaunchedEffect
-        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-        programmaticScroll = true
-        try {
-            listState.scrollBy(overflowPx.toFloat())
-        } finally {
-            programmaticScroll = false
-            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-        }
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        scrollMode,
-        streamTick,
-        streamingMessageId,
-        streamingMessageContent.length,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx,
-        listState.isScrollInProgress,
-        userInteracting
-    ) {
-        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
-        if (scrollMode != ScrollMode.Idle && scrollMode != ScrollMode.UserBrowsing) return@LaunchedEffect
-        if (streamingMessageContent.isBlank()) return@LaunchedEffect
-        if (userInteracting || listState.isScrollInProgress) return@LaunchedEffect
-        if (isStreamingReadyForAutoFollow()) {
-            repeat(2) { withFrameNanos { } }
-            if (
-                userInteracting ||
-                listState.isScrollInProgress ||
-                anchorPhase == AnchorPhase.FrozenBottom ||
-                !isStreamingReadyForAutoFollow()
-            ) {
-                return@LaunchedEffect
-            }
-            scrollMode = ScrollMode.AutoFollow
-            autoScrollMode = AutoScrollMode.StreamAnchorFollow
-        }
-    }
-
-    LaunchedEffect(
-        hasStartedConversation,
-        messages.size,
-        isStreaming,
-        startupLayoutReady,
-        hasStreamingItem,
-        initialBottomSnapDone,
-        startupHydrationBarrierSatisfied
-    ) {
-        if (hasStartedConversation) return@LaunchedEffect
-        if (initialBottomSnapDone) return@LaunchedEffect
-        if (!startupHydrationBarrierSatisfied) return@LaunchedEffect
-        if (!startupLayoutReady) return@LaunchedEffect
-        if (messages.isEmpty() && !hasStreamingItem) {
-            initialBottomSnapDone = true
-            return@LaunchedEffect
-        }
-        if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
-        repeat(3) { withFrameNanos { } }
-        repeat(4) { attempt ->
-            scrollToBottom(animated = false)
-            if (!listState.canScrollForward || isBottomSettled()) {
-                initialBottomSnapDone = true
-                return@LaunchedEffect
-            }
-            if (attempt < 3) {
-                delay(60)
-            }
-        }
-        initialBottomSnapDone = true
-    }
+    BindChatScrollAuxiliaryEffects(
+        listState = listState,
+        isStreaming = isStreaming,
+        hasStreamingItem = hasStreamingItem,
+        messagesSize = messages.size,
+        atBottom = atBottom,
+        imeVisible = imeVisible,
+        startupLayoutReady = startupLayoutReady,
+        startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
+        hasStartedConversation = hasStartedConversation,
+        currentBottomOverflowPx = ::currentBottomOverflowPx,
+        isWithinFinalBottomSnapTolerance = ::isWithinFinalBottomSnapTolerance,
+        isBottomSettled = ::isBottomSettled,
+        scrollToBottom = ::scrollToBottom,
+        lifecycleResumeBottomSnapThresholdPx = lifecycleResumeBottomSnapThresholdPx,
+        userDetachedFromBottomState = scrollRuntime.userDetachedFromBottom,
+        initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
+        pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
+        restoreBottomAfterImeCloseState = scrollRuntime.restoreBottomAfterImeClose,
+        suppressJumpButtonForImeTransitionState = scrollRuntime.suppressJumpButtonForImeTransition,
+        restoreBottomAfterLifecycleResumeState = scrollRuntime.restoreBottomAfterLifecycleResume,
+        suppressJumpButtonForLifecycleResumeState = scrollRuntime.suppressJumpButtonForLifecycleResume,
+        lifecycleResumeReadyState = scrollRuntime.lifecycleResumeReady,
+        programmaticScrollState = scrollRuntime.programmaticScroll
+    )
 
     fun jumpToBottom() {
         snackbarScope.launch {
