@@ -1476,6 +1476,7 @@ fun ChatScreen() {
     var anchorPhase by remember { mutableStateOf(AnchorPhase.None) }
     var frozenBottomPx by remember { mutableIntStateOf(-1) }
     var pendingFrozenBottomCapture by remember { mutableStateOf(false) }
+    var retainedBottomGapPx by remember { mutableIntStateOf(0) }
     var scrollMode by remember { mutableStateOf(ScrollMode.Idle) }
     var autoScrollMode by remember { mutableStateOf(AutoScrollMode.Idle) }
     var userInteracting by remember { mutableStateOf(false) }
@@ -1626,8 +1627,9 @@ fun ChatScreen() {
     fun currentStreamingGuardContentBottomPx(): Int =
         resolveStreamingGuardContentBottomPx(
             anchorPhase = anchorPhase,
+            frozenBottomPx = frozenBottomPx,
             tailBottomPx = currentStreamingTailBottomPx(),
-            measuredBottomPx = currentStreamingMeasuredBottomPx()
+            fallbackBottomPx = currentStreamingMeasuredBottomPx()
         )
     fun isStreamingTailNearGuardBoundary(): Boolean {
         val tailBottom = currentStreamingTailBottomPx()
@@ -1948,14 +1950,15 @@ fun ChatScreen() {
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
-        sendAnchorExtraBottomSpacePx
+        sendAnchorExtraBottomSpacePx,
+        retainedBottomGapPx
     ) {
         derivedStateOf {
             resolveBottomContentReservedHeightPx(
                 overlayVisible = composerCollapseOverlayVisible,
                 overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
                 effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
-                extraReservedHeightPx = sendAnchorExtraBottomSpacePx
+                extraReservedHeightPx = sendAnchorExtraBottomSpacePx + retainedBottomGapPx
             )
         }
     }
@@ -2530,6 +2533,15 @@ fun ChatScreen() {
         pruneFailedMessageStates()
     }
 
+    fun captureRetainedBottomGap(): Int {
+        return resolveRetainedBottomGapPx(
+            anchorPhase = anchorPhase,
+            frozenBottomPx = frozenBottomPx,
+            tailBottomPx = currentStreamingTailBottomPx(),
+            sendAnchorExtraBottomSpacePx = sendAnchorExtraBottomSpacePx
+        )
+    }
+
     fun resetStreamingUiState(clearVisibleContent: Boolean) {
         mainHandler.post {
             remoteRecoveryJob?.cancel()
@@ -2555,6 +2567,7 @@ fun ChatScreen() {
             anchorPhase = AnchorPhase.None
             frozenBottomPx = -1
             pendingFrozenBottomCapture = false
+            retainedBottomGapPx = 0
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
@@ -2922,6 +2935,7 @@ fun ChatScreen() {
                 streamingRevealBuffer = ""
                 streamTick++
             }
+            retainedBottomGapPx = captureRetainedBottomGap()
             val finalContent = streamingMessageContent
             val finalId = streamingMessageId
             fakeStreamJob = null
@@ -3060,6 +3074,7 @@ fun ChatScreen() {
         mainHandler.post {
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
+            retainedBottomGapPx = captureRetainedBottomGap()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
@@ -3262,6 +3277,7 @@ fun ChatScreen() {
                 anchorPhase = AnchorPhase.None
                 frozenBottomPx = -1
                 pendingFrozenBottomCapture = true
+                retainedBottomGapPx = 0
                 scrollMode = ScrollMode.Idle
                 autoScrollMode = AutoScrollMode.Idle
                 userInteracting = false
@@ -3659,6 +3675,7 @@ fun ChatScreen() {
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
                 ?: "assistant_${UUID.randomUUID()}"
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
+            retainedBottomGapPx = captureRetainedBottomGap()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()

@@ -57,12 +57,17 @@ internal fun resolveStreamingLegalBottomPx(
 
 internal fun resolveStreamingGuardContentBottomPx(
     anchorPhase: AnchorPhase,
+    frozenBottomPx: Int,
     tailBottomPx: Int,
-    measuredBottomPx: Int
+    fallbackBottomPx: Int
 ): Int {
     if (tailBottomPx > 0) return tailBottomPx
     if (anchorPhase == AnchorPhase.FrozenBottom) {
-        return measuredBottomPx.takeIf { it > 0 } ?: -1
+        return when {
+            frozenBottomPx > 0 -> frozenBottomPx
+            fallbackBottomPx > 0 -> fallbackBottomPx
+            else -> -1
+        }
     }
     return -1
 }
@@ -78,6 +83,20 @@ internal fun shouldExitFrozenBottomPhase(
     if (!isStreaming || !hasStreamingItem) return true
     if (tailBottomPx <= 0 || frozenBottomPx <= 0) return false
     return tailBottomPx >= frozenBottomPx
+}
+
+internal fun resolveRetainedBottomGapPx(
+    anchorPhase: AnchorPhase,
+    frozenBottomPx: Int,
+    tailBottomPx: Int,
+    sendAnchorExtraBottomSpacePx: Int
+): Int {
+    if (anchorPhase != AnchorPhase.FrozenBottom) return 0
+    if (frozenBottomPx <= 0) return 0
+    if (tailBottomPx > 0) {
+        return (frozenBottomPx - tailBottomPx).coerceAtLeast(0)
+    }
+    return sendAnchorExtraBottomSpacePx.coerceAtLeast(0)
 }
 
 internal data class StreamingGuardSnapshot(
