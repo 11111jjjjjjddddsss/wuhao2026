@@ -366,20 +366,6 @@ internal fun rememberStreamingDirectionLock(
                         available.y > 0f -> onTowardBottomGesture()
                         available.y < 0f -> onTowardTopGesture()
                     }
-                    if (!snapshot.scrollModeAutoFollow) {
-                        return Offset.Zero
-                    }
-                    if (available.y > 0f) {
-                        val overflowPx = resolveBottomDragOverflowPx(
-                            tailBottomPx = snapshot.tailBottomPx,
-                            legalBottomPx = snapshot.legalBottomPx,
-                            deltaY = available.y
-                        )
-                        if (overflowPx > 0f) {
-                            val consumedPx = overflowPx.coerceAtMost(available.y)
-                            return Offset(x = 0f, y = consumedPx)
-                        }
-                    }
                 }
                 return Offset.Zero
             }
@@ -402,12 +388,6 @@ internal fun rememberStreamingDirectionLock(
                     when {
                         available.y > 0f -> onTowardBottomGesture()
                         available.y < 0f -> onTowardTopGesture()
-                    }
-                    if (!snapshot.scrollModeAutoFollow) {
-                        return Velocity.Zero
-                    }
-                    if (shouldConsumeBottomFling(snapshot, available.y)) {
-                        return Velocity(x = 0f, y = available.y)
                     }
                 }
                 return Velocity.Zero
@@ -441,8 +421,6 @@ internal fun BindChatScrollRuntimeEffects(
     streamingWorklineBottomPx: Int,
     currentStreamingTailBottomPx: () -> Int,
     currentStreamingVisualBottomPx: () -> Int,
-    currentStreamingGuardContentBottomPx: () -> Int,
-    currentStreamingLegalBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
     isStreamingReadyForAutoFollow: () -> Boolean,
@@ -656,35 +634,6 @@ internal fun BindChatScrollRuntimeEffects(
         autoScrollModeState.value = AutoScrollMode.StreamAnchorFollow
         repeat(2) { withFrameNanos { } }
         snapStreamingToWorkline()
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset,
-        listState.isScrollInProgress,
-        streamingContentBottomPxState.intValue
-    ) {
-        if (!isStreaming || !hasStreamingItem) {
-            return@LaunchedEffect
-        }
-        if (listState.isScrollInProgress || programmaticScrollState.value || userInteractingState.value) {
-            return@LaunchedEffect
-        }
-        val guardBottom = currentStreamingGuardContentBottomPx()
-        val legalBottom = currentStreamingLegalBottomPx()
-        if (guardBottom <= 0 || legalBottom <= 0) return@LaunchedEffect
-        val overflowPx = (guardBottom - legalBottom).coerceAtLeast(0)
-        if (overflowPx <= bottomPositionTolerancePx) return@LaunchedEffect
-        lastProgrammaticScrollMsState.value = SystemClock.uptimeMillis()
-        programmaticScrollState.value = true
-        try {
-            listState.scrollBy(overflowPx.toFloat())
-        } finally {
-            programmaticScrollState.value = false
-            lastProgrammaticScrollMsState.value = SystemClock.uptimeMillis()
-        }
     }
 
     LaunchedEffect(

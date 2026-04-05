@@ -3118,8 +3118,6 @@ fun ChatScreen() {
         streamingWorklineBottomPx = streamingWorklineBottomPx,
         currentStreamingTailBottomPx = ::currentStreamingTailBottomPx,
         currentStreamingVisualBottomPx = ::currentStreamingVisualBottomPx,
-        currentStreamingGuardContentBottomPx = ::currentStreamingGuardContentBottomPx,
-        currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
