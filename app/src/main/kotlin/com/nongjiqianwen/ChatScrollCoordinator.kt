@@ -139,26 +139,6 @@ internal data class StreamingGuardSnapshot(
     val assistantLineStepPx: Int
 )
 
-internal fun resolveBottomDragOverflowPx(
-    tailBottomPx: Int,
-    legalBottomPx: Int,
-    deltaY: Float
-): Float {
-    if (deltaY <= 0f || tailBottomPx <= 0 || legalBottomPx <= 0) return 0f
-    val projectedBottom = tailBottomPx + deltaY
-    return (projectedBottom - legalBottomPx).coerceAtLeast(0f)
-}
-
-internal fun shouldConsumeBottomFling(
-    snapshot: StreamingGuardSnapshot,
-    velocityY: Float
-): Boolean {
-    if (velocityY <= 0f) return false
-    if (snapshot.userBrowsing) return false
-    if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
-    return snapshot.tailBottomPx >= snapshot.legalBottomPx
-}
-
 internal fun currentStreamingOverflowDelta(
     contentBottom: Int,
     visibleBottom: Int
@@ -636,41 +616,6 @@ internal fun BindChatScrollRuntimeEffects(
         snapStreamingToWorkline()
     }
 
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        scrollModeState.value,
-        pendingResumeAutoFollowState.value,
-        streamTick,
-        streamingMessageId,
-        streamingMessageContent.length,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset,
-        streamingContentBottomPxState.intValue,
-        streamingWorklineBottomPx,
-        listState.isScrollInProgress,
-        userInteractingState.value
-    ) {
-        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
-        if (scrollModeState.value != ScrollMode.Idle && scrollModeState.value != ScrollMode.UserBrowsing) {
-            return@LaunchedEffect
-        }
-        if (streamingMessageContent.isBlank()) return@LaunchedEffect
-        if (userInteractingState.value || listState.isScrollInProgress) return@LaunchedEffect
-        if (isStreamingReadyForAutoFollow()) {
-            repeat(2) { withFrameNanos { } }
-            if (
-                userInteractingState.value ||
-                listState.isScrollInProgress ||
-                !isStreamingReadyForAutoFollow()
-            ) {
-                return@LaunchedEffect
-            }
-            pendingResumeAutoFollowState.value = false
-            scrollModeState.value = ScrollMode.AutoFollow
-            autoScrollModeState.value = AutoScrollMode.StreamAnchorFollow
-        }
-    }
 }
 
 @Composable
