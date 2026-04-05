@@ -1597,13 +1597,8 @@ fun ChatScreen() {
         } else {
             (info.viewportEndOffset - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
         }
-        if (lastContentBottom > 0) {
-            return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
-        }
-        val lastIndex = info.totalItemsCount - 1
-        if (lastIndex < 0) return 0
-        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return Int.MAX_VALUE
-        return (desiredBottomPx - (lastVisible.offset + lastVisible.size)).coerceAtLeast(0)
+        if (lastContentBottom <= 0) return Int.MAX_VALUE
+        return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
     }
     fun currentBottomAlignDeltaPx(): Int {
         val info = listState.layoutInfo
@@ -1613,13 +1608,8 @@ fun ChatScreen() {
         } else {
             (info.viewportEndOffset - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
         }
-        if (lastContentBottom > 0) {
-            return desiredBottomPx - lastContentBottom
-        }
-        val lastIndex = info.totalItemsCount - 1
-        if (lastIndex < 0) return 0
-        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return 0
-        return desiredBottomPx - (lastVisible.offset + lastVisible.size)
+        if (lastContentBottom <= 0) return 0
+        return desiredBottomPx - lastContentBottom
     }
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
