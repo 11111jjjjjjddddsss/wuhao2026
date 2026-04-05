@@ -1449,6 +1449,7 @@ fun ChatScreen() {
     var lastProgrammaticScrollMs by scrollRuntime.lastProgrammaticScrollMs
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
+    var streamingInitialWorklineSnapDone by scrollRuntime.streamingInitialWorklineSnapDone
     var initialBottomSnapDone by scrollRuntime.initialBottomSnapDone
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
@@ -2542,13 +2543,6 @@ fun ChatScreen() {
         )
     }
 
-    fun currentStreamingFollowScrollDeltaPx(): Int {
-        return com.nongjiqianwen.resolveStreamingFollowScrollDeltaPx(
-            alignDelta = currentStreamingAlignDeltaPx(),
-            assistantLineStepPx = assistantLineStepPx
-        )
-    }
-
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
@@ -2580,6 +2574,7 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
+            streamingInitialWorklineSnapDone = false
             streamingBackgrounded = false
             scrollMode = ScrollMode.Idle
             if (finalContent.isNotBlank()) {
@@ -2652,8 +2647,8 @@ fun ChatScreen() {
             }
             for (attempt in 0 until 18) {
                 if (!isActive || !isStreaming) break
-                val alignDelta = kotlin.math.abs(currentStreamingAlignDeltaPx())
-                if (!streamBottomFollowActive && alignDelta <= lineRevealUnlockThresholdPx) {
+                val overflow = currentStreamingOverflowDelta()
+                if (!streamBottomFollowActive && overflow <= lineRevealUnlockThresholdPx) {
                     break
                 }
                 if (attempt < 17) {
@@ -2669,6 +2664,7 @@ fun ChatScreen() {
             if (!isStreaming) return@post
             if (hasRemoteHistorySource) return@post
             scrollMode = ScrollMode.AutoFollow
+            streamingInitialWorklineSnapDone = false
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -2718,6 +2714,7 @@ fun ChatScreen() {
             lastStreamingFreshRevealMs = 0L
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
+            streamingInitialWorklineSnapDone = false
             pendingFinalBottomSnap = false
             streamingBackgrounded = false
             scrollMode = ScrollMode.Idle
@@ -2852,6 +2849,7 @@ fun ChatScreen() {
                 anchoredUserMessageId = userId
                 streamingContentBottomPx = -1
                 streamBottomFollowActive = false
+                streamingInitialWorklineSnapDone = false
                 pendingFinalBottomSnap = false
                 streamingFreshStart = -1
                 streamingFreshEnd = -1
@@ -3067,6 +3065,46 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageContent,
+        scrollMode,
+        userInteracting,
+        recyclerScrollInProgress,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        streamingInitialWorklineSnapDone
+    ) {
+        if (
+            !isStreaming ||
+            !hasStreamingItem ||
+            streamingMessageContent.isBlank() ||
+            streamingInitialWorklineSnapDone
+        ) {
+            return@LaunchedEffect
+        }
+        if (
+            scrollMode != ScrollMode.AutoFollow ||
+            userInteracting ||
+            recyclerScrollInProgress ||
+            currentStreamingContentBottomPx() <= 0 ||
+            currentStreamingLegalBottomPx() <= 0
+        ) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        if (
+            scrollMode != ScrollMode.AutoFollow ||
+            userInteracting ||
+            recyclerScrollInProgress
+        ) {
+            return@LaunchedEffect
+        }
+        snapStreamingToWorkline()
+        streamingInitialWorklineSnapDone = true
+    }
+
+    LaunchedEffect(
         scrollMode,
         isStreaming,
         hasStreamingItem,
@@ -3092,8 +3130,9 @@ fun ChatScreen() {
                 streamBottomFollowActive = false
                 return@LaunchedEffect
             }
-            val scrollDeltaPx = currentStreamingFollowScrollDeltaPx()
-            if (scrollDeltaPx == 0) {
+            val overflow = currentStreamingOverflowDelta()
+            val stepPx = resolveStreamingFollowStepPx(overflow)
+            if (stepPx == 0) {
                 streamBottomFollowActive = false
                 continue
             }
@@ -3101,7 +3140,7 @@ fun ChatScreen() {
             beginProgrammaticRecyclerScroll()
             try {
                 streamBottomFollowActive = true
-                recyclerView.scrollBy(0, scrollDeltaPx)
+                recyclerView.scrollBy(0, stepPx)
                 streamingLineAdvanceTick++
             } finally {
                 endProgrammaticRecyclerScroll()
@@ -3135,6 +3174,7 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             streamingContentBottomPx = -1
             streamBottomFollowActive = false
+            streamingInitialWorklineSnapDone = false
             streamingBackgrounded = false
             streamingMessageId = null
             streamingMessageContent = ""

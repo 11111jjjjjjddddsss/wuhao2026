@@ -23,6 +23,7 @@ internal data class ChatScrollRuntimeState(
     val lastProgrammaticScrollMs: MutableState<Long>,
     val streamingContentBottomPx: MutableIntState,
     val streamBottomFollowActive: MutableState<Boolean>,
+    val streamingInitialWorklineSnapDone: MutableState<Boolean>,
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
     val pendingFinalBottomSnap: MutableState<Boolean>,
@@ -45,6 +46,7 @@ internal fun rememberChatScrollRuntimeState(
     val lastProgrammaticScrollMs = remember { mutableStateOf(0L) }
     val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
     val streamBottomFollowActive = remember { mutableStateOf(false) }
+    val streamingInitialWorklineSnapDone = remember { mutableStateOf(false) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
     val pendingFinalBottomSnap = remember { mutableStateOf(false) }
@@ -69,6 +71,7 @@ internal fun rememberChatScrollRuntimeState(
             lastProgrammaticScrollMs = lastProgrammaticScrollMs,
             streamingContentBottomPx = streamingContentBottomPx,
             streamBottomFollowActive = streamBottomFollowActive,
+            streamingInitialWorklineSnapDone = streamingInitialWorklineSnapDone,
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
             pendingFinalBottomSnap = pendingFinalBottomSnap,
@@ -107,18 +110,6 @@ internal fun resolveStreamingFollowStepPx(
     val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
     if (overflow < triggerThresholdPx) return 0
     return overflow.coerceAtMost(steadyStepPx)
-}
-
-internal fun resolveStreamingFollowScrollDeltaPx(
-    alignDelta: Int,
-    assistantLineStepPx: Int
-): Int {
-    if (alignDelta == 0) return 0
-    val steadyStepPx = (assistantLineStepPx * 0.14f).roundToInt().coerceAtLeast(6)
-    val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
-    if (kotlin.math.abs(alignDelta) < triggerThresholdPx) return 0
-    val rawDelta = -alignDelta
-    return rawDelta.coerceIn(-steadyStepPx, steadyStepPx)
 }
 
 internal fun shouldShowStreamingScrollToBottomButton(
