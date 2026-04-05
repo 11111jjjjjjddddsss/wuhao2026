@@ -348,7 +348,6 @@ internal fun BindChatScrollRuntimeEffects(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
     streamingMessageId: String?,
-    streamingMessageContent: String,
     streamingContentBottomPxState: MutableIntState,
     streamingFollowArmedState: MutableState<Boolean>,
     scrollModeState: MutableState<ScrollMode>,
@@ -359,7 +358,6 @@ internal fun BindChatScrollRuntimeEffects(
     programmaticScrollState: MutableState<Boolean>,
     lastProgrammaticScrollMsState: MutableState<Long>,
     streamingLineAdvanceTickState: MutableIntState,
-    bottomPositionTolerancePx: Int,
     streamingWorklineBottomPx: Int,
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
@@ -386,35 +384,14 @@ internal fun BindChatScrollRuntimeEffects(
     LaunchedEffect(
         isStreaming,
         hasStreamingItem,
-        streamingMessageContent.length,
-        streamingContentBottomPxState.intValue
+        streamingContentBottomPxState.intValue,
+        listState.firstVisibleItemIndex,
+        listState.firstVisibleItemScrollOffset
     ) {
-        if (!isStreaming || !hasStreamingItem) {
-            streamingFollowArmedState.value = false
-            return@LaunchedEffect
-        }
-        if (streamingMessageContent.isBlank()) {
-            streamingFollowArmedState.value = false
-            return@LaunchedEffect
-        }
-        val firstBottom = currentStreamingContentBottomPx()
-        if (firstBottom <= 0) {
-            streamingFollowArmedState.value = false
-            return@LaunchedEffect
-        }
-        repeat(2) { withFrameNanos { } }
-        val secondBottom = currentStreamingContentBottomPx()
-        val canArmFollow =
+        streamingFollowArmedState.value =
             isStreaming &&
                 hasStreamingItem &&
-                streamingMessageContent.isNotBlank() &&
-                secondBottom > 0 &&
-                kotlin.math.abs(secondBottom - firstBottom) <= bottomPositionTolerancePx
-        if (canArmFollow) {
-            streamingFollowArmedState.value = true
-        } else if (!streamingFollowArmedState.value) {
-            streamingFollowArmedState.value = false
-        }
+                currentStreamingContentBottomPx() > 0
     }
 
     LaunchedEffect(listState.isScrollInProgress, programmaticScrollState.value) {
@@ -514,10 +491,6 @@ internal fun BindChatScrollRuntimeEffects(
             ) {
                 streamBottomFollowActiveState.value = false
                 return@LaunchedEffect
-            }
-            if (streamingMessageContent.isBlank()) {
-                streamBottomFollowActiveState.value = false
-                continue
             }
             val overflow = currentStreamingOverflowDelta()
             val stepPx = resolveStreamingFollowStepPx(overflow)

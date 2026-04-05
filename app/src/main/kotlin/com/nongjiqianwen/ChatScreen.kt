@@ -1644,7 +1644,8 @@ fun ChatScreen() {
     }
 
     fun isStreamingReadyForAutoFollow(): Boolean {
-        if (!isStreaming || !hasStreamingItem || !streamingFollowArmed) return false
+        if (!isStreaming || !hasStreamingItem) return false
+        if (currentStreamingContentBottomPx() <= 0) return false
         return isNearStreamingReturnLine()
     }
     val appCenterTint = Color.White
@@ -3062,7 +3063,6 @@ fun ChatScreen() {
         isStreaming = isStreaming,
         hasStreamingItem = hasStreamingItem,
         streamingMessageId = streamingMessageId,
-        streamingMessageContent = streamingMessageContent,
         streamingContentBottomPxState = scrollRuntime.streamingContentBottomPx,
         streamingFollowArmedState = streamingRuntime.streamingFollowArmed,
         scrollModeState = scrollRuntime.scrollMode,
@@ -3073,7 +3073,6 @@ fun ChatScreen() {
         programmaticScrollState = scrollRuntime.programmaticScroll,
         lastProgrammaticScrollMsState = scrollRuntime.lastProgrammaticScrollMs,
         streamingLineAdvanceTickState = streamingRuntime.streamingLineAdvanceTick,
-        bottomPositionTolerancePx = bottomPositionTolerancePx,
         streamingWorklineBottomPx = streamingWorklineBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
