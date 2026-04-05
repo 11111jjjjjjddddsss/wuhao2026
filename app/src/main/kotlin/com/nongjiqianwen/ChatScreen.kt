@@ -1505,6 +1505,7 @@ fun ChatScreen() {
     val failedAssistantMessageStates = remember(chatScopeId) {
         mutableStateMapOf<String, FailedAssistantMessageState>()
     }
+    val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomOverlayContentClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
@@ -1551,6 +1552,11 @@ fun ChatScreen() {
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
+    fun currentLastMessageContentBottomPx(): Int {
+        val lastMessageId = messages.lastOrNull()?.id ?: return -1
+        val bounds = messageSelectionBoundsById[lastMessageId] ?: return -1
+        return (bounds.bottom - messageViewportTopPx).roundToInt()
+    }
     fun currentStreamingLegalBottomPx(): Int {
         return resolveStreamingLegalBottomPx(
             worklineBottomPx = streamingWorklineBottomPx,
@@ -1590,26 +1596,34 @@ fun ChatScreen() {
     }
     fun currentBottomOverflowPx(): Int {
         val info = listState.layoutInfo
-        val lastIndex = info.totalItemsCount - 1
-        if (lastIndex < 0) return 0
-        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return Int.MAX_VALUE
+        val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = if (composerTopInViewportPx > 0) {
             (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
         } else {
             (info.viewportEndOffset - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
         }
+        if (lastContentBottom > 0) {
+            return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
+        }
+        val lastIndex = info.totalItemsCount - 1
+        if (lastIndex < 0) return 0
+        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return Int.MAX_VALUE
         return (desiredBottomPx - (lastVisible.offset + lastVisible.size)).coerceAtLeast(0)
     }
     fun currentBottomAlignDeltaPx(): Int {
         val info = listState.layoutInfo
-        val lastIndex = info.totalItemsCount - 1
-        if (lastIndex < 0) return 0
-        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return 0
+        val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = if (composerTopInViewportPx > 0) {
             (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
         } else {
             (info.viewportEndOffset - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
         }
+        if (lastContentBottom > 0) {
+            return desiredBottomPx - lastContentBottom
+        }
+        val lastIndex = info.totalItemsCount - 1
+        if (lastIndex < 0) return 0
+        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return 0
         return desiredBottomPx - (lastVisible.offset + lastVisible.size)
     }
     fun isWithinBottomTolerance(): Boolean {
@@ -1913,7 +1927,6 @@ fun ChatScreen() {
         mutableStateOf<PendingMessageSelectionToolbarState?>(null)
     }
     var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
-    val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
 
