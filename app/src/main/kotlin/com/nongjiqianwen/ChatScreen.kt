@@ -3051,6 +3051,7 @@ fun ChatScreen() {
         messagesSize = messages.size,
         isStreaming = isStreaming,
         hasStreamingItem = hasStreamingItem,
+        hasStreamingContent = streamingMessageContent.isNotBlank(),
         streamingMessageId = streamingMessageId,
         streamingContentBottomPxState = scrollRuntime.streamingContentBottomPx,
         streamingFollowArmedState = streamingRuntime.streamingFollowArmed,
@@ -3067,6 +3068,7 @@ fun ChatScreen() {
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+        scrollToBottom = scrollToBottom,
         snapStreamingToWorkline = snapStreamingToWorkline
     )
 

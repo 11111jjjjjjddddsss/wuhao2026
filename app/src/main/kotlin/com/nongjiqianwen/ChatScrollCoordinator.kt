@@ -347,6 +347,7 @@ internal fun BindChatScrollRuntimeEffects(
     messagesSize: Int,
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
+    hasStreamingContent: Boolean,
     streamingMessageId: String?,
     streamingContentBottomPxState: MutableIntState,
     streamingFollowArmedState: MutableState<Boolean>,
@@ -363,6 +364,7 @@ internal fun BindChatScrollRuntimeEffects(
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
     isStreamingReadyForAutoFollow: () -> Boolean,
+    scrollToBottom: suspend (Boolean) -> Unit,
     snapStreamingToWorkline: suspend () -> Unit
 ) {
     LaunchedEffect(
@@ -384,6 +386,7 @@ internal fun BindChatScrollRuntimeEffects(
     LaunchedEffect(
         isStreaming,
         hasStreamingItem,
+        hasStreamingContent,
         streamingContentBottomPxState.intValue,
         listState.firstVisibleItemIndex,
         listState.firstVisibleItemScrollOffset
@@ -391,6 +394,7 @@ internal fun BindChatScrollRuntimeEffects(
         streamingFollowArmedState.value =
             isStreaming &&
                 hasStreamingItem &&
+                hasStreamingContent &&
                 streamingContentBottomPxState.intValue > 0
     }
 
@@ -474,14 +478,15 @@ internal fun BindChatScrollRuntimeEffects(
         scrollModeState.value,
         isStreaming,
         hasStreamingItem,
+        hasStreamingContent,
         userInteractingState.value,
         listState.isScrollInProgress
     ) {
-        if (!hasStreamingItem || !isStreaming) {
+        if (!hasStreamingItem || !isStreaming || !hasStreamingContent) {
             streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
-        while (isActive && hasStreamingItem && isStreaming) {
+        while (isActive && hasStreamingItem && isStreaming && hasStreamingContent) {
             withFrameNanos { }
             if (
                 scrollModeState.value != ScrollMode.AutoFollow ||
@@ -518,6 +523,10 @@ internal fun BindChatScrollRuntimeEffects(
         if (messagesSize <= 0) return@LaunchedEffect
         userInteractingState.value = false
         scrollModeState.value = ScrollMode.AutoFollow
+        if (!hasStreamingContent) {
+            scrollToBottom(false)
+            return@LaunchedEffect
+        }
         for (attempt in 0 until 12) {
             withFrameNanos { }
             if (streamingContentBottomPxState.intValue > 0) break
