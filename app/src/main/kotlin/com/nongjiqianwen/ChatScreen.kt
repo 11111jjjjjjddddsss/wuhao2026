@@ -1548,6 +1548,7 @@ fun ChatScreen() {
         mutableStateMapOf<String, FailedAssistantMessageState>()
     }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
+    val bottomOverlayContentClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val finalBottomSnapTolerancePx = with(density) { FINAL_BOTTOM_SNAP_TOLERANCE.roundToPx() }
     val lifecycleResumeBottomSnapThresholdPx = with(density) { LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD.roundToPx() }
@@ -1634,6 +1635,7 @@ fun ChatScreen() {
         onInterruptAutoFollow = {
             userInteracting = true
             streamBottomFollowActive = false
+            pendingResumeAutoFollow = false
             scrollMode = ScrollMode.UserBrowsing
         }
     )
@@ -1646,12 +1648,16 @@ fun ChatScreen() {
         }
     }
     fun currentBottomOverflowPx(): Int {
-        if (!listState.canScrollForward) return 0
         val info = listState.layoutInfo
         val lastIndex = info.totalItemsCount - 1
         if (lastIndex < 0) return 0
         val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return Int.MAX_VALUE
-        return (lastVisible.offset + lastVisible.size - info.viewportEndOffset).coerceAtLeast(0)
+        val desiredBottomPx = if (composerTopInViewportPx > 0) {
+            (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        } else {
+            (info.viewportEndOffset - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        }
+        return (desiredBottomPx - (lastVisible.offset + lastVisible.size)).coerceAtLeast(0)
     }
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
@@ -1890,14 +1896,30 @@ fun ChatScreen() {
             )
         }
     }
+    val jumpButtonAnchorInsetPx by remember(
+        chatRootHeightPx,
+        composerTopInViewportPx,
+        effectiveBottomBarHeightPx
+    ) {
+        derivedStateOf {
+            if (chatRootHeightPx > 0 && composerTopInViewportPx > 0) {
+                (chatRootHeightPx - composerTopInViewportPx).coerceAtLeast(effectiveBottomBarHeightPx)
+            } else {
+                effectiveBottomBarHeightPx
+            }
+        }
+    }
     val jumpButtonBottomPadding = with(density) {
-        effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
+        jumpButtonAnchorInsetPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
     val staticJumpShowThresholdPx = with(density) { STATIC_JUMP_SHOW_THRESHOLD.roundToPx() }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
     val showStreamingJumpButton by remember(
         startupLayoutReady,
         isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        streamingContentBottomPx,
         pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
@@ -1911,10 +1933,11 @@ fun ChatScreen() {
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
-                isStreaming &&
-                com.nongjiqianwen.shouldShowScrollToBottomButton(
-                    overflowPx = currentBottomOverflowPx(),
-                    staticJumpShowThresholdPx = staticJumpShowThresholdPx
+                com.nongjiqianwen.shouldShowStreamingScrollToBottomButton(
+                    isStreaming = isStreaming,
+                    hasStreamingItem = hasStreamingItem,
+                    scrollMode = scrollMode,
+                    nearReturnLine = isNearStreamingReturnLine()
                 )
         }
     }
@@ -2694,8 +2717,10 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
-                scrollMode == ScrollMode.AutoFollow &&
-                    !userInteracting
+                com.nongjiqianwen.shouldOfferFinalBottomSnap(
+                    scrollMode = scrollMode,
+                    userInteracting = userInteracting
+                )
             streamRevealJob?.cancel()
             streamRevealJob = null
             flushStreamingRevealBuffer(
@@ -2850,6 +2875,11 @@ fun ChatScreen() {
         mainHandler.post {
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
+            val shouldSnapToBottomOnFinish =
+                com.nongjiqianwen.shouldOfferFinalBottomSnap(
+                    scrollMode = scrollMode,
+                    userInteracting = userInteracting
+                )
             retainedBottomGapPx = captureRetainedBottomGap()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
@@ -2900,6 +2930,7 @@ fun ChatScreen() {
                     messageId = finalId,
                     content = finalContent
                 )
+                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
                 failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
                     sourceUserMessageId = sourceUserMessageId
                 )
@@ -3204,6 +3235,7 @@ fun ChatScreen() {
         userInteractingState = scrollRuntime.userInteracting,
         userDetachedFromBottomState = scrollRuntime.userDetachedFromBottom,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+        pendingResumeAutoFollowState = scrollRuntime.pendingResumeAutoFollow,
         streamTick = streamTick,
         sendTick = sendTick,
         anchorPhaseState = scrollRuntime.anchorPhase,
@@ -3228,8 +3260,10 @@ fun ChatScreen() {
         mainHandler.post {
             if (!isStreaming) return@post
             val shouldSnapToBottomOnFinish =
-                scrollMode == ScrollMode.AutoFollow &&
-                    !userInteracting
+                com.nongjiqianwen.shouldOfferFinalBottomSnap(
+                    scrollMode = scrollMode,
+                    userInteracting = userInteracting
+                )
             val finalId = streamingMessageId
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
                 ?: "assistant_${UUID.randomUUID()}"
@@ -3360,6 +3394,7 @@ fun ChatScreen() {
                 ScrollMode.Idle
             }
             userInteracting = false
+            pendingResumeAutoFollow = false
             jumpButtonPulseVisible = false
             if (jumpingIntoStreaming) {
                 snapStreamingToWorkline()

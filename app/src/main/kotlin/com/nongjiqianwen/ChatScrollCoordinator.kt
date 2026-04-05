@@ -248,7 +248,7 @@ internal fun findSendAnchorIndex(
 internal fun isStreamingTailNearGuardBoundary(snapshot: StreamingGuardSnapshot): Boolean {
     if (!snapshot.isStreaming || !snapshot.hasStreamingItem) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
-    val activationRangePx = (snapshot.viewportHeightPx * 0.08f).roundToInt()
+    val activationRangePx = (snapshot.viewportHeightPx * 0.05f).roundToInt()
         .coerceAtLeast(snapshot.assistantLineStepPx * 2)
     return snapshot.tailBottomPx >= (snapshot.legalBottomPx - activationRangePx)
 }
@@ -296,6 +296,25 @@ internal fun shouldShowScrollToBottomButton(
     staticJumpShowThresholdPx: Int
 ): Boolean {
     return overflowPx == Int.MAX_VALUE || overflowPx > staticJumpShowThresholdPx
+}
+
+internal fun shouldShowStreamingScrollToBottomButton(
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    scrollMode: ScrollMode,
+    nearReturnLine: Boolean
+): Boolean {
+    return isStreaming &&
+        hasStreamingItem &&
+        scrollMode == ScrollMode.UserBrowsing &&
+        !nearReturnLine
+}
+
+internal fun shouldOfferFinalBottomSnap(
+    scrollMode: ScrollMode,
+    userInteracting: Boolean
+): Boolean {
+    return !userInteracting && scrollMode != ScrollMode.UserBrowsing
 }
 
 internal fun isStreamingReadyForAutoFollow(
@@ -535,7 +554,11 @@ internal fun rememberStreamingDirectionLock(
                 if (
                     snapshot.isStreaming &&
                     snapshot.hasStreamingItem &&
-                    available.y < 0f
+                    available.y < 0f &&
+                    (
+                        snapshot.tailBottomPx >= snapshot.legalBottomPx ||
+                            isStreamingTailNearGuardBoundary(snapshot)
+                    )
                 ) {
                     val overflowPx = resolveBottomDragOverflowPx(
                         tailBottomPx = snapshot.tailBottomPx,
@@ -588,6 +611,7 @@ internal fun BindChatScrollRuntimeEffects(
     userInteractingState: MutableState<Boolean>,
     userDetachedFromBottomState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
+    pendingResumeAutoFollowState: MutableState<Boolean>,
     streamTick: Int,
     sendTick: Int,
     anchorPhaseState: MutableState<AnchorPhase>,
@@ -717,15 +741,24 @@ internal fun BindChatScrollRuntimeEffects(
                     scrollInProgress &&
                         (movedTowardTop || movedTowardBottom) &&
                         scrollModeState.value == ScrollMode.AutoFollow -> {
+                        pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.UserBrowsing
                     }
 
                     scrollModeState.value == ScrollMode.UserBrowsing -> {
+                        if (scrollInProgress) {
+                            when {
+                                movedTowardBottom -> pendingResumeAutoFollowState.value = true
+                                movedTowardTop -> pendingResumeAutoFollowState.value = false
+                            }
+                        }
                         val canResumeAutoFollow =
+                            pendingResumeAutoFollowState.value &&
                             !scrollInProgress &&
                                 currentStreamingVisualBottomPx() > 0 &&
                                 isStreamingReadyForAutoFollow()
                         if (canResumeAutoFollow) {
+                            pendingResumeAutoFollowState.value = false
                             scrollModeState.value = ScrollMode.AutoFollow
                         }
                     }
@@ -733,11 +766,13 @@ internal fun BindChatScrollRuntimeEffects(
             } else {
                 when {
                     movedTowardBottom -> {
+                        pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.Idle
                         autoScrollModeState.value = AutoScrollMode.Idle
                         userDetachedFromBottomState.value = false
                     }
                     movedTowardTop -> {
+                        pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.UserBrowsing
                         autoScrollModeState.value = AutoScrollMode.Idle
                         userDetachedFromBottomState.value = true
@@ -805,6 +840,7 @@ internal fun BindChatScrollRuntimeEffects(
     LaunchedEffect(sendTick) {
         if (messagesSize <= 0) return@LaunchedEffect
         userInteractingState.value = false
+        pendingResumeAutoFollowState.value = false
         scrollModeState.value = ScrollMode.Idle
         autoScrollModeState.value = AutoScrollMode.Idle
         repeat(2) { withFrameNanos { } }
@@ -893,6 +929,7 @@ internal fun BindChatScrollRuntimeEffects(
             ) {
                 return@LaunchedEffect
             }
+            pendingResumeAutoFollowState.value = false
             scrollModeState.value = ScrollMode.AutoFollow
             autoScrollModeState.value = AutoScrollMode.StreamAnchorFollow
         }
