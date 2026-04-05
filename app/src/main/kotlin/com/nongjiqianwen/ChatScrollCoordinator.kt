@@ -37,8 +37,6 @@ internal data class ChatScrollRuntimeState(
     val streamBottomFollowActive: MutableState<Boolean>,
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
-    val userDetachedFromBottom: MutableState<Boolean>,
-    val pendingResumeAutoFollow: MutableState<Boolean>,
     val pendingFinalBottomSnap: MutableState<Boolean>,
     val restoreBottomAfterImeClose: MutableState<Boolean>,
     val suppressJumpButtonForImeTransition: MutableState<Boolean>,
@@ -65,8 +63,6 @@ internal fun rememberChatScrollRuntimeState(
     val streamBottomFollowActive = remember { mutableStateOf(false) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
-    val userDetachedFromBottom = remember { mutableStateOf(false) }
-    val pendingResumeAutoFollow = remember { mutableStateOf(false) }
     val pendingFinalBottomSnap = remember { mutableStateOf(false) }
     val restoreBottomAfterImeClose = remember { mutableStateOf(false) }
     val suppressJumpButtonForImeTransition = remember { mutableStateOf(false) }
@@ -95,8 +91,6 @@ internal fun rememberChatScrollRuntimeState(
             streamBottomFollowActive = streamBottomFollowActive,
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
-            userDetachedFromBottom = userDetachedFromBottom,
-            pendingResumeAutoFollow = pendingResumeAutoFollow,
             pendingFinalBottomSnap = pendingFinalBottomSnap,
             restoreBottomAfterImeClose = restoreBottomAfterImeClose,
             suppressJumpButtonForImeTransition = suppressJumpButtonForImeTransition,
@@ -311,9 +305,7 @@ internal suspend fun performSnapStreamingToWorkline(
 @Composable
 internal fun rememberStreamingDirectionLock(
     snapshotProvider: () -> StreamingGuardSnapshot,
-    onInterruptAutoFollow: () -> Unit,
-    onTowardBottomGesture: () -> Unit,
-    onTowardTopGesture: () -> Unit
+    onInterruptAutoFollow: () -> Unit
 ): NestedScrollConnection {
     return remember(snapshotProvider) {
         object : NestedScrollConnection {
@@ -329,15 +321,6 @@ internal fun rememberStreamingDirectionLock(
                     onInterruptAutoFollow()
                     return Offset.Zero
                 }
-                if (
-                    snapshot.isStreaming &&
-                    snapshot.hasStreamingItem
-                ) {
-                    when {
-                        available.y > 0f -> onTowardBottomGesture()
-                        available.y < 0f -> onTowardTopGesture()
-                    }
-                }
                 return Offset.Zero
             }
 
@@ -351,15 +334,6 @@ internal fun rememberStreamingDirectionLock(
                 ) {
                     onInterruptAutoFollow()
                     return Velocity.Zero
-                }
-                if (
-                    snapshot.isStreaming &&
-                    snapshot.hasStreamingItem
-                ) {
-                    when {
-                        available.y > 0f -> onTowardBottomGesture()
-                        available.y < 0f -> onTowardTopGesture()
-                    }
                 }
                 return Velocity.Zero
             }
@@ -379,9 +353,7 @@ internal fun BindChatScrollRuntimeEffects(
     streamingFollowArmedState: MutableState<Boolean>,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
-    userDetachedFromBottomState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
-    pendingResumeAutoFollowState: MutableState<Boolean>,
     streamTick: Int,
     sendTick: Int,
     programmaticScrollState: MutableState<Boolean>,
@@ -446,13 +418,6 @@ internal fun BindChatScrollRuntimeEffects(
         }
     }
 
-    LaunchedEffect(scrollModeState.value) {
-        val derivedDetached = scrollModeState.value == ScrollMode.UserBrowsing
-        if (userDetachedFromBottomState.value != derivedDetached) {
-            userDetachedFromBottomState.value = derivedDetached
-        }
-    }
-
     LaunchedEffect(listState.isScrollInProgress, programmaticScrollState.value) {
         if (programmaticScrollState.value) {
             userInteractingState.value = false
@@ -498,18 +463,15 @@ internal fun BindChatScrollRuntimeEffects(
                     scrollInProgress &&
                         (movedTowardTop || movedTowardBottom) &&
                         scrollModeState.value == ScrollMode.AutoFollow -> {
-                        pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.UserBrowsing
                     }
 
                     scrollModeState.value == ScrollMode.UserBrowsing -> {
                         val canResumeAutoFollow =
-                            pendingResumeAutoFollowState.value &&
                             !scrollInProgress &&
                                 currentStreamingVisualBottomPx() > 0 &&
                                 isStreamingReadyForAutoFollow()
                         if (canResumeAutoFollow) {
-                            pendingResumeAutoFollowState.value = false
                             scrollModeState.value = ScrollMode.AutoFollow
                         }
                     }
@@ -517,14 +479,10 @@ internal fun BindChatScrollRuntimeEffects(
             } else {
                 when {
                     movedTowardBottom -> {
-                        pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.Idle
-                        userDetachedFromBottomState.value = false
                     }
                     movedTowardTop -> {
-                        pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.UserBrowsing
-                        userDetachedFromBottomState.value = true
                     }
                     else -> {
                         scrollModeState.value = ScrollMode.Idle
@@ -541,7 +499,6 @@ internal fun BindChatScrollRuntimeEffects(
         isStreaming,
         hasStreamingItem,
         userInteractingState.value,
-        userDetachedFromBottomState.value,
         listState.isScrollInProgress
     ) {
         if (!hasStreamingItem || !isStreaming) {
@@ -588,7 +545,6 @@ internal fun BindChatScrollRuntimeEffects(
     LaunchedEffect(sendTick) {
         if (messagesSize <= 0) return@LaunchedEffect
         userInteractingState.value = false
-        pendingResumeAutoFollowState.value = false
         scrollModeState.value = ScrollMode.AutoFollow
         repeat(2) { withFrameNanos { } }
         snapStreamingToWorkline()
@@ -612,7 +568,7 @@ internal fun BindChatScrollAuxiliaryEffects(
     isBottomSettled: suspend () -> Boolean,
     scrollToBottom: suspend (Boolean) -> Unit,
     lifecycleResumeBottomSnapThresholdPx: Int,
-    userDetachedFromBottomState: MutableState<Boolean>,
+    scrollModeState: MutableState<ScrollMode>,
     initialBottomSnapDoneState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     restoreBottomAfterImeCloseState: MutableState<Boolean>,
@@ -627,7 +583,7 @@ internal fun BindChatScrollAuxiliaryEffects(
             restoreBottomAfterImeCloseState.value =
                 atBottom &&
                     !isStreaming &&
-                    !userDetachedFromBottomState.value &&
+                    scrollModeState.value != ScrollMode.UserBrowsing &&
                     !listState.isScrollInProgress &&
                     !programmaticScrollState.value
             suppressJumpButtonForImeTransitionState.value = true
@@ -636,7 +592,11 @@ internal fun BindChatScrollAuxiliaryEffects(
 
         if (restoreBottomAfterImeCloseState.value && !isStreaming) {
             withFrameNanos { }
-            if (!userDetachedFromBottomState.value && !listState.isScrollInProgress && !programmaticScrollState.value) {
+            if (
+                scrollModeState.value != ScrollMode.UserBrowsing &&
+                !listState.isScrollInProgress &&
+                !programmaticScrollState.value
+            ) {
                 scrollToBottom(false)
             }
             restoreBottomAfterImeCloseState.value = false

@@ -1461,8 +1461,6 @@ fun ChatScreen() {
     var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
     var initialBottomSnapDone by scrollRuntime.initialBottomSnapDone
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
-    var userDetachedFromBottom by scrollRuntime.userDetachedFromBottom
-    var pendingResumeAutoFollow by scrollRuntime.pendingResumeAutoFollow
     var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
     var restoreBottomAfterImeClose by scrollRuntime.restoreBottomAfterImeClose
     var suppressJumpButtonForImeTransition by scrollRuntime.suppressJumpButtonForImeTransition
@@ -1603,14 +1601,7 @@ fun ChatScreen() {
         onInterruptAutoFollow = {
             userInteracting = true
             streamBottomFollowActive = false
-            pendingResumeAutoFollow = false
             scrollMode = ScrollMode.UserBrowsing
-        },
-        onTowardBottomGesture = {
-            pendingResumeAutoFollow = true
-        },
-        onTowardTopGesture = {
-            pendingResumeAutoFollow = false
         }
     )
     val enableStreamingScrollLock by remember(
@@ -2421,10 +2412,8 @@ fun ChatScreen() {
             streamingContentBottomPx = -1
             streamingFollowArmed = false
             streamBottomFollowActive = false
-            pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
             scrollMode = ScrollMode.Idle
-            userDetachedFromBottom = false
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             if (clearVisibleContent) {
@@ -2654,10 +2643,8 @@ fun ChatScreen() {
             streamingContentBottomPx = -1
             streamingFollowArmed = false
             streamBottomFollowActive = false
-            pendingResumeAutoFollow = false
             streamingBackgrounded = false
             scrollMode = ScrollMode.Idle
-            userDetachedFromBottom = false
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
@@ -2795,11 +2782,9 @@ fun ChatScreen() {
             streamingContentBottomPx = -1
             streamingFollowArmed = false
             streamBottomFollowActive = false
-            pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
             streamingBackgrounded = false
             scrollMode = ScrollMode.Idle
-            userDetachedFromBottom = false
             context.clearLocalStreamingDraftSync(chatScopeId)
             if (canAttemptRemoteAssistantRecovery(reason)) {
                 if (finalContent.isNotBlank()) {
@@ -2883,7 +2868,6 @@ fun ChatScreen() {
                 failedUserMessageStates[userId] = "network"
                 clearFailedAssistantStateForUser(userId)
                 anchoredUserMessageId = userId
-                userDetachedFromBottom = false
                 trimMessagesInPlace()
                 sendUiSettling = false
                 showComposerStatusHint("当前网络不可用")
@@ -2935,13 +2919,11 @@ fun ChatScreen() {
                 streamingContentBottomPx = -1
                 streamingFollowArmed = false
                 streamBottomFollowActive = false
-                pendingResumeAutoFollow = false
                 pendingFinalBottomSnap = false
                 streamingFreshStart = -1
                 streamingFreshEnd = -1
                 streamingLineAdvanceTick = 0
                 lastStreamingFreshRevealMs = 0L
-                userDetachedFromBottom = false
                 isStreaming = true
 
                 val assistantId = assistantMessageIdForSourceUser(userId)
@@ -3099,9 +3081,7 @@ fun ChatScreen() {
         streamingFollowArmedState = streamingRuntime.streamingFollowArmed,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
-        userDetachedFromBottomState = scrollRuntime.userDetachedFromBottom,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-        pendingResumeAutoFollowState = scrollRuntime.pendingResumeAutoFollow,
         streamTick = streamTick,
         sendTick = sendTick,
         programmaticScrollState = scrollRuntime.programmaticScroll,
@@ -3143,12 +3123,10 @@ fun ChatScreen() {
             streamingContentBottomPx = -1
             streamingFollowArmed = false
             streamBottomFollowActive = false
-            pendingResumeAutoFollow = false
             streamingBackgrounded = false
             streamingMessageId = null
             streamingMessageContent = ""
             scrollMode = ScrollMode.Idle
-            userDetachedFromBottom = false
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
@@ -3228,7 +3206,7 @@ fun ChatScreen() {
         isBottomSettled = ::isBottomSettled,
         scrollToBottom = scrollToBottom,
         lifecycleResumeBottomSnapThresholdPx = lifecycleResumeBottomSnapThresholdPx,
-        userDetachedFromBottomState = scrollRuntime.userDetachedFromBottom,
+        scrollModeState = scrollRuntime.scrollMode,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         restoreBottomAfterImeCloseState = scrollRuntime.restoreBottomAfterImeClose,
@@ -3249,7 +3227,6 @@ fun ChatScreen() {
                 ScrollMode.Idle
             }
             userInteracting = false
-            pendingResumeAutoFollow = false
             jumpButtonPulseVisible = false
             if (jumpingIntoStreaming) {
                 snapStreamingToWorkline()
