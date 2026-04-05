@@ -364,8 +364,7 @@ internal fun BindChatScrollRuntimeEffects(
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
     isStreamingReadyForAutoFollow: () -> Boolean,
-    scrollToBottom: suspend (Boolean) -> Unit,
-    snapStreamingToWorkline: suspend () -> Unit
+    scrollToBottom: suspend (Boolean) -> Unit
 ) {
     LaunchedEffect(
         isStreaming,
@@ -523,18 +522,7 @@ internal fun BindChatScrollRuntimeEffects(
         if (messagesSize <= 0) return@LaunchedEffect
         userInteractingState.value = false
         scrollModeState.value = ScrollMode.AutoFollow
-        if (!hasStreamingContent) {
-            scrollToBottom(false)
-            return@LaunchedEffect
-        }
-        for (attempt in 0 until 12) {
-            withFrameNanos { }
-            if (streamingContentBottomPxState.intValue > 0) break
-        }
-        if (streamingContentBottomPxState.intValue <= 0) {
-            return@LaunchedEffect
-        }
-        snapStreamingToWorkline()
+        scrollToBottom(false)
     }
 
 }

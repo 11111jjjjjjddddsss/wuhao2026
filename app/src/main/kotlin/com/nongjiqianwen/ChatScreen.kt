@@ -3082,8 +3082,7 @@ fun ChatScreen() {
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-        scrollToBottom = scrollToBottom,
-        snapStreamingToWorkline = snapStreamingToWorkline
+        scrollToBottom = scrollToBottom
     )
 
     fun completeStreamingImmediatelyFromBackground() {
