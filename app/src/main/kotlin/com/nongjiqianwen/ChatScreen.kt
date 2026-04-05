@@ -1612,11 +1612,17 @@ fun ChatScreen() {
             streamVisibleBottomGapPx = streamVisibleBottomGapPx
         )
     }
-    fun currentStreamingGuardBoundaryBottomPx(): Int = currentStreamingLegalBottomPx()
     fun currentStreamingGuardContentBottomPx(): Int {
         val tailBottom = currentStreamingTailBottomPx()
         if (tailBottom > 0) return tailBottom
         return currentStreamingMeasuredBottomPx()
+    }
+    fun currentStreamingGuardBoundaryBottomPx(): Int {
+        if (!isStreaming || !hasStreamingItem) return -1
+        if (anchorPhase == AnchorPhase.FrozenBottom && frozenBottomPx > 0) {
+            return frozenBottomPx
+        }
+        return currentStreamingGuardContentBottomPx()
     }
     val streamingDirectionLock = rememberStreamingDirectionLock(
         snapshotProvider = {
@@ -1624,7 +1630,6 @@ fun ChatScreen() {
                 isStreaming = isStreaming,
                 hasStreamingItem = hasStreamingItem,
                 scrollModeAutoFollow = scrollMode == ScrollMode.AutoFollow,
-                userBrowsing = scrollMode == ScrollMode.UserBrowsing,
                 tailBottomPx = currentStreamingGuardContentBottomPx(),
                 legalBottomPx = currentStreamingGuardBoundaryBottomPx(),
                 viewportHeightPx = messageViewportHeightPx,

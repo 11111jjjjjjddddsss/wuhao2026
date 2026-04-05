@@ -222,7 +222,6 @@ internal data class StreamingGuardSnapshot(
     val isStreaming: Boolean,
     val hasStreamingItem: Boolean,
     val scrollModeAutoFollow: Boolean,
-    val userBrowsing: Boolean,
     val tailBottomPx: Int,
     val legalBottomPx: Int,
     val viewportHeightPx: Int,
@@ -261,7 +260,6 @@ internal fun shouldConsumeBottomFling(
     velocityY: Float
 ): Boolean {
     if (velocityY >= 0f) return false
-    if (snapshot.userBrowsing) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
     return snapshot.tailBottomPx >= snapshot.legalBottomPx
 }
