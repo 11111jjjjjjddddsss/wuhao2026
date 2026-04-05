@@ -1663,8 +1663,7 @@ fun ChatScreen() {
         startupHydrationBarrierSatisfied,
         hasStartedConversation,
         messages.size,
-        hasStreamingItem,
-        initialBottomSnapDone
+        hasStreamingItem
     ) {
         derivedStateOf {
             when {
@@ -1672,9 +1671,7 @@ fun ChatScreen() {
                 !startupLayoutReady -> false
                 hasStartedConversation -> true
                 hasStreamingItem -> true
-                messages.isEmpty() -> true
-                initialBottomSnapDone -> true
-                else -> false
+                else -> true
             }
         }
     }
@@ -1853,8 +1850,7 @@ fun ChatScreen() {
         startupHydrationBarrierSatisfied,
         hasStartedConversation,
         messages.size,
-        hasStreamingItem,
-        initialBottomSnapDone
+        hasStreamingItem
     ) {
         LaunchUiGate.chatReady =
             when {
@@ -1862,8 +1858,7 @@ fun ChatScreen() {
                 !startupLayoutReady -> false
                 hasStartedConversation -> true
                 hasStreamingItem -> true
-                messages.isEmpty() -> true
-                else -> initialBottomSnapDone
+                else -> true
             }
     }
     var messageSelectionToolbarState by remember(chatScopeId) {
