@@ -1616,7 +1616,6 @@ fun ChatScreen() {
     fun currentStreamingGuardContentBottomPx(): Int {
         val tailBottom = currentStreamingTailBottomPx()
         if (tailBottom > 0) return tailBottom
-        if (scrollMode == ScrollMode.UserBrowsing) return -1
         return currentStreamingMeasuredBottomPx()
     }
     val streamingDirectionLock = rememberStreamingDirectionLock(
@@ -3370,11 +3369,9 @@ fun ChatScreen() {
         isBottomSettled = ::isBottomSettled,
         scrollToBottom = scrollToBottom,
         lifecycleResumeBottomSnapThresholdPx = lifecycleResumeBottomSnapThresholdPx,
-        finalBottomSnapTolerancePx = finalBottomSnapTolerancePx,
         userDetachedFromBottomState = scrollRuntime.userDetachedFromBottom,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
-        retainedBottomGapPxState = scrollRuntime.retainedBottomGapPx,
         restoreBottomAfterImeCloseState = scrollRuntime.restoreBottomAfterImeClose,
         suppressJumpButtonForImeTransitionState = scrollRuntime.suppressJumpButtonForImeTransition,
         restoreBottomAfterLifecycleResumeState = scrollRuntime.restoreBottomAfterLifecycleResume,
