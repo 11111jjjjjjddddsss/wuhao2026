@@ -391,7 +391,7 @@ internal fun BindChatScrollRuntimeEffects(
         streamingFollowArmedState.value =
             isStreaming &&
                 hasStreamingItem &&
-                currentStreamingContentBottomPx() > 0
+                streamingContentBottomPxState.intValue > 0
     }
 
     LaunchedEffect(listState.isScrollInProgress, programmaticScrollState.value) {
@@ -518,9 +518,12 @@ internal fun BindChatScrollRuntimeEffects(
         if (messagesSize <= 0) return@LaunchedEffect
         userInteractingState.value = false
         scrollModeState.value = ScrollMode.AutoFollow
-        for (attempt in 0 until 6) {
+        for (attempt in 0 until 12) {
             withFrameNanos { }
-            if (currentStreamingContentBottomPx() > 0) break
+            if (streamingContentBottomPxState.intValue > 0) break
+        }
+        if (streamingContentBottomPxState.intValue <= 0) {
+            return@LaunchedEffect
         }
         snapStreamingToWorkline()
     }

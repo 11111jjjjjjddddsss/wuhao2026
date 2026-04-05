@@ -1548,18 +1548,8 @@ fun ChatScreen() {
         assistantLineStepPx = assistantLineStepPx,
         streamingRevealModeState = streamingRuntime.streamingRevealMode
     )
-    fun currentVisibleStreamingItemBottomPx(): Int {
-        val streamingItemIndex = messages.size - 1
-        if (streamingItemIndex < 0) return -1
-        val info = listState.layoutInfo
-        val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
-            ?: return -1
-        return streamingLayoutItem.offset + streamingLayoutItem.size
-    }
     fun currentStreamingContentBottomPx(): Int {
-        val visibleItemBottom = currentVisibleStreamingItemBottomPx()
-        if (visibleItemBottom <= 0) return -1
-        return streamingContentBottomPx.takeIf { it > 0 } ?: visibleItemBottom
+        return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentStreamingLegalBottomPx(): Int {
         return resolveStreamingLegalBottomPx(
