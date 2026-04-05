@@ -142,10 +142,9 @@ internal fun resolveSendAnchorExtraBottomSpacePx(
 ): Int {
     if (!keepAnchorReserve) return 0
     if (viewportHeightPx <= 0) return 0
-    return maxOf(
-        (viewportHeightPx * extraBottomSpaceRatio).roundToInt(),
-        minExtraBottomSpacePx
-    )
+    val ratioSpacePx = (viewportHeightPx * extraBottomSpaceRatio).roundToInt().coerceAtLeast(0)
+    if (minExtraBottomSpacePx <= 0) return ratioSpacePx
+    return minOf(ratioSpacePx, minExtraBottomSpacePx)
 }
 
 internal fun resolveStreamingLegalBottomPx(
