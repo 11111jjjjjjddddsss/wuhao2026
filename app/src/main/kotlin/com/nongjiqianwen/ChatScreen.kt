@@ -309,7 +309,6 @@ private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
 private val MESSAGE_ACTION_MENU_SWITCH_THRESHOLD = 28.dp
 private val JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE = 32.dp
-private val STATIC_JUMP_SHOW_THRESHOLD = 96.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 internal val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -1899,19 +1898,34 @@ fun ChatScreen() {
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
-    val staticJumpShowThresholdPx = with(density) { STATIC_JUMP_SHOW_THRESHOLD.roundToPx() }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
+    val canScrollTowardBottom by remember(listState) {
+        derivedStateOf { listState.canScrollForward }
+    }
+    val streamingAwayFromReturnLine by remember(
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        streamingContentBottomPx,
+        streamingWorklineBottomPx,
+        anchorPhase,
+        frozenBottomPx,
+        composerTopInViewportPx
+    ) {
+        derivedStateOf {
+            !isNearStreamingReturnLine()
+        }
+    }
     val showStreamingJumpButton by remember(
         startupLayoutReady,
         isStreaming,
         hasStreamingItem,
         scrollMode,
+        streamingAwayFromReturnLine,
         pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset
     ) {
         derivedStateOf {
             startupLayoutReady &&
@@ -1919,20 +1933,23 @@ fun ChatScreen() {
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
-                isStreaming &&
-                hasStreamingItem &&
-                scrollMode == ScrollMode.UserBrowsing
+                shouldShowStreamingScrollToBottomButton(
+                    isStreaming = isStreaming,
+                    hasStreamingItem = hasStreamingItem,
+                    scrollMode = scrollMode,
+                    nearReturnLine = !streamingAwayFromReturnLine
+                )
         }
     }
     val showStaticJumpButton by remember(
         startupLayoutReady,
         isStreaming,
+        canScrollTowardBottom,
         pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume,
-        messages.size,
-        staticJumpShowThresholdPx
+        messages.size
     ) {
         derivedStateOf {
             startupLayoutReady &&
@@ -1942,7 +1959,7 @@ fun ChatScreen() {
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
                 messages.isNotEmpty() &&
-                !atBottom
+                canScrollTowardBottom
         }
     }
     val effectiveJumpButtonVisible by remember(

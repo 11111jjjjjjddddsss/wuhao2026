@@ -291,13 +291,6 @@ internal fun resolveStreamingFollowStepPx(
     return overflow.coerceAtMost(steadyStepPx)
 }
 
-internal fun shouldShowScrollToBottomButton(
-    overflowPx: Int,
-    staticJumpShowThresholdPx: Int
-): Boolean {
-    return overflowPx == Int.MAX_VALUE || overflowPx > staticJumpShowThresholdPx
-}
-
 internal fun shouldShowStreamingScrollToBottomButton(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
