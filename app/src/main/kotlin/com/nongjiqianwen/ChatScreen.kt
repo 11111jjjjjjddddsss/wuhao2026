@@ -1452,7 +1452,6 @@ fun ChatScreen() {
         startupInputChromeRowHeightEstimatePx = startupInputChromeRowHeightEstimatePx
     )
     var scrollMode by scrollRuntime.scrollMode
-    var autoScrollMode by scrollRuntime.autoScrollMode
     var userInteracting by scrollRuntime.userInteracting
     var streamTick by scrollRuntime.streamTick
     var sendTick by scrollRuntime.sendTick
@@ -2426,7 +2425,6 @@ fun ChatScreen() {
             pendingFinalBottomSnap = false
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
-            autoScrollMode = AutoScrollMode.Idle
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             if (clearVisibleContent) {
@@ -2660,7 +2658,6 @@ fun ChatScreen() {
             streamingBackgrounded = false
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
-            autoScrollMode = AutoScrollMode.Idle
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
@@ -2748,7 +2745,6 @@ fun ChatScreen() {
             if (!isStreaming) return@post
             if (hasRemoteHistorySource) return@post
             scrollMode = ScrollMode.AutoFollow
-            autoScrollMode = AutoScrollMode.StreamAnchorFollow
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -2804,7 +2800,6 @@ fun ChatScreen() {
             streamingBackgrounded = false
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
-            autoScrollMode = AutoScrollMode.Idle
             context.clearLocalStreamingDraftSync(chatScopeId)
             if (canAttemptRemoteAssistantRecovery(reason)) {
                 if (finalContent.isNotBlank()) {
@@ -2982,7 +2977,6 @@ fun ChatScreen() {
                 )
                 streamingBackgrounded = false
                 scrollMode = ScrollMode.AutoFollow
-                autoScrollMode = AutoScrollMode.StreamAnchorFollow
                 userInteracting = false
                 sendTick++
 
@@ -3104,7 +3098,6 @@ fun ChatScreen() {
         streamingContentBottomPxState = scrollRuntime.streamingContentBottomPx,
         streamingFollowArmedState = streamingRuntime.streamingFollowArmed,
         scrollModeState = scrollRuntime.scrollMode,
-        autoScrollModeState = scrollRuntime.autoScrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         userDetachedFromBottomState = scrollRuntime.userDetachedFromBottom,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
@@ -3156,7 +3149,6 @@ fun ChatScreen() {
             streamingMessageContent = ""
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
-            autoScrollMode = AutoScrollMode.Idle
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,

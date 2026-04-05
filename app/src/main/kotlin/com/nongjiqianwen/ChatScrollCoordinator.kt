@@ -20,12 +20,6 @@ import kotlinx.coroutines.isActive
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-internal enum class AutoScrollMode {
-    Idle,
-    AnchorUser,
-    StreamAnchorFollow
-}
-
 internal enum class ScrollMode {
     Idle,
     AutoFollow,
@@ -34,7 +28,6 @@ internal enum class ScrollMode {
 
 internal data class ChatScrollRuntimeState(
     val scrollMode: MutableState<ScrollMode>,
-    val autoScrollMode: MutableState<AutoScrollMode>,
     val userInteracting: MutableState<Boolean>,
     val streamTick: MutableIntState,
     val sendTick: MutableIntState,
@@ -63,7 +56,6 @@ internal fun rememberChatScrollRuntimeState(
     startupInputChromeRowHeightEstimatePx: Int
 ): ChatScrollRuntimeState {
     val scrollMode = remember { mutableStateOf(ScrollMode.Idle) }
-    val autoScrollMode = remember { mutableStateOf(AutoScrollMode.Idle) }
     val userInteracting = remember { mutableStateOf(false) }
     val streamTick = remember { mutableIntStateOf(0) }
     val sendTick = remember { mutableIntStateOf(0) }
@@ -94,7 +86,6 @@ internal fun rememberChatScrollRuntimeState(
     ) {
         ChatScrollRuntimeState(
             scrollMode = scrollMode,
-            autoScrollMode = autoScrollMode,
             userInteracting = userInteracting,
             streamTick = streamTick,
             sendTick = sendTick,
@@ -387,7 +378,6 @@ internal fun BindChatScrollRuntimeEffects(
     streamingContentBottomPxState: MutableIntState,
     streamingFollowArmedState: MutableState<Boolean>,
     scrollModeState: MutableState<ScrollMode>,
-    autoScrollModeState: MutableState<AutoScrollMode>,
     userInteractingState: MutableState<Boolean>,
     userDetachedFromBottomState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
@@ -456,16 +446,8 @@ internal fun BindChatScrollRuntimeEffects(
         }
     }
 
-    LaunchedEffect(scrollModeState.value, isStreaming, hasStreamingItem) {
-        val derivedAutoScrollMode = when (scrollModeState.value) {
-            ScrollMode.Idle -> if (isStreaming && hasStreamingItem) AutoScrollMode.AnchorUser else AutoScrollMode.Idle
-            ScrollMode.AutoFollow -> AutoScrollMode.StreamAnchorFollow
-            ScrollMode.UserBrowsing -> AutoScrollMode.AnchorUser
-        }
+    LaunchedEffect(scrollModeState.value) {
         val derivedDetached = scrollModeState.value == ScrollMode.UserBrowsing
-        if (autoScrollModeState.value != derivedAutoScrollMode) {
-            autoScrollModeState.value = derivedAutoScrollMode
-        }
         if (userDetachedFromBottomState.value != derivedDetached) {
             userDetachedFromBottomState.value = derivedDetached
         }
@@ -537,18 +519,15 @@ internal fun BindChatScrollRuntimeEffects(
                     movedTowardBottom -> {
                         pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.Idle
-                        autoScrollModeState.value = AutoScrollMode.Idle
                         userDetachedFromBottomState.value = false
                     }
                     movedTowardTop -> {
                         pendingResumeAutoFollowState.value = false
                         scrollModeState.value = ScrollMode.UserBrowsing
-                        autoScrollModeState.value = AutoScrollMode.Idle
                         userDetachedFromBottomState.value = true
                     }
                     else -> {
                         scrollModeState.value = ScrollMode.Idle
-                        autoScrollModeState.value = AutoScrollMode.Idle
                     }
                 }
             }
@@ -611,7 +590,6 @@ internal fun BindChatScrollRuntimeEffects(
         userInteractingState.value = false
         pendingResumeAutoFollowState.value = false
         scrollModeState.value = ScrollMode.AutoFollow
-        autoScrollModeState.value = AutoScrollMode.StreamAnchorFollow
         repeat(2) { withFrameNanos { } }
         snapStreamingToWorkline()
     }
