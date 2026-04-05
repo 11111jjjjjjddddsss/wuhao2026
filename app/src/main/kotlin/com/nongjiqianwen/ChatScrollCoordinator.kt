@@ -268,10 +268,8 @@ internal fun shouldConsumeBottomFling(
     velocityY: Float
 ): Boolean {
     if (velocityY >= 0f) return false
-    if (!snapshot.scrollModeAutoFollow) return false
-    if (!isStreamingTailNearGuardBoundary(snapshot)) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
-    return snapshot.tailBottomPx >= snapshot.legalBottomPx
+    return isStreamingTailNearGuardBoundary(snapshot) || snapshot.tailBottomPx >= snapshot.legalBottomPx
 }
 
 internal fun currentStreamingOverflowDelta(
@@ -537,8 +535,7 @@ internal fun rememberStreamingDirectionLock(
                 if (
                     snapshot.isStreaming &&
                     snapshot.hasStreamingItem &&
-                    available.y < 0f &&
-                    isStreamingTailNearGuardBoundary(snapshot)
+                    available.y < 0f
                 ) {
                     val overflowPx = resolveBottomDragOverflowPx(
                         tailBottomPx = snapshot.tailBottomPx,
