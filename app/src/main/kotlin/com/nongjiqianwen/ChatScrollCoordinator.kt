@@ -385,6 +385,15 @@ internal fun BindJumpButtonPulseEffect(
     }
 }
 
+internal suspend fun snapStreamingToSendAnchor(
+    listState: LazyListState,
+    anchorIndex: Int,
+    anchorTopPx: Int
+) {
+    if (anchorIndex < 0) return
+    listState.scrollToItem(anchorIndex, scrollOffset = -anchorTopPx)
+}
+
 internal suspend fun performScrollToBottom(
     listState: LazyListState,
     isStreaming: Boolean,
@@ -438,6 +447,43 @@ internal suspend fun performSnapStreamingToWorkline(
     scrollToBottom: suspend (Boolean) -> Unit,
 ) {
     scrollToBottom(false)
+}
+
+internal suspend fun performSnapStreamingToSendAnchor(
+    listState: LazyListState,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    messages: List<Any>,
+    anchoredUserMessageId: String?,
+    messageIdProvider: (Any) -> String,
+    assistantIdProvider: (String) -> String,
+    anchorTopPx: Int,
+    scrollToBottom: suspend (Boolean) -> Unit,
+    onProgrammaticScrollStart: () -> Unit,
+    onProgrammaticScrollEnd: () -> Unit
+) {
+    if (!isStreaming || !hasStreamingItem) {
+        scrollToBottom(false)
+        return
+    }
+    onProgrammaticScrollStart()
+    try {
+        withFrameNanos { }
+        val anchorIndex = findSendAnchorIndex(
+            messages = messages,
+            anchoredUserMessageId = anchoredUserMessageId,
+            messageIdProvider = messageIdProvider,
+            assistantIdProvider = assistantIdProvider
+        ).takeIf { it >= 0 } ?: return
+        snapStreamingToSendAnchor(
+            listState = listState,
+            anchorIndex = anchorIndex,
+            anchorTopPx = anchorTopPx
+        )
+        repeat(2) { withFrameNanos { } }
+    } finally {
+        onProgrammaticScrollEnd()
+    }
 }
 
 internal suspend fun captureFrozenBottomAfterSendAnchor(
@@ -576,7 +622,7 @@ internal fun BindChatScrollRuntimeEffects(
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
     isStreamingReadyForAutoFollow: () -> Boolean,
-    snapStreamingToWorkline: suspend () -> Unit,
+    snapStreamingToSendAnchor: suspend () -> Unit,
     captureFrozenBottomAfterSendAnchor: suspend () -> Unit
 ) {
     LaunchedEffect(
@@ -786,7 +832,7 @@ internal fun BindChatScrollRuntimeEffects(
         scrollModeState.value = ScrollMode.Idle
         autoScrollModeState.value = AutoScrollMode.Idle
         repeat(2) { withFrameNanos { } }
-        snapStreamingToWorkline()
+        snapStreamingToSendAnchor()
         captureFrozenBottomAfterSendAnchor()
     }
 
