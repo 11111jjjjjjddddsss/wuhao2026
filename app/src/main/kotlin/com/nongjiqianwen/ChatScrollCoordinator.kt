@@ -202,6 +202,22 @@ internal fun resolveRetainedBottomGapPx(
     return sendAnchorExtraBottomSpacePx.coerceAtLeast(0)
 }
 
+internal fun resolveStreamingExtraReservedHeightPx(
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    keepSendAnchorReserve: Boolean,
+    sendAnchorExtraBottomSpacePx: Int,
+    retainedBottomGapPx: Int
+): Int {
+    val sendAnchorReserve = sendAnchorExtraBottomSpacePx.coerceAtLeast(0)
+    val retainedGap = retainedBottomGapPx.coerceAtLeast(0)
+    return when {
+        keepSendAnchorReserve -> maxOf(sendAnchorReserve, retainedGap)
+        isStreaming || hasStreamingItem -> 0
+        else -> retainedGap
+    }
+}
+
 internal data class StreamingGuardSnapshot(
     val isStreaming: Boolean,
     val hasStreamingItem: Boolean,

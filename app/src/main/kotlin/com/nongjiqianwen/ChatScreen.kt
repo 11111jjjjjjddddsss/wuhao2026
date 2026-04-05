@@ -1861,19 +1861,35 @@ fun ChatScreen() {
             )
         }
     }
+    val streamingExtraReservedHeightPx by remember(
+        isStreaming,
+        hasStreamingItem,
+        keepSendAnchorReserve,
+        sendAnchorExtraBottomSpacePx,
+        retainedBottomGapPx
+    ) {
+        derivedStateOf {
+            resolveStreamingExtraReservedHeightPx(
+                isStreaming = isStreaming,
+                hasStreamingItem = hasStreamingItem,
+                keepSendAnchorReserve = keepSendAnchorReserve,
+                sendAnchorExtraBottomSpacePx = sendAnchorExtraBottomSpacePx,
+                retainedBottomGapPx = retainedBottomGapPx
+            )
+        }
+    }
     val bottomContentReservedHeightPx by remember(
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
-        sendAnchorExtraBottomSpacePx,
-        retainedBottomGapPx
+        streamingExtraReservedHeightPx
     ) {
         derivedStateOf {
             resolveBottomContentReservedHeightPx(
                 overlayVisible = composerCollapseOverlayVisible,
                 overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
                 effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
-                extraReservedHeightPx = sendAnchorExtraBottomSpacePx + retainedBottomGapPx
+                extraReservedHeightPx = streamingExtraReservedHeightPx
             )
         }
     }
@@ -3040,7 +3056,6 @@ fun ChatScreen() {
                 anchorPhase = AnchorPhase.None
                 frozenBottomPx = -1
                 pendingFrozenBottomCapture = true
-                retainedBottomGapPx = 0
                 scrollMode = ScrollMode.Idle
                 autoScrollMode = AutoScrollMode.Idle
                 userInteracting = false
