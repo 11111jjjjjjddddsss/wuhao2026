@@ -218,6 +218,17 @@ internal fun resolveStreamingExtraReservedHeightPx(
     }
 }
 
+internal fun resolveFrozenBottomCapturePx(
+    sendAnchorMeasuredBottomPx: Int,
+    sendAnchorBlankBottomPx: Int
+): Int {
+    if (sendAnchorMeasuredBottomPx > 0 && sendAnchorBlankBottomPx > 0) {
+        return maxOf(sendAnchorMeasuredBottomPx, sendAnchorBlankBottomPx)
+    }
+    if (sendAnchorMeasuredBottomPx > 0) return sendAnchorMeasuredBottomPx
+    return sendAnchorBlankBottomPx
+}
+
 internal data class StreamingGuardSnapshot(
     val isStreaming: Boolean,
     val hasStreamingItem: Boolean,
@@ -486,7 +497,7 @@ internal suspend fun captureFrozenBottomAfterSendAnchor(
     hasStreamingItem: Boolean,
     pendingFrozenBottomCapture: Boolean,
     programmaticScroll: Boolean,
-    currentStreamingLegalBottomPx: () -> Int,
+    currentSendAnchorBlankBottomPx: () -> Int,
     currentStreamingMeasuredBottomPx: () -> Int,
     onCaptured: (Int) -> Unit,
     onClearPending: () -> Unit
@@ -494,22 +505,22 @@ internal suspend fun captureFrozenBottomAfterSendAnchor(
     if (!isStreaming || !hasStreamingItem || !pendingFrozenBottomCapture) return
     repeat(2) { withFrameNanos { } }
     var capturedBottom = -1
-    val worklineBottom = currentStreamingLegalBottomPx()
+    val sendAnchorBlankBottom = currentSendAnchorBlankBottomPx()
     repeat(6) {
         withFrameNanos { }
         if (listState.isScrollInProgress || programmaticScroll) return@repeat
         val measuredBottom = currentStreamingMeasuredBottomPx()
-        if (measuredBottom > 0) {
-            capturedBottom = if (worklineBottom > 0) {
-                maxOf(measuredBottom, worklineBottom)
-            } else {
-                measuredBottom
-            }
+        val resolvedBottom = resolveFrozenBottomCapturePx(
+            sendAnchorMeasuredBottomPx = measuredBottom,
+            sendAnchorBlankBottomPx = sendAnchorBlankBottom
+        )
+        if (resolvedBottom > 0) {
+            capturedBottom = resolvedBottom
             return@repeat
         }
     }
     if (capturedBottom <= 0) {
-        capturedBottom = worklineBottom
+        capturedBottom = sendAnchorBlankBottom
     }
     if (capturedBottom > 0) {
         onCaptured(capturedBottom)
