@@ -3870,17 +3870,6 @@ fun ChatScreen() {
                 )
             }
 
-            if (hasActiveMessageSelection) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(with(density) { effectiveBottomBarHeightPx.toDp() })
-                        .background(pageSurface)
-                        .zIndex(45f)
-                )
-            }
-
             if (effectiveJumpButtonVisible && shouldRevealMessageList) {
                 Surface(
                     onClick = { jumpToBottom() },
