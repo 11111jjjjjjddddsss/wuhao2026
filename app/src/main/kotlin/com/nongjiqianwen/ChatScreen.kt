@@ -2870,6 +2870,9 @@ fun ChatScreen() {
                 keyboardController?.hide()
             }
         }
+        val shouldBottomOnSend =
+            messages.isNotEmpty() &&
+                (listState.canScrollBackward || listState.canScrollForward)
         snackbarScope.launch {
             try {
                 hasStartedConversation = true
@@ -2926,21 +2929,23 @@ fun ChatScreen() {
                 streamingBackgrounded = false
                 scrollMode = ScrollMode.Idle
                 userInteracting = false
-                performScrollToBottom(
-                    listState = listState,
-                    messagesSize = messages.size,
-                    hasStreamingItem = hasStreamingItem,
-                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-                    animated = false,
-                    onProgrammaticScrollStart = {
-                        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-                        programmaticScroll = true
-                    },
-                    onProgrammaticScrollEnd = {
-                        programmaticScroll = false
-                        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-                    }
-                )
+                if (shouldBottomOnSend) {
+                    performScrollToBottom(
+                        listState = listState,
+                        messagesSize = messages.size,
+                        hasStreamingItem = hasStreamingItem,
+                        currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+                        animated = false,
+                        onProgrammaticScrollStart = {
+                            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                            programmaticScroll = true
+                        },
+                        onProgrammaticScrollEnd = {
+                            programmaticScroll = false
+                            lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                        }
+                    )
+                }
 
                 fakeStreamJob?.cancel()
                 streamRevealJob?.cancel()

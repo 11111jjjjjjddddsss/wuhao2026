@@ -404,7 +404,8 @@ internal fun BindChatScrollRuntimeEffects(
                         val canStartAutoFollow =
                             !scrollInProgress &&
                                 hasStreamingContent &&
-                                currentStreamingContentBottomPx() > 0
+                                currentStreamingContentBottomPx() > 0 &&
+                                isStreamingReadyForAutoFollow()
                         if (canStartAutoFollow) {
                             scrollModeState.value = ScrollMode.AutoFollow
                         }
