@@ -859,9 +859,15 @@ private fun RendererAssistantMessageContentImpl(
     if (isStreaming) {
         Box(
             modifier = if (expandToFullWidth) {
-                stableModifier.fillMaxWidth()
-            } else {
                 stableModifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { coordinates ->
+                        onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
+                    }
+            } else {
+                stableModifier.onGloballyPositioned { coordinates ->
+                    onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
+                }
             },
             contentAlignment = Alignment.TopStart
         ) {
@@ -875,11 +881,7 @@ private fun RendererAssistantMessageContentImpl(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onGloballyPositioned { coordinates ->
-                                onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
-                            }
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         RendererAssistantStreamingContentImpl(
                             content = content,

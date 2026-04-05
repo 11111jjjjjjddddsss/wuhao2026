@@ -3432,6 +3432,7 @@ fun ChatScreen() {
                     LazyColumn(
                         state = listState,
                         userScrollEnabled = true,
+                        verticalArrangement = Arrangement.Bottom,
                         modifier = Modifier
                             .then(
                                 if (enableStreamingScrollLock) {
