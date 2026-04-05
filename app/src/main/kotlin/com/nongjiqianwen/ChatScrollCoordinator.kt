@@ -345,7 +345,8 @@ internal fun BindChatScrollRuntimeEffects(
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
-    isStreamingReadyForAutoFollow: () -> Boolean
+    isStreamingReadyForAutoFollow: () -> Boolean,
+    snapStreamingToWorkline: suspend () -> Unit
 ) {
     LaunchedEffect(
         isStreaming,
@@ -406,6 +407,7 @@ internal fun BindChatScrollRuntimeEffects(
                                 hasStreamingContent &&
                                 currentStreamingContentBottomPx() > 0
                         if (canStartAutoFollow) {
+                            snapStreamingToWorkline()
                             scrollModeState.value = ScrollMode.AutoFollow
                         }
                     }
