@@ -211,11 +211,6 @@ private data class LocalStreamingDraft(
     val anchoredUserMessageId: String?,
     val savedAtMs: Long
 )
-@Immutable
-private data class LocalBottomViewport(
-    val firstVisibleItemIndex: Int,
-    val firstVisibleItemScrollOffset: Int
-)
 private data class MessageSelectionToolbarState(
     val messageId: String,
     val anchorX: Int,
@@ -260,11 +255,9 @@ private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
-private const val CHAT_BOTTOM_VIEWPORT_KEY_PREFIX = "bottom_viewport_"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
-private const val BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS = 320L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
@@ -1147,23 +1140,6 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
             )
 }
 
-private fun Context.loadLocalBottomViewportSync(chatScopeId: String): LocalBottomViewport? {
-    val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .getString("$CHAT_BOTTOM_VIEWPORT_KEY_PREFIX$chatScopeId", null)
-        .orEmpty()
-    if (raw.isBlank()) return null
-    return runCatching {
-        chatCacheGson.fromJson(raw, LocalBottomViewport::class.java)
-    }.getOrNull()
-}
-
-private suspend fun Context.saveLocalBottomViewport(chatScopeId: String, viewport: LocalBottomViewport) = withContext(Dispatchers.IO) {
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString("$CHAT_BOTTOM_VIEWPORT_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(viewport))
-        .apply()
-}
-
 private fun recoverStreamingDraftAsCompletedMessage(
     localMessages: List<ChatMessage>,
     draft: LocalStreamingDraft?
@@ -1427,9 +1403,6 @@ fun ChatScreen() {
             draft = initialStreamingDraft
         )
     }
-    val initialBottomViewport = remember(chatScopeId) {
-        context.loadLocalBottomViewportSync(chatScopeId)
-    }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
     }
@@ -1439,14 +1412,10 @@ fun ChatScreen() {
     val messages = remember(chatScopeId) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
-    val initialListIndex = remember(chatScopeId, initialLocalMessages.size, initialBottomViewport) {
-        initialBottomViewport?.firstVisibleItemIndex
-            ?.coerceIn(0, initialLocalMessages.lastIndex.coerceAtLeast(0))
-            ?: (initialLocalMessages.lastIndex).coerceAtLeast(0)
+    val initialListIndex = remember(chatScopeId, initialLocalMessages.size) {
+        initialLocalMessages.lastIndex.coerceAtLeast(0)
     }
-    val initialListScrollOffset = remember(chatScopeId, initialBottomViewport) {
-        initialBottomViewport?.firstVisibleItemScrollOffset?.coerceAtLeast(0) ?: 0
-    }
+    val initialListScrollOffset = 0
     val listState = rememberLazyListState(
         cacheWindow = LazyLayoutCacheWindow(
             ahead = STATIC_SELECTION_CACHE_WINDOW,
@@ -2539,28 +2508,6 @@ fun ChatScreen() {
             composerStatusHintVisible = false
             composerStatusHintText = ""
         }
-    }
-
-    LaunchedEffect(chatScopeId, listState, messages.size, hasStreamingItem) {
-        snapshotFlow {
-            if (!atBottom || (messages.isEmpty() && !hasStreamingItem)) {
-                null
-            } else {
-                LocalBottomViewport(
-                    firstVisibleItemIndex = listState.firstVisibleItemIndex,
-                    firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset
-                )
-            }
-        }
-            .distinctUntilChanged()
-            .debounce(BOTTOM_VIEWPORT_SAVE_DEBOUNCE_MS)
-            .filterNotNull()
-            .collect { viewport ->
-                context.saveLocalBottomViewport(
-                    chatScopeId = chatScopeId,
-                    viewport = viewport
-                )
-            }
     }
 
     LaunchedEffect(

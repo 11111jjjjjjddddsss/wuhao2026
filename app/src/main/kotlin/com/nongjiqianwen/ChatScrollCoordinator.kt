@@ -352,6 +352,7 @@ internal fun rememberStreamingDirectionLock(
                     available.y != 0f
                 ) {
                     onInterruptAutoFollow()
+                    return Offset.Zero
                 }
                 if (
                     snapshot.isStreaming &&
@@ -360,6 +361,9 @@ internal fun rememberStreamingDirectionLock(
                     when {
                         available.y > 0f -> onTowardBottomGesture()
                         available.y < 0f -> onTowardTopGesture()
+                    }
+                    if (!snapshot.scrollModeAutoFollow) {
+                        return Offset.Zero
                     }
                     if (available.y > 0f) {
                         val overflowPx = resolveBottomDragOverflowPx(
@@ -385,13 +389,22 @@ internal fun rememberStreamingDirectionLock(
                     available.y != 0f
                 ) {
                     onInterruptAutoFollow()
+                    return Velocity.Zero
                 }
                 if (
                     snapshot.isStreaming &&
-                    snapshot.hasStreamingItem &&
-                    shouldConsumeBottomFling(snapshot, available.y)
+                    snapshot.hasStreamingItem
                 ) {
-                    return Velocity(x = 0f, y = available.y)
+                    when {
+                        available.y > 0f -> onTowardBottomGesture()
+                        available.y < 0f -> onTowardTopGesture()
+                    }
+                    if (!snapshot.scrollModeAutoFollow) {
+                        return Velocity.Zero
+                    }
+                    if (shouldConsumeBottomFling(snapshot, available.y)) {
+                        return Velocity(x = 0f, y = available.y)
+                    }
                 }
                 return Velocity.Zero
             }
