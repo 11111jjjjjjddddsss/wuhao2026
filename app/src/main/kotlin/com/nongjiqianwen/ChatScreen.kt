@@ -2713,10 +2713,10 @@ fun ChatScreen() {
 
     fun finishStreaming() {
         mainHandler.post {
+            val retainedGapPx = captureRetainedBottomGap()
             val shouldSnapToBottomOnFinish =
                 com.nongjiqianwen.shouldOfferFinalBottomSnap(
-                    scrollMode = scrollMode,
-                    userInteracting = userInteracting
+                    scrollMode = scrollMode
                 )
             streamRevealJob?.cancel()
             streamRevealJob = null
@@ -2733,7 +2733,7 @@ fun ChatScreen() {
                 streamingRevealBuffer = ""
                 streamTick++
             }
-            retainedBottomGapPx = 0
+            retainedBottomGapPx = retainedGapPx
             val finalContent = streamingMessageContent
             val finalId = streamingMessageId
             fakeStreamJob = null
@@ -2874,8 +2874,7 @@ fun ChatScreen() {
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
             val shouldSnapToBottomOnFinish =
                 com.nongjiqianwen.shouldOfferFinalBottomSnap(
-                    scrollMode = scrollMode,
-                    userInteracting = userInteracting
+                    scrollMode = scrollMode
                 )
             retainedBottomGapPx = captureRetainedBottomGap()
             fakeStreamJob?.cancel()
@@ -3256,16 +3255,16 @@ fun ChatScreen() {
     fun completeStreamingImmediatelyFromBackground() {
         mainHandler.post {
             if (!isStreaming) return@post
+            val retainedGapPx = captureRetainedBottomGap()
             val shouldSnapToBottomOnFinish =
                 com.nongjiqianwen.shouldOfferFinalBottomSnap(
-                    scrollMode = scrollMode,
-                    userInteracting = userInteracting
+                    scrollMode = scrollMode
                 )
             val finalId = streamingMessageId
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
                 ?: "assistant_${UUID.randomUUID()}"
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
-            retainedBottomGapPx = 0
+            retainedBottomGapPx = retainedGapPx
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
