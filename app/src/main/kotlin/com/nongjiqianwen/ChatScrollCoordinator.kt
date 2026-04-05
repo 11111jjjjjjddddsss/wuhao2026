@@ -494,7 +494,7 @@ internal fun BindChatScrollRuntimeEffects(
             }
             val overflow = currentStreamingOverflowDelta()
             val stepPx = resolveStreamingFollowStepPx(overflow)
-            if (stepPx <= 0) {
+            if (stepPx == 0) {
                 streamBottomFollowActiveState.value = false
                 continue
             }
@@ -503,7 +503,7 @@ internal fun BindChatScrollRuntimeEffects(
             programmaticScrollState.value = true
             try {
                 val consumed = listState.scrollBy(stepPx.toFloat())
-                if (consumed > 0f) {
+                if (abs(consumed) > 0f) {
                     streamingLineAdvanceTickState.intValue++
                 }
             } finally {
@@ -518,7 +518,10 @@ internal fun BindChatScrollRuntimeEffects(
         if (messagesSize <= 0) return@LaunchedEffect
         userInteractingState.value = false
         scrollModeState.value = ScrollMode.AutoFollow
-        repeat(2) { withFrameNanos { } }
+        for (attempt in 0 until 6) {
+            withFrameNanos { }
+            if (currentStreamingContentBottomPx() > 0) break
+        }
         snapStreamingToWorkline()
     }
 
