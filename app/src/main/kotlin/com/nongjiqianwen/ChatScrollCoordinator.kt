@@ -303,6 +303,16 @@ internal fun shouldOfferFinalBottomSnap(
     return scrollMode != ScrollMode.UserBrowsing
 }
 
+internal fun resolveCompletionAnchoredRetainedGapPx(
+    currentRetainedBottomGapPx: Int,
+    currentBottomOverflowPx: Int,
+    tolerancePx: Int
+): Int {
+    if (currentBottomOverflowPx == Int.MAX_VALUE) return currentRetainedBottomGapPx.coerceAtLeast(0)
+    if (currentBottomOverflowPx <= tolerancePx) return currentRetainedBottomGapPx.coerceAtLeast(0)
+    return maxOf(currentRetainedBottomGapPx.coerceAtLeast(0), currentBottomOverflowPx)
+}
+
 internal fun isStreamingReadyForAutoFollow(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
@@ -942,9 +952,11 @@ internal fun BindChatScrollAuxiliaryEffects(
     isBottomSettled: suspend () -> Boolean,
     scrollToBottom: suspend (Boolean) -> Unit,
     lifecycleResumeBottomSnapThresholdPx: Int,
+    finalBottomSnapTolerancePx: Int,
     userDetachedFromBottomState: MutableState<Boolean>,
     initialBottomSnapDoneState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
+    retainedBottomGapPxState: MutableIntState,
     restoreBottomAfterImeCloseState: MutableState<Boolean>,
     suppressJumpButtonForImeTransitionState: MutableState<Boolean>,
     restoreBottomAfterLifecycleResumeState: MutableState<Boolean>,
@@ -981,6 +993,15 @@ internal fun BindChatScrollAuxiliaryEffects(
     LaunchedEffect(pendingFinalBottomSnapState.value, messagesSize, isStreaming) {
         if (!pendingFinalBottomSnapState.value || isStreaming) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
+        val anchoredRetainedGapPx = resolveCompletionAnchoredRetainedGapPx(
+            currentRetainedBottomGapPx = retainedBottomGapPxState.intValue,
+            currentBottomOverflowPx = currentBottomOverflowPx(),
+            tolerancePx = finalBottomSnapTolerancePx
+        )
+        if (anchoredRetainedGapPx != retainedBottomGapPxState.intValue) {
+            retainedBottomGapPxState.intValue = anchoredRetainedGapPx
+            withFrameNanos { }
+        }
         for (attempt in 0 until 4) {
             withFrameNanos { }
             if (isWithinFinalBottomSnapTolerance()) {
