@@ -19,11 +19,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 
-internal enum class AnchorPhase {
-    None,
-    FrozenBottom
-}
-
 internal enum class AutoScrollMode {
     Idle,
     AnchorUser,
@@ -37,10 +32,6 @@ internal enum class ScrollMode {
 }
 
 internal data class ChatScrollRuntimeState(
-    val anchorPhase: MutableState<AnchorPhase>,
-    val frozenBottomPx: MutableIntState,
-    val pendingFrozenBottomCapture: MutableState<Boolean>,
-    val retainedBottomGapPx: MutableIntState,
     val scrollMode: MutableState<ScrollMode>,
     val autoScrollMode: MutableState<AutoScrollMode>,
     val userInteracting: MutableState<Boolean>,
@@ -70,10 +61,6 @@ internal fun rememberChatScrollRuntimeState(
     startupBottomBarHeightEstimatePx: Int,
     startupInputChromeRowHeightEstimatePx: Int
 ): ChatScrollRuntimeState {
-    val anchorPhase = remember { mutableStateOf(AnchorPhase.None) }
-    val frozenBottomPx = remember { mutableIntStateOf(-1) }
-    val pendingFrozenBottomCapture = remember { mutableStateOf(false) }
-    val retainedBottomGapPx = remember { mutableIntStateOf(0) }
     val scrollMode = remember { mutableStateOf(ScrollMode.Idle) }
     val autoScrollMode = remember { mutableStateOf(AutoScrollMode.Idle) }
     val userInteracting = remember { mutableStateOf(false) }
@@ -105,10 +92,6 @@ internal fun rememberChatScrollRuntimeState(
         startupInputChromeRowHeightEstimatePx
     ) {
         ChatScrollRuntimeState(
-            anchorPhase = anchorPhase,
-            frozenBottomPx = frozenBottomPx,
-            pendingFrozenBottomCapture = pendingFrozenBottomCapture,
-            retainedBottomGapPx = retainedBottomGapPx,
             scrollMode = scrollMode,
             autoScrollMode = autoScrollMode,
             userInteracting = userInteracting,
@@ -134,87 +117,14 @@ internal fun rememberChatScrollRuntimeState(
     }
 }
 
-internal fun resolveSendAnchorExtraBottomSpacePx(
-    keepAnchorReserve: Boolean,
-    viewportHeightPx: Int,
-    extraBottomSpaceRatio: Float,
-    minExtraBottomSpacePx: Int
-): Int {
-    if (!keepAnchorReserve) return 0
-    if (viewportHeightPx <= 0) return 0
-    val ratioSpacePx = (viewportHeightPx * extraBottomSpaceRatio).roundToInt().coerceAtLeast(0)
-    if (minExtraBottomSpacePx <= 0) return ratioSpacePx
-    return maxOf(ratioSpacePx, minExtraBottomSpacePx)
-}
-
 internal fun resolveStreamingLegalBottomPx(
-    anchorPhase: AnchorPhase,
-    frozenBottomPx: Int,
     worklineBottomPx: Int,
     composerTopInViewportPx: Int,
     streamVisibleBottomGapPx: Int
 ): Int {
-    if (anchorPhase == AnchorPhase.FrozenBottom && frozenBottomPx > 0) {
-        return frozenBottomPx
-    }
     if (worklineBottomPx > 0) return worklineBottomPx
     if (composerTopInViewportPx <= 0) return -1
     return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
-}
-
-internal fun resolveStreamingGuardContentBottomPx(
-    anchorPhase: AnchorPhase,
-    tailBottomPx: Int,
-    fallbackBottomPx: Int
-): Int {
-    if (tailBottomPx > 0) return tailBottomPx
-    if (anchorPhase == AnchorPhase.FrozenBottom) {
-        return fallbackBottomPx.takeIf { it > 0 } ?: -1
-    }
-    return -1
-}
-
-internal fun shouldExitFrozenBottomPhase(
-    anchorPhase: AnchorPhase,
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    tailBottomPx: Int,
-    frozenBottomPx: Int
-): Boolean {
-    if (anchorPhase != AnchorPhase.FrozenBottom) return false
-    if (!isStreaming || !hasStreamingItem) return true
-    if (tailBottomPx <= 0 || frozenBottomPx <= 0) return false
-    return tailBottomPx >= frozenBottomPx
-}
-
-internal fun resolveRetainedBottomGapPx(
-    anchorPhase: AnchorPhase,
-    frozenBottomPx: Int,
-    tailBottomPx: Int,
-    sendAnchorExtraBottomSpacePx: Int
-): Int {
-    if (anchorPhase != AnchorPhase.FrozenBottom) return 0
-    if (frozenBottomPx <= 0) return 0
-    if (tailBottomPx > 0) {
-        return (frozenBottomPx - tailBottomPx).coerceAtLeast(0)
-    }
-    return sendAnchorExtraBottomSpacePx.coerceAtLeast(0)
-}
-
-internal fun resolveStreamingExtraReservedHeightPx(
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    keepSendAnchorReserve: Boolean,
-    sendAnchorExtraBottomSpacePx: Int,
-    retainedBottomGapPx: Int
-): Int {
-    val sendAnchorReserve = sendAnchorExtraBottomSpacePx.coerceAtLeast(0)
-    val retainedGap = retainedBottomGapPx.coerceAtLeast(0)
-    return when {
-        keepSendAnchorReserve -> maxOf(sendAnchorReserve, retainedGap)
-        isStreaming || hasStreamingItem -> 0
-        else -> retainedGap
-    }
 }
 
 internal data class StreamingGuardSnapshot(
@@ -227,23 +137,6 @@ internal data class StreamingGuardSnapshot(
     val viewportHeightPx: Int,
     val assistantLineStepPx: Int
 )
-
-internal fun findSendAnchorIndex(
-    messages: List<Any>,
-    anchoredUserMessageId: String?,
-    messageIdProvider: (Any) -> String,
-    assistantIdProvider: (String) -> String
-): Int {
-    val sourceUserId = anchoredUserMessageId
-    return sourceUserId
-        ?.let(assistantIdProvider)
-        ?.let { assistantId -> messages.indexOfFirst { messageIdProvider(it) == assistantId } }
-        ?.takeIf { it >= 0 }
-        ?: sourceUserId
-            ?.let { userId -> messages.indexOfFirst { messageIdProvider(it) == userId } }
-            ?.takeIf { it >= 0 }
-        ?: messages.lastIndex
-}
 
 internal fun resolveBottomDragOverflowPx(
     tailBottomPx: Int,
@@ -385,15 +278,6 @@ internal fun BindJumpButtonPulseEffect(
     }
 }
 
-internal suspend fun snapStreamingToSendAnchor(
-    listState: LazyListState,
-    anchorIndex: Int,
-    anchorTopPx: Int
-) {
-    if (anchorIndex < 0) return
-    listState.scrollToItem(anchorIndex, scrollOffset = -anchorTopPx)
-}
-
 internal suspend fun performScrollToBottom(
     listState: LazyListState,
     isStreaming: Boolean,
@@ -447,81 +331,6 @@ internal suspend fun performSnapStreamingToWorkline(
     scrollToBottom: suspend (Boolean) -> Unit,
 ) {
     scrollToBottom(false)
-}
-
-internal suspend fun performSnapStreamingToSendAnchor(
-    listState: LazyListState,
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    messages: List<Any>,
-    anchoredUserMessageId: String?,
-    messageIdProvider: (Any) -> String,
-    assistantIdProvider: (String) -> String,
-    anchorTopPx: Int,
-    scrollToBottom: suspend (Boolean) -> Unit,
-    onProgrammaticScrollStart: () -> Unit,
-    onProgrammaticScrollEnd: () -> Unit
-) {
-    if (!isStreaming || !hasStreamingItem) {
-        scrollToBottom(false)
-        return
-    }
-    onProgrammaticScrollStart()
-    try {
-        withFrameNanos { }
-        val anchorIndex = findSendAnchorIndex(
-            messages = messages,
-            anchoredUserMessageId = anchoredUserMessageId,
-            messageIdProvider = messageIdProvider,
-            assistantIdProvider = assistantIdProvider
-        ).takeIf { it >= 0 } ?: return
-        snapStreamingToSendAnchor(
-            listState = listState,
-            anchorIndex = anchorIndex,
-            anchorTopPx = anchorTopPx
-        )
-        repeat(2) { withFrameNanos { } }
-    } finally {
-        onProgrammaticScrollEnd()
-    }
-}
-
-internal suspend fun captureFrozenBottomAfterSendAnchor(
-    listState: LazyListState,
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    pendingFrozenBottomCapture: Boolean,
-    programmaticScroll: Boolean,
-    currentSendAnchorBlankBottomPx: () -> Int,
-    currentStreamingMeasuredBottomPx: () -> Int,
-    onCaptured: (Int) -> Unit,
-    onClearPending: () -> Unit
-) {
-    if (!isStreaming || !hasStreamingItem || !pendingFrozenBottomCapture) return
-    repeat(2) { withFrameNanos { } }
-    var capturedBottom = -1
-    val sendAnchorBlankBottom = currentSendAnchorBlankBottomPx()
-    repeat(6) {
-        withFrameNanos { }
-        if (listState.isScrollInProgress || programmaticScroll) return@repeat
-        val refreshedBlankBottom = currentSendAnchorBlankBottomPx()
-        if (refreshedBlankBottom > 0) {
-            capturedBottom = refreshedBlankBottom
-            return@repeat
-        }
-        val measuredBottom = currentStreamingMeasuredBottomPx()
-        if (measuredBottom > 0) {
-            capturedBottom = measuredBottom
-            return@repeat
-        }
-    }
-    if (capturedBottom <= 0) {
-        capturedBottom = sendAnchorBlankBottom
-    }
-    if (capturedBottom > 0) {
-        onCaptured(capturedBottom)
-    }
-    onClearPending()
 }
 
 @Composable
@@ -608,8 +417,6 @@ internal fun BindChatScrollRuntimeEffects(
     pendingResumeAutoFollowState: MutableState<Boolean>,
     streamTick: Int,
     sendTick: Int,
-    anchorPhaseState: MutableState<AnchorPhase>,
-    frozenBottomPxState: MutableIntState,
     programmaticScrollState: MutableState<Boolean>,
     lastProgrammaticScrollMsState: MutableState<Long>,
     streamingLineAdvanceTickState: MutableIntState,
@@ -622,8 +429,7 @@ internal fun BindChatScrollRuntimeEffects(
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
     isStreamingReadyForAutoFollow: () -> Boolean,
-    snapStreamingToSendAnchor: suspend () -> Unit,
-    captureFrozenBottomAfterSendAnchor: suspend () -> Unit
+    snapStreamingToWorkline: suspend () -> Unit
 ) {
     LaunchedEffect(
         isStreaming,
@@ -829,32 +635,10 @@ internal fun BindChatScrollRuntimeEffects(
         if (messagesSize <= 0) return@LaunchedEffect
         userInteractingState.value = false
         pendingResumeAutoFollowState.value = false
-        scrollModeState.value = ScrollMode.Idle
-        autoScrollModeState.value = AutoScrollMode.Idle
+        scrollModeState.value = ScrollMode.AutoFollow
+        autoScrollModeState.value = AutoScrollMode.StreamAnchorFollow
         repeat(2) { withFrameNanos { } }
-        snapStreamingToSendAnchor()
-        captureFrozenBottomAfterSendAnchor()
-    }
-
-    LaunchedEffect(
-        anchorPhaseState.value,
-        isStreaming,
-        hasStreamingItem,
-        streamingContentBottomPxState.intValue,
-        frozenBottomPxState.intValue
-    ) {
-        if (!shouldExitFrozenBottomPhase(
-                anchorPhase = anchorPhaseState.value,
-                isStreaming = isStreaming,
-                hasStreamingItem = hasStreamingItem,
-                tailBottomPx = currentStreamingTailBottomPx(),
-                frozenBottomPx = frozenBottomPxState.intValue
-            )
-        ) {
-            return@LaunchedEffect
-        }
-        anchorPhaseState.value = AnchorPhase.None
-        frozenBottomPxState.intValue = -1
+        snapStreamingToWorkline()
     }
 
     LaunchedEffect(
@@ -912,7 +696,6 @@ internal fun BindChatScrollRuntimeEffects(
             if (
                 userInteractingState.value ||
                 listState.isScrollInProgress ||
-                anchorPhaseState.value == AnchorPhase.FrozenBottom ||
                 !isStreamingReadyForAutoFollow()
             ) {
                 return@LaunchedEffect

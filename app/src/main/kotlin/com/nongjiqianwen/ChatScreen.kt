@@ -281,7 +281,6 @@ private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
 private const val STREAM_STICKY_SCROLL_STEP_PX = 96
 private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 22
 private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 16
-private const val SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO = 0.72f
 private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
 private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
 private const val STREAM_AUTO_FOLLOW_DEBOUNCE_MS = 16L
@@ -294,8 +293,6 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 internal val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
-private val ASSISTANT_START_ANCHOR_TOP = 40.dp
-private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 220.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 40.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
@@ -1485,10 +1482,6 @@ fun ChatScreen() {
         startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx,
         startupInputChromeRowHeightEstimatePx = startupInputChromeRowHeightEstimatePx
     )
-    var anchorPhase by scrollRuntime.anchorPhase
-    var frozenBottomPx by scrollRuntime.frozenBottomPx
-    var pendingFrozenBottomCapture by scrollRuntime.pendingFrozenBottomCapture
-    var retainedBottomGapPx by scrollRuntime.retainedBottomGapPx
     var scrollMode by scrollRuntime.scrollMode
     var autoScrollMode by scrollRuntime.autoScrollMode
     var userInteracting by scrollRuntime.userInteracting
@@ -1551,7 +1544,6 @@ fun ChatScreen() {
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val finalBottomSnapTolerancePx = with(density) { FINAL_BOTTOM_SNAP_TOLERANCE.roundToPx() }
     val lifecycleResumeBottomSnapThresholdPx = with(density) { LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD.roundToPx() }
-    val minSendAnchorExtraBottomSpacePx = with(density) { MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE.toPx().roundToInt() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -1612,8 +1604,6 @@ fun ChatScreen() {
     }
     fun currentStreamingLegalBottomPx(): Int {
         return resolveStreamingLegalBottomPx(
-            anchorPhase = anchorPhase,
-            frozenBottomPx = frozenBottomPx,
             worklineBottomPx = streamingWorklineBottomPx,
             composerTopInViewportPx = composerTopInViewportPx,
             streamVisibleBottomGapPx = streamVisibleBottomGapPx
@@ -1697,7 +1687,6 @@ fun ChatScreen() {
     }
 
     fun isStreamingReadyForAutoFollow(): Boolean {
-        if (anchorPhase == AnchorPhase.FrozenBottom) return false
         if (!isStreaming || !hasStreamingItem || !streamingFollowArmed) return false
         return isNearStreamingReturnLine()
     }
@@ -1853,49 +1842,7 @@ fun ChatScreen() {
         composerCollapseOverlayPrewarmedState = composerRuntime.composerCollapseOverlayPrewarmed,
         startupLayoutReady = startupLayoutReady
     )
-    val keepSendAnchorReserve by remember(
-        isStreaming,
-        hasStreamingItem,
-        anchorPhase,
-        pendingFrozenBottomCapture
-    ) {
-        derivedStateOf {
-            isStreaming &&
-                hasStreamingItem &&
-                (pendingFrozenBottomCapture || anchorPhase == AnchorPhase.FrozenBottom)
-        }
-    }
-    val sendAnchorExtraBottomSpacePx by remember(
-        keepSendAnchorReserve,
-        messageViewportHeightPx,
-        minSendAnchorExtraBottomSpacePx
-    ) {
-        derivedStateOf {
-            resolveSendAnchorExtraBottomSpacePx(
-                keepAnchorReserve = keepSendAnchorReserve,
-                viewportHeightPx = messageViewportHeightPx,
-                extraBottomSpaceRatio = SEND_ANCHOR_EXTRA_BOTTOM_SPACE_RATIO,
-                minExtraBottomSpacePx = minSendAnchorExtraBottomSpacePx
-            )
-        }
-    }
-    val streamingExtraReservedHeightPx by remember(
-        isStreaming,
-        hasStreamingItem,
-        keepSendAnchorReserve,
-        sendAnchorExtraBottomSpacePx,
-        retainedBottomGapPx
-    ) {
-        derivedStateOf {
-            resolveStreamingExtraReservedHeightPx(
-                isStreaming = isStreaming,
-                hasStreamingItem = hasStreamingItem,
-                keepSendAnchorReserve = keepSendAnchorReserve,
-                sendAnchorExtraBottomSpacePx = sendAnchorExtraBottomSpacePx,
-                retainedBottomGapPx = retainedBottomGapPx
-            )
-        }
-    }
+    val streamingExtraReservedHeightPx = 0
     val bottomContentReservedHeightPx by remember(
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
@@ -1924,8 +1871,6 @@ fun ChatScreen() {
         scrollMode,
         streamingContentBottomPx,
         streamingWorklineBottomPx,
-        anchorPhase,
-        frozenBottomPx,
         composerTopInViewportPx
     ) {
         derivedStateOf {
@@ -2476,15 +2421,6 @@ fun ChatScreen() {
         pruneFailedMessageStates()
     }
 
-    fun captureRetainedBottomGap(): Int {
-        return resolveRetainedBottomGapPx(
-            anchorPhase = anchorPhase,
-            frozenBottomPx = frozenBottomPx,
-            tailBottomPx = currentStreamingVisualBottomPx(),
-            sendAnchorExtraBottomSpacePx = sendAnchorExtraBottomSpacePx
-        )
-    }
-
     fun resetStreamingUiState(clearVisibleContent: Boolean) {
         mainHandler.post {
             remoteRecoveryJob?.cancel()
@@ -2507,10 +2443,6 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
-            anchorPhase = AnchorPhase.None
-            frozenBottomPx = -1
-            pendingFrozenBottomCapture = false
-            retainedBottomGapPx = 0
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
@@ -2729,7 +2661,6 @@ fun ChatScreen() {
 
     fun finishStreaming() {
         mainHandler.post {
-            val retainedGapPx = captureRetainedBottomGap()
             val shouldSnapToBottomOnFinish =
                 com.nongjiqianwen.shouldOfferFinalBottomSnap(
                     scrollMode = scrollMode
@@ -2749,7 +2680,6 @@ fun ChatScreen() {
                 streamingRevealBuffer = ""
                 streamTick++
             }
-            retainedBottomGapPx = retainedGapPx
             val finalContent = streamingMessageContent
             val finalId = streamingMessageId
             fakeStreamJob = null
@@ -2763,9 +2693,6 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             streamingBackgrounded = false
-            anchorPhase = AnchorPhase.None
-            frozenBottomPx = -1
-            pendingFrozenBottomCapture = false
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
@@ -2855,8 +2782,8 @@ fun ChatScreen() {
         mainHandler.post {
             if (!isStreaming) return@post
             if (hasRemoteHistorySource) return@post
-            scrollMode = if (anchorPhase == AnchorPhase.FrozenBottom) ScrollMode.Idle else ScrollMode.AutoFollow
-            autoScrollMode = if (anchorPhase == AnchorPhase.FrozenBottom) AutoScrollMode.Idle else AutoScrollMode.StreamAnchorFollow
+            scrollMode = ScrollMode.AutoFollow
+            autoScrollMode = AutoScrollMode.StreamAnchorFollow
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -2892,7 +2819,6 @@ fun ChatScreen() {
                 com.nongjiqianwen.shouldOfferFinalBottomSnap(
                     scrollMode = scrollMode
                 )
-            retainedBottomGapPx = captureRetainedBottomGap()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
@@ -2911,9 +2837,6 @@ fun ChatScreen() {
             pendingResumeAutoFollow = false
             pendingFinalBottomSnap = false
             streamingBackgrounded = false
-            anchorPhase = AnchorPhase.None
-            frozenBottomPx = -1
-            pendingFrozenBottomCapture = false
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
@@ -3093,11 +3016,8 @@ fun ChatScreen() {
                     )
                 )
                 streamingBackgrounded = false
-                anchorPhase = AnchorPhase.None
-                frozenBottomPx = -1
-                pendingFrozenBottomCapture = true
-                scrollMode = ScrollMode.Idle
-                autoScrollMode = AutoScrollMode.Idle
+                scrollMode = ScrollMode.AutoFollow
+                autoScrollMode = AutoScrollMode.StreamAnchorFollow
                 userInteracting = false
                 sendTick++
 
@@ -3199,44 +3119,6 @@ fun ChatScreen() {
             scrollToBottom = scrollToBottom
         )
     }
-    val snapStreamingToSendAnchor: suspend () -> Unit = {
-        performSnapStreamingToSendAnchor(
-            listState = listState,
-            isStreaming = isStreaming,
-            hasStreamingItem = hasStreamingItem,
-            messages = messages,
-            anchoredUserMessageId = anchoredUserMessageId,
-            messageIdProvider = { (it as ChatMessage).id },
-            assistantIdProvider = ::assistantMessageIdForSourceUser,
-            anchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.roundToPx() },
-            scrollToBottom = scrollToBottom,
-            onProgrammaticScrollStart = {
-                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-                programmaticScroll = true
-            },
-            onProgrammaticScrollEnd = {
-                programmaticScroll = false
-                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-            }
-        )
-    }
-
-    val captureFrozenBottomAfterSendAnchor: suspend () -> Unit = {
-        com.nongjiqianwen.captureFrozenBottomAfterSendAnchor(
-            listState = listState,
-            isStreaming = isStreaming,
-            hasStreamingItem = hasStreamingItem,
-            pendingFrozenBottomCapture = pendingFrozenBottomCapture,
-            programmaticScroll = programmaticScroll,
-            currentSendAnchorBlankBottomPx = { streamingWorklineBottomPx },
-            currentStreamingMeasuredBottomPx = ::currentStreamingMeasuredBottomPx,
-            onCaptured = { capturedBottom ->
-                frozenBottomPx = capturedBottom
-                anchorPhase = AnchorPhase.FrozenBottom
-            },
-            onClearPending = { pendingFrozenBottomCapture = false }
-        )
-    }
 
     BindChatScrollRuntimeEffects(
         listState = listState,
@@ -3255,8 +3137,6 @@ fun ChatScreen() {
         pendingResumeAutoFollowState = scrollRuntime.pendingResumeAutoFollow,
         streamTick = streamTick,
         sendTick = sendTick,
-        anchorPhaseState = scrollRuntime.anchorPhase,
-        frozenBottomPxState = scrollRuntime.frozenBottomPx,
         programmaticScrollState = scrollRuntime.programmaticScroll,
         lastProgrammaticScrollMsState = scrollRuntime.lastProgrammaticScrollMs,
         streamingLineAdvanceTickState = streamingRuntime.streamingLineAdvanceTick,
@@ -3269,14 +3149,12 @@ fun ChatScreen() {
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-        snapStreamingToSendAnchor = snapStreamingToSendAnchor,
-        captureFrozenBottomAfterSendAnchor = captureFrozenBottomAfterSendAnchor
+        snapStreamingToWorkline = snapStreamingToWorkline
     )
 
     fun completeStreamingImmediatelyFromBackground() {
         mainHandler.post {
             if (!isStreaming) return@post
-            val retainedGapPx = captureRetainedBottomGap()
             val shouldSnapToBottomOnFinish =
                 com.nongjiqianwen.shouldOfferFinalBottomSnap(
                     scrollMode = scrollMode
@@ -3285,7 +3163,6 @@ fun ChatScreen() {
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
                 ?: "assistant_${UUID.randomUUID()}"
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
-            retainedBottomGapPx = retainedGapPx
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
@@ -3305,9 +3182,6 @@ fun ChatScreen() {
             streamingBackgrounded = false
             streamingMessageId = null
             streamingMessageContent = ""
-            anchorPhase = AnchorPhase.None
-            frozenBottomPx = -1
-            pendingFrozenBottomCapture = false
             scrollMode = ScrollMode.Idle
             userDetachedFromBottom = false
             autoScrollMode = AutoScrollMode.Idle
