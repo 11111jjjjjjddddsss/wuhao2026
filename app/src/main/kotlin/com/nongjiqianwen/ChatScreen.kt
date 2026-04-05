@@ -1620,6 +1620,10 @@ fun ChatScreen() {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= finalBottomSnapTolerancePx
     }
+    fun isAtBottomStrict(): Boolean {
+        val overflowPx = currentBottomOverflowPx()
+        return overflowPx != Int.MAX_VALUE && overflowPx <= 1
+    }
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
     }
@@ -1809,9 +1813,6 @@ fun ChatScreen() {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
-    val canScrollTowardBottom by remember(listState) {
-        derivedStateOf { listState.canScrollForward }
-    }
     val streamingAwayFromReturnLine by remember(
         isStreaming,
         hasStreamingItem,
@@ -1852,7 +1853,7 @@ fun ChatScreen() {
     val showStaticJumpButton by remember(
         startupLayoutReady,
         isStreaming,
-        canScrollTowardBottom,
+        atBottom,
         pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
@@ -1867,7 +1868,7 @@ fun ChatScreen() {
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
                 messages.isNotEmpty() &&
-                canScrollTowardBottom
+                !atBottom
         }
     }
     val effectiveJumpButtonVisible by remember(
@@ -3166,7 +3167,7 @@ fun ChatScreen() {
         messagesSize = messages.size,
         startupLayoutReady = startupLayoutReady,
         startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
-        isWithinBottomTolerance = ::isWithinBottomTolerance,
+        isAtBottomStrict = ::isAtBottomStrict,
         isWithinFinalBottomSnapTolerance = ::isWithinFinalBottomSnapTolerance,
         isBottomSettled = ::isBottomSettled,
         scrollToBottom = scrollToBottom,

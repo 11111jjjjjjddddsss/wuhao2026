@@ -546,7 +546,7 @@ internal fun BindChatScrollAuxiliaryEffects(
     messagesSize: Int,
     startupLayoutReady: Boolean,
     startupHydrationBarrierSatisfied: Boolean,
-    isWithinBottomTolerance: () -> Boolean,
+    isAtBottomStrict: () -> Boolean,
     isWithinFinalBottomSnapTolerance: () -> Boolean,
     isBottomSettled: suspend () -> Boolean,
     scrollToBottom: suspend (Boolean) -> Unit,
@@ -596,7 +596,7 @@ internal fun BindChatScrollAuxiliaryEffects(
         repeat(3) { withFrameNanos { } }
         repeat(10) { attempt ->
             scrollToBottom(false)
-            if (isWithinBottomTolerance() && isBottomSettled()) {
+            if (isAtBottomStrict() && isBottomSettled()) {
                 initialBottomSnapDoneState.value = true
                 return@LaunchedEffect
             }
