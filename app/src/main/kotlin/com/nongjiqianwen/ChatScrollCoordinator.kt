@@ -546,6 +546,7 @@ internal fun BindChatScrollAuxiliaryEffects(
     messagesSize: Int,
     startupLayoutReady: Boolean,
     startupHydrationBarrierSatisfied: Boolean,
+    isWithinBottomTolerance: () -> Boolean,
     isWithinFinalBottomSnapTolerance: () -> Boolean,
     isBottomSettled: suspend () -> Boolean,
     scrollToBottom: suspend (Boolean) -> Unit,
@@ -593,14 +594,14 @@ internal fun BindChatScrollAuxiliaryEffects(
         }
         if (messagesSize == 0 || isStreaming || hasStreamingItem) return@LaunchedEffect
         repeat(3) { withFrameNanos { } }
-        repeat(4) { attempt ->
+        repeat(10) { attempt ->
             scrollToBottom(false)
-            if (isBottomSettled()) {
+            if (isWithinBottomTolerance() && isBottomSettled()) {
                 initialBottomSnapDoneState.value = true
                 return@LaunchedEffect
             }
-            if (attempt < 3) {
-                kotlinx.coroutines.delay(60)
+            if (attempt < 9) {
+                kotlinx.coroutines.delay(40)
             }
         }
     }

@@ -3128,14 +3128,8 @@ fun ChatScreen() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 lifecycleResumeReady = false
-                if (!isStreaming) {
-                    restoreBottomAfterLifecycleResume =
-                        atBottom &&
-                            (messages.isNotEmpty() || hasStreamingItem) &&
-                            !listState.isScrollInProgress &&
-                            !programmaticScroll
-                    suppressJumpButtonForLifecycleResume = restoreBottomAfterLifecycleResume
-                }
+                restoreBottomAfterLifecycleResume = false
+                suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true
                     if (!hasRemoteHistorySource) {
@@ -3172,6 +3166,7 @@ fun ChatScreen() {
         messagesSize = messages.size,
         startupLayoutReady = startupLayoutReady,
         startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
+        isWithinBottomTolerance = ::isWithinBottomTolerance,
         isWithinFinalBottomSnapTolerance = ::isWithinFinalBottomSnapTolerance,
         isBottomSettled = ::isBottomSettled,
         scrollToBottom = scrollToBottom,
