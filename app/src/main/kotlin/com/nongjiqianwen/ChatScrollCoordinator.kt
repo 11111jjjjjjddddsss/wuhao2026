@@ -250,8 +250,8 @@ internal fun resolveBottomDragOverflowPx(
     legalBottomPx: Int,
     deltaY: Float
 ): Float {
-    if (deltaY >= 0f || tailBottomPx <= 0 || legalBottomPx <= 0) return 0f
-    val projectedBottom = tailBottomPx - deltaY
+    if (deltaY <= 0f || tailBottomPx <= 0 || legalBottomPx <= 0) return 0f
+    val projectedBottom = tailBottomPx + deltaY
     return (projectedBottom - legalBottomPx).coerceAtLeast(0f)
 }
 
@@ -259,7 +259,7 @@ internal fun shouldConsumeBottomFling(
     snapshot: StreamingGuardSnapshot,
     velocityY: Float
 ): Boolean {
-    if (velocityY >= 0f) return false
+    if (velocityY <= 0f) return false
     if (snapshot.userBrowsing) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
     return snapshot.tailBottomPx >= snapshot.legalBottomPx
@@ -549,18 +549,18 @@ internal fun rememberStreamingDirectionLock(
                     snapshot.hasStreamingItem
                 ) {
                     when {
-                        available.y < 0f -> onTowardBottomGesture()
-                        available.y > 0f -> onTowardTopGesture()
+                        available.y > 0f -> onTowardBottomGesture()
+                        available.y < 0f -> onTowardTopGesture()
                     }
-                    if (available.y < 0f) {
+                    if (available.y > 0f) {
                         val overflowPx = resolveBottomDragOverflowPx(
                             tailBottomPx = snapshot.tailBottomPx,
                             legalBottomPx = snapshot.legalBottomPx,
                             deltaY = available.y
                         )
                         if (overflowPx > 0f) {
-                            val consumedPx = overflowPx.coerceAtMost(-available.y)
-                            return Offset(x = 0f, y = -consumedPx)
+                            val consumedPx = overflowPx.coerceAtMost(available.y)
+                            return Offset(x = 0f, y = consumedPx)
                         }
                     }
                 }
