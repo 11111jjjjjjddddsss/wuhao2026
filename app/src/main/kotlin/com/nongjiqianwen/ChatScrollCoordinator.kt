@@ -30,7 +30,6 @@ internal data class ChatScrollRuntimeState(
     val scrollMode: MutableState<ScrollMode>,
     val userInteracting: MutableState<Boolean>,
     val streamTick: MutableIntState,
-    val sendTick: MutableIntState,
     val programmaticScroll: MutableState<Boolean>,
     val lastProgrammaticScrollMs: MutableState<Long>,
     val streamingContentBottomPx: MutableIntState,
@@ -38,11 +37,8 @@ internal data class ChatScrollRuntimeState(
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
     val pendingFinalBottomSnap: MutableState<Boolean>,
-    val restoreBottomAfterImeClose: MutableState<Boolean>,
     val suppressJumpButtonForImeTransition: MutableState<Boolean>,
-    val restoreBottomAfterLifecycleResume: MutableState<Boolean>,
     val suppressJumpButtonForLifecycleResume: MutableState<Boolean>,
-    val lifecycleResumeReady: MutableState<Boolean>,
     val bottomBarHeightPx: MutableIntState,
     val inputChromeRowHeightPx: MutableIntState
 )
@@ -56,7 +52,6 @@ internal fun rememberChatScrollRuntimeState(
     val scrollMode = remember { mutableStateOf(ScrollMode.Idle) }
     val userInteracting = remember { mutableStateOf(false) }
     val streamTick = remember { mutableIntStateOf(0) }
-    val sendTick = remember { mutableIntStateOf(0) }
     val programmaticScroll = remember { mutableStateOf(false) }
     val lastProgrammaticScrollMs = remember { mutableStateOf(0L) }
     val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
@@ -64,11 +59,8 @@ internal fun rememberChatScrollRuntimeState(
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
     val pendingFinalBottomSnap = remember { mutableStateOf(false) }
-    val restoreBottomAfterImeClose = remember { mutableStateOf(false) }
     val suppressJumpButtonForImeTransition = remember { mutableStateOf(false) }
-    val restoreBottomAfterLifecycleResume = remember { mutableStateOf(false) }
     val suppressJumpButtonForLifecycleResume = remember { mutableStateOf(false) }
-    val lifecycleResumeReady = remember { mutableStateOf(false) }
     val bottomBarHeightPx = remember(chatScopeId, startupBottomBarHeightEstimatePx) {
         mutableIntStateOf(startupBottomBarHeightEstimatePx)
     }
@@ -84,7 +76,6 @@ internal fun rememberChatScrollRuntimeState(
             scrollMode = scrollMode,
             userInteracting = userInteracting,
             streamTick = streamTick,
-            sendTick = sendTick,
             programmaticScroll = programmaticScroll,
             lastProgrammaticScrollMs = lastProgrammaticScrollMs,
             streamingContentBottomPx = streamingContentBottomPx,
@@ -92,11 +83,8 @@ internal fun rememberChatScrollRuntimeState(
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
             pendingFinalBottomSnap = pendingFinalBottomSnap,
-            restoreBottomAfterImeClose = restoreBottomAfterImeClose,
             suppressJumpButtonForImeTransition = suppressJumpButtonForImeTransition,
-            restoreBottomAfterLifecycleResume = restoreBottomAfterLifecycleResume,
             suppressJumpButtonForLifecycleResume = suppressJumpButtonForLifecycleResume,
-            lifecycleResumeReady = lifecycleResumeReady,
             bottomBarHeightPx = bottomBarHeightPx,
             inputChromeRowHeightPx = inputChromeRowHeightPx
         )
@@ -164,11 +152,10 @@ internal fun shouldOfferFinalBottomSnap(
 internal fun isStreamingReadyForAutoFollow(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
-    streamingFollowArmed: Boolean,
     streamingBottomInViewport: Int,
     legalBottomPx: Int
 ): Boolean {
-    if (!isStreaming || !hasStreamingItem || !streamingFollowArmed) return false
+    if (!isStreaming || !hasStreamingItem) return false
     if (streamingBottomInViewport <= 0 || legalBottomPx <= 0) return false
     return streamingBottomInViewport >= legalBottomPx
 }
@@ -246,8 +233,6 @@ internal fun BindJumpButtonPulseEffect(
 
 internal suspend fun performScrollToBottom(
     listState: LazyListState,
-    isStreaming: Boolean,
-    scrollMode: ScrollMode,
     messagesSize: Int,
     hasStreamingItem: Boolean,
     currentBottomAlignDeltaPx: () -> Int,
@@ -255,7 +240,6 @@ internal suspend fun performScrollToBottom(
     onProgrammaticScrollStart: () -> Unit,
     onProgrammaticScrollEnd: () -> Unit
 ) {
-    if (isStreaming && scrollMode != ScrollMode.AutoFollow) return
     if (messagesSize <= 0 && !hasStreamingItem) return
     onProgrammaticScrollStart()
     try {
@@ -350,12 +334,10 @@ internal fun BindChatScrollRuntimeEffects(
     hasStreamingContent: Boolean,
     streamingMessageId: String?,
     streamingContentBottomPxState: MutableIntState,
-    streamingFollowArmedState: MutableState<Boolean>,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
     streamTick: Int,
-    sendTick: Int,
     programmaticScrollState: MutableState<Boolean>,
     lastProgrammaticScrollMsState: MutableState<Long>,
     streamingLineAdvanceTickState: MutableIntState,
@@ -363,8 +345,7 @@ internal fun BindChatScrollRuntimeEffects(
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
-    isStreamingReadyForAutoFollow: () -> Boolean,
-    scrollToBottom: suspend (Boolean) -> Unit
+    isStreamingReadyForAutoFollow: () -> Boolean
 ) {
     LaunchedEffect(
         isStreaming,
@@ -380,21 +361,6 @@ internal fun BindChatScrollRuntimeEffects(
         if (!visible && streamingContentBottomPxState.intValue != -1) {
             streamingContentBottomPxState.intValue = -1
         }
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        hasStreamingContent,
-        streamingContentBottomPxState.intValue,
-        listState.firstVisibleItemIndex,
-        listState.firstVisibleItemScrollOffset
-    ) {
-        streamingFollowArmedState.value =
-            isStreaming &&
-                hasStreamingItem &&
-                hasStreamingContent &&
-                streamingContentBottomPxState.intValue > 0
     }
 
     LaunchedEffect(listState.isScrollInProgress, programmaticScrollState.value) {
@@ -426,11 +392,6 @@ internal fun BindChatScrollRuntimeEffects(
                 previousOffset = currentOffset
                 return@collect
             }
-            if (isStreaming && hasStreamingItem && scrollModeState.value == ScrollMode.Idle) {
-                previousIndex = currentIndex
-                previousOffset = currentOffset
-                return@collect
-            }
             val movedTowardBottom =
                 currentIndex > previousIndex ||
                     (currentIndex == previousIndex && currentOffset > previousOffset)
@@ -439,6 +400,16 @@ internal fun BindChatScrollRuntimeEffects(
                     (currentIndex == previousIndex && currentOffset < previousOffset)
             if (isStreaming && hasStreamingItem) {
                 when {
+                    scrollModeState.value == ScrollMode.Idle -> {
+                        val canStartAutoFollow =
+                            !scrollInProgress &&
+                                hasStreamingContent &&
+                                currentStreamingContentBottomPx() > 0
+                        if (canStartAutoFollow) {
+                            scrollModeState.value = ScrollMode.AutoFollow
+                        }
+                    }
+
                     scrollInProgress &&
                         (movedTowardTop || movedTowardBottom) &&
                         scrollModeState.value == ScrollMode.AutoFollow -> {
@@ -491,7 +462,7 @@ internal fun BindChatScrollRuntimeEffects(
                 scrollModeState.value != ScrollMode.AutoFollow ||
                 listState.isScrollInProgress ||
                 userInteractingState.value ||
-                !streamingFollowArmedState.value
+                currentStreamingContentBottomPx() <= 0
             ) {
                 streamBottomFollowActiveState.value = false
                 return@LaunchedEffect
@@ -516,13 +487,6 @@ internal fun BindChatScrollRuntimeEffects(
                 streamBottomFollowActiveState.value = false
             }
         }
-    }
-
-    LaunchedEffect(sendTick) {
-        if (messagesSize <= 0) return@LaunchedEffect
-        userInteractingState.value = false
-        scrollModeState.value = ScrollMode.AutoFollow
-        scrollToBottom(false)
     }
 
 }

@@ -1439,7 +1439,6 @@ fun ChatScreen() {
     var streamingRevealBuffer by streamingRuntime.streamingRevealBuffer
     var streamRevealJob by streamingRuntime.streamRevealJob
     var streamingLineAdvanceTick by streamingRuntime.streamingLineAdvanceTick
-    var streamingFollowArmed by streamingRuntime.streamingFollowArmed
     var streamingFreshStart by streamingRuntime.streamingFreshStart
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
@@ -1454,7 +1453,6 @@ fun ChatScreen() {
     var scrollMode by scrollRuntime.scrollMode
     var userInteracting by scrollRuntime.userInteracting
     var streamTick by scrollRuntime.streamTick
-    var sendTick by scrollRuntime.sendTick
     var programmaticScroll by scrollRuntime.programmaticScroll
     var lastProgrammaticScrollMs by scrollRuntime.lastProgrammaticScrollMs
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
@@ -1462,11 +1460,8 @@ fun ChatScreen() {
     var initialBottomSnapDone by scrollRuntime.initialBottomSnapDone
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
-    var restoreBottomAfterImeClose by scrollRuntime.restoreBottomAfterImeClose
     var suppressJumpButtonForImeTransition by scrollRuntime.suppressJumpButtonForImeTransition
-    var restoreBottomAfterLifecycleResume by scrollRuntime.restoreBottomAfterLifecycleResume
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
-    var lifecycleResumeReady by scrollRuntime.lifecycleResumeReady
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
     var inputChromeRowHeightPx by scrollRuntime.inputChromeRowHeightPx
 
@@ -2168,11 +2163,8 @@ fun ChatScreen() {
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
         initialBottomSnapDone = false
-        restoreBottomAfterImeClose = false
         suppressJumpButtonForImeTransition = false
-        restoreBottomAfterLifecycleResume = false
         suppressJumpButtonForLifecycleResume = false
-        lifecycleResumeReady = false
         clearInputSelectionToolbar()
         LaunchUiGate.chatReady = false
     }
@@ -2400,7 +2392,6 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
             streamingContentBottomPx = -1
-            streamingFollowArmed = false
             streamBottomFollowActive = false
             pendingFinalBottomSnap = false
             scrollMode = ScrollMode.Idle
@@ -2631,7 +2622,6 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             streamingContentBottomPx = -1
-            streamingFollowArmed = false
             streamBottomFollowActive = false
             streamingBackgrounded = false
             scrollMode = ScrollMode.Idle
@@ -2770,7 +2760,6 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
             streamingContentBottomPx = -1
-            streamingFollowArmed = false
             streamBottomFollowActive = false
             pendingFinalBottomSnap = false
             streamingBackgrounded = false
@@ -2850,7 +2839,6 @@ fun ChatScreen() {
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
                 if (collapseComposer) {
-                    restoreBottomAfterImeClose = false
                     suppressJumpButtonForImeTransition = true
                 }
                 val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
@@ -2898,7 +2886,6 @@ fun ChatScreen() {
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
                 if (collapseComposer) {
-                    restoreBottomAfterImeClose = false
                     suppressJumpButtonForImeTransition = true
                 }
                 val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
@@ -2907,7 +2894,6 @@ fun ChatScreen() {
                 upsertUserMessage(userId, text)
                 anchoredUserMessageId = userId
                 streamingContentBottomPx = -1
-                streamingFollowArmed = false
                 streamBottomFollowActive = false
                 pendingFinalBottomSnap = false
                 streamingFreshStart = -1
@@ -2948,9 +2934,23 @@ fun ChatScreen() {
                     )
                 )
                 streamingBackgrounded = false
-                scrollMode = ScrollMode.AutoFollow
+                scrollMode = ScrollMode.Idle
                 userInteracting = false
-                sendTick++
+                performScrollToBottom(
+                    listState = listState,
+                    messagesSize = messages.size,
+                    hasStreamingItem = hasStreamingItem,
+                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+                    animated = false,
+                    onProgrammaticScrollStart = {
+                        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                        programmaticScroll = true
+                    },
+                    onProgrammaticScrollEnd = {
+                        programmaticScroll = false
+                        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                    }
+                )
 
                 fakeStreamJob?.cancel()
                 streamRevealJob?.cancel()
@@ -3027,8 +3027,6 @@ fun ChatScreen() {
     val scrollToBottom: suspend (Boolean) -> Unit = { animated ->
         performScrollToBottom(
             listState = listState,
-            isStreaming = isStreaming,
-            scrollMode = scrollMode,
             messagesSize = messages.size,
             hasStreamingItem = hasStreamingItem,
             currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
@@ -3068,12 +3066,10 @@ fun ChatScreen() {
         hasStreamingContent = streamingMessageContent.isNotBlank(),
         streamingMessageId = streamingMessageId,
         streamingContentBottomPxState = scrollRuntime.streamingContentBottomPx,
-        streamingFollowArmedState = streamingRuntime.streamingFollowArmed,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         streamTick = streamTick,
-        sendTick = sendTick,
         programmaticScrollState = scrollRuntime.programmaticScroll,
         lastProgrammaticScrollMsState = scrollRuntime.lastProgrammaticScrollMs,
         streamingLineAdvanceTickState = streamingRuntime.streamingLineAdvanceTick,
@@ -3081,8 +3077,7 @@ fun ChatScreen() {
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
-        isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-        scrollToBottom = scrollToBottom
+        isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow
     )
 
     fun completeStreamingImmediatelyFromBackground() {
@@ -3109,7 +3104,6 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             streamingContentBottomPx = -1
-            streamingFollowArmed = false
             streamBottomFollowActive = false
             streamingBackgrounded = false
             streamingMessageId = null
@@ -3140,8 +3134,6 @@ fun ChatScreen() {
     DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
-                lifecycleResumeReady = false
-                restoreBottomAfterLifecycleResume = false
                 suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true
@@ -3153,7 +3145,6 @@ fun ChatScreen() {
                 keyboardController?.hide()
             } else if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
-                lifecycleResumeReady = true
                 if (isStreaming && fakeStreamJob?.isActive != true && streamRevealJob?.isActive != true) {
                     recoverStreamingAfterLifecycleLoss()
                 }

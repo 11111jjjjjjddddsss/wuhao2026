@@ -86,7 +86,6 @@ internal data class ChatStreamingRuntimeState(
     val streamingRevealBuffer: MutableState<String>,
     val streamRevealJob: MutableState<kotlinx.coroutines.Job?>,
     val streamingLineAdvanceTick: MutableIntState,
-    val streamingFollowArmed: MutableState<Boolean>,
     val streamingFreshStart: MutableIntState,
     val streamingFreshEnd: MutableIntState,
     val streamingFreshTick: MutableIntState,
@@ -102,7 +101,6 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
     val streamingRevealBuffer = rememberSaveable(chatScopeId) { mutableStateOf("") }
     val streamRevealJob = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val streamingLineAdvanceTick = remember { mutableIntStateOf(0) }
-    val streamingFollowArmed = remember { mutableStateOf(false) }
     val streamingFreshStart = remember { mutableIntStateOf(-1) }
     val streamingFreshEnd = remember { mutableIntStateOf(-1) }
     val streamingFreshTick = remember { mutableIntStateOf(0) }
@@ -116,7 +114,6 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
             streamingRevealBuffer = streamingRevealBuffer,
             streamRevealJob = streamRevealJob,
             streamingLineAdvanceTick = streamingLineAdvanceTick,
-            streamingFollowArmed = streamingFollowArmed,
             streamingFreshStart = streamingFreshStart,
             streamingFreshEnd = streamingFreshEnd,
             streamingFreshTick = streamingFreshTick,
