@@ -734,7 +734,6 @@ internal fun BindChatScrollRuntimeEffects(
                             }
                         }
                         val canResumeAutoFollow =
-                            pendingResumeAutoFollowState.value &&
                             !scrollInProgress &&
                                 currentStreamingVisualBottomPx() > 0 &&
                                 isStreamingReadyForAutoFollow()
@@ -897,12 +896,6 @@ internal fun BindChatScrollRuntimeEffects(
     ) {
         if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
         if (scrollModeState.value != ScrollMode.Idle && scrollModeState.value != ScrollMode.UserBrowsing) {
-            return@LaunchedEffect
-        }
-        if (
-            scrollModeState.value == ScrollMode.UserBrowsing &&
-            !pendingResumeAutoFollowState.value
-        ) {
             return@LaunchedEffect
         }
         if (streamingMessageContent.isBlank()) return@LaunchedEffect
