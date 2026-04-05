@@ -903,6 +903,7 @@ internal fun BindChatScrollRuntimeEffects(
         isStreaming,
         hasStreamingItem,
         scrollModeState.value,
+        pendingResumeAutoFollowState.value,
         streamTick,
         streamingMessageId,
         streamingMessageContent.length,
@@ -915,6 +916,12 @@ internal fun BindChatScrollRuntimeEffects(
     ) {
         if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
         if (scrollModeState.value != ScrollMode.Idle && scrollModeState.value != ScrollMode.UserBrowsing) {
+            return@LaunchedEffect
+        }
+        if (
+            scrollModeState.value == ScrollMode.UserBrowsing &&
+            !pendingResumeAutoFollowState.value
+        ) {
             return@LaunchedEffect
         }
         if (streamingMessageContent.isBlank()) return@LaunchedEffect

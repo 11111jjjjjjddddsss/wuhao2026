@@ -1896,21 +1896,8 @@ fun ChatScreen() {
             )
         }
     }
-    val jumpButtonAnchorInsetPx by remember(
-        chatRootHeightPx,
-        composerTopInViewportPx,
-        effectiveBottomBarHeightPx
-    ) {
-        derivedStateOf {
-            if (chatRootHeightPx > 0 && composerTopInViewportPx > 0) {
-                (chatRootHeightPx - composerTopInViewportPx).coerceAtLeast(effectiveBottomBarHeightPx)
-            } else {
-                effectiveBottomBarHeightPx
-            }
-        }
-    }
     val jumpButtonBottomPadding = with(density) {
-        jumpButtonAnchorInsetPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
+        effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
     val staticJumpShowThresholdPx = with(density) { STATIC_JUMP_SHOW_THRESHOLD.roundToPx() }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
@@ -1958,6 +1945,7 @@ fun ChatScreen() {
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
+                listState.canScrollForward &&
                 messages.isNotEmpty() &&
                 com.nongjiqianwen.shouldShowScrollToBottomButton(
                     overflowPx = currentBottomOverflowPx(),
@@ -2467,7 +2455,7 @@ fun ChatScreen() {
         return resolveRetainedBottomGapPx(
             anchorPhase = anchorPhase,
             frozenBottomPx = frozenBottomPx,
-            tailBottomPx = currentStreamingTailBottomPx(),
+            tailBottomPx = currentStreamingVisualBottomPx(),
             sendAnchorExtraBottomSpacePx = sendAnchorExtraBottomSpacePx
         )
     }
