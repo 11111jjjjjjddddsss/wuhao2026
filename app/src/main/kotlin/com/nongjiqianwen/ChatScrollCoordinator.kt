@@ -222,6 +222,7 @@ internal data class StreamingGuardSnapshot(
     val isStreaming: Boolean,
     val hasStreamingItem: Boolean,
     val scrollModeAutoFollow: Boolean,
+    val userBrowsing: Boolean,
     val tailBottomPx: Int,
     val legalBottomPx: Int,
     val viewportHeightPx: Int,
@@ -260,6 +261,7 @@ internal fun shouldConsumeBottomFling(
     velocityY: Float
 ): Boolean {
     if (velocityY >= 0f) return false
+    if (snapshot.userBrowsing) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
     return snapshot.tailBottomPx >= snapshot.legalBottomPx
 }
@@ -521,7 +523,9 @@ internal suspend fun captureFrozenBottomAfterSendAnchor(
 @Composable
 internal fun rememberStreamingDirectionLock(
     snapshotProvider: () -> StreamingGuardSnapshot,
-    onInterruptAutoFollow: () -> Unit
+    onInterruptAutoFollow: () -> Unit,
+    onTowardBottomGesture: () -> Unit,
+    onTowardTopGesture: () -> Unit
 ): NestedScrollConnection {
     return remember(snapshotProvider) {
         object : NestedScrollConnection {
@@ -538,17 +542,22 @@ internal fun rememberStreamingDirectionLock(
                 }
                 if (
                     snapshot.isStreaming &&
-                    snapshot.hasStreamingItem &&
-                    available.y < 0f
+                    snapshot.hasStreamingItem
                 ) {
-                    val overflowPx = resolveBottomDragOverflowPx(
-                        tailBottomPx = snapshot.tailBottomPx,
-                        legalBottomPx = snapshot.legalBottomPx,
-                        deltaY = available.y
-                    )
-                    if (overflowPx > 0f) {
-                        val consumedPx = overflowPx.coerceAtMost(-available.y)
-                        return Offset(x = 0f, y = -consumedPx)
+                    when {
+                        available.y < 0f -> onTowardBottomGesture()
+                        available.y > 0f -> onTowardTopGesture()
+                    }
+                    if (available.y < 0f) {
+                        val overflowPx = resolveBottomDragOverflowPx(
+                            tailBottomPx = snapshot.tailBottomPx,
+                            legalBottomPx = snapshot.legalBottomPx,
+                            deltaY = available.y
+                        )
+                        if (overflowPx > 0f) {
+                            val consumedPx = overflowPx.coerceAtMost(-available.y)
+                            return Offset(x = 0f, y = -consumedPx)
+                        }
                     }
                 }
                 return Offset.Zero
@@ -727,13 +736,8 @@ internal fun BindChatScrollRuntimeEffects(
                     }
 
                     scrollModeState.value == ScrollMode.UserBrowsing -> {
-                        if (scrollInProgress) {
-                            when {
-                                movedTowardBottom -> pendingResumeAutoFollowState.value = true
-                                movedTowardTop -> pendingResumeAutoFollowState.value = false
-                            }
-                        }
                         val canResumeAutoFollow =
+                            pendingResumeAutoFollowState.value &&
                             !scrollInProgress &&
                                 currentStreamingVisualBottomPx() > 0 &&
                                 isStreamingReadyForAutoFollow()
@@ -850,7 +854,6 @@ internal fun BindChatScrollRuntimeEffects(
     }
 
     LaunchedEffect(
-        anchorPhaseState.value,
         isStreaming,
         hasStreamingItem,
         listState.firstVisibleItemIndex,
@@ -858,7 +861,7 @@ internal fun BindChatScrollRuntimeEffects(
         listState.isScrollInProgress,
         streamingContentBottomPxState.intValue
     ) {
-        if (anchorPhaseState.value != AnchorPhase.FrozenBottom || !isStreaming || !hasStreamingItem) {
+        if (!isStreaming || !hasStreamingItem) {
             return@LaunchedEffect
         }
         if (listState.isScrollInProgress || programmaticScrollState.value || userInteractingState.value) {

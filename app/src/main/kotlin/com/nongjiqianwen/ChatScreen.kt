@@ -1626,6 +1626,7 @@ fun ChatScreen() {
                 isStreaming = isStreaming,
                 hasStreamingItem = hasStreamingItem,
                 scrollModeAutoFollow = scrollMode == ScrollMode.AutoFollow,
+                userBrowsing = scrollMode == ScrollMode.UserBrowsing,
                 tailBottomPx = currentStreamingGuardContentBottomPx(),
                 legalBottomPx = currentStreamingGuardBoundaryBottomPx(),
                 viewportHeightPx = messageViewportHeightPx,
@@ -1637,6 +1638,12 @@ fun ChatScreen() {
             streamBottomFollowActive = false
             pendingResumeAutoFollow = false
             scrollMode = ScrollMode.UserBrowsing
+        },
+        onTowardBottomGesture = {
+            pendingResumeAutoFollow = true
+        },
+        onTowardTopGesture = {
+            pendingResumeAutoFollow = false
         }
     )
     val enableStreamingScrollLock by remember(
@@ -3611,36 +3618,37 @@ fun ChatScreen() {
                     LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
                 ) {
                     LazyColumn(
-                    state = listState,
-                    userScrollEnabled = true,
-                    modifier = Modifier
-                        .then(
-                            if (enableStreamingScrollLock) {
-                                Modifier.nestedScroll(streamingDirectionLock)
-                            } else {
-                                Modifier
-                            }
+                        state = listState,
+                        userScrollEnabled = true,
+                        verticalArrangement = Arrangement.Bottom,
+                        modifier = Modifier
+                            .then(
+                                if (enableStreamingScrollLock) {
+                                    Modifier.nestedScroll(streamingDirectionLock)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .fillMaxSize()
+                            .then(
+                                if (hasActiveMessageSelection) {
+                                    selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .then(
+                                if (shouldRevealMessageList) {
+                                    Modifier
+                                } else {
+                                    Modifier.graphicsLayer(alpha = 0f)
+                                }
+                            ),
+                        contentPadding = PaddingValues(
+                            top = topBarReservedHeight,
+                            bottom = with(density) { bottomContentReservedHeightPx.toDp() } +
+                                BOTTOM_OVERLAY_CONTENT_CLEARANCE
                         )
-                        .fillMaxSize()
-                        .then(
-                            if (hasActiveMessageSelection) {
-                                selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .then(
-                            if (shouldRevealMessageList) {
-                                Modifier
-                            } else {
-                                Modifier.graphicsLayer(alpha = 0f)
-                            }
-                        ),
-                    contentPadding = PaddingValues(
-                        top = topBarReservedHeight,
-                        bottom = with(density) { bottomContentReservedHeightPx.toDp() } +
-                            BOTTOM_OVERLAY_CONTENT_CLEARANCE
-                    )
                     ) {
                         items(
                             items = messages,
