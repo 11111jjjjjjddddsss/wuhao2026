@@ -1618,11 +1618,7 @@ fun ChatScreen() {
         return currentStreamingMeasuredBottomPx()
     }
     fun currentStreamingGuardBoundaryBottomPx(): Int {
-        if (!isStreaming || !hasStreamingItem) return -1
-        if (anchorPhase == AnchorPhase.FrozenBottom && frozenBottomPx > 0) {
-            return frozenBottomPx
-        }
-        return currentStreamingGuardContentBottomPx()
+        return currentStreamingLegalBottomPx()
     }
     val streamingDirectionLock = rememberStreamingDirectionLock(
         snapshotProvider = {
