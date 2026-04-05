@@ -550,6 +550,23 @@ internal fun BindChatScrollRuntimeEffects(
         snapStreamingToWorkline()
     }
 
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageContent.length,
+        scrollModeState.value,
+        listState.isScrollInProgress
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        if (streamingMessageContent.isNotBlank()) return@LaunchedEffect
+        if (scrollModeState.value != ScrollMode.AutoFollow) return@LaunchedEffect
+        if (listState.isScrollInProgress || programmaticScrollState.value) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        if (scrollModeState.value == ScrollMode.AutoFollow && !listState.isScrollInProgress && !programmaticScrollState.value) {
+            snapStreamingToWorkline()
+        }
+    }
+
 }
 
 @Composable
@@ -562,7 +579,6 @@ internal fun BindChatScrollAuxiliaryEffects(
     imeVisible: Boolean,
     startupLayoutReady: Boolean,
     startupHydrationBarrierSatisfied: Boolean,
-    hasStartedConversation: Boolean,
     currentBottomOverflowPx: () -> Int,
     isWithinFinalBottomSnapTolerance: () -> Boolean,
     isBottomSettled: suspend () -> Boolean,
@@ -617,7 +633,7 @@ internal fun BindChatScrollAuxiliaryEffects(
                 break
             }
             scrollToBottom(false)
-            if (!listState.canScrollForward || isWithinFinalBottomSnapTolerance()) {
+            if (isWithinFinalBottomSnapTolerance()) {
                 break
             }
             if (attempt < 3) {
@@ -666,7 +682,6 @@ internal fun BindChatScrollAuxiliaryEffects(
     }
 
     LaunchedEffect(
-        hasStartedConversation,
         messagesSize,
         isStreaming,
         startupLayoutReady,
@@ -674,7 +689,6 @@ internal fun BindChatScrollAuxiliaryEffects(
         initialBottomSnapDoneState.value,
         startupHydrationBarrierSatisfied
     ) {
-        if (hasStartedConversation) return@LaunchedEffect
         if (initialBottomSnapDoneState.value) return@LaunchedEffect
         if (!startupHydrationBarrierSatisfied) return@LaunchedEffect
         if (!startupLayoutReady) return@LaunchedEffect
@@ -686,7 +700,7 @@ internal fun BindChatScrollAuxiliaryEffects(
         repeat(3) { withFrameNanos { } }
         repeat(4) { attempt ->
             scrollToBottom(false)
-            if (!listState.canScrollForward || isBottomSettled()) {
+            if (isBottomSettled()) {
                 initialBottomSnapDoneState.value = true
                 return@LaunchedEffect
             }

@@ -3200,7 +3200,6 @@ fun ChatScreen() {
         imeVisible = imeVisible,
         startupLayoutReady = startupLayoutReady,
         startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
-        hasStartedConversation = hasStartedConversation,
         currentBottomOverflowPx = ::currentBottomOverflowPx,
         isWithinFinalBottomSnapTolerance = ::isWithinFinalBottomSnapTolerance,
         isBottomSettled = ::isBottomSettled,
