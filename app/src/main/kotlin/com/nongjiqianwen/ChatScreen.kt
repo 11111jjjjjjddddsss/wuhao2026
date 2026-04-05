@@ -3431,9 +3431,7 @@ fun ChatScreen() {
                                 }
                             ),
                         contentPadding = PaddingValues(
-                            top = topBarReservedHeight,
-                            bottom = with(density) { bottomContentReservedHeightPx.toDp() } +
-                                BOTTOM_OVERLAY_CONTENT_CLEARANCE
+                            top = topBarReservedHeight
                         )
                     ) {
                         items(
@@ -3610,6 +3608,14 @@ fun ChatScreen() {
                                     }
                                 }
                             }
+                        }
+                        item(key = "chat_bottom_spacer") {
+                            Spacer(
+                                modifier = Modifier.height(
+                                    with(density) { bottomContentReservedHeightPx.toDp() } +
+                                        BOTTOM_OVERLAY_CONTENT_CLEARANCE
+                                )
+                            )
                         }
                     }
                     }
