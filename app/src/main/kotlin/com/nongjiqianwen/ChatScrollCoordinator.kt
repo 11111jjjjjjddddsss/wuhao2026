@@ -218,17 +218,6 @@ internal fun resolveStreamingExtraReservedHeightPx(
     }
 }
 
-internal fun resolveFrozenBottomCapturePx(
-    sendAnchorMeasuredBottomPx: Int,
-    sendAnchorBlankBottomPx: Int
-): Int {
-    if (sendAnchorMeasuredBottomPx > 0 && sendAnchorBlankBottomPx > 0) {
-        return maxOf(sendAnchorMeasuredBottomPx, sendAnchorBlankBottomPx)
-    }
-    if (sendAnchorMeasuredBottomPx > 0) return sendAnchorMeasuredBottomPx
-    return sendAnchorBlankBottomPx
-}
-
 internal data class StreamingGuardSnapshot(
     val isStreaming: Boolean,
     val hasStreamingItem: Boolean,
@@ -509,13 +498,14 @@ internal suspend fun captureFrozenBottomAfterSendAnchor(
     repeat(6) {
         withFrameNanos { }
         if (listState.isScrollInProgress || programmaticScroll) return@repeat
+        val refreshedBlankBottom = currentSendAnchorBlankBottomPx()
+        if (refreshedBlankBottom > 0) {
+            capturedBottom = refreshedBlankBottom
+            return@repeat
+        }
         val measuredBottom = currentStreamingMeasuredBottomPx()
-        val resolvedBottom = resolveFrozenBottomCapturePx(
-            sendAnchorMeasuredBottomPx = measuredBottom,
-            sendAnchorBlankBottomPx = sendAnchorBlankBottom
-        )
-        if (resolvedBottom > 0) {
-            capturedBottom = resolvedBottom
+        if (measuredBottom > 0) {
+            capturedBottom = measuredBottom
             return@repeat
         }
     }
