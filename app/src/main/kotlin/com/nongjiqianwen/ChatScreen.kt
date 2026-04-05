@@ -1906,7 +1906,6 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         scrollMode,
-        streamingContentBottomPx,
         pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
@@ -1920,12 +1919,9 @@ fun ChatScreen() {
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
-                com.nongjiqianwen.shouldShowStreamingScrollToBottomButton(
-                    isStreaming = isStreaming,
-                    hasStreamingItem = hasStreamingItem,
-                    scrollMode = scrollMode,
-                    nearReturnLine = isNearStreamingReturnLine()
-                )
+                isStreaming &&
+                hasStreamingItem &&
+                scrollMode == ScrollMode.UserBrowsing
         }
     }
     val showStaticJumpButton by remember(
@@ -1945,12 +1941,8 @@ fun ChatScreen() {
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
-                listState.canScrollForward &&
                 messages.isNotEmpty() &&
-                com.nongjiqianwen.shouldShowScrollToBottomButton(
-                    overflowPx = currentBottomOverflowPx(),
-                    staticJumpShowThresholdPx = staticJumpShowThresholdPx
-                )
+                !atBottom
         }
     }
     val effectiveJumpButtonVisible by remember(
@@ -2724,7 +2716,7 @@ fun ChatScreen() {
                 streamingRevealBuffer = ""
                 streamTick++
             }
-            retainedBottomGapPx = captureRetainedBottomGap()
+            retainedBottomGapPx = 0
             val finalContent = streamingMessageContent
             val finalId = streamingMessageId
             fakeStreamJob = null
@@ -3256,7 +3248,7 @@ fun ChatScreen() {
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
                 ?: "assistant_${UUID.randomUUID()}"
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
-            retainedBottomGapPx = captureRetainedBottomGap()
+            retainedBottomGapPx = 0
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
@@ -3883,7 +3875,7 @@ fun ChatScreen() {
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(with(density) { bottomContentReservedHeightPx.toDp() })
+                        .height(with(density) { effectiveBottomBarHeightPx.toDp() })
                         .background(pageSurface)
                         .zIndex(45f)
                 )
