@@ -294,7 +294,6 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 internal val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
-private val ASSISTANT_START_ANCHOR_TOP = 96.dp
 private val MIN_SEND_ANCHOR_EXTRA_BOTTOM_SPACE = 144.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 40.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
@@ -1591,17 +1590,24 @@ fun ChatScreen() {
         assistantLineStepPx = assistantLineStepPx,
         streamingRevealModeState = streamingRuntime.streamingRevealMode
     )
-    fun currentStreamingMeasuredBottomPx(): Int {
+    fun currentVisibleStreamingItemBottomPx(): Int {
         val streamingItemIndex = messages.size - 1
         if (streamingItemIndex < 0) return -1
         val info = listState.layoutInfo
         val streamingLayoutItem = info.visibleItemsInfo.lastOrNull { it.index == streamingItemIndex }
             ?: return -1
-        if (streamingContentBottomPx > 0) return streamingContentBottomPx
         return streamingLayoutItem.offset + streamingLayoutItem.size
     }
+    fun currentStreamingMeasuredBottomPx(): Int {
+        val visibleItemBottom = currentVisibleStreamingItemBottomPx()
+        if (visibleItemBottom <= 0) return -1
+        if (streamingContentBottomPx > 0) return streamingContentBottomPx
+        return visibleItemBottom
+    }
     fun currentStreamingTailBottomPx(): Int {
-        return streamingContentBottomPx.takeIf { it > 0 } ?: -1
+        val visibleItemBottom = currentVisibleStreamingItemBottomPx()
+        if (visibleItemBottom <= 0) return -1
+        return streamingContentBottomPx.takeIf { it > 0 } ?: visibleItemBottom
     }
     fun currentStreamingLegalBottomPx(): Int {
         return resolveStreamingLegalBottomPx(
@@ -1613,9 +1619,11 @@ fun ChatScreen() {
         )
     }
     fun currentStreamingGuardContentBottomPx(): Int {
+        val visibleItemBottom = currentVisibleStreamingItemBottomPx()
+        if (visibleItemBottom <= 0) return -1
         val tailBottom = currentStreamingTailBottomPx()
         if (tailBottom > 0) return tailBottom
-        return currentStreamingMeasuredBottomPx()
+        return visibleItemBottom
     }
     fun currentStreamingGuardBoundaryBottomPx(): Int {
         return currentStreamingLegalBottomPx()
@@ -1677,8 +1685,7 @@ fun ChatScreen() {
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
     }
-    fun currentStreamingVisualBottomPx(): Int =
-        currentStreamingTailBottomPx().takeIf { it > 0 } ?: currentStreamingMeasuredBottomPx()
+    fun currentStreamingVisualBottomPx(): Int = currentStreamingGuardContentBottomPx()
     fun isNearStreamingReturnLine(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
         val worklineBottom = streamingWorklineBottomPx
@@ -3188,23 +3195,7 @@ fun ChatScreen() {
 
     val snapStreamingToWorkline: suspend () -> Unit = {
         performSnapStreamingToWorkline(
-            listState = listState,
-            isStreaming = isStreaming,
-            hasStreamingItem = hasStreamingItem,
-            messages = messages,
-            anchoredUserMessageId = anchoredUserMessageId,
-            messageIdProvider = { (it as ChatMessage).id },
-            assistantIdProvider = ::assistantMessageIdForSourceUser,
-            anchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.roundToPx() },
-            scrollToBottom = scrollToBottom,
-            onProgrammaticScrollStart = {
-                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-                programmaticScroll = true
-            },
-            onProgrammaticScrollEnd = {
-                programmaticScroll = false
-                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-            }
+            scrollToBottom = scrollToBottom
         )
     }
 
@@ -3215,7 +3206,7 @@ fun ChatScreen() {
             hasStreamingItem = hasStreamingItem,
             pendingFrozenBottomCapture = pendingFrozenBottomCapture,
             programmaticScroll = programmaticScroll,
-            currentSendAnchorBlankBottomPx = ::currentStreamingLegalBottomPx,
+            currentSendAnchorBlankBottomPx = { streamingWorklineBottomPx },
             currentStreamingMeasuredBottomPx = ::currentStreamingMeasuredBottomPx,
             onCaptured = { capturedBottom ->
                 frozenBottomPx = capturedBottom
@@ -3620,6 +3611,7 @@ fun ChatScreen() {
                     LazyColumn(
                         state = listState,
                         userScrollEnabled = true,
+                        verticalArrangement = Arrangement.Bottom,
                         modifier = Modifier
                             .then(
                                 if (enableStreamingScrollLock) {

@@ -648,10 +648,12 @@ Clean-State 定义：
 - 2026-04-05 当前滚动链最终口径：生成期滚动控制只保留 `Idle / AutoFollow / UserBrowsing` 三态，`Returning`、旧 `applyStreamingScrollState(...)`、旧 `safeDistance/reserve/spacer` 语义都不再作为当前真相源规则使用
 - 2026-04-05 生成期间 `ScrollMode` 仍是滚动控制唯一真相源；`autoScrollMode / userDetachedFromBottom / pendingResumeAutoFollow` 只保留兼容和派生用途，不再作为主状态写入口参与滚动决策
 - 2026-04-05 发送后的 `Idle` 阶段只承担“定锚 + 冻结底线”职责；第一阶段唯一底线是 `frozenBottomPx`，正文尾部 `tailBottomPx >= frozenBottomPx` 后直接回普通工作线逻辑
+- 2026-04-05 发送后第一拍的可见上抬，不再靠旧的 item `top-anchor` 去把消息顶在中上部；当前口径改成“列表物理回底 + 底部 reserve 抬起可见小球”，避免长文本长期挂在屏幕中部生成
 - 2026-04-05 恢复 `AutoFollow` 的主条件是“列表停稳 + 真实 streaming 正文尾部重新回到工作线/返回线附近”；不再靠旧 reserve 数值、时间粘性或额外 Returning 状态接管
 - 2026-04-05 生成阶段底部护栏统一为“只按真实正文尾部与当前合法底线消费越界量”；drag 不再额外依赖“接近底部才拦”的旧激活门槛，fling 也不再用 near-boundary 整段吞速度
 - 2026-04-05 完成态 final snap 只要当前不处于 `UserBrowsing` 就允许补最后一次到底，不再被残留的 `userInteracting` 状态卡死；生成阶段 `回到底部` 按钮只在 `UserBrowsing` 且已离开工作线/返回线区域时允许显示；`Idle / AutoFollow` 必须隐藏；静态完成态按钮只按“普通列表当前仍可继续向下滚动”派生，不再依赖旧的 overflow 阈值；按钮脉冲与滚动链写状态解耦
 - 2026-04-05 短文本/失败态若留下未吃完空白，转成内部状态 `retainedBottomGapPx` 保底；下一轮发送由新锚点直接无感接管，不做用户可见的旧空白退场
+- 2026-04-05 长文本完成态如果消息总高度不足一屏，消息列表本体也必须保持底对齐，不允许因为内容不满屏就把正文挂在顶部并留下大块底部空白
 - 底部空白 clamp 在拿不到最后内容 item 的稳定测量时，应优先走保守退路，不要把“拿不到测量”直接当成“距离空白还很远”
 - 2026-04-04 当前滚动链真实边界补充：`ChatScrollCoordinator.kt` 当前已负责滚动规则、几何 helper、护栏、按钮派生，以及主要滚动 runtime effect/状态机接线；`ChatScreen.kt` 只允许继续保留页面组装、测量采集、局部持久化/生命周期桥接和少量宿主级回调，不允许把滚动决策重新混回页面层
 - 2026-04-04 当前恢复 follow 口径补充：用户上滑进入 `UserBrowsing` 后，只有在“列表停稳 + 真实 streaming 正文尾部重新回到工作线/返回线附近”同时满足时，才允许恢复 `AutoFollow`；一旦重新贴线，正文应持续沿工作线稳定上推，不允许一拍上推后一拍掉回
