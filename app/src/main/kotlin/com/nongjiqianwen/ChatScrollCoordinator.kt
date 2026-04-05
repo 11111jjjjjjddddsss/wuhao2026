@@ -222,6 +222,7 @@ internal data class StreamingGuardSnapshot(
     val isStreaming: Boolean,
     val hasStreamingItem: Boolean,
     val scrollModeAutoFollow: Boolean,
+    val scrollModeUserBrowsing: Boolean,
     val tailBottomPx: Int,
     val legalBottomPx: Int,
     val viewportHeightPx: Int,
@@ -245,6 +246,14 @@ internal fun findSendAnchorIndex(
         ?: messages.lastIndex
 }
 
+internal fun isStreamingTailNearGuardBoundary(snapshot: StreamingGuardSnapshot): Boolean {
+    if (!snapshot.isStreaming || !snapshot.hasStreamingItem) return false
+    if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
+    val activationRangePx = (snapshot.viewportHeightPx * 0.05f).roundToInt()
+        .coerceAtLeast(snapshot.assistantLineStepPx * 2)
+    return snapshot.tailBottomPx >= (snapshot.legalBottomPx - activationRangePx)
+}
+
 internal fun resolveBottomDragOverflowPx(
     tailBottomPx: Int,
     legalBottomPx: Int,
@@ -261,7 +270,11 @@ internal fun shouldConsumeBottomFling(
 ): Boolean {
     if (velocityY >= 0f) return false
     if (snapshot.tailBottomPx <= 0 || snapshot.legalBottomPx <= 0) return false
-    return snapshot.tailBottomPx >= snapshot.legalBottomPx
+    return if (snapshot.scrollModeUserBrowsing) {
+        isStreamingTailNearGuardBoundary(snapshot) || snapshot.tailBottomPx >= snapshot.legalBottomPx
+    } else {
+        true
+    }
 }
 
 internal fun currentStreamingOverflowDelta(
@@ -538,7 +551,12 @@ internal fun rememberStreamingDirectionLock(
                 if (
                     snapshot.isStreaming &&
                     snapshot.hasStreamingItem &&
-                    available.y < 0f
+                    available.y < 0f &&
+                    (
+                        !snapshot.scrollModeUserBrowsing ||
+                            isStreamingTailNearGuardBoundary(snapshot) ||
+                            snapshot.tailBottomPx >= snapshot.legalBottomPx
+                    )
                 ) {
                     val overflowPx = resolveBottomDragOverflowPx(
                         tailBottomPx = snapshot.tailBottomPx,

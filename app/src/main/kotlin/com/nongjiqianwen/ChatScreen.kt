@@ -1625,6 +1625,7 @@ fun ChatScreen() {
                 isStreaming = isStreaming,
                 hasStreamingItem = hasStreamingItem,
                 scrollModeAutoFollow = scrollMode == ScrollMode.AutoFollow,
+                scrollModeUserBrowsing = scrollMode == ScrollMode.UserBrowsing,
                 tailBottomPx = currentStreamingGuardContentBottomPx(),
                 legalBottomPx = currentStreamingGuardBoundaryBottomPx(),
                 viewportHeightPx = messageViewportHeightPx,
