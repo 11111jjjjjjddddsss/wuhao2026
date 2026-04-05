@@ -1634,6 +1634,18 @@ fun ChatScreen() {
         }
         return (desiredBottomPx - (lastVisible.offset + lastVisible.size)).coerceAtLeast(0)
     }
+    fun currentBottomAlignDeltaPx(): Int {
+        val info = listState.layoutInfo
+        val lastIndex = info.totalItemsCount - 1
+        if (lastIndex < 0) return 0
+        val lastVisible = info.visibleItemsInfo.lastOrNull { it.index == lastIndex } ?: return 0
+        val desiredBottomPx = if (composerTopInViewportPx > 0) {
+            (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        } else {
+            (info.viewportEndOffset - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        }
+        return desiredBottomPx - (lastVisible.offset + lastVisible.size)
+    }
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= bottomPositionTolerancePx
@@ -2598,6 +2610,12 @@ fun ChatScreen() {
             visibleBottom = visibleBottom
         )
     }
+    fun currentStreamingAlignDeltaPx(): Int {
+        val legalBottom = currentStreamingLegalBottomPx()
+        val contentBottom = currentStreamingVisualBottomPx()
+        if (legalBottom <= 0 || contentBottom <= 0) return 0
+        return legalBottom - contentBottom
+    }
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
         return com.nongjiqianwen.resolveStreamingFollowStepPx(
@@ -3047,8 +3065,7 @@ fun ChatScreen() {
             scrollMode = scrollMode,
             messagesSize = messages.size,
             hasStreamingItem = hasStreamingItem,
-            messageViewportHeightPx = messageViewportHeightPx,
-            stickyScrollStepPx = STREAM_STICKY_SCROLL_STEP_PX,
+            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
             animated = animated,
             onProgrammaticScrollStart = {
                 lastProgrammaticScrollMs = SystemClock.uptimeMillis()
@@ -3063,7 +3080,17 @@ fun ChatScreen() {
 
     val snapStreamingToWorkline: suspend () -> Unit = {
         performSnapStreamingToWorkline(
-            scrollToBottom = scrollToBottom
+            scrollToBottom = scrollToBottom,
+            listState = listState,
+            currentStreamingAlignDeltaPx = ::currentStreamingAlignDeltaPx,
+            onProgrammaticScrollStart = {
+                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+                programmaticScroll = true
+            },
+            onProgrammaticScrollEnd = {
+                programmaticScroll = false
+                lastProgrammaticScrollMs = SystemClock.uptimeMillis()
+            }
         )
     }
 

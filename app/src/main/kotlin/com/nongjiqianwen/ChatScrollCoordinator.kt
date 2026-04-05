@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import kotlinx.coroutines.isActive
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 internal enum class AutoScrollMode {
@@ -163,18 +164,18 @@ internal fun currentStreamingOverflowDelta(
     visibleBottom: Int
 ): Int {
     if (contentBottom <= 0 || visibleBottom <= 0) return 0
-    return (contentBottom - visibleBottom).coerceAtLeast(0)
+    return contentBottom - visibleBottom
 }
 
 internal fun resolveStreamingFollowStepPx(
     overflow: Int,
     assistantLineStepPx: Int
 ): Int {
-    if (overflow <= 0) return 0
+    if (overflow == 0) return 0
     val steadyStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(5)
     val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
-    if (overflow < triggerThresholdPx) return 0
-    return overflow.coerceAtMost(steadyStepPx)
+    if (abs(overflow) < triggerThresholdPx) return 0
+    return overflow.coerceIn(-steadyStepPx, steadyStepPx)
 }
 
 internal fun shouldShowStreamingScrollToBottomButton(
@@ -284,8 +285,7 @@ internal suspend fun performScrollToBottom(
     scrollMode: ScrollMode,
     messagesSize: Int,
     hasStreamingItem: Boolean,
-    messageViewportHeightPx: Int,
-    stickyScrollStepPx: Int,
+    currentBottomAlignDeltaPx: () -> Int,
     animated: Boolean,
     onProgrammaticScrollStart: () -> Unit,
     onProgrammaticScrollEnd: () -> Unit
@@ -302,24 +302,12 @@ internal suspend fun performScrollToBottom(
         } else {
             listState.scrollToItem(lastIndex)
         }
-        val stickyStep = messageViewportHeightPx
-            .takeIf { it > 0 }
-            ?.let { (it * 0.56f).roundToInt() }
-            ?.coerceAtLeast(stickyScrollStepPx)
-            ?: stickyScrollStepPx
-        if (animated) {
-            repeat(72) {
-                withFrameNanos { }
-                if (!listState.canScrollForward) return
-                val consumed = listState.scrollBy(stickyStep.toFloat())
-                if (consumed <= 0f) return
-            }
-        } else {
-            repeat(72) {
-                if (!listState.canScrollForward) return
-                val consumed = listState.scrollBy(stickyStep.toFloat())
-                if (consumed <= 0f) return
-            }
+        repeat(3) {
+            withFrameNanos { }
+            val deltaPx = currentBottomAlignDeltaPx()
+            if (abs(deltaPx) <= 1) return@repeat
+            val consumed = listState.scrollBy((-deltaPx).toFloat())
+            if (consumed == 0f) return@repeat
         }
         withFrameNanos { }
     } finally {
@@ -329,8 +317,24 @@ internal suspend fun performScrollToBottom(
 
 internal suspend fun performSnapStreamingToWorkline(
     scrollToBottom: suspend (Boolean) -> Unit,
+    listState: LazyListState,
+    currentStreamingAlignDeltaPx: () -> Int,
+    onProgrammaticScrollStart: () -> Unit,
+    onProgrammaticScrollEnd: () -> Unit,
 ) {
     scrollToBottom(false)
+    onProgrammaticScrollStart()
+    try {
+        repeat(3) {
+            withFrameNanos { }
+            val deltaPx = currentStreamingAlignDeltaPx()
+            if (abs(deltaPx) <= 1) return@repeat
+            val consumed = listState.scrollBy((-deltaPx).toFloat())
+            if (consumed == 0f) return@repeat
+        }
+    } finally {
+        onProgrammaticScrollEnd()
+    }
 }
 
 @Composable
