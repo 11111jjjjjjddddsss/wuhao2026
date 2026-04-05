@@ -109,6 +109,18 @@ internal fun resolveStreamingFollowStepPx(
     return overflow.coerceAtMost(steadyStepPx)
 }
 
+internal fun resolveStreamingFollowScrollDeltaPx(
+    alignDelta: Int,
+    assistantLineStepPx: Int
+): Int {
+    if (alignDelta == 0) return 0
+    val steadyStepPx = (assistantLineStepPx * 0.14f).roundToInt().coerceAtLeast(6)
+    val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
+    if (kotlin.math.abs(alignDelta) < triggerThresholdPx) return 0
+    val rawDelta = -alignDelta
+    return rawDelta.coerceIn(-steadyStepPx, steadyStepPx)
+}
+
 internal fun shouldShowStreamingScrollToBottomButton(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,

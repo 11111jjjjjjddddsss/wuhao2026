@@ -2542,6 +2542,13 @@ fun ChatScreen() {
         )
     }
 
+    fun currentStreamingFollowScrollDeltaPx(): Int {
+        return com.nongjiqianwen.resolveStreamingFollowScrollDeltaPx(
+            alignDelta = currentStreamingAlignDeltaPx(),
+            assistantLineStepPx = assistantLineStepPx
+        )
+    }
+
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
@@ -2645,8 +2652,8 @@ fun ChatScreen() {
             }
             for (attempt in 0 until 18) {
                 if (!isActive || !isStreaming) break
-                val overflow = currentStreamingOverflowDelta()
-                if (!streamBottomFollowActive && overflow <= lineRevealUnlockThresholdPx) {
+                val alignDelta = kotlin.math.abs(currentStreamingAlignDeltaPx())
+                if (!streamBottomFollowActive && alignDelta <= lineRevealUnlockThresholdPx) {
                     break
                 }
                 if (attempt < 17) {
@@ -3085,9 +3092,8 @@ fun ChatScreen() {
                 streamBottomFollowActive = false
                 return@LaunchedEffect
             }
-            val overflow = currentStreamingOverflowDelta()
-            val stepPx = resolveStreamingFollowStepPx(overflow)
-            if (stepPx == 0) {
+            val scrollDeltaPx = currentStreamingFollowScrollDeltaPx()
+            if (scrollDeltaPx == 0) {
                 streamBottomFollowActive = false
                 continue
             }
@@ -3095,7 +3101,7 @@ fun ChatScreen() {
             beginProgrammaticRecyclerScroll()
             try {
                 streamBottomFollowActive = true
-                recyclerView.scrollBy(0, stepPx)
+                recyclerView.scrollBy(0, scrollDeltaPx)
                 streamingLineAdvanceTick++
             } finally {
                 endProgrammaticRecyclerScroll()
