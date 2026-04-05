@@ -361,8 +361,7 @@ internal fun BindChatScrollRuntimeEffects(
     streamingLineAdvanceTickState: MutableIntState,
     bottomPositionTolerancePx: Int,
     streamingWorklineBottomPx: Int,
-    currentStreamingTailBottomPx: () -> Int,
-    currentStreamingVisualBottomPx: () -> Int,
+    currentStreamingContentBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
     isStreamingReadyForAutoFollow: () -> Boolean,
@@ -398,13 +397,13 @@ internal fun BindChatScrollRuntimeEffects(
             streamingFollowArmedState.value = false
             return@LaunchedEffect
         }
-        val firstBottom = currentStreamingTailBottomPx()
+        val firstBottom = currentStreamingContentBottomPx()
         if (firstBottom <= 0) {
             streamingFollowArmedState.value = false
             return@LaunchedEffect
         }
         repeat(2) { withFrameNanos { } }
-        val secondBottom = currentStreamingTailBottomPx()
+        val secondBottom = currentStreamingContentBottomPx()
         val canArmFollow =
             isStreaming &&
                 hasStreamingItem &&
@@ -436,7 +435,7 @@ internal fun BindChatScrollRuntimeEffects(
                 if (listState.isScrollInProgress) 1 else 0,
                 streamTick,
                 streamingWorklineBottomPx,
-                currentStreamingVisualBottomPx()
+                currentStreamingContentBottomPx()
             )
         }.collect { state ->
             val currentIndex = state[0]
@@ -469,7 +468,7 @@ internal fun BindChatScrollRuntimeEffects(
                     scrollModeState.value == ScrollMode.UserBrowsing -> {
                         val canResumeAutoFollow =
                             !scrollInProgress &&
-                                currentStreamingVisualBottomPx() > 0 &&
+                                currentStreamingContentBottomPx() > 0 &&
                                 isStreamingReadyForAutoFollow()
                         if (canResumeAutoFollow) {
                             scrollModeState.value = ScrollMode.AutoFollow
@@ -548,23 +547,6 @@ internal fun BindChatScrollRuntimeEffects(
         scrollModeState.value = ScrollMode.AutoFollow
         repeat(2) { withFrameNanos { } }
         snapStreamingToWorkline()
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageContent.length,
-        scrollModeState.value,
-        listState.isScrollInProgress
-    ) {
-        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
-        if (streamingMessageContent.isNotBlank()) return@LaunchedEffect
-        if (scrollModeState.value != ScrollMode.AutoFollow) return@LaunchedEffect
-        if (listState.isScrollInProgress || programmaticScrollState.value) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
-        if (scrollModeState.value == ScrollMode.AutoFollow && !listState.isScrollInProgress && !programmaticScrollState.value) {
-            snapStreamingToWorkline()
-        }
     }
 
 }
