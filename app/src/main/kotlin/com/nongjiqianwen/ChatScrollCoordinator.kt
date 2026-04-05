@@ -386,15 +386,6 @@ internal fun BindJumpButtonPulseEffect(
     }
 }
 
-internal suspend fun snapStreamingToSendAnchor(
-    listState: LazyListState,
-    anchorIndex: Int,
-    anchorTopPx: Int
-) {
-    if (anchorIndex < 0) return
-    listState.scrollToItem(anchorIndex, scrollOffset = -anchorTopPx)
-}
-
 internal suspend fun performScrollToBottom(
     listState: LazyListState,
     isStreaming: Boolean,
@@ -452,15 +443,10 @@ internal suspend fun performSnapStreamingToWorkline(
     anchoredUserMessageId: String?,
     messageIdProvider: (Any) -> String,
     assistantIdProvider: (String) -> String,
-    anchorTopPx: Int,
-    scrollToBottom: suspend (Boolean) -> Unit,
     onProgrammaticScrollStart: () -> Unit,
     onProgrammaticScrollEnd: () -> Unit
 ) {
-    if (!isStreaming || !hasStreamingItem) {
-        scrollToBottom(false)
-        return
-    }
+    if (!isStreaming || !hasStreamingItem) return
     onProgrammaticScrollStart()
     try {
         withFrameNanos { }
@@ -469,13 +455,13 @@ internal suspend fun performSnapStreamingToWorkline(
             anchoredUserMessageId = anchoredUserMessageId,
             messageIdProvider = messageIdProvider,
             assistantIdProvider = assistantIdProvider
-        )
-        if (anchorIndex < 0) return
-        snapStreamingToSendAnchor(
-            listState = listState,
-            anchorIndex = anchorIndex,
-            anchorTopPx = anchorTopPx
-        )
+        ).takeIf { it >= 0 } ?: return
+        listState.scrollToItem(anchorIndex)
+        repeat(72) {
+            if (!listState.canScrollForward) return@repeat
+            val consumed = listState.scrollBy(96f)
+            if (consumed <= 0f) return@repeat
+        }
         repeat(2) { withFrameNanos { } }
     } finally {
         onProgrammaticScrollEnd()

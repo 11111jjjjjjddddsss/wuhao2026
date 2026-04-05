@@ -3195,8 +3195,6 @@ fun ChatScreen() {
             anchoredUserMessageId = anchoredUserMessageId,
             messageIdProvider = { (it as ChatMessage).id },
             assistantIdProvider = ::assistantMessageIdForSourceUser,
-            anchorTopPx = with(density) { ASSISTANT_START_ANCHOR_TOP.roundToPx() },
-            scrollToBottom = scrollToBottom,
             onProgrammaticScrollStart = {
                 lastProgrammaticScrollMs = SystemClock.uptimeMillis()
                 programmaticScroll = true
