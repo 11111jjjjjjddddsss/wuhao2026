@@ -1509,7 +1509,6 @@ fun ChatScreen() {
     val bottomOverlayContentClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val finalBottomSnapTolerancePx = with(density) { FINAL_BOTTOM_SNAP_TOLERANCE.roundToPx() }
-    val lifecycleResumeBottomSnapThresholdPx = with(density) { LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -3176,28 +3175,18 @@ fun ChatScreen() {
     }
 
     BindChatScrollAuxiliaryEffects(
-        listState = listState,
         isStreaming = isStreaming,
         hasStreamingItem = hasStreamingItem,
         messagesSize = messages.size,
-        atBottom = atBottom,
-        imeVisible = imeVisible,
         startupLayoutReady = startupLayoutReady,
         startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
-        currentBottomOverflowPx = ::currentBottomOverflowPx,
         isWithinFinalBottomSnapTolerance = ::isWithinFinalBottomSnapTolerance,
         isBottomSettled = ::isBottomSettled,
         scrollToBottom = scrollToBottom,
-        lifecycleResumeBottomSnapThresholdPx = lifecycleResumeBottomSnapThresholdPx,
-        scrollModeState = scrollRuntime.scrollMode,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
-        restoreBottomAfterImeCloseState = scrollRuntime.restoreBottomAfterImeClose,
         suppressJumpButtonForImeTransitionState = scrollRuntime.suppressJumpButtonForImeTransition,
-        restoreBottomAfterLifecycleResumeState = scrollRuntime.restoreBottomAfterLifecycleResume,
         suppressJumpButtonForLifecycleResumeState = scrollRuntime.suppressJumpButtonForLifecycleResume,
-        lifecycleResumeReadyState = scrollRuntime.lifecycleResumeReady,
-        programmaticScrollState = scrollRuntime.programmaticScroll
     )
 
     fun jumpToBottom() {

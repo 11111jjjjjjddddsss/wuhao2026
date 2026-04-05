@@ -529,59 +529,19 @@ internal fun BindChatScrollRuntimeEffects(
 
 @Composable
 internal fun BindChatScrollAuxiliaryEffects(
-    listState: LazyListState,
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
     messagesSize: Int,
-    atBottom: Boolean,
-    imeVisible: Boolean,
     startupLayoutReady: Boolean,
     startupHydrationBarrierSatisfied: Boolean,
-    currentBottomOverflowPx: () -> Int,
     isWithinFinalBottomSnapTolerance: () -> Boolean,
     isBottomSettled: suspend () -> Boolean,
     scrollToBottom: suspend (Boolean) -> Unit,
-    lifecycleResumeBottomSnapThresholdPx: Int,
-    scrollModeState: MutableState<ScrollMode>,
     initialBottomSnapDoneState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
-    restoreBottomAfterImeCloseState: MutableState<Boolean>,
     suppressJumpButtonForImeTransitionState: MutableState<Boolean>,
-    restoreBottomAfterLifecycleResumeState: MutableState<Boolean>,
-    suppressJumpButtonForLifecycleResumeState: MutableState<Boolean>,
-    lifecycleResumeReadyState: MutableState<Boolean>,
-    programmaticScrollState: MutableState<Boolean>
+    suppressJumpButtonForLifecycleResumeState: MutableState<Boolean>
 ) {
-    LaunchedEffect(imeVisible) {
-        if (imeVisible) {
-            restoreBottomAfterImeCloseState.value =
-                atBottom &&
-                    !isStreaming &&
-                    scrollModeState.value != ScrollMode.UserBrowsing &&
-                    !listState.isScrollInProgress &&
-                    !programmaticScrollState.value
-            suppressJumpButtonForImeTransitionState.value = true
-            return@LaunchedEffect
-        }
-
-        if (restoreBottomAfterImeCloseState.value && !isStreaming) {
-            withFrameNanos { }
-            if (
-                scrollModeState.value != ScrollMode.UserBrowsing &&
-                !listState.isScrollInProgress &&
-                !programmaticScrollState.value
-            ) {
-                scrollToBottom(false)
-            }
-            restoreBottomAfterImeCloseState.value = false
-        } else {
-            restoreBottomAfterImeCloseState.value = false
-        }
-
-        repeat(2) { withFrameNanos { } }
-        suppressJumpButtonForImeTransitionState.value = false
-    }
-
     LaunchedEffect(pendingFinalBottomSnapState.value, messagesSize, isStreaming) {
         if (!pendingFinalBottomSnapState.value || isStreaming) return@LaunchedEffect
         repeat(2) { withFrameNanos { } }
@@ -602,41 +562,6 @@ internal fun BindChatScrollAuxiliaryEffects(
             repeat(2) { withFrameNanos { } }
         }
         pendingFinalBottomSnapState.value = false
-    }
-
-    LaunchedEffect(
-        restoreBottomAfterLifecycleResumeState.value,
-        lifecycleResumeReadyState.value,
-        isStreaming,
-        messagesSize,
-        hasStreamingItem
-    ) {
-        if (!restoreBottomAfterLifecycleResumeState.value || !lifecycleResumeReadyState.value) {
-            return@LaunchedEffect
-        }
-        if (isStreaming || (messagesSize == 0 && !hasStreamingItem)) {
-            restoreBottomAfterLifecycleResumeState.value = false
-            suppressJumpButtonForLifecycleResumeState.value = false
-            return@LaunchedEffect
-        }
-        var stableResumeOverflowPx = Int.MAX_VALUE
-        repeat(4) {
-            withFrameNanos { }
-            val overflowPx = currentBottomOverflowPx()
-            if (overflowPx == Int.MAX_VALUE) return@repeat
-            stableResumeOverflowPx = minOf(stableResumeOverflowPx, overflowPx)
-        }
-        if (
-            !listState.isScrollInProgress &&
-            !programmaticScrollState.value &&
-            stableResumeOverflowPx != Int.MAX_VALUE &&
-            stableResumeOverflowPx > lifecycleResumeBottomSnapThresholdPx
-        ) {
-            scrollToBottom(false)
-        }
-        repeat(2) { withFrameNanos { } }
-        suppressJumpButtonForLifecycleResumeState.value = false
-        restoreBottomAfterLifecycleResumeState.value = false
     }
 
     LaunchedEffect(
@@ -666,5 +591,10 @@ internal fun BindChatScrollAuxiliaryEffects(
                 kotlinx.coroutines.delay(60)
             }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        suppressJumpButtonForImeTransitionState.value = false
+        suppressJumpButtonForLifecycleResumeState.value = false
     }
 }
