@@ -345,8 +345,7 @@ internal fun BindChatScrollRuntimeEffects(
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
     resolveStreamingFollowStepPx: (Int) -> Int,
-    isStreamingReadyForAutoFollow: () -> Boolean,
-    snapStreamingToWorkline: suspend () -> Unit
+    isStreamingReadyForAutoFollow: () -> Boolean
 ) {
     LaunchedEffect(
         isStreaming,
@@ -401,18 +400,6 @@ internal fun BindChatScrollRuntimeEffects(
                     (currentIndex == previousIndex && currentOffset < previousOffset)
             if (isStreaming && hasStreamingItem) {
                 when {
-                    scrollModeState.value == ScrollMode.Idle -> {
-                        val canStartAutoFollow =
-                            !scrollInProgress &&
-                                hasStreamingContent &&
-                                currentStreamingContentBottomPx() > 0 &&
-                                (isStreamingReadyForAutoFollow() || currentStreamingOverflowDelta() > 0)
-                        if (canStartAutoFollow) {
-                            snapStreamingToWorkline()
-                            scrollModeState.value = ScrollMode.AutoFollow
-                        }
-                    }
-
                     scrollInProgress &&
                         (movedTowardTop || movedTowardBottom) &&
                         scrollModeState.value == ScrollMode.AutoFollow -> {

@@ -2927,7 +2927,7 @@ fun ChatScreen() {
                     )
                 )
                 streamingBackgrounded = false
-                scrollMode = ScrollMode.Idle
+                scrollMode = ScrollMode.AutoFollow
                 userInteracting = false
                 if (shouldBottomOnSend) {
                     performScrollToBottom(
@@ -3072,8 +3072,7 @@ fun ChatScreen() {
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
-        isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-        snapStreamingToWorkline = snapStreamingToWorkline
+        isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow
     )
 
     fun completeStreamingImmediatelyFromBackground() {
