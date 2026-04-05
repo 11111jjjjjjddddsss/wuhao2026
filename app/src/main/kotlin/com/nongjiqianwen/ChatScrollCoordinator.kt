@@ -124,11 +124,11 @@ internal fun resolveStreamingFollowStepPx(
     overflow: Int,
     assistantLineStepPx: Int
 ): Int {
-    if (overflow == 0) return 0
+    if (overflow <= 0) return 0
     val steadyStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(5)
     val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
-    if (abs(overflow) < triggerThresholdPx) return 0
-    return overflow.coerceIn(-steadyStepPx, steadyStepPx)
+    if (overflow < triggerThresholdPx) return 0
+    return overflow.coerceAtMost(steadyStepPx)
 }
 
 internal fun shouldShowStreamingScrollToBottomButton(
@@ -405,7 +405,8 @@ internal fun BindChatScrollRuntimeEffects(
                         val canStartAutoFollow =
                             !scrollInProgress &&
                                 hasStreamingContent &&
-                                currentStreamingContentBottomPx() > 0
+                                currentStreamingContentBottomPx() > 0 &&
+                                (isStreamingReadyForAutoFollow() || currentStreamingOverflowDelta() > 0)
                         if (canStartAutoFollow) {
                             snapStreamingToWorkline()
                             scrollModeState.value = ScrollMode.AutoFollow
