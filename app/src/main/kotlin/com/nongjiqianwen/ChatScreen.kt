@@ -954,11 +954,6 @@ internal fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
 internal fun assistantStreamingHeadingTextStyle(level: Int): TextStyle =
     assistantHeadingTextStyle(level).copy(lineBreak = LineBreak.Simple)
 
-private fun consumeStreamingBottomSpacer(currentSpacerPx: Int, consumedScrollPx: Float): Int {
-    if (currentSpacerPx <= 0 || consumedScrollPx <= 0f) return currentSpacerPx
-    return (currentSpacerPx - consumedScrollPx.toInt()).coerceAtLeast(0)
-}
-
 private fun trimWindowStartIndex(source: List<ChatMessage>): Int {
     var userCount = 0
     source.forEach { if (it.role == ChatRole.USER) userCount++ }
@@ -1569,14 +1564,6 @@ fun ChatScreen() {
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= bottomPositionTolerancePx
-    }
-    fun isWithinFinalBottomSnapTolerance(): Boolean {
-        val overflowPx = currentBottomOverflowPx()
-        return overflowPx != Int.MAX_VALUE && overflowPx <= finalBottomSnapTolerancePx
-    }
-    fun isAtBottomStrict(): Boolean {
-        val overflowPx = currentBottomOverflowPx()
-        return overflowPx != Int.MAX_VALUE && overflowPx <= 1
     }
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
