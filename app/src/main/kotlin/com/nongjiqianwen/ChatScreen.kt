@@ -281,7 +281,7 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 internal val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
 private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
-private val STREAM_VISIBLE_BOTTOM_GAP = 40.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 56.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val FINAL_BOTTOM_SNAP_TOLERANCE = 24.dp
@@ -1435,7 +1435,6 @@ fun ChatScreen() {
     var recyclerScrollInProgress by remember(chatScopeId) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(chatScopeId) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(chatScopeId) { mutableIntStateOf(0) }
-    var pendingWaitingAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
 
     val scrollRuntime = rememberChatScrollRuntimeState(
         chatScopeId = chatScopeId,
@@ -2886,8 +2885,6 @@ fun ChatScreen() {
                 streamingBackgrounded = false
                 scrollMode = ScrollMode.AutoFollow
                 userInteracting = false
-                pendingWaitingAnchorMessageId = assistantId
-
                 fakeStreamJob?.cancel()
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -2986,13 +2983,6 @@ fun ChatScreen() {
         recyclerViewRef?.let(::refreshRecyclerMetrics)
     }
 
-    fun currentWaitingAnchorTopPx(): Int {
-        val viewport = messageViewportHeightPx.takeIf { it > 0 } ?: chatRootHeightPx
-        val anchorRatioPx = (viewport * 0.28f).roundToInt()
-        val minAnchorPx = with(density) { 48.dp.roundToPx() }
-        return anchorRatioPx.coerceAtLeast(minAnchorPx)
-    }
-
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
         val recyclerView = recyclerViewRef ?: return@scrollToBottom
         val layoutManager = recyclerLayoutManagerRef ?: return@scrollToBottom
@@ -3032,31 +3022,6 @@ fun ChatScreen() {
         } finally {
             endProgrammaticRecyclerScroll()
         }
-    }
-
-    suspend fun anchorWaitingMessage(itemId: String) {
-        val recyclerView = recyclerViewRef ?: return
-        val layoutManager = recyclerLayoutManagerRef ?: return
-        val adapter = recyclerAdapterRef ?: return
-        val index = adapter.indexOf(itemId)
-        if (index < 0) return
-        beginProgrammaticRecyclerScroll()
-        try {
-            layoutManager.scrollToPositionWithOffset(index, currentWaitingAnchorTopPx())
-        } finally {
-            recyclerView.post { endProgrammaticRecyclerScroll() }
-        }
-    }
-
-    LaunchedEffect(pendingWaitingAnchorMessageId, messages.size, isStreaming) {
-        val waitingId = pendingWaitingAnchorMessageId ?: return@LaunchedEffect
-        if (!isStreaming) {
-            pendingWaitingAnchorMessageId = null
-            return@LaunchedEffect
-        }
-        repeat(2) { withFrameNanos { } }
-        anchorWaitingMessage(waitingId)
-        pendingWaitingAnchorMessageId = null
     }
 
     LaunchedEffect(
