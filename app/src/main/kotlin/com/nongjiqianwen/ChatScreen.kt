@@ -1530,7 +1530,11 @@ fun ChatScreen() {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentLastMessageContentBottomPx(): Int {
-        val lastMessageId = messages.lastOrNull()?.id ?: return -1
+        val lastMessage = messages.lastOrNull() ?: return -1
+        if (lastMessage.role == ChatRole.ASSISTANT && hasStreamingItem && currentStreamingContentBottomPx() > 0) {
+            return currentStreamingContentBottomPx()
+        }
+        val lastMessageId = lastMessage.id
         val bounds = messageSelectionBoundsById[lastMessageId] ?: return -1
         return (bounds.bottom - messageViewportTopPx).roundToInt()
     }
@@ -1560,6 +1564,16 @@ fun ChatScreen() {
         }
         if (lastContentBottom <= 0) return 0
         return desiredBottomPx - lastContentBottom
+    }
+    fun currentBottomObscuredDeltaPx(): Int {
+        val lastContentBottom = currentLastMessageContentBottomPx()
+        val desiredBottomPx = if (composerTopInViewportPx > 0) {
+            (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        } else {
+            (messageViewportHeightPx - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        }
+        if (lastContentBottom <= 0) return 0
+        return (lastContentBottom - desiredBottomPx).coerceAtLeast(0)
     }
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
@@ -2978,6 +2992,15 @@ fun ChatScreen() {
         )
     }
 
+    suspend fun ensureLastMessageNotObscuredByInput() {
+        com.nongjiqianwen.ensureRecyclerLastMessageNotObscuredByInput(
+            recyclerView = recyclerViewRef,
+            currentBottomObscuredDeltaPx = ::currentBottomObscuredDeltaPx,
+            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+        )
+    }
+
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
         com.nongjiqianwen.snapRecyclerStreamingToWorkline(
             recyclerView = recyclerViewRef,
@@ -3120,7 +3143,7 @@ fun ChatScreen() {
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
-        ensureLastMessageVisibleAboveInput = ::ensureLastMessageVisibleAboveInput,
+        ensureLastMessageNotObscuredByInput = ::ensureLastMessageNotObscuredByInput,
         snapStreamingToWorkline = snapStreamingToWorkline,
         scrollToBottom = scrollToBottom
     )

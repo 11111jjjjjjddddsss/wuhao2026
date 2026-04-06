@@ -180,6 +180,23 @@ internal suspend fun ensureRecyclerLastMessageVisibleAboveInput(
     }
 }
 
+internal suspend fun ensureRecyclerLastMessageNotObscuredByInput(
+    recyclerView: RecyclerView?,
+    currentBottomObscuredDeltaPx: () -> Int,
+    beginProgrammaticScroll: () -> Unit,
+    endProgrammaticScroll: () -> Unit
+) {
+    val activeRecyclerView = recyclerView ?: return
+    val obscuredDeltaPx = currentBottomObscuredDeltaPx()
+    if (obscuredDeltaPx <= 0) return
+    beginProgrammaticScroll()
+    try {
+        activeRecyclerView.scrollBy(0, obscuredDeltaPx)
+    } finally {
+        endProgrammaticScroll()
+    }
+}
+
 internal suspend fun snapRecyclerStreamingToWorkline(
     recyclerView: RecyclerView?,
     currentStreamingAlignDeltaPx: () -> Int,
@@ -341,7 +358,7 @@ internal fun BindRecyclerChatScrollEffects(
     isStreamingReadyForAutoFollow: () -> Boolean,
     resolveStreamingFollowStepPx: (Int) -> Int,
     performStreamingFollowStep: suspend (Int) -> Unit,
-    ensureLastMessageVisibleAboveInput: suspend () -> Unit,
+    ensureLastMessageNotObscuredByInput: suspend () -> Unit,
     snapStreamingToWorkline: suspend () -> Unit,
     scrollToBottom: suspend (Boolean) -> Unit
 ) {
@@ -388,7 +405,7 @@ internal fun BindRecyclerChatScrollEffects(
             return@LaunchedEffect
         }
         repeat(2) { withFrameNanos { } }
-        ensureLastMessageVisibleAboveInput()
+        ensureLastMessageNotObscuredByInput()
         pendingWaitingVisibilityCheckState.value = false
     }
 
