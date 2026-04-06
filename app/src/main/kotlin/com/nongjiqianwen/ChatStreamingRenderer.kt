@@ -858,23 +858,26 @@ private fun RendererAssistantMessageContentImpl(
             modifier = if (expandToFullWidth) {
                 stableModifier
                     .fillMaxWidth()
-                    .onGloballyPositioned { coordinates ->
-                        onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
-                    }
             } else {
-                stableModifier.onGloballyPositioned { coordinates ->
-                    onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
-                }
+                stableModifier
             },
             contentAlignment = Alignment.TopStart
         ) {
             if (showWaitingBall || content.isBlank()) {
                 RendererAssistantStreamingWaitingIndicatorImpl(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
+                        }
                 )
             } else {
                 Column(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
+                        },
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
