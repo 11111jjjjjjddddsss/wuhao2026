@@ -3254,16 +3254,9 @@ fun ChatScreen() {
         }
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         repeat(3) { withFrameNanos { } }
-        repeat(4) { attempt ->
-            scrollToBottom(false)
-            if (isAtBottomStrict() && isBottomSettled()) {
-                initialBottomSnapDone = true
-                return@LaunchedEffect
-            }
-            if (attempt < 3) {
-                delay(32)
-            }
-        }
+        scrollToBottom(false)
+        repeat(2) { withFrameNanos { } }
+        initialBottomSnapDone = true
     }
 
     fun jumpToBottom() {
