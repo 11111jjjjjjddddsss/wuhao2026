@@ -1435,6 +1435,7 @@ fun ChatScreen() {
     var recyclerScrollInProgress by remember(chatScopeId) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(chatScopeId) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(chatScopeId) { mutableIntStateOf(0) }
+    var pendingSendBottomSnap by remember(chatScopeId) { mutableStateOf(false) }
 
     val scrollRuntime = rememberChatScrollRuntimeState(
         chatScopeId = chatScopeId,
@@ -2885,6 +2886,7 @@ fun ChatScreen() {
                 streamingBackgrounded = false
                 scrollMode = ScrollMode.AutoFollow
                 userInteracting = false
+                pendingSendBottomSnap = true
                 fakeStreamJob?.cancel()
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -3022,6 +3024,17 @@ fun ChatScreen() {
         } finally {
             endProgrammaticRecyclerScroll()
         }
+    }
+
+    LaunchedEffect(pendingSendBottomSnap, messages.size, isStreaming) {
+        if (!pendingSendBottomSnap) return@LaunchedEffect
+        if (!isStreaming) {
+            pendingSendBottomSnap = false
+            return@LaunchedEffect
+        }
+        repeat(2) { withFrameNanos { } }
+        scrollToBottom(false)
+        pendingSendBottomSnap = false
     }
 
     LaunchedEffect(
