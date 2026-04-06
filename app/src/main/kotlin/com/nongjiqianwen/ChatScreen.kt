@@ -1482,6 +1482,7 @@ fun ChatScreen() {
         mutableStateMapOf<String, FailedAssistantMessageState>()
     }
     val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
+    val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomOverlayContentClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
@@ -1533,7 +1534,9 @@ fun ChatScreen() {
             return currentStreamingContentBottomPx()
         }
         val lastMessageId = lastMessage.id
-        val bounds = messageSelectionBoundsById[lastMessageId] ?: return -1
+        val bounds = messageContentBoundsById[lastMessageId]
+            ?: messageSelectionBoundsById[lastMessageId]
+            ?: return -1
         return (bounds.bottom - messageViewportTopPx).roundToInt()
     }
     fun currentStreamingLegalBottomPx(): Int {
@@ -3123,7 +3126,6 @@ fun ChatScreen() {
         streamTick = streamTick,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         streamingInitialWorklineSnapDoneState = scrollRuntime.streamingInitialWorklineSnapDone,
-        pendingWaitingVisibilityCheckState = scrollRuntime.pendingWaitingVisibilityCheck,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
@@ -3405,6 +3407,7 @@ fun ChatScreen() {
                         DisposableEffect(msg.id) {
                             onDispose {
                                 messageSelectionBoundsById.remove(msg.id)
+                                messageContentBoundsById.remove(msg.id)
                                 if (pendingMessageSelectionToolbarState?.messageId == msg.id) {
                                     pendingMessageSelectionToolbarState = null
                                 }
@@ -3503,8 +3506,11 @@ fun ChatScreen() {
                                                         showDisclaimer = true,
                                                         onStreamingContentBoundsChanged = { bounds ->
                                                             if (bounds != null) {
+                                                                messageContentBoundsById[msg.id] = bounds
                                                                 streamingContentBottomPx =
                                                                     (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                            } else {
+                                                                messageContentBoundsById.remove(msg.id)
                                                             }
                                                         },
                                                         modifier = Modifier.fillMaxWidth()
@@ -3518,6 +3524,13 @@ fun ChatScreen() {
                                                 textToolbar = messageTextToolbar,
                                                 selectionResetKey = messageSelectionResetEpoch,
                                                 showDisclaimer = true,
+                                                onContentBoundsChanged = { bounds ->
+                                                    if (bounds != null) {
+                                                        messageContentBoundsById[msg.id] = bounds
+                                                    } else {
+                                                        messageContentBoundsById.remove(msg.id)
+                                                    }
+                                                },
                                                 modifier = Modifier.fillMaxWidth()
                                             )
                                         }
@@ -3548,6 +3561,11 @@ fun ChatScreen() {
                                             onBubbleBoundsChanged = { bounds ->
                                                 if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
                                                     messageSelectionBoundsById[msg.id] = bounds
+                                                }
+                                                if (bounds != null) {
+                                                    messageContentBoundsById[msg.id] = bounds
+                                                } else {
+                                                    messageContentBoundsById.remove(msg.id)
                                                 }
                                                 if (bounds != null) {
                                                     applyPendingMessageSelectionToolbarIfReady(
@@ -4034,6 +4052,7 @@ private fun SelectableRenderedStaticMessageContent(
     textToolbar: TextToolbar,
     selectionResetKey: Int,
     showDisclaimer: Boolean,
+    onContentBoundsChanged: (Rect?) -> Unit = {},
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -4054,7 +4073,7 @@ private fun SelectableRenderedStaticMessageContent(
                 streamingLineAdvanceTick = 0,
                 selectionEnabled = true,
                 showDisclaimer = showDisclaimer,
-                onStreamingContentBoundsChanged = null,
+                onStreamingContentBoundsChanged = onContentBoundsChanged,
                 expandToFullWidth = expandToFullWidth,
                 modifier = modifier
             )
