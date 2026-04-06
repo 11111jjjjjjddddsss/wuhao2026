@@ -1430,12 +1430,9 @@ fun ChatScreen() {
     var recyclerViewRef by remember(chatScopeId) { mutableStateOf<RecyclerView?>(null) }
     var recyclerLayoutManagerRef by remember(chatScopeId) { mutableStateOf<LinearLayoutManager?>(null) }
     var recyclerAdapterRef by remember(chatScopeId) { mutableStateOf<ChatRecyclerComposeAdapter?>(null) }
-    var recyclerCanScrollBackward by remember(chatScopeId) { mutableStateOf(false) }
-    var recyclerCanScrollForward by remember(chatScopeId) { mutableStateOf(false) }
     var recyclerScrollInProgress by remember(chatScopeId) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(chatScopeId) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(chatScopeId) { mutableIntStateOf(0) }
-
     val scrollRuntime = rememberChatScrollRuntimeState(
         chatScopeId = chatScopeId,
         startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx,
@@ -1445,10 +1442,8 @@ fun ChatScreen() {
     var userInteracting by scrollRuntime.userInteracting
     var streamTick by scrollRuntime.streamTick
     var programmaticScroll by scrollRuntime.programmaticScroll
-    var lastProgrammaticScrollMs by scrollRuntime.lastProgrammaticScrollMs
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
-    var streamingInitialWorklineSnapDone by scrollRuntime.streamingInitialWorklineSnapDone
     var initialBottomSnapDone by scrollRuntime.initialBottomSnapDone
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
@@ -2336,10 +2331,10 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
-            streamingContentBottomPx = -1
-            streamBottomFollowActive = false
-            pendingFinalBottomSnap = false
-            scrollMode = ScrollMode.Idle
+            resetScrollRuntimeAfterStreamingStop(
+                runtime = scrollRuntime,
+                offerFinalBottomSnap = false
+            )
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             if (clearVisibleContent) {
@@ -2566,11 +2561,11 @@ fun ChatScreen() {
             streamingFreshStart = -1
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
-            streamingContentBottomPx = -1
-            streamBottomFollowActive = false
-            streamingInitialWorklineSnapDone = false
             streamingBackgrounded = false
-            scrollMode = ScrollMode.Idle
+            resetScrollRuntimeAfterStreamingStop(
+                runtime = scrollRuntime,
+                offerFinalBottomSnap = shouldSnapToBottomOnFinish
+            )
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
@@ -2579,7 +2574,6 @@ fun ChatScreen() {
                 )
                 streamingMessageId = null
                 streamingMessageContent = ""
-                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
                 persistTick++
                 val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
@@ -2593,7 +2587,6 @@ fun ChatScreen() {
                 streamingMessageId = null
                 streamingMessageContent = ""
                 persistTick++
-                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
             }
         }
     }
@@ -2657,8 +2650,7 @@ fun ChatScreen() {
         mainHandler.post {
             if (!isStreaming) return@post
             if (hasRemoteHistorySource) return@post
-            scrollMode = ScrollMode.AutoFollow
-            streamingInitialWorklineSnapDone = false
+            resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -2706,12 +2698,11 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
-            streamingContentBottomPx = -1
-            streamBottomFollowActive = false
-            streamingInitialWorklineSnapDone = false
-            pendingFinalBottomSnap = false
             streamingBackgrounded = false
-            scrollMode = ScrollMode.Idle
+            resetScrollRuntimeAfterStreamingStop(
+                runtime = scrollRuntime,
+                offerFinalBottomSnap = false
+            )
             context.clearLocalStreamingDraftSync(chatScopeId)
             if (canAttemptRemoteAssistantRecovery(reason)) {
                 if (finalContent.isNotBlank()) {
@@ -2737,7 +2728,7 @@ fun ChatScreen() {
                     messageId = finalId,
                     content = finalContent
                 )
-                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                scrollRuntime.pendingFinalBottomSnap.value = shouldSnapToBottomOnFinish
                 failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
                     sourceUserMessageId = sourceUserMessageId
                 )
@@ -2841,10 +2832,6 @@ fun ChatScreen() {
                 clearFailedAssistantStateForUser(userId)
                 upsertUserMessage(userId, text)
                 anchoredUserMessageId = userId
-                streamingContentBottomPx = -1
-                streamBottomFollowActive = false
-                streamingInitialWorklineSnapDone = false
-                pendingFinalBottomSnap = false
                 streamingFreshStart = -1
                 streamingFreshEnd = -1
                 streamingLineAdvanceTick = 0
@@ -2883,8 +2870,7 @@ fun ChatScreen() {
                     )
                 )
                 streamingBackgrounded = false
-                scrollMode = ScrollMode.Idle
-                userInteracting = false
+                prepareScrollRuntimeForStreamingStart(scrollRuntime)
                 fakeStreamJob?.cancel()
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -2958,178 +2944,62 @@ fun ChatScreen() {
     }
 
     fun refreshRecyclerMetrics(recyclerView: RecyclerView) {
-        recyclerCanScrollBackward = recyclerView.canScrollVertically(-1)
-        recyclerCanScrollForward = recyclerView.canScrollVertically(1)
-        recyclerScrollInProgress = recyclerView.scrollState != RecyclerView.SCROLL_STATE_IDLE
-        val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
-        val firstVisible = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
-        recyclerFirstVisibleItemIndex = firstVisible.coerceAtLeast(0)
-        recyclerFirstVisibleItemScrollOffset =
-            if (firstVisible != RecyclerView.NO_POSITION) {
-                -(layoutManager?.findViewByPosition(firstVisible)?.top ?: 0)
-            } else {
-                0
-            }
+        val metrics = readRecyclerMetrics(recyclerView)
+        recyclerScrollInProgress = metrics.scrollInProgress
+        recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
+        recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
     }
 
     fun beginProgrammaticRecyclerScroll() {
-        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-        programmaticScroll = true
+        com.nongjiqianwen.beginProgrammaticRecyclerScroll(scrollRuntime.programmaticScroll)
     }
 
     fun endProgrammaticRecyclerScroll() {
-        programmaticScroll = false
-        lastProgrammaticScrollMs = SystemClock.uptimeMillis()
-        recyclerViewRef?.let(::refreshRecyclerMetrics)
+        com.nongjiqianwen.endProgrammaticRecyclerScroll(
+            programmaticScrollState = scrollRuntime.programmaticScroll,
+            recyclerView = recyclerViewRef,
+            refreshRecyclerMetrics = ::refreshRecyclerMetrics
+        )
     }
 
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
-        val recyclerView = recyclerViewRef ?: return@scrollToBottom
-        val layoutManager = recyclerLayoutManagerRef ?: return@scrollToBottom
-        val lastIndex = messages.lastIndex
-        if (lastIndex < 0) return@scrollToBottom
-        beginProgrammaticRecyclerScroll()
-        try {
-            if (animated) {
-                recyclerView.smoothScrollToPosition(lastIndex)
-            } else {
-                layoutManager.scrollToPosition(lastIndex)
-                recyclerView.post {
-                    val child = layoutManager.findViewByPosition(lastIndex) ?: run {
-                        endProgrammaticRecyclerScroll()
-                        return@post
-                    }
-                    val desiredBottom = recyclerView.height - recyclerView.paddingBottom
-                    val delta = child.bottom - desiredBottom
-                    if (delta != 0) {
-                        recyclerView.scrollBy(0, delta)
-                    }
-                    endProgrammaticRecyclerScroll()
-                }
-            }
-        } catch (_: Throwable) {
-            endProgrammaticRecyclerScroll()
-        }
+        com.nongjiqianwen.scrollRecyclerToBottom(
+            recyclerView = recyclerViewRef,
+            layoutManager = recyclerLayoutManagerRef,
+            lastIndex = messages.lastIndex,
+            animated = animated,
+            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+        )
+    }
+
+    suspend fun ensureLastMessageVisibleAboveInput() {
+        com.nongjiqianwen.ensureRecyclerLastMessageVisibleAboveInput(
+            recyclerView = recyclerViewRef,
+            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+        )
     }
 
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
-        val recyclerView = recyclerViewRef ?: return@snapStreamingToWorkline
-        val deltaPx = currentStreamingAlignDeltaPx()
-        if (deltaPx == 0) return@snapStreamingToWorkline
+        com.nongjiqianwen.snapRecyclerStreamingToWorkline(
+            recyclerView = recyclerViewRef,
+            currentStreamingAlignDeltaPx = ::currentStreamingAlignDeltaPx,
+            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+        )
+    }
+
+    val performStreamingFollowStep: suspend (Int) -> Unit = performStreamingFollowStep@{ stepPx ->
+        val recyclerView = recyclerViewRef ?: return@performStreamingFollowStep
+        if (stepPx == 0) return@performStreamingFollowStep
         beginProgrammaticRecyclerScroll()
         try {
-            recyclerView.scrollBy(0, -deltaPx)
+            recyclerView.scrollBy(0, stepPx)
+            streamingLineAdvanceTick++
         } finally {
             endProgrammaticRecyclerScroll()
-        }
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageContent,
-        scrollMode,
-        userInteracting,
-        recyclerScrollInProgress,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx
-    ) {
-        if (
-            !isStreaming ||
-            !hasStreamingItem ||
-            streamingMessageContent.isBlank() ||
-            scrollMode != ScrollMode.Idle ||
-            userInteracting ||
-            recyclerScrollInProgress ||
-            !isStreamingReadyForAutoFollow()
-        ) {
-            return@LaunchedEffect
-        }
-        scrollMode = ScrollMode.AutoFollow
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageContent,
-        scrollMode,
-        userInteracting,
-        recyclerScrollInProgress,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx,
-        streamingInitialWorklineSnapDone
-    ) {
-        if (
-            !isStreaming ||
-            !hasStreamingItem ||
-            streamingMessageContent.isBlank() ||
-            streamingInitialWorklineSnapDone
-        ) {
-            return@LaunchedEffect
-        }
-        if (
-            scrollMode != ScrollMode.AutoFollow ||
-            userInteracting ||
-            recyclerScrollInProgress ||
-            currentStreamingContentBottomPx() <= 0 ||
-            currentStreamingLegalBottomPx() <= 0
-        ) {
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        if (
-            scrollMode != ScrollMode.AutoFollow ||
-            userInteracting ||
-            recyclerScrollInProgress
-        ) {
-            return@LaunchedEffect
-        }
-        snapStreamingToWorkline()
-        streamingInitialWorklineSnapDone = true
-    }
-
-    LaunchedEffect(
-        scrollMode,
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageContent,
-        userInteracting,
-        recyclerScrollInProgress,
-        streamTick,
-        streamingWorklineBottomPx,
-        streamingContentBottomPx
-    ) {
-        if (!isStreaming || !hasStreamingItem || streamingMessageContent.isBlank()) {
-            streamBottomFollowActive = false
-            return@LaunchedEffect
-        }
-        while (isActive && isStreaming && hasStreamingItem && streamingMessageContent.isNotBlank()) {
-            withFrameNanos { }
-            if (
-                scrollMode != ScrollMode.AutoFollow ||
-                recyclerScrollInProgress ||
-                userInteracting ||
-                currentStreamingContentBottomPx() <= 0
-            ) {
-                streamBottomFollowActive = false
-                return@LaunchedEffect
-            }
-            val overflow = currentStreamingOverflowDelta()
-            val stepPx = resolveStreamingFollowStepPx(overflow)
-            if (stepPx == 0) {
-                streamBottomFollowActive = false
-                continue
-            }
-            val recyclerView = recyclerViewRef ?: return@LaunchedEffect
-            beginProgrammaticRecyclerScroll()
-            try {
-                streamBottomFollowActive = true
-                recyclerView.scrollBy(0, stepPx)
-                streamingLineAdvanceTick++
-            } finally {
-                endProgrammaticRecyclerScroll()
-                streamBottomFollowActive = false
-            }
         }
     }
 
@@ -3156,20 +3026,19 @@ fun ChatScreen() {
             streamingFreshStart = -1
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
-            streamingContentBottomPx = -1
-            streamBottomFollowActive = false
-            streamingInitialWorklineSnapDone = false
             streamingBackgrounded = false
             streamingMessageId = null
             streamingMessageContent = ""
-            scrollMode = ScrollMode.Idle
+            resetScrollRuntimeAfterStreamingStop(
+                runtime = scrollRuntime,
+                offerFinalBottomSnap = shouldSnapToBottomOnFinish
+            )
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
                     messageId = finalId,
                     content = finalContent
                 )
-                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
                 persistTick++
                 val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
@@ -3180,7 +3049,7 @@ fun ChatScreen() {
                 }
             } else {
                 removeMessageById(finalId)
-                pendingFinalBottomSnap = shouldSnapToBottomOnFinish
+                scrollRuntime.pendingFinalBottomSnap.value = shouldSnapToBottomOnFinish
             }
         }
     }
@@ -3218,54 +3087,47 @@ fun ChatScreen() {
         return true
     }
 
-    LaunchedEffect(pendingFinalBottomSnap, messages.size, isStreaming, scrollMode) {
-        if (!pendingFinalBottomSnap || isStreaming || scrollMode == ScrollMode.UserBrowsing) {
-            return@LaunchedEffect
-        }
-        repeat(2) { withFrameNanos { } }
-        scrollToBottom(false)
-        pendingFinalBottomSnap = false
-    }
-
-    LaunchedEffect(
-        startupLayoutReady,
-        startupHydrationBarrierSatisfied,
-        messages.size,
-        hasStreamingItem,
-        isStreaming,
-        initialBottomSnapDone
-    ) {
-        if (initialBottomSnapDone) return@LaunchedEffect
-        if (!startupHydrationBarrierSatisfied || !startupLayoutReady) return@LaunchedEffect
-        if (messages.isEmpty() && !hasStreamingItem) {
-            initialBottomSnapDone = true
-            return@LaunchedEffect
-        }
-        if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
-        repeat(3) { withFrameNanos { } }
-        scrollToBottom(false)
-        repeat(2) { withFrameNanos { } }
-        initialBottomSnapDone = true
-    }
-
     fun jumpToBottom() {
         snackbarScope.launch {
-            if (messages.isEmpty() && !hasStreamingItem) return@launch
-            val jumpingIntoStreaming = isStreaming && hasStreamingItem
-            scrollMode = if (jumpingIntoStreaming) {
-                ScrollMode.AutoFollow
-            } else {
-                ScrollMode.Idle
-            }
-            userInteracting = false
-            jumpButtonPulseVisible = false
-            if (jumpingIntoStreaming) {
-                snapStreamingToWorkline()
-            } else {
-                scrollToBottom(false)
-            }
+            performJumpToBottom(
+                messagesCount = messages.size,
+                hasStreamingItem = hasStreamingItem,
+                isStreaming = isStreaming,
+                scrollModeState = scrollRuntime.scrollMode,
+                userInteractingState = scrollRuntime.userInteracting,
+                jumpButtonPulseVisibleState = scrollRuntime.jumpButtonPulseVisible,
+                snapStreamingToWorkline = snapStreamingToWorkline,
+                scrollToBottom = scrollToBottom
+            )
         }
     }
+
+    BindRecyclerChatScrollEffects(
+        isStreaming = isStreaming,
+        hasStreamingItem = hasStreamingItem,
+        streamingMessageContent = streamingMessageContent,
+        recyclerScrollInProgress = recyclerScrollInProgress,
+        startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
+        startupLayoutReady = startupLayoutReady,
+        messagesCount = messages.size,
+        scrollModeState = scrollRuntime.scrollMode,
+        userInteractingState = scrollRuntime.userInteracting,
+        streamTick = streamTick,
+        streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+        streamingInitialWorklineSnapDoneState = scrollRuntime.streamingInitialWorklineSnapDone,
+        pendingWaitingVisibilityCheckState = scrollRuntime.pendingWaitingVisibilityCheck,
+        pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
+        initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
+        currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
+        currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
+        currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
+        isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+        resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
+        performStreamingFollowStep = performStreamingFollowStep,
+        ensureLastMessageVisibleAboveInput = ::ensureLastMessageVisibleAboveInput,
+        snapStreamingToWorkline = snapStreamingToWorkline,
+        scrollToBottom = scrollToBottom
+    )
 
     BoxWithConstraints(
         modifier = Modifier
@@ -3506,35 +3368,18 @@ fun ChatScreen() {
                         },
                         onScrollStateChanged = { recyclerView, newState ->
                             refreshRecyclerMetrics(recyclerView)
-                            if (programmaticScroll) {
-                                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
-                                    endProgrammaticRecyclerScroll()
-                                }
-                                return@ChatRecyclerViewHost
-                            }
                             recyclerScrollInProgress = newState != RecyclerView.SCROLL_STATE_IDLE
-                            when (newState) {
-                                RecyclerView.SCROLL_STATE_DRAGGING,
-                                RecyclerView.SCROLL_STATE_SETTLING -> {
-                                    userInteracting = true
-                                    if (isStreaming && scrollMode == ScrollMode.AutoFollow) {
-                                        scrollMode = ScrollMode.UserBrowsing
-                                        streamBottomFollowActive = false
-                                    }
-                                }
-
-                                RecyclerView.SCROLL_STATE_IDLE -> {
-                                    userInteracting = false
-                                    if (
-                                        isStreaming &&
-                                        hasStreamingItem &&
-                                        scrollMode == ScrollMode.UserBrowsing &&
-                                        isStreamingReadyForAutoFollow()
-                                    ) {
-                                        scrollMode = ScrollMode.AutoFollow
-                                    }
-                                }
-                            }
+                            handleRecyclerScrollStateChanged(
+                                newState = newState,
+                                programmaticScroll = programmaticScroll,
+                                isStreaming = isStreaming,
+                                hasStreamingItem = hasStreamingItem,
+                                scrollModeState = scrollRuntime.scrollMode,
+                                userInteractingState = scrollRuntime.userInteracting,
+                                streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+                                isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+                                endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+                            )
                         },
                         onScrolled = { recyclerView ->
                             refreshRecyclerMetrics(recyclerView)
