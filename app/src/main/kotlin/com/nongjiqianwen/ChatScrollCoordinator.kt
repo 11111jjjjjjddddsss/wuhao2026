@@ -416,6 +416,29 @@ internal fun BindRecyclerChatScrollEffects(
         scrollMode,
         userInteracting,
         recyclerScrollInProgress,
+        currentStreamingContentBottomPx()
+    ) {
+        if (
+            !isStreaming ||
+            !hasStreamingItem ||
+            streamingMessageContent.isBlank() ||
+            scrollMode != ScrollMode.Idle ||
+            userInteracting ||
+            recyclerScrollInProgress ||
+            currentStreamingContentBottomPx() <= 0
+        ) {
+            return@LaunchedEffect
+        }
+        ensureLastMessageNotObscuredByInput()
+    }
+
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageContent,
+        scrollMode,
+        userInteracting,
+        recyclerScrollInProgress,
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx(),
         streamingInitialWorklineSnapDone
