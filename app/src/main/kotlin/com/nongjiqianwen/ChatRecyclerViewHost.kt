@@ -65,7 +65,7 @@ internal fun ChatRecyclerViewHost(
     bottomPaddingPx: Int,
     onRecyclerReady: (RecyclerView, LinearLayoutManager, ChatRecyclerComposeAdapter) -> Unit,
     onScrollStateChanged: (RecyclerView, Int) -> Unit,
-    onScrolled: (RecyclerView) -> Unit,
+    onScrolled: (RecyclerView, Int, Int) -> Unit,
     itemContent: @Composable (String) -> Unit
 ) {
     val adapter = remember(itemContent) { ChatRecyclerComposeAdapter(itemContent) }
@@ -88,7 +88,7 @@ internal fun ChatRecyclerViewHost(
                         }
 
                         override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                            onScrolled(recyclerView)
+                            onScrolled(recyclerView, dx, dy)
                         }
                     }
                 )

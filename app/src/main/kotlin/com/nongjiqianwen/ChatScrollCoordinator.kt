@@ -27,6 +27,7 @@ internal data class ChatScrollRuntimeState(
     val streamBottomFollowActive: MutableState<Boolean>,
     val streamingInitialWorklineSnapDone: MutableState<Boolean>,
     val pendingWaitingVisibilityCheck: MutableState<Boolean>,
+    val returnToBottomArmed: MutableState<Boolean>,
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
     val pendingFinalBottomSnap: MutableState<Boolean>,
@@ -50,6 +51,7 @@ internal fun rememberChatScrollRuntimeState(
     val streamBottomFollowActive = remember { mutableStateOf(false) }
     val streamingInitialWorklineSnapDone = remember { mutableStateOf(false) }
     val pendingWaitingVisibilityCheck = remember(chatScopeId) { mutableStateOf(false) }
+    val returnToBottomArmed = remember(chatScopeId) { mutableStateOf(false) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
     val pendingFinalBottomSnap = remember { mutableStateOf(false) }
@@ -75,6 +77,7 @@ internal fun rememberChatScrollRuntimeState(
             streamBottomFollowActive = streamBottomFollowActive,
             streamingInitialWorklineSnapDone = streamingInitialWorklineSnapDone,
             pendingWaitingVisibilityCheck = pendingWaitingVisibilityCheck,
+            returnToBottomArmed = returnToBottomArmed,
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
             pendingFinalBottomSnap = pendingFinalBottomSnap,
@@ -202,6 +205,7 @@ internal fun handleRecyclerScrollStateChanged(
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
+    returnToBottomArmedState: MutableState<Boolean>,
     isStreamingReadyForAutoFollow: () -> Boolean,
     endProgrammaticScroll: () -> Unit
 ) {
@@ -218,6 +222,7 @@ internal fun handleRecyclerScrollStateChanged(
             if (isStreaming && scrollModeState.value == ScrollMode.AutoFollow) {
                 scrollModeState.value = ScrollMode.UserBrowsing
                 streamBottomFollowActiveState.value = false
+                returnToBottomArmedState.value = false
             }
         }
 
@@ -227,11 +232,27 @@ internal fun handleRecyclerScrollStateChanged(
                 isStreaming &&
                 hasStreamingItem &&
                 scrollModeState.value == ScrollMode.UserBrowsing &&
+                returnToBottomArmedState.value &&
                 isStreamingReadyForAutoFollow()
             ) {
                 scrollModeState.value = ScrollMode.AutoFollow
+                returnToBottomArmedState.value = false
             }
         }
+    }
+}
+
+internal fun handleRecyclerScrolledWhileBrowsing(
+    dy: Int,
+    programmaticScroll: Boolean,
+    isStreaming: Boolean,
+    scrollMode: ScrollMode,
+    returnToBottomArmedState: MutableState<Boolean>
+) {
+    if (programmaticScroll || !isStreaming || scrollMode != ScrollMode.UserBrowsing) return
+    when {
+        dy > 0 -> returnToBottomArmedState.value = true
+        dy < 0 -> returnToBottomArmedState.value = false
     }
 }
 
@@ -271,6 +292,7 @@ internal fun prepareScrollRuntimeForStreamingStart(
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
     runtime.pendingWaitingVisibilityCheck.value = true
+    runtime.returnToBottomArmed.value = false
 }
 
 internal fun resetScrollRuntimeAfterStreamingStop(
@@ -283,6 +305,7 @@ internal fun resetScrollRuntimeAfterStreamingStop(
     runtime.pendingWaitingVisibilityCheck.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
+    runtime.returnToBottomArmed.value = false
     runtime.pendingFinalBottomSnap.value = offerFinalBottomSnap
 }
 
@@ -291,6 +314,7 @@ internal fun resumeScrollRuntimeForStreamingRecovery(
 ) {
     runtime.scrollMode.value = ScrollMode.AutoFollow
     runtime.userInteracting.value = false
+    runtime.returnToBottomArmed.value = false
     runtime.streamingInitialWorklineSnapDone.value = false
 }
 

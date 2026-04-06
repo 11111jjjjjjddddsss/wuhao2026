@@ -3373,12 +3373,20 @@ fun ChatScreen() {
                                 scrollModeState = scrollRuntime.scrollMode,
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+                                returnToBottomArmedState = scrollRuntime.returnToBottomArmed,
                                 isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         },
-                        onScrolled = { recyclerView ->
+                        onScrolled = { recyclerView, _, dy ->
                             refreshRecyclerMetrics(recyclerView)
+                            handleRecyclerScrolledWhileBrowsing(
+                                dy = dy,
+                                programmaticScroll = programmaticScroll,
+                                isStreaming = isStreaming,
+                                scrollMode = scrollMode,
+                                returnToBottomArmedState = scrollRuntime.returnToBottomArmed
+                            )
                         }
                     ) { itemId ->
                         val msg = messages.firstOrNull { it.id == itemId } ?: return@ChatRecyclerViewHost
