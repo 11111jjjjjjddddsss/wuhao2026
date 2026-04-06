@@ -284,7 +284,6 @@ private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 56.dp
 private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
-private val FINAL_BOTTOM_SNAP_TOLERANCE = 24.dp
 private val LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD = 32.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
@@ -1486,7 +1485,6 @@ fun ChatScreen() {
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomOverlayContentClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
-    val finalBottomSnapTolerancePx = with(density) { FINAL_BOTTOM_SNAP_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -2981,15 +2979,6 @@ fun ChatScreen() {
                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
             )
         }
-    }
-
-    suspend fun ensureLastMessageVisibleAboveInput() {
-        com.nongjiqianwen.ensureRecyclerLastMessageVisibleAboveInput(
-            recyclerView = recyclerViewRef,
-            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
-        )
     }
 
     suspend fun ensureLastMessageNotObscuredByInput() {
