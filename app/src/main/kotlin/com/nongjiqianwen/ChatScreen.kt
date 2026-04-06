@@ -2958,6 +2958,15 @@ fun ChatScreen() {
             beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
             endProgrammaticScroll = ::endProgrammaticRecyclerScroll
         )
+        if (!animated) {
+            repeat(2) { withFrameNanos { } }
+            com.nongjiqianwen.ensureRecyclerLastMessageVisibleAboveInput(
+                recyclerView = recyclerViewRef,
+                currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+                beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+                endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+            )
+        }
     }
 
     suspend fun ensureLastMessageVisibleAboveInput() {

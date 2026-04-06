@@ -168,7 +168,7 @@ internal suspend fun ensureRecyclerLastMessageVisibleAboveInput(
 ) {
     val activeRecyclerView = recyclerView ?: return
     val alignDeltaPx = currentBottomAlignDeltaPx()
-    if (alignDeltaPx >= 0) return
+    if (alignDeltaPx == 0) return
     beginProgrammaticScroll()
     try {
         activeRecyclerView.scrollBy(0, -alignDeltaPx)
