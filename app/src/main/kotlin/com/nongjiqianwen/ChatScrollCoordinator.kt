@@ -466,7 +466,7 @@ internal fun resolveStreamingFollowStepPx(
 ): Int {
     if (overflow <= 0) return 0
     val steadyStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(5)
-    val triggerThresholdPx = (steadyStepPx * 0.2f).roundToInt().coerceAtLeast(2)
+    val triggerThresholdPx = (steadyStepPx * 0.35f).roundToInt().coerceAtLeast(3)
     if (overflow < triggerThresholdPx) return 0
     return overflow.coerceAtMost(steadyStepPx)
 }
