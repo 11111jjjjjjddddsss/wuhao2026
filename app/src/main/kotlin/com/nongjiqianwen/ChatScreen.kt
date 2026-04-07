@@ -1483,6 +1483,9 @@ fun ChatScreen() {
     val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
+    val bottomOverlayContentClearancePx = with(density) {
+        BOTTOM_OVERLAY_CONTENT_CLEARANCE.toPx().roundToInt()
+    }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -1552,6 +1555,16 @@ fun ChatScreen() {
         }
         return (messageViewportHeightPx - bottomBarHeightPx - streamVisibleBottomGapPx).coerceAtLeast(0)
     }
+    fun currentInputSafeBottomTargetPx(): Int {
+        if (composerTopInViewportPx > 0) {
+            return (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        }
+        return (
+            messageViewportHeightPx -
+                bottomBarHeightPx -
+                bottomOverlayContentClearancePx
+            ).coerceAtLeast(0)
+    }
     fun currentBottomOverflowPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = currentUnifiedBottomTargetPx()
@@ -1566,7 +1579,7 @@ fun ChatScreen() {
     }
     fun currentBottomObscuredDeltaPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
-        val desiredBottomPx = currentUnifiedBottomTargetPx()
+        val desiredBottomPx = currentInputSafeBottomTargetPx()
         if (lastContentBottom <= 0) return 0
         return (lastContentBottom - desiredBottomPx).coerceAtLeast(0)
     }
