@@ -21,11 +21,9 @@ internal enum class ScrollMode {
 internal data class ChatScrollRuntimeState(
     val scrollMode: MutableState<ScrollMode>,
     val userInteracting: MutableState<Boolean>,
-    val streamTick: MutableIntState,
     val programmaticScroll: MutableState<Boolean>,
     val streamingContentBottomPx: MutableIntState,
     val streamBottomFollowActive: MutableState<Boolean>,
-    val streamingInitialWorklineSnapDone: MutableState<Boolean>,
     val returnToBottomArmed: MutableState<Boolean>,
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
@@ -44,11 +42,9 @@ internal fun rememberChatScrollRuntimeState(
 ): ChatScrollRuntimeState {
     val scrollMode = remember { mutableStateOf(ScrollMode.Idle) }
     val userInteracting = remember { mutableStateOf(false) }
-    val streamTick = remember { mutableIntStateOf(0) }
     val programmaticScroll = remember { mutableStateOf(false) }
     val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
     val streamBottomFollowActive = remember { mutableStateOf(false) }
-    val streamingInitialWorklineSnapDone = remember { mutableStateOf(false) }
     val returnToBottomArmed = remember(chatScopeId) { mutableStateOf(false) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
@@ -69,11 +65,9 @@ internal fun rememberChatScrollRuntimeState(
         ChatScrollRuntimeState(
             scrollMode = scrollMode,
             userInteracting = userInteracting,
-            streamTick = streamTick,
             programmaticScroll = programmaticScroll,
             streamingContentBottomPx = streamingContentBottomPx,
             streamBottomFollowActive = streamBottomFollowActive,
-            streamingInitialWorklineSnapDone = streamingInitialWorklineSnapDone,
             returnToBottomArmed = returnToBottomArmed,
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
@@ -301,7 +295,6 @@ internal fun prepareScrollRuntimeForStreamingStart(
 ) {
     runtime.streamingContentBottomPx.intValue = -1
     runtime.streamBottomFollowActive.value = false
-    runtime.streamingInitialWorklineSnapDone.value = false
     runtime.pendingFinalBottomSnap.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
@@ -314,7 +307,6 @@ internal fun resetScrollRuntimeAfterStreamingStop(
 ) {
     runtime.streamingContentBottomPx.intValue = -1
     runtime.streamBottomFollowActive.value = false
-    runtime.streamingInitialWorklineSnapDone.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
     runtime.returnToBottomArmed.value = false
@@ -327,7 +319,6 @@ internal fun resumeScrollRuntimeForStreamingRecovery(
     runtime.scrollMode.value = ScrollMode.AutoFollow
     runtime.userInteracting.value = false
     runtime.returnToBottomArmed.value = false
-    runtime.streamingInitialWorklineSnapDone.value = false
 }
 
 @Composable
@@ -341,9 +332,7 @@ internal fun BindRecyclerChatScrollEffects(
     messagesCount: Int,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
-    streamTick: Int,
     streamBottomFollowActiveState: MutableState<Boolean>,
-    streamingInitialWorklineSnapDoneState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     initialBottomSnapDoneState: MutableState<Boolean>,
     currentStreamingContentBottomPx: () -> Int,
@@ -358,7 +347,6 @@ internal fun BindRecyclerChatScrollEffects(
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
-    val streamingInitialWorklineSnapDone = streamingInitialWorklineSnapDoneState.value
     val pendingFinalBottomSnap = pendingFinalBottomSnapState.value
     val initialBottomSnapDone = initialBottomSnapDoneState.value
 
@@ -372,85 +360,39 @@ internal fun BindRecyclerChatScrollEffects(
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx()
     ) {
-        if (
-            !isStreaming ||
-            !hasStreamingItem ||
-            scrollMode != ScrollMode.Idle ||
-            userInteracting ||
-            recyclerScrollInProgress ||
-            currentStreamingContentBottomPx() <= 0
-        ) {
-            return@LaunchedEffect
-        }
-        ensureLastMessageNotObscuredByInput()
-        if (streamingMessageContent.isNotBlank() && isStreamingReadyForAutoFollow()) {
-            scrollModeState.value = ScrollMode.AutoFollow
-        }
-    }
-
-    LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageContent,
-        scrollMode,
-        userInteracting,
-        recyclerScrollInProgress,
-        currentStreamingContentBottomPx(),
-        currentStreamingLegalBottomPx(),
-        streamingInitialWorklineSnapDone
-    ) {
-        if (
-            !isStreaming ||
-            !hasStreamingItem ||
-            streamingMessageContent.isBlank() ||
-            streamingInitialWorklineSnapDone
-        ) {
-            return@LaunchedEffect
-        }
-        if (
-            scrollMode != ScrollMode.AutoFollow ||
-            userInteracting ||
-            recyclerScrollInProgress ||
-            currentStreamingContentBottomPx() <= 0 ||
-            currentStreamingLegalBottomPx() <= 0
-        ) {
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        if (
-            scrollModeState.value != ScrollMode.AutoFollow ||
-            userInteractingState.value ||
-            recyclerScrollInProgress
-        ) {
-            return@LaunchedEffect
-        }
-        snapStreamingToWorkline()
-        streamingInitialWorklineSnapDoneState.value = true
-    }
-
-    LaunchedEffect(
-        scrollMode,
-        isStreaming,
-        hasStreamingItem,
-        streamingMessageContent,
-        userInteracting,
-        recyclerScrollInProgress,
-        streamTick,
-        currentStreamingLegalBottomPx(),
-        currentStreamingContentBottomPx()
-    ) {
-        if (!isStreaming || !hasStreamingItem || streamingMessageContent.isBlank()) {
+        if (!isStreaming || !hasStreamingItem) {
             streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
-        while (isActive && isStreaming && hasStreamingItem && streamingMessageContent.isNotBlank()) {
+        while (isActive && isStreaming && hasStreamingItem) {
             withFrameNanos { }
+            val contentBottom = currentStreamingContentBottomPx()
+            val activeScrollMode = scrollModeState.value
             if (
-                scrollModeState.value != ScrollMode.AutoFollow ||
+                activeScrollMode == ScrollMode.UserBrowsing ||
                 recyclerScrollInProgress ||
                 userInteractingState.value ||
-                currentStreamingContentBottomPx() <= 0
+                contentBottom <= 0
             ) {
+                streamBottomFollowActiveState.value = false
+                return@LaunchedEffect
+            }
+            if (activeScrollMode == ScrollMode.Idle) {
+                ensureLastMessageNotObscuredByInput()
+                if (streamingMessageContent.isNotBlank() && isStreamingReadyForAutoFollow()) {
+                    snapStreamingToWorkline()
+                    if (
+                        scrollModeState.value == ScrollMode.Idle &&
+                        !userInteractingState.value &&
+                        !recyclerScrollInProgress
+                    ) {
+                        scrollModeState.value = ScrollMode.AutoFollow
+                    }
+                }
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            if (streamingMessageContent.isBlank() || activeScrollMode != ScrollMode.AutoFollow) {
                 streamBottomFollowActiveState.value = false
                 return@LaunchedEffect
             }

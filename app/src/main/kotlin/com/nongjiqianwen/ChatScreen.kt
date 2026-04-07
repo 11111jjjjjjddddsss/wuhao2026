@@ -1434,7 +1434,6 @@ fun ChatScreen() {
     )
     var scrollMode by scrollRuntime.scrollMode
     var userInteracting by scrollRuntime.userInteracting
-    var streamTick by scrollRuntime.streamTick
     var programmaticScroll by scrollRuntime.programmaticScroll
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
@@ -2489,7 +2488,7 @@ fun ChatScreen() {
                 streamingFreshTick = advance.freshTick
                 lastStreamingFreshRevealMs = advance.lastFreshRevealMs
             },
-            onTick = { streamTick++ }
+            onTick = { }
         )
     }
 
@@ -2553,7 +2552,6 @@ fun ChatScreen() {
                 streamingMessageId = flushed.messageId
                 streamingMessageContent = flushed.content
                 streamingRevealBuffer = ""
-                streamTick++
             }
             val finalContent = streamingMessageContent
             val finalId = streamingMessageId
@@ -2668,7 +2666,6 @@ fun ChatScreen() {
                 streamingMessageId = flushed.messageId
                 streamingMessageContent = flushed.content
                 streamingRevealBuffer = ""
-                streamTick++
             }
             if (fakeStreamJob?.isActive == true) return@post
             val consumedChars = (streamingMessageContent.length + streamingRevealBuffer.length)
@@ -3123,9 +3120,7 @@ fun ChatScreen() {
         messagesCount = messages.size,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
-        streamTick = streamTick,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-        streamingInitialWorklineSnapDoneState = scrollRuntime.streamingInitialWorklineSnapDone,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
