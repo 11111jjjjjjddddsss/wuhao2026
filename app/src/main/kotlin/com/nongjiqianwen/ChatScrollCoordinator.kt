@@ -24,7 +24,7 @@ internal data class ChatScrollRuntimeState(
     val programmaticScroll: MutableState<Boolean>,
     val streamingContentBottomPx: MutableIntState,
     val streamBottomFollowActive: MutableState<Boolean>,
-    val returnToBottomArmed: MutableState<Boolean>,
+    val resumeAutoFollowArmed: MutableState<Boolean>,
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
     val pendingFinalBottomSnap: MutableState<Boolean>,
@@ -45,7 +45,7 @@ internal fun rememberChatScrollRuntimeState(
     val programmaticScroll = remember { mutableStateOf(false) }
     val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
     val streamBottomFollowActive = remember { mutableStateOf(false) }
-    val returnToBottomArmed = remember(chatScopeId) { mutableStateOf(false) }
+    val resumeAutoFollowArmed = remember(chatScopeId) { mutableStateOf(false) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
     val pendingFinalBottomSnap = remember { mutableStateOf(false) }
@@ -68,7 +68,7 @@ internal fun rememberChatScrollRuntimeState(
             programmaticScroll = programmaticScroll,
             streamingContentBottomPx = streamingContentBottomPx,
             streamBottomFollowActive = streamBottomFollowActive,
-            returnToBottomArmed = returnToBottomArmed,
+            resumeAutoFollowArmed = resumeAutoFollowArmed,
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
             pendingFinalBottomSnap = pendingFinalBottomSnap,
@@ -81,8 +81,6 @@ internal fun rememberChatScrollRuntimeState(
 }
 
 internal data class ChatRecyclerMetrics(
-    val canScrollBackward: Boolean,
-    val canScrollForward: Boolean,
     val scrollInProgress: Boolean,
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int
@@ -92,8 +90,6 @@ internal fun readRecyclerMetrics(recyclerView: RecyclerView): ChatRecyclerMetric
     val layoutManager = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
     val firstVisible = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
     return ChatRecyclerMetrics(
-        canScrollBackward = recyclerView.canScrollVertically(-1),
-        canScrollForward = recyclerView.canScrollVertically(1),
         scrollInProgress = recyclerView.scrollState != RecyclerView.SCROLL_STATE_IDLE,
         firstVisibleItemIndex = firstVisible.coerceAtLeast(0),
         firstVisibleItemScrollOffset = if (firstVisible != RecyclerView.NO_POSITION) {
@@ -154,7 +150,7 @@ internal suspend fun scrollRecyclerToBottom(
     }
 }
 
-internal suspend fun ensureRecyclerLastMessageVisibleAboveInput(
+internal suspend fun alignRecyclerLastMessageToBottomTarget(
     recyclerView: RecyclerView?,
     currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
@@ -166,23 +162,6 @@ internal suspend fun ensureRecyclerLastMessageVisibleAboveInput(
     beginProgrammaticScroll()
     try {
         activeRecyclerView.scrollBy(0, -alignDeltaPx)
-    } finally {
-        endProgrammaticScroll()
-    }
-}
-
-internal suspend fun ensureRecyclerLastMessageNotObscuredByInput(
-    recyclerView: RecyclerView?,
-    currentBottomObscuredDeltaPx: () -> Int,
-    beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit
-) {
-    val activeRecyclerView = recyclerView ?: return
-    val obscuredDeltaPx = currentBottomObscuredDeltaPx()
-    if (obscuredDeltaPx <= 0) return
-    beginProgrammaticScroll()
-    try {
-        activeRecyclerView.scrollBy(0, obscuredDeltaPx)
     } finally {
         endProgrammaticScroll()
     }
@@ -213,7 +192,7 @@ internal fun handleRecyclerScrollStateChanged(
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
-    returnToBottomArmedState: MutableState<Boolean>,
+    resumeAutoFollowArmedState: MutableState<Boolean>,
     isStreamingReadyForAutoFollow: () -> Boolean,
     endProgrammaticScroll: () -> Unit
 ) {
@@ -227,10 +206,14 @@ internal fun handleRecyclerScrollStateChanged(
         RecyclerView.SCROLL_STATE_DRAGGING,
         RecyclerView.SCROLL_STATE_SETTLING -> {
             userInteractingState.value = true
-            if (isStreaming && scrollModeState.value == ScrollMode.AutoFollow) {
+            if (
+                isStreaming &&
+                hasStreamingItem &&
+                scrollModeState.value != ScrollMode.UserBrowsing
+            ) {
                 scrollModeState.value = ScrollMode.UserBrowsing
                 streamBottomFollowActiveState.value = false
-                returnToBottomArmedState.value = false
+                resumeAutoFollowArmedState.value = false
             }
         }
 
@@ -240,11 +223,11 @@ internal fun handleRecyclerScrollStateChanged(
                 isStreaming &&
                 hasStreamingItem &&
                 scrollModeState.value == ScrollMode.UserBrowsing &&
-                returnToBottomArmedState.value &&
+                resumeAutoFollowArmedState.value &&
                 isStreamingReadyForAutoFollow()
             ) {
                 scrollModeState.value = ScrollMode.AutoFollow
-                returnToBottomArmedState.value = false
+                resumeAutoFollowArmedState.value = false
             }
         }
     }
@@ -255,12 +238,12 @@ internal fun handleRecyclerScrolledWhileBrowsing(
     programmaticScroll: Boolean,
     isStreaming: Boolean,
     scrollMode: ScrollMode,
-    returnToBottomArmedState: MutableState<Boolean>
+    resumeAutoFollowArmedState: MutableState<Boolean>
 ) {
     if (programmaticScroll || !isStreaming || scrollMode != ScrollMode.UserBrowsing) return
     when {
-        dy > 0 -> returnToBottomArmedState.value = true
-        dy < 0 -> returnToBottomArmedState.value = false
+        dy > 0 -> resumeAutoFollowArmedState.value = true
+        dy < 0 -> resumeAutoFollowArmedState.value = false
     }
 }
 
@@ -298,7 +281,7 @@ internal fun prepareScrollRuntimeForStreamingStart(
     runtime.pendingFinalBottomSnap.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
-    runtime.returnToBottomArmed.value = false
+    runtime.resumeAutoFollowArmed.value = false
 }
 
 internal fun resetScrollRuntimeAfterStreamingStop(
@@ -309,7 +292,7 @@ internal fun resetScrollRuntimeAfterStreamingStop(
     runtime.streamBottomFollowActive.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
-    runtime.returnToBottomArmed.value = false
+    runtime.resumeAutoFollowArmed.value = false
     runtime.pendingFinalBottomSnap.value = offerFinalBottomSnap
 }
 
@@ -318,7 +301,7 @@ internal fun resumeScrollRuntimeForStreamingRecovery(
 ) {
     runtime.scrollMode.value = ScrollMode.AutoFollow
     runtime.userInteracting.value = false
-    runtime.returnToBottomArmed.value = false
+    runtime.resumeAutoFollowArmed.value = false
 }
 
 @Composable
@@ -335,13 +318,14 @@ internal fun BindRecyclerChatScrollEffects(
     streamBottomFollowActiveState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     initialBottomSnapDoneState: MutableState<Boolean>,
+    currentLastMessageContentBottomPx: () -> Int,
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
+    isWithinBottomTolerance: () -> Boolean,
     isStreamingReadyForAutoFollow: () -> Boolean,
     resolveStreamingFollowStepPx: (Int) -> Int,
     performStreamingFollowStep: suspend (Int) -> Unit,
-    ensureLastMessageNotObscuredByInput: suspend () -> Unit,
     snapStreamingToWorkline: suspend () -> Unit,
     scrollToBottom: suspend (Boolean) -> Unit
 ) {
@@ -378,7 +362,6 @@ internal fun BindRecyclerChatScrollEffects(
                 return@LaunchedEffect
             }
             if (activeScrollMode == ScrollMode.Idle) {
-                ensureLastMessageNotObscuredByInput()
                 if (streamingMessageContent.isNotBlank() && isStreamingReadyForAutoFollow()) {
                     snapStreamingToWorkline()
                     if (
@@ -411,13 +394,29 @@ internal fun BindRecyclerChatScrollEffects(
         }
     }
 
-    LaunchedEffect(pendingFinalBottomSnap, messagesCount, isStreaming, scrollMode) {
+    LaunchedEffect(
+        pendingFinalBottomSnap,
+        messagesCount,
+        isStreaming,
+        scrollMode,
+        currentLastMessageContentBottomPx(),
+        isWithinBottomTolerance()
+    ) {
         if (!pendingFinalBottomSnap || isStreaming || scrollMode == ScrollMode.UserBrowsing) {
+            return@LaunchedEffect
+        }
+        if (currentLastMessageContentBottomPx() <= 0) {
+            return@LaunchedEffect
+        }
+        if (isWithinBottomTolerance()) {
+            pendingFinalBottomSnapState.value = false
             return@LaunchedEffect
         }
         repeat(2) { withFrameNanos { } }
         scrollToBottom(false)
-        pendingFinalBottomSnapState.value = false
+        if (isWithinBottomTolerance()) {
+            pendingFinalBottomSnapState.value = false
+        }
     }
 
     LaunchedEffect(
@@ -440,16 +439,6 @@ internal fun BindRecyclerChatScrollEffects(
         repeat(2) { withFrameNanos { } }
         initialBottomSnapDoneState.value = true
     }
-}
-
-internal fun resolveStreamingLegalBottomPx(
-    worklineBottomPx: Int,
-    composerTopInViewportPx: Int,
-    streamVisibleBottomGapPx: Int
-): Int {
-    if (worklineBottomPx > 0) return worklineBottomPx
-    if (composerTopInViewportPx <= 0) return -1
-    return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
 }
 
 internal fun currentStreamingOverflowDelta(
@@ -475,29 +464,18 @@ internal fun shouldShowStreamingScrollToBottomButton(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
     scrollMode: ScrollMode,
-    nearReturnLine: Boolean
+    nearWorkline: Boolean
 ): Boolean {
     return isStreaming &&
         hasStreamingItem &&
         scrollMode == ScrollMode.UserBrowsing &&
-        !nearReturnLine
+        !nearWorkline
 }
 
 internal fun shouldOfferFinalBottomSnap(
     scrollMode: ScrollMode
 ): Boolean {
     return scrollMode != ScrollMode.UserBrowsing
-}
-
-internal fun isStreamingReadyForAutoFollow(
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    streamingBottomInViewport: Int,
-    legalBottomPx: Int
-): Boolean {
-    if (!isStreaming || !hasStreamingItem) return false
-    if (streamingBottomInViewport <= 0 || legalBottomPx <= 0) return false
-    return streamingBottomInViewport >= legalBottomPx
 }
 
 internal fun deriveStreamingRevealMode(

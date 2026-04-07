@@ -266,25 +266,15 @@ internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
-private const val STREAM_STICKY_SCROLL_STEP_PX = 96
-private const val STREAM_ANCHOR_FOLLOW_STEP_PX = 22
 private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 16
-private const val STREAM_ANCHOR_COMPENSATE_THRESHOLD_PX = 12
-private const val STREAM_FOLLOW_ANIMATE_THRESHOLD_PX = 120
-private const val STREAM_AUTO_FOLLOW_DEBOUNCE_MS = 16L
-private const val PROGRAMMATIC_SCROLL_SETTLE_MS = 180L
 private const val INPUT_MAX_CHARS = 6000
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
-internal val STREAMING_MESSAGE_MIN_HEIGHT = 56.dp
-private val STREAM_AUTO_FOLLOW_SLOP = 28.dp
 private val STREAM_VISIBLE_BOTTOM_GAP = 56.dp
-private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
-private val LIFECYCLE_RESUME_BOTTOM_SNAP_THRESHOLD = 32.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
@@ -299,7 +289,6 @@ internal val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
 private val STATIC_SELECTION_CACHE_WINDOW = 6000.dp
-private val INITIAL_BOTTOM_SNAP_THRESHOLD = 22.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
 private val STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE = 72.dp
 internal val GPT_BALL_SIZE = 14.dp
@@ -1423,7 +1412,6 @@ fun ChatScreen() {
     var streamingRevealMode by streamingRuntime.streamingRevealMode
     var recyclerViewRef by remember(chatScopeId) { mutableStateOf<RecyclerView?>(null) }
     var recyclerLayoutManagerRef by remember(chatScopeId) { mutableStateOf<LinearLayoutManager?>(null) }
-    var recyclerAdapterRef by remember(chatScopeId) { mutableStateOf<ChatRecyclerComposeAdapter?>(null) }
     var recyclerScrollInProgress by remember(chatScopeId) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(chatScopeId) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(chatScopeId) { mutableIntStateOf(0) }
@@ -1483,9 +1471,6 @@ fun ChatScreen() {
     val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
-    val bottomOverlayContentClearancePx = with(density) {
-        BOTTOM_OVERLAY_CONTENT_CLEARANCE.toPx().roundToInt()
-    }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -1501,11 +1486,10 @@ fun ChatScreen() {
         messageViewportHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
-        streamVisibleBottomGapPx,
-        imeVisible
+        streamVisibleBottomGapPx
     ) {
         derivedStateOf {
-            if (!imeVisible && composerTopInViewportPx > 0) {
+            if (composerTopInViewportPx > 0) {
                 (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 (
@@ -1535,35 +1519,18 @@ fun ChatScreen() {
             return currentStreamingContentBottomPx()
         }
         val lastMessageId = lastMessage.id
-        val bounds = messageContentBoundsById[lastMessageId]
-            ?: messageSelectionBoundsById[lastMessageId]
-            ?: return -1
+        val bounds = if (lastMessage.role == ChatRole.ASSISTANT) {
+            messageContentBoundsById[lastMessageId]
+        } else {
+            messageContentBoundsById[lastMessageId] ?: messageSelectionBoundsById[lastMessageId]
+        } ?: return -1
         return (bounds.bottom - messageViewportTopPx).roundToInt()
     }
     fun currentStreamingLegalBottomPx(): Int {
-        return resolveStreamingLegalBottomPx(
-            worklineBottomPx = streamingWorklineBottomPx,
-            composerTopInViewportPx = composerTopInViewportPx,
-            streamVisibleBottomGapPx = streamVisibleBottomGapPx
-        )
+        return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentUnifiedBottomTargetPx(): Int {
-        val worklineBottom = currentStreamingLegalBottomPx()
-        if (worklineBottom > 0) return worklineBottom
-        if (composerTopInViewportPx > 0) {
-            return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
-        }
-        return (messageViewportHeightPx - bottomBarHeightPx - streamVisibleBottomGapPx).coerceAtLeast(0)
-    }
-    fun currentInputSafeBottomTargetPx(): Int {
-        if (composerTopInViewportPx > 0) {
-            return (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
-        }
-        return (
-            messageViewportHeightPx -
-                bottomBarHeightPx -
-                bottomOverlayContentClearancePx
-            ).coerceAtLeast(0)
+        return currentStreamingLegalBottomPx().coerceAtLeast(0)
     }
     fun currentBottomOverflowPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
@@ -1577,12 +1544,6 @@ fun ChatScreen() {
         if (lastContentBottom <= 0) return 0
         return desiredBottomPx - lastContentBottom
     }
-    fun currentBottomObscuredDeltaPx(): Int {
-        val lastContentBottom = currentLastMessageContentBottomPx()
-        val desiredBottomPx = currentInputSafeBottomTargetPx()
-        if (lastContentBottom <= 0) return 0
-        return (lastContentBottom - desiredBottomPx).coerceAtLeast(0)
-    }
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= bottomPositionTolerancePx
@@ -1590,7 +1551,7 @@ fun ChatScreen() {
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
     }
-    fun isNearStreamingReturnLine(): Boolean {
+    fun isNearStreamingWorkline(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
         val worklineBottom = streamingWorklineBottomPx
         if (worklineBottom <= 0) return atBottom
@@ -1602,7 +1563,7 @@ fun ChatScreen() {
     fun isStreamingReadyForAutoFollow(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
         if (currentStreamingContentBottomPx() <= 0) return false
-        return isNearStreamingReturnLine()
+        return isNearStreamingWorkline()
     }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
@@ -1755,25 +1716,42 @@ fun ChatScreen() {
     )
     val streamingExtraReservedHeightPx = 0
     val bottomContentReservedHeightPx by remember(
+        messageViewportHeightPx,
+        composerTopInViewportPx,
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
         streamingExtraReservedHeightPx
     ) {
         derivedStateOf {
-            resolveBottomContentReservedHeightPx(
+            val measuredComposerReservedHeightPx =
+                if (messageViewportHeightPx > 0 && composerTopInViewportPx > 0) {
+                    (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
+                } else {
+                    -1
+                }
+            val fallbackReservedHeightPx = resolveBottomContentReservedHeightPx(
                 overlayVisible = composerCollapseOverlayVisible,
                 overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
                 effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
                 extraReservedHeightPx = streamingExtraReservedHeightPx
             )
+            measuredComposerReservedHeightPx.takeIf { it >= 0 } ?: fallbackReservedHeightPx
+        }
+    }
+    val recyclerBottomPaddingPx by remember(
+        bottomContentReservedHeightPx,
+        streamVisibleBottomGapPx
+    ) {
+        derivedStateOf {
+            bottomContentReservedHeightPx + streamVisibleBottomGapPx
         }
     }
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
-    val streamingAwayFromReturnLine by remember(
+    val streamingAwayFromWorkline by remember(
         isStreaming,
         hasStreamingItem,
         scrollMode,
@@ -1782,7 +1760,7 @@ fun ChatScreen() {
         composerTopInViewportPx
     ) {
         derivedStateOf {
-            !isNearStreamingReturnLine()
+            !isNearStreamingWorkline()
         }
     }
     val showStreamingJumpButton by remember(
@@ -1790,7 +1768,7 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         scrollMode,
-        streamingAwayFromReturnLine,
+        streamingAwayFromWorkline,
         pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
@@ -1806,7 +1784,7 @@ fun ChatScreen() {
                     isStreaming = isStreaming,
                     hasStreamingItem = hasStreamingItem,
                     scrollMode = scrollMode,
-                    nearReturnLine = !streamingAwayFromReturnLine
+                    nearWorkline = !streamingAwayFromWorkline
                 )
         }
     }
@@ -2979,23 +2957,20 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticRecyclerScroll
         )
         if (!animated) {
-            repeat(2) { withFrameNanos { } }
-            com.nongjiqianwen.ensureRecyclerLastMessageVisibleAboveInput(
-                recyclerView = recyclerViewRef,
-                currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-                beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-                endProgrammaticScroll = ::endProgrammaticRecyclerScroll
-            )
+            repeat(4) {
+                withFrameNanos { }
+                val alignDeltaPx = currentBottomAlignDeltaPx()
+                if (kotlin.math.abs(alignDeltaPx) <= bottomPositionTolerancePx) {
+                    return@scrollToBottom
+                }
+                com.nongjiqianwen.alignRecyclerLastMessageToBottomTarget(
+                    recyclerView = recyclerViewRef,
+                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+                    beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+                    endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+                )
+            }
         }
-    }
-
-    suspend fun ensureLastMessageNotObscuredByInput() {
-        com.nongjiqianwen.ensureRecyclerLastMessageNotObscuredByInput(
-            recyclerView = recyclerViewRef,
-            currentBottomObscuredDeltaPx = ::currentBottomObscuredDeltaPx,
-            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
-        )
     }
 
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
@@ -3095,14 +3070,6 @@ fun ChatScreen() {
         }
     }
 
-    suspend fun isBottomSettled(stableFrames: Int = 4): Boolean {
-        repeat(stableFrames) {
-            withFrameNanos { }
-            if (!isWithinBottomTolerance()) return false
-        }
-        return true
-    }
-
     fun jumpToBottom() {
         snackbarScope.launch {
             performJumpToBottom(
@@ -3131,13 +3098,14 @@ fun ChatScreen() {
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
+        currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
+        isWithinBottomTolerance = ::isWithinBottomTolerance,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
-        ensureLastMessageNotObscuredByInput = ::ensureLastMessageNotObscuredByInput,
         snapStreamingToWorkline = snapStreamingToWorkline,
         scrollToBottom = scrollToBottom
     )
@@ -3354,9 +3322,7 @@ fun ChatScreen() {
                     ChatRecyclerViewHost(
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
-                        bottomPaddingPx = bottomContentReservedHeightPx + with(density) {
-                            BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx()
-                        },
+                        bottomPaddingPx = recyclerBottomPaddingPx,
                         modifier = Modifier
                             .then(
                                 if (hasActiveMessageSelection) {
@@ -3373,15 +3339,13 @@ fun ChatScreen() {
                                     Modifier.graphicsLayer(alpha = 0f)
                                 }
                             ),
-                        onRecyclerReady = { recyclerView, layoutManager, adapter ->
+                        onRecyclerReady = { recyclerView, layoutManager ->
                             recyclerViewRef = recyclerView
                             recyclerLayoutManagerRef = layoutManager
-                            recyclerAdapterRef = adapter
                             refreshRecyclerMetrics(recyclerView)
                         },
                         onScrollStateChanged = { recyclerView, newState ->
                             refreshRecyclerMetrics(recyclerView)
-                            recyclerScrollInProgress = newState != RecyclerView.SCROLL_STATE_IDLE
                             handleRecyclerScrollStateChanged(
                                 newState = newState,
                                 programmaticScroll = programmaticScroll,
@@ -3390,7 +3354,7 @@ fun ChatScreen() {
                                 scrollModeState = scrollRuntime.scrollMode,
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-                                returnToBottomArmedState = scrollRuntime.returnToBottomArmed,
+                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
                                 isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
@@ -3402,7 +3366,7 @@ fun ChatScreen() {
                                 programmaticScroll = programmaticScroll,
                                 isStreaming = isStreaming,
                                 scrollMode = scrollMode,
-                                returnToBottomArmedState = scrollRuntime.returnToBottomArmed
+                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed
                             )
                         }
                     ) { itemId ->
@@ -3598,8 +3562,7 @@ fun ChatScreen() {
 
                 if (showWelcomePlaceholder) {
                     val welcomeBottomInset =
-                        with(density) { bottomContentReservedHeightPx.toDp() } +
-                            BOTTOM_OVERLAY_CONTENT_CLEARANCE +
+                        with(density) { recyclerBottomPaddingPx.toDp() } +
                             24.dp
                     Box(
                         modifier = Modifier

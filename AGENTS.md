@@ -275,6 +275,9 @@ Clean-State 定义：
 
 ### 10.2 当前已经接受的现实边界
 
+以下旧的 `LazyColumn / frozenBottomPx / retainedBottomGapPx / sendTick / nestedScroll 护栏` 条目仅作历史记录，不再执行。
+当前唯一 active 口径只认第 20 节里 2026-04-07 的 RecyclerView 规则；如果与下方历史描述冲突，以第 20 节为准。
+
 当前生成区还可能残留极轻的“结束到底部微抖”。
 
 这是当前链路里最难完全消掉的一项，主要来自：
@@ -642,6 +645,9 @@ Clean-State 定义：
 
 ## 20. 主锚点更新记录
 
+从 2026-04-07 起，滚动链唯一真相只认本节最后的 RecyclerView 规则。
+前面仍残留的旧 `LazyColumn / frozenBottomPx / retainedBottomGapPx / AutoScrollMode / pendingResumeAutoFollow / userDetachedFromBottom` 描述，一律视为历史归档，不再执行。
+
 - 当前主对话锚点真源仍为 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
 - 2026-03-27 起，最新口径已收紧为“农业种植相关问题”，并将输出结构明确为“禁止表格，关键点少量加粗”
 - 这次更新只改主对话锚点，不影响 B 层与 C 层摘要提示词文件
@@ -654,7 +660,7 @@ Clean-State 定义：
 - 2026-04-04 当前滚动链真实边界补充：`ChatScrollCoordinator.kt` 当前已负责滚动规则、几何 helper、护栏、按钮派生，以及主要滚动 runtime effect/状态机接线；`ChatScreen.kt` 只允许继续保留页面组装、测量采集、局部持久化/生命周期桥接和少量宿主级回调，不允许把滚动决策重新混回页面层
 - 2026-04-04 当前恢复 follow 口径补充：用户上滑进入 `UserBrowsing` 后，只有在“列表停稳 + 真实 streaming 正文尾部重新回到工作线/返回线附近”同时满足时，才允许恢复 `AutoFollow`；一旦重新贴线，正文应持续沿工作线稳定上推，不允许一拍上推后一拍掉回
 - 2026-04-04 当前动态链进一步收口：滚动、渲染、底部输入区三条链的 runtime state holder 已分别下沉到 `ChatScrollCoordinator.kt`、`ChatStreamingRenderer.kt`、`ChatComposerCoordinator.kt`；其中滚动辅助 effect、渲染 revealMode effect、composer settling/overlay effect 也已继续下沉。`ChatScreen.kt` 当前主要保留页面组装、测量采集、本地持久化/恢复、宿主级输入法/生命周期桥接和组件挂载，不再自己持有那批主链 `remember` 状态，也不再承接那批主链 runtime effect
-## 20.1 当前有效滚动规则（覆盖旧滚动条目）
+## 20.1 旧口径归档（2026-04-05，仅历史参考）
 - 2026-04-05 起，聊天滚动链以本节为准；前文仍残留的旧 `frozenBottomPx`、`retainedBottomGapPx`、锚点空白口径一律视为过期，不再执行。
 - 当前只保留普通 workline 滚动：waiting 小球只保留样式，不再承担发送后上抬锚点语义。
 - 正文一出字，就以输入框上方工作线为目标继续生成和自动跟随。
@@ -663,12 +669,12 @@ Clean-State 定义：
 - 只要不是短文本/失败态保留场景，完成后底部不允许有多余可见空白。
 - `回到底部` 按钮属于滚动链：生成中按“离开底部后可显示”，非生成中按“普通列表未到底”显示。
 
-## 20.2 2026-04-05 普通 workline 滚动补充口径
+## 20.2 旧口径归档补充（2026-04-05，仅历史参考）
 - 当前普通滚动链不再允许只做单向上推：正文如果挂在工作线上方，必须允许程序性补滚把正文往下贴回工作线。
 - 当前普通 scrollToBottom / final snap 不允许只会继续往前滚；如果最后一条真实内容已经在可视区内但底部仍有空白，必须允许反向补齐，把尾部贴回输入框上方附近。
 - 以上两条属于普通滚动链主规则，不属于旧的锚点空白 / frozen / retained 特殊逻辑。
 
-## 20.3 2026-04-05 普通滚动链继续收简
+## 20.3 旧口径归档续记（2026-04-05，仅历史参考）
 - 当前普通滚动链只保留：发送后对齐工作线、单一 AutoFollow 循环、用户上滑让权、回到底部附近恢复 AutoFollow、完成态 final snap。
 - 生成期间不再额外挂第二条 guard 补滚链，不允许一边 AutoFollow 一边再由额外 effect 偷偷改列表位置。
 - streaming 阶段的 nestedScroll 当前只负责识别用户手势方向和中断 AutoFollow，不再主动消费 drag / fling 去替用户拦手势。
@@ -678,7 +684,7 @@ Clean-State 定义：
 - 首次进入聊天页时，只要布局与 hydration 条件已满足，就必须执行一次初始贴底；不再因为 hasStartedConversation 这类会话标记跳过首次 bottom snap。
 - waiting 空文本阶段也必须补一次工作线对齐，避免小球因布局测量先后顺序不同而一会儿偏高、一会儿偏低。
 
-## 20.2 当前 active 滚动口径（2026-04-05 补充）
+## 20.2A 旧口径归档补记 A（2026-04-05，仅历史参考）
 
 - 当前滚动链继续按最普通的 workline 逻辑收缩：保留 waiting 小球样式，但不再保留独立 waiting 补滚链。
 - streaming 阶段当前只认一套 content bottom：
@@ -688,7 +694,7 @@ Clean-State 定义：
 - LazyColumn 当前不再使用 `Arrangement.Bottom` 参与额外底对齐；启动贴底、streaming follow、完成态贴底继续分别走各自 effect，但列表主布局不再额外把内容整体往上/往下推。
 - 当前修正优先级：先统一几何真相，再继续收 startup/final snap 与 jump button 位置问题；不要再恢复旧的锚点 reserve / frozen / retained 链。
 
-## 20.3 当前 active 滚动口径（2026-04-05 再补充）
+## 20.3A 旧口径归档补记 B（2026-04-05，仅历史参考）
 
 - streaming 内容底边的采样继续统一：waiting 阶段和正文阶段都由同一个 streaming 渲染宿主回传 bounds，不再让 waiting 阶段只退回外层 item 宿主底边。
 - 当前 `Arrangement.Bottom` 已恢复，用于保证内容不满一屏时，首启与完成态仍具备贴底能力；不要把这条恢复误解成回到旧的锚点 reserve / frozen / retained 方案。
@@ -727,17 +733,22 @@ Clean-State 定义：
 
 ## 20.4 当前 RecyclerView 滚动链唯一真相（2026-04-07）
 
-- 不管长文本还是短文本，消息都先按正常消息流从上往下排；用户消息和 assistant 消息一条接一条，不再先造特殊阶段空白。
-- waiting 小球必须紧贴上一条用户消息出现，不再单独上抬；waiting 阶段只做“不要被输入框挡住”的最小可见性修正。
-- waiting 与早期 streaming 只认输入框遮挡安全线，不提前按工作线上顶；只有真实正文尾部接近工作线后，才切入 AutoFollow 并沿工作线推进。
-- 用户拖动立即让权：进入 UserBrowsing 后，不允许自动跟随继续抢手；只有明确往底部方向滑回，并重新接近工作线或底部区域后，才恢复 AutoFollow。
-- 完成态与静态贴底尽量围绕同一条工作线附近的底部目标线，不再额外保留明显更低的第二条静态底线；底部不应再出现额外可见空白。
+- 不管长文本还是短文本，用户消息和 assistant 消息都先按正常消息流从上往下排，一条接一条，不先人为抬到工作线。
+- waiting 小球必须紧贴上一条用户消息出现；它的起点不该直接跳到工作线。
+- 正文从 waiting 小球这个位置继续往下长；只有真实正文尾部接近工作线后，才切入 AutoFollow，并沿工作线继续推进。
+- 用户拖动立即让权：进入 `UserBrowsing` 后，不允许自动跟随继续抢手；只有明确往底部方向滑回，并重新接近工作线或底部区域后，才恢复 `AutoFollow`。
+- 完成态与静态贴底尽量围绕同一条工作线附近的底部目标线收口，不再额外保留明显更低的第二条静态底线；底部不应再出现额外可见空白。
 
 ## 20.5 当前 RecyclerView 滚动链补充口径（2026-04-07）
 
-- 活动中的 assistant 在 waiting / streaming 阶段，底部几何真相优先只认 `streamingContentBottomPx`；waiting 量小球本体 bounds，streaming 量真实正文内容 bounds，不再拿外层 item 壳子冒充当前内容底边。
-- waiting / 早期 streaming 的保护只做“别被输入框挡住”，不再顺手把整段内容吸到底部目标线；接近工作线后，先贴一次工作线，再交给同一条 AutoFollow 主循环继续推进。
+- 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
+- waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
+- working line 坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
+- RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留“bottom bar 高度 + 很小 clearance”这条更低的第二静态底线。
+- assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
 - 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - follow 步长继续保持“小 overflow 先不补滚”的收敛策略，避免正文刚接近工作线时因为极小差值频繁抖动。
+- 静态短内容贴底依赖 RecyclerView 自身 `stackFromEnd` 底对齐，不再靠“顶部列表 + final snap 补滚”硬凑；完成态的 final snap 只负责围绕同一工作线做最后收口。
+- final snap 不能只靠“固定等两帧”碰运气；必须等 completed 宿主真实底边到位，并在同一条工作线目标附近真正收口后才结束。
 - 若后续实现与前文旧的 frozenBottom / retainedBottomGap / 第一阶段第二阶段口径冲突，以本节为准。
 

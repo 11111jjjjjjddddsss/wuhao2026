@@ -848,36 +848,31 @@ private fun RendererAssistantMessageContentImpl(
     val shouldRenderDisclaimer = remember(content, showDisclaimer) {
         showDisclaimer && shouldShowAiDisclaimerRefined(content)
     }
-    val stableModifier = if (isStreaming) {
-        modifier.heightIn(min = STREAMING_MESSAGE_MIN_HEIGHT)
+    val boundsReportingModifier = if (onStreamingContentBoundsChanged != null) {
+        Modifier.onGloballyPositioned { coordinates ->
+            onStreamingContentBoundsChanged.invoke(coordinates.boundsInWindow())
+        }
     } else {
-        modifier
+        Modifier
     }
     if (isStreaming) {
         Box(
             modifier = if (expandToFullWidth) {
-                stableModifier
+                modifier
+                    .then(boundsReportingModifier)
                     .fillMaxWidth()
             } else {
-                stableModifier
+                modifier.then(boundsReportingModifier)
             },
             contentAlignment = Alignment.TopStart
         ) {
             if (showWaitingBall || content.isBlank()) {
                 RendererAssistantStreamingWaitingIndicatorImpl(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onGloballyPositioned { coordinates ->
-                            onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
-                        }
+                    modifier = Modifier.fillMaxWidth()
                 )
             } else {
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onGloballyPositioned { coordinates ->
-                            onStreamingContentBoundsChanged?.invoke(coordinates.boundsInWindow())
-                        },
+                    modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
@@ -900,9 +895,11 @@ private fun RendererAssistantMessageContentImpl(
     } else {
         Column(
             modifier = if (expandToFullWidth) {
-                modifier.fillMaxWidth()
-            } else {
                 modifier
+                    .then(boundsReportingModifier)
+                    .fillMaxWidth()
+            } else {
+                modifier.then(boundsReportingModifier)
             },
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {

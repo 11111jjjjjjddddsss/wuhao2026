@@ -26,8 +26,6 @@ internal class ChatRecyclerComposeAdapter(
         notifyDataSetChanged()
     }
 
-    fun indexOf(itemId: String): Int = itemIds.indexOf(itemId)
-
     override fun getItemId(position: Int): Long = itemIds[position].hashCode().toLong()
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ComposeMessageViewHolder {
@@ -63,7 +61,7 @@ internal fun ChatRecyclerViewHost(
     itemIds: List<String>,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
-    onRecyclerReady: (RecyclerView, LinearLayoutManager, ChatRecyclerComposeAdapter) -> Unit,
+    onRecyclerReady: (RecyclerView, LinearLayoutManager) -> Unit,
     onScrollStateChanged: (RecyclerView, Int) -> Unit,
     onScrolled: (RecyclerView, Int, Int) -> Unit,
     itemContent: @Composable (String) -> Unit
@@ -72,7 +70,9 @@ internal fun ChatRecyclerViewHost(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            val layoutManager = LinearLayoutManager(context)
+            val layoutManager = LinearLayoutManager(context).apply {
+                stackFromEnd = true
+            }
             RecyclerView(context).apply {
                 this.layoutManager = layoutManager
                 itemAnimator = null
@@ -92,14 +92,14 @@ internal fun ChatRecyclerViewHost(
                         }
                     }
                 )
-                onRecyclerReady(this, layoutManager, adapter)
+                onRecyclerReady(this, layoutManager)
             }
         },
         update = { recyclerView ->
             recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
             adapter.submitIds(itemIds)
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
-            onRecyclerReady(recyclerView, layoutManager, adapter)
+            onRecyclerReady(recyclerView, layoutManager)
         }
     )
 }
