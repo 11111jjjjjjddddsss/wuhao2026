@@ -1483,7 +1483,6 @@ fun ChatScreen() {
     val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
-    val bottomOverlayContentClearancePx = with(density) { BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -1545,33 +1544,29 @@ fun ChatScreen() {
             streamVisibleBottomGapPx = streamVisibleBottomGapPx
         )
     }
+    fun currentUnifiedBottomTargetPx(): Int {
+        val worklineBottom = currentStreamingLegalBottomPx()
+        if (worklineBottom > 0) return worklineBottom
+        if (composerTopInViewportPx > 0) {
+            return (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+        }
+        return (messageViewportHeightPx - bottomBarHeightPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+    }
     fun currentBottomOverflowPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
-        val desiredBottomPx = if (composerTopInViewportPx > 0) {
-            (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
-        } else {
-            (messageViewportHeightPx - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
-        }
+        val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return Int.MAX_VALUE
         return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
     }
     fun currentBottomAlignDeltaPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
-        val desiredBottomPx = if (composerTopInViewportPx > 0) {
-            (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
-        } else {
-            (messageViewportHeightPx - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
-        }
+        val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return 0
         return desiredBottomPx - lastContentBottom
     }
     fun currentBottomObscuredDeltaPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
-        val desiredBottomPx = if (composerTopInViewportPx > 0) {
-            (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
-        } else {
-            (messageViewportHeightPx - bottomBarHeightPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
-        }
+        val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return 0
         return (lastContentBottom - desiredBottomPx).coerceAtLeast(0)
     }
