@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 
@@ -22,8 +23,25 @@ internal class ChatRecyclerComposeAdapter(
 
     fun submitIds(newIds: List<String>) {
         if (itemIds == newIds) return
-        itemIds = newIds.toList()
-        notifyDataSetChanged()
+        val previousIds = itemIds
+        val nextIds = newIds.toList()
+        val diffResult = DiffUtil.calculateDiff(
+            object : DiffUtil.Callback() {
+                override fun getOldListSize(): Int = previousIds.size
+
+                override fun getNewListSize(): Int = nextIds.size
+
+                override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                    return previousIds[oldItemPosition] == nextIds[newItemPosition]
+                }
+
+                override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                    return true
+                }
+            }
+        )
+        itemIds = nextIds
+        diffResult.dispatchUpdatesTo(this)
     }
 
     override fun getItemId(position: Int): Long = itemIds[position].hashCode().toLong()
@@ -96,8 +114,13 @@ internal fun ChatRecyclerViewHost(
             }
         },
         update = { recyclerView ->
-            recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
             adapter.submitIds(itemIds)
+            if (
+                recyclerView.paddingTop != topPaddingPx ||
+                recyclerView.paddingBottom != bottomPaddingPx
+            ) {
+                recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
+            }
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             onRecyclerReady(recyclerView, layoutManager)
         }

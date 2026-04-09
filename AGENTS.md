@@ -589,6 +589,7 @@ Clean-State 定义：
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
 - 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
+- `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
 - follow 步长继续保持“小 overflow 先不补滚”的收敛策略，避免正文刚接近工作线时因为极小差值频繁抖动。
 - 静态短内容贴底依赖 RecyclerView 自身 `stackFromEnd` 底对齐，不再靠“顶部列表 + final snap 补滚”硬凑；完成态的 final snap 只负责围绕同一工作线做最后收口。
 - final snap 不能只靠“固定等两帧”碰运气；必须等 completed 宿主真实底边到位，并在同一条工作线目标附近真正收口后才结束。
