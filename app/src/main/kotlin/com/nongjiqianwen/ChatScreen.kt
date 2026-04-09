@@ -2988,7 +2988,6 @@ fun ChatScreen() {
         beginProgrammaticRecyclerScroll()
         try {
             recyclerView.scrollBy(0, stepPx)
-            streamingLineAdvanceTick++
         } finally {
             endProgrammaticRecyclerScroll()
         }
