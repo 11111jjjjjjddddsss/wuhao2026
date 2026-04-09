@@ -1,0 +1,132 @@
+package app
+
+import "testing"
+
+func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+
+	snapshot := &SessionSnapshot{
+		UserID: "u1",
+		ARoundsFull: []SessionRound{
+			{
+				ClientMsgID: "r1",
+				User:        "old-1",
+				UserImages:  []string{"https://img/old-1.jpg"},
+				Assistant:   "a1",
+			},
+			{
+				ClientMsgID: "r2",
+				User:        "old-2",
+				UserImages:  []string{"https://img/old-2.jpg"},
+				Assistant:   "a2",
+			},
+		},
+	}
+
+	messages, usedCount, hasB, hasC := server.buildPromptMessages(
+		snapshot,
+		6,
+		"current",
+		[]string{"https://img/current.jpg"},
+		"context",
+	)
+
+	if usedCount != 2 {
+		t.Fatalf("expected 2 historical rounds, got %d", usedCount)
+	}
+	if hasB || hasC {
+		t.Fatalf("expected no summaries, got hasB=%v hasC=%v", hasB, hasC)
+	}
+	if len(messages) != 7 {
+		t.Fatalf("expected 7 messages, got %d", len(messages))
+	}
+
+	firstHistoricalUser := messages[2]
+	if firstHistoricalUser.Role != "user" {
+		t.Fatalf("expected first historical message to be user, got %q", firstHistoricalUser.Role)
+	}
+	if _, ok := firstHistoricalUser.Content.(string); !ok {
+		t.Fatalf("expected older historical round to be text-only")
+	}
+
+	secondHistoricalUser := messages[4]
+	content, ok := secondHistoricalUser.Content.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected previous round to keep images in context")
+	}
+	if len(content) != 2 {
+		t.Fatalf("expected previous round vision content length 2, got %d", len(content))
+	}
+	if got := content[1]["image_url"].(map[string]any)["url"]; got != "https://img/old-2.jpg" {
+		t.Fatalf("expected previous round image preserved, got %#v", got)
+	}
+
+	currentUser := messages[6]
+	currentContent, ok := currentUser.Content.([]map[string]any)
+	if !ok || len(currentContent) != 2 {
+		t.Fatalf("expected current round to keep images in context, got %#v", currentUser.Content)
+	}
+	if got := currentContent[1]["image_url"].(map[string]any)["url"]; got != "https://img/current.jpg" {
+		t.Fatalf("expected current image preserved, got %#v", got)
+	}
+}
+
+func TestBuildPromptMessagesAddsBCSummariesWhenPresent(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+
+	snapshot := &SessionSnapshot{
+		UserID:      "u1",
+		BSummary:    "b-summary",
+		CSummary:    "c-summary",
+		ARoundsFull: []SessionRound{},
+	}
+
+	messages, usedCount, hasB, hasC := server.buildPromptMessages(
+		snapshot,
+		6,
+		"hello",
+		nil,
+		"context",
+	)
+
+	if usedCount != 0 {
+		t.Fatalf("expected no historical rounds, got %d", usedCount)
+	}
+	if !hasB || !hasC {
+		t.Fatalf("expected both summaries present, got hasB=%v hasC=%v", hasB, hasC)
+	}
+	if len(messages) != 5 {
+		t.Fatalf("expected 5 messages, got %d", len(messages))
+	}
+	if messages[2].Role != "system" || messages[3].Role != "system" {
+		t.Fatalf("expected summary prompts to be inserted as system messages")
+	}
+	if messages[4].Content != "hello" {
+		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
+	}
+}
+
+func TestTierWindowsAndSummaryIntervalsMatchBusinessRules(t *testing.T) {
+	if got := getAWindowByTier(TierFree); got != 6 {
+		t.Fatalf("free a-window mismatch: %d", got)
+	}
+	if got := getAWindowByTier(TierPlus); got != 6 {
+		t.Fatalf("plus a-window mismatch: %d", got)
+	}
+	if got := getAWindowByTier(TierPro); got != 9 {
+		t.Fatalf("pro a-window mismatch: %d", got)
+	}
+
+	b, c := GetSummaryIntervals(TierFree)
+	if b != 6 || c != 25 {
+		t.Fatalf("free/plus summary intervals mismatch: b=%d c=%d", b, c)
+	}
+	b, c = GetSummaryIntervals(TierPro)
+	if b != 9 || c != 25 {
+		t.Fatalf("pro summary intervals mismatch: b=%d c=%d", b, c)
+	}
+}
