@@ -362,7 +362,7 @@ internal fun BindRecyclerChatScrollEffects(
                 return@LaunchedEffect
             }
             if (activeScrollMode == ScrollMode.Idle) {
-                if (currentStreamingOverflowDelta() > 0) {
+                if (streamingMessageContent.isNotBlank() && currentStreamingOverflowDelta() > 0) {
                     snapStreamingToWorkline()
                 }
                 if (streamingMessageContent.isNotBlank() && isStreamingReadyForAutoFollow()) {

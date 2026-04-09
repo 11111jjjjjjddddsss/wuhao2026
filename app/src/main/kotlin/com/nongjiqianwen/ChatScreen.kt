@@ -1409,7 +1409,6 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    var streamingRevealMode by streamingRuntime.streamingRevealMode
     var recyclerViewRef by remember(chatScopeId) { mutableStateOf<RecyclerView?>(null) }
     var recyclerLayoutManagerRef by remember(chatScopeId) { mutableStateOf<LinearLayoutManager?>(null) }
     var recyclerScrollInProgress by remember(chatScopeId) { mutableStateOf(false) }
@@ -1421,7 +1420,6 @@ fun ChatScreen() {
         startupInputChromeRowHeightEstimatePx = startupInputChromeRowHeightEstimatePx
     )
     var scrollMode by scrollRuntime.scrollMode
-    var userInteracting by scrollRuntime.userInteracting
     var programmaticScroll by scrollRuntime.programmaticScroll
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
@@ -1476,9 +1474,6 @@ fun ChatScreen() {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
     val imeVisible = WindowInsets.isImeVisible
-    val lineRevealUnlockThresholdPx = remember(assistantLineStepPx) {
-        (assistantLineStepPx * 0.06f).roundToInt().coerceAtLeast(3)
-    }
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
@@ -1500,16 +1495,6 @@ fun ChatScreen() {
             }
         }
     }
-    BindStreamingRevealModeEffect(
-        isStreaming = isStreaming,
-        scrollMode = scrollMode,
-        userInteracting = userInteracting,
-        streamBottomFollowActive = streamBottomFollowActive,
-        streamingContentBottomPx = streamingContentBottomPx,
-        streamingWorklineBottomPx = streamingWorklineBottomPx,
-        assistantLineStepPx = assistantLineStepPx,
-        streamingRevealModeState = streamingRuntime.streamingRevealMode
-    )
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
@@ -2621,7 +2606,7 @@ fun ChatScreen() {
             for (attempt in 0 until 18) {
                 if (!isActive || !isStreaming) break
                 val overflow = currentStreamingOverflowDelta()
-                if (!streamBottomFollowActive && overflow <= lineRevealUnlockThresholdPx) {
+                if (!streamBottomFollowActive && overflow <= bottomPositionTolerancePx) {
                     break
                 }
                 if (attempt < 17) {
@@ -3461,7 +3446,7 @@ fun ChatScreen() {
                                                     ChatStreamingRenderer(
                                                         content = assistantDisplayContent,
                                                         renderMode = renderMode,
-                                                        revealMode = streamingRevealMode,
+                                                        revealMode = StreamingRevealMode.Free,
                                                         freshSuffixEnabled = isStreaming,
                                                         showWaitingBall = renderMode == StreamingRenderMode.Waiting,
                                                         streamingFreshStart = streamingFreshStart,
