@@ -279,7 +279,7 @@ Clean-State 定义：
 
 - 用户消息和 assistant 消息先按正常消息流从上往下排，不做“发送后整段先抬到工作线”的特殊起步。
 - waiting 小球必须贴着上一条用户消息起步；正文从这个位置继续往下长。
-- 只有真实正文尾部接近工作线后，才允许进入 AutoFollow，并沿工作线继续跟随。
+- waiting 和早期正文如果已经压到工作线以下，只允许先做最小向上避让，避免和输入框重叠；只有真实正文尾部接近工作线后，才允许进入 `AutoFollow`，并沿工作线继续跟随。
 - 用户拖动立即让权；生成中和完成态都不允许再由第二条隐藏滚动链抢位置。
 - 短内容静态贴底依赖 RecyclerView stackFromEnd；完成态收口继续围绕同一条工作线附近目标线，不再保留更低的第二条静态底线。
 - 生成结束时仍可能残留极轻的“收口微抖”；后续继续优化时，优先检查 streaming/completed 是否仍共用同一宿主几何。
@@ -584,6 +584,7 @@ Clean-State 定义：
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
+- `Idle` 阶段只保留“最小可见保护”：如果 waiting 或早期正文真实底边已经压到工作线以下，只允许向上补到工作线附近；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。

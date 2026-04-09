@@ -2509,7 +2509,8 @@ fun ChatScreen() {
         val legalBottom = currentStreamingLegalBottomPx()
         val contentBottom = currentStreamingContentBottomPx()
         if (legalBottom <= 0 || contentBottom <= 0) return 0
-        return legalBottom - contentBottom
+        val deltaPx = legalBottom - contentBottom
+        return if (deltaPx < 0) deltaPx else 0
     }
 
     fun resolveStreamingFollowStepPx(overflow: Int): Int {
