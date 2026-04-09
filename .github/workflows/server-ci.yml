@@ -5,6 +5,7 @@ on:
     branches: [master]
     paths:
       - 'server/**'
+      - 'server-go/**'
       - 'scripts/check_mojibake.py'
       - '.mojibake-baseline.txt'
       - '.github/workflows/server-ci.yml'
@@ -12,6 +13,7 @@ on:
     branches: [master]
     paths:
       - 'server/**'
+      - 'server-go/**'
       - 'scripts/check_mojibake.py'
       - '.mojibake-baseline.txt'
       - '.github/workflows/server-ci.yml'
@@ -45,3 +47,32 @@ jobs:
 
       - name: TypeScript build
         run: npm run build
+
+  go-server-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: server-go
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Mojibake check
+        working-directory: .
+        run: python3 scripts/check_mojibake.py
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build Go backend
+        run: go build ./...
+
+      - name: Test Go backend
+        run: go test ./...
