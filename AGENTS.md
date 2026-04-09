@@ -273,134 +273,35 @@ Clean-State 定义：
 - 不先紧后松再重排
 - 尾段只允许极轻微动态感
 
-### 10.2 当前已经接受的现实边界
+### 10.2 当前滚动与生成基线
 
-以下旧的 `LazyColumn / frozenBottomPx / retainedBottomGapPx / sendTick / nestedScroll 护栏` 条目仅作历史记录，不再执行。
-当前唯一 active 口径只认第 20 节里 2026-04-07 的 RecyclerView 规则；如果与下方历史描述冲突，以第 20 节为准。
+当前聊天滚动只认第 20 节里的 RecyclerView 规则。
 
-当前生成区还可能残留极轻的“结束到底部微抖”。
-
-这是当前链路里最难完全消掉的一项，主要来自：
-- streaming 最后一帧和 completed 第一帧正文宿主还不是完全同几何
-- LazyColumn 最后一项结束时会再测一次
-- 最后一拍的底部贴齐仍可能有极小残差
-
-当前已经保留的安全优化包括：
-- streaming/completed 最后一项尽量共用稳定 key
-- 命中免责声明时，streaming 期间不提前显示免责声明文字
-- disclaimer 占位尽量靠真实完成态几何
-- 当前 assistant 最后一条消息已改成提前进入消息列表，同一条 item 内完成空态、streaming、completed 的切换，不再额外挂列表外 streaming item 再并回 completed item
-
-如果以后继续压文本微抖：
-- 优先从 streaming/completed 宿主共几何入手
-- completed 并回消息列表后，final snap 仍应给 completed 宿主 1–2 帧测量稳定时间，不要在同一拍里同时释放旧几何并取消补滚
-- 流式阶段如果当前视口底部到工作线之间已经出现可见空白，应只拦截继续往空白方向拖动本身，不要顺手改正文几何或恢复跟随主链
-- 围绕流式底部空白的限制应尽量保持单一规则：正文阶段只看“可见空白是否仍大于 0”，不要再混入旧的恢复跟随死链或额外阈值分支
-- 流式正文自动跟随的滚动节奏应尽量均匀，优先使用更稳定、略偏小的固定步长与单次恒定推进；小溢出也应更早被平滑吃掉，不要在一拍里多次补滚，也不要因为 overflow、大标题、分割线或块级高度变化去动态改快改慢，避免“眼花”的节奏跳变
-- 如果尾部提亮仍然偏闪眼，优先继续压提亮时长、最少覆盖字符数和触发间隔，不先改亮度颜色
-- 当前流式滚动链基线：
-- 发送后仍保留小球锚点上抬，但当前主规则已经不再用旧的 `reserve/spacer` 可见空白语义驱动滚动链；真正的底部几何真相只认 `frozenBottomPx`、工作线和真实正文尾部 `tailBottomPx`
-- 生成期用于跟随判定和护栏判定的“正文底部”测量，必须挂在真实 streaming 正文层上；不能拿 waiting indicator、外层 assistant item 宿主、footer、免责声明去充当正文底边
-- 发送后插入 streaming 容器的第一拍，不允许立刻 `AutoFollow + 补滚` 同时接管；必须先完成定锚并记录第一阶段冻结底线，避免整个消息区上下弹一下
-- streaming waiting 小球只允许作为轻壳存在，不允许再把 waiting indicator 的 bounds 当成正文底边真相；首字出现后 follow 的恢复也必须看真实正文尾部是否已回到工作线/返回线附近
-- 上滑浏览历史不应由底部护栏去抢手；生成阶段始终允许用户上下滑，系统只消费“会越过当前合法底线”的那一小段 delta / velocity
-- 实现这条底部空白保护时，必须先核对 nested scroll 的真实方向；如果把“回到底部方向”和“上滑看历史方向”写反，会直接表现成“上滑抢手、往下回底部反而露空白”
-- 正文阶段的底部空白保护，不要求必须靠 `nestedScroll` 完成；如果手势 source 或链路不稳定，可以在同一条滚动状态链里按列表位移直接回退“往底部方向”的移动，但不能因此影响上滑看历史
-- 用户一开始手动拖动列表时，自动跟随必须立即停；不要再只等一条延后的 `userInteracting` 派生状态，否则就会出现“往上看时被程序抢手”的体感
-- 生成过程中不要先赌用户手势方向；只要用户原始拖动一进入，就应先立即退出 `StreamAnchorFollow`。手势结束后，再根据是否回到生成线/返回线决定是否恢复自动跟随
-- 这一步不能只切 `autoScrollMode`；还要在原始手势入口立即把交互态置真，避免 `listState.isScrollInProgress` 晚一拍才变化，导致 follow 线程多抢一帧
-- 当前滚动控制如果继续收敛，优先使用一个小枚举作为唯一真相源；当前实现以 `Idle / AutoFollow / UserBrowsing` 三态为准，旧的布尔状态先保留，但降级为从属/显示用途，不再作为“是否执行 follow”的主决策
-- 发送后的初始锚点阶段必须稳定停在 `Idle` 保护区，不允许再引入新的“回底途中”中间真相态去污染 `回到底部` 按钮和恢复时机
-- 生成开始后，只要用户还没进入浏览态，就算正文还没吃到生成线，也仍应保持在 auto-follow 主链里等待继续跟随；不要把“未到生成线”误判成“用户已脱底”，否则会同时造成按钮误出现和 follow 起不来
-- `回到底部` 按钮显示条件应直接看滚动状态与底部区域可见性：生成阶段仅 `UserBrowsing` 且已离开工作线/返回线区域时允许显示；`Idle / AutoFollow` 必须隐藏
-- 锚点阶段结束的判定只看真实正文尾部是否吃到 `frozenBottomPx`，不再依赖旧的 reserve/spacer 阈值
-- 生成期拦“往底部方向移动”的条件只看“真实正文尾部 vs 当前合法底线”，不再依赖旧的 `visibleBlank` 或 reserve 数值
-- 生成期用于拦截底部空白方向拖动的手势锁，不能只在小球空文本阶段挂载；正文阶段只要还存在这条限制，也必须继续挂在消息列表上，否则相关分支等于死代码
-- 这条手势锁里判断“是否已接近返回线”时，也必须优先使用真实 streaming 正文底部，不要退回旧的外层测量值；否则会出现该拦不拦、该放不放
-- 底部空白保护应优先在 `nestedScroll.onPreScroll` 里做预先 clamp，不要再依赖用户滚动后再 `scrollToItem(previous...)` 的状态链回退；那种回退本身就容易造成“抢手”
-- clamp 的判定基准应优先看“最后一条真实内容到底边距离视口底边还有多少像素”，在 spacer 还没真正露出来前就提前截断会越界的那部分 delta
-- 生成期 `回到底部` 按钮的语义应是“回到当前生成工作线/返回线”，不是直接回原始列表物理底部；否则按钮行为会和自动跟随目标不一致
-- 流式阶段如果用户已进入手动浏览态后又快速下滑回底部，一旦已经接近当前流式返回线，应立即解除 `userDetachedFromBottom` 并切回 `StreamAnchorFollow`，不要继续拖着 detached 状态把 reserve 空白带出来
-- 流式阶段恢复自动跟随的边界，必须看“是否回到生成工作线/返回线”，不能再额外强绑原始 `atBottom`；否则文本即使已经到输入框上方工作线，也不会继续自动跟随
-- 生成期如果正文还没吃到返回线/生成线，状态机应保持 `AnchorUser` 但不要把用户误判成 `detached`；否则自动跟随会被错误关死，后续即使正文吃完锚点空白也接不回来
-- 生成期状态机不能只盯列表 index/offset；streaming 正文长高本身也必须触发重算。正文吃完锚点空白、真正回到返回线后，才允许从 `AnchorUser` 切回 `StreamAnchorFollow`
-- 自动跟随执行器不能只在新 token 到来时滚一步；进入 `StreamAnchorFollow` 后，应按帧持续读取当前工作线和 overflow，动态跟随输入框与正文几何变化
-- 如果真实正文层与外层 item 宿主几何不一致，优先先修测量挂点，不允许继续只靠调工作线常量去碰运气
-- 生成期滚动状态机必须保持单一入口：`userDetachedFromBottom`、`autoScrollMode`、`回到底部` 按钮状态只允许由同一条滚动状态链统一决策；用户拖动过程中不允许另一条独立 effect 抢回自动跟随，只有手势结束并重新回到返回线/底部附近后，才允许重新接管 follow
-- 生成期浏览态下，“已回到底部”的判定不能直接复用列表原始 `atBottom`；`detached` 恢复、`回到底部` 按钮隐藏、自动跟随重新接管，必须以流式返回线/生成线边界为准，避免没到生成行就被提前拖回
-- 用户上滑看历史后向下 drag 或 fling 时，`streamAnchorReservePx` 必须被主动消费/清零，防止底部重新露出大面积空白
-- 生成期 `回到底部` 按钮与静态完成态按钮必须彻底分家：
-  - 动态按钮只在 `isStreaming == true && scrollMode == UserBrowsing && 生成行当前不可见` 时显示
-  - 静态按钮只按普通列表离底部距离派生，不允许继续复用生成态按钮记忆状态
-- 动态与静态 `回到底部` 按钮当前都应保持“出现一会儿再自动消失”的体感；显示语义分家，自动消失时效可以共用，不允许出现后长期挂住不消失
-- `回到底部` 按钮的显示条件与自动消失脉冲应和滚动状态写入口解耦：动态按钮只读“生成中 + UserBrowsing + 生成行不可见”，静态按钮只读“非生成中 + 距底部足够远”；不允许再靠多处分散的 `jumpButtonVisible = false/true` 去改显示真相
-- 生成期底部护栏必须只认一套纯几何真相：最后一个真实内容底边 vs 当前合法底线；护栏不读按钮状态，也不参与恢复 follow 判定
-- 生成期 drag / fling 护栏统一口径：只吃越界量，不整段锁死手势；如果测量晚到仍有漏空白，允许在列表停稳后按同一几何边界做一次小幅纠偏
-- 生成期底部护栏应正式拆成三段语义：第一段是“锚点空白边界态”，第二段是“生成行边界态”，第三段是“完成态直接放开”；不要再把三种语义混成一条统一规则
-- 第一段与第二段的差别只在“当前底部边界是哪条线”，不在于是否锁死用户手势；生成阶段始终允许用户上下滑，系统只消费“会越过当前阶段底部边界”的那部分 delta / velocity，不要再把第一段写成整段锁死手势本身
-- 第一段边界允许在本轮流式早期由“未发生用户交互时测得的自然底边”冻结下来，避免当前视口位置变化把早期锚点边界来回带跑；但这个冻结边界仍然只用于判定越界量，不用于锁死整个下滑手势
-- 底部护栏当前主规则：生成阶段始终允许用户上下滑；系统只负责限制“往底部方向的越界量”，不允许再锁死整个下滑手势
-- 第一阶段边界不是“空白面积”，而是“发送后小球抬起形成的那段初始空白，最下边那条固定线”，也就是冻结底线 `frozenBottomPx`；正文尾部碰到这条固定底线之前，往底部方向只允许回到这条线，不能越过它把初始预留空白继续放大
-- `frozenBottomPx` 的记录时机必须在“assistant streaming 容器已插入 + 小球锚点已上抬 + 第一次定锚已完成 + 列表停稳”之后；实现上优先只认“当时发送锚点空白的最下边界”这条固定线，只有这条线临时拿不到时才退回 placeholder/正文宿主自然底边，不再同时混两条底线真相
-- 发送后第一拍的程序性定锚必须保证小球锚点仍在可视区内，并呈现明显上抬；不允许把小球直接滚出可视窗口。发送后的底部空白仍由 reserve 形成，冻结底线继续取这段空白的最下边界
-- 发送锚点 reserve 只允许保留“中部偏上可见锚点”所需的有限空白；当前实现应压到更小的固定上限，不允许因为 reserve 过大导致长文本也长期挂在中部，看起来像一直没进入正常滚动
-- 当前生成期特殊护栏明确只分两段：
-  - 第一阶段：边界就是 `frozenBottomPx`
-  - 第二阶段：边界就是工作线 / 返回线
-- 正文尾部 `tailBottomPx >= frozenBottomPx` 后，直接退出第一阶段并进入第二阶段；第二阶段比较的是“当前真实正文尾部 vs 工作线/返回线”，不是把“当前生成行本身”当边界
-- 两阶段都只允许拦“越过当前阶段边界的那一点点”，不锁死整个手势；drag 和 fling 都按同一条阶段边界执行
-- 浏览态里“是否准备恢复 AutoFollow”优先按真实手势方向写入：继续往底部方向拖时置真，继续往历史方向拖时置假；不要再靠列表 index/offset 反推手势方向
-- 浏览态 downward fling 不做整段吞掉，改成停稳后按同一条阶段边界做小幅纠偏，避免卡手
-- 第二阶段恢复自动跟随也收成最简单口径：用户浏览后只要重新回到工作线 / 返回线附近，并且手势已结束，就直接恢复 `AutoFollow`；不再额外挂 `pendingResume` 一类中间真相态去卡恢复
-- 完成态或失败态直接退出这套生成期特殊护栏，恢复普通静态滚动；短文本允许从第一阶段直接进入完成态，不要求必须经过额外阶段，也不要求强制收口
-- 如果本轮结束时正文还没吃完冻结底线，应把剩余空白转成静态保留量 `retainedBottomGapPx`；这段状态只用于保证本轮结束后页面不往下掉，不允许把它当成需要给用户看的“可见空白层”
-- 下一轮发送开始时，不允许先把上一轮 `retainedBottomGapPx` 做成可见退场；新一轮发送锚点必须直接以“上一轮最后一条真实正文尾部”附近接上，旧 `retainedBottomGapPx` 只在内部失效，视觉上必须像正常消息接力，不允许出现先清空白再上新锚点的上下抖动
-- 静态完成态如果消息总高度不足一屏，消息列表本体应保持底对齐，不允许只因为内容短就把整段消息挂在顶部留出大块底部空白
-- 流式尾部提亮如果出现“像闪两次”的体感，优先先减提亮时长、提亮覆盖字符数和 fresh line settle 帧数，不优先改亮度颜色本身
-- 不要再乱调无关参数
-- 不要顺手改输入区
+- 用户消息和 assistant 消息先按正常消息流从上往下排，不做“发送后整段先抬到工作线”的特殊起步。
+- waiting 小球必须贴着上一条用户消息起步；正文从这个位置继续往下长。
+- 只有真实正文尾部接近工作线后，才允许进入 AutoFollow，并沿工作线继续跟随。
+- 用户拖动立即让权；生成中和完成态都不允许再由第二条隐藏滚动链抢位置。
+- 短内容静态贴底依赖 RecyclerView stackFromEnd；完成态收口继续围绕同一条工作线附近目标线，不再保留更低的第二条静态底线。
+- 生成结束时仍可能残留极轻的“收口微抖”；后续继续优化时，优先检查 streaming/completed 是否仍共用同一宿主几何。
 
 ### 10.3 UI 监护与调试日志规则
 
-- 当前滚动链口径更新为“发送锚点冻结底线 + 普通工作线 + 独立按钮脉冲”：
-  - 发送后保留小球锚点明显上抬
-  - 第一次程序性定锚停稳后，先冻结 `frozenBottomPx` 作为第一阶段唯一底线
-  - 第一阶段结束后，streaming 自动跟随再回普通工作线目标
-- 本轮短文本/失败态如果还有剩余空白，转成 `retainedBottomGapPx` 静态保留；下一轮发送时由新锚点直接无感接管，不做用户可见的旧空白清场
-- 当前工作线应贴着输入框上方安全距离；后续若再调距离，优先只调这一条统一 gap，不再额外造第二条底部线
-- 生成阶段用户允许正常上滑下滑；系统只在“继续往底部方向移动会越过当前合法底线”时消费越界量，不再整段锁死手势
-- `回到底部` 按钮必须与滚动链写状态解耦：
-  - 动态/静态都只按“当前是否已经离开底部/工作线区域”派生
-  - 按钮可以随持续滚动重复出现、自动消失、再次出现
-  - 不允许再通过旧的 `jumpButtonVisible = true/false` 分散写入来决定显示真相
-- 以后如果继续调这条滚动链，优先先检查：
-  - 真实 streaming 内容底边测量
-  - 当前工作线位置
-  - `onPreScroll/onPreFling` 是否只消费越界量
-  - 按钮是否仍保持纯派生
-
-- 以后聊天 UI、输入框、流式滚动、尾部完成态这类反复调不准的问题，优先加“后台自动记录”的调试链，不要继续只靠肉眼猜
-- UI 问题默认优先直接读代码、看状态链和几何关系，不要把长期日志监控当主方案
-- 如果临时加调试日志或 debug 面板，只允许为定位当前问题服务；问题确认后应在同一轮或下一轮尽快删除，不长期保留在主链里
-- 以后只要新增或修改 UI 监护项，必须同次同步更新 [AGENTS.md](D:/wuhao/AGENTS.md)，避免换窗口后又回到“看不见真实状态、只能瞎改”的旧问题
+- UI 问题默认优先直接查代码里的状态机、几何测量和列表锚点，不先靠肉眼猜。
+- 如果临时加调试日志或 debug 面板，只允许服务当前问题；定位完成后应尽快删除。
+- 以后继续排查滚动问题，优先按这 4 项顺序核对：
+  - assistant 真实内容底边是否仍由同一宿主上报
+  - 工作线与静态贴底线是否仍共用同一物理锚点
+  - Idle / AutoFollow / UserBrowsing 是否仍是唯一滚动状态真相
+  - 回到底部 按钮是否仍是纯派生，不靠分散写状态硬控
+- 以后只要新增或修改 UI 监护项，必须同次同步更新 [AGENTS.md](D:/wuhao/AGENTS.md)。
 
 ### 10.4 当前滚动链大白话口径
 
-- 发送后先把小球锚点抬起来，然后做一次定锚，定锚停稳后记下本轮第一条底线 `frozenBottomPx`
-- 生成早期先守这条冻结底线：用户可以上滑看历史，也可以再下滑回来，但不能把底部空白继续拖得比这条线更大
-- 用户从很高的历史区往下滑回来时，前半段应该是自由回落的；只有接近冻结底线或工作线附近时，系统才开始只吃“越界的那一小段”
-- 一旦真实正文尾部吃到 `frozenBottomPx`，第一阶段就结束；后面直接回普通工作线逻辑，正文贴着输入框上方那条工作线继续往上滚
-- 如果本轮是短文本或失败态，正文没吃完这段空白也没关系；空白只转成内部保底状态 `retainedBottomGapPx`，保证页面别往下掉，不要求强制收口
-- 用更简单的话说，当前滚动链不需要先分“长文本 / 短文本 / 失败态”三套逻辑；只需要看真实正文尾部 `tailBottomPx` 有没有吃到冻结底线 `frozenBottomPx`：
-  - 吃到底线了：后面按正常工作线/生成行逻辑走
-  - 没吃到底线：后面按保留空白逻辑走，往下滑最多只回到底线
-  - 失败但没吐字：等同于“完全没吃到底线”
-- 下一轮发送时，不允许先把上一轮空白做成用户可见的退场动画；新一轮消息和新锚点必须直接接到上一轮真实正文下面，视觉上像正常消息接力
-- 完成态只要当前不是 `UserBrowsing`，就允许补最后一次 final snap，把底部尽量收回到正常位置
-- `回到底部` 按钮属于滚动链，不属于渲染链，也不属于输入框链：
-  - 动态按钮：只在生成中、用户处于 `UserBrowsing`、并且已经离开工作线/返回线区域时显示
-  - 静态按钮：只在非生成中、普通列表当前还能继续往下滚时显示
-  - 两种按钮都应该是“用户每次继续滑动就重新出现一会儿，然后自动消失”，不是常亮
+- 用户消息、AI 消息先按正常消息流一条一条往下排。
+- waiting 小球贴着上一条用户消息出现，不直接跳到工作线。
+- 正文从 waiting 的位置继续往下长。
+- 只有正文尾部接近工作线后，自动跟随才接管，并沿工作线滚动。
+- 用户上滑下滑都不能卡手；生成结束后也不要再掉到一条更低的线重新留空白。
 
 ## 11. 免责声明规则
 
@@ -645,91 +546,31 @@ Clean-State 定义：
 
 ## 20. 主锚点更新记录
 
-从 2026-04-07 起，滚动链唯一真相只认本节最后的 RecyclerView 规则。
-前面仍残留的旧 `LazyColumn / frozenBottomPx / retainedBottomGapPx / AutoScrollMode / pendingResumeAutoFollow / userDetachedFromBottom` 描述，一律视为历史归档，不再执行。
-
 - 当前主对话锚点真源仍为 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
-- 2026-03-27 起，最新口径已收紧为“农业种植相关问题”，并将输出结构明确为“禁止表格，关键点少量加粗”
-- 这次更新只改主对话锚点，不影响 B 层与 C 层摘要提示词文件
-- 2026-04-05 当前滚动链已改回普通文本滚动：不再保留“发送后小球上抬、冻结底线、保留空白、下一轮无感接力”这套特殊链路
-- 2026-04-05 发送后直接进入普通 workline / AutoFollow 逻辑；waiting 小球样式保留，但不再承担单独锚点语义
-- 2026-04-05 生成期间仍保留 `Idle / AutoFollow / UserBrowsing` 三态；用户上滑时必须立即让权，回到底部附近再恢复 `AutoFollow`
-- 2026-04-05 生成阶段底部护栏统一为“只按真实正文尾部与当前工作线消费越界量”；不再引入 `frozenBottomPx`、`retainedBottomGapPx` 一类特殊边界真相
-- 2026-04-05 完成态 final snap 只要当前不处于 `UserBrowsing` 就允许补最后一次到底；`回到底部` 按钮仍按动态/静态分家，但不再受旧锚点保留空白链影响
-- 底部空白 clamp 在拿不到最后内容 item 的稳定测量时，应优先走保守退路，不要把“拿不到测量”直接当成“距离空白还很远”
-- 2026-04-04 当前滚动链真实边界补充：`ChatScrollCoordinator.kt` 当前已负责滚动规则、几何 helper、护栏、按钮派生，以及主要滚动 runtime effect/状态机接线；`ChatScreen.kt` 只允许继续保留页面组装、测量采集、局部持久化/生命周期桥接和少量宿主级回调，不允许把滚动决策重新混回页面层
-- 2026-04-04 当前恢复 follow 口径补充：用户上滑进入 `UserBrowsing` 后，只有在“列表停稳 + 真实 streaming 正文尾部重新回到工作线/返回线附近”同时满足时，才允许恢复 `AutoFollow`；一旦重新贴线，正文应持续沿工作线稳定上推，不允许一拍上推后一拍掉回
-- 2026-04-04 当前动态链进一步收口：滚动、渲染、底部输入区三条链的 runtime state holder 已分别下沉到 `ChatScrollCoordinator.kt`、`ChatStreamingRenderer.kt`、`ChatComposerCoordinator.kt`；其中滚动辅助 effect、渲染 revealMode effect、composer settling/overlay effect 也已继续下沉。`ChatScreen.kt` 当前主要保留页面组装、测量采集、本地持久化/恢复、宿主级输入法/生命周期桥接和组件挂载，不再自己持有那批主链 `remember` 状态，也不再承接那批主链 runtime effect
-## 20.1 旧口径归档（2026-04-05，仅历史参考）
-- 2026-04-05 起，聊天滚动链以本节为准；前文仍残留的旧 `frozenBottomPx`、`retainedBottomGapPx`、锚点空白口径一律视为过期，不再执行。
-- 当前只保留普通 workline 滚动：waiting 小球只保留样式，不再承担发送后上抬锚点语义。
-- 正文一出字，就以输入框上方工作线为目标继续生成和自动跟随。
-- 生成阶段只保留 `Idle / AutoFollow / UserBrowsing` 三态：用户上滑立即让权，回到底部附近再恢复 `AutoFollow`。
-- 流式底部护栏只按真实正文尾部和当前工作线消费越界量，不再引入额外阶段边界。
-- 只要不是短文本/失败态保留场景，完成后底部不允许有多余可见空白。
-- `回到底部` 按钮属于滚动链：生成中按“离开底部后可显示”，非生成中按“普通列表未到底”显示。
+- 2026-03-27 起，主对话输出结构继续按“农业种植相关问题、禁止表格、关键点少量加粗”执行
+- 从 2026-04-07 起，聊天滚动唯一真相只认本节最后的 RecyclerView 规则
+- 旧 Compose / LazyColumn 时代的滚动术语和补滚口径一律视为历史归档，不再执行
 
-## 20.2 旧口径归档补充（2026-04-05，仅历史参考）
-- 当前普通滚动链不再允许只做单向上推：正文如果挂在工作线上方，必须允许程序性补滚把正文往下贴回工作线。
-- 当前普通 scrollToBottom / final snap 不允许只会继续往前滚；如果最后一条真实内容已经在可视区内但底部仍有空白，必须允许反向补齐，把尾部贴回输入框上方附近。
-- 以上两条属于普通滚动链主规则，不属于旧的锚点空白 / frozen / retained 特殊逻辑。
+## 20.1 历史归档说明
 
-## 20.3 旧口径归档续记（2026-04-05，仅历史参考）
-- 当前普通滚动链只保留：发送后对齐工作线、单一 AutoFollow 循环、用户上滑让权、回到底部附近恢复 AutoFollow、完成态 final snap。
-- 生成期间不再额外挂第二条 guard 补滚链，不允许一边 AutoFollow 一边再由额外 effect 偷偷改列表位置。
-- streaming 阶段的 nestedScroll 当前只负责识别用户手势方向和中断 AutoFollow，不再主动消费 drag / fling 去替用户拦手势。
-- 当前 streaming 恢复 AutoFollow 只保留一条入口：用户进入 UserBrowsing 后，只有在继续向底部方向操作并回到底部附近、列表停稳时才恢复；不再保留第二条后台 effect 额外抢状态。
-- 当前普通滚动链的唯一状态真相只认 ScrollMode = Idle / AutoFollow / UserBrowsing；旧的 AutoScrollMode 已移除，不再作为任何滚动判断依据。
-- 当前普通滚动链已移除 pendingResumeAutoFollow 和 userDetachedFromBottom 这两类旧恢复状态；恢复 AutoFollow 只看当前是否处于 UserBrowsing，以及正文是否已经重新回到底部附近。
-- 首次进入聊天页时，只要布局与 hydration 条件已满足，就必须执行一次初始贴底；不再因为 hasStartedConversation 这类会话标记跳过首次 bottom snap。
-- waiting 空文本阶段也必须补一次工作线对齐，避免小球因布局测量先后顺序不同而一会儿偏高、一会儿偏低。
+- 旧滚动规则只保留在 git 历史和历史交接里，不再继续在本文件堆叠多版口径。
+- 以后如果发现新实现和旧归档表述冲突，直接以本节当前规则为准，不再往回兼容旧术语。
 
-## 20.2A 旧口径归档补记 A（2026-04-05，仅历史参考）
+## 20.2 当前代码入口
 
-- 当前滚动链继续按最普通的 workline 逻辑收缩：保留 waiting 小球样式，但不再保留独立 waiting 补滚链。
-- streaming 阶段当前只认一套 content bottom：
-  - 有正文内容时，认真实正文内容底边
-  - waiting 空文本阶段，退回当前 streaming item 可见底边
-- 不再并行保留 measured/tail/visual 多套 content bottom 真相去分别驱动 waiting、正文和 follow。
-- LazyColumn 当前不再使用 `Arrangement.Bottom` 参与额外底对齐；启动贴底、streaming follow、完成态贴底继续分别走各自 effect，但列表主布局不再额外把内容整体往上/往下推。
-- 当前修正优先级：先统一几何真相，再继续收 startup/final snap 与 jump button 位置问题；不要再恢复旧的锚点 reserve / frozen / retained 链。
+- [app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)：唯一 active 滚动状态机入口，只认 `Idle / AutoFollow / UserBrowsing`
+- [app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：只负责几何测量、RecyclerView 宿主挂载和向滚动协调器喂参数
+- [app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt)：负责 waiting / streaming / settled 共用同一内容宿主与真实底边上报
+- [app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：负责 RecyclerView 底座与 stackFromEnd 静态贴底能力
 
-## 20.3A 旧口径归档补记 B（2026-04-05，仅历史参考）
+## 20.3 当前排查顺序
 
-- streaming 内容底边的采样继续统一：waiting 阶段和正文阶段都由同一个 streaming 渲染宿主回传 bounds，不再让 waiting 阶段只退回外层 item 宿主底边。
-- 当前 `Arrangement.Bottom` 已恢复，用于保证内容不满一屏时，首启与完成态仍具备贴底能力；不要把这条恢复误解成回到旧的锚点 reserve / frozen / retained 方案。
-- 当前仍以“单 workline + 单 follow loop + final snap”收缩，后续继续排查时优先看 waiting/正文是否仍共享同一条 content bottom，和 static bottom align 是否还被其他 effect 抬高。
-- 当前 streaming follow 不再依赖“正文底边稳定两帧后才 arm”这条额外门槛；waiting 与正文阶段只要已有可见 content bottom，就直接走同一条 AutoFollow 主链，避免长文本 arm 不起来、短文本 arm 较早导致起步位置不一致。
-- 当前 AutoFollow 主循环必须同时支持“往上推”和“往下贴回工作线”两种方向；不允许再把负向 step 直接丢掉，否则会直接表现成长文本挂高、发送后不动就不自动往下跟、完成态底部留空白。
-- 当前辅助滚动链只保留两件事：首次进入有消息时的一次初始贴底，以及完成态的一次 final snap；IME 关闭回底、生命周期恢复回底这两条旧补位链不再参与列表位置控制。
+以后继续排查滚动问题，优先按这 4 项顺序核对：
 
-- 2026-04-05 发送后的第一次 streaming 对齐，必须等待 ChatStreamingRenderer 回传真实 waiting/正文 bounds 后再执行；不再允许用外层 streaming item 宿主底边 fallback 去决定起步高度，否则会直接表现成长文本起步偏高、短文本起步偏低。
-
-- 2026-04-05 waiting 小球当前按普通消息流处理：发送后未出字前只做一次普通贴底，不执行 workline 对齐；小球应紧跟上一条用户消息底部，等正文真正开始输出后再进入 workline / AutoFollow 主链。
-
-- 2026-04-05 消息列表当前已取消 Arrangement.Bottom；用户消息和 AI 消息默认按普通文本流从上往下排，底部只保留输入框安全区，不再把内容不足一屏的首发消息整体压到底部。
-
-- 2026-04-05 冷启动或重启 app 时，如果已有历史消息，初始贴底会持续重复对齐直到真正命中底部容差；切后台再回来不再保留单独的生命周期回底意图。
-
-- 2026-04-05 冷启动初始贴底当前按严格底部命中结束，不再按宽底部容差提前认为已到底；静态 回到底部 按钮也按 tBottom 派生，不再只看 canScrollForward。
-
-- 2026-04-05 非生成态的启动贴底、完成贴底与静态 回到底部 按钮，当前优先按最后一条真实消息内容底边对齐，不再优先按整个列表 item 宿主底边对齐；否则会出现视觉上始终高两三行、按钮被误抬起。
-
-- 2026-04-05 发送链当前只保留一次普通贴底，不再在 sendTick 里额外执行 workline 对齐；waiting 阶段与正文阶段的工作线跟随只允许由同一条 AutoFollow 主循环接管。
-- 2026-04-05 当前普通滚动链继续收简：发送后 waiting 小球先按普通消息流落位，不再在发送当拍提前切 `AutoFollow`；正文真实内容底边出现后，再由同一条 `AutoFollow` 主循环接管 workline 跟随。
-- 2026-04-05 当前普通滚动链不再保留 `sendTick` 运行时补滚、`streamingFollowArmed` 中间态、`restoreBottomAfterImeClose` / `restoreBottomAfterLifecycleResume` / `lifecycleResumeReady` 这类旧恢复状态；普通滚动链只继续收敛到真实内容底边、`ScrollMode`、单一 follow loop、冷启动贴底和完成态 final snap。
-- 2026-04-05 当前普通静态贴底链继续收简：冷启动贴底、完成态 final snap、静态 `回到底部` 按钮只认最后一条真实消息内容底边，不再回退到最后一个列表 item 宿主底边；避免始终差两三行和按钮被虚高底边抬起。
-- 2026-04-05 当前普通生成链继续收简：发送后 waiting 小球与短内容优先按普通消息流从上往下排，不再因为发送当拍强制贴底而整体压到底部；只有当真实 streaming 内容底边接近工作线时，才从 `Idle` 切到 `AutoFollow`，开始沿输入框上方工作线跟随。
-- 2026-04-05 当前普通生成链补充：正文真实内容一旦出现，就允许从 `Idle` 直接进入 `AutoFollow` 主循环，由主循环把尾部往工作线贴回；“回到底部附近”这条门槛只继续用于 `UserBrowsing -> AutoFollow` 的恢复，不再误用成首次启动 follow 的前置条件。
-- 2026-04-05 当前普通生成链补充：waiting 小球阶段继续按普通消息流停在消息后面；首个正文真实内容出现时，允许补一次 workline 对齐，然后由唯一的 `AutoFollow` 主循环继续接管，避免“发完不动时完全不起 follow”。
-- 2026-04-05 当前普通 workline 跟随链继续收正：正文阶段 follow 只负责“真实内容尾部超过工作线后向上推回工作线”，不再尝试把仍高于工作线的短内容/早期内容反向拉向工作线；`Idle -> AutoFollow` 的启动条件也以“尾部已经接近或越过工作线”为准，不再把首字出现本身误判成应该立即进入持续跟随。
-- 2026-04-05 按官方 Compose insets 建议，聊天列表底部输入区安全空间不再主要放进 `LazyColumn.contentPadding(bottom)`；当前改成显式底部 `Spacer`，避免底部空白、完成态贴底、jump 按钮和工作线几何继续被同一份 contentPadding 扰乱。
-
-- 当前普通滚动链口径再收一层：发送后不再把 scrollMode 停在 Idle 等额外补滚链拉起；发送完成即回到 AutoFollow 主链，waiting 只走普通消息流，正文真实内容底边到位后再由唯一的 follow loop 沿工作线接管，不再保留 sendTick 专属 workline correction。
-
-- 当前聊天滚动链已切到 RecyclerView 消息列表底座，Compose 不再承担消息列表主滚动宿主；消息内容渲染继续由 ComposeView 承接。
-- 当前滚动运行时主链统一收口在 ChatScrollCoordinator.kt；ChatScreen.kt 只保留几何测量、RecyclerView 宿主挂载和向滚动协调文件喂参数/回调，不再允许直接新增滚动状态机 effect 到主文件。
-- 旧的 LazyColumn / listState / nestedScroll / sendTick 补滚 / waiting 单独锚点上抬链已经退出主链，不允许再接回。
+1. assistant 真实内容底边是否仍由同一宿主上报
+2. 工作线和静态贴底线是否仍共用同一物理锚点
+3. `Idle / AutoFollow / UserBrowsing` 是否仍是唯一滚动状态真相
+4. 回到底部 按钮与 final snap 是否仍只读主链派生，不靠第二套补滚链硬控
 
 ## 20.4 当前 RecyclerView 滚动链唯一真相（2026-04-07）
 
@@ -739,16 +580,15 @@ Clean-State 定义：
 - 用户拖动立即让权：进入 `UserBrowsing` 后，不允许自动跟随继续抢手；只有明确往底部方向滑回，并重新接近工作线或底部区域后，才恢复 `AutoFollow`。
 - 完成态与静态贴底尽量围绕同一条工作线附近的底部目标线收口，不再额外保留明显更低的第二条静态底线；底部不应再出现额外可见空白。
 
-## 20.5 当前 RecyclerView 滚动链补充口径（2026-04-07）
+## 20.5 当前 RecyclerView 滚动链补充口径（2026-04-09）
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
-- working line 坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
-- RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留“bottom bar 高度 + 很小 clearance”这条更低的第二静态底线。
+- 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
+- RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
 - 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - follow 步长继续保持“小 overflow 先不补滚”的收敛策略，避免正文刚接近工作线时因为极小差值频繁抖动。
 - 静态短内容贴底依赖 RecyclerView 自身 `stackFromEnd` 底对齐，不再靠“顶部列表 + final snap 补滚”硬凑；完成态的 final snap 只负责围绕同一工作线做最后收口。
 - final snap 不能只靠“固定等两帧”碰运气；必须等 completed 宿主真实底边到位，并在同一条工作线目标附近真正收口后才结束。
-- 若后续实现与前文旧的 frozenBottom / retainedBottomGap / 第一阶段第二阶段口径冲突，以本节为准。
-
+- 若后续实现与历史归档表述冲突，以本节为准。
