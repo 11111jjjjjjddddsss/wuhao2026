@@ -1673,6 +1673,34 @@ fun ChatScreen() {
             )
         }
     }
+    LaunchedEffect(
+        sendUiSettling,
+        imeVisible,
+        inputFieldFocused,
+        input.value.text,
+        bottomBarHeightPx,
+        stableComposerBottomBarHeightPx
+    ) {
+        if (!sendUiSettling) return@LaunchedEffect
+        if (input.value.text.isNotEmpty() || inputFieldFocused || imeVisible) return@LaunchedEffect
+        if (
+            kotlin.math.abs(bottomBarHeightPx - stableComposerBottomBarHeightPx) >
+            BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+        ) {
+            return@LaunchedEffect
+        }
+        repeat(2) { withFrameNanos { } }
+        if (
+            sendUiSettling &&
+            input.value.text.isEmpty() &&
+            !inputFieldFocused &&
+            !imeVisible &&
+            kotlin.math.abs(bottomBarHeightPx - stableComposerBottomBarHeightPx) <=
+            BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
+        ) {
+            sendUiSettling = false
+        }
+    }
 
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -2759,6 +2787,7 @@ fun ChatScreen() {
             }
         }
         snackbarScope.launch {
+            var sendCommitted = false
             try {
                 hasStartedConversation = true
                 initialBottomSnapDone = true
@@ -2772,10 +2801,12 @@ fun ChatScreen() {
                 clearFailedAssistantStateForUser(userId)
                 anchoredUserMessageId = userId
                 trimMessagesInPlace()
-                sendUiSettling = false
+                sendCommitted = true
                 showComposerStatusHint("当前网络不可用")
             } finally {
-                sendUiSettling = false
+                if (!sendCommitted) {
+                    sendUiSettling = false
+                }
             }
         }
     }
@@ -2806,6 +2837,7 @@ fun ChatScreen() {
             }
         }
         snackbarScope.launch {
+            var sendCommitted = false
             try {
                 hasStartedConversation = true
                 initialBottomSnapDone = true
@@ -2831,7 +2863,6 @@ fun ChatScreen() {
                     sourceUserMessageId = userId
                 )
                 trimMessagesInPlace()
-                sendUiSettling = false
                 persistTick++
                 snackbarScope.launch {
                     context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
@@ -2875,8 +2906,11 @@ fun ChatScreen() {
                 } else {
                     launchLocalFakeStream(applyInitialDelay = true)
                 }
+                sendCommitted = true
             } finally {
-                sendUiSettling = false
+                if (!sendCommitted) {
+                    sendUiSettling = false
+                }
             }
         }
     }

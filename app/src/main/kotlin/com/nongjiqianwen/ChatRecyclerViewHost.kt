@@ -119,10 +119,18 @@ internal fun ChatRecyclerViewHost(
                 recyclerView.paddingTop != topPaddingPx ||
                 recyclerView.paddingBottom != bottomPaddingPx
             ) {
+                val previousBottomPaddingPx = recyclerView.paddingBottom
                 recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
+                val bottomPaddingDeltaPx = bottomPaddingPx - previousBottomPaddingPx
+                if (bottomPaddingDeltaPx != 0 && recyclerView.adapter?.itemCount.orZero() > 0) {
+                    // Keep visible content anchored while the composer/IME changes bottom reserve.
+                    recyclerView.scrollBy(0, -bottomPaddingDeltaPx)
+                }
             }
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             onRecyclerReady(recyclerView, layoutManager)
         }
     )
 }
+
+private fun Int?.orZero(): Int = this ?: 0

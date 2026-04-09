@@ -590,6 +590,8 @@ Clean-State 定义：
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
 - 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
+- 输入区 / IME 导致的列表底部 padding 变化，不允许再直接把整个消息区被动压下去或抬上来；底座必须优先保持当前可视内容锚定，把真正的上抬/跟随只留给主滚动链决定。
+- 发送收口的 `sendUiSettling` 不允许在 IME 仍未收稳时提前释放；必须等输入区和底部条真正收稳后再放手，避免“输入区先塌一拍、键盘再退一拍”把消息区带出上下弹跳。
 - follow 步长继续保持“小 overflow 先不补滚”的收敛策略，避免正文刚接近工作线时因为极小差值频繁抖动。
 - 静态短内容贴底依赖 RecyclerView 自身 `stackFromEnd` 底对齐，不再靠“顶部列表 + final snap 补滚”硬凑；完成态的 final snap 只负责围绕同一工作线做最后收口。
 - final snap 不能只靠“固定等两帧”碰运气；必须等 completed 宿主真实底边到位，并在同一条工作线目标附近真正收口后才结束。
