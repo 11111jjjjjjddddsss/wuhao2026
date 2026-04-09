@@ -585,11 +585,13 @@ Clean-State 定义：
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
 - `Idle` 阶段只保留“最小可见保护”：如果 waiting 或早期正文真实底边已经压到工作线以下，只允许向上补到工作线附近；不允许反向把仍高于工作线的内容再往下吸回去。
+- 这条最小可见保护不能再等坏帧画出来之后补滚；发送瞬间和早期 streaming 只要真实底边会掉到工作线以下，必须优先在 RecyclerView 预绘制前做同一条几何纠偏，避免用户看到“小球/首字先掉下去，再被抬回来”的一上一下。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
 - 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
+- 非动画贴底如果只是要把最后一条消息对到当前目标线，优先一次性 offset 定位；不要再用“先 `scrollToPosition`，再 `scrollBy` 二次修正”去制造发送或收口时的额外抽动。
 - 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
 - waiting 小球阶段不允许提前触发 workline snap；只有正文真正出现后，才允许 `Idle -> snap -> AutoFollow` 这条接管链开始工作。
 - streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
