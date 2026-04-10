@@ -588,8 +588,9 @@ Clean-State 定义：
 - 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成发送后一次性的 `scrollToPositionWithOffset(...)` 手动定位。
 - 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：关闭 `stackFromEnd` 后，列表按普通顺序布局，再在新消息插入后用当前真实 bottom padding / 工作线位置手动把最后一项定位到发送起步目标。
 - 如果发送起步仍然掉到工作线以下，优先检查这次手动定位使用的最后一项高度和目标 offset，而不是再回退去加第二条预测或纠偏链。
-- 首次进入聊天页和从后台切回聊天页时，如果当前有历史消息且不在底部/目标线附近，必须显式补一次 `scrollToBottom(false)`；这条冷启动/生命周期恢复贴底链只服务 completed 历史列表，不参与发送起步定位。
-- 首屏 reveal 不能在“底部还没贴到位、最后一条真实底边还没测出来”时提前放行；首屏贴底如果还未拿到最后一条真实内容底边，应继续等待下一帧，而不是直接把 `initialBottomSnapDone` 提前置真。
+- 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
+- 从后台切回聊天页时，不默认自动贴底，避免用户看历史时被强行拉回底部；生命周期恢复优先保持当前浏览位置。
+- 首屏 reveal 不能无限等待“最后一条真实底边”才放行；应只做短窗口等待，拿得到底边就先贴底，拿不到也要及时 reveal，避免首次进入长时间空白。
 - `Idle` 阶段只保留最小主链接管：waiting 阶段先完成这次起步保护，正文真正出现且尾部接近工作线后，才允许切入 workline snap / `AutoFollow`；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。

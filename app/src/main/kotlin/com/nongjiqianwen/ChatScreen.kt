@@ -1459,7 +1459,6 @@ fun ChatScreen() {
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
-    var lifecycleResumeBottomSnapJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     val failedUserMessageStates = remember(chatScopeId) { mutableStateMapOf<String, String>() }
@@ -2073,8 +2072,6 @@ fun ChatScreen() {
     LaunchedEffect(chatScopeId) {
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
-        lifecycleResumeBottomSnapJob?.cancel()
-        lifecycleResumeBottomSnapJob = null
         remoteRecoverySourceUserMessageId = null
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
@@ -3023,47 +3020,9 @@ fun ChatScreen() {
         }
     }
 
-    fun scheduleLifecycleResumeBottomSnap() {
-        lifecycleResumeBottomSnapJob?.cancel()
-        if (messages.isEmpty() || isStreaming || hasStreamingItem) {
-            suppressJumpButtonForLifecycleResume = false
-            lifecycleResumeBottomSnapJob = null
-            return
-        }
-        lifecycleResumeBottomSnapJob = snackbarScope.launch {
-            suppressJumpButtonForLifecycleResume = true
-            try {
-                repeat(12) {
-                    withFrameNanos { }
-                    if (messages.isEmpty() || isStreaming || hasStreamingItem) {
-                        return@launch
-                    }
-                    val lastContentBottom = currentLastMessageContentBottomPx()
-                    if (
-                        startupHydrationBarrierSatisfied &&
-                        startupLayoutReady &&
-                        recyclerViewRef != null &&
-                        lastContentBottom > 0
-                    ) {
-                        if (!isWithinBottomTolerance()) {
-                            scrollToBottom(false)
-                            repeat(2) { withFrameNanos { } }
-                        }
-                        return@launch
-                    }
-                }
-            } finally {
-                suppressJumpButtonForLifecycleResume = false
-                lifecycleResumeBottomSnapJob = null
-            }
-        }
-    }
-
     DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
-                lifecycleResumeBottomSnapJob?.cancel()
-                lifecycleResumeBottomSnapJob = null
                 suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true
@@ -3077,15 +3036,11 @@ fun ChatScreen() {
                 streamingBackgrounded = false
                 if (isStreaming && fakeStreamJob?.isActive != true && streamRevealJob?.isActive != true) {
                     recoverStreamingAfterLifecycleLoss()
-                } else {
-                    scheduleLifecycleResumeBottomSnap()
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
-            lifecycleResumeBottomSnapJob?.cancel()
-            lifecycleResumeBottomSnapJob = null
             lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
