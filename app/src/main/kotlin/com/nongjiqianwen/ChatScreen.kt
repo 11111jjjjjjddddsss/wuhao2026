@@ -1513,6 +1513,11 @@ fun ChatScreen() {
         }
         return -1
     }
+    fun hasStreamingStartAssistantVisibleBottom(): Boolean {
+        if (currentStreamingContentBottomPx() > 0) return true
+        val assistantId = streamingMessageId ?: return false
+        return messageSelectionBoundsById[assistantId] != null
+    }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
         if (lastMessage.role == ChatRole.ASSISTANT && hasStreamingItem && currentStreamingContentBottomPx() > 0) {
@@ -3108,6 +3113,7 @@ fun ChatScreen() {
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingStartVisibleBottomPx = ::currentStreamingStartVisibleBottomPx,
+        hasStreamingStartAssistantVisibleBottom = ::hasStreamingStartAssistantVisibleBottom,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         currentStreamingStartAlignDeltaPx = ::currentStreamingStartAlignDeltaPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,

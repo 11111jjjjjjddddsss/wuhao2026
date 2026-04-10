@@ -322,6 +322,7 @@ internal fun BindRecyclerChatScrollEffects(
     currentLastMessageContentBottomPx: () -> Int,
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingStartVisibleBottomPx: () -> Int,
+    hasStreamingStartAssistantVisibleBottom: () -> Boolean,
     currentStreamingLegalBottomPx: () -> Int,
     currentStreamingStartAlignDeltaPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
@@ -383,7 +384,13 @@ internal fun BindRecyclerChatScrollEffects(
                     }
                     if (currentStreamingStartAlignDeltaPx() != 0) {
                         snapStreamingToStartAnchor()
-                        pendingStreamingStartAnchorState.value = false
+                        if (hasStreamingStartAssistantVisibleBottom()) {
+                            pendingStreamingStartAnchorState.value = false
+                        }
+                        streamBottomFollowActiveState.value = false
+                        continue
+                    }
+                    if (!hasStreamingStartAssistantVisibleBottom()) {
                         streamBottomFollowActiveState.value = false
                         continue
                     }
