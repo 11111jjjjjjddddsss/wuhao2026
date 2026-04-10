@@ -1498,6 +1498,21 @@ fun ChatScreen() {
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
+    fun currentStreamingStartVisibleBottomPx(): Int {
+        val streamingBottom = currentStreamingContentBottomPx()
+        if (streamingBottom > 0) return streamingBottom
+        streamingMessageId?.let { assistantId ->
+            messageSelectionBoundsById[assistantId]?.let { bounds ->
+                return (bounds.bottom - messageViewportTopPx).roundToInt()
+            }
+        }
+        anchoredUserMessageId?.let { userId ->
+            (messageContentBoundsById[userId] ?: messageSelectionBoundsById[userId])?.let { bounds ->
+                return (bounds.bottom - messageViewportTopPx).roundToInt()
+            }
+        }
+        return -1
+    }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
         if (lastMessage.role == ChatRole.ASSISTANT && hasStreamingItem && currentStreamingContentBottomPx() > 0) {
@@ -1521,9 +1536,9 @@ fun ChatScreen() {
     }
     fun currentStreamingStartAlignDeltaPx(): Int {
         val startAnchorBottom = currentStreamingStartAnchorBottomPx()
-        val contentBottom = currentStreamingContentBottomPx()
-        if (startAnchorBottom <= 0 || contentBottom <= 0) return 0
-        val deltaPx = startAnchorBottom - contentBottom
+        val visibleBottom = currentStreamingStartVisibleBottomPx()
+        if (startAnchorBottom <= 0 || visibleBottom <= 0) return 0
+        val deltaPx = startAnchorBottom - visibleBottom
         return if (deltaPx < 0) deltaPx else 0
     }
     fun currentUnifiedBottomTargetPx(): Int {

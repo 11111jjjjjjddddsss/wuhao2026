@@ -584,7 +584,7 @@ Clean-State 定义：
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
-- 发送起步阶段允许存在“一次性起步保护位”：如果 waiting 小球首拍的真实底边会掉到工作线以下，只允许先一次性补到工作线以上的小安全位；这条起步保护位只用于发送首拍，不延续成完成态第二条底线，也不保留额外 spacer / reserve 空白。
+- 发送起步阶段允许存在“一次性起步保护位”：如果本轮刚发送的用户消息和 waiting 小球这组首拍可见内容的底边会掉到工作线以下，只允许先一次性补到工作线以上的小安全位；这条起步保护位只用于发送首拍，不延续成完成态第二条底线，也不保留额外 spacer / reserve 空白。
 - `Idle` 阶段只保留最小主链接管：waiting 阶段先完成这次起步保护，正文真正出现且尾部接近工作线后，才允许切入 workline snap / `AutoFollow`；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
