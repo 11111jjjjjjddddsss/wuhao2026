@@ -1470,6 +1470,7 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val messageItemVerticalPaddingPx = with(density) { 8.dp.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -1498,6 +1499,13 @@ fun ChatScreen() {
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
+    fun predictStreamingStartGroupBottomPx(userBottomPx: Int): Int {
+        if (userBottomPx <= 0) return -1
+        return userBottomPx +
+            messageItemVerticalPaddingPx +
+            messageItemVerticalPaddingPx +
+            assistantLineStepPx
+    }
     fun currentStreamingStartVisibleBottomPx(): Int {
         val streamingBottom = currentStreamingContentBottomPx()
         if (streamingBottom > 0) return streamingBottom
@@ -1508,7 +1516,9 @@ fun ChatScreen() {
         }
         anchoredUserMessageId?.let { userId ->
             (messageContentBoundsById[userId] ?: messageSelectionBoundsById[userId])?.let { bounds ->
-                return (bounds.bottom - messageViewportTopPx).roundToInt()
+                return predictStreamingStartGroupBottomPx(
+                    userBottomPx = (bounds.bottom - messageViewportTopPx).roundToInt()
+                )
             }
         }
         return -1
@@ -1535,9 +1545,7 @@ fun ChatScreen() {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentStreamingStartAnchorBottomPx(): Int {
-        val legalBottom = currentStreamingLegalBottomPx()
-        if (legalBottom <= 0) return -1
-        return (legalBottom - assistantLineStepPx).coerceAtLeast(0)
+        return currentStreamingLegalBottomPx()
     }
     fun currentStreamingStartAlignDeltaPx(): Int {
         val startAnchorBottom = currentStreamingStartAnchorBottomPx()
