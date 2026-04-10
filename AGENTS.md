@@ -91,10 +91,10 @@
 ### 主对话系统前置锚点
 
 - 主对话模型系统前置锚点唯一真源：
-  - [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+  - [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
 - 以后旧版锚点正文不再并存保留；替换锚点时，以真源文件为准直接更新
 - 以后只要主对话模型锚点规则变更，必须同次同步：
-  - [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+  - [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
   - [AGENTS.md](D:/wuhao/AGENTS.md)
 - 当前锚点执行重点：
   - 当前轮输入优先，历史/摘要/联网仅作参考
@@ -106,9 +106,9 @@
 ### B/C 摘要提示词
 
 - B 层摘要提示词唯一真源：
-  - [server/assets/b_extraction_prompt.txt](D:/wuhao/server/assets/b_extraction_prompt.txt)
+  - [server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
 - C 层摘要提示词唯一真源：
-  - [server/assets/c_extraction_prompt.txt](D:/wuhao/server/assets/c_extraction_prompt.txt)
+  - [server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
 - B/C 提示词和主对话锚点不是同一模型职责，不允许混成一个文件
 - B/C 失败处理边界：
   - 不拖垮主对话服务
@@ -370,11 +370,11 @@ Clean-State 定义：
 ### 14.1 后端三文件真源边界
 
 - 主对话锚点真源：
-  - [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+  - [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
 - B 层摘要提示词真源：
-  - [server/assets/b_extraction_prompt.txt](D:/wuhao/server/assets/b_extraction_prompt.txt)
+  - [server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
 - C 层摘要提示词真源：
-  - [server/assets/c_extraction_prompt.txt](D:/wuhao/server/assets/c_extraction_prompt.txt)
+  - [server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
 - 三者职责不同，不允许合并成一个文件
 - 主对话锚点读取失败或为空，属于主链配置问题，不能伪装成普通重试成功场景
 - B/C 提示词失败不拖垮主对话服务，但必须保留各自 `pending_retry`，不能丢失应触发轮次
@@ -546,7 +546,7 @@ Clean-State 定义：
 
 ## 20. 主锚点更新记录
 
-- 当前主对话锚点真源仍为 [server/assets/system_anchor.txt](D:/wuhao/server/assets/system_anchor.txt)
+- 当前主对话锚点真源仍为 [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
 - 2026-03-27 起，主对话输出结构继续按“农业种植相关问题、禁止表格、关键点少量加粗”执行
 - 从 2026-04-07 起，聊天滚动唯一真相只认本节最后的 RecyclerView 规则
 - 旧 Compose / LazyColumn 时代的滚动术语和补滚口径一律视为历史归档，不再执行

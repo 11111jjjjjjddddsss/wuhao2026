@@ -1,1 +1,1 @@
-web: cd server && npm ci && npm run build && npm start
+web: cd server-go && go run ./cmd/server

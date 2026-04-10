@@ -4,7 +4,7 @@ const userId = process.argv[2];
 const secret = process.env.APP_SECRET || '';
 
 if (!userId) {
-  console.error('usage: node scripts/make_token.mjs <user_id>');
+  console.error('usage: node server-go/scripts/make_token.mjs <user_id>');
   process.exit(1);
 }
 if (!secret) {

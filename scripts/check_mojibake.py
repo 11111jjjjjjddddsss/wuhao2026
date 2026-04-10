@@ -12,9 +12,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 BASELINE = ROOT / ".mojibake-baseline.txt"
 BUSINESS_ROOTS = (
     ROOT / "app/src",
-    ROOT / "server/src",
-    ROOT / "server/assets",
-    ROOT / "server/migrations",
+    ROOT / "server-go/cmd",
+    ROOT / "server-go/internal",
+    ROOT / "server-go/assets",
+    ROOT / "server-go/migrations",
+    ROOT / "server-go/scripts",
     ROOT / "scripts",
 )
 

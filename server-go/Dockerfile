@@ -13,8 +13,8 @@ FROM alpine:3.21
 WORKDIR /app
 
 COPY --from=build /out/nongji-server /app/nongji-server
-COPY server/assets /app/server/assets
-COPY server/migrations /app/server/migrations
+COPY server-go/assets /app/server-go/assets
+COPY server-go/migrations /app/server-go/migrations
 
 EXPOSE 3000
 

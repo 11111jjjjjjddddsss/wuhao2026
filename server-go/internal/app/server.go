@@ -56,8 +56,8 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 
 	assetDir, err := resolveExistingDir(
 		"ASSET_DIR",
-		filepath.Join("server", "assets"),
-		filepath.Join("..", "server", "assets"),
+		filepath.Join("server-go", "assets"),
+		filepath.Join(".", "assets"),
 	)
 	if err != nil {
 		return nil, err
@@ -65,8 +65,8 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 
 	migrationsDir, err := resolveExistingDir(
 		"MIGRATIONS_DIR",
-		filepath.Join("server", "migrations"),
-		filepath.Join("..", "server", "migrations"),
+		filepath.Join("server-go", "migrations"),
+		filepath.Join(".", "migrations"),
 	)
 	if err != nil {
 		return nil, err
@@ -74,8 +74,8 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 
 	uploadsDir, err := resolveOrCreateDir(
 		"UPLOADS_DIR",
-		filepath.Join("server", "uploads"),
-		filepath.Join("..", "server", "uploads"),
+		filepath.Join("server-go", "uploads"),
+		filepath.Join(".", "uploads"),
 	)
 	if err != nil {
 		return nil, err

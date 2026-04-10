@@ -4,7 +4,6 @@ on:
   push:
     branches: [master]
     paths:
-      - 'server/**'
       - 'server-go/**'
       - 'scripts/check_mojibake.py'
       - '.mojibake-baseline.txt'
@@ -12,7 +11,6 @@ on:
   pull_request:
     branches: [master]
     paths:
-      - 'server/**'
       - 'server-go/**'
       - 'scripts/check_mojibake.py'
       - '.mojibake-baseline.txt'
@@ -20,34 +18,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  api-server-build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    defaults:
-      run:
-        working-directory: server
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Mojibake check
-        working-directory: .
-        run: python3 scripts/check_mojibake.py
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: TypeScript build
-        run: npm run build
-
   go-server-build:
     runs-on: ubuntu-latest
     permissions:
