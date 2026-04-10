@@ -1902,18 +1902,16 @@ fun ChatScreen() {
     LaunchedEffect(
         startupLayoutReady,
         startupHydrationBarrierSatisfied,
+        shouldRevealMessageList,
+        showWelcomePlaceholder,
         hasStartedConversation,
         messages.size,
         hasStreamingItem
     ) {
         LaunchUiGate.chatReady =
-            when {
-                !startupHydrationBarrierSatisfied -> false
-                !startupLayoutReady -> false
-                hasStartedConversation -> true
-                hasStreamingItem -> true
-                else -> true
-            }
+            startupHydrationBarrierSatisfied &&
+                startupLayoutReady &&
+                (shouldRevealMessageList || showWelcomePlaceholder)
     }
     var messageSelectionToolbarState by remember(chatScopeId) {
         mutableStateOf<MessageSelectionToolbarState?>(null)

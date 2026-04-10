@@ -596,6 +596,7 @@ Clean-State 定义：
 - `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
 - 非动画贴底如果只是要把最后一条消息对到当前目标线，优先一次性 offset 定位；不要再用“先 `scrollToPosition`，再 `scrollBy` 二次修正”去制造发送或收口时的额外抽动。
 - 冷启动首屏如果 `stackFromEnd` 已经把列表自然放在目标区域，就不要再额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。若确实还需要补这一次，消息列表应继续保持隐藏，等首屏贴底完成后再 reveal，避免首次打开看到文本上下轻抖。
+- 首开 splash / `chatReady` 的放行口径必须和真实消息区 reveal 口径保持一致；不允许外层已经 ready、消息列表仍在隐藏态，制造“首开 UI 已进入、内容区又晚一拍出现”的冷热分叉。
 - 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
 - waiting 小球阶段不允许提前触发 workline snap；只有正文真正出现后，才允许 `Idle -> snap -> AutoFollow` 这条接管链开始工作。
 - streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
