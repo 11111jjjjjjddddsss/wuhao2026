@@ -590,7 +590,7 @@ Clean-State 定义：
 - 如果发送起步仍然掉到工作线以下，优先检查这次手动定位使用的最后一项高度和目标 offset，而不是再回退去加第二条预测或纠偏链。
 - 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
 - 从后台切回聊天页时，不默认自动贴底，避免用户看历史时被强行拉回底部；生命周期恢复优先保持当前浏览位置。
-- 首屏 reveal 不能无限等待“最后一条真实底边”才放行；应只做短窗口等待，拿得到底边就先贴底，拿不到也要及时 reveal，避免首次进入长时间空白。
+- 首屏进入时应优先立即做一次 `scrollToBottom(false)` 贴底，再用很短的等待窗口看最后一条真实底边是否已到位；若仍未贴到目标线附近，再补一次收口。不要先长时间等待底边测量完成才决定是否贴底。
 - `Idle` 阶段只保留最小主链接管：waiting 阶段先完成这次起步保护，正文真正出现且尾部接近工作线后，才允许切入 workline snap / `AutoFollow`；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
