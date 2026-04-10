@@ -114,13 +114,13 @@ internal fun ChatRecyclerViewHost(
             }
         },
         update = { recyclerView ->
-            adapter.submitIds(itemIds)
             if (
                 recyclerView.paddingTop != topPaddingPx ||
                 recyclerView.paddingBottom != bottomPaddingPx
             ) {
                 recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
             }
+            adapter.submitIds(itemIds)
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             onRecyclerReady(recyclerView, layoutManager)
         }
