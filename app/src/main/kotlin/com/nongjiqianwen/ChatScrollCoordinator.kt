@@ -441,9 +441,11 @@ internal fun BindRecyclerChatScrollEffects(
             return@LaunchedEffect
         }
         if (messagesCount == 0 || isStreaming || hasStreamingItem) return@LaunchedEffect
-        repeat(3) { withFrameNanos { } }
-        if (currentLastMessageContentBottomPx() > 0 && !isWithinBottomTolerance()) {
+        if (currentLastMessageContentBottomPx() <= 0) return@LaunchedEffect
+        repeat(2) { withFrameNanos { } }
+        if (!isWithinBottomTolerance()) {
             scrollToBottom(false)
+            repeat(2) { withFrameNanos { } }
         }
         initialBottomSnapDoneState.value = true
     }

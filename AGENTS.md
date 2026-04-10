@@ -562,7 +562,7 @@ Clean-State 定义：
 - [app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)：唯一 active 滚动状态机入口，只认 `Idle / AutoFollow / UserBrowsing`
 - [app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：只负责几何测量、RecyclerView 宿主挂载和向滚动协调器喂参数
 - [app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt)：负责 waiting / streaming / settled 共用同一内容宿主与真实底边上报
-- [app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：负责 RecyclerView 底座与 stackFromEnd 静态贴底能力
+- [app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：负责 RecyclerView 底座、bottom padding 锚点和发送起步/静态贴底的手动定位宿主
 
 ## 20.3 当前排查顺序
 
@@ -588,6 +588,8 @@ Clean-State 定义：
 - 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成发送后一次性的 `scrollToPositionWithOffset(...)` 手动定位。
 - 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：关闭 `stackFromEnd` 后，列表按普通顺序布局，再在新消息插入后用当前真实 bottom padding / 工作线位置手动把最后一项定位到发送起步目标。
 - 如果发送起步仍然掉到工作线以下，优先检查这次手动定位使用的最后一项高度和目标 offset，而不是再回退去加第二条预测或纠偏链。
+- 首次进入聊天页和从后台切回聊天页时，如果当前有历史消息且不在底部/目标线附近，必须显式补一次 `scrollToBottom(false)`；这条冷启动/生命周期恢复贴底链只服务 completed 历史列表，不参与发送起步定位。
+- 首屏 reveal 不能在“底部还没贴到位、最后一条真实底边还没测出来”时提前放行；首屏贴底如果还未拿到最后一条真实内容底边，应继续等待下一帧，而不是直接把 `initialBottomSnapDone` 提前置真。
 - `Idle` 阶段只保留最小主链接管：waiting 阶段先完成这次起步保护，正文真正出现且尾部接近工作线后，才允许切入 workline snap / `AutoFollow`；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
@@ -595,7 +597,7 @@ Clean-State 定义：
 - 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
 - 非动画贴底如果只是要把最后一条消息对到当前目标线，优先一次性 offset 定位；不要再用“先 `scrollToPosition`，再 `scrollBy` 二次修正”去制造发送或收口时的额外抽动。
-- 冷启动首屏如果 `stackFromEnd` 已经把列表自然放在目标区域，就不要再额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。若确实还需要补这一次，消息列表应继续保持隐藏，等首屏贴底完成后再 reveal，避免首次打开看到文本上下轻抖。
+- 冷启动首屏如果当前已经在底部/目标线附近，就不要额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。若确实还需要补这一次，消息列表应继续保持隐藏，等首屏贴底完成后再 reveal，避免首次打开看到文本上下轻抖。
 - 首开 splash / `chatReady` 的放行口径必须和真实消息区 reveal 口径保持一致；不允许外层已经 ready、消息列表仍在隐藏态，制造“首开 UI 已进入、内容区又晚一拍出现”的冷热分叉。
 - 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
 - waiting 小球阶段不允许提前触发 workline snap；只有正文真正出现后，才允许 `Idle -> snap -> AutoFollow` 这条接管链开始工作。
