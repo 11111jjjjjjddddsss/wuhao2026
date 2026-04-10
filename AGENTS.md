@@ -279,10 +279,10 @@ Clean-State 定义：
 
 - 用户消息和 assistant 消息先按正常消息流从上往下排，不做“发送后整段先抬到工作线”的特殊起步。
 - waiting 小球必须贴着本轮刚发送的那条用户消息起步；正文从这个位置继续往下长。
-- 发送起步不再额外挂“预测底边保护”或“start-anchor snap”第二条链；waiting 和早期正文起步统一只认 RecyclerView `stackFromEnd` + 与工作线共锚点的底部 padding。
+- 发送起步不再额外挂“预测底边保护”或“start-anchor snap”第二条链；RecyclerView 发送起步改成普通从上往下布局，由发送后一次性的 `scrollToPositionWithOffset(...)` 手动把最后一项定位到工作线附近。
 - 只有真实正文尾部接近工作线后，才允许进入 `AutoFollow`，并沿工作线继续跟随。
 - 用户拖动立即让权；生成中和完成态都不允许再由第二条隐藏滚动链抢位置。
-- 短内容静态贴底依赖 RecyclerView stackFromEnd；完成态收口继续围绕同一条工作线附近目标线，不再保留更低的第二条静态底线。
+- 完成态收口继续围绕同一条工作线附近目标线，不再保留更低的第二条静态底线；短内容静态贴底后续如需继续优化，必须在当前手动定位主链上处理，不再回退 `stackFromEnd`。
 - 生成结束时仍可能残留极轻的“收口微抖”；后续继续优化时，优先检查 streaming/completed 是否仍共用同一宿主几何。
 
 ### 10.3 UI 监护与调试日志规则
@@ -585,9 +585,9 @@ Clean-State 定义：
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
-- 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一锚点改成 RecyclerView 自身 `stackFromEnd` 底对齐加与工作线共锚点的底部 padding。
-- 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：列表只按当前真实底部 padding 自然贴底，不再在发送当拍额外估算一组用户消息 + waiting 小球的预测底边。
-- 如果发送起步仍然掉到工作线以下，优先视为“底部 padding / 工作线共锚点失效”，而不是再回退去加第二条发送首拍纠偏链。
+- 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成发送后一次性的 `scrollToPositionWithOffset(...)` 手动定位。
+- 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：关闭 `stackFromEnd` 后，列表按普通顺序布局，再在新消息插入后用当前真实 bottom padding / 工作线位置手动把最后一项定位到发送起步目标。
+- 如果发送起步仍然掉到工作线以下，优先检查这次手动定位使用的最后一项高度和目标 offset，而不是再回退去加第二条预测或纠偏链。
 - `Idle` 阶段只保留最小主链接管：waiting 阶段先完成这次起步保护，正文真正出现且尾部接近工作线后，才允许切入 workline snap / `AutoFollow`；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
@@ -601,6 +601,6 @@ Clean-State 定义：
 - waiting 小球阶段不允许提前触发 workline snap；只有正文真正出现后，才允许 `Idle -> snap -> AutoFollow` 这条接管链开始工作。
 - streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
 - follow 仍允许保留一个很小的触发阈值，避免极小噪声抖动；但一旦超过阈值，就直接吃掉当前整段 overflow，不再用多帧小步追赶去制造“上去一点又掉一点”的追帧感。
-- 静态短内容贴底依赖 RecyclerView 自身 `stackFromEnd` 底对齐，不再靠“顶部列表 + final snap 补滚”硬凑；完成态的 final snap 只负责围绕同一工作线做最后收口。
+- 当前 RecyclerView 已关闭 `stackFromEnd`；静态短内容与完成态收口都改为围绕同一工作线做手动底部定位，不再依赖底座自动底对齐。
 - final snap 不能只靠“固定等两帧”碰运气；必须等 completed 宿主真实底边到位，并在同一条工作线目标附近真正收口后才结束。
 - 若后续实现与历史归档表述冲突，以本节为准。

@@ -1456,6 +1456,8 @@ fun ChatScreen() {
     var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
+    var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
+    var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1467,6 +1469,7 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val pendingStartAnchorFallbackHeightPx = with(density) { 24.dp.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -2294,6 +2297,7 @@ fun ChatScreen() {
             streamRevealJob = null
             isStreaming = false
             streamingMessageId = null
+            pendingStartAnchorMessageId = null
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2525,6 +2529,7 @@ fun ChatScreen() {
             val finalId = streamingMessageId
             fakeStreamJob = null
             isStreaming = false
+            pendingStartAnchorMessageId = null
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2658,6 +2663,7 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
+            pendingStartAnchorMessageId = null
             streamingMessageId = null
             streamingMessageContent = ""
             streamingRevealBuffer = ""
@@ -2811,6 +2817,8 @@ fun ChatScreen() {
                     messageId = assistantId,
                     sourceUserMessageId = userId
                 )
+                pendingStartAnchorMessageId = assistantId
+                pendingStartAnchorRequestId += 1
                 trimMessagesInPlace()
                 sendUiSettling = false
                 persistTick++
@@ -2935,6 +2943,7 @@ fun ChatScreen() {
             layoutManager = recyclerLayoutManagerRef,
             lastIndex = messages.lastIndex,
             animated = animated,
+            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
             beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
             endProgrammaticScroll = ::endProgrammaticRecyclerScroll
         )
@@ -2978,6 +2987,7 @@ fun ChatScreen() {
             streamingMessageContent = finalContent
             streamingRevealBuffer = ""
             isStreaming = false
+            pendingStartAnchorMessageId = null
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -3288,6 +3298,12 @@ fun ChatScreen() {
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,
+                        pendingStartAnchorMessageId = pendingStartAnchorMessageId,
+                        pendingStartAnchorRequestId = pendingStartAnchorRequestId,
+                        pendingStartAnchorFallbackHeightPx = pendingStartAnchorFallbackHeightPx,
+                        onPendingStartAnchorHandled = {
+                            pendingStartAnchorMessageId = null
+                        },
                         modifier = Modifier
                             .then(
                                 if (hasActiveMessageSelection) {

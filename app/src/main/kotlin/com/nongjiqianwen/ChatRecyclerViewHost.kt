@@ -2,6 +2,7 @@ package com.nongjiqianwen
 
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -79,17 +80,22 @@ internal fun ChatRecyclerViewHost(
     itemIds: List<String>,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
+    pendingStartAnchorMessageId: String?,
+    pendingStartAnchorRequestId: Int,
+    pendingStartAnchorFallbackHeightPx: Int,
+    onPendingStartAnchorHandled: () -> Unit,
     onRecyclerReady: (RecyclerView, LinearLayoutManager) -> Unit,
     onScrollStateChanged: (RecyclerView, Int) -> Unit,
     onScrolled: (RecyclerView, Int, Int) -> Unit,
     itemContent: @Composable (String) -> Unit
 ) {
     val adapter = remember(itemContent) { ChatRecyclerComposeAdapter(itemContent) }
+    val lastAppliedStartAnchorRequestId = remember { mutableIntStateOf(0) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
             val layoutManager = LinearLayoutManager(context).apply {
-                stackFromEnd = true
+                stackFromEnd = false
             }
             RecyclerView(context).apply {
                 this.layoutManager = layoutManager
@@ -122,6 +128,23 @@ internal fun ChatRecyclerViewHost(
             }
             adapter.submitIds(itemIds)
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
+            val shouldApplyPendingStartAnchor =
+                pendingStartAnchorRequestId > 0 &&
+                    pendingStartAnchorRequestId != lastAppliedStartAnchorRequestId.intValue &&
+                    pendingStartAnchorMessageId != null &&
+                    itemIds.lastOrNull() == pendingStartAnchorMessageId
+            if (shouldApplyPendingStartAnchor) {
+                lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
+                val lastIndex = itemIds.lastIndex
+                recyclerView.post {
+                    val lastViewHeight = layoutManager.findViewByPosition(lastIndex)?.height
+                        ?: pendingStartAnchorFallbackHeightPx
+                    val targetBottom = (recyclerView.height - recyclerView.paddingBottom).coerceAtLeast(0)
+                    val targetTopOffset = targetBottom - lastViewHeight
+                    layoutManager.scrollToPositionWithOffset(lastIndex, targetTopOffset)
+                    onPendingStartAnchorHandled()
+                }
+            }
             onRecyclerReady(recyclerView, layoutManager)
         }
     )

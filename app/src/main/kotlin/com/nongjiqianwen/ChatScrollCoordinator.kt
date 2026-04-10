@@ -120,6 +120,7 @@ internal suspend fun scrollRecyclerToBottom(
     layoutManager: androidx.recyclerview.widget.LinearLayoutManager?,
     lastIndex: Int,
     animated: Boolean,
+    currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
     endProgrammaticScroll: () -> Unit
 ) {
@@ -131,11 +132,12 @@ internal suspend fun scrollRecyclerToBottom(
         if (animated) {
             activeRecyclerView.smoothScrollToPosition(lastIndex)
         } else {
-            activeLayoutManager.scrollToPositionWithOffset(
-                lastIndex,
-                activeRecyclerView.paddingBottom
-            )
+            activeLayoutManager.scrollToPosition(lastIndex)
             activeRecyclerView.post {
+                val alignDeltaPx = currentBottomAlignDeltaPx()
+                if (alignDeltaPx != 0) {
+                    activeRecyclerView.scrollBy(0, -alignDeltaPx)
+                }
                 endProgrammaticScroll()
             }
         }
