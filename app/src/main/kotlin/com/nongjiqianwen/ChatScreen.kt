@@ -1471,7 +1471,6 @@ fun ChatScreen() {
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val pendingStartAnchorLiftPx = with(density) { SEND_START_ANCHOR_LIFT.roundToPx() }
-    val pendingStartAnchorFallbackHeightPx = with(density) { 24.dp.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -3303,7 +3302,6 @@ fun ChatScreen() {
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         pendingStartAnchorLiftPx = pendingStartAnchorLiftPx,
-                        pendingStartAnchorFallbackHeightPx = pendingStartAnchorFallbackHeightPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
                         },
