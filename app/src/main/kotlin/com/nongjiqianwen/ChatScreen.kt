@@ -1514,6 +1514,18 @@ fun ChatScreen() {
     fun currentStreamingLegalBottomPx(): Int {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
     }
+    fun currentStreamingStartAnchorBottomPx(): Int {
+        val legalBottom = currentStreamingLegalBottomPx()
+        if (legalBottom <= 0) return -1
+        return (legalBottom - assistantLineStepPx).coerceAtLeast(0)
+    }
+    fun currentStreamingStartAlignDeltaPx(): Int {
+        val startAnchorBottom = currentStreamingStartAnchorBottomPx()
+        val contentBottom = currentStreamingContentBottomPx()
+        if (startAnchorBottom <= 0 || contentBottom <= 0) return 0
+        val deltaPx = startAnchorBottom - contentBottom
+        return if (deltaPx < 0) deltaPx else 0
+    }
     fun currentUnifiedBottomTargetPx(): Int {
         return currentStreamingLegalBottomPx().coerceAtLeast(0)
     }
@@ -1611,6 +1623,7 @@ fun ChatScreen() {
         startupLayoutReady,
         startupHydrationBarrierSatisfied,
         hasStartedConversation,
+        initialBottomSnapDone,
         messages.size,
         hasStreamingItem
     ) {
@@ -1618,6 +1631,7 @@ fun ChatScreen() {
             when {
                 !startupHydrationBarrierSatisfied -> false
                 !startupLayoutReady -> false
+                !hasStartedConversation && messages.isNotEmpty() && !hasStreamingItem && !initialBottomSnapDone -> false
                 hasStartedConversation -> true
                 hasStreamingItem -> true
                 else -> true
@@ -2951,6 +2965,14 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticRecyclerScroll
         )
     }
+    val snapStreamingToStartAnchor: suspend () -> Unit = snapStreamingToStartAnchor@{
+        com.nongjiqianwen.snapRecyclerStreamingToWorkline(
+            recyclerView = recyclerViewRef,
+            currentStreamingAlignDeltaPx = ::currentStreamingStartAlignDeltaPx,
+            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+        )
+    }
 
     val performStreamingFollowStep: suspend (Int) -> Unit = performStreamingFollowStep@{ stepPx ->
         val recyclerView = recyclerViewRef ?: return@performStreamingFollowStep
@@ -3064,17 +3086,20 @@ fun ChatScreen() {
         messagesCount = messages.size,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
+        pendingStreamingStartAnchorState = scrollRuntime.pendingStreamingStartAnchor,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
+        currentStreamingStartAlignDeltaPx = ::currentStreamingStartAlignDeltaPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         isWithinBottomTolerance = ::isWithinBottomTolerance,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
+        snapStreamingToStartAnchor = snapStreamingToStartAnchor,
         snapStreamingToWorkline = snapStreamingToWorkline,
         scrollToBottom = scrollToBottom
     )

@@ -575,7 +575,7 @@ Clean-State 定义：
 ## 20.4 当前 RecyclerView 滚动链唯一真相（2026-04-07）
 
 - 不管长文本还是短文本，用户消息和 assistant 消息都先按正常消息流从上往下排，一条接一条，不先人为抬到工作线。
-- waiting 小球必须紧贴本轮刚发送的那条用户消息出现；它的起点不该直接跳到工作线。
+- waiting 小球必须紧贴本轮刚发送的那条用户消息出现；它的起点不该直接跳到工作线，也不该先掉到工作线以下再补抬。
 - 正文从 waiting 小球这个位置继续往下长；只有真实正文尾部接近工作线后，才切入 AutoFollow，并沿工作线继续推进。
 - 用户拖动立即让权：进入 `UserBrowsing` 后，不允许自动跟随继续抢手；只有明确往底部方向滑回，并重新接近工作线或底部区域后，才恢复 `AutoFollow`。
 - 完成态与静态贴底尽量围绕同一条工作线附近的底部目标线收口，不再额外保留明显更低的第二条静态底线；底部不应再出现额外可见空白。
@@ -584,14 +584,15 @@ Clean-State 定义：
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
-- `Idle` 阶段只保留“最小可见保护”：如果 waiting 或早期正文真实底边已经压到工作线以下，只允许向上补到工作线附近；不允许反向把仍高于工作线的内容再往下吸回去。
+- 发送起步阶段允许存在“一次性起步保护位”：如果 waiting 小球首拍的真实底边会掉到工作线以下，只允许先一次性补到工作线以上的小安全位；这条起步保护位只用于发送首拍，不延续成完成态第二条底线，也不保留额外 spacer / reserve 空白。
+- `Idle` 阶段只保留最小主链接管：waiting 阶段先完成这次起步保护，正文真正出现且尾部接近工作线后，才允许切入 workline snap / `AutoFollow`；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
 - 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
 - 非动画贴底如果只是要把最后一条消息对到当前目标线，优先一次性 offset 定位；不要再用“先 `scrollToPosition`，再 `scrollBy` 二次修正”去制造发送或收口时的额外抽动。
-- 冷启动首屏如果 `stackFromEnd` 已经把列表自然放在目标区域，就不要再额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。
+- 冷启动首屏如果 `stackFromEnd` 已经把列表自然放在目标区域，就不要再额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。若确实还需要补这一次，消息列表应继续保持隐藏，等首屏贴底完成后再 reveal，避免首次打开看到文本上下轻抖。
 - 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
 - waiting 小球阶段不允许提前触发 workline snap；只有正文真正出现后，才允许 `Idle -> snap -> AutoFollow` 这条接管链开始工作。
 - streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
