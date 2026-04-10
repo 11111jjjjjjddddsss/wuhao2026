@@ -1592,7 +1592,10 @@ fun ChatScreen() {
         }
         val lastContentBottomPx = currentLastMessageContentBottomPx()
         val estimatedUserBubbleHeightPx = estimateSendStartUserBubbleHeightPx(text)
-        if (lastContentBottomPx <= 0 || estimatedUserBubbleHeightPx <= 0) return -1
+        val legalBottomPx = currentStreamingLegalBottomPx()
+        if (lastContentBottomPx <= 0 || estimatedUserBubbleHeightPx <= 0) {
+            return legalBottomPx
+        }
         return lastContentBottomPx +
             (messageItemVerticalPaddingPx * 4) +
             estimatedUserBubbleHeightPx +
