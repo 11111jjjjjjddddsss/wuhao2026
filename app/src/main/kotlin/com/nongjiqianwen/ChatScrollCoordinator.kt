@@ -356,7 +356,7 @@ internal fun BindRecyclerChatScrollEffects(
                 return@LaunchedEffect
             }
             if (activeScrollMode == ScrollMode.Idle) {
-                if (currentStreamingOverflowDelta() > 0) {
+                if (streamingMessageContent.isNotBlank() && currentStreamingOverflowDelta() > 0) {
                     snapStreamingToWorkline()
                 }
                 if (streamingMessageContent.isNotBlank() && isStreamingReadyForAutoFollow()) {
@@ -450,10 +450,9 @@ internal fun resolveStreamingFollowStepPx(
     assistantLineStepPx: Int
 ): Int {
     if (overflow <= 0) return 0
-    val steadyStepPx = (assistantLineStepPx * 0.12f).roundToInt().coerceAtLeast(5)
-    val triggerThresholdPx = (steadyStepPx * 0.35f).roundToInt().coerceAtLeast(3)
+    val triggerThresholdPx = (assistantLineStepPx * 0.04f).roundToInt().coerceAtLeast(3)
     if (overflow < triggerThresholdPx) return 0
-    return overflow.coerceAtMost(steadyStepPx)
+    return overflow
 }
 
 internal fun shouldShowStreamingScrollToBottomButton(

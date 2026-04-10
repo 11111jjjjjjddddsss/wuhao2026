@@ -594,7 +594,7 @@ Clean-State 定义：
 - 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
 - waiting 小球阶段不允许提前触发 workline snap；只有正文真正出现后，才允许 `Idle -> snap -> AutoFollow` 这条接管链开始工作。
 - streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
-- follow 步长继续保持“小 overflow 先不补滚”的收敛策略，避免正文刚接近工作线时因为极小差值频繁抖动。
+- follow 仍允许保留一个很小的触发阈值，避免极小噪声抖动；但一旦超过阈值，就直接吃掉当前整段 overflow，不再用多帧小步追赶去制造“上去一点又掉一点”的追帧感。
 - 静态短内容贴底依赖 RecyclerView 自身 `stackFromEnd` 底对齐，不再靠“顶部列表 + final snap 补滚”硬凑；完成态的 final snap 只负责围绕同一工作线做最后收口。
 - final snap 不能只靠“固定等两帧”碰运气；必须等 completed 宿主真实底边到位，并在同一条工作线目标附近真正收口后才结束。
 - 若后续实现与历史归档表述冲突，以本节为准。
