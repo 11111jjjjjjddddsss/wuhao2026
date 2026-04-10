@@ -144,8 +144,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.TextFieldValue
@@ -162,7 +160,6 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
@@ -1459,7 +1456,6 @@ fun ChatScreen() {
     var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    var streamingStartPredictedBottomPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1471,14 +1467,9 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
-    val messageItemVerticalPaddingPx = with(density) { 8.dp.roundToPx() }
-    val userBubbleHorizontalPaddingPx = with(density) { 14.dp.roundToPx() * 2 }
-    val userBubbleVerticalPaddingPx = with(density) { 10.dp.roundToPx() * 2 }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
-    val userBubbleTextStyle = MaterialTheme.typography.bodyLarge
-    val sendStartTextMeasurer = rememberTextMeasurer()
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
@@ -1504,31 +1495,6 @@ fun ChatScreen() {
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
-    fun predictStreamingStartGroupBottomPx(userBottomPx: Int): Int {
-        if (userBottomPx <= 0) return -1
-        return userBottomPx +
-            messageItemVerticalPaddingPx +
-            messageItemVerticalPaddingPx +
-            assistantLineStepPx
-    }
-    fun currentStreamingStartVisibleBottomPx(): Int {
-        val streamingBottom = currentStreamingContentBottomPx()
-        if (streamingBottom > 0) return streamingBottom
-        streamingMessageId?.let { assistantId ->
-            messageSelectionBoundsById[assistantId]?.let { bounds ->
-                return (bounds.bottom - messageViewportTopPx).roundToInt()
-            }
-        }
-        streamingStartPredictedBottomPx.takeIf { it > 0 }?.let { predictedBottom ->
-            return predictedBottom
-        }
-        return -1
-    }
-    fun hasStreamingStartAssistantVisibleBottom(): Boolean {
-        if (currentStreamingContentBottomPx() > 0) return true
-        val assistantId = streamingMessageId ?: return false
-        return messageSelectionBoundsById[assistantId] != null
-    }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
         if (lastMessage.role == ChatRole.ASSISTANT && hasStreamingItem && currentStreamingContentBottomPx() > 0) {
@@ -1544,62 +1510,6 @@ fun ChatScreen() {
     }
     fun currentStreamingLegalBottomPx(): Int {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
-    }
-    fun currentStreamingStartAnchorBottomPx(): Int {
-        return currentStreamingLegalBottomPx()
-    }
-    fun currentStreamingStartAlignDeltaPx(): Int {
-        val startAnchorBottom = currentStreamingStartAnchorBottomPx()
-        val visibleBottom = currentStreamingStartVisibleBottomPx()
-        if (startAnchorBottom <= 0 || visibleBottom <= 0) return 0
-        val deltaPx = startAnchorBottom - visibleBottom
-        return if (deltaPx < 0) deltaPx else 0
-    }
-    fun estimateSendStartUserBubbleHeightPx(content: String): Int {
-        if (content.isBlank() || chatRootWidthPx <= 0) return -1
-        val maxWidthPx = chatRootWidthPx
-        val chromeMaxWidthPx = with(density) {
-            when {
-                maxWidthPx >= 900.dp.roundToPx() -> 900.dp.roundToPx()
-                maxWidthPx >= 700.dp.roundToPx() -> 760.dp.roundToPx()
-                else -> maxWidthPx
-            }
-        }
-        val userBubbleMaxWidthPx = with(density) {
-            if (chromeMaxWidthPx < 440.dp.roundToPx()) {
-                (chromeMaxWidthPx * 0.8f).roundToInt()
-            } else {
-                432.dp.roundToPx()
-            }
-        }
-        val availableTextWidthPx = (userBubbleMaxWidthPx - userBubbleHorizontalPaddingPx).coerceAtLeast(1)
-        val layout = sendStartTextMeasurer.measure(
-            text = AnnotatedString(content),
-            style = userBubbleTextStyle,
-            constraints = Constraints(maxWidth = availableTextWidthPx)
-        )
-        return layout.size.height + userBubbleVerticalPaddingPx
-    }
-    fun predictStreamingStartBottomPxForSend(
-        text: String,
-        existingUserMessageId: String?
-    ): Int {
-        existingUserMessageId?.let { userId ->
-            (messageContentBoundsById[userId] ?: messageSelectionBoundsById[userId])?.let { bounds ->
-                val userBottomPx = (bounds.bottom - messageViewportTopPx).roundToInt()
-                return predictStreamingStartGroupBottomPx(userBottomPx = userBottomPx)
-            }
-        }
-        val lastContentBottomPx = currentLastMessageContentBottomPx()
-        val estimatedUserBubbleHeightPx = estimateSendStartUserBubbleHeightPx(text)
-        val legalBottomPx = currentStreamingLegalBottomPx()
-        if (lastContentBottomPx <= 0 || estimatedUserBubbleHeightPx <= 0) {
-            return legalBottomPx
-        }
-        return lastContentBottomPx +
-            (messageItemVerticalPaddingPx * 4) +
-            estimatedUserBubbleHeightPx +
-            assistantLineStepPx
     }
     fun currentUnifiedBottomTargetPx(): Int {
         return currentStreamingLegalBottomPx().coerceAtLeast(0)
@@ -2384,7 +2294,6 @@ fun ChatScreen() {
             streamRevealJob = null
             isStreaming = false
             streamingMessageId = null
-            streamingStartPredictedBottomPx = -1
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2616,7 +2525,6 @@ fun ChatScreen() {
             val finalId = streamingMessageId
             fakeStreamJob = null
             isStreaming = false
-            streamingStartPredictedBottomPx = -1
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2750,7 +2658,6 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
-            streamingStartPredictedBottomPx = -1
             streamingMessageId = null
             streamingMessageContent = ""
             streamingRevealBuffer = ""
@@ -2890,10 +2797,6 @@ fun ChatScreen() {
                 val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
                 failedUserMessageStates.remove(userId)
                 clearFailedAssistantStateForUser(userId)
-                streamingStartPredictedBottomPx = predictStreamingStartBottomPxForSend(
-                    text = text,
-                    existingUserMessageId = existingUserMessageId
-                )
                 upsertUserMessage(userId, text)
                 anchoredUserMessageId = userId
                 streamingFreshStart = -1
@@ -3045,15 +2948,6 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticRecyclerScroll
         )
     }
-    val snapStreamingToStartAnchor: suspend () -> Unit = snapStreamingToStartAnchor@{
-        com.nongjiqianwen.snapRecyclerStreamingToWorkline(
-            recyclerView = recyclerViewRef,
-            currentStreamingAlignDeltaPx = ::currentStreamingStartAlignDeltaPx,
-            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
-        )
-    }
-
     val performStreamingFollowStep: suspend (Int) -> Unit = performStreamingFollowStep@{ stepPx ->
         val recyclerView = recyclerViewRef ?: return@performStreamingFollowStep
         if (stepPx == 0) return@performStreamingFollowStep
@@ -3084,7 +2978,6 @@ fun ChatScreen() {
             streamingMessageContent = finalContent
             streamingRevealBuffer = ""
             isStreaming = false
-            streamingStartPredictedBottomPx = -1
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -3167,22 +3060,17 @@ fun ChatScreen() {
         messagesCount = messages.size,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
-        pendingStreamingStartAnchorState = scrollRuntime.pendingStreamingStartAnchor,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
-        currentStreamingStartVisibleBottomPx = ::currentStreamingStartVisibleBottomPx,
-        hasStreamingStartAssistantVisibleBottom = ::hasStreamingStartAssistantVisibleBottom,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
-        currentStreamingStartAlignDeltaPx = ::currentStreamingStartAlignDeltaPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         isWithinBottomTolerance = ::isWithinBottomTolerance,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
-        snapStreamingToStartAnchor = snapStreamingToStartAnchor,
         snapStreamingToWorkline = snapStreamingToWorkline,
         scrollToBottom = scrollToBottom
     )
