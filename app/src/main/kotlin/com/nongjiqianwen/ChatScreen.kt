@@ -271,6 +271,7 @@ internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 64.dp
+private val SEND_START_ANCHOR_LIFT = 80.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
@@ -1469,6 +1470,7 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val pendingStartAnchorLiftPx = with(density) { SEND_START_ANCHOR_LIFT.roundToPx() }
     val pendingStartAnchorFallbackHeightPx = with(density) { 24.dp.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -3300,6 +3302,7 @@ fun ChatScreen() {
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
+                        pendingStartAnchorLiftPx = pendingStartAnchorLiftPx,
                         pendingStartAnchorFallbackHeightPx = pendingStartAnchorFallbackHeightPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null

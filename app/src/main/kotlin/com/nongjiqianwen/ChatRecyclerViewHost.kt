@@ -82,6 +82,7 @@ internal fun ChatRecyclerViewHost(
     bottomPaddingPx: Int,
     pendingStartAnchorMessageId: String?,
     pendingStartAnchorRequestId: Int,
+    pendingStartAnchorLiftPx: Int,
     pendingStartAnchorFallbackHeightPx: Int,
     onPendingStartAnchorHandled: () -> Unit,
     onRecyclerReady: (RecyclerView, LinearLayoutManager) -> Unit,
@@ -139,7 +140,11 @@ internal fun ChatRecyclerViewHost(
                 recyclerView.post {
                     val lastViewHeight = layoutManager.findViewByPosition(lastIndex)?.height
                         ?: pendingStartAnchorFallbackHeightPx
-                    val targetBottom = (recyclerView.height - recyclerView.paddingBottom).coerceAtLeast(0)
+                    val targetBottom = (
+                        recyclerView.height -
+                            recyclerView.paddingBottom -
+                            pendingStartAnchorLiftPx
+                        ).coerceAtLeast(0)
                     val targetTopOffset = targetBottom - lastViewHeight
                     layoutManager.scrollToPositionWithOffset(lastIndex, targetTopOffset)
                     onPendingStartAnchorHandled()
