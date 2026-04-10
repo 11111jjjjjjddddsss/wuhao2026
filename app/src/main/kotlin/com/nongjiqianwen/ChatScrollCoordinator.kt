@@ -321,6 +321,7 @@ internal fun BindRecyclerChatScrollEffects(
     initialBottomSnapDoneState: MutableState<Boolean>,
     currentLastMessageContentBottomPx: () -> Int,
     currentStreamingContentBottomPx: () -> Int,
+    currentStreamingStartVisibleBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
     currentStreamingStartAlignDeltaPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
@@ -353,8 +354,12 @@ internal fun BindRecyclerChatScrollEffects(
         }
         while (isActive && isStreaming && hasStreamingItem) {
             withFrameNanos { }
-            val contentBottom = currentStreamingContentBottomPx()
             val activeScrollMode = scrollModeState.value
+            val contentBottom = if (pendingStreamingStartAnchorState.value) {
+                currentStreamingStartVisibleBottomPx()
+            } else {
+                currentStreamingContentBottomPx()
+            }
             if (
                 activeScrollMode == ScrollMode.UserBrowsing ||
                 recyclerScrollInProgress ||
@@ -366,7 +371,7 @@ internal fun BindRecyclerChatScrollEffects(
             }
             if (activeScrollMode == ScrollMode.Idle) {
                 if (pendingStreamingStartAnchorState.value) {
-                    if (currentStreamingContentBottomPx() <= 0) {
+                    if (currentStreamingStartVisibleBottomPx() <= 0) {
                         streamBottomFollowActiveState.value = false
                         continue
                     }

@@ -3107,6 +3107,7 @@ fun ChatScreen() {
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
+        currentStreamingStartVisibleBottomPx = ::currentStreamingStartVisibleBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         currentStreamingStartAlignDeltaPx = ::currentStreamingStartAlignDeltaPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
