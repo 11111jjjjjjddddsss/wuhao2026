@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -198,6 +199,8 @@ private enum class ChatRole { USER, ASSISTANT }
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
 @Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
+
+private const val CHAT_SCROLL_TRACE_TAG = "ChatScrollTrace"
 @Immutable
 private data class LocalStreamingDraft(
     val messageId: String,
@@ -1543,7 +1546,14 @@ fun ChatScreen() {
         return (bounds.bottom - messageViewportTopPx).roundToInt()
     }
     fun currentStreamingLegalBottomPx(): Int {
-        return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
+        val legalBottomPx = streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                CHAT_SCROLL_TRACE_TAG,
+                "workline_read t=${SystemClock.uptimeMillis()} legalBottom=$legalBottomPx composerTop=$composerTopInViewportPx viewportHeight=$messageViewportHeightPx bottomBar=$bottomBarHeightPx gap=$streamVisibleBottomGapPx"
+            )
+        }
+        return legalBottomPx
     }
     fun currentStreamingStartAnchorBottomPx(): Int {
         return currentStreamingLegalBottomPx()
@@ -3046,12 +3056,25 @@ fun ChatScreen() {
         )
     }
     val snapStreamingToStartAnchor: suspend () -> Unit = snapStreamingToStartAnchor@{
+        if (BuildConfig.DEBUG) {
+            val startAlignDeltaPx = currentStreamingStartAlignDeltaPx()
+            Log.d(
+                CHAT_SCROLL_TRACE_TAG,
+                "send_start_snap t=${SystemClock.uptimeMillis()} visibleBottom=${currentStreamingStartVisibleBottomPx()} workline=${currentStreamingLegalBottomPx()} delta=$startAlignDeltaPx scrollByY=${-startAlignDeltaPx} predictedBottom=$streamingStartPredictedBottomPx assistantVisible=${hasStreamingStartAssistantVisibleBottom()}"
+            )
+        }
         com.nongjiqianwen.snapRecyclerStreamingToWorkline(
             recyclerView = recyclerViewRef,
             currentStreamingAlignDeltaPx = ::currentStreamingStartAlignDeltaPx,
             beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
             endProgrammaticScroll = ::endProgrammaticRecyclerScroll
         )
+        if (BuildConfig.DEBUG) {
+            com.nongjiqianwen.logRecyclerLastItemBottomForNextFrames(
+                recyclerView = recyclerViewRef,
+                label = "send_start_post_snap"
+            )
+        }
     }
 
     val performStreamingFollowStep: suspend (Int) -> Unit = performStreamingFollowStep@{ stepPx ->
