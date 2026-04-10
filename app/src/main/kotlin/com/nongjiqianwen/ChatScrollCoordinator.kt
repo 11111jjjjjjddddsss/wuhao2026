@@ -377,6 +377,7 @@ internal fun BindRecyclerChatScrollEffects(
                     }
                     if (currentStreamingStartAlignDeltaPx() != 0) {
                         snapStreamingToStartAnchor()
+                        pendingStreamingStartAnchorState.value = false
                         streamBottomFollowActiveState.value = false
                         continue
                     }
