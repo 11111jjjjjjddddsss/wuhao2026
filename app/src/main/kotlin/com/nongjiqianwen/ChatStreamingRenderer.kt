@@ -89,8 +89,7 @@ internal data class ChatStreamingRuntimeState(
     val streamingFreshStart: MutableIntState,
     val streamingFreshEnd: MutableIntState,
     val streamingFreshTick: MutableIntState,
-    val lastStreamingFreshRevealMs: MutableState<Long>,
-    val streamingRevealMode: MutableState<StreamingRevealMode>
+    val lastStreamingFreshRevealMs: MutableState<Long>
 )
 
 @Composable
@@ -105,7 +104,6 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
     val streamingFreshEnd = remember { mutableIntStateOf(-1) }
     val streamingFreshTick = remember { mutableIntStateOf(0) }
     val lastStreamingFreshRevealMs = remember { mutableStateOf(0L) }
-    val streamingRevealMode = remember(chatScopeId) { mutableStateOf(StreamingRevealMode.Free) }
     return remember(chatScopeId) {
         ChatStreamingRuntimeState(
             isStreaming = isStreaming,
@@ -117,45 +115,8 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
             streamingFreshStart = streamingFreshStart,
             streamingFreshEnd = streamingFreshEnd,
             streamingFreshTick = streamingFreshTick,
-            lastStreamingFreshRevealMs = lastStreamingFreshRevealMs,
-            streamingRevealMode = streamingRevealMode
+            lastStreamingFreshRevealMs = lastStreamingFreshRevealMs
         )
-    }
-}
-
-@Composable
-internal fun BindStreamingRevealModeEffect(
-    isStreaming: Boolean,
-    scrollMode: ScrollMode,
-    userInteracting: Boolean,
-    streamBottomFollowActive: Boolean,
-    streamingContentBottomPx: Int,
-    streamingWorklineBottomPx: Int,
-    assistantLineStepPx: Int,
-    streamingRevealModeState: MutableState<StreamingRevealMode>
-) {
-    LaunchedEffect(
-        isStreaming,
-        scrollMode,
-        userInteracting,
-        streamBottomFollowActive,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx,
-        assistantLineStepPx
-    ) {
-        val nextMode = deriveStreamingRevealMode(
-            isStreaming = isStreaming,
-            scrollMode = scrollMode,
-            userInteracting = userInteracting,
-            streamBottomFollowActive = streamBottomFollowActive,
-            streamingTailBottomPx = streamingContentBottomPx,
-            worklineBottomPx = streamingWorklineBottomPx,
-            assistantLineStepPx = assistantLineStepPx,
-            currentMode = streamingRevealModeState.value
-        )
-        if (streamingRevealModeState.value != nextMode) {
-            streamingRevealModeState.value = nextMode
-        }
     }
 }
 

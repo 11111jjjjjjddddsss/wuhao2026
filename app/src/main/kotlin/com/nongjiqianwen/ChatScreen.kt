@@ -1459,6 +1459,7 @@ fun ChatScreen() {
     var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
+    var streamingStartPredictedBottomPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1471,9 +1472,13 @@ fun ChatScreen() {
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val messageItemVerticalPaddingPx = with(density) { 8.dp.roundToPx() }
+    val userBubbleHorizontalPaddingPx = with(density) { 14.dp.roundToPx() * 2 }
+    val userBubbleVerticalPaddingPx = with(density) { 10.dp.roundToPx() * 2 }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
+    val userBubbleTextStyle = MaterialTheme.typography.bodyLarge
+    val sendStartTextMeasurer = rememberTextMeasurer()
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
@@ -1514,12 +1519,8 @@ fun ChatScreen() {
                 return (bounds.bottom - messageViewportTopPx).roundToInt()
             }
         }
-        anchoredUserMessageId?.let { userId ->
-            (messageContentBoundsById[userId] ?: messageSelectionBoundsById[userId])?.let { bounds ->
-                return predictStreamingStartGroupBottomPx(
-                    userBottomPx = (bounds.bottom - messageViewportTopPx).roundToInt()
-                )
-            }
+        streamingStartPredictedBottomPx.takeIf { it > 0 }?.let { predictedBottom ->
+            return predictedBottom
         }
         return -1
     }
@@ -1553,6 +1554,49 @@ fun ChatScreen() {
         if (startAnchorBottom <= 0 || visibleBottom <= 0) return 0
         val deltaPx = startAnchorBottom - visibleBottom
         return if (deltaPx < 0) deltaPx else 0
+    }
+    fun estimateSendStartUserBubbleHeightPx(content: String): Int {
+        if (content.isBlank() || chatRootWidthPx <= 0) return -1
+        val maxWidthPx = chatRootWidthPx
+        val chromeMaxWidthPx = with(density) {
+            when {
+                maxWidthPx >= 900.dp.roundToPx() -> 900.dp.roundToPx()
+                maxWidthPx >= 700.dp.roundToPx() -> 760.dp.roundToPx()
+                else -> maxWidthPx
+            }
+        }
+        val userBubbleMaxWidthPx = with(density) {
+            if (chromeMaxWidthPx < 440.dp.roundToPx()) {
+                (chromeMaxWidthPx * 0.8f).roundToInt()
+            } else {
+                432.dp.roundToPx()
+            }
+        }
+        val availableTextWidthPx = (userBubbleMaxWidthPx - userBubbleHorizontalPaddingPx).coerceAtLeast(1)
+        val layout = sendStartTextMeasurer.measure(
+            text = AnnotatedString(content),
+            style = userBubbleTextStyle,
+            constraints = Constraints(maxWidth = availableTextWidthPx)
+        )
+        return layout.size.height + userBubbleVerticalPaddingPx
+    }
+    fun predictStreamingStartBottomPxForSend(
+        text: String,
+        existingUserMessageId: String?
+    ): Int {
+        existingUserMessageId?.let { userId ->
+            (messageContentBoundsById[userId] ?: messageSelectionBoundsById[userId])?.let { bounds ->
+                val userBottomPx = (bounds.bottom - messageViewportTopPx).roundToInt()
+                return predictStreamingStartGroupBottomPx(userBottomPx = userBottomPx)
+            }
+        }
+        val lastContentBottomPx = currentLastMessageContentBottomPx()
+        val estimatedUserBubbleHeightPx = estimateSendStartUserBubbleHeightPx(text)
+        if (lastContentBottomPx <= 0 || estimatedUserBubbleHeightPx <= 0) return -1
+        return lastContentBottomPx +
+            (messageItemVerticalPaddingPx * 4) +
+            estimatedUserBubbleHeightPx +
+            assistantLineStepPx
     }
     fun currentUnifiedBottomTargetPx(): Int {
         return currentStreamingLegalBottomPx().coerceAtLeast(0)
@@ -2339,6 +2383,7 @@ fun ChatScreen() {
             streamRevealJob = null
             isStreaming = false
             streamingMessageId = null
+            streamingStartPredictedBottomPx = -1
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2570,6 +2615,7 @@ fun ChatScreen() {
             val finalId = streamingMessageId
             fakeStreamJob = null
             isStreaming = false
+            streamingStartPredictedBottomPx = -1
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2703,6 +2749,7 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
+            streamingStartPredictedBottomPx = -1
             streamingMessageId = null
             streamingMessageContent = ""
             streamingRevealBuffer = ""
@@ -2842,6 +2889,10 @@ fun ChatScreen() {
                 val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
                 failedUserMessageStates.remove(userId)
                 clearFailedAssistantStateForUser(userId)
+                streamingStartPredictedBottomPx = predictStreamingStartBottomPxForSend(
+                    text = text,
+                    existingUserMessageId = existingUserMessageId
+                )
                 upsertUserMessage(userId, text)
                 anchoredUserMessageId = userId
                 streamingFreshStart = -1
@@ -3032,6 +3083,7 @@ fun ChatScreen() {
             streamingMessageContent = finalContent
             streamingRevealBuffer = ""
             isStreaming = false
+            streamingStartPredictedBottomPx = -1
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
