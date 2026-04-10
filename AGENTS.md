@@ -585,7 +585,6 @@ Clean-State 定义：
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
 - `Idle` 阶段只保留“最小可见保护”：如果 waiting 或早期正文真实底边已经压到工作线以下，只允许向上补到工作线附近；不允许反向把仍高于工作线的内容再往下吸回去。
-- 这条最小可见保护不能再等坏帧画出来之后补滚；发送瞬间和早期 streaming 只要真实底边会掉到工作线以下，必须优先在 RecyclerView 预绘制前做同一条几何纠偏，避免用户看到“小球/首字先掉下去，再被抬回来”的一上一下。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。

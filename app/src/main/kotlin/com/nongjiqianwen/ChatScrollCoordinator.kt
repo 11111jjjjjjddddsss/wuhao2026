@@ -1,14 +1,12 @@
 package com.nongjiqianwen
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.isActive
@@ -436,56 +434,6 @@ internal fun BindRecyclerChatScrollEffects(
         scrollToBottom(false)
         repeat(2) { withFrameNanos { } }
         initialBottomSnapDoneState.value = true
-    }
-}
-
-@Composable
-internal fun BindRecyclerStreamingPreDrawClamp(
-    recyclerView: RecyclerView?,
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    scrollModeState: MutableState<ScrollMode>,
-    userInteractingState: MutableState<Boolean>,
-    recyclerScrollInProgress: Boolean,
-    currentStreamingOverflowDelta: () -> Int,
-    currentStreamingAlignDeltaPx: () -> Int,
-    beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit
-) {
-    val activeStreamingState = rememberUpdatedState(isStreaming && hasStreamingItem)
-    val activeScrollModeState = rememberUpdatedState(scrollModeState)
-    val activeUserInteractingState = rememberUpdatedState(userInteractingState)
-    val activeRecyclerScrollInProgress = rememberUpdatedState(recyclerScrollInProgress)
-    val activeOverflowReader = rememberUpdatedState(currentStreamingOverflowDelta)
-    val activeAlignDeltaReader = rememberUpdatedState(currentStreamingAlignDeltaPx)
-    val activeBeginProgrammaticScroll = rememberUpdatedState(beginProgrammaticScroll)
-    val activeEndProgrammaticScroll = rememberUpdatedState(endProgrammaticScroll)
-
-    DisposableEffect(recyclerView) {
-        val activeRecyclerView = recyclerView ?: return@DisposableEffect onDispose { }
-        val listener = android.view.ViewTreeObserver.OnPreDrawListener {
-            if (!activeStreamingState.value) return@OnPreDrawListener true
-            if (activeRecyclerScrollInProgress.value) return@OnPreDrawListener true
-            if (activeUserInteractingState.value.value) return@OnPreDrawListener true
-            if (activeScrollModeState.value.value == ScrollMode.UserBrowsing) return@OnPreDrawListener true
-            if (activeOverflowReader.value.invoke() <= 0) return@OnPreDrawListener true
-            val deltaPx = activeAlignDeltaReader.value.invoke()
-            if (deltaPx == 0) return@OnPreDrawListener true
-            activeBeginProgrammaticScroll.value.invoke()
-            try {
-                activeRecyclerView.scrollBy(0, -deltaPx)
-            } finally {
-                activeEndProgrammaticScroll.value.invoke()
-            }
-            false
-        }
-        activeRecyclerView.viewTreeObserver.addOnPreDrawListener(listener)
-        onDispose {
-            val observer = activeRecyclerView.viewTreeObserver
-            if (observer.isAlive) {
-                observer.removeOnPreDrawListener(listener)
-            }
-        }
     }
 }
 

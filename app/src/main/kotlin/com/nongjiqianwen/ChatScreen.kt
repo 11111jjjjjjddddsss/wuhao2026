@@ -3093,18 +3093,6 @@ fun ChatScreen() {
         snapStreamingToWorkline = snapStreamingToWorkline,
         scrollToBottom = scrollToBottom
     )
-    BindRecyclerStreamingPreDrawClamp(
-        recyclerView = recyclerViewRef,
-        isStreaming = isStreaming,
-        hasStreamingItem = hasStreamingItem,
-        scrollModeState = scrollRuntime.scrollMode,
-        userInteractingState = scrollRuntime.userInteracting,
-        recyclerScrollInProgress = recyclerScrollInProgress,
-        currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
-        currentStreamingAlignDeltaPx = ::currentStreamingAlignDeltaPx,
-        beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-        endProgrammaticScroll = ::endProgrammaticRecyclerScroll
-    )
 
     BoxWithConstraints(
         modifier = Modifier
