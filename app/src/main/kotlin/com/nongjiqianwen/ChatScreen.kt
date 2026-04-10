@@ -2941,21 +2941,6 @@ fun ChatScreen() {
             beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
             endProgrammaticScroll = ::endProgrammaticRecyclerScroll
         )
-        if (!animated) {
-            repeat(4) {
-                withFrameNanos { }
-                val alignDeltaPx = currentBottomAlignDeltaPx()
-                if (kotlin.math.abs(alignDeltaPx) <= bottomPositionTolerancePx) {
-                    return@scrollToBottom
-                }
-                com.nongjiqianwen.alignRecyclerLastMessageToBottomTarget(
-                    recyclerView = recyclerViewRef,
-                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-                    beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-                    endProgrammaticScroll = ::endProgrammaticRecyclerScroll
-                )
-            }
-        }
     }
 
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{

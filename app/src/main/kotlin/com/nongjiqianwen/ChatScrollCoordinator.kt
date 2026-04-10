@@ -356,7 +356,7 @@ internal fun BindRecyclerChatScrollEffects(
                 return@LaunchedEffect
             }
             if (activeScrollMode == ScrollMode.Idle) {
-                if (streamingMessageContent.isNotBlank() && currentStreamingOverflowDelta() > 0) {
+                if (currentStreamingOverflowDelta() > 0) {
                     snapStreamingToWorkline()
                 }
                 if (streamingMessageContent.isNotBlank() && isStreamingReadyForAutoFollow()) {
@@ -421,7 +421,9 @@ internal fun BindRecyclerChatScrollEffects(
         messagesCount,
         hasStreamingItem,
         isStreaming,
-        initialBottomSnapDone
+        initialBottomSnapDone,
+        currentLastMessageContentBottomPx(),
+        isWithinBottomTolerance()
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
         if (!startupHydrationBarrierSatisfied || !startupLayoutReady) return@LaunchedEffect
@@ -431,8 +433,9 @@ internal fun BindRecyclerChatScrollEffects(
         }
         if (messagesCount == 0 || isStreaming || hasStreamingItem) return@LaunchedEffect
         repeat(3) { withFrameNanos { } }
-        scrollToBottom(false)
-        repeat(2) { withFrameNanos { } }
+        if (currentLastMessageContentBottomPx() > 0 && !isWithinBottomTolerance()) {
+            scrollToBottom(false)
+        }
         initialBottomSnapDoneState.value = true
     }
 }
