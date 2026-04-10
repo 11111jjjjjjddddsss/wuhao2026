@@ -363,10 +363,16 @@ internal fun BindRecyclerChatScrollEffects(
             if (
                 activeScrollMode == ScrollMode.UserBrowsing ||
                 recyclerScrollInProgress ||
-                userInteractingState.value ||
-                contentBottom <= 0
+                userInteractingState.value
             ) {
                 streamBottomFollowActiveState.value = false
+                return@LaunchedEffect
+            }
+            if (contentBottom <= 0) {
+                streamBottomFollowActiveState.value = false
+                if (pendingStreamingStartAnchorState.value && activeScrollMode == ScrollMode.Idle) {
+                    continue
+                }
                 return@LaunchedEffect
             }
             if (activeScrollMode == ScrollMode.Idle) {
