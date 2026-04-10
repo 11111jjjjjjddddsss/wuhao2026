@@ -1,7 +1,5 @@
 package com.nongjiqianwen
 
-import android.os.SystemClock
-import android.util.Log
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -9,52 +7,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.recyclerview.widget.AdapterListUpdateCallback
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.ListUpdateCallback
 import androidx.recyclerview.widget.RecyclerView
-import java.util.concurrent.atomic.AtomicInteger
-
-private const val CHAT_SCROLL_TRACE_TAG = "ChatScrollTrace"
-
-private fun RecyclerView.traceLastItemBottomPx(): Int {
-    val activeLayoutManager = layoutManager as? LinearLayoutManager ?: return -1
-    val lastIndex = (adapter?.itemCount ?: 0) - 1
-    if (lastIndex < 0) return -1
-    return activeLayoutManager.findViewByPosition(lastIndex)?.bottom ?: -1
-}
-
-private class TracingLinearLayoutManager(
-    context: android.content.Context
-) : LinearLayoutManager(context) {
-
-    override fun onLayoutChildren(
-        recycler: RecyclerView.Recycler?,
-        state: RecyclerView.State?
-    ) {
-        super.onLayoutChildren(recycler, state)
-        if (!BuildConfig.DEBUG) return
-        val lastIndex = itemCount - 1
-        val lastBottom = if (lastIndex >= 0) {
-            findViewByPosition(lastIndex)?.bottom ?: -1
-        } else {
-            -1
-        }
-        Log.d(
-            CHAT_SCROLL_TRACE_TAG,
-            "layout_children t=${SystemClock.uptimeMillis()} itemCount=$itemCount preLayout=${state?.isPreLayout} lastItemBottom=$lastBottom"
-        )
-    }
-}
 
 internal class ChatRecyclerComposeAdapter(
     private val itemContent: @Composable (String) -> Unit
 ) : RecyclerView.Adapter<ChatRecyclerComposeAdapter.ComposeMessageViewHolder>() {
-
-    companion object {
-        private val diffDispatchCounter = AtomicInteger(0)
-    }
 
     private var itemIds: List<String> = emptyList()
 
@@ -66,13 +25,6 @@ internal class ChatRecyclerComposeAdapter(
         if (itemIds == newIds) return
         val previousIds = itemIds
         val nextIds = newIds.toList()
-        val dispatchId = diffDispatchCounter.incrementAndGet()
-        if (BuildConfig.DEBUG) {
-            Log.d(
-                CHAT_SCROLL_TRACE_TAG,
-                "diff_submit#$dispatchId t=${SystemClock.uptimeMillis()} oldSize=${previousIds.size} newSize=${nextIds.size} oldLast=${previousIds.lastOrNull()} newLast=${nextIds.lastOrNull()}"
-            )
-        }
         val diffResult = DiffUtil.calculateDiff(
             object : DiffUtil.Callback() {
                 override fun getOldListSize(): Int = previousIds.size
@@ -89,50 +41,7 @@ internal class ChatRecyclerComposeAdapter(
             }
         )
         itemIds = nextIds
-        val adapterCallback = AdapterListUpdateCallback(this)
-        diffResult.dispatchUpdatesTo(
-            object : ListUpdateCallback {
-                override fun onInserted(position: Int, count: Int) {
-                    if (BuildConfig.DEBUG) {
-                        Log.d(
-                            CHAT_SCROLL_TRACE_TAG,
-                            "diff_dispatch#$dispatchId t=${SystemClock.uptimeMillis()} op=insert position=$position count=$count"
-                        )
-                    }
-                    adapterCallback.onInserted(position, count)
-                }
-
-                override fun onRemoved(position: Int, count: Int) {
-                    if (BuildConfig.DEBUG) {
-                        Log.d(
-                            CHAT_SCROLL_TRACE_TAG,
-                            "diff_dispatch#$dispatchId t=${SystemClock.uptimeMillis()} op=remove position=$position count=$count"
-                        )
-                    }
-                    adapterCallback.onRemoved(position, count)
-                }
-
-                override fun onMoved(fromPosition: Int, toPosition: Int) {
-                    if (BuildConfig.DEBUG) {
-                        Log.d(
-                            CHAT_SCROLL_TRACE_TAG,
-                            "diff_dispatch#$dispatchId t=${SystemClock.uptimeMillis()} op=move from=$fromPosition to=$toPosition"
-                        )
-                    }
-                    adapterCallback.onMoved(fromPosition, toPosition)
-                }
-
-                override fun onChanged(position: Int, count: Int, payload: Any?) {
-                    if (BuildConfig.DEBUG) {
-                        Log.d(
-                            CHAT_SCROLL_TRACE_TAG,
-                            "diff_dispatch#$dispatchId t=${SystemClock.uptimeMillis()} op=change position=$position count=$count payload=${payload != null}"
-                        )
-                    }
-                    adapterCallback.onChanged(position, count, payload)
-                }
-            }
-        )
+        diffResult.dispatchUpdatesTo(this)
     }
 
     override fun getItemId(position: Int): Long = itemIds[position].hashCode().toLong()
@@ -179,7 +88,7 @@ internal fun ChatRecyclerViewHost(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            val layoutManager = TracingLinearLayoutManager(context).apply {
+            val layoutManager = LinearLayoutManager(context).apply {
                 stackFromEnd = true
             }
             RecyclerView(context).apply {
@@ -201,15 +110,6 @@ internal fun ChatRecyclerViewHost(
                         }
                     }
                 )
-                if (BuildConfig.DEBUG) {
-                    addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
-                        val recyclerView = view as? RecyclerView ?: return@addOnLayoutChangeListener
-                        Log.d(
-                            CHAT_SCROLL_TRACE_TAG,
-                            "recycler_layout_change t=${SystemClock.uptimeMillis()} itemCount=${recyclerView.adapter?.itemCount ?: 0} lastItemBottom=${recyclerView.traceLastItemBottomPx()} paddingBottom=${recyclerView.paddingBottom}"
-                        )
-                    }
-                }
                 onRecyclerReady(this, layoutManager)
             }
         },

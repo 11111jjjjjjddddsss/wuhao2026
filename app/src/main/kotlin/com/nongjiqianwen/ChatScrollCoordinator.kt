@@ -1,7 +1,5 @@
 package com.nongjiqianwen
 
-import android.os.SystemClock
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
@@ -10,12 +8,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
-
-private const val CHAT_SCROLL_TRACE_TAG = "ChatScrollTrace"
 
 internal enum class ScrollMode {
     Idle,
@@ -121,33 +116,6 @@ internal fun endProgrammaticRecyclerScroll(
 ) {
     programmaticScrollState.value = false
     recyclerView?.let(refreshRecyclerMetrics)
-}
-
-internal fun logRecyclerLastItemBottomForNextFrames(
-    recyclerView: RecyclerView?,
-    label: String,
-    remainingFrames: Int = 3
-) {
-    val activeRecyclerView = recyclerView ?: return
-    if (!BuildConfig.DEBUG || remainingFrames <= 0) return
-    activeRecyclerView.postOnAnimation {
-        val layoutManager = activeRecyclerView.layoutManager as? LinearLayoutManager
-        val lastIndex = (activeRecyclerView.adapter?.itemCount ?: 0) - 1
-        val lastBottom = if (layoutManager != null && lastIndex >= 0) {
-            layoutManager.findViewByPosition(lastIndex)?.bottom ?: -1
-        } else {
-            -1
-        }
-        Log.d(
-            CHAT_SCROLL_TRACE_TAG,
-            "$label t=${SystemClock.uptimeMillis()} frameSample=$remainingFrames itemCount=${activeRecyclerView.adapter?.itemCount ?: 0} lastItemBottom=$lastBottom"
-        )
-        logRecyclerLastItemBottomForNextFrames(
-            recyclerView = activeRecyclerView,
-            label = label,
-            remainingFrames = remainingFrames - 1
-        )
-    }
 }
 
 internal suspend fun scrollRecyclerToBottom(
