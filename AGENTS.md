@@ -1,631 +1,257 @@
 # 农技千问仓库主规则
 
-本文件是本仓库唯一主规则文档。
+本文件是本仓库唯一主规则文档。以后任何 GPT、Codex、子窗口、接手窗口，在开始改代码前都先看这里。
 
-以后任何 GPT、Codex、子窗口、接手窗口，在开始改代码前，优先读取本文件。
+当前仓库实际只有两条主线：
+- Android 客户端：`app`
+- Go 后端：`server-go`
+
+历史调参、旧链路、旧口径都留在 git 历史里，不再继续堆在本文。
 
 ## 1. 文档规则
 
-- 以后规则文档只保留这一份：[AGENTS.md](D:/wuhao/AGENTS.md)
-- 不允许未经明确批准，随手再新增第二份、第三份“规则文档”“交接文档”“补充规则文档”
-- [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md) 和 [docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md) 只作为实现参考和回归参考，不再承担主规则文档职责
-- 以后只要规则发生变化，必须在同一次代码修改中同步更新本文件
-- 以后只要发现本文件与当前代码、当前产品规则不一致，优先修正文档，不允许放着过期规则不管
+- 规则文档只保留这一份：[AGENTS.md](D:/wuhao/AGENTS.md)
+- [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)、[docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)、[docs/backend-boundaries.md](D:/wuhao/docs/backend-boundaries.md) 只作参考，不再承担主规则职责
+- 规则变更、实现边界变化、唯一真相变化，必须同次同步更新本文件
+- 如果本文件与当前代码不一致，优先修本文，不允许放着过期规则不管
 
-## 2. 产品定位
+## 2. 产品与系统真相
 
 项目名称：农技千问
 
-项目类型：农业 AI 问诊系统。用户通过文字或图片咨询农作物问题，AI 分析并提供农业技术参考建议。
-
 产品定位：
-- 农业技术顾问型 AI 工具
-- 提供农业技术参考建议
-- 不提供绝对诊断
-- 后端是唯一真相来源
+- 农业 AI 问诊系统
+- 用户通过文字、图片、图文混合咨询农作物问题
+- AI 只提供农业技术参考建议，不提供绝对诊断
+
+系统边界：
 - 前端只负责 UI、输入、展示、交互
+- 后端是唯一真相来源
+- 以下业务逻辑必须由后端控制：用户鉴权、会员等级、调用次数、上下文组装、模型调用、成本统计
 
-## 3. 系统架构
-
-### 前端
-
-- Android App
-- 聊天式界面，交互形态接近 ChatGPT
-- 支持文字、图片、图文混合输入
-- 图片最多 4 张
-- 回答通过 SSE 流式返回
-
-### 后端
-
+部署与基础设施：
 - 部署：阿里云 SAE
 - 数据库：PolarDB（MySQL 兼容）
-- 可选组件：
-  - Redis：缓存 / 验证码
-  - OSS：图片存储
-  - SLS：日志记录
+- 可选组件：Redis、OSS、SLS
 
-### 后端唯一真相原则
+## 3. 模型、上下文与会员
 
-以下业务逻辑都必须由后端控制：
-- 用户鉴权
-- 会员等级
-- 调用次数
-- 上下文组装
-- 模型调用
-- 成本统计
+模型：
+- 主模型：Qwen3.5-Plus，用于农业问诊分析、图片理解、推理判断
+- 摘要模型：Qwen-Flash，用于 B 层摘要、C 层摘要
 
-前端不允许把这些业务真相本地化成“看起来可用”的假逻辑。
+上下文结构：
+- A 层历史滑窗：Free / Plus 6 轮，Pro 9 轮
+- B 层中期摘要：约 550 tokens
+- C 层长期摘要：约 300 tokens，每 25 轮更新一次
+- 锚点信息：约 1000 tokens，每轮必注入
 
-## 4. 模型与上下文
+图片规则：
+- 单轮最多 4 张
+- 压缩：最长边 <= 1024px，单张 <= 1MB
+- 估算：1 张图约 1000 tokens
+- 图片上下文只保留当前轮和上一轮；更早图片只保留文字结论与摘要
 
-### 主模型
+联网搜索：
+- 默认能联网就联网，优先官方、正式、权威资料
+- 仅在强时效、事实核对、外部数据查询等场景触发
+- 不允许凭印象硬改
 
-- Qwen3.5-Plus
-- 用途：
-  - 农业问诊分析
-  - 图片理解
-  - 推理判断
-
-### 摘要模型
-
-- Qwen-Flash
-- 用途：
-  - B 层摘要
-  - C 层摘要
-
-### 上下文结构
-
-- A 层：历史对话滑窗
-  - Free / Plus：6 轮
-  - Pro：9 轮
-- B 层：中期摘要
-  - 约 550 tokens
-- C 层：长期摘要
-  - 约 300 tokens
-  - 每 25 轮更新一次
-- 锚点信息：
-  - 约 1000 tokens
-  - 每轮必注入
-  - 用于稳定系统规则
-
-### 主对话系统前置锚点
-
-- 主对话模型系统前置锚点唯一真源：
-  - [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
-- 以后旧版锚点正文不再并存保留；替换锚点时，以真源文件为准直接更新
-- 以后只要主对话模型锚点规则变更，必须同次同步：
-  - [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
-  - [AGENTS.md](D:/wuhao/AGENTS.md)
-- 当前锚点执行重点：
-  - 当前轮输入优先，历史/摘要/联网仅作参考
-  - 特殊场景不解释系统/模型/来源细节，会员问题只引导会员中心，APP 问题引导设置内客服
-  - 信息不足时必须列 2–3 种可能性并追问 1–2 个关键问题
-  - 联网搜索仅在必要时使用，同一轮最多一次
-  - 证件/登记/备案/审定类不做真伪裁决，只提供权威平台查询方法
-
-### B/C 摘要提示词
-
-- B 层摘要提示词唯一真源：
-  - [server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
-- C 层摘要提示词唯一真源：
-  - [server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
-- B/C 提示词和主对话锚点不是同一模型职责，不允许混成一个文件
-- B/C 失败处理边界：
-  - 不拖垮主对话服务
-  - 轮次命中后若该层失败，必须保留对应 `pending_retry`
-  - 后续继续按层补账，不能因为错过触发轮次就丢失
-  - 提示词文件缺失或为空时，启动阶段应预检查并记录日志；真正运行失败时仍按层重试
-
-## 5. 图片规则
-
-- 单轮最多 4 张图片
-- 压缩：
-  - 最长边 <= 1024px
-  - 单张 <= 1MB
-- 估算：
-  - 1 张图片约等于 1000 tokens
-
-### 图片上下文规则
-
-图片进入上下文只保留：
-- 当前轮
-- 上一轮
-
-更早图片：
-- 不进入上下文
-- 只保留文字结论和摘要
-
-模型行为：
-- 当前轮图片：允许视觉分析与必要描述
-- 上一轮图片：主要用于对比判断，一般不重复描述
-
-## 6. 联网搜索
-
-Turbo 搜索策略：
-- 触发条件：
-  - 强时效信息
-  - 客观事实核对
-  - 外部数据查询
-- 默认能联网就联网，优先用官方资料、正式资料、权威资料
-- 不允许凭印象自以为是直接下刀
-
-## 7. 会员与计费
-
-### 会员
-
+会员与计费：
 - Free：6 次 / 天
 - Plus：19.9 元 / 月，25 次 / 天
 - Pro：29.9 元 / 月，40 次 / 天
+- 加油包：6 元 / 100 次，仅 Plus / Pro 可买，先扣日额再扣加油包
 
-### 加油包
+## 4. 提示词与后端真源
 
-- 6 元 / 100 次
-- 永久有效
-- 仅 Plus / Pro 可购买
-- 消耗顺序：
-  - 先消耗每日额度
-  - 再消耗加油包
+当前真源文件：
+- 主对话锚点：[server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
+- B 层摘要提示词：[server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
+- C 层摘要提示词：[server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
 
-## 8. Chat UI 总原则
+规则：
+- 三个文件职责不同，不允许合并
+- 锚点规则改动时，必须同次同步更新真源文件和 [AGENTS.md](D:/wuhao/AGENTS.md)
+- 主对话锚点缺失或为空，属于主链配置问题，应 fail-fast
+- B/C 层失败不拖垮主对话，但必须保留 `pending_retry`，后续继续补账
 
-### 8.1 第一原则
+当前锚点执行重点：
+- 当前轮输入优先，历史 / 摘要 / 联网只作参考
+- 信息不足时列 2 到 3 种可能性，并追问 1 到 2 个关键问题
+- 联网搜索同一轮最多一次
+- 证件 / 登记 / 备案 / 审定类不做真伪裁决，只给权威平台查询方法
 
-聊天框 UI 必须由当前真实代码和当前真实状态直接决定。
+## 5. 开发与交付规则
 
-不允许依赖以下内容才能“看起来正常”：
-- 本地历史
-- 本地底部视口
-- 本地流式草稿
-- 本地 user_id
-- 首次启动前残留的旧布局状态
+改代码原则：
+- 先读代码，再下刀
+- 小范围改动，优先复用现有逻辑
+- 不假设不存在的接口、文件或路径
+- 能查官方资料就先查
 
-### 8.2 Clean-State 铁规则
+风险控制：
+- 一次只收一个明确问题
+- 改完必须复盘影响范围，避免改了这个坏了那个
+- 临时日志、debug 面板只服务当前问题，用完尽快删除
+- 同一个问题如果已经连续两轮修改仍未解决，第三轮开始前必须先会诊，再继续改
+
+交付要求：
+- Android 改动后编译：`./gradlew.bat :app:compileDebugKotlin`
+- Go 后端改动后编译：`cd server-go && go build ./...`
+- 每次改动后都要检查影响面
+- 每次改动后都要提交本地 git，并推送到 `origin/master`
+
+## 6. Chat UI 总原则
+
+总原则：
+- 聊天 UI 必须由当前真实代码和当前真实状态直接决定
+- 不允许靠本地历史、本地草稿、本地视口假状态“看起来正常”
 
 Clean-State 定义：
-- 无本地聊天记录
-- 无本地底部视口
-- 无本地流式草稿
-- 全新 user_id
+- 清除 app 数据后首次启动
+- 无本地聊天记录、无本地底部视口、无本地流式草稿、无旧 user_id 状态
 
-对 Android 来说，等价于：
-- 清除应用数据后首次启动
-
-验收硬要求：
-- 清除 app 数据后，UI 不允许回滚到旧毛病
-- 清除 app 数据后，聊天页外观、布局、交互必须尽量和正常状态一致
-- 如果某个问题只在 clean-state 下暴露，也算真实 bug，不能忽略
-- clean-state 空数据首启时，聊天页首发预热与滚动链初始化不允许死等远端历史 hydration 完成；如果当前没有本地消息、没有本地草稿、也没有可恢复 round，应允许空列表先完成启动布局与首发预热，避免“热启动正常、清数据后退回冷链”
-
-### 8.3 必做 clean-state 回归的改动范围
-
-只要改到以下任一项，就必须把 clean-state 当成正式验收：
+Clean-State 必做回归的范围：
 - 聊天列表布局
 - 流式生成渲染
 - 发送后上抬 / 小球锚点
 - 自动滚动 / 手动打断 / 回到底部按钮
 - 底部输入区
-- 输入框工具条
-- 消息复制链
+- 复制链
 - 免责声明
 - 冷启动 / 重进 app / 历史恢复
 
-## 9. 当前消息复制链基线
+聊天框分层边界：
+- [ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)：滚动状态机、发送后锚点、回到底部按钮
+- [ChatStreamingRenderer.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt)：waiting / streaming / settled 渲染
+- [ChatComposerCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt)：输入框动态、IME、发送收口
+- [ChatComposerPanel.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt)：底部输入区 UI 宿主
+- [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：页面组装、测量值采集、状态接线
+- [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：RecyclerView 底座、bottom padding 锚点、发送起步定位
 
-### 9.1 消息区
+旧 `LazyColumn / listState / sendTick / frozenBottom / retainedBottomGap` 等旧滚动术语全部视为历史归档，不再执行。
 
-当前消息区复制链基线：
-- 系统手柄
-- 系统 SelectionContainer 选区
-- 自定义黑色 `复制 / 全文复制` 卡片
+## 7. 当前 RecyclerView 滚动链唯一真相
+
+### 7.1 总口径
+
+- 用户消息和 assistant 消息都先按正常消息流从上往下排
+- waiting 小球、streaming 正文、settled 完成态共用同一个 assistant 内容宿主
+- 只有正文尾部真正接近工作线后，才允许进入 AutoFollow
+- 用户拖动立即让权，不允许隐藏第二条链抢手
+- 完成态和静态贴底围绕同一条工作线附近目标线收口，不再保留明显更低的第二条底线
+- 底部不应再出现额外可见空白
+
+### 7.2 五环节铁律
+
+1. 发送起步
+- 主人：[ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)
+- 做法：新消息插入后，在首帧预绘制前一次性 `scrollToPositionWithOffset(...)`
+- 当前锚点：assistant 起步宿主顶边
+- 当前上抬试值：`280dp`
+
+2. 起步保护期
+- 主人：`sendStartAnchorActive`
+- 作用：正文真正接近工作线前，禁止 `snapStreamingToWorkline()` 和 `AutoFollow` 提前接管
+
+3. AutoFollow
+- 主人：[ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)
+- 作用：正文超过工作线后，按 overflow 直接跟随，不再多帧小步追赶
+
+4. 完成态收口
+- 主人：`scrollToBottom(false)`
+- 作用：completed 宿主真实底边到位后收口到目标线
+
+5. 用户浏览
+- 主人：用户手指
+- 作用：进入 `UserBrowsing` 后立即让权；只有明确回到底部方向后才恢复自动链
+
+铁律：
+- 同一时刻只能有一个主人控制滚动
+- 新增任何 scroll 调用前，必须说明它属于哪一个环节
+- 回到底部按钮和 final snap 只能从主链派生，不能另挂第二套补滚链
+
+### 7.3 当前实现细则
+
+- 工作线和静态贴底线必须共用同一个物理锚点，优先使用真实 `composerTopInViewportPx`
+- `RecyclerView` 已关闭 `stackFromEnd`
+- sending / streaming / completed 不允许再切换成不同内容宿主上报底边
+- 发送起步允许在同一个 assistant 宿主内保留临时承接高度，但真实底边仍只认真实可见内容
+- 发送起步期间允许冻结发送当拍的 bottom padding，避免 IME / composer 回落把文本区重新拖低
+- 如果发送起步会暴露一帧坏帧，允许先隐藏“本轮用户消息 + assistant 起步宿主”
+- 如果旧历史列表仍会在整表重排时露出轻微挪动，允许短时冻结整个 `RecyclerView` 视觉快照，等起步定位与 reveal 稳定后再硬切释放
+- 上述隐藏、快照冻结都只是在遮坏帧，不属于新增第二条滚动链
+- 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
+
+当前排查顺序：
+1. assistant 真实内容底边是否仍由同一宿主上报
+2. 工作线与静态贴底线是否仍共用同一物理锚点
+3. `Idle / AutoFollow / UserBrowsing` 是否仍是唯一滚动状态真相
+4. 回到底部按钮与 final snap 是否仍只读主链派生
+
+## 8. 其他聊天 UI 基线
+
+消息复制链：
+- 用户消息与 AI 消息共用同一条主链
+- 用户消息保持纯文本显示
+- AI 复制的是渲染后的可见正文，不是 Markdown 原文
+- 黑卡片只保留：`复制`、`全文复制`
+
+输入区选择菜单：
+- 走系统选区和手柄
+- 自定义黑底白字菜单
+- 菜单保留：复制、粘贴、剪切、全选
+- 菜单贴输入框上方，不压输入框，不飘到标题区
+
+免责声明：
+- streaming 期间不提前显示免责声明文字
+- 如最终会出现免责声明，streaming 期间只允许保留稳定几何占位
+
+Markdown 表格：
+- 当前不做真表格渲染
+- 模型若输出 Markdown 表格，完成态自动降级成普通可读文本块
+
+消息链接：
+- 当前只支持 assistant 完成态正文点击链接
+- 单击直接走系统浏览器
+- 不允许为链接再加额外悬浮层，不能破坏现有复制链
+
+失败提示与重试：
+- 用户发送失败：`未发送  重发`
+- AI 回复未完成：`回复未完成  重试`
+- footer 必须渲染在各自消息 item 内部，不允许做成悬浮层
+- `重发 / 重试` 不新增用户消息，不重复计轮次
+
+自动恢复：
+- 依赖稳定 `client_msg_id`
+- 优先走后端快照对账，不是重新发一轮
+- 同一 `client_msg_id` 不允许并发多条恢复链
+- 恢复失败后才回落到 `回复未完成  重试`
+
+## 9. 后端与运维边界
+
+当前后端目录唯一真相：
+- [server-go](D:/wuhao/server-go)
 
 规则：
-- 用户消息和 AI 消息走同一条主链
-- 用户消息保持纯文本显示，不做 Markdown 渲染
-- AI 消息复制的是渲染后的可见正文，不是 Markdown 原始字符串
-- `全选` 功能不保留在消息黑卡片里
-- 卡片只保留：
-  - `复制`
-  - `全文复制`
-- 退出规则：
-  - 点选区外退出
-  - 返回键退出
-  - 点击卡片动作后退出
-
-卡片规则：
-- 正常情况下优先贴近手柄上方
-- 上方放不下再切下方
-- 如果上下两侧都放不下完整卡片且会压到手柄，则允许走中间兜底
-- 不允许卡片压到手柄上
-- 不允许消息卡片重新回退到系统白色工具条主链
-
-### 9.2 输入区
-
-当前输入区选择菜单基线：
-- 系统选区
-- 系统手柄
-- 自定义黑底白字菜单卡片
-
-菜单保留动作：
-- 复制
-- 粘贴
-- 剪切
-- 全选
-
-定位规则：
-- 卡片贴在输入框上方
-- 不与输入框重叠
-- 跟着输入框和键盘位置走
-- 不允许飘到顶部标题区
-
-退出规则：
-- 点输入框外退出
-- 返回键退出
-- 执行动作后按系统预期关闭
-
-## 10. 当前流式生成链基线
-
-### 10.1 目标
-
-生成区当前目标不是“完全不动”，而是：
-- 不飞字
-- 不冒头
-- 不整段乱跳
-- 不先紧后松再重排
-- 尾段只允许极轻微动态感
-
-### 10.2 当前滚动与生成基线
-
-当前聊天滚动只认第 20 节里的 RecyclerView 规则。
-
-- 本节只保留“生成体验目标”和“排查顺序”；滚动链具体口径统一看 `20.4 / 20.5 / 20.6`，不再在这里重复维护第二份滚动规则。
-- 生成链额外关注点不变：waiting / streaming / settled 继续共用同一宿主，生成结束后如仍有极轻的收口微抖，优先检查 streaming / completed 是否仍共用同一宿主几何。
-
-### 10.3 UI 监护与调试日志规则
-
-- UI 问题默认优先直接查代码里的状态机、几何测量和列表锚点，不先靠肉眼猜。
-- 如果临时加调试日志或 debug 面板，只允许服务当前问题；定位完成后应尽快删除。
-- 以后继续排查滚动问题，优先按这 4 项顺序核对：
-  - assistant 真实内容底边是否仍由同一宿主上报
-  - 工作线与静态贴底线是否仍共用同一物理锚点
-  - Idle / AutoFollow / UserBrowsing 是否仍是唯一滚动状态真相
-  - 回到底部 按钮是否仍是纯派生，不靠分散写状态硬控
-- 以后只要新增或修改 UI 监护项，必须同次同步更新 [AGENTS.md](D:/wuhao/AGENTS.md)。
-
-### 10.4 当前滚动链大白话口径
-
-- 当前滚动链的大白话口径统一看 `20.4 当前 RecyclerView 滚动链唯一真相`；这里不再重复抄一份，避免后面两处口径再次漂移。
-
-## 11. 免责声明规则
-
-免责声明必须满足：
-- 该出现时出现
-- 不该出现时不出现
-- 生成中不提前露字
-- 不影响正文与输入框之间的距离稳定
-
-当前规则：
-- streaming 期间不提前显示免责声明文字
-- 如果最终会出免责声明，streaming 期间只允许保留稳定几何占位
-- 免责声明触发条件已经收紧，偏向“明确动作 + 药剂/肥料类型”或“明确动作 + 剂量/浓度/稀释/安全期”场景
-
-## 12. 当前 Markdown 表格降级规则
-
-- 当前聊天 UI 不做真正的 Markdown 表格组件渲染
-- 如果模型偶发输出 Markdown 表格，完成态渲染应自动降级成普通可读文本块，不允许把复杂表格直接硬顶成难读布局
-- 降级目标：
-  - 不改现有聊天 UI 样式
-  - 不引入横向滚动表格组件
-  - 不破坏消息复制链
-- 当前优先策略：
-  - 表格表头 + 行数据自动转成普通列表/段落文本
-  - 复制得到的也是降级后的可读正文
-- 如果后面要支持真正表格，必须单开专项，不能顺手把当前消息渲染链改复杂
-
-## 13. 当前输入框首发体感问题的处理边界
-
-当前输入框第一次发送时，重点关注：
-- 光标闪没
-- 回缩慢半拍
-- 黏连感
-- 残影感
-
-当前允许的优化方向：
-- 调整焦点、光标、键盘收起时序
-- 优化发送按钮禁用时机
-- 优化底部输入区内部运动一致性
-- 发送期允许在输入框内部使用短时稳定壳或文本快照遮住真实清空/回缩，但不允许改外壳样式和按钮样式
-- 首发预热应尽量前提到启动后和第一次进入输入态时完成：启动后能做的先做，键盘第一次弹起时再补齐，不要把底部高度稳定、composer bounds 取样、发送 overlay 快照初始化压到第一次发送那一拍
-- 首发预热还应包含输入框稳定内容高度的提前估值与首轮测量，不要等第一条消息发送时才第一次得到可用的 `inputContentHeightPx`
-- 当前优先保持单宿主底部输入区，不再继续叠加独立发送期 overlay 双宿主去遮挡回缩
-- `sendUiSettling` 只应用于输入区 UI 收口本身，不要把本地持久化、恢复初始化、额外非 UI 工作继续拖在这段发送态后面
-- 输入框发送收口当前不再保留单独的“快照文本层”；如仍需补偿，只允许保留最小内容高度稳定，placeholder 可与这份稳定高度并存，不要再互相卡住显示时机
-- 发送收口时，placeholder 不应再被已进入稳定阶段的快照继续压住；键盘收起后应尽快回到正常占位显示
-- 键盘已收起且底部宿主高度已稳定时，输入框发送期最小高度应立即释放，不再额外多等一帧
-- 发送后的锚点滚动与键盘回落补滚应尽量减少额外稳定帧，只保留不抖所需的最小等待，避免底部回缩体感被人为拖慢
-- 必要时允许在发送期短时锁住整个底部输入区宿主高度，避免内层文本清空和外层 IME 回缩折成两段
-- 如果要继续逼近“肉眼看不到回缩过程”，优先保留键盘打开时原有 `imePadding()` 视觉链，只在发送期额外挂独立 overlay 壳遮住真实回缩
-- 发送态稳定壳只允许保留高度与布局稳定性，不允许把已发送文本继续以可见内容形式停留在输入框里
-- `描述种植问题` 这类 placeholder 只允许受发送收口状态影响；键盘回缩后应立即回到输入框，不允许等整段生成结束才显示
-- 如果要继续逼近 GPT 的发送收口手感，优先保留键盘打开时原有 `imePadding()` 视觉链，只在发送期额外挂独立 overlay 壳遮住真实回缩，不允许为了这件事改大白底范围或改输入框与键盘的原有距离
-- 发送期静态壳与真实底部输入区必须尽量共用同一套组件源和样式参数；后续改底部 UI 时，不允许两边维护两套独立视觉结构
-
-当前不允许为了这件事乱动：
-- 输入框整体样式
-- 发送按钮视觉样式
-- 消息区功能
-- clean-state 启动链
-
-如果后面小修收益已经很小，再考虑更深层改动。
-
-## 14. 当前失败提示与重发 / 重试规则
-
-### 14.1 后端三文件真源边界
-
-- 三文件真源定义沿用第 4 节：
-  - 主对话锚点：[server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
-  - B 层摘要提示词：[server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
-  - C 层摘要提示词：[server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
-- 三者职责不同，不允许合并成一个文件
-- 主对话锚点读取失败或为空，属于主链配置问题，不能伪装成普通重试成功场景
-- B/C 提示词失败不拖垮主对话服务，但必须保留各自 `pending_retry`，不能丢失应触发轮次
-- 主对话模型调用失败时，优先保证主链可恢复；当前优先级高于继续加强 B/C 摘要兜底
-
-### 14.2 Chat UI 失败提示基线
-
-- 用户消息发送失败时，在用户消息下方显示：
-  - `未发送  重发`
-- AI 回复流式中断或未完成时，在 AI 消息下方显示：
-  - `回复未完成  重试`
-- `未发送` / `回复未完成` 是状态文案，不可点击
-- `重发` / `重试` 是可点击文字按钮，保持黑白简洁风格，可用黑色加粗文字
-- 失败提示必须作为各自消息 item 内部的一行 footer 渲染，不允许做成悬浮层压住输入框
-- 输入框上方的全局轻提示，复用现有 6000 字限制提示那类轻提示样式
-
-### 14.3 主对话失败兜底边界
-
-- 主对话请求在真正开始向前端吐流之前，允许后端做一次轻量自动重试
-- 轻重试只针对明显临时失败：
-  - 请求异常
-  - `408`
-  - `429`
-  - `5xx`
-  - 返回 `200` 但不是 SSE
-- 一旦已经开始向前端吐流，不允许再用“重打一轮主对话”去冒充同一轮恢复
-- 主对话轻重试不能带出重复扣次、重复落库、重复轮次累计
-
-### 14.4 重发 / 重试行为边界
-
-- `重发` 仅用于用户消息尚未真正发送到后端的场景
-- `重试` 仅用于本轮 assistant 回复未完成的场景
-- `重发` / `重试` 都不应新增一条新的用户消息
-- `重发` / `重试` 都不应重复记一次新轮次
-- `重发` / `重试` 不能破坏 B/C 摘要原有轮次与补账逻辑
-
-### 14.5 自动恢复边界
-
-- 自动恢复的目标是：同一轮请求只要后端最终写成完整 round，用户切后台、杀进程、重进 app 后，前端应优先自动恢复成完成态
-- 自动恢复依赖每轮稳定 `client_msg_id`，不能只靠 `user_id`
-- 自动恢复优先走“后端快照对账”，不是重新新增一轮请求
-- 同一轮自动恢复不允许并发重复轮询；恢复中的同一 `client_msg_id` 只能保留一条对账链
-- 冷启动 / 重进 app 时，如果第一次快照还没赶上后端写入，可允许再做短窗口延迟补对账
-- 自动恢复成功时：
-  - 不新增用户消息
-  - 不新增 assistant 消息轮次
-  - 不额外扣一次次数或费用
-- 自动恢复失败时，才回落到：
-  - `回复未完成  重试`
-- 明确业务失败场景，例如次数不足、限流、鉴权失败，不走自动恢复兜底
-
-### 14.6 提示显示与消失规则
-
-- 失败时显示对应 footer
-- 一旦重新进入正常发送链或重新进入生成链，旧的失败提示应立即消失
-- 成功后不允许残留 `未发送` / `回复未完成`
-- 免责声明与失败提示都属于消息 item 内部内容，必须继续避免与底部输入框重叠
-
-### 14.7 当前消息链接行为
-
-- 当前仅 assistant 完成态正文支持消息内链接点击
-- 支持两类链接：
-  - Markdown 链接，如 `[名称](https://example.com)`
-  - 裸链接，如 `https://example.com` 或 `www.example.com`
-- 单击链接时，直接走系统浏览器打开
-- 长按消息正文时，仍然优先走当前消息区既有的系统选区 + 黑色 `复制 / 全文复制` 卡片链路，不允许因为链接点击把复制链改坏
-- 链接能力必须继续作为消息正文内部能力存在，不允许新增悬浮层、底部条或额外覆盖层去承接点击
-- 当前不要求 streaming 阶段提供链接点击；以 completed 完成态稳定可点为准
-
-## 14.8 聊天框分层边界
-
-- 聊天框动态交互后续默认按三条主链拆分：
-  - `app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt`
-  - `app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt`
-  - `app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt`
-- 底部输入区 UI 宿主单独放在：
-  - `app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt`
-- `ChatScrollCoordinator.kt` 只负责滚动决策、发送后锚点落位、底部护栏、回到底部按钮这类列表行为
-- `ChatStreamingRenderer.kt` 只负责 waiting 小球、streaming 文本显示、行级 reveal、fresh suffix 提亮这类渲染表现
-- `ChatComposerCoordinator.kt` 只负责输入框底部宿主、IME 弹起回缩、发送收口稳定壳、底部 overlay/hint 这类 composer 动态行为
-- `ChatComposerPanel.kt` 只负责底部输入区、collapse overlay、输入区选择菜单这类 composer UI 宿主
-- `ChatScreen.kt` 只负责页面组装、测量值采集、状态接线，不再继续新增“滚动决策 + 渲染表现 + 输入框动态 + 底部宿主 UI”混写主逻辑
-- 以后聊天框动态问题优先先判断属于滚动链、渲染链、输入框链中的哪一条，再进对应文件修改；不要再直接在 `ChatScreen.kt` 主体里混着下刀
-
-## 15. 开发风险边界
-
-### 15.1 改代码原则
-
-- 小范围改动
-- 先读代码再下刀
-- 能联网查官方资料就先查
-- 不要自以为是直接改
-- 不允许做“写一会儿停一会儿，留下半成品”式修改
-
-### 15.2 风险控制原则
-
-- 一次只收一个明确问题，避免一刀带坏三个地方
-- 改完之后必须复盘这刀会不会把别的链带坏
-- 如果一刀效果不好，及时回退，不留无效改动
-- 不要为了优化体感，随手破坏现有功能和现有 UI
-- 这条是全局硬规则，不只限 UI：只要对根因、边界或方案存在明显拿不准，就必须先停下来会诊，不允许继续凭感觉硬改
-- 同一个问题如果已经连续两轮修改仍未解决，第三轮开始前必须先找 Cloud / 其他模型做双方会诊，整理问题描述、现象、已验证结论和当前怀疑点后，再继续下刀
-- 会诊后的结论如果影响实现策略或规则边界，必须同次同步更新 [AGENTS.md](D:/wuhao/AGENTS.md)，让后续所有 GPT / Codex / 接手窗口都先看到这条决策
-
-### 15.3 提交原则
-
-每次代码改动后必须：
-- 编译检查
-- 复盘影响面
-- 提交到本地 git
-- 推送到云端 `origin/master`
-
-不允许长期留本地未同步状态给下一个窗口接手。
-
-## 16. 规则变更同步原则
-
-- 以后只要规则改了，必须同步修改 [AGENTS.md](D:/wuhao/AGENTS.md)
-- 以后只要发现实现参考文档与 AGENTS 不一致，AGENTS 优先，参考文档随后补齐
-- 不允许“代码改了，规则不改”
-- 不允许“规则改了，云端不同步”
-
-## 17. Clean-State 专项规则
-
-本节不再重复定义 clean-state 规则；统一沿用 `8.2 Clean-State 铁规则` 和 `8.3 必做 clean-state 回归的改动范围`。
-
-- 以后每次有规则改动、聊天 UI 改动、底部输入区改动、复制链改动，都必须按 `8.2 / 8.3` 额外做一次 clean-state 回归。
-- 如果 clean-state 下回滚了设定逻辑，视为修改不合格。
-
-## 18. 后端与运维规则
-
-### 18.1 后端边界
-
-- 当前生产主后端以 [server](D:/wuhao/server) 为准
-- 图片上传默认并入主后端，不单独拆服务
-- 商城能力优先在 [server](D:/wuhao/server) 内按模块扩展
-
-### 18.2 运维边界
-
-如果未来接 SAE / PolarDB / SLS：
-- 默认允许 Codex 辅助运维
-- 但不能假设天然已有生产权限
-- 必须优先走可脚本化、可审计、可回滚的入口
+- 不再使用不存在的 `server` 目录口径
+- 图片上传、会员、上下文、模型、摘要、恢复等后端能力，默认都以 `server-go` 为准
+- 以后如需 Codex 参与运维，优先走脚本、CLI、OpenAPI 这类可审计入口
 
 优先级：
 - SAE：脚本 / CLI / OpenAPI 优先
-- PolarDB：人工查看优先 DMS；Codex 诊断优先只读账号、迁移脚本、备份脚本
+- PolarDB：人工查看优先 DMS；Codex 优先只读查询、迁移脚本、备份脚本
 - 日志：优先脚本化查询，不靠临时手点控制台
 
-以后如果让 GPT / Codex 长期辅助发版、回滚、查日志、查库：
-- 优先把入口固化进仓库
-- 例如：
-  - 部署脚本
-  - 回滚脚本
-  - SAE 日志脚本
-  - PolarDB 只读查询或备份脚本
+如果后续长期让 Codex 辅助发版、回滚、查日志、查库，应把入口固化进仓库，例如部署脚本、回滚脚本、日志脚本、数据库只读脚本。
 
-## 19. 参考文档
+## 10. 参考文档
 
-以下文档只作为参考，不再承担主规则职责：
+以下文档只作参考：
+- [README.md](D:/wuhao/README.md)
 - [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)
 - [docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)
 - [docs/backend-boundaries.md](D:/wuhao/docs/backend-boundaries.md)
 
-如果这些参考文档与本文件冲突：
-- 以 [AGENTS.md](D:/wuhao/AGENTS.md) 为准
-
-## 20. 主锚点更新记录
-
-- 当前主对话锚点真源仍为 [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
-- 2026-03-27 起，主对话输出结构继续按“农业种植相关问题、禁止表格、关键点少量加粗”执行
-- 从 2026-04-07 起，聊天滚动唯一真相只认本节最后的 RecyclerView 规则
-- 旧 Compose / LazyColumn 时代的滚动术语和补滚口径一律视为历史归档，不再执行
-
-## 20.1 历史归档说明
-
-- 旧滚动规则只保留在 git 历史和历史交接里，不再继续在本文件堆叠多版口径。
-- 以后如果发现新实现和旧归档表述冲突，直接以本节当前规则为准，不再往回兼容旧术语。
-
-## 20.2 当前代码入口
-
-- [app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)：唯一 active 滚动状态机入口，只认 `Idle / AutoFollow / UserBrowsing`
-- [app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：只负责几何测量、RecyclerView 宿主挂载和向滚动协调器喂参数
-- [app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt)：负责 waiting / streaming / settled 共用同一内容宿主与真实底边上报
-- [app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：负责 RecyclerView 底座、bottom padding 锚点和发送起步/静态贴底的手动定位宿主
-
-## 20.3 当前排查顺序
-
-以后继续排查滚动问题，优先按这 4 项顺序核对：
-
-1. assistant 真实内容底边是否仍由同一宿主上报
-2. 工作线和静态贴底线是否仍共用同一物理锚点
-3. `Idle / AutoFollow / UserBrowsing` 是否仍是唯一滚动状态真相
-4. 回到底部 按钮与 final snap 是否仍只读主链派生，不靠第二套补滚链硬控
-
-## 20.4 当前 RecyclerView 滚动链唯一真相（2026-04-07）
-
-- 不管长文本还是短文本，用户消息和 assistant 消息都先按正常消息流从上往下排，一条接一条；发送起步只允许由 `ChatRecyclerViewHost` 在首帧预绘制前按本轮用户消息真实底边做一次性对齐，不再挂第二套预测或纠偏链。内部若先用一次 `scrollToPositionWithOffset(..., 0)`，也只允许作为“把锚点项送进当前布局”的准备动作，不算第二条定位链。
-- waiting 小球和紧随其后的正文必须共用同一个发送起步锚点；起步允许整体落在工作线上方的一段呼吸空间，不再要求死贴本轮用户消息，也不允许先掉到工作线以下再补抬。
-- 正文从这个发送起步位置继续往下长；只有真实正文尾部接近工作线后，才切入 AutoFollow，并沿工作线继续推进。
-- 用户拖动立即让权：进入 `UserBrowsing` 后，不允许自动跟随继续抢手；只有明确往底部方向滑回，并重新接近工作线或底部区域后，才恢复 `AutoFollow`。
-- 完成态与静态贴底尽量围绕同一条工作线附近的底部目标线收口，不再额外保留明显更低的第二条静态底线；底部不应再出现额外可见空白。
-
-## 20.5 当前 RecyclerView 滚动链补充口径（2026-04-09）
-
-- 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
-- 发送起步阶段允许只在同一个 assistant 宿主里保留一段临时承接高度，用来承接“用户消息 + waiting 小球”这组内容上抬到发送起步目标；这不是第二条 spacer / reserve / scroll 链，真实内容底边仍只认同一宿主内当前可见内容。
-- 发送当拍的结构更新也必须收成一次：本轮用户消息和紧随其后的 waiting placeholder 应作为一组一次性写入消息列表，不再先插用户消息触发一版 layout、再插 assistant placeholder 触发第二版 layout。
-- 发送起步这次手动定位改成按 assistant 起步宿主顶边锚定：先让 waiting / early streaming 的 assistant 宿主进入布局，再在首帧预绘制前按当拍 `RecyclerView` 当前高度与底部 padding 现场现算目标 top offset，直接 `scrollToPositionWithOffset(...)` 一次性对齐；不再先用 `offset = 0` 摆一版、再 `scrollBy(...)` 二次修正，也不再继续按本轮用户消息尾部反推。
-- 发送起步保护期内，`RecyclerView` 自己使用的 bottom padding 允许冻结在发送当拍的快照值，避免 IME / composer 几何继续实时回落，把刚对齐好的文本区再拖低一遍；这只是列表参考线冻结，不是输入框视觉冻结。
-- 如果发送起步定位本身仍会暴露出一帧“先插入、再摆位”的坏帧，允许只把本轮“用户消息 + assistant 起步宿主”在锚点落稳前短暂隐藏，等发送起步对齐完成后再一起显示；这属于隐藏坏帧，不属于新增第二条滚动链。
-- 如果上述隐藏仍挡不住“旧历史列表”在整表重排时轻微挪动，允许在 `ChatRecyclerViewHost.kt` 里短时冻结整个 `RecyclerView` 的视觉快照，等起步定位与 reveal 都稳定后再硬切释放；这只是遮住坏帧，不属于新增第二条滚动链。
-- 上述临时承接高度只服务 waiting / 早期 streaming 起步；正文真实底边接近工作线后，应继续只按真实内容底边进入 `Idle -> AutoFollow` 接管，并及时释放这段承接高度，避免完成态残留底部空白。
-- 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
-- 从后台切回聊天页时，不默认自动贴底，避免用户看历史时被强行拉回底部；生命周期恢复优先保持当前浏览位置。
-- 首屏进入时应优先立即做一次 `scrollToBottom(false)` 贴底，再用很短的等待窗口看最后一条真实底边是否已到位；若仍未贴到目标线附近，再补一次收口。不要先长时间等待底边测量完成才决定是否贴底。
-- 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
-- RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
-- assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
-- `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
-- 当前非动画贴底如果最后一条已经在布局里，就直接一次 `scrollBy` 对到目标线；如果最后一条还没进布局，允许先把最后一项送进布局，再在首帧预绘制前按当前真实底边补一次收口，不再通过 `post { scrollBy(...) }` 额外挂第二拍可见补滚。
-- 冷启动首屏如果当前已经在底部/目标线附近，就不要额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。若确实还需要补这一次，消息列表应继续保持隐藏，等首屏贴底完成后再 reveal，避免首次打开看到文本上下轻抖。
-- 首开 splash / `chatReady` 的放行口径必须和真实消息区 reveal 口径保持一致；不允许外层已经 ready、消息列表仍在隐藏态，制造“首开 UI 已进入、内容区又晚一拍出现”的冷热分叉。
-- 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
-- streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
-- follow 仍允许保留一个很小的触发阈值，避免极小噪声抖动；但一旦超过阈值，就直接吃掉当前整段 overflow，不再用多帧小步追赶去制造“上去一点又掉一点”的追帧感。
-- 当前 final snap 不再靠“固定等两帧”碰运气；只要 completed 宿主已经给出可用真实底边且还没收进目标线，就直接走一次 `scrollToBottom(false)` 收口。若 completed 宿主后续几何继续变化，则由同一条完成态收口链按新的真实底边再次触发，而不是先盲等固定帧数。
-- 若后续实现与历史归档表述冲突，以本节为准。
-
-## 20.6 当前滚动链五环节铁律（2026-04-11）
-
-当前滚动链只允许以下 5 个环节，每个环节同一时刻只能有一个主人：
-
-1. 发送起步
-   - 主人：`ChatRecyclerViewHost` 的“预绘制前真实底边对齐”
-   - 时机：用户点发送、用户消息和 waiting 小球写入列表那一拍
-   - 职责：把发送组定位到工作线上方的起步位置
-   - 结束条件：定位完成，并进入 `sendStartAnchorActive = true`。如需先用一次 `scrollToPositionWithOffset(..., 0)`，只允许用来把锚点项送进布局。
-2. 起步保护期
-   - 主人：`sendStartAnchorActive`
-   - 时机：发送起步完成后到正文底边真正接近工作线之前
-   - 职责：禁止 `snapStreamingToWorkline()` 和 `AutoFollow` 提前介入，内容先自然往下长
-   - 结束条件：正文底边 >= 工作线附近阈值，`sendStartAnchorActive = false`
-3. AutoFollow
-   - 主人：streaming 跟随期的 `scrollBy(overflow)`
-   - 时机：起步保护期结束后到 streaming 结束
-   - 职责：正文超过工作线后持续往上推
-   - 结束条件：streaming 结束
-4. 完成态收口
-   - 主人：`scrollRecyclerToBottom(...)`
-   - 时机：streaming 结束那一拍
-   - 职责：最终对齐到底部目标线
-   - 结束条件：完成一次收口，不再额外多帧抢位
-5. 用户浏览
-   - 主人：用户手指
-   - 时机：用户任何时候手动滑动
-   - 职责：立刻让权，自动滚动停止
-   - 结束条件：用户明确回到底部，或新一轮发送重新开始
-
-铁律：
-- 同一时刻只能有一个主人在控制滚动。
-- 不允许任何环节跨出自己的时间段去调用 `scrollBy` / `scrollToPosition` / `snap`。
-- 新增任何 scroll 调用前，必须先说明它属于以上哪一个环节。
-Current send-start lift trial: `280dp`. If this value changes again, update code and AGENTS in the same change.
-Current send-start reveal rule: keep the current user item + assistant start host hidden until the assistant start host has reached the target top offset and the preceding user item has a real laid-out height; then reveal with a hard cut, not an alpha animation.
+如果参考文档与本文件冲突，以 [AGENTS.md](D:/wuhao/AGENTS.md) 为准。
