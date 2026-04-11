@@ -574,6 +574,7 @@ Clean-State 定义：
 - 发送当拍的结构更新也必须收成一次：本轮用户消息和紧随其后的 waiting placeholder 应作为一组一次性写入消息列表，不再先插用户消息触发一版 layout、再插 assistant placeholder 触发第二版 layout。
 - 发送起步这次手动定位改成按 assistant 起步宿主顶边锚定：先让 waiting / early streaming 的 assistant 宿主进入布局，再在首帧预绘制前按当拍 `RecyclerView` 当前高度与底部 padding 现场现算目标 top offset，直接 `scrollToPositionWithOffset(...)` 一次性对齐；不再先用 `offset = 0` 摆一版、再 `scrollBy(...)` 二次修正，也不再继续按本轮用户消息尾部反推。
 - 发送起步保护期内，`RecyclerView` 自己使用的 bottom padding 允许冻结在发送当拍的快照值，避免 IME / composer 几何继续实时回落，把刚对齐好的文本区再拖低一遍；这只是列表参考线冻结，不是输入框视觉冻结。
+- 如果发送起步定位本身仍会暴露出一帧“先插入、再摆位”的坏帧，允许只把本轮“用户消息 + assistant 起步宿主”在锚点落稳前短暂隐藏，等发送起步对齐完成后再一起显示；这属于隐藏坏帧，不属于新增第二条滚动链。
 - 上述临时承接高度只服务 waiting / 早期 streaming 起步；正文真实底边接近工作线后，应继续只按真实内容底边进入 `Idle -> AutoFollow` 接管，并及时释放这段承接高度，避免完成态残留底部空白。
 - 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
 - 从后台切回聊天页时，不默认自动贴底，避免用户看历史时被强行拉回底部；生命周期恢复优先保持当前浏览位置。

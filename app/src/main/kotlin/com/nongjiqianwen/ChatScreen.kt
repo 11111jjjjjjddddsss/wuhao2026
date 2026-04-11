@@ -3441,6 +3441,12 @@ fun ChatScreen() {
                             }
                         val copySourceContent =
                             if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
+                        val hidePendingSendPair =
+                            pendingStartAnchorMessageId != null &&
+                                (
+                                    msg.id == pendingStartAnchorMessageId ||
+                                        msg.id == anchoredUserMessageId
+                                    )
                         val fullCopyText = remember(msg.role, copySourceContent) {
                             buildRenderedMessageCopyText(msg.role, copySourceContent)
                         }
@@ -3454,6 +3460,7 @@ fun ChatScreen() {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .alpha(if (hidePendingSendPair) 0f else 1f)
                                 .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
                                 .then(
                                     if (
