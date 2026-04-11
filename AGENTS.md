@@ -576,7 +576,7 @@ Clean-State 定义：
 
 ## 20.4 当前 RecyclerView 滚动链唯一真相（2026-04-07）
 
-- 不管长文本还是短文本，用户消息和 assistant 消息都先按正常消息流从上往下排，一条接一条；发送起步只允许由一次性的 `scrollToPositionWithOffset(...)` 定位，不再挂第二套预测或纠偏链。
+- 不管长文本还是短文本，用户消息和 assistant 消息都先按正常消息流从上往下排，一条接一条；发送起步只允许由 `ChatRecyclerViewHost` 在首帧预绘制前按本轮用户消息真实底边做一次性对齐，不再挂第二套预测或纠偏链。内部若先用一次 `scrollToPositionWithOffset(..., 0)`，也只允许作为“把锚点项送进当前布局”的准备动作，不算第二条定位链。
 - waiting 小球和紧随其后的正文必须共用同一个发送起步锚点；起步允许整体落在工作线上方的一段呼吸空间，不再要求死贴本轮用户消息，也不允许先掉到工作线以下再补抬。
 - 正文从这个发送起步位置继续往下长；只有真实正文尾部接近工作线后，才切入 AutoFollow，并沿工作线继续推进。
 - 用户拖动立即让权：进入 `UserBrowsing` 后，不允许自动跟随继续抢手；只有明确往底部方向滑回，并重新接近工作线或底部区域后，才恢复 `AutoFollow`。
@@ -586,10 +586,10 @@ Clean-State 定义：
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
-- 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成发送时预先喂给 `LinearLayoutManager` 的一次性 `scrollToPositionWithOffset(...)` 手动定位。
+- 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成 `ChatRecyclerViewHost` 的“预绘制前真实底边对齐”。当前允许先用 `scrollToPositionWithOffset(..., 0)` 把本轮用户消息项送进布局，再在同一帧真正显示前按真实 `bottom` 做一次对齐。
 - 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：关闭 `stackFromEnd` 后，列表按普通顺序布局，再在新消息插入时用当前真实 bottom padding / 工作线位置手动把本轮用户消息定位到发送起步目标。
 - 发送当拍的结构更新也必须收成一次：本轮用户消息和紧随其后的 waiting placeholder 应作为一组一次性写入消息列表，不再先插用户消息触发一版 layout、再插 assistant placeholder 触发第二版 layout。
-- 当前发送起步目标允许在工作线上方额外抬高一段呼吸空间；这段上抬只作用于发送起步那一拍的 `scrollToPositionWithOffset(...)`，不单独引入新的 snap 链、spacer 或 reserve。当前试值已抬到 `220dp`，用于观察“小球/首字起步明显高于屏幕中部”时的体感。
+- 当前发送起步目标允许在工作线上方额外抬高一段呼吸空间；这段上抬只作用于发送起步那一拍的“真实底边 -> 目标底边”对齐，不单独引入新的 snap 链、spacer 或 reserve。当前试值已抬到 `220dp`，用于观察“小球/首字起步明显高于屏幕中部”时的体感。
 - 发送起步这次手动定位直接按本轮用户消息尾部锚定：先让锚点消息进入布局，再在首帧预绘制前读取这条用户消息的真实 `bottom`，按“真实底边 -> 目标底边”做一次性对齐；不再按 waiting 当前高度、也不再按预测消息高度反推，同时这次定位必须在首帧真正显示前完成，避免用户先看到偏低坏帧，再看到被抬回来的轻微上下抖。
 - 发送起步完成后，`sendStartAnchorActive` 是这段保护期的唯一主人：只要正文底边还没真正接近工作线，`Idle` 分支必须整段跳过 workline snap 和 `AutoFollow` 升级；等正文底边 >= 工作线附近阈值后，再解除保护，让下一帧正常接管。
 - 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
@@ -599,9 +599,9 @@ Clean-State 定义：
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
-- 当前会主动改位置的 active 入口只允许保留在新底座里：streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
+- 当前会主动改位置的 active 入口只允许保留在新底座里：发送起步、streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
-- 非动画贴底如果只是要把最后一条消息对到当前目标线，优先一次性 offset 定位；不要再用“先 `scrollToPosition`，再 `scrollBy` 二次修正”去制造发送或收口时的额外抽动。
+- 当前非动画贴底如果最后一条已经在布局里，就直接一次 `scrollBy` 对到目标线；如果最后一条还没进布局，仍允许先 `scrollToPosition(lastIndex)` 再补一次收口。这条 fallback 目前仍存在，但只允许挂在“首屏贴底 / 完成态收口”这条宿主上，不能回流到发送起步链。
 - 冷启动首屏如果当前已经在底部/目标线附近，就不要额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。若确实还需要补这一次，消息列表应继续保持隐藏，等首屏贴底完成后再 reveal，避免首次打开看到文本上下轻抖。
 - 首开 splash / `chatReady` 的放行口径必须和真实消息区 reveal 口径保持一致；不允许外层已经 ready、消息列表仍在隐藏态，制造“首开 UI 已进入、内容区又晚一拍出现”的冷热分叉。
 - 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
@@ -609,7 +609,7 @@ Clean-State 定义：
 - streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
 - follow 仍允许保留一个很小的触发阈值，避免极小噪声抖动；但一旦超过阈值，就直接吃掉当前整段 overflow，不再用多帧小步追赶去制造“上去一点又掉一点”的追帧感。
 - 当前 RecyclerView 已关闭 `stackFromEnd`；静态短内容与完成态收口都改为围绕同一工作线做手动底部定位，不再依赖底座自动底对齐。
-- final snap 不能只靠“固定等两帧”碰运气；必须等 completed 宿主真实底边到位，并在同一条工作线目标附近真正收口后才结束。
+- 当前 final snap 仍会在 completed 宿主真实底边还没稳定时保留一小段固定帧等待，然后再尝试一次 `scrollToBottom(false)` 收口；它仍只属于“完成态收口”这一位主人，但这段固定帧等待是后续可以继续收敛的已知残留。
 - 若后续实现与历史归档表述冲突，以本节为准。
 
 ## 20.6 当前滚动链五环节铁律（2026-04-11）
@@ -617,10 +617,10 @@ Clean-State 定义：
 当前滚动链只允许以下 5 个环节，每个环节同一时刻只能有一个主人：
 
 1. 发送起步
-   - 主人：`ChatRecyclerViewHost` 的 `scrollToPositionWithOffset(...)`
+   - 主人：`ChatRecyclerViewHost` 的“预绘制前真实底边对齐”
    - 时机：用户点发送、用户消息和 waiting 小球写入列表那一拍
    - 职责：把发送组定位到工作线上方的起步位置
-   - 结束条件：定位完成，并进入 `sendStartAnchorActive = true`
+   - 结束条件：定位完成，并进入 `sendStartAnchorActive = true`。如需先用一次 `scrollToPositionWithOffset(..., 0)`，只允许用来把锚点项送进布局。
 2. 起步保护期
    - 主人：`sendStartAnchorActive`
    - 时机：发送起步完成后到正文底边真正接近工作线之前
