@@ -627,3 +627,4 @@ Clean-State 定义：
 - 不允许任何环节跨出自己的时间段去调用 `scrollBy` / `scrollToPosition` / `snap`。
 - 新增任何 scroll 调用前，必须先说明它属于以上哪一个环节。
 Current send-start lift trial: `280dp`. If this value changes again, update code and AGENTS in the same change.
+Current send-start reveal rule: keep the current user item + assistant start host hidden until the assistant start host has reached the target top offset and the preceding user item has a real laid-out height; then reveal with a hard cut, not an alpha animation.

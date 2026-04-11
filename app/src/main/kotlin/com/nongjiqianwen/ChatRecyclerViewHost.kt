@@ -12,6 +12,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlin.math.abs
 
 internal class ChatRecyclerComposeAdapter(
     private val itemContent: @Composable (String) -> Unit
@@ -152,6 +153,55 @@ internal fun ChatRecyclerViewHost(
                 activeStartAnchorRequestId.intValue = requestId
                 var observerConsumed = false
                 var remainingAlignmentRetries = 2
+                var remainingRevealValidationFrames = 3
+
+                fun finishStartAnchorHandling() {
+                    activeStartAnchorRequestId.intValue = 0
+                    lastAppliedStartAnchorRequestId.intValue = requestId
+                    onPendingStartAnchorHandled()
+                }
+
+                fun scheduleRevealValidation() {
+                    if (activeStartAnchorRequestId.intValue != requestId) return
+                    val viewTreeObserver = recyclerView.viewTreeObserver
+                    if (!viewTreeObserver.isAlive) {
+                        finishStartAnchorHandling()
+                        return
+                    }
+                    val listener = object : ViewTreeObserver.OnPreDrawListener {
+                        override fun onPreDraw(): Boolean {
+                            if (viewTreeObserver.isAlive) {
+                                recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
+                            }
+                            if (activeStartAnchorRequestId.intValue != requestId) {
+                                return true
+                            }
+                            val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
+                                recyclerView = recyclerView,
+                                pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
+                            )
+                            val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
+                            val precedingView =
+                                (pendingStartAnchorPosition - 1)
+                                    .takeIf { it >= 0 }
+                                    ?.let(layoutManager::findViewByPosition)
+                            val anchorSettled =
+                                anchorView != null &&
+                                    abs(anchorView.top - targetTopOffset) <= 5
+                            val precedingItemReady =
+                                pendingStartAnchorPosition <= 0 ||
+                                    (precedingView != null && precedingView.height > 0)
+                            if ((!anchorSettled || !precedingItemReady) && remainingRevealValidationFrames > 0) {
+                                remainingRevealValidationFrames -= 1
+                                scheduleRevealValidation()
+                                return true
+                            }
+                            finishStartAnchorHandling()
+                            return true
+                        }
+                    }
+                    viewTreeObserver.addOnPreDrawListener(listener)
+                }
 
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
@@ -191,9 +241,7 @@ internal fun ChatRecyclerViewHost(
                                 scheduleStartAnchorAlignment()
                                 return false
                             }
-                            activeStartAnchorRequestId.intValue = 0
-                            lastAppliedStartAnchorRequestId.intValue = requestId
-                            onPendingStartAnchorHandled()
+                            scheduleRevealValidation()
                             return true
                         }
                     }
