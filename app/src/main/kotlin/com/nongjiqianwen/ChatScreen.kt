@@ -2149,6 +2149,41 @@ fun ChatScreen() {
         }
     }
 
+    fun buildSendStartMessagePair(
+        userMessageId: String,
+        userContent: String,
+        assistantMessageId: String
+    ): List<ChatMessage> {
+        val userMessage = ChatMessage(userMessageId, ChatRole.USER, userContent)
+        val assistantPlaceholder = ChatMessage(assistantMessageId, ChatRole.ASSISTANT, "")
+        val nextMessages = messages.toMutableList()
+
+        val existingUserIndex = nextMessages.indexOfFirst { it.id == userMessageId }
+        if (existingUserIndex >= 0) {
+            if (nextMessages[existingUserIndex] != userMessage) {
+                nextMessages[existingUserIndex] = userMessage
+            }
+        } else {
+            nextMessages.add(userMessage)
+        }
+
+        val existingAssistantIndex = nextMessages.indexOfFirst { it.id == assistantMessageId }
+        if (existingAssistantIndex >= 0) {
+            if (nextMessages[existingAssistantIndex] != assistantPlaceholder) {
+                nextMessages[existingAssistantIndex] = assistantPlaceholder
+            }
+        } else {
+            val userIndex = nextMessages.indexOfFirst { it.id == userMessageId && it.role == ChatRole.USER }
+            if (userIndex >= 0) {
+                nextMessages.add(userIndex + 1, assistantPlaceholder)
+            } else {
+                nextMessages.add(assistantPlaceholder)
+            }
+        }
+
+        return nextMessages
+    }
+
     fun removeMessageById(messageId: String) {
         val index = messages.indexOfFirst { it.id == messageId }
         if (index >= 0) {
@@ -2804,23 +2839,23 @@ fun ChatScreen() {
                 val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
                 failedUserMessageStates.remove(userId)
                 clearFailedAssistantStateForUser(userId)
-                upsertUserMessage(userId, text)
+                val assistantId = assistantMessageIdForSourceUser(userId)
+                replaceMessages(
+                    buildSendStartMessagePair(
+                        userMessageId = userId,
+                        userContent = text,
+                        assistantMessageId = assistantId
+                    )
+                )
                 anchoredUserMessageId = userId
                 streamingFreshStart = -1
                 streamingFreshEnd = -1
                 streamingLineAdvanceTick = 0
                 lastStreamingFreshRevealMs = 0L
                 isStreaming = true
-
-                val assistantId = assistantMessageIdForSourceUser(userId)
                 streamingMessageId = assistantId
-                upsertAssistantMessagePlaceholder(
-                    messageId = assistantId,
-                    sourceUserMessageId = userId
-                )
                 pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
-                trimMessagesInPlace()
                 sendUiSettling = false
                 persistTick++
                 snackbarScope.launch {

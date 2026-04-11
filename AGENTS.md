@@ -587,6 +587,7 @@ Clean-State 定义：
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
 - 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成发送后首帧预绘制前的一次性 `scrollToPositionWithOffset(...)` 手动定位。
 - 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：关闭 `stackFromEnd` 后，列表按普通顺序布局，再在新消息插入后用当前真实 bottom padding / 工作线位置手动把最后一项定位到发送起步目标。
+- 发送当拍的结构更新也必须收成一次：本轮用户消息和紧随其后的 waiting placeholder 应作为一组一次性写入消息列表，不再先插用户消息触发一版 layout、再插 assistant placeholder 触发第二版 layout。
 - 当前发送起步目标允许在工作线上方额外抬高一段呼吸空间；这段上抬只作用于发送起步那一拍的 `scrollToPositionWithOffset(...)`，不单独引入新的 snap 链、spacer 或 reserve。当前试值已抬到 `220dp`，用于观察“小球/首字起步明显高于屏幕中部”时的体感。
 - 发送起步这次手动定位直接按 assistant 项顶边锚定，不再按 waiting 当前高度反推底边；同时这次定位必须发生在首帧真正绘制前，避免用户先看到偏低坏帧，再看到被抬回来的轻微上下抖。
 - 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
