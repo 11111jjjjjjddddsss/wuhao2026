@@ -1,9 +1,7 @@
 package com.nongjiqianwen
 
-import android.view.ViewTreeObserver
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -93,7 +91,6 @@ internal fun ChatRecyclerViewHost(
 ) {
     val adapter = remember(itemContent) { ChatRecyclerComposeAdapter(itemContent) }
     val lastAppliedStartAnchorRequestId = remember { mutableIntStateOf(0) }
-    val pendingStartAnchorPreDrawListener = remember { mutableStateOf<ViewTreeObserver.OnPreDrawListener?>(null) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -123,14 +120,13 @@ internal fun ChatRecyclerViewHost(
             }
         },
         update = { recyclerView ->
+            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             if (
                 recyclerView.paddingTop != topPaddingPx ||
                 recyclerView.paddingBottom != bottomPaddingPx
             ) {
                 recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
             }
-            adapter.submitIds(itemIds)
-            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             val shouldApplyPendingStartAnchor =
                 pendingStartAnchorRequestId > 0 &&
                     pendingStartAnchorRequestId != lastAppliedStartAnchorRequestId.intValue &&
@@ -138,46 +134,15 @@ internal fun ChatRecyclerViewHost(
                     itemIds.lastOrNull() == pendingStartAnchorMessageId
             if (shouldApplyPendingStartAnchor) {
                 lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
-                pendingStartAnchorPreDrawListener.value?.let { listener ->
-                    val observer = recyclerView.viewTreeObserver
-                    if (observer.isAlive) {
-                        observer.removeOnPreDrawListener(listener)
-                    }
-                }
-                val listener = object : ViewTreeObserver.OnPreDrawListener {
-                    override fun onPreDraw(): Boolean {
-                        val observer = recyclerView.viewTreeObserver
-                        if (observer.isAlive) {
-                            observer.removeOnPreDrawListener(this)
-                        }
-                        pendingStartAnchorPreDrawListener.value = null
-                        if (itemIds.lastOrNull() != pendingStartAnchorMessageId) {
-                            onPendingStartAnchorHandled()
-                            return true
-                        }
-                        val currentLastIndex = adapter.itemCount - 1
-                        if (currentLastIndex < 0) {
-                            onPendingStartAnchorHandled()
-                            return true
-                        }
-                        val currentLayoutManager = recyclerView.layoutManager as? LinearLayoutManager
-                            ?: run {
-                                onPendingStartAnchorHandled()
-                                return true
-                            }
-                        val targetTopOffset = (
-                            recyclerView.height -
-                                recyclerView.paddingBottom -
-                                pendingStartAnchorLiftPx
-                            ).coerceAtLeast(0)
-                        currentLayoutManager.scrollToPositionWithOffset(currentLastIndex, targetTopOffset)
-                        onPendingStartAnchorHandled()
-                        return false
-                    }
-                }
-                pendingStartAnchorPreDrawListener.value = listener
-                recyclerView.viewTreeObserver.addOnPreDrawListener(listener)
+                val targetTopOffset = (
+                    recyclerView.height -
+                        recyclerView.paddingBottom -
+                        pendingStartAnchorLiftPx
+                    ).coerceAtLeast(0)
+                layoutManager.scrollToPositionWithOffset(itemIds.lastIndex, targetTopOffset)
+                onPendingStartAnchorHandled()
             }
+            adapter.submitIds(itemIds)
             onRecyclerReady(recyclerView, layoutManager)
         }
     )

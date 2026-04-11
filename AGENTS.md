@@ -279,7 +279,7 @@ Clean-State 定义：
 
 - 用户消息和 assistant 消息先按正常消息流从上往下排；发送起步不再额外挂“预测底边保护”或“start-anchor snap”第二条链。
 - waiting 小球和随后正文共用同一个 assistant 宿主；发送起步允许整体落在工作线上方的一段呼吸空间，不再要求死贴本轮用户消息起步。
-- RecyclerView 发送起步改成普通从上往下布局；发送后不再用 `post` 等坏帧先画出来，而是在首帧预绘制前一次性 `scrollToPositionWithOffset(...)`，直接按 assistant 项顶边定位到发送起步目标，不再按 waiting 当前高度反推底边。
+- RecyclerView 发送起步改成普通从上往下布局；发送时先把 `LinearLayoutManager.scrollToPositionWithOffset(...)` 作为“下一次 layout 的起步偏移”预先喂给列表，再提交这次用户消息 + waiting placeholder 的结构更新，直接按 assistant 项顶边定位到发送起步目标，不再按 waiting 当前高度反推底边。
 - 只有真实正文尾部接近工作线后，才允许进入 `AutoFollow`，并沿工作线继续跟随。
 - 用户拖动立即让权；生成中和完成态都不允许再由第二条隐藏滚动链抢位置。
 - 完成态收口继续围绕同一条工作线附近目标线，不再保留更低的第二条静态底线；短内容静态贴底后续如需继续优化，必须在当前手动定位主链上处理，不再回退 `stackFromEnd`。
@@ -585,11 +585,11 @@ Clean-State 定义：
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
-- 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成发送后首帧预绘制前的一次性 `scrollToPositionWithOffset(...)` 手动定位。
+- 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成发送时预先喂给 `LinearLayoutManager` 的一次性 `scrollToPositionWithOffset(...)` 手动定位。
 - 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：关闭 `stackFromEnd` 后，列表按普通顺序布局，再在新消息插入后用当前真实 bottom padding / 工作线位置手动把最后一项定位到发送起步目标。
 - 发送当拍的结构更新也必须收成一次：本轮用户消息和紧随其后的 waiting placeholder 应作为一组一次性写入消息列表，不再先插用户消息触发一版 layout、再插 assistant placeholder 触发第二版 layout。
 - 当前发送起步目标允许在工作线上方额外抬高一段呼吸空间；这段上抬只作用于发送起步那一拍的 `scrollToPositionWithOffset(...)`，不单独引入新的 snap 链、spacer 或 reserve。当前试值已抬到 `220dp`，用于观察“小球/首字起步明显高于屏幕中部”时的体感。
-- 发送起步这次手动定位直接按 assistant 项顶边锚定，不再按 waiting 当前高度反推底边；同时这次定位必须发生在首帧真正绘制前，避免用户先看到偏低坏帧，再看到被抬回来的轻微上下抖。
+- 发送起步这次手动定位直接按 assistant 项顶边锚定，不再按 waiting 当前高度反推底边；同时这次定位必须先于这次插入触发的 layout 生效，让列表第一次把发送组摆出来时就直接落在目标位置，避免用户先看到偏低坏帧，再看到被抬回来的轻微上下抖。
 - 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
 - 从后台切回聊天页时，不默认自动贴底，避免用户看历史时被强行拉回底部；生命周期恢复优先保持当前浏览位置。
 - 首屏进入时应优先立即做一次 `scrollToBottom(false)` 贴底，再用很短的等待窗口看最后一条真实底边是否已到位；若仍未贴到目标线附近，再补一次收口。不要先长时间等待底边测量完成才决定是否贴底。
