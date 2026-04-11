@@ -161,6 +161,21 @@ internal fun ChatRecyclerViewHost(
                     onPendingStartAnchorHandled()
                 }
 
+                fun isRevealStable(targetTopOffset: Int): Boolean {
+                    val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
+                    val precedingView =
+                        (pendingStartAnchorPosition - 1)
+                            .takeIf { it >= 0 }
+                            ?.let(layoutManager::findViewByPosition)
+                    val anchorSettled =
+                        anchorView != null &&
+                            abs(anchorView.top - targetTopOffset) <= 5
+                    val precedingItemReady =
+                        pendingStartAnchorPosition <= 0 ||
+                            (precedingView != null && precedingView.height > 0)
+                    return anchorSettled && precedingItemReady
+                }
+
                 fun scheduleRevealValidation() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
                     val viewTreeObserver = recyclerView.viewTreeObserver
@@ -180,18 +195,7 @@ internal fun ChatRecyclerViewHost(
                                 recyclerView = recyclerView,
                                 pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
                             )
-                            val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
-                            val precedingView =
-                                (pendingStartAnchorPosition - 1)
-                                    .takeIf { it >= 0 }
-                                    ?.let(layoutManager::findViewByPosition)
-                            val anchorSettled =
-                                anchorView != null &&
-                                    abs(anchorView.top - targetTopOffset) <= 5
-                            val precedingItemReady =
-                                pendingStartAnchorPosition <= 0 ||
-                                    (precedingView != null && precedingView.height > 0)
-                            if ((!anchorSettled || !precedingItemReady) && remainingRevealValidationFrames > 0) {
+                            if (!isRevealStable(targetTopOffset) && remainingRevealValidationFrames > 0) {
                                 remainingRevealValidationFrames -= 1
                                 scheduleRevealValidation()
                                 return true
@@ -241,7 +245,11 @@ internal fun ChatRecyclerViewHost(
                                 scheduleStartAnchorAlignment()
                                 return false
                             }
-                            scheduleRevealValidation()
+                            if (isRevealStable(targetTopOffset)) {
+                                finishStartAnchorHandling()
+                            } else {
+                                scheduleRevealValidation()
+                            }
                             return true
                         }
                     }
