@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import android.util.Log
 import android.view.ViewGroup
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
@@ -135,6 +136,10 @@ internal fun ChatRecyclerViewHost(
                     pendingStartAnchorPosition >= 0
             if (shouldApplyPendingStartAnchor) {
                 lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
+                Log.d(
+                    "SEND_START",
+                    "offset=$pendingStartAnchorOffsetPx, position=$pendingStartAnchorPosition, rvHeight=${recyclerView.height}, padding=${recyclerView.paddingBottom}"
+                )
                 layoutManager.scrollToPositionWithOffset(
                     pendingStartAnchorPosition,
                     pendingStartAnchorOffsetPx
