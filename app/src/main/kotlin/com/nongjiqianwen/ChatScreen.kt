@@ -3155,6 +3155,7 @@ fun ChatScreen() {
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+        sendStartAnchorActiveState = scrollRuntime.sendStartAnchorActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
@@ -3387,6 +3388,7 @@ fun ChatScreen() {
                         pendingStartAnchorOffsetPx = pendingStartAnchorOffsetPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
+                            scrollRuntime.sendStartAnchorActive.value = true
                         },
                         modifier = Modifier
                             .then(
