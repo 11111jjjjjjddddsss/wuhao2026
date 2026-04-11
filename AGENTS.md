@@ -277,14 +277,8 @@ Clean-State 定义：
 
 当前聊天滚动只认第 20 节里的 RecyclerView 规则。
 
-- 用户消息和 assistant 消息先按正常消息流从上往下排；发送起步不再额外挂“预测底边保护”或“start-anchor snap”第二条链。
-- waiting 小球和随后正文共用同一个 assistant 宿主；发送起步允许整体落在工作线上方的一段呼吸空间，但这次起步定位锚点改成当前用户消息，不再要求死贴本轮用户消息起步。
-- RecyclerView 发送起步改成普通从上往下布局；发送时先保证本轮用户消息项进入列表布局，再在首帧预绘制前按这条用户消息的真实底边做一次性对齐，让发送组直接落在目标位置，不再按 waiting 当前高度或预测消息高度反推。
-- 发送起步完成后必须立即进入一小段 `sendStartAnchorActive` 保护期；这段时间 `Idle` 分支不允许提前触发 `snapStreamingToWorkline()`，也不允许提前切进 `AutoFollow`。
-- 只有真实正文尾部接近工作线、保护期解除后，才允许进入 `AutoFollow`，并沿工作线继续跟随。
-- 用户拖动立即让权；生成中和完成态都不允许再由第二条隐藏滚动链抢位置。
-- 完成态收口继续围绕同一条工作线附近目标线，不再保留更低的第二条静态底线；短内容静态贴底后续如需继续优化，必须在当前手动定位主链上处理，不再回退 `stackFromEnd`。
-- 生成结束时仍可能残留极轻的“收口微抖”；后续继续优化时，优先检查 streaming/completed 是否仍共用同一宿主几何。
+- 本节只保留“生成体验目标”和“排查顺序”；滚动链具体口径统一看 `20.4 / 20.5 / 20.6`，不再在这里重复维护第二份滚动规则。
+- 生成链额外关注点不变：waiting / streaming / settled 继续共用同一宿主，生成结束后如仍有极轻的收口微抖，优先检查 streaming / completed 是否仍共用同一宿主几何。
 
 ### 10.3 UI 监护与调试日志规则
 
@@ -299,11 +293,7 @@ Clean-State 定义：
 
 ### 10.4 当前滚动链大白话口径
 
-- 用户消息、AI 消息先按正常消息流一条一条往下排。
-- waiting 小球和随后正文共用同一个发送起步锚点；这次起步允许整体落在工作线上方，不再要求死贴本轮用户消息。
-- 正文从这个起步位置继续往下长。
-- 只有正文尾部接近工作线后，自动跟随才接管，并沿工作线滚动。
-- 用户上滑下滑都不能卡手；生成结束后也不要再掉到一条更低的线重新留空白。
+- 当前滚动链的大白话口径统一看 `20.4 当前 RecyclerView 滚动链唯一真相`；这里不再重复抄一份，避免后面两处口径再次漂移。
 
 ## 11. 免责声明规则
 
@@ -371,12 +361,10 @@ Clean-State 定义：
 
 ### 14.1 后端三文件真源边界
 
-- 主对话锚点真源：
-  - [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
-- B 层摘要提示词真源：
-  - [server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
-- C 层摘要提示词真源：
-  - [server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
+- 三文件真源定义沿用第 4 节：
+  - 主对话锚点：[server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
+  - B 层摘要提示词：[server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
+  - C 层摘要提示词：[server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
 - 三者职责不同，不允许合并成一个文件
 - 主对话锚点读取失败或为空，属于主链配置问题，不能伪装成普通重试成功场景
 - B/C 提示词失败不拖垮主对话服务，但必须保留各自 `pending_retry`，不能丢失应触发轮次
@@ -500,13 +488,10 @@ Clean-State 定义：
 
 ## 17. Clean-State 专项规则
 
-以后每次有规则改动、聊天 UI 改动、底部输入区改动、复制链改动，都必须额外检查一遍：
+本节不再重复定义 clean-state 规则；统一沿用 `8.2 Clean-State 铁规则` 和 `8.3 必做 clean-state 回归的改动范围`。
 
-- 清除 app 数据后，这次修改会不会把设定逻辑打回去
-- 清除 app 数据后，UI 会不会回滚成旧状态
-- 清除 app 数据后，输入区、消息区、回到底部按钮、流式区、免责声明、复制卡片是否还和正常状态一致
-
-如果 clean-state 下回滚了设定逻辑，视为修改不合格。
+- 以后每次有规则改动、聊天 UI 改动、底部输入区改动、复制链改动，都必须按 `8.2 / 8.3` 额外做一次 clean-state 回归。
+- 如果 clean-state 下回滚了设定逻辑，视为修改不合格。
 
 ## 18. 后端与运维规则
 
@@ -586,29 +571,21 @@ Clean-State 定义：
 
 - 活动中的 assistant 在 `waiting / streaming / settled` 三个阶段，必须共用同一个内容宿主上报真实底边；不允许 waiting 量小球内层、streaming 量正文列、completed 又沿用上一阶段旧 bounds。
 - waiting 阶段不再额外挂最小高度壳去“稳住”位置；小球本身就按正常消息流起步，正文从同一宿主继续往下长。
-- 发送起步阶段不再单独维护“预测底边”“waiting 可见底边”“start-anchor snap”这三套真相；起步唯一主人改成 `ChatRecyclerViewHost` 的“预绘制前真实底边对齐”。当前允许先用 `scrollToPositionWithOffset(..., 0)` 把本轮用户消息项送进布局，再在同一帧真正显示前按真实 `bottom` 做一次对齐。
-- 这意味着首发冷路径和后续发送热路径都必须共用同一条起步链：关闭 `stackFromEnd` 后，列表按普通顺序布局，再在新消息插入时用当前真实 bottom padding / 工作线位置手动把本轮用户消息定位到发送起步目标。
 - 发送当拍的结构更新也必须收成一次：本轮用户消息和紧随其后的 waiting placeholder 应作为一组一次性写入消息列表，不再先插用户消息触发一版 layout、再插 assistant placeholder 触发第二版 layout。
-- 当前发送起步目标允许在工作线上方额外抬高一段呼吸空间；这段上抬只作用于发送起步那一拍的“真实底边 -> 目标底边”对齐，不单独引入新的 snap 链、spacer 或 reserve。当前试值已抬到 `220dp`，用于观察“小球/首字起步明显高于屏幕中部”时的体感。
 - 发送起步这次手动定位直接按本轮用户消息尾部锚定：先让锚点消息进入布局，再在首帧预绘制前读取这条用户消息的真实 `bottom`，按“真实底边 -> 目标底边”做一次性对齐；不再按 waiting 当前高度、也不再按预测消息高度反推，同时这次定位必须在首帧真正显示前完成，避免用户先看到偏低坏帧，再看到被抬回来的轻微上下抖。
-- 发送起步完成后，`sendStartAnchorActive` 是这段保护期的唯一主人：只要正文底边还没真正接近工作线，`Idle` 分支必须整段跳过 workline snap 和 `AutoFollow` 升级；等正文底边 >= 工作线附近阈值后，再解除保护，让下一帧正常接管。
 - 首次进入聊天页时，如果当前有历史消息且不在底部/目标线附近，允许显式补一次 `scrollToBottom(false)`；这条首屏贴底链只服务 completed 历史列表，不参与发送起步定位。
 - 从后台切回聊天页时，不默认自动贴底，避免用户看历史时被强行拉回底部；生命周期恢复优先保持当前浏览位置。
 - 首屏进入时应优先立即做一次 `scrollToBottom(false)` 贴底，再用很短的等待窗口看最后一条真实底边是否已到位；若仍未贴到目标线附近，再补一次收口。不要先长时间等待底边测量完成才决定是否贴底。
-- `Idle` 阶段只保留最小主链接管：waiting 阶段先完成这次起步保护，正文真正出现且尾部接近工作线后，才允许切入 workline snap / `AutoFollow`；不允许反向把仍高于工作线的内容再往下吸回去。
 - 工作线坐标只要拿得到真实 `composerTopInViewportPx`，就必须直接从真实输入框顶部减统一 gap 计算；不再因为 IME 可见就退回旧的 `bottomBarHeightPx` 估算线。
 - RecyclerView 自身的静态贴底线也必须和工作线共用同一个物理锚点：只要拿得到真实 `composerTopInViewportPx`，列表底部预留就优先直接取 `messageViewportHeightPx - composerTopInViewportPx`，再加同一条 workline gap；不再保留更低的第二条静态底线。
 - assistant 完成态贴底只认真实内容 bounds，不允许在内容 bounds 暂时未到位时退回外层 item 或 selection 壳子充当底边。
-- 当前会主动改位置的 active 入口只允许保留在新底座里：发送起步、streaming 主循环、冷启动贴底、完成态 final snap、回到底部按钮触发的回底；不允许再在别处挂第二套滚动修正链。
 - `RecyclerView` 列表项 id 变化必须走最小更新；发送当下不允许再用 `notifyDataSetChanged()` 这类整表刷新去触发整段重绑和 `stackFromEnd` 重排。
 - 当前非动画贴底如果最后一条已经在布局里，就直接一次 `scrollBy` 对到目标线；如果最后一条还没进布局，允许先把最后一项送进布局，再在首帧预绘制前按当前真实底边补一次收口，不再通过 `post { scrollBy(...) }` 额外挂第二拍可见补滚。
 - 冷启动首屏如果当前已经在底部/目标线附近，就不要额外触发一次主动贴底；只有真实测量显示当前没在底部/目标线附近时，才允许补一次性贴底。若确实还需要补这一次，消息列表应继续保持隐藏，等首屏贴底完成后再 reveal，避免首次打开看到文本上下轻抖。
 - 首开 splash / `chatReady` 的放行口径必须和真实消息区 reveal 口径保持一致；不允许外层已经 ready、消息列表仍在隐藏态，制造“首开 UI 已进入、内容区又晚一拍出现”的冷热分叉。
 - 列表底部 padding 的变化只允许影响布局本身，不允许再顺手触发一条独立 `scrollBy` 去改文本区位置；文本区主动位移只能由主滚动链决定。
-- waiting 小球阶段不允许提前触发 workline snap；只有正文真正出现后，才允许 `Idle -> snap -> AutoFollow` 这条接管链开始工作。
 - streaming 文本渲染不允许再把跟随期的 Conservative reveal / active-line delayed release 当成稳定手段；文本布局变化应优先由真实内容推进驱动，不能在 follow 期间再额外改一遍文本区高度。
 - follow 仍允许保留一个很小的触发阈值，避免极小噪声抖动；但一旦超过阈值，就直接吃掉当前整段 overflow，不再用多帧小步追赶去制造“上去一点又掉一点”的追帧感。
-- 当前 RecyclerView 已关闭 `stackFromEnd`；静态短内容与完成态收口都改为围绕同一工作线做手动底部定位，不再依赖底座自动底对齐。
 - 当前 final snap 不再靠“固定等两帧”碰运气；只要 completed 宿主已经给出可用真实底边且还没收进目标线，就直接走一次 `scrollToBottom(false)` 收口。若 completed 宿主后续几何继续变化，则由同一条完成态收口链按新的真实底边再次触发，而不是先盲等固定帧数。
 - 若后续实现与历史归档表述冲突，以本节为准。
 
