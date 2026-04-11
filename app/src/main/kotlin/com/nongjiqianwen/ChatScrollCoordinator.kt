@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import android.view.ViewTreeObserver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
@@ -10,7 +11,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.math.roundToInt
+import kotlin.coroutines.resume
 
 internal enum class ScrollMode {
     Idle,
@@ -118,6 +121,37 @@ internal fun endProgrammaticRecyclerScroll(
     recyclerView?.let(refreshRecyclerMetrics)
 }
 
+private suspend fun awaitRecyclerPreDrawAlignment(
+    recyclerView: RecyclerView,
+    align: () -> Boolean
+) {
+    suspendCancellableCoroutine<Unit> { continuation ->
+        val viewTreeObserver = recyclerView.viewTreeObserver
+        if (!viewTreeObserver.isAlive) {
+            continuation.resume(Unit)
+            return@suspendCancellableCoroutine
+        }
+        val listener = object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (viewTreeObserver.isAlive) {
+                    viewTreeObserver.removeOnPreDrawListener(this)
+                }
+                val shouldDraw = align()
+                if (continuation.isActive) {
+                    continuation.resume(Unit)
+                }
+                return shouldDraw
+            }
+        }
+        continuation.invokeOnCancellation {
+            if (viewTreeObserver.isAlive) {
+                viewTreeObserver.removeOnPreDrawListener(listener)
+            }
+        }
+        viewTreeObserver.addOnPreDrawListener(listener)
+    }
+}
+
 internal suspend fun scrollRecyclerToBottom(
     recyclerView: RecyclerView?,
     layoutManager: androidx.recyclerview.widget.LinearLayoutManager?,
@@ -144,13 +178,16 @@ internal suspend fun scrollRecyclerToBottom(
                 endProgrammaticScroll()
             } else {
                 activeLayoutManager.scrollToPosition(lastIndex)
-                activeRecyclerView.post {
+                awaitRecyclerPreDrawAlignment(activeRecyclerView) {
                     val alignDeltaPx = currentBottomAlignDeltaPx()
                     if (alignDeltaPx != 0) {
                         activeRecyclerView.scrollBy(0, -alignDeltaPx)
+                        false
+                    } else {
+                        true
                     }
-                    endProgrammaticScroll()
                 }
+                endProgrammaticScroll()
             }
         }
     } catch (_: Throwable) {
@@ -423,7 +460,6 @@ internal fun BindRecyclerChatScrollEffects(
             pendingFinalBottomSnapState.value = false
             return@LaunchedEffect
         }
-        repeat(2) { withFrameNanos { } }
         scrollToBottom(false)
         if (isWithinBottomTolerance()) {
             pendingFinalBottomSnapState.value = false
