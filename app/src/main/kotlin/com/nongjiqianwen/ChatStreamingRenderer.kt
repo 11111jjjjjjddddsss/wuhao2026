@@ -767,6 +767,7 @@ internal fun ChatStreamingRenderer(
     selectionEnabled: Boolean,
     showDisclaimer: Boolean,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)?,
+    startAnchorReserveHeight: Dp = 0.dp,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -784,6 +785,7 @@ internal fun ChatStreamingRenderer(
         selectionEnabled = selectionEnabled,
         showDisclaimer = showDisclaimer,
         onStreamingContentBoundsChanged = onStreamingContentBoundsChanged,
+        startAnchorReserveHeight = startAnchorReserveHeight,
         expandToFullWidth = expandToFullWidth,
         modifier = modifier
     )
@@ -803,6 +805,7 @@ private fun RendererAssistantMessageContentImpl(
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
+    startAnchorReserveHeight: Dp = 0.dp,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -817,38 +820,51 @@ private fun RendererAssistantMessageContentImpl(
         Modifier
     }
     if (isStreaming) {
+        val hostModifier = if (expandToFullWidth) {
+            modifier
+                .fillMaxWidth()
+                .heightIn(min = startAnchorReserveHeight)
+        } else {
+            modifier.heightIn(min = startAnchorReserveHeight)
+        }
         Box(
-            modifier = if (expandToFullWidth) {
-                modifier
-                    .then(boundsReportingModifier)
-                    .fillMaxWidth()
-            } else {
-                modifier.then(boundsReportingModifier)
-            },
+            modifier = hostModifier,
             contentAlignment = Alignment.TopStart
         ) {
             if (showWaitingBall || content.isBlank()) {
-                RendererAssistantStreamingWaitingIndicatorImpl(
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Box(
+                    modifier = Modifier
+                        .then(boundsReportingModifier)
+                        .fillMaxWidth()
                 ) {
-                    Box(
+                    RendererAssistantStreamingWaitingIndicatorImpl(
                         modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .then(boundsReportingModifier)
+                        .fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        RendererAssistantStreamingContentImpl(
-                            content = content,
-                            streamingFreshStart = streamingFreshStart,
-                            streamingFreshEnd = streamingFreshEnd,
-                            streamingFreshTick = streamingFreshTick,
-                            streamingLineAdvanceTick = streamingLineAdvanceTick,
-                            strictLineReveal = strictLineReveal,
-                            lineRevealLocked = lineRevealLocked,
+                        Box(
                             modifier = Modifier.fillMaxWidth()
-                        )
+                        ) {
+                            RendererAssistantStreamingContentImpl(
+                                content = content,
+                                streamingFreshStart = streamingFreshStart,
+                                streamingFreshEnd = streamingFreshEnd,
+                                streamingFreshTick = streamingFreshTick,
+                                streamingLineAdvanceTick = streamingLineAdvanceTick,
+                                strictLineReveal = strictLineReveal,
+                                lineRevealLocked = lineRevealLocked,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }

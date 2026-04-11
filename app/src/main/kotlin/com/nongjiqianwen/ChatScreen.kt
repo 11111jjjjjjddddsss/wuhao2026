@@ -1459,6 +1459,7 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
+    var frozenSendStartBottomPaddingPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1734,6 +1735,23 @@ fun ChatScreen() {
             bottomContentReservedHeightPx + streamVisibleBottomGapPx
         }
     }
+    val effectiveRecyclerBottomPaddingPx by remember(
+        recyclerBottomPaddingPx,
+        frozenSendStartBottomPaddingPx,
+        pendingStartAnchorMessageId,
+        scrollRuntime.sendStartAnchorActive.value
+    ) {
+        derivedStateOf {
+            if (
+                (pendingStartAnchorMessageId != null || scrollRuntime.sendStartAnchorActive.value) &&
+                frozenSendStartBottomPaddingPx >= 0
+            ) {
+                frozenSendStartBottomPaddingPx
+            } else {
+                recyclerBottomPaddingPx
+            }
+        }
+    }
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
@@ -1773,6 +1791,14 @@ fun ChatScreen() {
                     scrollMode = scrollMode,
                     nearWorkline = !streamingAwayFromWorkline
                 )
+        }
+    }
+    LaunchedEffect(
+        pendingStartAnchorMessageId,
+        scrollRuntime.sendStartAnchorActive.value
+    ) {
+        if (pendingStartAnchorMessageId == null && !scrollRuntime.sendStartAnchorActive.value) {
+            frozenSendStartBottomPaddingPx = -1
         }
     }
     val showStaticJumpButton by remember(
@@ -2762,6 +2788,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
+        frozenSendStartBottomPaddingPx = recyclerBottomPaddingPx
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -3334,7 +3361,7 @@ fun ChatScreen() {
                     ChatRecyclerViewHost(
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
-                        bottomPaddingPx = recyclerBottomPaddingPx,
+                        bottomPaddingPx = effectiveRecyclerBottomPaddingPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         pendingStartAnchorLiftPx = pendingStartAnchorLiftPx,
@@ -3478,6 +3505,22 @@ fun ChatScreen() {
                                                         isStreaming -> StreamingRenderMode.Streaming
                                                         else -> StreamingRenderMode.Settled
                                                     }
+                                                    val startAnchorReserveHeight =
+                                                        if (
+                                                            isActiveStreamingAssistant &&
+                                                            (
+                                                                pendingStartAnchorMessageId != null ||
+                                                                    scrollRuntime.sendStartAnchorActive.value ||
+                                                                    (
+                                                                        scrollMode == ScrollMode.Idle &&
+                                                                            !isStreamingReadyForAutoFollow()
+                                                                        )
+                                                                )
+                                                        ) {
+                                                            SEND_START_ANCHOR_LIFT
+                                                        } else {
+                                                            0.dp
+                                                        }
                                                     ChatStreamingRenderer(
                                                         content = assistantDisplayContent,
                                                         renderMode = renderMode,
@@ -3490,6 +3533,7 @@ fun ChatScreen() {
                                                         streamingLineAdvanceTick = streamingLineAdvanceTick,
                                                         selectionEnabled = !isStreaming,
                                                         showDisclaimer = true,
+                                                        startAnchorReserveHeight = startAnchorReserveHeight,
                                                         onStreamingContentBoundsChanged = { bounds ->
                                                             if (bounds != null) {
                                                                 messageContentBoundsById[msg.id] = bounds
@@ -3581,7 +3625,7 @@ fun ChatScreen() {
 
                 if (showWelcomePlaceholder) {
                     val welcomeBottomInset =
-                        with(density) { recyclerBottomPaddingPx.toDp() } +
+                        with(density) { effectiveRecyclerBottomPaddingPx.toDp() } +
                             24.dp
                     Box(
                         modifier = Modifier

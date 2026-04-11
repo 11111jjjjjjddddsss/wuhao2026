@@ -1,7 +1,7 @@
 package com.nongjiqianwen
 
 import android.view.ViewGroup
-import androidx.core.view.OneShotPreDrawListener
+import android.view.ViewTreeObserver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -137,7 +137,6 @@ internal fun ChatRecyclerViewHost(
             ) {
                 recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
             }
-            adapter.submitIds(itemIds)
             val pendingStartAnchorPosition =
                 pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 } ?: -1
             if (pendingStartAnchorRequestId <= 0 || pendingStartAnchorPosition < 0) {
@@ -156,35 +155,51 @@ internal fun ChatRecyclerViewHost(
 
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
-                    layoutManager.scrollToPositionWithOffset(pendingStartAnchorPosition, 0)
-                    OneShotPreDrawListener.add(recyclerView) {
-                        if (activeStartAnchorRequestId.intValue != requestId) {
-                            return@add
-                        }
-                        val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
-                        if (anchorView == null) {
-                            if (remainingAlignmentRetries > 0) {
-                                remainingAlignmentRetries -= 1
-                                recyclerView.post {
-                                    scheduleStartAnchorAlignment()
-                                }
-                            } else {
-                                activeStartAnchorRequestId.intValue = 0
-                            }
-                            return@add
-                        }
-                        val targetBottomPx = resolvePendingStartAnchorTargetBottomPx(
-                            recyclerView = recyclerView,
-                            pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
-                        )
-                        val alignDy = anchorView.bottom - targetBottomPx
+                    val viewTreeObserver = recyclerView.viewTreeObserver
+                    if (!viewTreeObserver.isAlive) {
                         activeStartAnchorRequestId.intValue = 0
-                        lastAppliedStartAnchorRequestId.intValue = requestId
-                        if (alignDy != 0) {
-                            recyclerView.scrollBy(0, alignDy)
-                        }
-                        onPendingStartAnchorHandled()
+                        return
                     }
+                    val listener = object : ViewTreeObserver.OnPreDrawListener {
+                        override fun onPreDraw(): Boolean {
+                            if (viewTreeObserver.isAlive) {
+                                recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
+                            }
+                            if (activeStartAnchorRequestId.intValue != requestId) {
+                                return true
+                            }
+                            val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
+                            if (anchorView == null) {
+                                if (remainingAlignmentRetries > 0) {
+                                    remainingAlignmentRetries -= 1
+                                    layoutManager.scrollToPositionWithOffset(pendingStartAnchorPosition, 0)
+                                    scheduleStartAnchorAlignment()
+                                    return false
+                                }
+                                activeStartAnchorRequestId.intValue = 0
+                                return true
+                            }
+                            val targetBottomPx = resolvePendingStartAnchorTargetBottomPx(
+                                recyclerView = recyclerView,
+                                pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
+                            )
+                            val targetTopOffset = targetBottomPx - anchorView.height
+                            if (anchorView.top != targetTopOffset && remainingAlignmentRetries > 0) {
+                                remainingAlignmentRetries -= 1
+                                layoutManager.scrollToPositionWithOffset(
+                                    pendingStartAnchorPosition,
+                                    targetTopOffset
+                                )
+                                scheduleStartAnchorAlignment()
+                                return false
+                            }
+                            activeStartAnchorRequestId.intValue = 0
+                            lastAppliedStartAnchorRequestId.intValue = requestId
+                            onPendingStartAnchorHandled()
+                            return true
+                        }
+                    }
+                    viewTreeObserver.addOnPreDrawListener(listener)
                 }
 
                 val dataObserver = object : RecyclerView.AdapterDataObserver() {
