@@ -92,6 +92,7 @@ internal fun ChatRecyclerViewHost(
 ) {
     val adapter = remember(itemContent) { ChatRecyclerComposeAdapter(itemContent) }
     val lastAppliedStartAnchorRequestId = remember { mutableIntStateOf(0) }
+    val activeStartAnchorRequestId = remember { mutableIntStateOf(0) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -128,27 +129,43 @@ internal fun ChatRecyclerViewHost(
             ) {
                 recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
             }
+            adapter.submitIds(itemIds)
             val pendingStartAnchorPosition =
                 pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 } ?: -1
+            if (pendingStartAnchorRequestId <= 0 || pendingStartAnchorPosition < 0) {
+                activeStartAnchorRequestId.intValue = 0
+            }
             val shouldApplyPendingStartAnchor =
                 pendingStartAnchorRequestId > 0 &&
                     pendingStartAnchorRequestId != lastAppliedStartAnchorRequestId.intValue &&
+                    pendingStartAnchorRequestId != activeStartAnchorRequestId.intValue &&
                     pendingStartAnchorPosition >= 0
             if (shouldApplyPendingStartAnchor) {
-                lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
+                val requestId = pendingStartAnchorRequestId
+                val targetBottomPx = pendingStartAnchorTargetBottomPx
+                activeStartAnchorRequestId.intValue = requestId
                 val preDrawListener = object : ViewTreeObserver.OnPreDrawListener {
                     override fun onPreDraw(): Boolean {
+                        if (activeStartAnchorRequestId.intValue != requestId) {
+                            if (recyclerView.viewTreeObserver.isAlive) {
+                                recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
+                            }
+                            return true
+                        }
+                        val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
+                        if (anchorView == null) {
+                            return true
+                        }
                         if (recyclerView.viewTreeObserver.isAlive) {
                             recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
                         }
-                        val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
-                        if (anchorView != null) {
-                            val alignDy = anchorView.bottom - pendingStartAnchorTargetBottomPx
-                            if (alignDy != 0) {
-                                recyclerView.scrollBy(0, alignDy)
-                                onPendingStartAnchorHandled()
-                                return false
-                            }
+                        val alignDy = anchorView.bottom - targetBottomPx
+                        activeStartAnchorRequestId.intValue = 0
+                        lastAppliedStartAnchorRequestId.intValue = requestId
+                        if (alignDy != 0) {
+                            recyclerView.scrollBy(0, alignDy)
+                            onPendingStartAnchorHandled()
+                            return false
                         }
                         onPendingStartAnchorHandled()
                         return true
@@ -156,10 +173,11 @@ internal fun ChatRecyclerViewHost(
                 }
                 if (recyclerView.viewTreeObserver.isAlive) {
                     recyclerView.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+                } else {
+                    activeStartAnchorRequestId.intValue = 0
                 }
                 layoutManager.scrollToPositionWithOffset(pendingStartAnchorPosition, 0)
             }
-            adapter.submitIds(itemIds)
             onRecyclerReady(recyclerView, layoutManager)
         }
     )
