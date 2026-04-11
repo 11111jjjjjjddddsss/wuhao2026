@@ -2881,7 +2881,7 @@ fun ChatScreen() {
                 lastStreamingFreshRevealMs = 0L
                 isStreaming = true
                 streamingMessageId = assistantId
-                pendingStartAnchorMessageId = userId
+                pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
                 sendUiSettling = false
                 persistTick++

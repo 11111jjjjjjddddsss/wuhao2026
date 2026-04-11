@@ -75,7 +75,7 @@ internal class ChatRecyclerComposeAdapter(
     ) : RecyclerView.ViewHolder(composeView)
 }
 
-private fun resolvePendingStartAnchorTargetBottomPx(
+private fun resolvePendingStartAnchorTargetTopPx(
     recyclerView: RecyclerView,
     pendingStartAnchorLiftPx: Int
 ): Int {
@@ -155,6 +155,14 @@ internal fun ChatRecyclerViewHost(
 
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
+                    val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
+                        recyclerView = recyclerView,
+                        pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
+                    )
+                    layoutManager.scrollToPositionWithOffset(
+                        pendingStartAnchorPosition,
+                        targetTopOffset
+                    )
                     val viewTreeObserver = recyclerView.viewTreeObserver
                     if (!viewTreeObserver.isAlive) {
                         activeStartAnchorRequestId.intValue = 0
@@ -172,24 +180,14 @@ internal fun ChatRecyclerViewHost(
                             if (anchorView == null) {
                                 if (remainingAlignmentRetries > 0) {
                                     remainingAlignmentRetries -= 1
-                                    layoutManager.scrollToPositionWithOffset(pendingStartAnchorPosition, 0)
                                     scheduleStartAnchorAlignment()
                                     return false
                                 }
                                 activeStartAnchorRequestId.intValue = 0
                                 return true
                             }
-                            val targetBottomPx = resolvePendingStartAnchorTargetBottomPx(
-                                recyclerView = recyclerView,
-                                pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
-                            )
-                            val targetTopOffset = targetBottomPx - anchorView.height
                             if (anchorView.top != targetTopOffset && remainingAlignmentRetries > 0) {
                                 remainingAlignmentRetries -= 1
-                                layoutManager.scrollToPositionWithOffset(
-                                    pendingStartAnchorPosition,
-                                    targetTopOffset
-                                )
                                 scheduleStartAnchorAlignment()
                                 return false
                             }
