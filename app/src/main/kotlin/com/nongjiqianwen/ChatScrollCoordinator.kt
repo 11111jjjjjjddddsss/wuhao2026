@@ -146,23 +146,6 @@ internal suspend fun scrollRecyclerToBottom(
     }
 }
 
-internal suspend fun alignRecyclerLastMessageToBottomTarget(
-    recyclerView: RecyclerView?,
-    currentBottomAlignDeltaPx: () -> Int,
-    beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit
-) {
-    val activeRecyclerView = recyclerView ?: return
-    val alignDeltaPx = currentBottomAlignDeltaPx()
-    if (alignDeltaPx == 0) return
-    beginProgrammaticScroll()
-    try {
-        activeRecyclerView.scrollBy(0, -alignDeltaPx)
-    } finally {
-        endProgrammaticScroll()
-    }
-}
-
 internal suspend fun snapRecyclerStreamingToWorkline(
     recyclerView: RecyclerView?,
     currentStreamingAlignDeltaPx: () -> Int,
