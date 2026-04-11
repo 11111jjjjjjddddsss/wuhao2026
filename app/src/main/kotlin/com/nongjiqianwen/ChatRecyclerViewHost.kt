@@ -1,7 +1,7 @@
 package com.nongjiqianwen
 
 import android.view.ViewGroup
-import android.view.ViewTreeObserver
+import androidx.core.view.OneShotPreDrawListener
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +75,14 @@ internal class ChatRecyclerComposeAdapter(
     ) : RecyclerView.ViewHolder(composeView)
 }
 
+private fun resolvePendingStartAnchorTargetBottomPx(
+    recyclerView: RecyclerView,
+    pendingStartAnchorLiftPx: Int
+): Int {
+    return (recyclerView.height - recyclerView.paddingBottom - pendingStartAnchorLiftPx)
+        .coerceAtLeast(0)
+}
+
 @Composable
 internal fun ChatRecyclerViewHost(
     modifier: Modifier = Modifier,
@@ -83,7 +91,7 @@ internal fun ChatRecyclerViewHost(
     bottomPaddingPx: Int,
     pendingStartAnchorMessageId: String?,
     pendingStartAnchorRequestId: Int,
-    pendingStartAnchorTargetBottomPx: Int,
+    pendingStartAnchorLiftPx: Int,
     onPendingStartAnchorHandled: () -> Unit,
     onRecyclerReady: (RecyclerView, LinearLayoutManager) -> Unit,
     onScrollStateChanged: (RecyclerView, Int) -> Unit,
@@ -142,41 +150,69 @@ internal fun ChatRecyclerViewHost(
                     pendingStartAnchorPosition >= 0
             if (shouldApplyPendingStartAnchor) {
                 val requestId = pendingStartAnchorRequestId
-                val targetBottomPx = pendingStartAnchorTargetBottomPx
                 activeStartAnchorRequestId.intValue = requestId
-                val preDrawListener = object : ViewTreeObserver.OnPreDrawListener {
-                    override fun onPreDraw(): Boolean {
+                var observerConsumed = false
+                var remainingAlignmentRetries = 2
+
+                fun scheduleStartAnchorAlignment() {
+                    if (activeStartAnchorRequestId.intValue != requestId) return
+                    layoutManager.scrollToPositionWithOffset(pendingStartAnchorPosition, 0)
+                    OneShotPreDrawListener.add(recyclerView) {
                         if (activeStartAnchorRequestId.intValue != requestId) {
-                            if (recyclerView.viewTreeObserver.isAlive) {
-                                recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
-                            }
-                            return true
+                            return@add
                         }
                         val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
                         if (anchorView == null) {
-                            return true
+                            if (remainingAlignmentRetries > 0) {
+                                remainingAlignmentRetries -= 1
+                                recyclerView.post {
+                                    scheduleStartAnchorAlignment()
+                                }
+                            } else {
+                                activeStartAnchorRequestId.intValue = 0
+                            }
+                            return@add
                         }
-                        if (recyclerView.viewTreeObserver.isAlive) {
-                            recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
-                        }
+                        val targetBottomPx = resolvePendingStartAnchorTargetBottomPx(
+                            recyclerView = recyclerView,
+                            pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
+                        )
                         val alignDy = anchorView.bottom - targetBottomPx
                         activeStartAnchorRequestId.intValue = 0
                         lastAppliedStartAnchorRequestId.intValue = requestId
                         if (alignDy != 0) {
                             recyclerView.scrollBy(0, alignDy)
-                            onPendingStartAnchorHandled()
-                            return false
                         }
                         onPendingStartAnchorHandled()
-                        return true
                     }
                 }
-                if (recyclerView.viewTreeObserver.isAlive) {
-                    recyclerView.viewTreeObserver.addOnPreDrawListener(preDrawListener)
-                } else {
-                    activeStartAnchorRequestId.intValue = 0
+
+                val dataObserver = object : RecyclerView.AdapterDataObserver() {
+                    private fun consume() {
+                        if (observerConsumed) return
+                        observerConsumed = true
+                        runCatching { adapter.unregisterAdapterDataObserver(this) }
+                        scheduleStartAnchorAlignment()
+                    }
+
+                    override fun onChanged() = consume()
+
+                    override fun onItemRangeInserted(positionStart: Int, itemCount: Int) = consume()
+
+                    override fun onItemRangeChanged(positionStart: Int, itemCount: Int) = consume()
+
+                    override fun onItemRangeChanged(positionStart: Int, itemCount: Int, payload: Any?) = consume()
+
+                    override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) = consume()
                 }
-                layoutManager.scrollToPositionWithOffset(pendingStartAnchorPosition, 0)
+                adapter.registerAdapterDataObserver(dataObserver)
+                adapter.submitIds(itemIds)
+                if (!observerConsumed) {
+                    runCatching { adapter.unregisterAdapterDataObserver(dataObserver) }
+                    scheduleStartAnchorAlignment()
+                }
+            } else {
+                adapter.submitIds(itemIds)
             }
             onRecyclerReady(recyclerView, layoutManager)
         }

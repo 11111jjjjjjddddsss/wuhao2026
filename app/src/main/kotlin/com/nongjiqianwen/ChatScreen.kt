@@ -1459,7 +1459,6 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
-    var pendingStartAnchorTargetBottomPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1551,22 +1550,6 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem) return false
         if (currentStreamingContentBottomPx() <= 0) return false
         return isNearStreamingWorkline()
-    }
-    fun resolvePendingStartAnchorTargetBottomPx(): Int {
-        val viewportHeightPx =
-            recyclerViewRef?.height?.takeIf { it > 0 } ?: messageViewportHeightPx
-        val reservedBottomPx =
-            recyclerViewRef?.paddingBottom?.takeIf { it >= 0 } ?: run {
-                val measuredReservedBottomPx =
-                    if (messageViewportHeightPx > 0 && composerTopInViewportPx > 0) {
-                        (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0) +
-                            streamVisibleBottomGapPx
-                    } else {
-                        bottomBarHeightPx + streamVisibleBottomGapPx
-                    }
-                measuredReservedBottomPx.coerceAtLeast(0)
-            }
-        return (viewportHeightPx - reservedBottomPx - pendingStartAnchorLiftPx).coerceAtLeast(0)
     }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
@@ -2857,7 +2840,6 @@ fun ChatScreen() {
                 failedUserMessageStates.remove(userId)
                 clearFailedAssistantStateForUser(userId)
                 val assistantId = assistantMessageIdForSourceUser(userId)
-                pendingStartAnchorTargetBottomPx = resolvePendingStartAnchorTargetBottomPx()
                 replaceMessages(
                     buildSendStartMessagePair(
                         userMessageId = userId,
@@ -3355,7 +3337,7 @@ fun ChatScreen() {
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
-                        pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
+                        pendingStartAnchorLiftPx = pendingStartAnchorLiftPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
                             scrollRuntime.sendStartAnchorActive.value = true
