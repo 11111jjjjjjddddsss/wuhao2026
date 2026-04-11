@@ -626,3 +626,4 @@ Clean-State 定义：
 - 同一时刻只能有一个主人在控制滚动。
 - 不允许任何环节跨出自己的时间段去调用 `scrollBy` / `scrollToPosition` / `snap`。
 - 新增任何 scroll 调用前，必须先说明它属于以上哪一个环节。
+Current send-start lift trial: `280dp`. If this value changes again, update code and AGENTS in the same change.
