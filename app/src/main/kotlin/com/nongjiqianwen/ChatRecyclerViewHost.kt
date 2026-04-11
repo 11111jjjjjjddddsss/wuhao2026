@@ -1,7 +1,7 @@
 package com.nongjiqianwen
 
-import android.util.Log
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -83,7 +83,7 @@ internal fun ChatRecyclerViewHost(
     bottomPaddingPx: Int,
     pendingStartAnchorMessageId: String?,
     pendingStartAnchorRequestId: Int,
-    pendingStartAnchorOffsetPx: Int,
+    pendingStartAnchorTargetBottomPx: Int,
     onPendingStartAnchorHandled: () -> Unit,
     onRecyclerReady: (RecyclerView, LinearLayoutManager) -> Unit,
     onScrollStateChanged: (RecyclerView, Int) -> Unit,
@@ -136,15 +136,28 @@ internal fun ChatRecyclerViewHost(
                     pendingStartAnchorPosition >= 0
             if (shouldApplyPendingStartAnchor) {
                 lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
-                Log.d(
-                    "SEND_START",
-                    "offset=$pendingStartAnchorOffsetPx, position=$pendingStartAnchorPosition, rvHeight=${recyclerView.height}, padding=${recyclerView.paddingBottom}"
-                )
-                layoutManager.scrollToPositionWithOffset(
-                    pendingStartAnchorPosition,
-                    pendingStartAnchorOffsetPx
-                )
-                onPendingStartAnchorHandled()
+                val preDrawListener = object : ViewTreeObserver.OnPreDrawListener {
+                    override fun onPreDraw(): Boolean {
+                        if (recyclerView.viewTreeObserver.isAlive) {
+                            recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
+                        }
+                        val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
+                        if (anchorView != null) {
+                            val alignDy = anchorView.bottom - pendingStartAnchorTargetBottomPx
+                            if (alignDy != 0) {
+                                recyclerView.scrollBy(0, alignDy)
+                                onPendingStartAnchorHandled()
+                                return false
+                            }
+                        }
+                        onPendingStartAnchorHandled()
+                        return true
+                    }
+                }
+                if (recyclerView.viewTreeObserver.isAlive) {
+                    recyclerView.viewTreeObserver.addOnPreDrawListener(preDrawListener)
+                }
+                layoutManager.scrollToPositionWithOffset(pendingStartAnchorPosition, 0)
             }
             adapter.submitIds(itemIds)
             onRecyclerReady(recyclerView, layoutManager)
