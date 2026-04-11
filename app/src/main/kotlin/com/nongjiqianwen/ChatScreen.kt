@@ -147,6 +147,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -159,6 +160,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
@@ -1393,6 +1395,7 @@ fun ChatScreen() {
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
@@ -1459,6 +1462,7 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
+    var pendingStartAnchorOffsetPx by remember(chatScopeId) { mutableIntStateOf(0) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1471,6 +1475,9 @@ fun ChatScreen() {
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val pendingStartAnchorLiftPx = with(density) { SEND_START_ANCHOR_LIFT.roundToPx() }
+    val userMessageHorizontalPaddingPx = with(density) { 14.dp.roundToPx() }
+    val userMessageVerticalPaddingPx = with(density) { 10.dp.roundToPx() }
+    val userMessageTextStyle = MaterialTheme.typography.bodyLarge
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -1550,6 +1557,46 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem) return false
         if (currentStreamingContentBottomPx() <= 0) return false
         return isNearStreamingWorkline()
+    }
+    fun resolveUserBubbleMaxWidthPx(): Int {
+        val fallbackRootWidthPx = with(density) { 360.dp.roundToPx() }
+        val rootWidthPx =
+            chatRootWidthPx.takeIf { it > 0 } ?: messageViewportWidthPx.takeIf { it > 0 } ?: fallbackRootWidthPx
+        val rootWidthDp = with(density) { rootWidthPx.toDp() }
+        val chromeMaxWidth = when {
+            rootWidthDp >= 900.dp -> 900.dp
+            rootWidthDp >= 700.dp -> 760.dp
+            else -> rootWidthDp
+        }
+        val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
+        return with(density) { userBubbleMaxWidth.roundToPx() }
+    }
+    fun estimateUserBubbleHeightPx(text: String): Int {
+        val textMaxWidthPx =
+            (resolveUserBubbleMaxWidthPx() - (userMessageHorizontalPaddingPx * 2)).coerceAtLeast(1)
+        val measured = textMeasurer.measure(
+            text = AnnotatedString(text),
+            style = userMessageTextStyle,
+            constraints = Constraints(maxWidth = textMaxWidthPx)
+        )
+        return measured.size.height + (userMessageVerticalPaddingPx * 2)
+    }
+    fun resolvePendingStartAnchorOffsetPx(text: String): Int {
+        val viewportHeightPx =
+            recyclerViewRef?.height?.takeIf { it > 0 } ?: messageViewportHeightPx
+        val reservedBottomPx =
+            recyclerViewRef?.paddingBottom?.takeIf { it >= 0 } ?: run {
+                val measuredReservedBottomPx =
+                    if (messageViewportHeightPx > 0 && composerTopInViewportPx > 0) {
+                        (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0) +
+                            streamVisibleBottomGapPx
+                    } else {
+                        bottomBarHeightPx + streamVisibleBottomGapPx
+                    }
+                measuredReservedBottomPx.coerceAtLeast(0)
+            }
+        val targetBottomPx = viewportHeightPx - reservedBottomPx - pendingStartAnchorLiftPx
+        return targetBottomPx - estimateUserBubbleHeightPx(text)
     }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
@@ -2840,6 +2887,7 @@ fun ChatScreen() {
                 failedUserMessageStates.remove(userId)
                 clearFailedAssistantStateForUser(userId)
                 val assistantId = assistantMessageIdForSourceUser(userId)
+                pendingStartAnchorOffsetPx = resolvePendingStartAnchorOffsetPx(text)
                 replaceMessages(
                     buildSendStartMessagePair(
                         userMessageId = userId,
@@ -3336,7 +3384,7 @@ fun ChatScreen() {
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
-                        pendingStartAnchorLiftPx = pendingStartAnchorLiftPx,
+                        pendingStartAnchorOffsetPx = pendingStartAnchorOffsetPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
                         },

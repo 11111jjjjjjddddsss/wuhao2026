@@ -132,13 +132,22 @@ internal suspend fun scrollRecyclerToBottom(
         if (animated) {
             activeRecyclerView.smoothScrollToPosition(lastIndex)
         } else {
-            activeLayoutManager.scrollToPosition(lastIndex)
-            activeRecyclerView.post {
+            val laidOutLastItem = activeLayoutManager.findViewByPosition(lastIndex)
+            if (laidOutLastItem != null) {
                 val alignDeltaPx = currentBottomAlignDeltaPx()
                 if (alignDeltaPx != 0) {
                     activeRecyclerView.scrollBy(0, -alignDeltaPx)
                 }
                 endProgrammaticScroll()
+            } else {
+                activeLayoutManager.scrollToPosition(lastIndex)
+                activeRecyclerView.post {
+                    val alignDeltaPx = currentBottomAlignDeltaPx()
+                    if (alignDeltaPx != 0) {
+                        activeRecyclerView.scrollBy(0, -alignDeltaPx)
+                    }
+                    endProgrammaticScroll()
+                }
             }
         }
     } catch (_: Throwable) {
