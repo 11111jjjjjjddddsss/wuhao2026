@@ -37,11 +37,11 @@ internal fun rememberChatComposerRuntimeState(
     chatScopeId: String,
     startupInputContentHeightEstimatePx: Int
 ): ChatComposerRuntimeState {
-    val inputLimitHintVisible = remember { mutableStateOf(false) }
-    val inputLimitHintTick = remember { mutableIntStateOf(0) }
-    val composerStatusHintVisible = remember { mutableStateOf(false) }
-    val composerStatusHintTick = remember { mutableIntStateOf(0) }
-    val composerStatusHintText = remember { mutableStateOf("") }
+    val inputLimitHintVisible = remember(chatScopeId) { mutableStateOf(false) }
+    val inputLimitHintTick = remember(chatScopeId) { mutableIntStateOf(0) }
+    val composerStatusHintVisible = remember(chatScopeId) { mutableStateOf(false) }
+    val composerStatusHintTick = remember(chatScopeId) { mutableIntStateOf(0) }
+    val composerStatusHintText = remember(chatScopeId) { mutableStateOf("") }
     val inputFieldFocused = remember(chatScopeId) { mutableStateOf(false) }
     val suppressInputCursor = remember(chatScopeId) { mutableStateOf(false) }
     val inputContentHeightPx = remember(chatScopeId, startupInputContentHeightEstimatePx) {

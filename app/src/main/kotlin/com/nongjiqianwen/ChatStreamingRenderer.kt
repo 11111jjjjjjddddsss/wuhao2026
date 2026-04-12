@@ -100,12 +100,12 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
     val streamingMessageId = rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     val streamingMessageContent = rememberSaveable(chatScopeId) { mutableStateOf("") }
     val streamingRevealBuffer = rememberSaveable(chatScopeId) { mutableStateOf("") }
-    val streamRevealJob = remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val streamingLineAdvanceTick = remember { mutableIntStateOf(0) }
-    val streamingFreshStart = remember { mutableIntStateOf(-1) }
-    val streamingFreshEnd = remember { mutableIntStateOf(-1) }
-    val streamingFreshTick = remember { mutableIntStateOf(0) }
-    val lastStreamingFreshRevealMs = remember { mutableStateOf(0L) }
+    val streamRevealJob = remember(chatScopeId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val streamingLineAdvanceTick = remember(chatScopeId) { mutableIntStateOf(0) }
+    val streamingFreshStart = remember(chatScopeId) { mutableIntStateOf(-1) }
+    val streamingFreshEnd = remember(chatScopeId) { mutableIntStateOf(-1) }
+    val streamingFreshTick = remember(chatScopeId) { mutableIntStateOf(0) }
+    val lastStreamingFreshRevealMs = remember(chatScopeId) { mutableStateOf(0L) }
     return remember(chatScopeId) {
         ChatStreamingRuntimeState(
             isStreaming = isStreaming,

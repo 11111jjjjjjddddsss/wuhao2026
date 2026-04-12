@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -118,6 +119,12 @@ internal fun ChatRecyclerViewHost(
     val lastAppliedStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val activeStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val startAnchorLayoutSuppressed = remember(stateResetKey) { mutableStateOf(false) }
+    val recyclerViewRef = remember { mutableStateOf<RecyclerView?>(null) }
+    DisposableEffect(stateResetKey) {
+        onDispose {
+            recyclerViewRef.value?.suppressLayout(false)
+        }
+    }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -125,6 +132,7 @@ internal fun ChatRecyclerViewHost(
                 stackFromEnd = false
             }
             RecyclerView(context).apply {
+                recyclerViewRef.value = this
                 this.layoutManager = layoutManager
                 itemAnimator = null
                 clipToPadding = false
@@ -147,6 +155,7 @@ internal fun ChatRecyclerViewHost(
             }
         },
         update = { recyclerView ->
+            recyclerViewRef.value = recyclerView
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             fun setStartAnchorLayoutSuppressed(suppressed: Boolean) {
                 if (startAnchorLayoutSuppressed.value != suppressed || !suppressed) {

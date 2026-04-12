@@ -1351,7 +1351,8 @@ private fun FrostedCircleButton(
     FlowPreview::class
 )
 fun ChatScreen() {
-    val input = rememberSaveable(stateSaver = TextFieldValue.Saver) {
+    val chatScopeId = IdManager.getUserId()
+    val input = rememberSaveable(chatScopeId, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(""))
     }
     val context = LocalContext.current
@@ -1363,7 +1364,6 @@ fun ChatScreen() {
         )
     }
     val view = LocalView.current
-    val chatScopeId = IdManager.getUserId()
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
     val initialStreamingDraft = remember(chatScopeId, hasRemoteHistorySource) {
         if (hasRemoteHistorySource) {
@@ -1390,7 +1390,7 @@ fun ChatScreen() {
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
-    var fakeStreamJob by remember { mutableStateOf<Job?>(null) }
+    var fakeStreamJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
@@ -1443,17 +1443,17 @@ fun ChatScreen() {
     var composerSettlingMinHeightPx by composerRuntime.composerSettlingMinHeightPx
     var composerSettlingChromeHeightPx by composerRuntime.composerSettlingChromeHeightPx
     var sendUiSettling by composerRuntime.sendUiSettling
-    var persistTick by remember { mutableIntStateOf(0) }
-    var chatRootWidthPx by remember { mutableIntStateOf(0) }
-    var chatRootHeightPx by remember { mutableIntStateOf(0) }
-    var messageViewportWidthPx by remember { mutableIntStateOf(0) }
-    var messageViewportHeightPx by remember { mutableIntStateOf(0) }
-    var chatRootLeftPx by remember { mutableStateOf(0f) }
-    var chatRootTopPx by remember { mutableStateOf(0f) }
-    var messageViewportLeftPx by remember { mutableStateOf(0f) }
-    var messageViewportTopPx by remember { mutableStateOf(0f) }
-    var composerTopInViewportPx by remember { mutableIntStateOf(-1) }
-    var topChromeMaskBottomPx by remember { mutableIntStateOf(-1) }
+    var persistTick by remember(chatScopeId) { mutableIntStateOf(0) }
+    var chatRootWidthPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var chatRootHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var messageViewportWidthPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var messageViewportHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var chatRootLeftPx by remember(chatScopeId) { mutableStateOf(0f) }
+    var chatRootTopPx by remember(chatScopeId) { mutableStateOf(0f) }
+    var messageViewportLeftPx by remember(chatScopeId) { mutableStateOf(0f) }
+    var messageViewportTopPx by remember(chatScopeId) { mutableStateOf(0f) }
+    var composerTopInViewportPx by remember(chatScopeId) { mutableIntStateOf(-1) }
+    var topChromeMaskBottomPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
@@ -1835,7 +1835,7 @@ fun ChatScreen() {
     var pendingMessageSelectionToolbarState by remember(chatScopeId) {
         mutableStateOf<PendingMessageSelectionToolbarState?>(null)
     }
-    var messageSelectionResetEpoch by remember { mutableIntStateOf(0) }
+    var messageSelectionResetEpoch by remember(chatScopeId) { mutableIntStateOf(0) }
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
 
@@ -2073,14 +2073,32 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(chatScopeId) {
+        fakeStreamJob?.cancel()
+        fakeStreamJob = null
+        streamRevealJob?.cancel()
+        streamRevealJob = null
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
+        SessionApi.cancelCurrentStream()
+        QwenClient.cancelCurrentRequest()
+        pendingStartAnchorMessageId = null
+        pendingStartAnchorRequestId = 0
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
         clearInputSelectionToolbar()
         LaunchUiGate.chatReady = false
+    }
+
+    DisposableEffect(chatScopeId) {
+        onDispose {
+            fakeStreamJob?.cancel()
+            streamRevealJob?.cancel()
+            remoteRecoveryJob?.cancel()
+            SessionApi.cancelCurrentStream()
+            QwenClient.cancelCurrentRequest()
+        }
     }
 
     fun showComposerStatusHint(text: String) {
