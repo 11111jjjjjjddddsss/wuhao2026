@@ -248,6 +248,17 @@ internal fun ChatRecyclerViewHost(
 
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
+                    val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
+                        recyclerView = recyclerView,
+                        layoutManager = layoutManager,
+                        pendingStartAnchorPosition = pendingStartAnchorPosition,
+                        pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
+                        pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
+                    )
+                    layoutManager.scrollToPositionWithOffset(
+                        pendingStartAnchorPosition,
+                        targetTopOffset
+                    )
                     val viewTreeObserver = recyclerView.viewTreeObserver
                     if (!viewTreeObserver.isAlive) {
                         activeStartAnchorRequestId.intValue = 0
@@ -271,13 +282,6 @@ internal fun ChatRecyclerViewHost(
                                 activeStartAnchorRequestId.intValue = 0
                                 return true
                             }
-                            val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
-                                recyclerView = recyclerView,
-                                layoutManager = layoutManager,
-                                pendingStartAnchorPosition = pendingStartAnchorPosition,
-                                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
-                                pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
-                            )
                             if (anchorView.top != targetTopOffset && remainingAlignmentRetries > 0) {
                                 remainingAlignmentRetries -= 1
                                 scheduleStartAnchorAlignment()
