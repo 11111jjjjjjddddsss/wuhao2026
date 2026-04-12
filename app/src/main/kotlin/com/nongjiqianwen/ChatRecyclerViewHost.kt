@@ -258,7 +258,7 @@ internal fun ChatRecyclerViewHost(
 
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
-                    setStartAnchorLayoutSuppressed(false)
+                    setStartAnchorLayoutSuppressed(true)
                     val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                         recyclerView = recyclerView,
                         layoutManager = layoutManager,
@@ -309,6 +309,7 @@ internal fun ChatRecyclerViewHost(
                         }
                     }
                     viewTreeObserver.addOnPreDrawListener(listener)
+                    setStartAnchorLayoutSuppressed(false)
                 }
 
                 setStartAnchorLayoutSuppressed(true)
