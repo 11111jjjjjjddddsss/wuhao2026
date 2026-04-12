@@ -1488,14 +1488,19 @@ fun ChatScreen() {
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,
         bottomBarHeightPx,
+        composerTopInViewportPx,
         streamVisibleBottomGapPx
     ) {
         derivedStateOf {
-            (
-                messageViewportHeightPx -
-                    bottomBarHeightPx -
-                    streamVisibleBottomGapPx
-                ).coerceAtLeast(0)
+            if (composerTopInViewportPx > 0) {
+                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+            } else {
+                (
+                    messageViewportHeightPx -
+                        bottomBarHeightPx -
+                        streamVisibleBottomGapPx
+                    ).coerceAtLeast(0)
+            }
         }
     }
     fun currentStreamingContentBottomPx(): Int {
@@ -1708,18 +1713,27 @@ fun ChatScreen() {
     )
     val streamingExtraReservedHeightPx = 0
     val bottomContentReservedHeightPx by remember(
+        messageViewportHeightPx,
+        composerTopInViewportPx,
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
         streamingExtraReservedHeightPx
     ) {
         derivedStateOf {
-            resolveBottomContentReservedHeightPx(
+            val measuredComposerReservedHeightPx =
+                if (messageViewportHeightPx > 0 && composerTopInViewportPx > 0) {
+                    (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
+                } else {
+                    -1
+                }
+            val fallbackReservedHeightPx = resolveBottomContentReservedHeightPx(
                 overlayVisible = composerCollapseOverlayVisible,
                 overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
                 effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
                 extraReservedHeightPx = streamingExtraReservedHeightPx
             )
+            measuredComposerReservedHeightPx.takeIf { it >= 0 } ?: fallbackReservedHeightPx
         }
     }
     val recyclerBottomPaddingPx by remember(
@@ -2824,7 +2838,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        var releaseSendUiSettlingInFinally = true
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2872,7 +2885,7 @@ fun ChatScreen() {
                 streamingMessageId = assistantId
                 pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
-                releaseSendUiSettlingInFinally = false
+                sendUiSettling = false
                 persistTick++
                 snackbarScope.launch {
                     context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
@@ -2917,9 +2930,7 @@ fun ChatScreen() {
                     launchLocalFakeStream(applyInitialDelay = true)
                 }
             } finally {
-                if (releaseSendUiSettlingInFinally) {
-                    sendUiSettling = false
-                }
+                sendUiSettling = false
             }
         }
     }
@@ -3359,7 +3370,6 @@ fun ChatScreen() {
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
-                            sendUiSettling = false
                         },
                         modifier = Modifier
                             .then(
