@@ -25,6 +25,7 @@ internal class ChatRecyclerComposeAdapter(
 
     init {
         setHasStableIds(true)
+        stateRestorationPolicy = RecyclerView.Adapter.StateRestorationPolicy.PREVENT
     }
 
     fun submitIds(newIds: List<String>) {
