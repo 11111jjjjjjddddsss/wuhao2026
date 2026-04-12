@@ -272,6 +272,7 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 64.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
+private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
@@ -1477,7 +1478,12 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
-    val sendStartItemVerticalPaddingPx = with(density) { 16.dp.roundToPx() }
+    val sendStartItemVerticalPaddingPx = with(density) { (CHAT_MESSAGE_ITEM_VERTICAL_PADDING * 2).roundToPx() }
+    val sendStartItemBottomPaddingPx = with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
+    val sendStartWaitingShellExtraHeightPx = with(density) {
+        ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT.roundToPx()
+    }
+    val sendStartVisibleBottomInsetPx = sendStartItemBottomPaddingPx + (sendStartWaitingShellExtraHeightPx / 2)
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -3365,7 +3371,11 @@ fun ChatScreen() {
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         pendingStartAnchorTargetBottomPx = streamingWorklineBottomPx,
-                        pendingStartAnchorEstimatedHeightPx = assistantLineStepPx + sendStartItemVerticalPaddingPx,
+                        pendingStartAnchorEstimatedHeightPx =
+                            assistantLineStepPx +
+                                sendStartItemVerticalPaddingPx +
+                                sendStartWaitingShellExtraHeightPx,
+                        pendingStartAnchorVisibleBottomInsetPx = sendStartVisibleBottomInsetPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
@@ -3453,7 +3463,10 @@ fun ChatScreen() {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
+                                .padding(
+                                    horizontal = listHorizontalPadding,
+                                    vertical = CHAT_MESSAGE_ITEM_VERTICAL_PADDING
+                                )
                                 .then(
                                     if (
                                         hasActiveMessageSelection &&

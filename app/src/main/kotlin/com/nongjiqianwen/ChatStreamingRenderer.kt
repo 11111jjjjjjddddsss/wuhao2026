@@ -79,7 +79,7 @@ internal enum class StreamingRevealMode {
     Conservative
 }
 
-private val ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT = 16.dp
+internal val ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT = 16.dp
 
 internal data class ChatStreamingRuntimeState(
     val isStreaming: MutableState<Boolean>,
