@@ -767,7 +767,6 @@ internal fun ChatStreamingRenderer(
     selectionEnabled: Boolean,
     showDisclaimer: Boolean,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)?,
-    startAnchorReserveHeight: Dp = 0.dp,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -785,7 +784,6 @@ internal fun ChatStreamingRenderer(
         selectionEnabled = selectionEnabled,
         showDisclaimer = showDisclaimer,
         onStreamingContentBoundsChanged = onStreamingContentBoundsChanged,
-        startAnchorReserveHeight = startAnchorReserveHeight,
         expandToFullWidth = expandToFullWidth,
         modifier = modifier
     )
@@ -805,7 +803,6 @@ private fun RendererAssistantMessageContentImpl(
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
-    startAnchorReserveHeight: Dp = 0.dp,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -823,9 +820,8 @@ private fun RendererAssistantMessageContentImpl(
         val hostModifier = if (expandToFullWidth) {
             modifier
                 .fillMaxWidth()
-                .heightIn(min = startAnchorReserveHeight)
         } else {
-            modifier.heightIn(min = startAnchorReserveHeight)
+            modifier
         }
         Box(
             modifier = hostModifier,

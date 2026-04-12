@@ -180,7 +180,7 @@ Clean-State 必做回归的范围：
 - 工作线和静态贴底线必须共用同一个物理锚点，优先使用真实 `composerTopInViewportPx`
 - `RecyclerView` 已关闭 `stackFromEnd`
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
-- 发送起步允许在同一个 assistant 宿主内保留临时承接高度，但真实底边仍只认真实可见内容
+- 发送起步不再靠 assistant 宿主内部 `minHeight` 预留抬高，起步高度只认 `ChatRecyclerViewHost` 的外层锚点
 - 发送起步期间允许冻结发送当拍的 bottom padding，避免 IME / composer 回落把文本区重新拖低
 - 如果发送起步会暴露一帧坏帧，允许先隐藏“本轮用户消息 + assistant 起步宿主”
 - 如果旧历史列表仍会在整表重排时露出轻微挪动，允许短时冻结整个 `RecyclerView` 视觉快照，等起步定位与 reveal 稳定后再硬切释放

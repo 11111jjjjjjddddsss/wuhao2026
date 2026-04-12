@@ -3513,22 +3513,6 @@ fun ChatScreen() {
                                                         isStreaming -> StreamingRenderMode.Streaming
                                                         else -> StreamingRenderMode.Settled
                                                     }
-                                                    val startAnchorReserveHeight =
-                                                        if (
-                                                            isActiveStreamingAssistant &&
-                                                            (
-                                                                pendingStartAnchorMessageId != null ||
-                                                                    scrollRuntime.sendStartAnchorActive.value ||
-                                                                    (
-                                                                        scrollMode == ScrollMode.Idle &&
-                                                                            !isStreamingReadyForAutoFollow()
-                                                                        )
-                                                                )
-                                                        ) {
-                                                            SEND_START_ANCHOR_LIFT
-                                                        } else {
-                                                            0.dp
-                                                        }
                                                     ChatStreamingRenderer(
                                                         content = assistantDisplayContent,
                                                         renderMode = renderMode,
@@ -3541,7 +3525,6 @@ fun ChatScreen() {
                                                         streamingLineAdvanceTick = streamingLineAdvanceTick,
                                                         selectionEnabled = !isStreaming,
                                                         showDisclaimer = true,
-                                                        startAnchorReserveHeight = startAnchorReserveHeight,
                                                         onStreamingContentBoundsChanged = { bounds ->
                                                             if (bounds != null) {
                                                                 messageContentBoundsById[msg.id] = bounds
