@@ -1466,6 +1466,7 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var pendingStartAnchorNeedsFirstContentRealign by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -2084,6 +2085,7 @@ fun ChatScreen() {
         QwenClient.resetUiRuntimeForCleanState()
         pendingStartAnchorMessageId = null
         pendingStartAnchorRequestId = 0
+        pendingStartAnchorNeedsFirstContentRealign = false
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
@@ -2508,6 +2510,10 @@ fun ChatScreen() {
             assistantIdProvider = ::assistantMessageIdForSourceUser,
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
+                val shouldRealignStartAnchorForFirstContent =
+                    pendingStartAnchorNeedsFirstContentRealign &&
+                        streamingMessageContent.isBlank() &&
+                        advance.content.isNotBlank()
                 streamingMessageId = advance.messageId
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
@@ -2515,6 +2521,11 @@ fun ChatScreen() {
                 streamingFreshEnd = advance.freshEnd
                 streamingFreshTick = advance.freshTick
                 lastStreamingFreshRevealMs = advance.lastFreshRevealMs
+                if (shouldRealignStartAnchorForFirstContent) {
+                    pendingStartAnchorMessageId = advance.messageId
+                    pendingStartAnchorRequestId += 1
+                    pendingStartAnchorNeedsFirstContentRealign = false
+                }
             },
             onTick = { }
         )
@@ -2586,6 +2597,7 @@ fun ChatScreen() {
             fakeStreamJob = null
             isStreaming = false
             pendingStartAnchorMessageId = null
+            pendingStartAnchorNeedsFirstContentRealign = false
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2720,6 +2732,7 @@ fun ChatScreen() {
             streamRevealJob = null
             isStreaming = false
             pendingStartAnchorMessageId = null
+            pendingStartAnchorNeedsFirstContentRealign = false
             streamingMessageId = null
             streamingMessageContent = ""
             streamingRevealBuffer = ""
@@ -2877,6 +2890,7 @@ fun ChatScreen() {
                 streamingMessageId = assistantId
                 pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
+                pendingStartAnchorNeedsFirstContentRealign = true
                 releaseSendUiSettlingInFinally = false
                 persistTick++
                 snackbarScope.launch {
@@ -3047,6 +3061,7 @@ fun ChatScreen() {
             streamingRevealBuffer = ""
             isStreaming = false
             pendingStartAnchorMessageId = null
+            pendingStartAnchorNeedsFirstContentRealign = false
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
