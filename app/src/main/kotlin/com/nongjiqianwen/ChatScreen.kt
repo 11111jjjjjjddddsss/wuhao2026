@@ -1363,7 +1363,7 @@ fun ChatScreen() {
         )
     }
     val view = LocalView.current
-    val chatScopeId = remember { IdManager.getUserId() }
+    val chatScopeId = IdManager.getUserId()
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
     val initialStreamingDraft = remember(chatScopeId, hasRemoteHistorySource) {
         if (hasRemoteHistorySource) {
@@ -3332,6 +3332,7 @@ fun ChatScreen() {
                     LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
                 ) {
                     ChatRecyclerViewHost(
+                        stateResetKey = chatScopeId,
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,

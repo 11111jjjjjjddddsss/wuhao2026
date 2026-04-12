@@ -42,16 +42,16 @@ internal fun rememberChatScrollRuntimeState(
     startupBottomBarHeightEstimatePx: Int,
     startupInputChromeRowHeightEstimatePx: Int
 ): ChatScrollRuntimeState {
-    val scrollMode = remember { mutableStateOf(ScrollMode.Idle) }
-    val userInteracting = remember { mutableStateOf(false) }
-    val programmaticScroll = remember { mutableStateOf(false) }
-    val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
-    val streamBottomFollowActive = remember { mutableStateOf(false) }
+    val scrollMode = remember(chatScopeId) { mutableStateOf(ScrollMode.Idle) }
+    val userInteracting = remember(chatScopeId) { mutableStateOf(false) }
+    val programmaticScroll = remember(chatScopeId) { mutableStateOf(false) }
+    val streamingContentBottomPx = remember(chatScopeId) { mutableIntStateOf(-1) }
+    val streamBottomFollowActive = remember(chatScopeId) { mutableStateOf(false) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
-    val jumpButtonPulseVisible = remember { mutableStateOf(false) }
-    val pendingFinalBottomSnap = remember { mutableStateOf(false) }
-    val suppressJumpButtonForImeTransition = remember { mutableStateOf(false) }
-    val suppressJumpButtonForLifecycleResume = remember { mutableStateOf(false) }
+    val jumpButtonPulseVisible = remember(chatScopeId) { mutableStateOf(false) }
+    val pendingFinalBottomSnap = remember(chatScopeId) { mutableStateOf(false) }
+    val suppressJumpButtonForImeTransition = remember(chatScopeId) { mutableStateOf(false) }
+    val suppressJumpButtonForLifecycleResume = remember(chatScopeId) { mutableStateOf(false) }
     val bottomBarHeightPx = remember(chatScopeId, startupBottomBarHeightEstimatePx) {
         mutableIntStateOf(startupBottomBarHeightEstimatePx)
     }

@@ -100,6 +100,7 @@ private fun resolvePendingStartAnchorTargetTopPx(
 @Composable
 internal fun ChatRecyclerViewHost(
     modifier: Modifier = Modifier,
+    stateResetKey: String,
     itemIds: List<String>,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
@@ -114,9 +115,9 @@ internal fun ChatRecyclerViewHost(
     itemContent: @Composable (String) -> Unit
 ) {
     val adapter = remember(itemContent) { ChatRecyclerComposeAdapter(itemContent) }
-    val lastAppliedStartAnchorRequestId = remember { mutableIntStateOf(0) }
-    val activeStartAnchorRequestId = remember { mutableIntStateOf(0) }
-    val startAnchorLayoutSuppressed = remember { mutableStateOf(false) }
+    val lastAppliedStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
+    val activeStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
+    val startAnchorLayoutSuppressed = remember(stateResetKey) { mutableStateOf(false) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -148,8 +149,9 @@ internal fun ChatRecyclerViewHost(
         update = { recyclerView ->
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             fun setStartAnchorLayoutSuppressed(suppressed: Boolean) {
-                if (startAnchorLayoutSuppressed.value == suppressed) return
-                recyclerView.suppressLayout(suppressed)
+                if (startAnchorLayoutSuppressed.value != suppressed || !suppressed) {
+                    recyclerView.suppressLayout(suppressed)
+                }
                 startAnchorLayoutSuppressed.value = suppressed
             }
 
