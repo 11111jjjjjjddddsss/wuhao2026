@@ -824,43 +824,31 @@ private fun RendererAssistantMessageContentImpl(
             modifier
         }
         Box(
-            modifier = hostModifier,
+            modifier = hostModifier.then(boundsReportingModifier),
             contentAlignment = Alignment.TopStart
         ) {
-            if (showWaitingBall || content.isBlank()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Box(
-                    modifier = Modifier
-                        .then(boundsReportingModifier)
-                        .fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    RendererAssistantStreamingWaitingIndicatorImpl(
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .then(boundsReportingModifier)
-                        .fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
+                    if (showWaitingBall || content.isBlank()) {
+                        RendererAssistantStreamingWaitingIndicatorImpl(
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            RendererAssistantStreamingContentImpl(
-                                content = content,
-                                streamingFreshStart = streamingFreshStart,
-                                streamingFreshEnd = streamingFreshEnd,
-                                streamingFreshTick = streamingFreshTick,
-                                streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                strictLineReveal = strictLineReveal,
-                                lineRevealLocked = lineRevealLocked,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
+                        )
+                    } else {
+                        RendererAssistantStreamingContentImpl(
+                            content = content,
+                            streamingFreshStart = streamingFreshStart,
+                            streamingFreshEnd = streamingFreshEnd,
+                            streamingFreshTick = streamingFreshTick,
+                            streamingLineAdvanceTick = streamingLineAdvanceTick,
+                            strictLineReveal = strictLineReveal,
+                            lineRevealLocked = lineRevealLocked,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
             }
