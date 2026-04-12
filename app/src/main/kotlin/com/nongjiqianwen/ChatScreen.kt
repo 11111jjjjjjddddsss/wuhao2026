@@ -1544,7 +1544,10 @@ fun ChatScreen() {
         if (worklineBottom <= 0) return atBottom
         val contentBottom = currentStreamingContentBottomPx()
         if (contentBottom <= 0) return false
-        return contentBottom >= (worklineBottom - bottomPositionTolerancePx)
+        val deltaPx = contentBottom - worklineBottom
+        val lowerTolerancePx = bottomPositionTolerancePx
+        val upperTolerancePx = assistantLineStepPx.coerceAtLeast(bottomPositionTolerancePx)
+        return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
 
     fun isStreamingReadyForAutoFollow(): Boolean {
@@ -3142,7 +3145,6 @@ fun ChatScreen() {
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-        resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
         sendStartAnchorActiveState = scrollRuntime.sendStartAnchorActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
@@ -3409,8 +3411,6 @@ fun ChatScreen() {
                                 scrollModeState = scrollRuntime.scrollMode,
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-                                isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         },
@@ -3420,9 +3420,7 @@ fun ChatScreen() {
                                 dy = dy,
                                 programmaticScroll = programmaticScroll,
                                 isStreaming = isStreaming,
-                                scrollMode = scrollMode,
-                                isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed
+                                scrollMode = scrollMode
                             )
                         }
                     ) { itemId ->
