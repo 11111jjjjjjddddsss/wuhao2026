@@ -80,14 +80,15 @@ private fun resolvePendingStartAnchorTargetTopPx(
     recyclerView: RecyclerView,
     layoutManager: LinearLayoutManager,
     pendingStartAnchorPosition: Int,
-    pendingStartAnchorTargetBottomPx: Int
+    pendingStartAnchorTargetBottomPx: Int,
+    pendingStartAnchorEstimatedHeightPx: Int
 ): Int {
     val viewportTopPx = recyclerView.paddingTop
     val anchorHeightPx =
         layoutManager.findViewByPosition(pendingStartAnchorPosition)
             ?.height
             ?.takeIf { it > 0 }
-            ?: 0
+            ?: pendingStartAnchorEstimatedHeightPx.coerceAtLeast(0)
     val targetBottomPx =
         pendingStartAnchorTargetBottomPx.takeIf { it > 0 }
             ?: (recyclerView.height - recyclerView.paddingBottom)
@@ -102,6 +103,7 @@ internal fun ChatRecyclerViewHost(
     topPaddingPx: Int,
     bottomPaddingPx: Int,
     pendingStartAnchorTargetBottomPx: Int,
+    pendingStartAnchorEstimatedHeightPx: Int,
     pendingStartAnchorMessageId: String?,
     pendingStartAnchorRequestId: Int,
     onPendingStartAnchorHandled: () -> Unit,
@@ -229,7 +231,8 @@ internal fun ChatRecyclerViewHost(
                                 recyclerView = recyclerView,
                                 layoutManager = layoutManager,
                                 pendingStartAnchorPosition = pendingStartAnchorPosition,
-                                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx
+                                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
+                                pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
                             )
                             if (!isRevealStable(targetTopOffset) && remainingRevealValidationFrames > 0) {
                                 remainingRevealValidationFrames -= 1
@@ -245,16 +248,6 @@ internal fun ChatRecyclerViewHost(
 
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
-                    val initialTargetTopOffset = resolvePendingStartAnchorTargetTopPx(
-                        recyclerView = recyclerView,
-                        layoutManager = layoutManager,
-                        pendingStartAnchorPosition = pendingStartAnchorPosition,
-                        pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx
-                    )
-                    layoutManager.scrollToPositionWithOffset(
-                        pendingStartAnchorPosition,
-                        initialTargetTopOffset
-                    )
                     val viewTreeObserver = recyclerView.viewTreeObserver
                     if (!viewTreeObserver.isAlive) {
                         activeStartAnchorRequestId.intValue = 0
@@ -282,7 +275,8 @@ internal fun ChatRecyclerViewHost(
                                 recyclerView = recyclerView,
                                 layoutManager = layoutManager,
                                 pendingStartAnchorPosition = pendingStartAnchorPosition,
-                                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx
+                                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
+                                pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
                             )
                             if (anchorView.top != targetTopOffset && remainingAlignmentRetries > 0) {
                                 remainingAlignmentRetries -= 1
@@ -318,6 +312,17 @@ internal fun ChatRecyclerViewHost(
 
                         override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) = consume()
                 }
+                val initialTargetTopOffset = resolvePendingStartAnchorTargetTopPx(
+                    recyclerView = recyclerView,
+                    layoutManager = layoutManager,
+                    pendingStartAnchorPosition = pendingStartAnchorPosition,
+                    pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
+                    pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
+                )
+                layoutManager.scrollToPositionWithOffset(
+                    pendingStartAnchorPosition,
+                    initialTargetTopOffset
+                )
                 adapter.registerAdapterDataObserver(dataObserver)
                 adapter.submitIds(itemIds)
                 if (!observerConsumed) {

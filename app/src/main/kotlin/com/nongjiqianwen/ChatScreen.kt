@@ -3335,6 +3335,7 @@ fun ChatScreen() {
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         pendingStartAnchorTargetBottomPx = streamingWorklineBottomPx,
+                        pendingStartAnchorEstimatedHeightPx = assistantLineStepPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
