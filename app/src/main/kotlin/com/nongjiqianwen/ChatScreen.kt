@@ -2836,6 +2836,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
+        frozenSendStartBottomPaddingPx = recyclerBottomPaddingPx
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {

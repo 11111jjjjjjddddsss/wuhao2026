@@ -182,6 +182,9 @@ internal fun ChatRecyclerViewHost(
                 var observerConsumed = false
                 var remainingAlignmentRetries = 2
                 var remainingRevealValidationFrames = 3
+                var lastObservedAnchorTop = Int.MIN_VALUE
+                var lastObservedPrecedingBottom = Int.MIN_VALUE
+                var stableGeometryFrames = 0
 
                 fun finishStartAnchorHandling() {
                     clearStartAnchorSnapshot()
@@ -202,7 +205,27 @@ internal fun ChatRecyclerViewHost(
                     val precedingItemReady =
                         pendingStartAnchorPosition <= 0 ||
                             (precedingView != null && precedingView.height > 0)
-                    return anchorSettled && precedingItemReady
+                    if (!anchorSettled || !precedingItemReady || anchorView == null) {
+                        stableGeometryFrames = 0
+                        lastObservedAnchorTop = Int.MIN_VALUE
+                        lastObservedPrecedingBottom = Int.MIN_VALUE
+                        return false
+                    }
+                    val currentAnchorTop = anchorView.top
+                    val currentPrecedingBottom =
+                        precedingView?.bottom ?: Int.MIN_VALUE
+                    stableGeometryFrames =
+                        if (
+                            currentAnchorTop == lastObservedAnchorTop &&
+                            currentPrecedingBottom == lastObservedPrecedingBottom
+                        ) {
+                            stableGeometryFrames + 1
+                        } else {
+                            1
+                        }
+                    lastObservedAnchorTop = currentAnchorTop
+                    lastObservedPrecedingBottom = currentPrecedingBottom
+                    return stableGeometryFrames >= 2
                 }
 
                 fun scheduleRevealValidation() {
