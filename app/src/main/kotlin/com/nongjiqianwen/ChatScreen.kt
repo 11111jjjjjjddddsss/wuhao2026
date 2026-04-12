@@ -1458,7 +1458,6 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
-    var frozenRecyclerBottomPaddingPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1731,12 +1730,10 @@ fun ChatScreen() {
     }
     val recyclerBottomPaddingPx by remember(
         bottomContentReservedHeightPx,
-        streamVisibleBottomGapPx,
-        frozenRecyclerBottomPaddingPx
+        streamVisibleBottomGapPx
     ) {
         derivedStateOf {
-            frozenRecyclerBottomPaddingPx.takeIf { it >= 0 }
-                ?: (bottomContentReservedHeightPx + streamVisibleBottomGapPx)
+            bottomContentReservedHeightPx + streamVisibleBottomGapPx
         }
     }
     val jumpButtonBottomPadding = with(density) {
@@ -2766,9 +2763,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        if (frozenRecyclerBottomPaddingPx < 0) {
-            frozenRecyclerBottomPaddingPx = recyclerBottomPaddingPx
-        }
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2806,7 +2800,6 @@ fun ChatScreen() {
                 showComposerStatusHint("当前网络不可用")
             } finally {
                 sendUiSettling = false
-                frozenRecyclerBottomPaddingPx = -1
             }
         }
     }
@@ -2817,9 +2810,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        if (frozenRecyclerBottomPaddingPx < 0) {
-            frozenRecyclerBottomPaddingPx = recyclerBottomPaddingPx
-        }
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2913,9 +2903,6 @@ fun ChatScreen() {
                 }
             } finally {
                 sendUiSettling = false
-                if (pendingStartAnchorMessageId == null) {
-                    frozenRecyclerBottomPaddingPx = -1
-                }
             }
         }
     }
@@ -3354,7 +3341,6 @@ fun ChatScreen() {
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
-                            frozenRecyclerBottomPaddingPx = -1
                         },
                         modifier = Modifier
                             .then(
