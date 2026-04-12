@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import android.graphics.drawable.BitmapDrawable
+import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import androidx.compose.runtime.Composable
@@ -16,6 +17,11 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.abs
+
+private data class StartAnchorSnapshotHandle(
+    val hostView: View,
+    val drawable: BitmapDrawable
+)
 
 internal class ChatRecyclerComposeAdapter(
     private val itemContent: @Composable (String) -> Unit
@@ -118,7 +124,7 @@ internal fun ChatRecyclerViewHost(
     val adapter = remember(itemContent) { ChatRecyclerComposeAdapter(itemContent) }
     val lastAppliedStartAnchorRequestId = remember { mutableIntStateOf(0) }
     val activeStartAnchorRequestId = remember { mutableIntStateOf(0) }
-    val activeStartAnchorSnapshot = remember { mutableStateOf<BitmapDrawable?>(null) }
+    val activeStartAnchorSnapshot = remember { mutableStateOf<StartAnchorSnapshotHandle?>(null) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -151,7 +157,7 @@ internal fun ChatRecyclerViewHost(
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
             fun clearStartAnchorSnapshot() {
                 val snapshot = activeStartAnchorSnapshot.value ?: return
-                recyclerView.overlay.remove(snapshot)
+                snapshot.hostView.overlay.remove(snapshot.drawable)
                 activeStartAnchorSnapshot.value = null
             }
 
@@ -165,11 +171,21 @@ internal fun ChatRecyclerViewHost(
                     return
                 }
                 val snapshotBitmap = runCatching { recyclerView.drawToBitmap() }.getOrNull() ?: return
+                val overlayHost = recyclerView.rootView ?: recyclerView
+                val recyclerLocation = IntArray(2)
+                val hostLocation = IntArray(2)
+                recyclerView.getLocationOnScreen(recyclerLocation)
+                overlayHost.getLocationOnScreen(hostLocation)
+                val left = recyclerLocation[0] - hostLocation[0]
+                val top = recyclerLocation[1] - hostLocation[1]
                 val snapshotDrawable = BitmapDrawable(recyclerView.resources, snapshotBitmap).apply {
-                    setBounds(0, 0, recyclerView.width, recyclerView.height)
+                    setBounds(left, top, left + recyclerView.width, top + recyclerView.height)
                 }
-                recyclerView.overlay.add(snapshotDrawable)
-                activeStartAnchorSnapshot.value = snapshotDrawable
+                overlayHost.overlay.add(snapshotDrawable)
+                activeStartAnchorSnapshot.value = StartAnchorSnapshotHandle(
+                    hostView = overlayHost,
+                    drawable = snapshotDrawable
+                )
             }
 
             if (
