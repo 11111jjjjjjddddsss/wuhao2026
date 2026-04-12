@@ -347,6 +347,7 @@ internal fun BindRecyclerChatScrollEffects(
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
+    resumeAutoFollowArmedState: MutableState<Boolean>,
     sendStartAnchorActiveState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     initialBottomSnapDoneState: MutableState<Boolean>,
@@ -372,6 +373,7 @@ internal fun BindRecyclerChatScrollEffects(
         streamingMessageContent,
         scrollMode,
         userInteracting,
+        resumeAutoFollowArmedState.value,
         recyclerScrollInProgress,
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx()
@@ -384,17 +386,27 @@ internal fun BindRecyclerChatScrollEffects(
             withFrameNanos { }
             val activeScrollMode = scrollModeState.value
             val contentBottom = currentStreamingContentBottomPx()
-            if (
-                activeScrollMode == ScrollMode.UserBrowsing ||
-                recyclerScrollInProgress ||
-                userInteractingState.value
-            ) {
+            if (activeScrollMode == ScrollMode.UserBrowsing) {
+                if (
+                    !recyclerScrollInProgress &&
+                    !userInteractingState.value &&
+                    resumeAutoFollowArmedState.value &&
+                    isStreamingReadyForAutoFollow()
+                ) {
+                    scrollModeState.value = ScrollMode.AutoFollow
+                    resumeAutoFollowArmedState.value = false
+                    continue
+                }
                 streamBottomFollowActiveState.value = false
-                return@LaunchedEffect
+                continue
+            }
+            if (recyclerScrollInProgress || userInteractingState.value) {
+                streamBottomFollowActiveState.value = false
+                continue
             }
             if (contentBottom <= 0) {
                 streamBottomFollowActiveState.value = false
-                return@LaunchedEffect
+                continue
             }
             if (activeScrollMode == ScrollMode.Idle) {
                 if (streamingMessageContent.isBlank()) {
@@ -425,7 +437,7 @@ internal fun BindRecyclerChatScrollEffects(
             }
             if (streamingMessageContent.isBlank() || activeScrollMode != ScrollMode.AutoFollow) {
                 streamBottomFollowActiveState.value = false
-                return@LaunchedEffect
+                continue
             }
             val overflow = currentStreamingOverflowDelta()
             val stepPx = resolveStreamingFollowStepPx(overflow)

@@ -3135,6 +3135,7 @@ fun ChatScreen() {
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+        resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
         sendStartAnchorActiveState = scrollRuntime.sendStartAnchorActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
