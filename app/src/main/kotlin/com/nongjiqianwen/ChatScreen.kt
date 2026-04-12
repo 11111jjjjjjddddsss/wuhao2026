@@ -271,7 +271,6 @@ internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 64.dp
-private val SEND_START_ANCHOR_LIFT = 280.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
@@ -1471,7 +1470,6 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
-    val pendingStartAnchorLiftPx = with(density) { SEND_START_ANCHOR_LIFT.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -1761,21 +1759,6 @@ fun ChatScreen() {
             } else {
                 recyclerBottomPaddingPx
             }
-        }
-    }
-    val earlyStreamingBottomClampActive by remember(
-        isStreaming,
-        hasStreamingItem,
-        pendingStartAnchorMessageId,
-        scrollRuntime.sendStartAnchorActive.value
-    ) {
-        derivedStateOf {
-            isStreaming &&
-                hasStreamingItem &&
-                (
-                    pendingStartAnchorMessageId != null ||
-                        scrollRuntime.sendStartAnchorActive.value
-                    )
         }
     }
     val jumpButtonBottomPadding = with(density) {
@@ -3388,10 +3371,8 @@ fun ChatScreen() {
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = effectiveRecyclerBottomPaddingPx,
-                        earlyStreamingBottomClampActive = earlyStreamingBottomClampActive,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
-                        pendingStartAnchorLiftPx = pendingStartAnchorLiftPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
                             scrollRuntime.sendStartAnchorActive.value = true

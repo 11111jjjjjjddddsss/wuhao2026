@@ -151,8 +151,8 @@ Clean-State 必做回归的范围：
 1. 发送起步
 - 主人：[ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)
 - 做法：新消息插入后，在首帧预绘制前一次性 `scrollToPositionWithOffset(...)`
-- 当前锚点：assistant 起步宿主顶边
-- 当前目标：以 `280dp` 为基础上抬，再按本轮用户消息真实已布局高度做动态上抬，并钳在中部偏上的可视区间内
+- 当前锚点：assistant 起步宿主真实底边
+- 当前目标：assistant 起步宿主真实底边直接贴工作线，不再单独上抬到中部
 
 2. 起步保护期
 - 主人：`sendStartAnchorActive`
@@ -180,10 +180,9 @@ Clean-State 必做回归的范围：
 - 工作线和静态贴底线必须共用同一个物理锚点，优先使用真实 `composerTopInViewportPx`
 - `RecyclerView` 已关闭 `stackFromEnd`
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
-- 发送起步不再靠 assistant 宿主内部 `minHeight` 预留抬高，起步高度只认 `ChatRecyclerViewHost` 的外层锚点
-- 发送起步外层锚点不再写死同一个落点，而是以本轮用户消息真实已布局高度做动态修正，让“用户消息 + waiting 小球”整体落在中部偏上的稳定区间
+- 发送起步不再靠 assistant 宿主内部 `minHeight` 预留抬高
+- 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步期间允许冻结发送当拍的 bottom padding，避免 IME / composer 回落把文本区重新拖低
-- 发送起步到首次碰工作线前，允许在 `ChatRecyclerViewHost` 的 `LayoutManager.scrollVerticallyBy(...)` 里只裁剪“继续向下扒拉”的增量，不允许在 `onScrolled` 里事后反向纠偏
 - 如果发送起步会暴露一帧坏帧，允许先隐藏“本轮用户消息 + assistant 起步宿主”
 - 如果旧历史列表仍会在整表重排时露出轻微挪动，允许短时冻结整个 `RecyclerView` 视觉快照，等起步定位与 reveal 稳定后再硬切释放
 - 上述隐藏、快照冻结都只是在遮坏帧，不属于新增第二条滚动链
