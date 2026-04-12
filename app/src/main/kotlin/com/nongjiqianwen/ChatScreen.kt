@@ -1763,6 +1763,21 @@ fun ChatScreen() {
             }
         }
     }
+    val earlyStreamingBottomClampActive by remember(
+        isStreaming,
+        hasStreamingItem,
+        pendingStartAnchorMessageId,
+        scrollRuntime.sendStartAnchorActive.value
+    ) {
+        derivedStateOf {
+            isStreaming &&
+                hasStreamingItem &&
+                (
+                    pendingStartAnchorMessageId != null ||
+                        scrollRuntime.sendStartAnchorActive.value
+                    )
+        }
+    }
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
@@ -3373,6 +3388,7 @@ fun ChatScreen() {
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = effectiveRecyclerBottomPaddingPx,
+                        earlyStreamingBottomClampActive = earlyStreamingBottomClampActive,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         pendingStartAnchorLiftPx = pendingStartAnchorLiftPx,

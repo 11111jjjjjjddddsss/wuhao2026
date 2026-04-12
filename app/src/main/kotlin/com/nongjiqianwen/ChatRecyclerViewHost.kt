@@ -17,6 +17,47 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.abs
 
+private class ChatRecyclerLinearLayoutManager(
+    context: android.content.Context
+) : LinearLayoutManager(context) {
+
+    private var earlyStreamingBottomClampActive = false
+    private var earlyStreamingMaxScrollOffsetPx: Int? = null
+
+    fun setEarlyStreamingBottomClampActive(active: Boolean) {
+        earlyStreamingBottomClampActive = active
+        if (!active) {
+            earlyStreamingMaxScrollOffsetPx = null
+        }
+    }
+
+    fun captureEarlyStreamingBottomClampOffset(recyclerView: RecyclerView) {
+        earlyStreamingMaxScrollOffsetPx = recyclerView.computeVerticalScrollOffset()
+    }
+
+    override fun scrollVerticallyBy(
+        dy: Int,
+        recycler: RecyclerView.Recycler,
+        state: RecyclerView.State
+    ): Int {
+        val maxScrollOffsetPx = earlyStreamingMaxScrollOffsetPx
+        val clampedDy =
+            if (
+                earlyStreamingBottomClampActive &&
+                dy > 0 &&
+                maxScrollOffsetPx != null
+            ) {
+                val currentScrollOffsetPx =
+                    super.computeVerticalScrollOffset(state).coerceAtLeast(0)
+                val remainingScrollPx = (maxScrollOffsetPx - currentScrollOffsetPx).coerceAtLeast(0)
+                dy.coerceAtMost(remainingScrollPx)
+            } else {
+                dy
+            }
+        return super.scrollVerticallyBy(clampedDy, recycler, state)
+    }
+}
+
 internal class ChatRecyclerComposeAdapter(
     private val itemContent: @Composable (String) -> Unit
 ) : RecyclerView.Adapter<ChatRecyclerComposeAdapter.ComposeMessageViewHolder>() {
@@ -117,6 +158,7 @@ internal fun ChatRecyclerViewHost(
     itemIds: List<String>,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
+    earlyStreamingBottomClampActive: Boolean,
     pendingStartAnchorMessageId: String?,
     pendingStartAnchorRequestId: Int,
     pendingStartAnchorLiftPx: Int,
@@ -133,7 +175,7 @@ internal fun ChatRecyclerViewHost(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            val layoutManager = LinearLayoutManager(context).apply {
+            val layoutManager = ChatRecyclerLinearLayoutManager(context).apply {
                 stackFromEnd = false
             }
             RecyclerView(context).apply {
@@ -159,7 +201,8 @@ internal fun ChatRecyclerViewHost(
             }
         },
         update = { recyclerView ->
-            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
+            val layoutManager =
+                recyclerView.layoutManager as? ChatRecyclerLinearLayoutManager ?: return@AndroidView
             fun clearStartAnchorSnapshot() {
                 val snapshot = activeStartAnchorSnapshot.value ?: return
                 recyclerView.overlay.remove(snapshot)
@@ -189,6 +232,7 @@ internal fun ChatRecyclerViewHost(
             ) {
                 recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
             }
+            layoutManager.setEarlyStreamingBottomClampActive(earlyStreamingBottomClampActive)
             val pendingStartAnchorPosition =
                 pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 } ?: -1
             if (pendingStartAnchorRequestId <= 0 || pendingStartAnchorPosition < 0) {
@@ -212,6 +256,7 @@ internal fun ChatRecyclerViewHost(
 
                 fun finishStartAnchorHandling() {
                     clearStartAnchorSnapshot()
+                    layoutManager.captureEarlyStreamingBottomClampOffset(recyclerView)
                     activeStartAnchorRequestId.intValue = 0
                     lastAppliedStartAnchorRequestId.intValue = requestId
                     onPendingStartAnchorHandled()

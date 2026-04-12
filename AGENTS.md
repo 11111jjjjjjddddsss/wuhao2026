@@ -183,6 +183,7 @@ Clean-State 必做回归的范围：
 - 发送起步不再靠 assistant 宿主内部 `minHeight` 预留抬高，起步高度只认 `ChatRecyclerViewHost` 的外层锚点
 - 发送起步外层锚点不再写死同一个落点，而是以本轮用户消息真实已布局高度做动态修正，让“用户消息 + waiting 小球”整体落在中部偏上的稳定区间
 - 发送起步期间允许冻结发送当拍的 bottom padding，避免 IME / composer 回落把文本区重新拖低
+- 发送起步到首次碰工作线前，允许在 `ChatRecyclerViewHost` 的 `LayoutManager.scrollVerticallyBy(...)` 里只裁剪“继续向下扒拉”的增量，不允许在 `onScrolled` 里事后反向纠偏
 - 如果发送起步会暴露一帧坏帧，允许先隐藏“本轮用户消息 + assistant 起步宿主”
 - 如果旧历史列表仍会在整表重排时露出轻微挪动，允许短时冻结整个 `RecyclerView` 视觉快照，等起步定位与 reveal 稳定后再硬切释放
 - 上述隐藏、快照冻结都只是在遮坏帧，不属于新增第二条滚动链
