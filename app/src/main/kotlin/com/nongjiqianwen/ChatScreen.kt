@@ -1458,8 +1458,7 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
-    var sendStartViewportCompensationActive by remember(chatScopeId) { mutableStateOf(false) }
-    var sendStartViewportHeightSnapshotPx by remember(chatScopeId) { mutableIntStateOf(0) }
+    var frozenRecyclerBottomPaddingPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1534,35 +1533,6 @@ fun ChatScreen() {
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= bottomPositionTolerancePx
-    }
-    fun armSendStartViewportCompensation() {
-        sendStartViewportCompensationActive = true
-        sendStartViewportHeightSnapshotPx = messageViewportHeightPx
-    }
-    fun releaseSendStartViewportCompensation() {
-        sendStartViewportCompensationActive = false
-        sendStartViewportHeightSnapshotPx = messageViewportHeightPx
-    }
-    fun compensateSendStartViewportHeightChange(newHeightPx: Int) {
-        val previousHeightPx = sendStartViewportHeightSnapshotPx
-        sendStartViewportHeightSnapshotPx = newHeightPx
-        if (!sendStartViewportCompensationActive) return
-        if (previousHeightPx <= 0 || newHeightPx <= 0) return
-        val deltaPx = previousHeightPx - newHeightPx
-        if (deltaPx == 0) return
-        if (scrollMode != ScrollMode.Idle) return
-        if (programmaticScroll || scrollRuntime.userInteracting.value) return
-        val recyclerView = recyclerViewRef ?: return
-        scrollRuntime.programmaticScroll.value = true
-        try {
-            recyclerView.scrollBy(0, deltaPx)
-        } finally {
-            scrollRuntime.programmaticScroll.value = false
-            val metrics = readRecyclerMetrics(recyclerView)
-            recyclerScrollInProgress = metrics.scrollInProgress
-            recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
-            recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
-        }
     }
     val atBottom by remember(bottomPositionTolerancePx) {
         derivedStateOf { isWithinBottomTolerance() }
@@ -1761,10 +1731,12 @@ fun ChatScreen() {
     }
     val recyclerBottomPaddingPx by remember(
         bottomContentReservedHeightPx,
-        streamVisibleBottomGapPx
+        streamVisibleBottomGapPx,
+        frozenRecyclerBottomPaddingPx
     ) {
         derivedStateOf {
-            bottomContentReservedHeightPx + streamVisibleBottomGapPx
+            frozenRecyclerBottomPaddingPx.takeIf { it >= 0 }
+                ?: (bottomContentReservedHeightPx + streamVisibleBottomGapPx)
         }
     }
     val jumpButtonBottomPadding = with(density) {
@@ -2367,7 +2339,6 @@ fun ChatScreen() {
             isStreaming = false
             streamingMessageId = null
             pendingStartAnchorMessageId = null
-            releaseSendStartViewportCompensation()
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2505,11 +2476,6 @@ fun ChatScreen() {
             focusManager.clearFocus(force = true)
         }
     }
-    LaunchedEffect(sendUiSettling, pendingStartAnchorMessageId) {
-        if (!sendUiSettling && pendingStartAnchorMessageId == null) {
-            releaseSendStartViewportCompensation()
-        }
-    }
 
     val ensureStreamingRevealJob = {
         com.nongjiqianwen.ensureStreamingRevealJob(
@@ -2604,7 +2570,6 @@ fun ChatScreen() {
             fakeStreamJob = null
             isStreaming = false
             pendingStartAnchorMessageId = null
-            releaseSendStartViewportCompensation()
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2739,7 +2704,6 @@ fun ChatScreen() {
             streamRevealJob = null
             isStreaming = false
             pendingStartAnchorMessageId = null
-            releaseSendStartViewportCompensation()
             streamingMessageId = null
             streamingMessageContent = ""
             streamingRevealBuffer = ""
@@ -2802,6 +2766,9 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
+        if (frozenRecyclerBottomPaddingPx < 0) {
+            frozenRecyclerBottomPaddingPx = recyclerBottomPaddingPx
+        }
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2839,7 +2806,7 @@ fun ChatScreen() {
                 showComposerStatusHint("当前网络不可用")
             } finally {
                 sendUiSettling = false
-                releaseSendStartViewportCompensation()
+                frozenRecyclerBottomPaddingPx = -1
             }
         }
     }
@@ -2850,7 +2817,9 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        armSendStartViewportCompensation()
+        if (frozenRecyclerBottomPaddingPx < 0) {
+            frozenRecyclerBottomPaddingPx = recyclerBottomPaddingPx
+        }
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2945,7 +2914,7 @@ fun ChatScreen() {
             } finally {
                 sendUiSettling = false
                 if (pendingStartAnchorMessageId == null) {
-                    releaseSendStartViewportCompensation()
+                    frozenRecyclerBottomPaddingPx = -1
                 }
             }
         }
@@ -3069,7 +3038,6 @@ fun ChatScreen() {
             streamingRevealBuffer = ""
             isStreaming = false
             pendingStartAnchorMessageId = null
-            releaseSendStartViewportCompensation()
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -3361,7 +3329,6 @@ fun ChatScreen() {
                         }
                     }
                     .onSizeChanged {
-                        compensateSendStartViewportHeightChange(it.height)
                         messageViewportWidthPx = it.width
                         messageViewportHeightPx = it.height
                         if (it.width > 0 && it.height > 0) {
@@ -3387,7 +3354,7 @@ fun ChatScreen() {
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
-                            releaseSendStartViewportCompensation()
+                            frozenRecyclerBottomPaddingPx = -1
                         },
                         modifier = Modifier
                             .then(

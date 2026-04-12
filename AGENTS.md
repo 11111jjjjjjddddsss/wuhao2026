@@ -178,10 +178,10 @@ Clean-State 必做回归的范围：
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
-- 发送起步不再冻结 `recyclerBottomPaddingPx`；改为仅在发送起步窗口内按 `messageViewportHeightPx` 的变化量做一次视口高度差补偿
+- 发送起步允许短时冻结 `recyclerBottomPaddingPx`，只为锁住历史文本区视口高度，待起步锚点稳定后立即释放
 - 发送起步不再用 alpha 隐藏“本轮用户消息 + assistant 起步宿主”
 - 发送起步不再冻结整个 `RecyclerView` 视觉快照
-- `suppressLayout()` 只负责挡住发送起步的列表中间帧；发送期若外层视口高度变化，只允许由发送起步窗口内的高度差补偿处理，不能做成常驻全局补偿链
+- `suppressLayout()` 作为发送起步唯一挡帧手段：`submitIds(...)`、定位、稳定验证全部完成后才释放，不允许把中间态画出去
 - 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
 
 当前排查顺序：
