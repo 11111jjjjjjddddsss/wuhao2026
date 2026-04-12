@@ -2073,6 +2073,7 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(chatScopeId) {
+        mainHandler.removeCallbacksAndMessages(null)
         fakeStreamJob?.cancel()
         fakeStreamJob = null
         streamRevealJob?.cancel()
@@ -2080,8 +2081,8 @@ fun ChatScreen() {
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
-        SessionApi.cancelCurrentStream()
-        QwenClient.cancelCurrentRequest()
+        SessionApi.resetUiRuntimeForCleanState()
+        QwenClient.resetUiRuntimeForCleanState()
         pendingStartAnchorMessageId = null
         pendingStartAnchorRequestId = 0
         initialBottomSnapDone = false
@@ -2093,11 +2094,12 @@ fun ChatScreen() {
 
     DisposableEffect(chatScopeId) {
         onDispose {
+            mainHandler.removeCallbacksAndMessages(null)
             fakeStreamJob?.cancel()
             streamRevealJob?.cancel()
             remoteRecoveryJob?.cancel()
-            SessionApi.cancelCurrentStream()
-            QwenClient.cancelCurrentRequest()
+            SessionApi.resetUiRuntimeForCleanState()
+            QwenClient.resetUiRuntimeForCleanState()
         }
     }
 

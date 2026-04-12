@@ -14,6 +14,7 @@ import java.net.SocketTimeoutException
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -44,6 +45,7 @@ object QwenClient {
     private val clientMsgIdByStreamId = ConcurrentHashMap<String, String>()
     private val canceledFlag = AtomicBoolean(false)
     private val streamingRunnableRef = AtomicReference<Runnable?>(null)
+    private val runtimeGeneration = AtomicInteger(0)
     private val gson = Gson()
     private val apiKey = BuildConfig.API_KEY
     private val apiUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
@@ -89,6 +91,17 @@ object QwenClient {
         if (BuildConfig.DEBUG && oldRequestId != null) {
             Log.d(TAG, "requestId=$oldRequestId canceled")
         }
+    }
+
+    fun resetUiRuntimeForCleanState() {
+        runtimeGeneration.incrementAndGet()
+        canceledFlag.set(true)
+        streamingRunnableRef.getAndSet(null)?.let { handler.removeCallbacks(it) }
+        handler.removeCallbacksAndMessages(null)
+        currentRequestId.set(null)
+        currentCall.getAndSet(null)?.cancel()
+        clientMsgIdByStreamId.clear()
+        isFirstRequest = true
     }
 
     /** 本地假流式：首段立刻吐，余下分批 postDelayed；取消或 phaseEnded 时停止。 */
@@ -199,7 +212,10 @@ object QwenClient {
                 lastDispatchMs = System.currentTimeMillis()
                 out
             }
-            handler.post { onChunk(text) }
+            handler.post {
+                if (isCanceled()) return@post
+                onChunk(text)
+            }
         }
 
         fun appendChunk(piece: String) {
@@ -211,13 +227,17 @@ object QwenClient {
                     val out = pending.toString()
                     pending.setLength(0)
                     lastDispatchMs = System.currentTimeMillis()
-                    handler.post { onChunk(out) }
+                    handler.post {
+                        if (isCanceled()) return@post
+                        onChunk(out)
+                    }
                     return
                 }
                 if (!flushScheduled) {
                     flushScheduled = true
                     val delay = (SSE_CHUNK_THROTTLE_MS - elapsed).coerceAtLeast(1L)
                     handler.postDelayed({
+                        if (isCanceled()) return@postDelayed
                         val out: String? = synchronized(pendingLock) {
                             flushScheduled = false
                             if (pending.isEmpty()) {
@@ -229,7 +249,7 @@ object QwenClient {
                                 text
                             }
                         }
-                        if (!out.isNullOrEmpty()) onChunk(out)
+                        if (!out.isNullOrEmpty() && !isCanceled()) onChunk(out)
                     }, delay)
                 }
             }
@@ -403,6 +423,8 @@ object QwenClient {
         onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null
     ) {
         val model = MODEL_MAIN
+        val requestGeneration = runtimeGeneration.get()
+        fun isRuntimeStale(): Boolean = requestGeneration != runtimeGeneration.get()
         val effectiveClientMsgId = resolveClientMsgId(streamId, requestId)
         val startMs = System.currentTimeMillis()
         if (BuildConfig.DEBUG) {
@@ -410,7 +432,12 @@ object QwenClient {
         }
         val completed = AtomicBoolean(false)
         val fireComplete: () -> Unit = {
-            if (completed.compareAndSet(false, true)) handler.post { onComplete?.invoke() }
+            if (completed.compareAndSet(false, true)) {
+                handler.post {
+                    if (isRuntimeStale()) return@post
+                    onComplete?.invoke()
+                }
+            }
         }
         canceledFlag.set(false)
         Thread {
@@ -420,6 +447,7 @@ object QwenClient {
             val inLen = userMessage.length
             val imgCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
             try {
+                if (isRuntimeStale()) return@Thread
                 if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
                 if (imgCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
 
@@ -462,7 +490,7 @@ object QwenClient {
                         streamResult = readMainDialogueStreamOrFallback(
                             response = response,
                             onChunk = onChunk,
-                            isCanceled = { canceledFlag.get() || phaseEnded.get() || call?.isCanceled() == true },
+                            isCanceled = { canceledFlag.get() || phaseEnded.get() || call?.isCanceled() == true || isRuntimeStale() },
                             onTimeoutCancel = { call?.cancel() }
                         )
                     } else {
@@ -474,12 +502,26 @@ object QwenClient {
 
                 if (code != 200) {
                     Log.e(TAG, "callApi HTTP error status=$code")
-                    handleErrorResponse(userId, requestId, streamId, code, body, inLen, imgCount, outputCharCount, onInterrupted, fireComplete, onInterruptedResumable)
+                    handleErrorResponse(
+                        userId,
+                        requestId,
+                        streamId,
+                        code,
+                        body,
+                        inLen,
+                        imgCount,
+                        outputCharCount,
+                        onInterrupted,
+                        fireComplete,
+                        onInterruptedResumable,
+                        shouldDeliver = { !isRuntimeStale() }
+                    )
                     return@Thread
                 }
 
                 outputCharCount = streamResult.fullText.length
                 handler.post {
+                    if (isRuntimeStale()) return@post
                     if (phaseEnded.get()) return@post
                     when {
                         streamResult.interruptedByCancel -> {
@@ -496,7 +538,8 @@ object QwenClient {
                         }
                         streamResult.fullText.trim().isNotBlank() -> {
                             val contentFallback = streamResult.fullText.trim()
-                            emitFakeStream(contentFallback, onChunk, { canceledFlag.get() || phaseEnded.get() }, {
+                            emitFakeStream(contentFallback, onChunk, { canceledFlag.get() || phaseEnded.get() || isRuntimeStale() }, {
+                                if (isRuntimeStale()) return@emitFakeStream
                                 if (!phaseEnded.compareAndSet(false, true)) return@emitFakeStream
                                 fireComplete()
                             })
@@ -518,6 +561,7 @@ object QwenClient {
                 if (isCanceled) {
                     Log.w(TAG, "callApi canceled, elapsed=${elapsed}ms")
                     handler.post {
+                        if (isRuntimeStale()) return@post
                         if (!phaseEnded.compareAndSet(false, true)) return@post
                         if (onInterruptedResumable != null) onInterruptedResumable(streamId, "canceled")
                         else {
@@ -528,6 +572,7 @@ object QwenClient {
                 } else if (isInterrupted) {
                     Log.w(TAG, "callApi timeout, elapsed=${elapsed}ms")
                     handler.post {
+                        if (isRuntimeStale()) return@post
                         if (!phaseEnded.compareAndSet(false, true)) return@post
                         if (onInterruptedResumable != null) onInterruptedResumable(streamId, "timeout")
                         else {
@@ -538,6 +583,7 @@ object QwenClient {
                 } else if (e is IOException) {
                     Log.e(TAG, "callApi network error, elapsed=${elapsed}ms", e)
                     handler.post {
+                        if (isRuntimeStale()) return@post
                         if (!phaseEnded.compareAndSet(false, true)) return@post
                         if (onInterruptedResumable != null) onInterruptedResumable(streamId, "network")
                         else {
@@ -548,6 +594,7 @@ object QwenClient {
                 } else {
                     Log.e(TAG, "callApi error, elapsed=${elapsed}ms", e)
                     handler.post {
+                        if (isRuntimeStale()) return@post
                         if (!phaseEnded.compareAndSet(false, true)) return@post
                         if (onInterruptedResumable != null) onInterruptedResumable(streamId, "error")
                         else {
@@ -563,7 +610,7 @@ object QwenClient {
             }
         }.start()
     }
-    private fun handleErrorResponse(userId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit, onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null) {
+    private fun handleErrorResponse(userId: String, requestId: String, streamId: String, statusCode: Int, responseBody: String, inLen: Int, imgCount: Int, outputCharCount: Int, onInterrupted: (reason: String) -> Unit, fireComplete: () -> Unit, onInterruptedResumable: ((streamId: String, reason: String) -> Unit)? = null, shouldDeliver: () -> Boolean = { true }) {
         var reason = "server"
         try {
             val jsonResponse = gson.fromJson(responseBody, JsonObject::class.java)
@@ -586,6 +633,7 @@ object QwenClient {
             }
         }
         handler.post {
+            if (!shouldDeliver()) return@post
             if (onInterruptedResumable != null) onInterruptedResumable(streamId, reason) else { onInterrupted(reason); fireComplete() }
         }
     }

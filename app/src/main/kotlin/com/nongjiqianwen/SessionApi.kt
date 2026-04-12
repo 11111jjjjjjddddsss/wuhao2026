@@ -15,6 +15,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -32,6 +33,7 @@ object SessionApi {
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
     private val currentStreamCall = AtomicReference<Call?>(null)
+    private val runtimeGeneration = AtomicInteger(0)
 
     data class StreamOptions(
         val clientMsgId: String,
@@ -50,6 +52,12 @@ object SessionApi {
     fun hasBackendConfigured(): Boolean = baseUrl().isNotEmpty()
 
     fun cancelCurrentStream() {
+        currentStreamCall.getAndSet(null)?.cancel()
+    }
+
+    fun resetUiRuntimeForCleanState() {
+        runtimeGeneration.incrementAndGet()
+        mainHandler.removeCallbacksAndMessages(null)
         currentStreamCall.getAndSet(null)?.cancel()
     }
 
@@ -129,6 +137,8 @@ object SessionApi {
     }
 
     fun getSnapshot(onResult: (SessionSnapshot?) -> Unit) {
+        val requestGeneration = runtimeGeneration.get()
+        fun isRuntimeStale(): Boolean = requestGeneration != runtimeGeneration.get()
         if (!BuildConfig.USE_BACKEND_AB) {
             onResult(null)
             return
@@ -139,6 +149,7 @@ object SessionApi {
             return
         }
         fun attempt(networkRetry: Int) {
+            if (isRuntimeStale()) return
             enqueueWithRetry401(
                 requestFactory = { token ->
                     val builder = applyIdentityHeaders(
@@ -151,6 +162,9 @@ object SessionApi {
                 },
                 onResult = { response ->
                     response.use {
+                        if (isRuntimeStale()) {
+                            return@use
+                        }
                         if (!it.isSuccessful) {
                             onResult(null)
                             return@use
@@ -186,9 +200,13 @@ object SessionApi {
                     }
                 },
                 onFailure = { error ->
+                    if (isRuntimeStale()) return@enqueueWithRetry401
                     if (networkRetry < SNAPSHOT_NETWORK_RETRY_MAX) {
                         val retryDelayMs = 300L * (networkRetry + 1)
-                        mainHandler.postDelayed({ attempt(networkRetry + 1) }, retryDelayMs)
+                        mainHandler.postDelayed({
+                            if (isRuntimeStale()) return@postDelayed
+                            attempt(networkRetry + 1)
+                        }, retryDelayMs)
                     } else {
                         Log.w(TAG, "getSnapshot failed", error)
                         onResult(null)
@@ -313,9 +331,20 @@ object SessionApi {
         onComplete: () -> Unit,
         onInterrupted: (String) -> Unit
     ) {
+        val requestGeneration = runtimeGeneration.get()
+        fun isRuntimeStale(): Boolean = requestGeneration != runtimeGeneration.get()
+        fun deliverChunk(piece: String) {
+            if (!isRuntimeStale()) onChunk(piece)
+        }
+        fun deliverComplete() {
+            if (!isRuntimeStale()) onComplete()
+        }
+        fun deliverInterrupted(reason: String) {
+            if (!isRuntimeStale()) onInterrupted(reason)
+        }
         val base = baseUrl()
         if (base.isEmpty()) {
-            onInterrupted("server")
+            deliverInterrupted("server")
             return
         }
         val body = gson.toJson(
@@ -343,32 +372,37 @@ object SessionApi {
         var deliveredAnyChunk = false
 
         fun start(hasRetried: Boolean, networkRetry: Int) {
+            if (isRuntimeStale()) return
             ensureAuthToken { token ->
+                if (isRuntimeStale()) return@ensureAuthToken
                 val request = buildRequest(token)
                 val call = client.newCall(request)
                 currentStreamCall.set(call)
                 call.enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
                         currentStreamCall.compareAndSet(call, null)
+                        if (isRuntimeStale()) return
                         if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
                             val retryDelayMs = 350L * (networkRetry + 1)
                             mainHandler.postDelayed({
+                                if (isRuntimeStale()) return@postDelayed
                                 start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
                             }, retryDelayMs)
                             return
                         }
                         val reason = if (call.isCanceled()) "canceled" else "network"
-                        onInterrupted(reason)
+                        deliverInterrupted(reason)
                     }
 
                     override fun onResponse(call: Call, response: Response) {
                         currentStreamCall.compareAndSet(call, null)
                         response.use { res ->
+                            if (isRuntimeStale()) return@use
                             if (res.code == 401) {
                                 if (!hasRetried) {
                                     start(hasRetried = true, networkRetry = networkRetry)
                                 } else {
-                                    onInterrupted("auth")
+                                    deliverInterrupted("auth")
                                 }
                                 return
                             }
@@ -376,6 +410,7 @@ object SessionApi {
                                 if (!deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX && (res.code == 502 || res.code == 503 || res.code == 504)) {
                                     val retryDelayMs = 350L * (networkRetry + 1)
                                     mainHandler.postDelayed({
+                                        if (isRuntimeStale()) return@postDelayed
                                         start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
                                     }, retryDelayMs)
                                     return
@@ -386,7 +421,7 @@ object SessionApi {
                                     402 -> "quota"
                                     else -> "server"
                                 }
-                                onInterrupted(reason)
+                                deliverInterrupted(reason)
                                 return
                             }
                             val contentType = res.header("Content-Type").orEmpty().lowercase()
@@ -397,20 +432,21 @@ object SessionApi {
                                 } catch (_: Exception) {
                                     false
                                 }
-                                onInterrupted(if (replay) "replay" else "server")
+                                deliverInterrupted(if (replay) "replay" else "server")
                                 return
                             }
 
                             val source = res.body?.source()
                             if (source == null) {
-                                onInterrupted("server")
+                                deliverInterrupted("server")
                                 return
                             }
 
                             try {
                                 while (!source.exhausted()) {
+                                    if (isRuntimeStale()) return
                                     if (call.isCanceled()) {
-                                        onInterrupted("canceled")
+                                        deliverInterrupted("canceled")
                                         return
                                     }
                                     val line = source.readUtf8Line() ?: continue
@@ -419,7 +455,7 @@ object SessionApi {
                                     if (!normalized.startsWith("data:")) continue
                                     val data = normalized.removePrefix("data:").trimStart()
                                     if (data == "[DONE]") {
-                                        onComplete()
+                                        deliverComplete()
                                         return
                                     }
                                     try {
@@ -440,22 +476,24 @@ object SessionApi {
                                                     ?.takeIf { it.isNotEmpty() }
                                         if (!piece.isNullOrEmpty()) {
                                             deliveredAnyChunk = true
-                                            onChunk(piece)
+                                            deliverChunk(piece)
                                         }
                                     } catch (_: Exception) {
                                         // skip malformed chunk and continue
                                     }
                                 }
-                                onInterrupted("server")
+                                deliverInterrupted("server")
                             } catch (_: Exception) {
+                                if (isRuntimeStale()) return
                                 if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
                                     val retryDelayMs = 350L * (networkRetry + 1)
                                     mainHandler.postDelayed({
+                                        if (isRuntimeStale()) return@postDelayed
                                         start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
                                     }, retryDelayMs)
                                     return
                                 }
-                                onInterrupted(if (call.isCanceled()) "canceled" else "server")
+                                deliverInterrupted(if (call.isCanceled()) "canceled" else "server")
                             }
                         }
                     }
