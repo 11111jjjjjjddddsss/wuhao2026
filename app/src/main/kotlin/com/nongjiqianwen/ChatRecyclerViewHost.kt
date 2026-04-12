@@ -178,6 +178,10 @@ internal fun ChatRecyclerViewHost(
                 if (pendingStartAnchorRequestId <= 0 || pendingStartAnchorPosition < 0) {
                     activeStartAnchorRequestId.intValue = 0
                     setStartAnchorLayoutSuppressed(false)
+                    if (pendingStartAnchorRequestId > 0 && pendingStartAnchorPosition < 0) {
+                        lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
+                        onPendingStartAnchorHandled()
+                    }
                 }
                 val shouldApplyPendingStartAnchor =
                     pendingStartAnchorRequestId > 0 &&
@@ -240,8 +244,7 @@ internal fun ChatRecyclerViewHost(
                         setStartAnchorLayoutSuppressed(true)
                         val viewTreeObserver = recyclerView.viewTreeObserver
                         if (!viewTreeObserver.isAlive) {
-                            setStartAnchorLayoutSuppressed(false)
-                            activeStartAnchorRequestId.intValue = 0
+                            finishStartAnchorHandling()
                             return
                         }
                         val listener = object : ViewTreeObserver.OnPreDrawListener {
@@ -259,8 +262,7 @@ internal fun ChatRecyclerViewHost(
                                         scheduleStartAnchorAlignment()
                                         return false
                                     }
-                                    setStartAnchorLayoutSuppressed(false)
-                                    activeStartAnchorRequestId.intValue = 0
+                                    finishStartAnchorHandling()
                                     return true
                                 }
                                 val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
