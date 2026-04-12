@@ -1,7 +1,5 @@
 package com.nongjiqianwen
 
-import android.graphics.drawable.BitmapDrawable
-import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import androidx.compose.runtime.Composable
@@ -12,16 +10,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.view.drawToBitmap
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import kotlin.math.abs
-
-private data class StartAnchorSnapshotHandle(
-    val hostView: View,
-    val drawable: BitmapDrawable
-)
 
 internal class ChatRecyclerComposeAdapter(
     private val itemContent: @Composable (String) -> Unit
@@ -124,7 +116,7 @@ internal fun ChatRecyclerViewHost(
     val adapter = remember(itemContent) { ChatRecyclerComposeAdapter(itemContent) }
     val lastAppliedStartAnchorRequestId = remember { mutableIntStateOf(0) }
     val activeStartAnchorRequestId = remember { mutableIntStateOf(0) }
-    val activeStartAnchorSnapshot = remember { mutableStateOf<StartAnchorSnapshotHandle?>(null) }
+    val startAnchorLayoutSuppressed = remember { mutableStateOf(false) }
     AndroidView(
         modifier = modifier,
         factory = { context ->
@@ -155,37 +147,10 @@ internal fun ChatRecyclerViewHost(
         },
         update = { recyclerView ->
             val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
-            fun clearStartAnchorSnapshot() {
-                val snapshot = activeStartAnchorSnapshot.value ?: return
-                snapshot.hostView.overlay.remove(snapshot.drawable)
-                activeStartAnchorSnapshot.value = null
-            }
-
-            fun freezeRecyclerVisualSnapshot() {
-                clearStartAnchorSnapshot()
-                if (
-                    recyclerView.width <= 0 ||
-                    recyclerView.height <= 0 ||
-                    recyclerView.childCount == 0
-                ) {
-                    return
-                }
-                val snapshotBitmap = runCatching { recyclerView.drawToBitmap() }.getOrNull() ?: return
-                val overlayHost = recyclerView.rootView ?: recyclerView
-                val recyclerLocation = IntArray(2)
-                val hostLocation = IntArray(2)
-                recyclerView.getLocationOnScreen(recyclerLocation)
-                overlayHost.getLocationOnScreen(hostLocation)
-                val left = recyclerLocation[0] - hostLocation[0]
-                val top = recyclerLocation[1] - hostLocation[1]
-                val snapshotDrawable = BitmapDrawable(recyclerView.resources, snapshotBitmap).apply {
-                    setBounds(left, top, left + recyclerView.width, top + recyclerView.height)
-                }
-                overlayHost.overlay.add(snapshotDrawable)
-                activeStartAnchorSnapshot.value = StartAnchorSnapshotHandle(
-                    hostView = overlayHost,
-                    drawable = snapshotDrawable
-                )
+            fun setStartAnchorLayoutSuppressed(suppressed: Boolean) {
+                if (startAnchorLayoutSuppressed.value == suppressed) return
+                recyclerView.suppressLayout(suppressed)
+                startAnchorLayoutSuppressed.value = suppressed
             }
 
             if (
@@ -198,7 +163,7 @@ internal fun ChatRecyclerViewHost(
                 pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 } ?: -1
             if (pendingStartAnchorRequestId <= 0 || pendingStartAnchorPosition < 0) {
                 activeStartAnchorRequestId.intValue = 0
-                clearStartAnchorSnapshot()
+                setStartAnchorLayoutSuppressed(false)
             }
             val shouldApplyPendingStartAnchor =
                 pendingStartAnchorRequestId > 0 &&
@@ -216,7 +181,7 @@ internal fun ChatRecyclerViewHost(
                 var stableGeometryFrames = 0
 
                 fun finishStartAnchorHandling() {
-                    clearStartAnchorSnapshot()
+                    setStartAnchorLayoutSuppressed(false)
                     activeStartAnchorRequestId.intValue = 0
                     lastAppliedStartAnchorRequestId.intValue = requestId
                     onPendingStartAnchorHandled()
@@ -293,6 +258,7 @@ internal fun ChatRecyclerViewHost(
 
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
+                    setStartAnchorLayoutSuppressed(false)
                     val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                         recyclerView = recyclerView,
                         layoutManager = layoutManager,
@@ -306,7 +272,7 @@ internal fun ChatRecyclerViewHost(
                     )
                     val viewTreeObserver = recyclerView.viewTreeObserver
                     if (!viewTreeObserver.isAlive) {
-                        clearStartAnchorSnapshot()
+                        setStartAnchorLayoutSuppressed(false)
                         activeStartAnchorRequestId.intValue = 0
                         return
                     }
@@ -325,7 +291,7 @@ internal fun ChatRecyclerViewHost(
                                     scheduleStartAnchorAlignment()
                                     return false
                                 }
-                                clearStartAnchorSnapshot()
+                                setStartAnchorLayoutSuppressed(false)
                                 activeStartAnchorRequestId.intValue = 0
                                 return true
                             }
@@ -345,7 +311,7 @@ internal fun ChatRecyclerViewHost(
                     viewTreeObserver.addOnPreDrawListener(listener)
                 }
 
-                freezeRecyclerVisualSnapshot()
+                setStartAnchorLayoutSuppressed(true)
                 val dataObserver = object : RecyclerView.AdapterDataObserver() {
                     private fun consume() {
                         if (observerConsumed) return
@@ -362,19 +328,8 @@ internal fun ChatRecyclerViewHost(
 
                     override fun onItemRangeChanged(positionStart: Int, itemCount: Int, payload: Any?) = consume()
 
-                        override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) = consume()
+                    override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) = consume()
                 }
-                val initialTargetTopOffset = resolvePendingStartAnchorTargetTopPx(
-                    recyclerView = recyclerView,
-                    layoutManager = layoutManager,
-                    pendingStartAnchorPosition = pendingStartAnchorPosition,
-                    pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
-                    pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
-                )
-                layoutManager.scrollToPositionWithOffset(
-                    pendingStartAnchorPosition,
-                    initialTargetTopOffset
-                )
                 adapter.registerAdapterDataObserver(dataObserver)
                 adapter.submitIds(itemIds)
                 if (!observerConsumed) {
@@ -383,7 +338,7 @@ internal fun ChatRecyclerViewHost(
                 }
             } else {
                 if (activeStartAnchorRequestId.intValue == 0) {
-                    clearStartAnchorSnapshot()
+                    setStartAnchorLayoutSuppressed(false)
                 }
                 adapter.submitIds(itemIds)
             }

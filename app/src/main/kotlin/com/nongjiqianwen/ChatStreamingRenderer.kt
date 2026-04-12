@@ -79,6 +79,8 @@ internal enum class StreamingRevealMode {
     Conservative
 }
 
+private val ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT = 16.dp
+
 internal data class ChatStreamingRuntimeState(
     val isStreaming: MutableState<Boolean>,
     val streamingMessageId: MutableState<String?>,
@@ -899,15 +901,22 @@ private fun RendererAssistantMessageContentImpl(
 private fun RendererAssistantStreamingWaitingIndicatorImpl(modifier: Modifier = Modifier) {
     val density = LocalDensity.current
     val lineHeight = with(density) {
-        assistantParagraphTextStyle().lineHeight.toDp()
+        assistantStreamingParagraphTextStyle().lineHeight.toDp()
     }
+    val waitingShellMinHeight = lineHeight + ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT
     Box(
-        modifier = modifier
-            .height(lineHeight)
-            .padding(start = GPT_BALL_START_PADDING),
+        modifier = modifier.heightIn(min = waitingShellMinHeight),
         contentAlignment = Alignment.CenterStart
     ) {
-        RendererGPTBreathingBallImpl()
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(lineHeight)
+                .padding(start = GPT_BALL_START_PADDING),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            RendererGPTBreathingBallImpl()
+        }
     }
 }
 
