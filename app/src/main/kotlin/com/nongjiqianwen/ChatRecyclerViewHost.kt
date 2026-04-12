@@ -22,17 +22,22 @@ private class ChatRecyclerLinearLayoutManager(
 ) : LinearLayoutManager(context) {
 
     private var earlyStreamingBottomClampActive = false
-    private var earlyStreamingMaxScrollOffsetPx: Int? = null
+    private var earlyStreamingMinLastItemBottomPx: Int? = null
 
     fun setEarlyStreamingBottomClampActive(active: Boolean) {
         earlyStreamingBottomClampActive = active
         if (!active) {
-            earlyStreamingMaxScrollOffsetPx = null
+            earlyStreamingMinLastItemBottomPx = null
         }
     }
 
-    fun captureEarlyStreamingBottomClampOffset(recyclerView: RecyclerView) {
-        earlyStreamingMaxScrollOffsetPx = recyclerView.computeVerticalScrollOffset()
+    fun captureEarlyStreamingBottomClampBaseline() {
+        val lastItemBottomPx =
+            findViewByPosition(itemCount - 1)
+                ?.bottom
+                ?.takeIf { it > 0 }
+                ?: return
+        earlyStreamingMinLastItemBottomPx = lastItemBottomPx
     }
 
     override fun scrollVerticallyBy(
@@ -40,17 +45,21 @@ private class ChatRecyclerLinearLayoutManager(
         recycler: RecyclerView.Recycler,
         state: RecyclerView.State
     ): Int {
-        val maxScrollOffsetPx = earlyStreamingMaxScrollOffsetPx
+        val minLastItemBottomPx = earlyStreamingMinLastItemBottomPx
         val clampedDy =
             if (
                 earlyStreamingBottomClampActive &&
                 dy > 0 &&
-                maxScrollOffsetPx != null
+                minLastItemBottomPx != null
             ) {
-                val currentScrollOffsetPx =
-                    super.computeVerticalScrollOffset(state).coerceAtLeast(0)
-                val remainingScrollPx = (maxScrollOffsetPx - currentScrollOffsetPx).coerceAtLeast(0)
-                dy.coerceAtMost(remainingScrollPx)
+                val currentLastItemBottomPx =
+                    findViewByPosition(itemCount - 1)
+                        ?.bottom
+                        ?.takeIf { it > 0 }
+                        ?: return super.scrollVerticallyBy(dy, recycler, state)
+                val maxExtraDownwardScrollPx =
+                    (currentLastItemBottomPx - minLastItemBottomPx).coerceAtLeast(0)
+                dy.coerceAtMost(maxExtraDownwardScrollPx)
             } else {
                 dy
             }
@@ -256,7 +265,7 @@ internal fun ChatRecyclerViewHost(
 
                 fun finishStartAnchorHandling() {
                     clearStartAnchorSnapshot()
-                    layoutManager.captureEarlyStreamingBottomClampOffset(recyclerView)
+                    layoutManager.captureEarlyStreamingBottomClampBaseline()
                     activeStartAnchorRequestId.intValue = 0
                     lastAppliedStartAnchorRequestId.intValue = requestId
                     onPendingStartAnchorHandled()
