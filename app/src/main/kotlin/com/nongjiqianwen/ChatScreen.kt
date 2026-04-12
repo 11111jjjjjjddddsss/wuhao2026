@@ -3409,6 +3409,7 @@ fun ChatScreen() {
                                 scrollModeState = scrollRuntime.scrollMode,
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+                                isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         },
