@@ -3371,6 +3371,7 @@ fun ChatScreen() {
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = effectiveRecyclerBottomPaddingPx,
+                        pendingStartAnchorTargetBottomPx = streamingWorklineBottomPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
