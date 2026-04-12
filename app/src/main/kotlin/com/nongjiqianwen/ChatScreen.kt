@@ -3143,7 +3143,6 @@ fun ChatScreen() {
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-        userBrowsingFloorBottomPxState = scrollRuntime.userBrowsingFloorBottomPx,
         sendStartAnchorActiveState = scrollRuntime.sendStartAnchorActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
@@ -3410,24 +3409,16 @@ fun ChatScreen() {
                                 scrollModeState = scrollRuntime.scrollMode,
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-                                userBrowsingFloorBottomPxState = scrollRuntime.userBrowsingFloorBottomPx,
-                                currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         },
                         onScrolled = { recyclerView, _, dy ->
                             refreshRecyclerMetrics(recyclerView)
                             handleRecyclerScrolledWhileBrowsing(
-                                recyclerView = recyclerView,
                                 dy = dy,
                                 programmaticScroll = programmaticScroll,
                                 isStreaming = isStreaming,
-                                scrollMode = scrollMode,
-                                userBrowsingFloorBottomPxState = scrollRuntime.userBrowsingFloorBottomPx,
-                                currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
-                                bottomClampTolerancePx = bottomPositionTolerancePx,
-                                beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-                                endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+                                scrollMode = scrollMode
                             )
                         }
                     ) { itemId ->

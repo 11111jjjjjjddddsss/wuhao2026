@@ -28,7 +28,6 @@ internal data class ChatScrollRuntimeState(
     val streamingContentBottomPx: MutableIntState,
     val sendStartAnchorActive: MutableState<Boolean>,
     val streamBottomFollowActive: MutableState<Boolean>,
-    val userBrowsingFloorBottomPx: MutableIntState,
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
     val pendingFinalBottomSnap: MutableState<Boolean>,
@@ -50,7 +49,6 @@ internal fun rememberChatScrollRuntimeState(
     val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
     val sendStartAnchorActive = remember(chatScopeId) { mutableStateOf(false) }
     val streamBottomFollowActive = remember { mutableStateOf(false) }
-    val userBrowsingFloorBottomPx = remember(chatScopeId) { mutableIntStateOf(-1) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
     val pendingFinalBottomSnap = remember { mutableStateOf(false) }
@@ -74,7 +72,6 @@ internal fun rememberChatScrollRuntimeState(
             streamingContentBottomPx = streamingContentBottomPx,
             sendStartAnchorActive = sendStartAnchorActive,
             streamBottomFollowActive = streamBottomFollowActive,
-            userBrowsingFloorBottomPx = userBrowsingFloorBottomPx,
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
             pendingFinalBottomSnap = pendingFinalBottomSnap,
@@ -220,8 +217,6 @@ internal fun handleRecyclerScrollStateChanged(
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
-    userBrowsingFloorBottomPxState: MutableIntState,
-    currentStreamingContentBottomPx: () -> Int,
     endProgrammaticScroll: () -> Unit
 ) {
     if (programmaticScroll) {
@@ -241,8 +236,6 @@ internal fun handleRecyclerScrollStateChanged(
             ) {
                 scrollModeState.value = ScrollMode.UserBrowsing
                 streamBottomFollowActiveState.value = false
-                userBrowsingFloorBottomPxState.intValue =
-                    currentStreamingContentBottomPx().takeIf { it > 0 } ?: -1
             }
         }
 
@@ -253,33 +246,13 @@ internal fun handleRecyclerScrollStateChanged(
 }
 
 internal fun handleRecyclerScrolledWhileBrowsing(
-    recyclerView: RecyclerView,
     dy: Int,
     programmaticScroll: Boolean,
     isStreaming: Boolean,
-    scrollMode: ScrollMode,
-    userBrowsingFloorBottomPxState: MutableIntState,
-    currentStreamingContentBottomPx: () -> Int,
-    bottomClampTolerancePx: Int,
-    beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit
+    scrollMode: ScrollMode
 ) {
     if (programmaticScroll || !isStreaming || scrollMode != ScrollMode.UserBrowsing) return
-    val contentBottom = currentStreamingContentBottomPx()
-    if (contentBottom <= 0) return
-    if (contentBottom > userBrowsingFloorBottomPxState.intValue) {
-        userBrowsingFloorBottomPxState.intValue = contentBottom
-    }
-    if (dy <= 0) return
-    val floorBottom = userBrowsingFloorBottomPxState.intValue.takeIf { it > 0 } ?: return
-    val blankGapPx = floorBottom - contentBottom
-    if (blankGapPx <= bottomClampTolerancePx) return
-    beginProgrammaticScroll()
-    try {
-        recyclerView.scrollBy(0, -blankGapPx)
-    } finally {
-        endProgrammaticScroll()
-    }
+    if (dy == 0) return
 }
 
 internal suspend fun performJumpToBottom(
@@ -314,7 +287,6 @@ internal fun prepareScrollRuntimeForStreamingStart(
     runtime.streamingContentBottomPx.intValue = -1
     runtime.sendStartAnchorActive.value = false
     runtime.streamBottomFollowActive.value = false
-    runtime.userBrowsingFloorBottomPx.intValue = -1
     runtime.pendingFinalBottomSnap.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
@@ -327,7 +299,6 @@ internal fun resetScrollRuntimeAfterStreamingStop(
     runtime.streamingContentBottomPx.intValue = -1
     runtime.sendStartAnchorActive.value = false
     runtime.streamBottomFollowActive.value = false
-    runtime.userBrowsingFloorBottomPx.intValue = -1
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
     runtime.pendingFinalBottomSnap.value = offerFinalBottomSnap
@@ -339,7 +310,6 @@ internal fun resumeScrollRuntimeForStreamingRecovery(
     runtime.sendStartAnchorActive.value = false
     runtime.scrollMode.value = ScrollMode.AutoFollow
     runtime.userInteracting.value = false
-    runtime.userBrowsingFloorBottomPx.intValue = -1
 }
 
 @Composable
@@ -354,7 +324,6 @@ internal fun BindRecyclerChatScrollEffects(
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
-    userBrowsingFloorBottomPxState: MutableIntState,
     sendStartAnchorActiveState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     initialBottomSnapDoneState: MutableState<Boolean>,
@@ -380,7 +349,6 @@ internal fun BindRecyclerChatScrollEffects(
         streamingMessageContent,
         scrollMode,
         userInteracting,
-        userBrowsingFloorBottomPxState.intValue,
         recyclerScrollInProgress,
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx()
@@ -394,9 +362,6 @@ internal fun BindRecyclerChatScrollEffects(
             val activeScrollMode = scrollModeState.value
             val contentBottom = currentStreamingContentBottomPx()
             if (activeScrollMode == ScrollMode.UserBrowsing) {
-                if (contentBottom > userBrowsingFloorBottomPxState.intValue) {
-                    userBrowsingFloorBottomPxState.intValue = contentBottom
-                }
                 streamBottomFollowActiveState.value = false
                 continue
             }
