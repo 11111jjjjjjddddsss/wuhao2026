@@ -180,8 +180,8 @@ Clean-State 必做回归的范围：
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步不再冻结发送当拍的 bottom padding
 - 发送起步不再用 alpha 隐藏“本轮用户消息 + assistant 起步宿主”
-- 发送起步不再冻结整个 `RecyclerView` 视觉快照
-- 如果发送瞬间仍有整表重排坏帧，只允许在 `RecyclerView` 布局阶段做短时 `suppressLayout()` 兜底，不允许再回到截图遮挡链
+- 如果发送瞬间仍有整表重排坏帧，允许短时冻结整个 `RecyclerView` 视觉快照，只服务发送起步这 1 到 3 帧，待起步定位稳定后立即释放
+- `suppressLayout()` 只作为发送起步的短时兜底，用来避免旧布局和新布局同时露出
 - 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
 
 当前排查顺序：
