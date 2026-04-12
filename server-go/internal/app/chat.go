@@ -81,20 +81,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	clientMsgID := strings.TrimSpace(body.ClientMsgID)
 	text := strings.TrimSpace(body.Text)
 	images := normalizeImages(body.Images)
-	if clientMsgID == "" {
-		s.writeError(w, http.StatusBadRequest, "client_msg_id required")
-		return
-	}
-	if len(images) > 4 {
-		s.writeError(w, http.StatusBadRequest, "single request supports up to 4 images")
-		return
-	}
-	if text == "" {
-		s.writeError(w, http.StatusBadRequest, "text required")
-		return
-	}
-	if len(images) > 0 && text == "" {
-		s.writeError(w, http.StatusBadRequest, "images require text")
+	if validationError := validateChatStreamInput(clientMsgID, text, images); validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
 
@@ -536,15 +524,17 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 }
 
 func buildVisionUserContent(text string, images []string) any {
+	text = strings.TrimSpace(text)
 	images = normalizeImages(images)
 	if len(images) == 0 {
 		return text
 	}
-	content := []map[string]any{
-		{
+	content := make([]map[string]any, 0, len(images)+1)
+	if text != "" {
+		content = append(content, map[string]any{
 			"type": "text",
 			"text": text,
-		},
+		})
 	}
 	for _, image := range images {
 		content = append(content, map[string]any{
@@ -562,6 +552,19 @@ func roundToUserContent(round SessionRound, includeImages bool) any {
 		return round.User
 	}
 	return buildVisionUserContent(round.User, round.UserImages)
+}
+
+func validateChatStreamInput(clientMsgID string, text string, images []string) string {
+	if clientMsgID == "" {
+		return "client_msg_id required"
+	}
+	if len(images) > 4 {
+		return "single request supports up to 4 images"
+	}
+	if strings.TrimSpace(text) == "" && len(images) == 0 {
+		return "text or images required"
+	}
+	return ""
 }
 
 func updateAssistantAccumulator(data string, assistantText *strings.Builder, hasCitations *atomic.Bool, hasSources *atomic.Bool) {

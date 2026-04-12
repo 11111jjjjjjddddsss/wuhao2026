@@ -15,8 +15,8 @@ const (
 	topupPackRemaining   = 100
 	topupPackPrice       = 6.0
 	topupPackActiveLimit = 1
-	plusTierPrice        = 0.0
-	proTierPrice         = 0.0
+	plusTierPrice        = 19.9
+	proTierPrice         = 29.9
 )
 
 var tierLimits = map[Tier]int{

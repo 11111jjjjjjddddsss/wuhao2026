@@ -110,6 +110,74 @@ func TestBuildPromptMessagesAddsBCSummariesWhenPresent(t *testing.T) {
 	}
 }
 
+func TestBuildVisionUserContentAllowsImageOnly(t *testing.T) {
+	content, ok := buildVisionUserContent("", []string{"https://img/current.jpg"}).([]map[string]any)
+	if !ok {
+		t.Fatalf("expected multimodal content for image-only input")
+	}
+	if len(content) != 1 {
+		t.Fatalf("expected single image block for image-only input, got %d", len(content))
+	}
+	if got := content[0]["type"]; got != "image_url" {
+		t.Fatalf("expected image-only input to omit empty text block, got %#v", got)
+	}
+}
+
+func TestValidateChatStreamInputMatchesCurrentRules(t *testing.T) {
+	cases := []struct {
+		name        string
+		clientMsgID string
+		text        string
+		images      []string
+		want        string
+	}{
+		{
+			name:        "text only allowed",
+			clientMsgID: "msg-1",
+			text:        "hello",
+			want:        "",
+		},
+		{
+			name:        "image only allowed",
+			clientMsgID: "msg-2",
+			images:      []string{"https://img/current.jpg"},
+			want:        "",
+		},
+		{
+			name:        "text and images allowed",
+			clientMsgID: "msg-3",
+			text:        "hello",
+			images:      []string{"https://img/current.jpg"},
+			want:        "",
+		},
+		{
+			name:        "reject empty payload",
+			clientMsgID: "msg-4",
+			want:        "text or images required",
+		},
+		{
+			name:        "reject too many images",
+			clientMsgID: "msg-5",
+			images: []string{
+				"https://img/1.jpg",
+				"https://img/2.jpg",
+				"https://img/3.jpg",
+				"https://img/4.jpg",
+				"https://img/5.jpg",
+			},
+			want: "single request supports up to 4 images",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := validateChatStreamInput(tc.clientMsgID, tc.text, tc.images); got != tc.want {
+				t.Fatalf("validation mismatch: got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestTierWindowsAndSummaryIntervalsMatchBusinessRules(t *testing.T) {
 	if got := getAWindowByTier(TierFree); got != 6 {
 		t.Fatalf("free a-window mismatch: %d", got)
