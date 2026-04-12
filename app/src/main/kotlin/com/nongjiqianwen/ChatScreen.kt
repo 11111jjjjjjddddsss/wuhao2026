@@ -1352,9 +1352,6 @@ private fun FrostedCircleButton(
 )
 fun ChatScreen() {
     val chatScopeId = IdManager.getUserId()
-    val input = rememberSaveable(chatScopeId, stateSaver = TextFieldValue.Saver) {
-        mutableStateOf(TextFieldValue(""))
-    }
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
     val inputSelectionColors = remember {
@@ -1378,24 +1375,35 @@ fun ChatScreen() {
             draft = initialStreamingDraft
         )
     }
+    val uiRuntimeResetKey = remember(chatScopeId, initialLocalMessages, initialStreamingDraft, hasRemoteHistorySource) {
+        buildString {
+            append(chatScopeId)
+            append("|local=").append(initialLocalMessages.hashCode())
+            append("|draft=").append(initialStreamingDraft?.hashCode() ?: 0)
+            append("|backend=").append(if (hasRemoteHistorySource) 1 else 0)
+        }
+    }
+    val input = rememberSaveable(uiRuntimeResetKey, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
     }
     val startupRecoverableUserMessageId = remember(chatScopeId, initialLocalMessages, hasRemoteHistorySource) {
         if (hasRemoteHistorySource) trailingRecoverableUserMessageId(initialLocalMessages) else null
     }
-    val messages = remember(chatScopeId) {
+    val messages = remember(uiRuntimeResetKey) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
-    var fakeStreamJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
+    var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
-    val streamingRuntime = rememberChatStreamingRuntimeState(chatScopeId)
+    val streamingRuntime = rememberChatStreamingRuntimeState(uiRuntimeResetKey)
     var isStreaming by streamingRuntime.isStreaming
     var streamingMessageId by streamingRuntime.streamingMessageId
     var streamingMessageContent by streamingRuntime.streamingMessageContent
@@ -1406,13 +1414,13 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    var recyclerViewRef by remember(chatScopeId) { mutableStateOf<RecyclerView?>(null) }
-    var recyclerLayoutManagerRef by remember(chatScopeId) { mutableStateOf<LinearLayoutManager?>(null) }
-    var recyclerScrollInProgress by remember(chatScopeId) { mutableStateOf(false) }
-    var recyclerFirstVisibleItemIndex by remember(chatScopeId) { mutableIntStateOf(0) }
-    var recyclerFirstVisibleItemScrollOffset by remember(chatScopeId) { mutableIntStateOf(0) }
+    var recyclerViewRef by remember(uiRuntimeResetKey) { mutableStateOf<RecyclerView?>(null) }
+    var recyclerLayoutManagerRef by remember(uiRuntimeResetKey) { mutableStateOf<LinearLayoutManager?>(null) }
+    var recyclerScrollInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var recyclerFirstVisibleItemIndex by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var recyclerFirstVisibleItemScrollOffset by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val scrollRuntime = rememberChatScrollRuntimeState(
-        chatScopeId = chatScopeId,
+        chatScopeId = uiRuntimeResetKey,
         startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx,
         startupInputChromeRowHeightEstimatePx = startupInputChromeRowHeightEstimatePx
     )
@@ -1429,7 +1437,7 @@ fun ChatScreen() {
     var inputChromeRowHeightPx by scrollRuntime.inputChromeRowHeightPx
 
     val composerRuntime = rememberChatComposerRuntimeState(
-        chatScopeId = chatScopeId,
+        chatScopeId = uiRuntimeResetKey,
         startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx
     )
     var inputLimitHintVisible by composerRuntime.inputLimitHintVisible
@@ -1443,30 +1451,30 @@ fun ChatScreen() {
     var composerSettlingMinHeightPx by composerRuntime.composerSettlingMinHeightPx
     var composerSettlingChromeHeightPx by composerRuntime.composerSettlingChromeHeightPx
     var sendUiSettling by composerRuntime.sendUiSettling
-    var persistTick by remember(chatScopeId) { mutableIntStateOf(0) }
-    var chatRootWidthPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var chatRootHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var messageViewportWidthPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var messageViewportHeightPx by remember(chatScopeId) { mutableIntStateOf(0) }
-    var chatRootLeftPx by remember(chatScopeId) { mutableStateOf(0f) }
-    var chatRootTopPx by remember(chatScopeId) { mutableStateOf(0f) }
-    var messageViewportLeftPx by remember(chatScopeId) { mutableStateOf(0f) }
-    var messageViewportTopPx by remember(chatScopeId) { mutableStateOf(0f) }
-    var composerTopInViewportPx by remember(chatScopeId) { mutableIntStateOf(-1) }
-    var topChromeMaskBottomPx by remember(chatScopeId) { mutableIntStateOf(-1) }
-    var anchoredUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
-    var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
-    var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
-    var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
-    var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
-    var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    val failedUserMessageStates = remember(chatScopeId) { mutableStateMapOf<String, String>() }
-    val failedAssistantMessageStates = remember(chatScopeId) {
+    var persistTick by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var chatRootWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var chatRootHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var messageViewportWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var messageViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var chatRootLeftPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
+    var chatRootTopPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
+    var messageViewportLeftPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
+    var messageViewportTopPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
+    var composerTopInViewportPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var topChromeMaskBottomPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var hasStartedConversation by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
+    var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
+    var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
+    val failedUserMessageStates = remember(uiRuntimeResetKey) { mutableStateMapOf<String, String>() }
+    val failedAssistantMessageStates = remember(uiRuntimeResetKey) {
         mutableStateMapOf<String, FailedAssistantMessageState>()
     }
-    val messageSelectionBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
-    val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
+    val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
+    val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val sendStartItemVerticalPaddingPx = with(density) { 16.dp.roundToPx() }
@@ -1557,10 +1565,10 @@ fun ChatScreen() {
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
     val userBubbleColor = Color(0xFFF4F4F7)
-    var inputChromeMeasured by remember(chatScopeId) { mutableStateOf(false) }
-    var messageViewportMeasured by remember(chatScopeId) { mutableStateOf(false) }
-    var composerMeasured by remember(chatScopeId) { mutableStateOf(false) }
-    var historyHydrationComplete by remember(chatScopeId) {
+    var inputChromeMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var messageViewportMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var composerMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var historyHydrationComplete by remember(uiRuntimeResetKey) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
     }
     val startupHydrationBarrierSatisfied by remember(
@@ -1666,13 +1674,13 @@ fun ChatScreen() {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var inputSelectionToolbarState by remember(chatScopeId) {
+    var inputSelectionToolbarState by remember(uiRuntimeResetKey) {
         mutableStateOf<InputSelectionToolbarState?>(null)
     }
-    var pendingInputSelectionToolbarState by remember(chatScopeId) {
+    var pendingInputSelectionToolbarState by remember(uiRuntimeResetKey) {
         mutableStateOf<PendingInputSelectionToolbarState?>(null)
     }
-    var inputSelectionMenuBoundsInRoot by remember(chatScopeId) { mutableStateOf<Rect?>(null) }
+    var inputSelectionMenuBoundsInRoot by remember(uiRuntimeResetKey) { mutableStateOf<Rect?>(null) }
     var inputFieldBoundsInWindow by composerRuntime.inputFieldBoundsInWindow
     var composerHostBoundsInWindow by composerRuntime.composerHostBoundsInWindow
     var composerChromeBoundsInWindow by composerRuntime.composerChromeBoundsInWindow
@@ -1681,7 +1689,7 @@ fun ChatScreen() {
     var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
     var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
     BindComposerRuntimeEffects(
-        chatScopeId = chatScopeId,
+        chatScopeId = uiRuntimeResetKey,
         inputChromeMeasured = inputChromeMeasured,
         inputText = input.value.text,
         inputFieldFocused = inputFieldFocused,
@@ -1829,13 +1837,13 @@ fun ChatScreen() {
                 startupLayoutReady &&
                 (shouldRevealMessageList || showWelcomePlaceholder)
     }
-    var messageSelectionToolbarState by remember(chatScopeId) {
+    var messageSelectionToolbarState by remember(uiRuntimeResetKey) {
         mutableStateOf<MessageSelectionToolbarState?>(null)
     }
-    var pendingMessageSelectionToolbarState by remember(chatScopeId) {
+    var pendingMessageSelectionToolbarState by remember(uiRuntimeResetKey) {
         mutableStateOf<PendingMessageSelectionToolbarState?>(null)
     }
-    var messageSelectionResetEpoch by remember(chatScopeId) { mutableIntStateOf(0) }
+    var messageSelectionResetEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
         messageSelectionBoundsById[state.messageId]
 
@@ -2072,7 +2080,7 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(chatScopeId) {
+    LaunchedEffect(uiRuntimeResetKey) {
         mainHandler.removeCallbacksAndMessages(null)
         fakeStreamJob?.cancel()
         fakeStreamJob = null
@@ -2092,7 +2100,7 @@ fun ChatScreen() {
         LaunchUiGate.chatReady = false
     }
 
-    DisposableEffect(chatScopeId) {
+    DisposableEffect(uiRuntimeResetKey) {
         onDispose {
             mainHandler.removeCallbacksAndMessages(null)
             fakeStreamJob?.cancel()
@@ -2376,7 +2384,7 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(chatScopeId) {
+    LaunchedEffect(uiRuntimeResetKey) {
         if (initialLocalMessages.isNotEmpty()) {
             snackbarScope.launch {
                 prewarmAssistantMarkdown(initialLocalMessages)
@@ -2406,13 +2414,13 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(chatScopeId, initialStreamingDraft) {
+    LaunchedEffect(uiRuntimeResetKey, initialStreamingDraft) {
         if (initialStreamingDraft == null) return@LaunchedEffect
         context.saveLocalChatWindow(chatScopeId, initialLocalMessages)
         context.clearLocalStreamingDraft(chatScopeId)
     }
 
-    LaunchedEffect(chatScopeId, historyHydrationComplete, startupRecoverableUserMessageId) {
+    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete, startupRecoverableUserMessageId) {
         val sourceUserMessageId = startupRecoverableUserMessageId ?: return@LaunchedEffect
         if (!hasRemoteHistorySource || !historyHydrationComplete) return@LaunchedEffect
         if (hasStartedConversation || isStreaming) return@LaunchedEffect
@@ -3212,7 +3220,7 @@ fun ChatScreen() {
             composerStatusHintText = composerStatusHintText,
             inputLimitHintVisible = inputLimitHintVisible
         )
-        val inputTextToolbar = remember(chatScopeId) {
+        val inputTextToolbar = remember(uiRuntimeResetKey) {
             buildInputSelectionTextToolbar()
         }
         Scaffold(
@@ -3352,7 +3360,7 @@ fun ChatScreen() {
                     LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
                 ) {
                     ChatRecyclerViewHost(
-                        stateResetKey = chatScopeId,
+                        stateResetKey = uiRuntimeResetKey,
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,
