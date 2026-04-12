@@ -275,7 +275,6 @@ internal fun ChatRecyclerViewHost(
                         }
                     }
                     viewTreeObserver.addOnPreDrawListener(listener)
-                    setStartAnchorLayoutSuppressed(false)
                 }
 
                 setStartAnchorLayoutSuppressed(true)
