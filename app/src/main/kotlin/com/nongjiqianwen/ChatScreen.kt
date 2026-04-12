@@ -1488,14 +1488,19 @@ fun ChatScreen() {
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,
         bottomBarHeightPx,
+        composerTopInViewportPx,
         streamVisibleBottomGapPx
     ) {
         derivedStateOf {
-            (
-                messageViewportHeightPx -
-                    bottomBarHeightPx -
-                    streamVisibleBottomGapPx
-                ).coerceAtLeast(0)
+            if (composerTopInViewportPx > 0) {
+                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+            } else {
+                (
+                    messageViewportHeightPx -
+                        bottomBarHeightPx -
+                        streamVisibleBottomGapPx
+                    ).coerceAtLeast(0)
+            }
         }
     }
     fun currentStreamingContentBottomPx(): Int {
