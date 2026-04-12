@@ -26,7 +26,6 @@ internal data class ChatScrollRuntimeState(
     val userInteracting: MutableState<Boolean>,
     val programmaticScroll: MutableState<Boolean>,
     val streamingContentBottomPx: MutableIntState,
-    val sendStartAnchorActive: MutableState<Boolean>,
     val streamBottomFollowActive: MutableState<Boolean>,
     val initialBottomSnapDone: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
@@ -47,7 +46,6 @@ internal fun rememberChatScrollRuntimeState(
     val userInteracting = remember { mutableStateOf(false) }
     val programmaticScroll = remember { mutableStateOf(false) }
     val streamingContentBottomPx = remember { mutableIntStateOf(-1) }
-    val sendStartAnchorActive = remember(chatScopeId) { mutableStateOf(false) }
     val streamBottomFollowActive = remember { mutableStateOf(false) }
     val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember { mutableStateOf(false) }
@@ -70,7 +68,6 @@ internal fun rememberChatScrollRuntimeState(
             userInteracting = userInteracting,
             programmaticScroll = programmaticScroll,
             streamingContentBottomPx = streamingContentBottomPx,
-            sendStartAnchorActive = sendStartAnchorActive,
             streamBottomFollowActive = streamBottomFollowActive,
             initialBottomSnapDone = initialBottomSnapDone,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
@@ -285,7 +282,6 @@ internal fun prepareScrollRuntimeForStreamingStart(
     runtime: ChatScrollRuntimeState
 ) {
     runtime.streamingContentBottomPx.intValue = -1
-    runtime.sendStartAnchorActive.value = false
     runtime.streamBottomFollowActive.value = false
     runtime.pendingFinalBottomSnap.value = false
     runtime.scrollMode.value = ScrollMode.Idle
@@ -297,7 +293,6 @@ internal fun resetScrollRuntimeAfterStreamingStop(
     offerFinalBottomSnap: Boolean
 ) {
     runtime.streamingContentBottomPx.intValue = -1
-    runtime.sendStartAnchorActive.value = false
     runtime.streamBottomFollowActive.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
@@ -307,7 +302,6 @@ internal fun resetScrollRuntimeAfterStreamingStop(
 internal fun resumeScrollRuntimeForStreamingRecovery(
     runtime: ChatScrollRuntimeState
 ) {
-    runtime.sendStartAnchorActive.value = false
     runtime.scrollMode.value = ScrollMode.AutoFollow
     runtime.userInteracting.value = false
 }
@@ -324,7 +318,6 @@ internal fun BindRecyclerChatScrollEffects(
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
-    sendStartAnchorActiveState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     initialBottomSnapDoneState: MutableState<Boolean>,
     currentLastMessageContentBottomPx: () -> Int,
@@ -383,13 +376,6 @@ internal fun BindRecyclerChatScrollEffects(
             }
             if (activeScrollMode == ScrollMode.Idle) {
                 if (streamingMessageContent.isBlank()) {
-                    streamBottomFollowActiveState.value = false
-                    continue
-                }
-                if (sendStartAnchorActiveState.value) {
-                    if (isStreamingReadyForAutoFollow()) {
-                        sendStartAnchorActiveState.value = false
-                    }
                     streamBottomFollowActiveState.value = false
                     continue
                 }

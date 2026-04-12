@@ -154,19 +154,15 @@ Clean-State 必做回归的范围：
 - 当前锚点：assistant 起步宿主真实底边
 - 当前目标：assistant 起步宿主真实底边直接贴工作线，不再单独上抬到中部
 
-2. 起步保护期
-- 主人：`sendStartAnchorActive`
-- 作用：正文真正接近工作线前，禁止 `snapStreamingToWorkline()` 和 `AutoFollow` 提前接管
-
-3. AutoFollow
+2. AutoFollow
 - 主人：[ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)
 - 作用：正文超过工作线后，按 overflow 直接跟随，不再多帧小步追赶
 
-4. 完成态收口
+3. 完成态收口
 - 主人：`scrollToBottom(false)`
 - 作用：completed 宿主真实底边到位后收口到目标线
 
-5. 用户浏览
+4. 用户浏览
 - 主人：用户手指
 - 作用：进入 `UserBrowsing` 后立即让权；不看滑动方向，不做额外恢复链。只有当生成行真实回到工作线命中带并且用户结束交互时，或通过“回到底部”/新一轮发送，才重新接回主链
 
@@ -182,10 +178,9 @@ Clean-State 必做回归的范围：
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - 发送起步不再靠 assistant 宿主内部 `minHeight` 预留抬高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
-- 发送起步期间允许冻结发送当拍的 bottom padding，避免 IME / composer 回落把文本区重新拖低
-- 如果发送起步会暴露一帧坏帧，允许先隐藏“本轮用户消息 + assistant 起步宿主”
-- 如果旧历史列表仍会在整表重排时露出轻微挪动，允许短时冻结整个 `RecyclerView` 视觉快照，等起步定位与 reveal 稳定后再硬切释放
-- 上述隐藏、快照冻结都只是在遮坏帧，不属于新增第二条滚动链
+- 发送起步不再冻结发送当拍的 bottom padding
+- 发送起步不再隐藏“本轮用户消息 + assistant 起步宿主”
+- 发送起步不再冻结整个 `RecyclerView` 视觉快照
 - 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
 
 当前排查顺序：

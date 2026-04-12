@@ -1458,7 +1458,6 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
-    var frozenSendStartBottomPaddingPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1736,31 +1735,6 @@ fun ChatScreen() {
             bottomContentReservedHeightPx + streamVisibleBottomGapPx
         }
     }
-    val sendStartFrozenBottomPaddingPx by remember(
-        stableComposerBottomBarHeightPx,
-        streamVisibleBottomGapPx
-    ) {
-        derivedStateOf {
-            stableComposerBottomBarHeightPx + streamVisibleBottomGapPx
-        }
-    }
-    val effectiveRecyclerBottomPaddingPx by remember(
-        recyclerBottomPaddingPx,
-        frozenSendStartBottomPaddingPx,
-        pendingStartAnchorMessageId,
-        scrollRuntime.sendStartAnchorActive.value
-    ) {
-        derivedStateOf {
-            if (
-                (pendingStartAnchorMessageId != null || scrollRuntime.sendStartAnchorActive.value) &&
-                frozenSendStartBottomPaddingPx >= 0
-            ) {
-                frozenSendStartBottomPaddingPx
-            } else {
-                recyclerBottomPaddingPx
-            }
-        }
-    }
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
@@ -1800,14 +1774,6 @@ fun ChatScreen() {
                     scrollMode = scrollMode,
                     nearWorkline = !streamingAwayFromWorkline
                 )
-        }
-    }
-    LaunchedEffect(
-        pendingStartAnchorMessageId,
-        scrollRuntime.sendStartAnchorActive.value
-    ) {
-        if (pendingStartAnchorMessageId == null && !scrollRuntime.sendStartAnchorActive.value) {
-            frozenSendStartBottomPaddingPx = -1
         }
     }
     val showStaticJumpButton by remember(
@@ -2796,7 +2762,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        frozenSendStartBottomPaddingPx = sendStartFrozenBottomPaddingPx
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2844,7 +2809,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        frozenSendStartBottomPaddingPx = sendStartFrozenBottomPaddingPx
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -3143,7 +3107,6 @@ fun ChatScreen() {
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-        sendStartAnchorActiveState = scrollRuntime.sendStartAnchorActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
@@ -3370,13 +3333,12 @@ fun ChatScreen() {
                     ChatRecyclerViewHost(
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
-                        bottomPaddingPx = effectiveRecyclerBottomPaddingPx,
+                        bottomPaddingPx = recyclerBottomPaddingPx,
                         pendingStartAnchorTargetBottomPx = streamingWorklineBottomPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
-                            scrollRuntime.sendStartAnchorActive.value = true
                         },
                         modifier = Modifier
                             .then(
@@ -3447,12 +3409,6 @@ fun ChatScreen() {
                             }
                         val copySourceContent =
                             if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
-                        val hidePendingSendPair =
-                            pendingStartAnchorMessageId != null &&
-                                (
-                                    msg.id == pendingStartAnchorMessageId ||
-                                        msg.id == anchoredUserMessageId
-                                    )
                         val fullCopyText = remember(msg.role, copySourceContent) {
                             buildRenderedMessageCopyText(msg.role, copySourceContent)
                         }
@@ -3466,7 +3422,6 @@ fun ChatScreen() {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .alpha(if (hidePendingSendPair) 0f else 1f)
                                 .padding(horizontal = listHorizontalPadding, vertical = 8.dp)
                                 .then(
                                     if (
@@ -3621,7 +3576,7 @@ fun ChatScreen() {
 
                 if (showWelcomePlaceholder) {
                     val welcomeBottomInset =
-                        with(density) { effectiveRecyclerBottomPaddingPx.toDp() } +
+                        with(density) { recyclerBottomPaddingPx.toDp() } +
                             24.dp
                     Box(
                         modifier = Modifier
