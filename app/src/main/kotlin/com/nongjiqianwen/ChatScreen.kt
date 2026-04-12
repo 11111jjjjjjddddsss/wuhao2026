@@ -1458,7 +1458,6 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(chatScopeId) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(chatScopeId) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(chatScopeId) { mutableIntStateOf(0) }
-    var frozenRecyclerBottomPaddingPx by remember(chatScopeId) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(chatScopeId) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(chatScopeId) { mutableStateOf(false) }
@@ -1478,15 +1477,26 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
+    val visibleComposerTopInViewportPx by remember(
+        composerTopInViewportPx,
+        messageViewportHeightPx
+    ) {
+        derivedStateOf {
+            composerTopInViewportPx.takeIf {
+                it > 0 && (messageViewportHeightPx <= 0 || it < messageViewportHeightPx)
+            } ?: -1
+        }
+    }
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,
         bottomBarHeightPx,
-        composerTopInViewportPx,
+        visibleComposerTopInViewportPx,
         streamVisibleBottomGapPx
     ) {
         derivedStateOf {
-            if (composerTopInViewportPx > 0) {
-                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+            val constrainedComposerTopPx = visibleComposerTopInViewportPx.takeIf { it > 0 }
+            if (constrainedComposerTopPx != null) {
+                (constrainedComposerTopPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 (
                     messageViewportHeightPx -
@@ -1707,7 +1717,7 @@ fun ChatScreen() {
     val streamingExtraReservedHeightPx = 0
     val bottomContentReservedHeightPx by remember(
         messageViewportHeightPx,
-        composerTopInViewportPx,
+        visibleComposerTopInViewportPx,
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
@@ -1715,8 +1725,11 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             val measuredComposerReservedHeightPx =
-                if (messageViewportHeightPx > 0 && composerTopInViewportPx > 0) {
-                    (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
+                if (
+                    messageViewportHeightPx > 0 &&
+                        visibleComposerTopInViewportPx > 0
+                ) {
+                    (messageViewportHeightPx - visibleComposerTopInViewportPx).coerceAtLeast(0)
                 } else {
                     -1
                 }
@@ -1731,12 +1744,10 @@ fun ChatScreen() {
     }
     val recyclerBottomPaddingPx by remember(
         bottomContentReservedHeightPx,
-        streamVisibleBottomGapPx,
-        frozenRecyclerBottomPaddingPx
+        streamVisibleBottomGapPx
     ) {
         derivedStateOf {
-            frozenRecyclerBottomPaddingPx.takeIf { it >= 0 }
-                ?: (bottomContentReservedHeightPx + streamVisibleBottomGapPx)
+            bottomContentReservedHeightPx + streamVisibleBottomGapPx
         }
     }
     val jumpButtonBottomPadding = with(density) {
@@ -1749,7 +1760,7 @@ fun ChatScreen() {
         scrollMode,
         streamingContentBottomPx,
         streamingWorklineBottomPx,
-        composerTopInViewportPx
+        visibleComposerTopInViewportPx
     ) {
         derivedStateOf {
             !isNearStreamingWorkline()
@@ -2766,9 +2777,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        if (frozenRecyclerBottomPaddingPx < 0) {
-            frozenRecyclerBottomPaddingPx = recyclerBottomPaddingPx
-        }
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2806,7 +2814,6 @@ fun ChatScreen() {
                 showComposerStatusHint("当前网络不可用")
             } finally {
                 sendUiSettling = false
-                frozenRecyclerBottomPaddingPx = -1
             }
         }
     }
@@ -2817,9 +2824,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        if (frozenRecyclerBottomPaddingPx < 0) {
-            frozenRecyclerBottomPaddingPx = recyclerBottomPaddingPx
-        }
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2913,9 +2917,6 @@ fun ChatScreen() {
                 }
             } finally {
                 sendUiSettling = false
-                if (pendingStartAnchorMessageId == null) {
-                    frozenRecyclerBottomPaddingPx = -1
-                }
             }
         }
     }
@@ -3205,6 +3206,7 @@ fun ChatScreen() {
             composerStatusHintText = composerStatusHintText,
             inputLimitHintVisible = inputLimitHintVisible
         )
+        val scaffoldBottomBarReservedHeight = inputBarHeight + inputChromeBottomPadding + navigationBottomInset
         val inputTextToolbar = remember(chatScopeId) {
             buildInputSelectionTextToolbar()
         }
@@ -3213,80 +3215,10 @@ fun ChatScreen() {
             containerColor = pageSurface,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             bottomBar = {
-                ChatComposerBottomBar(
-                    inputValue = input.value,
-                    inputSelectionColors = inputSelectionColors,
-                    inputTextToolbar = inputTextToolbar,
-                    inputFieldFocused = inputFieldFocused,
-                    suppressInputCursor = suppressInputCursor,
-                    composerSettlingMinHeightPx = composerSettlingMinHeightPx,
-                    composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
-                    startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
-                    inputChromeRowHeightPx = inputChromeRowHeightPx,
-                    imeVisible = imeVisible,
-                    isStreamingOrSettling = isStreaming || sendUiSettling,
-                    inputMaxChars = INPUT_MAX_CHARS,
-                    chromeMaxWidth = chromeMaxWidth,
-                    inputChromeHorizontalPadding = inputChromeHorizontalPadding,
-                    inputChromeBottomPadding = inputChromeBottomPadding,
-                    addButtonSize = addButtonSize,
-                    addIconSize = addIconSize,
-                    sendButtonSize = sendButtonSize,
-                    inputBarHeight = inputBarHeight,
-                    inputBarMaxHeight = inputBarMaxHeight,
-                    inputChromeSurface = inputChromeSurface,
-                    inputChromeBorder = inputChromeBorder,
-                    inputFieldSurface = inputFieldSurface,
-                    inputFieldBorder = inputFieldBorder,
-                    overlayHintText = composerOverlayHintText,
-                    hostModifier = Modifier
+                Spacer(
+                    modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
-                        .onGloballyPositioned { coordinates ->
-                            composerHostBoundsInWindow = coordinates.boundsInWindow()
-                        },
-                    onChromeMeasured = { height ->
-                        inputChromeRowHeightPx = height
-                        if (height > 0) {
-                            inputChromeMeasured = true
-                        }
-                    },
-                    onChromeBoundsChanged = { bounds ->
-                        composerChromeBoundsInWindow = bounds
-                    },
-                    onInputBoundsChanged = { bounds ->
-                        inputFieldBoundsInWindow = bounds
-                        composerTopInViewportPx =
-                            (bounds.top - messageViewportTopPx).roundToInt()
-                        composerMeasured = true
-                        applyPendingInputSelectionToolbarIfReady(bounds)
-                    },
-                    onInputFocused = { focused ->
-                        inputFieldFocused = focused
-                        if (focused) {
-                            suppressInputCursor = false
-                            inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
-                                startupInputContentHeightEstimatePx
-                            )
-                        }
-                    },
-                    onInputContentHeightChanged = { height ->
-                        inputContentHeightPx = height
-                    },
-                    onInputValueChange = {
-                        suppressInputCursor = false
-                        input.value = it
-                    },
-                    onInputLimitExceeded = {
-                        inputLimitHintTick++
-                    },
-                    onAddClick = { performButtonHaptic() },
-                    onSendClick = {
-                        performButtonHaptic()
-                        sendMessage()
-                    }
+                        .height(scaffoldBottomBarReservedHeight)
                 )
             },
             snackbarHost = {
@@ -3354,7 +3286,6 @@ fun ChatScreen() {
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
-                            frozenRecyclerBottomPaddingPx = -1
                         },
                         modifier = Modifier
                             .then(
@@ -3767,7 +3698,7 @@ fun ChatScreen() {
                     contentViewportWidthPx = messageViewportWidthPx,
                     contentViewportHeightPx = messageViewportHeightPx,
                     topChromeMaskBottomPx = topChromeMaskBottomPx,
-                    composerTopInViewportPx = composerTopInViewportPx,
+                    composerTopInViewportPx = visibleComposerTopInViewportPx,
                     onCopy = {
                         performButtonHaptic()
                         state.onCopyRequested?.invoke()
@@ -3815,6 +3746,83 @@ fun ChatScreen() {
             }
 
         }
+
+        ChatComposerBottomBar(
+            inputValue = input.value,
+            inputSelectionColors = inputSelectionColors,
+            inputTextToolbar = inputTextToolbar,
+            inputFieldFocused = inputFieldFocused,
+            suppressInputCursor = suppressInputCursor,
+            composerSettlingMinHeightPx = composerSettlingMinHeightPx,
+            composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+            startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
+            inputChromeRowHeightPx = inputChromeRowHeightPx,
+            imeVisible = imeVisible,
+            isStreamingOrSettling = isStreaming || sendUiSettling,
+            inputMaxChars = INPUT_MAX_CHARS,
+            chromeMaxWidth = chromeMaxWidth,
+            inputChromeHorizontalPadding = inputChromeHorizontalPadding,
+            inputChromeBottomPadding = inputChromeBottomPadding,
+            addButtonSize = addButtonSize,
+            addIconSize = addIconSize,
+            sendButtonSize = sendButtonSize,
+            inputBarHeight = inputBarHeight,
+            inputBarMaxHeight = inputBarMaxHeight,
+            inputChromeSurface = inputChromeSurface,
+            inputChromeBorder = inputChromeBorder,
+            inputFieldSurface = inputFieldSurface,
+            inputFieldBorder = inputFieldBorder,
+            overlayHintText = composerOverlayHintText,
+            hostModifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
+                .onGloballyPositioned { coordinates ->
+                    composerHostBoundsInWindow = coordinates.boundsInWindow()
+                },
+            onChromeMeasured = { height ->
+                inputChromeRowHeightPx = height
+                if (height > 0) {
+                    inputChromeMeasured = true
+                }
+            },
+            onChromeBoundsChanged = { bounds ->
+                composerChromeBoundsInWindow = bounds
+            },
+            onInputBoundsChanged = { bounds ->
+                inputFieldBoundsInWindow = bounds
+                composerTopInViewportPx =
+                    (bounds.top - messageViewportTopPx).roundToInt()
+                composerMeasured = true
+                applyPendingInputSelectionToolbarIfReady(bounds)
+            },
+            onInputFocused = { focused ->
+                inputFieldFocused = focused
+                if (focused) {
+                    suppressInputCursor = false
+                    inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
+                        startupInputContentHeightEstimatePx
+                    )
+                }
+            },
+            onInputContentHeightChanged = { height ->
+                inputContentHeightPx = height
+            },
+            onInputValueChange = {
+                suppressInputCursor = false
+                input.value = it
+            },
+            onInputLimitExceeded = {
+                inputLimitHintTick++
+            },
+            onAddClick = { performButtonHaptic() },
+            onSendClick = {
+                performButtonHaptic()
+                sendMessage()
+            }
+        )
     }
 }
 
