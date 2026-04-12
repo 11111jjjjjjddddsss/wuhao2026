@@ -269,9 +269,8 @@ internal fun handleRecyclerScrolledWhileBrowsing(
     resumeAutoFollowArmedState: MutableState<Boolean>
 ) {
     if (programmaticScroll || !isStreaming || scrollMode != ScrollMode.UserBrowsing) return
-    when {
-        dy > 0 -> resumeAutoFollowArmedState.value = true
-        dy < 0 -> resumeAutoFollowArmedState.value = false
+    if (dy > 0) {
+        resumeAutoFollowArmedState.value = true
     }
 }
 

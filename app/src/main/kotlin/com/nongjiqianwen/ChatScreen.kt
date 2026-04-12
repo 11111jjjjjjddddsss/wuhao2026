@@ -1735,6 +1735,14 @@ fun ChatScreen() {
             bottomContentReservedHeightPx + streamVisibleBottomGapPx
         }
     }
+    val sendStartFrozenBottomPaddingPx by remember(
+        stableComposerBottomBarHeightPx,
+        streamVisibleBottomGapPx
+    ) {
+        derivedStateOf {
+            stableComposerBottomBarHeightPx + streamVisibleBottomGapPx
+        }
+    }
     val effectiveRecyclerBottomPaddingPx by remember(
         recyclerBottomPaddingPx,
         frozenSendStartBottomPaddingPx,
@@ -2788,7 +2796,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        frozenSendStartBottomPaddingPx = recyclerBottomPaddingPx
+        frozenSendStartBottomPaddingPx = sendStartFrozenBottomPaddingPx
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2836,7 +2844,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        frozenSendStartBottomPaddingPx = recyclerBottomPaddingPx
+        frozenSendStartBottomPaddingPx = sendStartFrozenBottomPaddingPx
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
