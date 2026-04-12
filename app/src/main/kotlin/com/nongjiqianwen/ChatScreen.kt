@@ -273,6 +273,7 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 64.dp
 private val SEND_START_ANCHOR_LIFT = 280.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
+private val EARLY_STREAMING_BOTTOM_SLACK = 40.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
@@ -1471,6 +1472,7 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(chatScopeId) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val earlyStreamingBottomSlackPx = with(density) { EARLY_STREAMING_BOTTOM_SLACK.roundToPx() }
     val pendingStartAnchorLiftPx = with(density) { SEND_START_ANCHOR_LIFT.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -1750,17 +1752,33 @@ fun ChatScreen() {
         recyclerBottomPaddingPx,
         frozenSendStartBottomPaddingPx,
         pendingStartAnchorMessageId,
-        scrollRuntime.sendStartAnchorActive.value
+        scrollRuntime.sendStartAnchorActive.value,
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageContent,
+        earlyStreamingBottomSlackPx
     ) {
         derivedStateOf {
-            if (
-                (pendingStartAnchorMessageId != null || scrollRuntime.sendStartAnchorActive.value) &&
-                frozenSendStartBottomPaddingPx >= 0
-            ) {
-                frozenSendStartBottomPaddingPx
-            } else {
-                recyclerBottomPaddingPx
+            if (frozenSendStartBottomPaddingPx < 0) {
+                return@derivedStateOf recyclerBottomPaddingPx
             }
+            if (pendingStartAnchorMessageId != null) {
+                return@derivedStateOf frozenSendStartBottomPaddingPx
+            }
+            if (!scrollRuntime.sendStartAnchorActive.value) {
+                return@derivedStateOf recyclerBottomPaddingPx
+            }
+            val hasStartedStreamingContent =
+                isStreaming &&
+                    hasStreamingItem &&
+                    streamingMessageContent.isNotBlank()
+            if (!hasStartedStreamingContent) {
+                return@derivedStateOf frozenSendStartBottomPaddingPx
+            }
+            minOf(
+                frozenSendStartBottomPaddingPx,
+                recyclerBottomPaddingPx + earlyStreamingBottomSlackPx
+            )
         }
     }
     val jumpButtonBottomPadding = with(density) {
