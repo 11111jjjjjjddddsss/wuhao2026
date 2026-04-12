@@ -3143,7 +3143,7 @@ fun ChatScreen() {
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-        resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
+        userBrowsingFloorBottomPxState = scrollRuntime.userBrowsingFloorBottomPx,
         sendStartAnchorActiveState = scrollRuntime.sendStartAnchorActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
@@ -3410,19 +3410,24 @@ fun ChatScreen() {
                                 scrollModeState = scrollRuntime.scrollMode,
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
-                                isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+                                userBrowsingFloorBottomPxState = scrollRuntime.userBrowsingFloorBottomPx,
+                                currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         },
                         onScrolled = { recyclerView, _, dy ->
                             refreshRecyclerMetrics(recyclerView)
                             handleRecyclerScrolledWhileBrowsing(
+                                recyclerView = recyclerView,
                                 dy = dy,
                                 programmaticScroll = programmaticScroll,
                                 isStreaming = isStreaming,
                                 scrollMode = scrollMode,
-                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed
+                                userBrowsingFloorBottomPxState = scrollRuntime.userBrowsingFloorBottomPx,
+                                currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
+                                bottomClampTolerancePx = bottomPositionTolerancePx,
+                                beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
+                                endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         }
                     ) { itemId ->

@@ -152,7 +152,7 @@ Clean-State 必做回归的范围：
 - 主人：[ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)
 - 做法：新消息插入后，在首帧预绘制前一次性 `scrollToPositionWithOffset(...)`
 - 当前锚点：assistant 起步宿主顶边
-- 当前上抬试值：`280dp`
+- 当前目标：以 `280dp` 为基础上抬，再按本轮用户消息真实已布局高度做动态上抬，并钳在中部偏上的可视区间内
 
 2. 起步保护期
 - 主人：`sendStartAnchorActive`
@@ -168,7 +168,7 @@ Clean-State 必做回归的范围：
 
 5. 用户浏览
 - 主人：用户手指
-- 作用：进入 `UserBrowsing` 后立即让权；只有明确回到底部方向后才恢复自动链
+- 作用：进入 `UserBrowsing` 后立即让权；不再按滑动方向自动恢复 `AutoFollow`，只允许通过“回到底部”或新一轮发送重新接回主链
 
 铁律：
 - 同一时刻只能有一个主人控制滚动
@@ -181,10 +181,12 @@ Clean-State 必做回归的范围：
 - `RecyclerView` 已关闭 `stackFromEnd`
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - 发送起步不再靠 assistant 宿主内部 `minHeight` 预留抬高，起步高度只认 `ChatRecyclerViewHost` 的外层锚点
+- 发送起步外层锚点不再写死同一个落点，而是以本轮用户消息真实已布局高度做动态修正，让“用户消息 + waiting 小球”整体落在中部偏上的稳定区间
 - 发送起步期间允许冻结发送当拍的 bottom padding，避免 IME / composer 回落把文本区重新拖低
 - 如果发送起步会暴露一帧坏帧，允许先隐藏“本轮用户消息 + assistant 起步宿主”
 - 如果旧历史列表仍会在整表重排时露出轻微挪动，允许短时冻结整个 `RecyclerView` 视觉快照，等起步定位与 reveal 稳定后再硬切释放
 - 上述隐藏、快照冻结都只是在遮坏帧，不属于新增第二条滚动链
+- `UserBrowsing` 期间允许记录 streaming 正文已到达的最低地板；用户朝回到底部方向滑动时，不能再把底部空白拖出这条地板以下
 - 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
 
 当前排查顺序：

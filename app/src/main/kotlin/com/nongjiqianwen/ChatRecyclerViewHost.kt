@@ -81,10 +81,34 @@ internal class ChatRecyclerComposeAdapter(
 
 private fun resolvePendingStartAnchorTargetTopPx(
     recyclerView: RecyclerView,
+    layoutManager: LinearLayoutManager,
+    pendingStartAnchorPosition: Int,
     pendingStartAnchorLiftPx: Int
 ): Int {
-    return (recyclerView.height - recyclerView.paddingBottom - pendingStartAnchorLiftPx)
-        .coerceAtLeast(0)
+    val viewportTopPx = recyclerView.paddingTop
+    val viewportHeightPx =
+        (recyclerView.height - recyclerView.paddingTop - recyclerView.paddingBottom)
+            .coerceAtLeast(0)
+    val baseTargetTopPx =
+        (recyclerView.height - recyclerView.paddingBottom - pendingStartAnchorLiftPx)
+            .coerceAtLeast(viewportTopPx)
+    if (viewportHeightPx == 0) return baseTargetTopPx
+    val upperBandTopPx = viewportTopPx + ((viewportHeightPx * 22) / 100)
+    val lowerBandTopPx = viewportTopPx + ((viewportHeightPx * 44) / 100)
+    val precedingHeightPx =
+        (pendingStartAnchorPosition - 1)
+            .takeIf { it >= 0 }
+            ?.let(layoutManager::findViewByPosition)
+            ?.height
+            ?: 0
+    if (precedingHeightPx <= 0) {
+        return baseTargetTopPx.coerceIn(upperBandTopPx, lowerBandTopPx)
+    }
+    val dynamicLiftPx =
+        ((precedingHeightPx * 35) / 100)
+            .coerceAtMost((viewportHeightPx * 18) / 100)
+    return (baseTargetTopPx - dynamicLiftPx)
+        .coerceIn(upperBandTopPx, lowerBandTopPx)
 }
 
 @Composable
@@ -245,6 +269,8 @@ internal fun ChatRecyclerViewHost(
                             }
                             val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                                 recyclerView = recyclerView,
+                                layoutManager = layoutManager,
+                                pendingStartAnchorPosition = pendingStartAnchorPosition,
                                 pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
                             )
                             if (!isRevealStable(targetTopOffset) && remainingRevealValidationFrames > 0) {
@@ -263,6 +289,8 @@ internal fun ChatRecyclerViewHost(
                     if (activeStartAnchorRequestId.intValue != requestId) return
                     val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                         recyclerView = recyclerView,
+                        layoutManager = layoutManager,
+                        pendingStartAnchorPosition = pendingStartAnchorPosition,
                         pendingStartAnchorLiftPx = pendingStartAnchorLiftPx
                     )
                     layoutManager.scrollToPositionWithOffset(
