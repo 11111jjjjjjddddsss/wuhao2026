@@ -178,6 +178,10 @@ internal fun ChatRecyclerViewHost(
                 if (pendingStartAnchorRequestId <= 0 || pendingStartAnchorPosition < 0) {
                     activeStartAnchorRequestId.intValue = 0
                     setStartAnchorLayoutSuppressed(false)
+                    if (pendingStartAnchorRequestId > 0 && pendingStartAnchorPosition < 0) {
+                        lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
+                        onPendingStartAnchorHandled()
+                    }
                 }
                 val shouldApplyPendingStartAnchor =
                     pendingStartAnchorRequestId > 0 &&
