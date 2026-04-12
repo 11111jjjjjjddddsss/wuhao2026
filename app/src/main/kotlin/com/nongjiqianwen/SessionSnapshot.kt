@@ -21,6 +21,7 @@ data class SessionSnapshot(
 data class ARound(
     val client_msg_id: String? = null,
     val user: String,
+    val user_images: List<String> = emptyList(),
     val assistant: String
 )
 

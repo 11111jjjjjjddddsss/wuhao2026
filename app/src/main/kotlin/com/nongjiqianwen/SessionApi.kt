@@ -166,6 +166,7 @@ object SessionApi {
                                 ARound(
                                     client_msg_id = r.client_msg_id,
                                     user = r.user ?: "",
+                                    user_images = r.user_images ?: emptyList(),
                                     assistant = r.assistant ?: ""
                                 )
                             }
@@ -173,6 +174,7 @@ object SessionApi {
                                 ARound(
                                     client_msg_id = r.client_msg_id,
                                     user = r.user ?: "",
+                                    user_images = r.user_images ?: emptyList(),
                                     assistant = r.assistant ?: ""
                                 )
                             }
@@ -200,6 +202,7 @@ object SessionApi {
     fun appendA(
         clientMsgId: String,
         userMessage: String,
+        userImages: List<String> = emptyList(),
         assistantMessage: String,
         onResult: (Boolean) -> Unit
     ) {
@@ -216,6 +219,7 @@ object SessionApi {
             mapOf(
                 "client_msg_id" to clientMsgId,
                 "user_text" to userMessage,
+                "user_images" to userImages,
                 "assistant_text" to assistantMessage
             )
         )
@@ -474,6 +478,7 @@ object SessionApi {
     private data class ARoundJson(
         @SerializedName("client_msg_id") val client_msg_id: String? = null,
         @SerializedName("user") val user: String?,
+        @SerializedName("user_images") val user_images: List<String>? = null,
         @SerializedName("assistant") val assistant: String?
     )
 }

@@ -35,9 +35,10 @@ type summaryRequest struct {
 }
 
 type roundCompleteRequest struct {
-	ClientMsgID   string `json:"client_msg_id"`
-	UserText      string `json:"user_text"`
-	AssistantText string `json:"assistant_text"`
+	ClientMsgID   string   `json:"client_msg_id"`
+	UserText      string   `json:"user_text"`
+	UserImages    []string `json:"user_images,omitempty"`
+	AssistantText string   `json:"assistant_text"`
 }
 
 type orderRequest struct {
@@ -291,13 +292,10 @@ func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Reque
 
 	clientMsgID := strings.TrimSpace(body.ClientMsgID)
 	userText := strings.TrimSpace(body.UserText)
+	userImages := normalizeImages(body.UserImages)
 	assistantText := strings.TrimSpace(body.AssistantText)
-	if clientMsgID == "" {
-		s.writeError(w, http.StatusBadRequest, "client_msg_id required")
-		return
-	}
-	if userText == "" || assistantText == "" {
-		s.writeError(w, http.StatusBadRequest, "user_text/assistant_text required")
+	if validationError := validateRoundCompleteInput(clientMsgID, userText, userImages, assistantText); validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
 
@@ -324,7 +322,7 @@ func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Reque
 		SessionRound{
 			ClientMsgID: clientMsgID,
 			User:        userText,
-			UserImages:  []string{},
+			UserImages:  userImages,
 			Assistant:   assistantText,
 		},
 		aWindowRounds,
@@ -406,6 +404,22 @@ func (s *Server) handleTopupBuy(w http.ResponseWriter, r *http.Request) {
 		"expire_at": expireAt,
 		"remaining": remaining,
 	})
+}
+
+func validateRoundCompleteInput(clientMsgID string, userText string, userImages []string, assistantText string) string {
+	if clientMsgID == "" {
+		return "client_msg_id required"
+	}
+	if len(userImages) > 4 {
+		return "single request supports up to 4 images"
+	}
+	if strings.TrimSpace(userText) == "" && len(userImages) == 0 {
+		return "user_text or user_images required"
+	}
+	if strings.TrimSpace(assistantText) == "" {
+		return "assistant_text required"
+	}
+	return ""
 }
 
 func (s *Server) handleRenewPlus(w http.ResponseWriter, r *http.Request) {
