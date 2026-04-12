@@ -174,11 +174,11 @@ Clean-State 必做回归的范围：
 ### 7.3 当前实现细则
 
 - 工作线和静态贴底线必须共用同一个物理锚点，优先使用真实 `composerTopInViewportPx`
-- 消息视口与 composer 已解耦：`Scaffold.bottomBar` 只保留单行稳定占位，真实 `ChatComposerBottomBar` 以 overlay 挂在页面底部
 - `RecyclerView` 已关闭 `stackFromEnd`
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
+- 发送起步允许短时冻结 `recyclerBottomPaddingPx`，只为锁住历史文本区视口高度，待起步锚点稳定后立即释放
 - 发送起步不再用 alpha 隐藏“本轮用户消息 + assistant 起步宿主”
 - 发送起步不再冻结整个 `RecyclerView` 视觉快照
 - `suppressLayout()` 作为发送起步唯一挡帧手段：`submitIds(...)`、定位、稳定验证全部完成后才释放，不允许把中间态画出去
