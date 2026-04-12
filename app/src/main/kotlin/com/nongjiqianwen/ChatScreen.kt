@@ -2574,10 +2574,6 @@ fun ChatScreen() {
             assistantLineStepPx = assistantLineStepPx
         )
     }
-    fun canRecyclerScrollDown(): Boolean {
-        return recyclerViewRef?.canScrollVertically(1) == true
-    }
-
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
@@ -3146,6 +3142,7 @@ fun ChatScreen() {
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+        resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
         sendStartAnchorActiveState = scrollRuntime.sendStartAnchorActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
@@ -3155,7 +3152,6 @@ fun ChatScreen() {
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         isWithinBottomTolerance = ::isWithinBottomTolerance,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-        canRecyclerScrollDown = ::canRecyclerScrollDown,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
         snapStreamingToWorkline = snapStreamingToWorkline,
@@ -3414,7 +3410,7 @@ fun ChatScreen() {
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
                                 isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-                                canRecyclerScrollDown = ::canRecyclerScrollDown,
+                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         },
@@ -3424,7 +3420,9 @@ fun ChatScreen() {
                                 dy = dy,
                                 programmaticScroll = programmaticScroll,
                                 isStreaming = isStreaming,
-                                scrollMode = scrollMode
+                                scrollMode = scrollMode,
+                                isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+                                resumeAutoFollowArmedState = scrollRuntime.resumeAutoFollowArmed
                             )
                         }
                     ) { itemId ->
