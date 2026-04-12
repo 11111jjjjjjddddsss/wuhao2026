@@ -2574,6 +2574,9 @@ fun ChatScreen() {
             assistantLineStepPx = assistantLineStepPx
         )
     }
+    fun canRecyclerScrollDown(): Boolean {
+        return recyclerViewRef?.canScrollVertically(1) == true
+    }
 
     fun finishStreaming() {
         mainHandler.post {
@@ -3152,6 +3155,7 @@ fun ChatScreen() {
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         isWithinBottomTolerance = ::isWithinBottomTolerance,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+        canRecyclerScrollDown = ::canRecyclerScrollDown,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
         snapStreamingToWorkline = snapStreamingToWorkline,
@@ -3410,6 +3414,7 @@ fun ChatScreen() {
                                 userInteractingState = scrollRuntime.userInteracting,
                                 streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
                                 isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
+                                canRecyclerScrollDown = ::canRecyclerScrollDown,
                                 endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
                         },

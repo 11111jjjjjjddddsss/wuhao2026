@@ -218,6 +218,7 @@ internal fun handleRecyclerScrollStateChanged(
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
     isStreamingReadyForAutoFollow: () -> Boolean,
+    canRecyclerScrollDown: () -> Boolean,
     endProgrammaticScroll: () -> Unit
 ) {
     if (programmaticScroll) {
@@ -246,7 +247,8 @@ internal fun handleRecyclerScrollStateChanged(
                 isStreaming &&
                 hasStreamingItem &&
                 scrollModeState.value == ScrollMode.UserBrowsing &&
-                isStreamingReadyForAutoFollow()
+                isStreamingReadyForAutoFollow() &&
+                !canRecyclerScrollDown()
             ) {
                 scrollModeState.value = ScrollMode.AutoFollow
             }
@@ -342,6 +344,7 @@ internal fun BindRecyclerChatScrollEffects(
     currentStreamingOverflowDelta: () -> Int,
     isWithinBottomTolerance: () -> Boolean,
     isStreamingReadyForAutoFollow: () -> Boolean,
+    canRecyclerScrollDown: () -> Boolean,
     resolveStreamingFollowStepPx: (Int) -> Int,
     performStreamingFollowStep: suspend (Int) -> Unit,
     snapStreamingToWorkline: suspend () -> Unit,
@@ -374,7 +377,8 @@ internal fun BindRecyclerChatScrollEffects(
                 if (
                     !recyclerScrollInProgress &&
                     !userInteractingState.value &&
-                    isStreamingReadyForAutoFollow()
+                    isStreamingReadyForAutoFollow() &&
+                    !canRecyclerScrollDown()
                 ) {
                     scrollModeState.value = ScrollMode.AutoFollow
                     continue
