@@ -224,17 +224,6 @@ internal fun ChatRecyclerViewHost(
                 fun scheduleStartAnchorAlignment() {
                     if (activeStartAnchorRequestId.intValue != requestId) return
                     setStartAnchorLayoutSuppressed(true)
-                    val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
-                        recyclerView = recyclerView,
-                        layoutManager = layoutManager,
-                        pendingStartAnchorPosition = pendingStartAnchorPosition,
-                        pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
-                        pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
-                    )
-                    layoutManager.scrollToPositionWithOffset(
-                        pendingStartAnchorPosition,
-                        targetTopOffset
-                    )
                     val viewTreeObserver = recyclerView.viewTreeObserver
                     if (!viewTreeObserver.isAlive) {
                         setStartAnchorLayoutSuppressed(false)
@@ -259,6 +248,24 @@ internal fun ChatRecyclerViewHost(
                                 setStartAnchorLayoutSuppressed(false)
                                 activeStartAnchorRequestId.intValue = 0
                                 return true
+                            }
+                            val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
+                                recyclerView = recyclerView,
+                                layoutManager = layoutManager,
+                                pendingStartAnchorPosition = pendingStartAnchorPosition,
+                                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
+                                pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx
+                            )
+                            if (abs(anchorView.top - targetTopOffset) > 1) {
+                                layoutManager.scrollToPositionWithOffset(
+                                    pendingStartAnchorPosition,
+                                    targetTopOffset
+                                )
+                                if (remainingAlignmentRetries > 0) {
+                                    remainingAlignmentRetries -= 1
+                                    scheduleStartAnchorAlignment()
+                                    return false
+                                }
                             }
                             val revealStable = isRevealStable(targetTopOffset)
                             if (!revealStable && remainingAlignmentRetries > 0) {

@@ -150,7 +150,7 @@ Clean-State 必做回归的范围：
 
 1. 发送起步
 - 主人：[ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)
-- 做法：`submitIds(...)` 后经 `AdapterDataObserver` + `OnPreDraw` 一次性 `scrollToPositionWithOffset(...)`
+- 做法：`submitIds(...)` 后经 `AdapterDataObserver` + `OnPreDraw` 先等 anchor view 首帧 layout，再按真实高度执行 `scrollToPositionWithOffset(...)`
 - 当前锚点：assistant 起步宿主真实底边
 - 当前目标：assistant 起步宿主真实底边直接贴工作线，不再单独上抬到中部
 
