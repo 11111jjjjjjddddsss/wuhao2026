@@ -1433,7 +1433,7 @@ fun ChatScreen() {
     var programmaticScroll by scrollRuntime.programmaticScroll
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
-    var initialBottomSnapDone by scrollRuntime.initialBottomSnapDone
+    var initialBottomSnapDone by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
     var suppressJumpButtonForImeTransition by scrollRuntime.suppressJumpButtonForImeTransition
