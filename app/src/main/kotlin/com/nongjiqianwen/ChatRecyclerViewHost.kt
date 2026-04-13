@@ -321,16 +321,6 @@ internal fun ChatRecyclerViewHost(
                                     abortStartAnchorHandling()
                                     return true
                                 }
-                                val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
-                                if (anchorView == null) {
-                                    if (remainingAlignmentRetries > 0) {
-                                        remainingAlignmentRetries -= 1
-                                        scheduleStartAnchorAlignment()
-                                        return false
-                                    }
-                                    abortStartAnchorHandling()
-                                    return true
-                                }
                                 val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                                     recyclerView = recyclerView,
                                     layoutManager = layoutManager,
@@ -339,6 +329,20 @@ internal fun ChatRecyclerViewHost(
                                     pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx,
                                     pendingStartAnchorVisibleBottomInsetPx = pendingStartAnchorVisibleBottomInsetPx
                                 )
+                                val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
+                                if (anchorView == null) {
+                                    layoutManager.scrollToPositionWithOffset(
+                                        pendingStartAnchorPosition,
+                                        targetTopOffset
+                                    )
+                                    if (remainingAlignmentRetries > 0) {
+                                        remainingAlignmentRetries -= 1
+                                        scheduleStartAnchorAlignment()
+                                        return false
+                                    }
+                                    abortStartAnchorHandling()
+                                    return true
+                                }
                                 if (abs(anchorView.top - targetTopOffset) > 1) {
                                     layoutManager.scrollToPositionWithOffset(
                                         pendingStartAnchorPosition,
