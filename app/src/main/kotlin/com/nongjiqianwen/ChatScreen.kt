@@ -3112,12 +3112,12 @@ fun ChatScreen() {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        val lastIndex = messages.lastIndex
-        if (lastIndex < 0) {
+        val footerIndex = messages.size
+        if (footerIndex <= 0) {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        chatListState.scrollToItem(lastIndex)
+        chatListState.scrollToItem(footerIndex)
         chatListState.scrollBy(10000f)
         initialBottomSnapDone = true
     }
