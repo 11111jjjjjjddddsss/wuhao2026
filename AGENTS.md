@@ -181,7 +181,7 @@ Clean-State 必做回归的范围：
 - 发送起步不再冻结 `recyclerBottomPaddingPx`；`recyclerBottomPaddingPx` 始终跟随真实 composer 几何实时更新
 - 发送起步不再用 alpha 隐藏“本轮用户消息 + assistant 起步宿主”
 - 发送起步不再冻结整个 `RecyclerView` 视觉快照
-- `suppressLayout()` 作为发送起步唯一挡帧手段：`submitIds(...)`、定位、稳定验证全部完成后才释放，不允许把中间态画出去
+- 发送起步的抖动处理只保留两件事：`suppressLayout()` 挡住 `submitIds(...)` 到定位完成之间的中间帧；`ChatRecyclerViewHost` 在发送起步窗口内用临时 `onLayoutChange + scrollBy(...)` 补偿 `RecyclerView` 高度变化，不再保留额外遮挡链
 - 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
 
 当前排查顺序：
