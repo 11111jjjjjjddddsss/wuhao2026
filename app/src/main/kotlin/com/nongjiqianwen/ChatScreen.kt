@@ -35,6 +35,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -148,8 +150,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextStyle
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
@@ -1415,8 +1415,7 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    var recyclerViewRef by remember(uiRuntimeResetKey) { mutableStateOf<RecyclerView?>(null) }
-    var recyclerLayoutManagerRef by remember(uiRuntimeResetKey) { mutableStateOf<LinearLayoutManager?>(null) }
+    val chatListState = remember(uiRuntimeResetKey) { LazyListState(0, 0) }
     var recyclerScrollInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -1436,6 +1435,7 @@ fun ChatScreen() {
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
     var inputChromeRowHeightPx by scrollRuntime.inputChromeRowHeightPx
+    val chatListUserDragging by chatListState.interactionSource.collectIsDraggedAsState()
 
     val composerRuntime = rememberChatComposerRuntimeState(
         chatScopeId = uiRuntimeResetKey,
@@ -2501,6 +2501,46 @@ fun ChatScreen() {
         )
     }
 
+    LaunchedEffect(chatListState) {
+        snapshotFlow { readChatListMetrics(chatListState) }
+            .collect { metrics ->
+                recyclerScrollInProgress = metrics.scrollInProgress
+                recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
+                recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
+            }
+    }
+
+    LaunchedEffect(
+        recyclerScrollInProgress,
+        chatListUserDragging,
+        programmaticScroll,
+        isStreaming,
+        hasStreamingItem
+    ) {
+        handleChatListScrollStateChanged(
+            scrollInProgress = recyclerScrollInProgress,
+            userDragging = chatListUserDragging,
+            programmaticScroll = programmaticScroll,
+            isStreaming = isStreaming,
+            hasStreamingItem = hasStreamingItem,
+            scrollModeState = scrollRuntime.scrollMode,
+            userInteractingState = scrollRuntime.userInteracting,
+            streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
+            endProgrammaticScroll = {
+                com.nongjiqianwen.endProgrammaticChatListScroll(
+                    programmaticScrollState = scrollRuntime.programmaticScroll,
+                    listState = chatListState,
+                    refreshChatListMetrics = { listState ->
+                        val metrics = readChatListMetrics(listState)
+                        recyclerScrollInProgress = metrics.scrollInProgress
+                        recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
+                        recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
+                    }
+                )
+            }
+        )
+    }
+
     LaunchedEffect(recyclerScrollInProgress, programmaticScroll, imeVisible) {
         if (!programmaticScroll && recyclerScrollInProgress && imeVisible) {
             keyboardController?.hide()
@@ -2988,53 +3028,51 @@ fun ChatScreen() {
         commitSendMessage(trimmedText)
     }
 
-    fun refreshRecyclerMetrics(recyclerView: RecyclerView) {
-        val metrics = readRecyclerMetrics(recyclerView)
+    fun refreshChatListMetrics(listState: LazyListState) {
+        val metrics = readChatListMetrics(listState)
         recyclerScrollInProgress = metrics.scrollInProgress
         recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
         recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
     }
 
-    fun beginProgrammaticRecyclerScroll() {
-        com.nongjiqianwen.beginProgrammaticRecyclerScroll(scrollRuntime.programmaticScroll)
+    fun beginProgrammaticChatListScroll() {
+        com.nongjiqianwen.beginProgrammaticChatListScroll(scrollRuntime.programmaticScroll)
     }
 
-    fun endProgrammaticRecyclerScroll() {
-        com.nongjiqianwen.endProgrammaticRecyclerScroll(
+    fun endProgrammaticChatListScroll() {
+        com.nongjiqianwen.endProgrammaticChatListScroll(
             programmaticScrollState = scrollRuntime.programmaticScroll,
-            recyclerView = recyclerViewRef,
-            refreshRecyclerMetrics = ::refreshRecyclerMetrics
+            listState = chatListState,
+            refreshChatListMetrics = ::refreshChatListMetrics
         )
     }
 
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
-        com.nongjiqianwen.scrollRecyclerToBottom(
-            recyclerView = recyclerViewRef,
-            layoutManager = recyclerLayoutManagerRef,
+        com.nongjiqianwen.scrollChatListToBottom(
+            listState = chatListState,
             lastIndex = messages.lastIndex,
             animated = animated,
             currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+            beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
+            endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
     }
 
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
-        com.nongjiqianwen.snapRecyclerStreamingToWorkline(
-            recyclerView = recyclerViewRef,
+        com.nongjiqianwen.snapChatListStreamingToWorkline(
+            listState = chatListState,
             currentStreamingAlignDeltaPx = ::currentStreamingAlignDeltaPx,
-            beginProgrammaticScroll = ::beginProgrammaticRecyclerScroll,
-            endProgrammaticScroll = ::endProgrammaticRecyclerScroll
+            beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
+            endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
     }
     val performStreamingFollowStep: suspend (Int) -> Unit = performStreamingFollowStep@{ stepPx ->
-        val recyclerView = recyclerViewRef ?: return@performStreamingFollowStep
         if (stepPx == 0) return@performStreamingFollowStep
-        beginProgrammaticRecyclerScroll()
+        beginProgrammaticChatListScroll()
         try {
-            recyclerView.scrollBy(0, stepPx)
+            chatListState.scrollBy(stepPx.toFloat())
         } finally {
-            endProgrammaticRecyclerScroll()
+            endProgrammaticChatListScroll()
         }
     }
 
@@ -3130,11 +3168,11 @@ fun ChatScreen() {
         }
     }
 
-    BindRecyclerChatScrollEffects(
+    BindChatListScrollEffects(
         isStreaming = isStreaming,
         hasStreamingItem = hasStreamingItem,
         streamingMessageContent = streamingMessageContent,
-        recyclerScrollInProgress = recyclerScrollInProgress,
+        listScrollInProgress = recyclerScrollInProgress,
         startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
         startupLayoutReady = startupLayoutReady,
         messagesCount = messages.size,
@@ -3289,6 +3327,7 @@ fun ChatScreen() {
                 ) {
                     ChatRecyclerViewHost(
                         stateResetKey = uiRuntimeResetKey,
+                        listState = chatListState,
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,
@@ -3303,6 +3342,8 @@ fun ChatScreen() {
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
                         },
+                        onStartAnchorScrollStarted = ::beginProgrammaticChatListScroll,
+                        onStartAnchorScrollFinished = ::endProgrammaticChatListScroll,
                         modifier = Modifier
                             .then(
                                 if (hasActiveMessageSelection) {
@@ -3318,34 +3359,7 @@ fun ChatScreen() {
                                 } else {
                                     Modifier.graphicsLayer(alpha = 0f)
                                 }
-                            ),
-                        onRecyclerReady = { recyclerView, layoutManager ->
-                            recyclerViewRef = recyclerView
-                            recyclerLayoutManagerRef = layoutManager
-                            refreshRecyclerMetrics(recyclerView)
-                        },
-                        onScrollStateChanged = { recyclerView, newState ->
-                            refreshRecyclerMetrics(recyclerView)
-                            handleRecyclerScrollStateChanged(
-                                newState = newState,
-                                programmaticScroll = programmaticScroll,
-                                isStreaming = isStreaming,
-                                hasStreamingItem = hasStreamingItem,
-                                scrollModeState = scrollRuntime.scrollMode,
-                                userInteractingState = scrollRuntime.userInteracting,
-                                streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-                                endProgrammaticScroll = ::endProgrammaticRecyclerScroll
                             )
-                        },
-                        onScrolled = { recyclerView, _, dy ->
-                            refreshRecyclerMetrics(recyclerView)
-                            handleRecyclerScrolledWhileBrowsing(
-                                dy = dy,
-                                programmaticScroll = programmaticScroll,
-                                isStreaming = isStreaming,
-                                scrollMode = scrollMode
-                            )
-                        }
                     ) { itemId ->
                         val msg = messages.firstOrNull { it.id == itemId } ?: return@ChatRecyclerViewHost
                         DisposableEffect(msg.id) {

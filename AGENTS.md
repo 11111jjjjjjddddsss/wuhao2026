@@ -131,11 +131,11 @@ Clean-State 必做回归的范围：
 - [ChatComposerCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt)：输入框动态、IME、发送收口
 - [ChatComposerPanel.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt)：底部输入区 UI 宿主
 - [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：页面组装、测量值采集、状态接线
-- [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：RecyclerView 底座、bottom padding 锚点、发送起步定位
+- [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：纯 Compose `LazyColumn` 底座、bottom padding 锚点、发送起步定位
 
-旧 `LazyColumn / listState / sendTick / frozenBottom / retainedBottomGap` 等旧滚动术语全部视为历史归档，不再执行。
+旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / frozenBottom / retainedBottomGap` 等旧滚动术语全部视为历史归档，不再执行。
 
-## 7. 当前 RecyclerView 滚动链唯一真相
+## 7. 当前 Compose 列表滚动链唯一真相
 
 ### 7.1 总口径
 
@@ -150,9 +150,9 @@ Clean-State 必做回归的范围：
 
 1. 发送起步
 - 主人：[ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)
-- 做法：`submitIds(...)` 后经 `AdapterDataObserver` + `OnPreDraw` 先等 anchor view 首帧 layout，再按真实高度执行 `scrollToPositionWithOffset(...)`
-- 当前锚点：assistant 起步宿主真实底边
-- 当前目标：assistant 起步宿主真实底边直接贴工作线，不再单独上抬到中部
+- 做法：`LazyColumn` 内用 `LazyListState.scrollToItem(...)` + `scrollBy(...)` 一次性把 assistant 起步宿主可见底边对齐工作线
+- 当前锚点：小球所在的 assistant 起步宿主可见底边
+- 当前目标：小球第一次出现就落在工作线；用户消息在其上方，正文从工作线开始长
 
 2. AutoFollow
 - 主人：[ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)
@@ -174,15 +174,15 @@ Clean-State 必做回归的范围：
 ### 7.3 当前实现细则
 
 - 工作线和静态贴底线必须共用同一个物理锚点，优先使用真实 `composerTopInViewportPx`
-- `RecyclerView` 已关闭 `stackFromEnd`
+- 列表底座当前为纯 Compose `LazyColumn`，不再保留 `RecyclerView` / `stackFromEnd`
 - 消息区容器高度保持固定；`ChatComposerBottomBar` 已从 `Scaffold.bottomBar` 挪到内容层底部 overlay，输入区高度变化只再影响 `recyclerBottomPaddingPx`，不再直接挤压消息区容器
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步不再冻结 `recyclerBottomPaddingPx`；`recyclerBottomPaddingPx` 始终跟随真实 composer 几何实时更新
 - 发送起步不再用 alpha 隐藏“本轮用户消息 + assistant 起步宿主”
-- 发送起步不再冻结整个 `RecyclerView` 视觉快照
-- 发送起步的抖动处理只保留一件事：`suppressLayout()` 挡住 `submitIds(...)` 到定位完成之间的中间帧；不再保留发送窗口期的 `RecyclerView` 高度补偿链
+- 发送起步不再冻结整表视觉快照
+- 发送起步不再依赖 `suppressLayout()` / 高度补偿链；起步定位和后续跟随都只走 `LazyListState`
 - 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
 
 当前排查顺序：

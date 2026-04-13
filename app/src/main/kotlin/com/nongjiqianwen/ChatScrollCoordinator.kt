@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
-import android.view.ViewTreeObserver
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
@@ -9,11 +10,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
-import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.math.roundToInt
-import kotlin.coroutines.resume
 
 internal enum class ScrollMode {
     Idle,
@@ -80,134 +78,95 @@ internal fun rememberChatScrollRuntimeState(
     }
 }
 
-internal data class ChatRecyclerMetrics(
+internal data class ChatListMetrics(
     val scrollInProgress: Boolean,
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int
 )
 
-internal fun readRecyclerMetrics(recyclerView: RecyclerView): ChatRecyclerMetrics {
-    val layoutManager = recyclerView.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager
-    val firstVisible = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
-    return ChatRecyclerMetrics(
-        scrollInProgress = recyclerView.scrollState != RecyclerView.SCROLL_STATE_IDLE,
-        firstVisibleItemIndex = firstVisible.coerceAtLeast(0),
-        firstVisibleItemScrollOffset = if (firstVisible != RecyclerView.NO_POSITION) {
-            -(layoutManager?.findViewByPosition(firstVisible)?.top ?: 0)
-        } else {
-            0
-        }
+internal fun readChatListMetrics(listState: LazyListState): ChatListMetrics {
+    return ChatListMetrics(
+        scrollInProgress = listState.isScrollInProgress,
+        firstVisibleItemIndex = listState.firstVisibleItemIndex.coerceAtLeast(0),
+        firstVisibleItemScrollOffset = listState.firstVisibleItemScrollOffset.coerceAtLeast(0)
     )
 }
 
-internal fun beginProgrammaticRecyclerScroll(
+internal fun beginProgrammaticChatListScroll(
     programmaticScrollState: MutableState<Boolean>
 ) {
     programmaticScrollState.value = true
 }
 
-internal fun endProgrammaticRecyclerScroll(
+internal fun endProgrammaticChatListScroll(
     programmaticScrollState: MutableState<Boolean>,
-    recyclerView: RecyclerView?,
-    refreshRecyclerMetrics: (RecyclerView) -> Unit
+    listState: LazyListState?,
+    refreshChatListMetrics: (LazyListState) -> Unit
 ) {
     programmaticScrollState.value = false
-    recyclerView?.let(refreshRecyclerMetrics)
+    listState?.let(refreshChatListMetrics)
 }
 
-private suspend fun awaitRecyclerPreDrawAlignment(
-    recyclerView: RecyclerView,
-    align: () -> Boolean
+private suspend fun alignChatListBottom(
+    listState: LazyListState,
+    currentBottomAlignDeltaPx: () -> Int
 ) {
-    suspendCancellableCoroutine<Unit> { continuation ->
-        val viewTreeObserver = recyclerView.viewTreeObserver
-        if (!viewTreeObserver.isAlive) {
-            continuation.resume(Unit)
-            return@suspendCancellableCoroutine
-        }
-        val listener = object : ViewTreeObserver.OnPreDrawListener {
-            override fun onPreDraw(): Boolean {
-                if (viewTreeObserver.isAlive) {
-                    viewTreeObserver.removeOnPreDrawListener(this)
-                }
-                val shouldDraw = align()
-                if (continuation.isActive) {
-                    continuation.resume(Unit)
-                }
-                return shouldDraw
-            }
-        }
-        continuation.invokeOnCancellation {
-            if (viewTreeObserver.isAlive) {
-                viewTreeObserver.removeOnPreDrawListener(listener)
-            }
-        }
-        viewTreeObserver.addOnPreDrawListener(listener)
+    repeat(4) {
+        withFrameNanos { }
+        val alignDeltaPx = currentBottomAlignDeltaPx()
+        if (alignDeltaPx == 0) return
+        listState.scrollBy((-alignDeltaPx).toFloat())
     }
 }
 
-internal suspend fun scrollRecyclerToBottom(
-    recyclerView: RecyclerView?,
-    layoutManager: androidx.recyclerview.widget.LinearLayoutManager?,
+internal suspend fun scrollChatListToBottom(
+    listState: LazyListState?,
     lastIndex: Int,
     animated: Boolean,
     currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
     endProgrammaticScroll: () -> Unit
 ) {
-    val activeRecyclerView = recyclerView ?: return
-    val activeLayoutManager = layoutManager ?: return
+    val activeListState = listState ?: return
     if (lastIndex < 0) return
     beginProgrammaticScroll()
     try {
         if (animated) {
-            activeRecyclerView.smoothScrollToPosition(lastIndex)
+            activeListState.animateScrollToItem(lastIndex)
         } else {
-            val laidOutLastItem = activeLayoutManager.findViewByPosition(lastIndex)
-            if (laidOutLastItem != null) {
-                val alignDeltaPx = currentBottomAlignDeltaPx()
-                if (alignDeltaPx != 0) {
-                    activeRecyclerView.scrollBy(0, -alignDeltaPx)
-                }
-                endProgrammaticScroll()
-            } else {
-                activeLayoutManager.scrollToPosition(lastIndex)
-                awaitRecyclerPreDrawAlignment(activeRecyclerView) {
-                    val alignDeltaPx = currentBottomAlignDeltaPx()
-                    if (alignDeltaPx != 0) {
-                        activeRecyclerView.scrollBy(0, -alignDeltaPx)
-                        false
-                    } else {
-                        true
-                    }
-                }
-                endProgrammaticScroll()
-            }
+            activeListState.scrollToItem(lastIndex)
         }
+        alignChatListBottom(
+            listState = activeListState,
+            currentBottomAlignDeltaPx = currentBottomAlignDeltaPx
+        )
     } catch (_: Throwable) {
         endProgrammaticScroll()
+        return
     }
+    endProgrammaticScroll()
 }
 
-internal suspend fun snapRecyclerStreamingToWorkline(
-    recyclerView: RecyclerView?,
+internal suspend fun snapChatListStreamingToWorkline(
+    listState: LazyListState?,
     currentStreamingAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
     endProgrammaticScroll: () -> Unit
 ) {
-    val activeRecyclerView = recyclerView ?: return
+    val activeListState = listState ?: return
     val deltaPx = currentStreamingAlignDeltaPx()
     if (deltaPx == 0) return
     beginProgrammaticScroll()
     try {
-        activeRecyclerView.scrollBy(0, -deltaPx)
+        activeListState.scrollBy((-deltaPx).toFloat())
     } finally {
         endProgrammaticScroll()
     }
 }
 
-internal fun handleRecyclerScrollStateChanged(
-    newState: Int,
+internal fun handleChatListScrollStateChanged(
+    scrollInProgress: Boolean,
+    userDragging: Boolean,
     programmaticScroll: Boolean,
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
@@ -217,14 +176,13 @@ internal fun handleRecyclerScrollStateChanged(
     endProgrammaticScroll: () -> Unit
 ) {
     if (programmaticScroll) {
-        if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+        if (!scrollInProgress) {
             endProgrammaticScroll()
         }
         return
     }
-    when (newState) {
-        RecyclerView.SCROLL_STATE_DRAGGING,
-        RecyclerView.SCROLL_STATE_SETTLING -> {
+    when {
+        userDragging || scrollInProgress -> {
             userInteractingState.value = true
             if (
                 isStreaming &&
@@ -236,20 +194,10 @@ internal fun handleRecyclerScrollStateChanged(
             }
         }
 
-        RecyclerView.SCROLL_STATE_IDLE -> {
+        else -> {
             userInteractingState.value = false
         }
     }
-}
-
-internal fun handleRecyclerScrolledWhileBrowsing(
-    dy: Int,
-    programmaticScroll: Boolean,
-    isStreaming: Boolean,
-    scrollMode: ScrollMode
-) {
-    if (programmaticScroll || !isStreaming || scrollMode != ScrollMode.UserBrowsing) return
-    if (dy == 0) return
 }
 
 internal suspend fun performJumpToBottom(
@@ -307,11 +255,11 @@ internal fun resumeScrollRuntimeForStreamingRecovery(
 }
 
 @Composable
-internal fun BindRecyclerChatScrollEffects(
+internal fun BindChatListScrollEffects(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
     streamingMessageContent: String,
-    recyclerScrollInProgress: Boolean,
+    listScrollInProgress: Boolean,
     startupHydrationBarrierSatisfied: Boolean,
     startupLayoutReady: Boolean,
     messagesCount: Int,
@@ -342,7 +290,7 @@ internal fun BindRecyclerChatScrollEffects(
         streamingMessageContent,
         scrollMode,
         userInteracting,
-        recyclerScrollInProgress,
+        listScrollInProgress,
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx()
     ) {
@@ -356,7 +304,7 @@ internal fun BindRecyclerChatScrollEffects(
             val contentBottom = currentStreamingContentBottomPx()
             if (activeScrollMode == ScrollMode.UserBrowsing) {
                 if (
-                    !recyclerScrollInProgress &&
+                    !listScrollInProgress &&
                     !userInteractingState.value &&
                     isStreamingReadyForAutoFollow()
                 ) {
@@ -366,7 +314,7 @@ internal fun BindRecyclerChatScrollEffects(
                 streamBottomFollowActiveState.value = false
                 continue
             }
-            if (recyclerScrollInProgress || userInteractingState.value) {
+            if (listScrollInProgress || userInteractingState.value) {
                 streamBottomFollowActiveState.value = false
                 continue
             }
@@ -386,7 +334,7 @@ internal fun BindRecyclerChatScrollEffects(
                     if (
                         scrollModeState.value == ScrollMode.Idle &&
                         !userInteractingState.value &&
-                        !recyclerScrollInProgress
+                        !listScrollInProgress
                     ) {
                         scrollModeState.value = ScrollMode.AutoFollow
                     }
