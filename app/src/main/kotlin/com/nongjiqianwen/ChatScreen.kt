@@ -1511,15 +1511,20 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
-    val sendStartGeometryLockActive by remember(
+    val sendStartWorklineLockActive by remember(
         sendUiSettling,
-        pendingStartAnchorMessageId,
+        pendingStartAnchorMessageId
+    ) {
+        derivedStateOf {
+            sendUiSettling || pendingStartAnchorMessageId != null
+        }
+    }
+    val sendStartBottomPaddingLockActive by remember(
+        sendStartWorklineLockActive,
         sendStartAnchorActive
     ) {
         derivedStateOf {
-            sendUiSettling ||
-                pendingStartAnchorMessageId != null ||
-                sendStartAnchorActive
+            sendStartWorklineLockActive || sendStartAnchorActive
         }
     }
     val streamingWorklineBottomPx by remember(
@@ -1527,10 +1532,10 @@ fun ChatScreen() {
         bottomBarHeightPx,
         composerTopInViewportPx,
         streamVisibleBottomGapPx,
-        sendStartGeometryLockActive
+        sendStartWorklineLockActive
     ) {
         derivedStateOf {
-            if (!sendStartGeometryLockActive && composerTopInViewportPx > 0) {
+            if (!sendStartWorklineLockActive && composerTopInViewportPx > 0) {
                 (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 (
@@ -1764,12 +1769,12 @@ fun ChatScreen() {
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
         streamingExtraReservedHeightPx,
-        sendStartGeometryLockActive
+        sendStartBottomPaddingLockActive
     ) {
         derivedStateOf {
             val measuredComposerReservedHeightPx =
                 if (
-                    !sendStartGeometryLockActive &&
+                    !sendStartBottomPaddingLockActive &&
                     messageViewportHeightPx > 0 &&
                     composerTopInViewportPx > 0
                 ) {
