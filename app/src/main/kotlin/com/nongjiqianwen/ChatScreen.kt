@@ -1467,6 +1467,7 @@ fun ChatScreen() {
     var hasStartedConversation by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var sendStartViewportCompensationRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -2099,6 +2100,7 @@ fun ChatScreen() {
         QwenClient.resetUiRuntimeForCleanState()
         pendingStartAnchorMessageId = null
         pendingStartAnchorRequestId = 0
+        sendStartViewportCompensationRequestId = 0
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
@@ -2844,6 +2846,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
+        sendStartViewportCompensationRequestId += 1
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -3369,6 +3372,7 @@ fun ChatScreen() {
                         itemIds = messages.map { it.id },
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,
+                        sendStartViewportCompensationRequestId = sendStartViewportCompensationRequestId,
                         pendingStartAnchorTargetBottomPx = streamingWorklineBottomPx,
                         pendingStartAnchorEstimatedHeightPx =
                             assistantLineStepPx +
