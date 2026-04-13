@@ -1539,8 +1539,15 @@ fun ChatScreen() {
             messageContentBoundsById[lastMessageId]
         } else {
             messageContentBoundsById[lastMessageId] ?: messageSelectionBoundsById[lastMessageId]
-        } ?: return -1
-        return (bounds.bottom - messageViewportTopPx).roundToInt()
+        }
+        if (bounds != null) {
+            return (bounds.bottom - messageViewportTopPx).roundToInt()
+        }
+        val lastItemIndex = messages.lastIndex
+        val fallbackItem =
+            chatListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == lastItemIndex }
+                ?: return -1
+        return fallbackItem.offset + fallbackItem.size
     }
     fun currentStreamingLegalBottomPx(): Int {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
