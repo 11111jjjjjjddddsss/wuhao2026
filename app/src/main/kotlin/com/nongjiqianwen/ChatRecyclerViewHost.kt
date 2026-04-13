@@ -12,9 +12,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.first
 
 private fun resolvePendingStartAnchorTargetTopPx(
     layoutInfo: LazyListLayoutInfo,
@@ -93,6 +96,11 @@ internal fun ChatRecyclerViewHost(
         }
 
         try {
+            snapshotFlow {
+                listState.layoutInfo.totalItemsCount >= itemIds.size &&
+                    itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId
+            }.first { it }
+            withFrameNanos { }
             beginStartAnchorScrollIfNeeded()
             val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                 layoutInfo = listState.layoutInfo,
