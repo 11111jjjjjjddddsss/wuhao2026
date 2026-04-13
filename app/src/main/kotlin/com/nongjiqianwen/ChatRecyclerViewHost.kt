@@ -97,19 +97,26 @@ internal fun ChatRecyclerViewHost(
 
         try {
             snapshotFlow {
-                val anchorItem =
-                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == pendingStartAnchorPosition }
                 listState.layoutInfo.totalItemsCount >= itemIds.size &&
-                    itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId &&
-                    anchorItem != null &&
-                    anchorItem.size > 0
+                    itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId
             }.first { it }
             snapshotFlow {
                 pendingStartAnchorTargetBottomPx > 0 &&
                     listState.layoutInfo.viewportSize.height > 0
             }.first { it }
-            withFrameNanos { }
             beginStartAnchorScrollIfNeeded()
+            // When the user sends from deep history, the new assistant placeholder is not
+            // visible yet. Bring it into the viewport first, then do the precise workline
+            // alignment once LazyColumn has measured it.
+            listState.scrollToItem(pendingStartAnchorPosition)
+            snapshotFlow {
+                listState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == pendingStartAnchorPosition }
+                    ?.size
+                    ?.let { it > 0 }
+                    ?: false
+            }.first { it }
+            withFrameNanos { }
             val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                 layoutInfo = listState.layoutInfo,
                 pendingStartAnchorPosition = pendingStartAnchorPosition,
