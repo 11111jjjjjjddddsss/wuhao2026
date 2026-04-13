@@ -197,7 +197,11 @@ internal fun ChatRecyclerViewHost(
             itemContent(itemId)
         }
         item(key = "bottom_footer") {
-            Spacer(modifier = Modifier.height(1.dp))
+            Spacer(
+                modifier = with(density) {
+                    Modifier.height(bottomPaddingPx.toDp())
+                }
+            )
         }
     }
 }
