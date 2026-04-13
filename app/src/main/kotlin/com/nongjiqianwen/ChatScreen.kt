@@ -1432,6 +1432,7 @@ fun ChatScreen() {
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
     var initialBottomSnapDone by scrollRuntime.initialBottomSnapDone
+    var initialBottomSnapAttempts by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
     var suppressJumpButtonForImeTransition by scrollRuntime.suppressJumpButtonForImeTransition
@@ -2131,6 +2132,7 @@ fun ChatScreen() {
         QwenClient.resetUiRuntimeForCleanState()
         pendingStartAnchorMessageId = null
         pendingStartAnchorRequestId = 0
+        initialBottomSnapAttempts = 0
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
@@ -2437,12 +2439,13 @@ fun ChatScreen() {
                     }
                 }
                 mainHandler.post {
-                    if (remoteMessages.isNotEmpty()) {
-                        if (!hasStartedConversation && !isStreaming && shouldReplaceHydratedMessages(messages, remoteMessages)) {
-                            replaceMessages(remoteMessages)
-                            initialBottomSnapDone = false
-                            persistTick++
-                        }
+                        if (remoteMessages.isNotEmpty()) {
+                            if (!hasStartedConversation && !isStreaming && shouldReplaceHydratedMessages(messages, remoteMessages)) {
+                                replaceMessages(remoteMessages)
+                                initialBottomSnapAttempts = 0
+                                initialBottomSnapDone = false
+                                persistTick++
+                            }
                     }
                     historyHydrationComplete = true
                 }
@@ -2470,6 +2473,7 @@ fun ChatScreen() {
                 ?.takeIf { it.assistant.isNotBlank() }
             if (recoveredRound != null) {
                 applyRecoveredAssistantRound(sourceUserMessageId, recoveredRound)
+                initialBottomSnapAttempts = 0
                 initialBottomSnapDone = false
                 return@LaunchedEffect
             }
@@ -3099,24 +3103,41 @@ fun ChatScreen() {
         hasStartedConversation,
         initialBottomSnapDone,
         currentLastMessageContentBottomPx(),
-        isWithinBottomTolerance()
+        currentBottomAlignDeltaPx(),
+        initialBottomSnapAttempts
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
         if (!startupHydrationBarrierSatisfied || !startupLayoutReady) return@LaunchedEffect
         if (messages.isEmpty() && !hasStreamingItem) {
+            initialBottomSnapAttempts = 0
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (hasStartedConversation) {
+            initialBottomSnapAttempts = 0
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        if (currentLastMessageContentBottomPx() <= 0 || !isWithinBottomTolerance()) {
-            scrollToBottom(false)
+        val lastIndex = messages.lastIndex
+        val lastItemVisible =
+            lastIndex >= 0 && chatListState.layoutInfo.visibleItemsInfo.any { it.index == lastIndex }
+        val startupBottomSettled =
+            lastItemVisible &&
+                currentLastMessageContentBottomPx() > 0 &&
+                kotlin.math.abs(currentBottomAlignDeltaPx()) <= bottomPositionTolerancePx
+        if (startupBottomSettled) {
+            initialBottomSnapAttempts = 0
+            initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        initialBottomSnapDone = true
+        if (initialBottomSnapAttempts >= 6) {
+            initialBottomSnapAttempts = 0
+            initialBottomSnapDone = true
+            return@LaunchedEffect
+        }
+        initialBottomSnapAttempts++
+        scrollToBottom(false)
     }
 
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
