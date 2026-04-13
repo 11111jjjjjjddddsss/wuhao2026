@@ -111,7 +111,6 @@ internal fun ChatRecyclerViewHost(
     itemIds: List<String>,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
-    sendStartViewportCompensationRequestId: Int,
     pendingStartAnchorTargetBottomPx: Int,
     pendingStartAnchorEstimatedHeightPx: Int,
     pendingStartAnchorVisibleBottomInsetPx: Int,
@@ -127,9 +126,6 @@ internal fun ChatRecyclerViewHost(
     val lastAppliedStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val activeStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val startAnchorLayoutSuppressed = remember(stateResetKey) { mutableStateOf(false) }
-    val lastAppliedViewportCompensationRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
-    val activeViewportCompensationRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
-    val pendingViewportCompensationDeltaPx = remember(stateResetKey) { mutableIntStateOf(0) }
     val recyclerViewRef = remember(stateResetKey) { mutableStateOf<RecyclerView?>(null) }
     DisposableEffect(stateResetKey) {
         onDispose {
@@ -152,36 +148,9 @@ internal fun ChatRecyclerViewHost(
                     setHasFixedSize(false)
                     this.adapter = adapter
                     setPadding(0, topPaddingPx, 0, bottomPaddingPx)
-                    fun applyViewportCompensationIfNeeded(): Boolean {
-                        if (activeViewportCompensationRequestId.intValue == 0) return false
-                        if (startAnchorLayoutSuppressed.value) return false
-                        if (scrollState == RecyclerView.SCROLL_STATE_DRAGGING) return false
-                        val compensationDelta = pendingViewportCompensationDeltaPx.intValue
-                        if (compensationDelta == 0) return false
-                        pendingViewportCompensationDeltaPx.intValue = 0
-                        scrollBy(0, compensationDelta)
-                        return true
-                    }
-                    addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
-                        if (activeViewportCompensationRequestId.intValue == 0) return@addOnLayoutChangeListener
-                        val oldHeight = oldBottom - oldTop
-                        val newHeight = bottom - top
-                        if (oldHeight <= 0 || newHeight <= 0) return@addOnLayoutChangeListener
-                        val delta = oldHeight - newHeight
-                        if (delta == 0) return@addOnLayoutChangeListener
-                        pendingViewportCompensationDeltaPx.intValue += delta
-                        applyViewportCompensationIfNeeded()
-                    }
                     addOnScrollListener(
                         object : RecyclerView.OnScrollListener() {
                             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
-                                if (
-                                    newState == RecyclerView.SCROLL_STATE_IDLE &&
-                                    activeViewportCompensationRequestId.intValue != 0 &&
-                                    pendingViewportCompensationDeltaPx.intValue != 0
-                                ) {
-                                    applyViewportCompensationIfNeeded()
-                                }
                                 onScrollStateChanged(recyclerView, newState)
                             }
 
@@ -202,34 +171,12 @@ internal fun ChatRecyclerViewHost(
                     }
                     startAnchorLayoutSuppressed.value = suppressed
                 }
-                fun completeViewportCompensationRequest() {
-                    val activeRequestId = activeViewportCompensationRequestId.intValue
-                    if (activeRequestId <= 0) return
-                    if (!startAnchorLayoutSuppressed.value && recyclerView.scrollState != RecyclerView.SCROLL_STATE_DRAGGING) {
-                        val compensationDelta = pendingViewportCompensationDeltaPx.intValue
-                        if (compensationDelta != 0) {
-                            pendingViewportCompensationDeltaPx.intValue = 0
-                            recyclerView.scrollBy(0, compensationDelta)
-                        }
-                    }
-                    pendingViewportCompensationDeltaPx.intValue = 0
-                    lastAppliedViewportCompensationRequestId.intValue = activeRequestId
-                    activeViewportCompensationRequestId.intValue = 0
-                }
 
                 if (
                     recyclerView.paddingTop != topPaddingPx ||
                     recyclerView.paddingBottom != bottomPaddingPx
                 ) {
                     recyclerView.setPadding(0, topPaddingPx, 0, bottomPaddingPx)
-                }
-                if (
-                    sendStartViewportCompensationRequestId > 0 &&
-                    sendStartViewportCompensationRequestId != lastAppliedViewportCompensationRequestId.intValue &&
-                    sendStartViewportCompensationRequestId != activeViewportCompensationRequestId.intValue
-                ) {
-                    activeViewportCompensationRequestId.intValue = sendStartViewportCompensationRequestId
-                    pendingViewportCompensationDeltaPx.intValue = 0
                 }
                 val pendingStartAnchorPosition =
                     pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 } ?: -1
@@ -255,7 +202,6 @@ internal fun ChatRecyclerViewHost(
                         setStartAnchorLayoutSuppressed(false)
                         recyclerView.post {
                             if (startAnchorLayoutSuppressed.value) return@post
-                            completeViewportCompensationRequest()
                             activeStartAnchorRequestId.intValue = 0
                             lastAppliedStartAnchorRequestId.intValue = requestId
                             onPendingStartAnchorHandled()
@@ -266,7 +212,6 @@ internal fun ChatRecyclerViewHost(
                         setStartAnchorLayoutSuppressed(false)
                         recyclerView.post {
                             if (startAnchorLayoutSuppressed.value) return@post
-                            completeViewportCompensationRequest()
                             activeStartAnchorRequestId.intValue = 0
                         }
                     }
