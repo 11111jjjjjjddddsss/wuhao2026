@@ -1489,18 +1489,21 @@ fun ChatScreen() {
         ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT.roundToPx()
     }
     val gptBallContainerSizePx = with(density) { GPT_BALL_CONTAINER_SIZE.roundToPx() }
+    val sendStartWaitingLineHeightPx = with(density) {
+        assistantStreamingParagraphTextStyle().lineHeight.toPx().roundToInt()
+    }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
     val sendStartVisibleBottomInsetPx = remember(
         sendStartItemBottomPaddingPx,
         sendStartWaitingShellExtraHeightPx,
-        assistantLineStepPx,
+        sendStartWaitingLineHeightPx,
         gptBallContainerSizePx
     ) {
         sendStartItemBottomPaddingPx +
             (sendStartWaitingShellExtraHeightPx / 2) +
-            ((assistantLineStepPx - gptBallContainerSizePx).coerceAtLeast(0) / 2)
+            ((sendStartWaitingLineHeightPx - gptBallContainerSizePx).coerceAtLeast(0) / 2)
     }
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
@@ -2963,6 +2966,9 @@ fun ChatScreen() {
                 lastStreamingFreshRevealMs = 0L
                 isStreaming = true
                 streamingMessageId = assistantId
+                // The assistant placeholder itself is the send-start anchor.
+                // Its visible bottom is aligned to the workline, so the user bubble
+                // naturally stays above and the streamed body can grow from there.
                 pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
                 persistTick++
@@ -3397,7 +3403,7 @@ fun ChatScreen() {
                         bottomFooterHeightPx = with(density) { 1.dp.roundToPx() },
                         pendingStartAnchorTargetBottomPx = streamingWorklineBottomPx,
                         pendingStartAnchorEstimatedHeightPx =
-                            assistantLineStepPx +
+                            sendStartWaitingLineHeightPx +
                                 sendStartItemVerticalPaddingPx +
                                 sendStartWaitingShellExtraHeightPx,
                         pendingStartAnchorVisibleBottomInsetPx = sendStartVisibleBottomInsetPx,

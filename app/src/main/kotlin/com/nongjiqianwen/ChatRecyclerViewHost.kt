@@ -33,6 +33,8 @@ private fun resolvePendingStartAnchorTargetTopPx(
             ?.size
             ?.takeIf { it > 0 }
             ?: pendingStartAnchorEstimatedHeightPx.coerceAtLeast(0)
+    // The send-start anchor is the assistant placeholder's visible bottom edge:
+    // the waiting ball should land on the workline, while the user bubble stays above it.
     val visibleAnchorHeightPx =
         (anchorHeightPx - pendingStartAnchorVisibleBottomInsetPx.coerceAtLeast(0))
             .coerceAtLeast(0)
@@ -144,6 +146,8 @@ internal fun ChatRecyclerViewHost(
                     topPaddingPx = topPaddingPx,
                     bottomPaddingPx = bottomPaddingPx
                 )
+                // In LazyColumn the offset controls the item's top, so we convert the
+                // "assistant visible bottom should sit on the workline" rule into a top offset.
                 listState.requestScrollToItem(
                     pendingStartAnchorPosition,
                     -targetTopOffset
