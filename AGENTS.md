@@ -191,6 +191,7 @@ Clean-State 必做回归的范围：
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - `sendStartAnchorActive` 必须覆盖 waiting 和早期首字阶段；正文真实命中工作线前，不允许 `Idle snap` 或 `AutoFollow` 抢到发送起步的控制权
+- 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接对 footer 做两次到底推送；从后台切回时不默认自动贴底
 
 当前排查顺序：
