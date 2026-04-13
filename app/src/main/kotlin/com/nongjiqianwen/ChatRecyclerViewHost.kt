@@ -12,11 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
 
 private fun resolvePendingStartAnchorTargetTopPx(
     layoutInfo: LazyListLayoutInfo,
@@ -86,9 +84,6 @@ internal fun ChatRecyclerViewHost(
             pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 }
                 ?: return@LaunchedEffect
         val requestId = pendingStartAnchorRequestId
-        var stableGeometryFrames = 0
-        var lastObservedAnchorTop = Int.MIN_VALUE
-        var lastObservedPrecedingBottom = Int.MIN_VALUE
         var startAnchorScrollOwned = false
 
         fun beginStartAnchorScrollIfNeeded() {
@@ -97,84 +92,23 @@ internal fun ChatRecyclerViewHost(
             startAnchorScrollOwned = true
         }
 
-        fun isRevealStable(targetTopOffset: Int): Boolean {
-            val anchorItem =
-                listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == pendingStartAnchorPosition }
-            val precedingItem =
-                (pendingStartAnchorPosition - 1)
-                    .takeIf { it >= 0 }
-                    ?.let { precedingIndex ->
-                        listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == precedingIndex }
-                    }
-            val anchorSettled =
-                anchorItem != null &&
-                    abs(anchorItem.offset - targetTopOffset) <= 2
-            val precedingItemReady =
-                pendingStartAnchorPosition <= 0 || precedingItem != null
-            if (!anchorSettled || !precedingItemReady || anchorItem == null) {
-                stableGeometryFrames = 0
-                lastObservedAnchorTop = Int.MIN_VALUE
-                lastObservedPrecedingBottom = Int.MIN_VALUE
-                return false
-            }
-            val currentAnchorTop = anchorItem.offset
-            val currentPrecedingBottom =
-                precedingItem?.let { it.offset + it.size } ?: Int.MIN_VALUE
-            stableGeometryFrames =
-                if (
-                    currentAnchorTop == lastObservedAnchorTop &&
-                    currentPrecedingBottom == lastObservedPrecedingBottom
-                ) {
-                    stableGeometryFrames + 1
-                } else {
-                    1
-                }
-            lastObservedAnchorTop = currentAnchorTop
-            lastObservedPrecedingBottom = currentPrecedingBottom
-            return stableGeometryFrames >= 2
-        }
-
         try {
-            repeat(8) {
-                beginStartAnchorScrollIfNeeded()
-                val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
-                    layoutInfo = listState.layoutInfo,
-                    pendingStartAnchorPosition = pendingStartAnchorPosition,
-                    pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
-                    pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx,
-                    pendingStartAnchorVisibleBottomInsetPx = pendingStartAnchorVisibleBottomInsetPx,
-                    topPaddingPx = topPaddingPx,
-                    bottomPaddingPx = bottomPaddingPx
-                )
-                // In LazyColumn the offset controls the item's top, so we convert the
-                // "assistant visible bottom should sit on the workline" rule into a top offset.
-                listState.requestScrollToItem(
-                    pendingStartAnchorPosition,
-                    -targetTopOffset
-                )
-                withFrameNanos { }
-                val anchorItem =
-                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == pendingStartAnchorPosition }
-                        ?: run {
-                            listState.scrollToItem(
-                                pendingStartAnchorPosition,
-                                -targetTopOffset
-                            )
-                            withFrameNanos { }
-                            listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == pendingStartAnchorPosition }
-                        }
-                        ?: return@repeat
-                val deltaPx = anchorItem.offset - targetTopOffset
-                if (deltaPx != 0) {
-                    listState.scrollBy(deltaPx.toFloat())
-                    withFrameNanos { }
-                }
-                if (isRevealStable(targetTopOffset)) {
-                    lastAppliedStartAnchorRequestId.intValue = requestId
-                    onPendingStartAnchorHandled()
-                    return@LaunchedEffect
-                }
-            }
+            beginStartAnchorScrollIfNeeded()
+            val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
+                layoutInfo = listState.layoutInfo,
+                pendingStartAnchorPosition = pendingStartAnchorPosition,
+                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
+                pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx,
+                pendingStartAnchorVisibleBottomInsetPx = pendingStartAnchorVisibleBottomInsetPx,
+                topPaddingPx = topPaddingPx,
+                bottomPaddingPx = bottomPaddingPx
+            )
+            // Keep only one direct send-start positioning pass. If the waiting ball still
+            // lands low after this, the remaining issue is elsewhere in the chain.
+            listState.scrollToItem(
+                pendingStartAnchorPosition,
+                -targetTopOffset
+            )
             lastAppliedStartAnchorRequestId.intValue = requestId
             onPendingStartAnchorHandled()
         } finally {
