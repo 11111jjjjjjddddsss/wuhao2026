@@ -264,6 +264,7 @@ internal fun BindChatListScrollEffects(
     messagesCount: Int,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
+    sendStartAnchorActiveState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     currentLastMessageContentBottomPx: () -> Int,
@@ -285,6 +286,7 @@ internal fun BindChatListScrollEffects(
         isStreaming,
         hasStreamingItem,
         streamingMessageContent,
+        sendStartAnchorActiveState.value,
         scrollMode,
         userInteracting,
         listScrollInProgress,
@@ -292,6 +294,7 @@ internal fun BindChatListScrollEffects(
         currentStreamingLegalBottomPx()
     ) {
         if (!isStreaming || !hasStreamingItem) {
+            sendStartAnchorActiveState.value = false
             streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
@@ -299,6 +302,20 @@ internal fun BindChatListScrollEffects(
             withFrameNanos { }
             val activeScrollMode = scrollModeState.value
             val contentBottom = currentStreamingContentBottomPx()
+            val legalBottom = currentStreamingLegalBottomPx()
+            if (sendStartAnchorActiveState.value) {
+                val shouldReleaseStartAnchorProtection =
+                    streamingMessageContent.isNotBlank() &&
+                        contentBottom > 0 &&
+                        legalBottom > 0 &&
+                        contentBottom >= legalBottom &&
+                        isStreamingReadyForAutoFollow()
+                if (shouldReleaseStartAnchorProtection) {
+                    sendStartAnchorActiveState.value = false
+                }
+                streamBottomFollowActiveState.value = false
+                continue
+            }
             if (activeScrollMode == ScrollMode.UserBrowsing) {
                 if (
                     !listScrollInProgress &&

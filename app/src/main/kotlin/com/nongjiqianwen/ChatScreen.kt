@@ -1472,6 +1472,8 @@ fun ChatScreen() {
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var sendStartAnchorActive by sendStartAnchorActiveState
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -2136,6 +2138,7 @@ fun ChatScreen() {
         QwenClient.resetUiRuntimeForCleanState()
         pendingStartAnchorMessageId = null
         pendingStartAnchorRequestId = 0
+        sendStartAnchorActive = false
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
@@ -3248,6 +3251,7 @@ fun ChatScreen() {
         messagesCount = messages.size,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
+        sendStartAnchorActiveState = sendStartAnchorActiveState,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
@@ -3412,7 +3416,10 @@ fun ChatScreen() {
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
                         },
-                        onStartAnchorScrollStarted = ::beginProgrammaticChatListScroll,
+                        onStartAnchorScrollStarted = {
+                            sendStartAnchorActive = true
+                            beginProgrammaticChatListScroll()
+                        },
                         onStartAnchorScrollFinished = ::endProgrammaticChatListScroll,
                         modifier = Modifier
                             .then(

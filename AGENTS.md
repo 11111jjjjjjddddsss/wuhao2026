@@ -160,15 +160,19 @@ Clean-State 必做回归的范围：
 - 主人：[ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)
 - 作用：正文超过工作线后，按 overflow 直接跟随，不再多帧小步追赶
 
-3. 完成态收口
+3. 发送起步保护期
+- 主人：`sendStartAnchorActive`
+- 作用：发送起步定位完成后，到正文真实命中工作线前，禁止 `snapStreamingToWorkline()` 和 `AutoFollow` 提前接管
+
+4. 完成态收口
 - 主人：`scrollToBottom(false)`
 - 作用：completed 宿主真实底边到位后收口到目标线
 
-4. 用户浏览
+5. 用户浏览
 - 主人：用户手指
 - 作用：进入 `UserBrowsing` 后立即让权；不看滑动方向，不做额外恢复链。只有当生成行真实回到工作线命中带并且用户结束交互时，或通过“回到底部”/新一轮发送，才重新接回主链
 
-5. 首次进入贴底
+6. 首次进入贴底
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
 - 作用：冷启动且已有历史消息时，直接滚到列表 footer 并补一次到底推送，把底部保留空白露完整；从后台切回时不默认自动贴底
 
@@ -186,6 +190,7 @@ Clean-State 必做回归的范围：
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
+- `sendStartAnchorActive` 必须覆盖 waiting 和早期首字阶段；正文真实命中工作线前，不允许 `Idle snap` 或 `AutoFollow` 抢到发送起步的控制权
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接对 footer 做两次到底推送；从后台切回时不默认自动贴底
 
 当前排查顺序：
