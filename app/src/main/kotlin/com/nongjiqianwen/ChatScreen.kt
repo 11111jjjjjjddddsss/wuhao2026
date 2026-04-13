@@ -3090,20 +3090,28 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
     }
-    val primeStartupBottomPosition: suspend () -> Unit = primeStartupBottomPosition@{
-        val lastIndex = messages.lastIndex
-        if (lastIndex < 0) return@primeStartupBottomPosition
-        beginProgrammaticChatListScroll()
-        try {
-            chatListState.requestScrollToItem(lastIndex)
-            withFrameNanos { }
-            if (chatListState.layoutInfo.visibleItemsInfo.none { it.index == lastIndex }) {
-                chatListState.scrollToItem(lastIndex)
-                withFrameNanos { }
-            }
-        } finally {
-            endProgrammaticChatListScroll()
+    LaunchedEffect(
+        startupHydrationBarrierSatisfied,
+        startupLayoutReady,
+        messages.size,
+        hasStreamingItem,
+        isStreaming,
+        hasStartedConversation,
+        initialBottomSnapDone
+    ) {
+        if (initialBottomSnapDone) return@LaunchedEffect
+        if (!startupHydrationBarrierSatisfied || !startupLayoutReady) return@LaunchedEffect
+        if (messages.isEmpty() && !hasStreamingItem) {
+            initialBottomSnapDone = true
+            return@LaunchedEffect
         }
+        if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
+        if (hasStartedConversation) {
+            initialBottomSnapDone = true
+            return@LaunchedEffect
+        }
+        scrollToBottom(false)
+        initialBottomSnapDone = true
     }
 
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
@@ -3221,14 +3229,11 @@ fun ChatScreen() {
         hasStreamingItem = hasStreamingItem,
         streamingMessageContent = streamingMessageContent,
         listScrollInProgress = recyclerScrollInProgress,
-        startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
-        startupLayoutReady = startupLayoutReady,
         messagesCount = messages.size,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
-        initialBottomSnapDoneState = scrollRuntime.initialBottomSnapDone,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
@@ -3238,8 +3243,7 @@ fun ChatScreen() {
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
         snapStreamingToWorkline = snapStreamingToWorkline,
-        scrollToBottom = scrollToBottom,
-        primeStartupBottomPosition = primeStartupBottomPosition
+        scrollToBottom = scrollToBottom
     )
 
     BoxWithConstraints(

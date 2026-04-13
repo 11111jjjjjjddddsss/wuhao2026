@@ -264,14 +264,11 @@ internal fun BindChatListScrollEffects(
     hasStreamingItem: Boolean,
     streamingMessageContent: String,
     listScrollInProgress: Boolean,
-    startupHydrationBarrierSatisfied: Boolean,
-    startupLayoutReady: Boolean,
     messagesCount: Int,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
-    initialBottomSnapDoneState: MutableState<Boolean>,
     currentLastMessageContentBottomPx: () -> Int,
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
@@ -281,13 +278,11 @@ internal fun BindChatListScrollEffects(
     resolveStreamingFollowStepPx: (Int) -> Int,
     performStreamingFollowStep: suspend (Int) -> Unit,
     snapStreamingToWorkline: suspend () -> Unit,
-    scrollToBottom: suspend (Boolean) -> Unit,
-    primeStartupBottomPosition: suspend () -> Unit
+    scrollToBottom: suspend (Boolean) -> Unit
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
     val pendingFinalBottomSnap = pendingFinalBottomSnapState.value
-    val initialBottomSnapDone = initialBottomSnapDoneState.value
 
     LaunchedEffect(
         isStreaming,
@@ -390,47 +385,6 @@ internal fun BindChatListScrollEffects(
         }
     }
 
-    LaunchedEffect(
-        startupLayoutReady,
-        startupHydrationBarrierSatisfied,
-        messagesCount,
-        hasStreamingItem,
-        isStreaming,
-        initialBottomSnapDone,
-        currentLastMessageContentBottomPx(),
-        isWithinBottomTolerance()
-    ) {
-        if (initialBottomSnapDone) return@LaunchedEffect
-        if (!startupHydrationBarrierSatisfied || !startupLayoutReady) return@LaunchedEffect
-        if (messagesCount == 0 && !hasStreamingItem) {
-            initialBottomSnapDoneState.value = true
-            return@LaunchedEffect
-        }
-        if (messagesCount == 0 || isStreaming || hasStreamingItem) return@LaunchedEffect
-        primeStartupBottomPosition()
-        scrollToBottom(false)
-        var lastContentBottom = currentLastMessageContentBottomPx()
-        repeat(8) {
-            if (lastContentBottom > 0) return@repeat
-            withFrameNanos { }
-            lastContentBottom = currentLastMessageContentBottomPx()
-        }
-        if (lastContentBottom <= 0) {
-            initialBottomSnapDoneState.value = true
-            return@LaunchedEffect
-        }
-        if (!isWithinBottomTolerance()) {
-            scrollToBottom(false)
-            var settledBottom = currentLastMessageContentBottomPx()
-            repeat(4) {
-                if (settledBottom > 0 && isWithinBottomTolerance()) return@repeat
-                withFrameNanos { }
-                settledBottom = currentLastMessageContentBottomPx()
-            }
-        }
-        repeat(1) { withFrameNanos { } }
-        initialBottomSnapDoneState.value = true
-    }
 }
 
 internal fun currentStreamingOverflowDelta(
