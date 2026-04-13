@@ -100,6 +100,10 @@ internal fun ChatRecyclerViewHost(
                 listState.layoutInfo.totalItemsCount >= itemIds.size &&
                     itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId
             }.first { it }
+            snapshotFlow {
+                pendingStartAnchorTargetBottomPx > 0 &&
+                    listState.layoutInfo.viewportSize.height > 0
+            }.first { it }
             withFrameNanos { }
             beginStartAnchorScrollIfNeeded()
             val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
