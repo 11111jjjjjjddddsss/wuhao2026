@@ -1558,8 +1558,8 @@ fun ChatScreen() {
     fun currentBottomOverflowPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = currentUnifiedBottomTargetPx()
-        if (lastContentBottom <= 0 || desiredBottomPx <= 0) return Int.MAX_VALUE
-        return kotlin.math.abs(desiredBottomPx - lastContentBottom)
+        if (lastContentBottom <= 0) return Int.MAX_VALUE
+        return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
     }
     fun currentBottomAlignDeltaPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
