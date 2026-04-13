@@ -12,6 +12,7 @@
 
 - 规则文档只保留这一份：[AGENTS.md](D:/wuhao/AGENTS.md)
 - [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)、[docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)、[docs/backend-boundaries.md](D:/wuhao/docs/backend-boundaries.md) 只作参考，不再承担主规则职责
+- 参考文档允许保留历史分析，但必须明确标注“历史归档 / 仅供参考”，不允许继续冒充 active 真相
 - 规则变更、实现边界变化、唯一真相变化，必须同次同步更新本文件
 - 如果本文件与当前代码不一致，优先修本文，不允许放着过期规则不管
 
@@ -131,7 +132,7 @@ Clean-State 必做回归的范围：
 - [ChatComposerCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt)：输入框动态、IME、发送收口
 - [ChatComposerPanel.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt)：底部输入区 UI 宿主
 - [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：页面组装、测量值采集、状态接线
-- [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：纯 Compose `LazyColumn` 底座、bottom padding 锚点、发送起步定位
+- [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：纯 Compose `LazyColumn` 底座、bottom padding 锚点、发送起步定位；文件名只是历史命名残留，运行时已不是 `RecyclerView`
 
 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / frozenBottom / retainedBottomGap` 等旧滚动术语全部视为历史归档，不再执行。
 
@@ -139,8 +140,9 @@ Clean-State 必做回归的范围：
 
 ### 7.1 总口径
 
-- 用户消息和 assistant 消息都先按正常消息流从上往下排
+- 用户消息按正常消息流从上往下排
 - waiting 小球、streaming 正文、settled 完成态共用同一个 assistant 内容宿主
+- 发送起步时，assistant 起步宿主的可见底边围绕工作线落位；小球第一次出现应命中工作线附近
 - 只有正文尾部真正接近工作线后，才允许进入 AutoFollow
 - 用户拖动立即让权，不允许隐藏第二条链抢手
 - 完成态和静态贴底围绕同一条工作线附近目标线收口，不再保留明显更低的第二条底线
@@ -166,6 +168,10 @@ Clean-State 必做回归的范围：
 - 主人：用户手指
 - 作用：进入 `UserBrowsing` 后立即让权；不看滑动方向，不做额外恢复链。只有当生成行真实回到工作线命中带并且用户结束交互时，或通过“回到底部”/新一轮发送，才重新接回主链
 
+5. 首次进入贴底
+- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
+- 作用：冷启动且已有历史消息时，直接滚到列表 footer 并补一次到底推送，把底部保留空白露完整；从后台切回时不默认自动贴底
+
 铁律：
 - 同一时刻只能有一个主人控制滚动
 - 新增任何 scroll 调用前，必须说明它属于哪一个环节
@@ -179,12 +185,8 @@ Clean-State 必做回归的范围：
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
-- 发送起步窗口内，工作线与列表底部 padding 优先使用“收口后的稳定输入框几何”，不跟随 composer 瞬时跳动
-- 发送起步不再冻结 `recyclerBottomPaddingPx`；`recyclerBottomPaddingPx` 始终跟随真实 composer 几何实时更新
-- 发送起步不再用 alpha 隐藏“本轮用户消息 + assistant 起步宿主”
-- 发送起步不再冻结整表视觉快照
-- 发送起步不再依赖 `suppressLayout()` / 高度补偿链；起步定位和后续跟随都只走 `LazyListState`
-- 首次进入聊天页时，如果当前有历史消息且不在底部附近，允许补一次 `scrollToBottom(false)`；从后台切回时不默认自动贴底
+- 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
+- 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接对 footer 做两次到底推送；从后台切回时不默认自动贴底
 
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报
