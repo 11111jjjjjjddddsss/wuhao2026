@@ -97,8 +97,12 @@ internal fun ChatRecyclerViewHost(
 
         try {
             snapshotFlow {
+                val anchorItem =
+                    listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == pendingStartAnchorPosition }
                 listState.layoutInfo.totalItemsCount >= itemIds.size &&
-                    itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId
+                    itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId &&
+                    anchorItem != null &&
+                    anchorItem.size > 0
             }.first { it }
             snapshotFlow {
                 pendingStartAnchorTargetBottomPx > 0 &&
