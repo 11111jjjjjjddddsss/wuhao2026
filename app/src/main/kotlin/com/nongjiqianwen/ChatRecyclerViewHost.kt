@@ -127,7 +127,6 @@ internal fun ChatRecyclerViewHost(
     val lastAppliedStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val activeStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val startAnchorLayoutSuppressed = remember(stateResetKey) { mutableStateOf(false) }
-    val suppressedLayoutHeightPx = remember(stateResetKey) { mutableIntStateOf(0) }
     val lastAppliedViewportCompensationRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val activeViewportCompensationRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
     val pendingViewportCompensationDeltaPx = remember(stateResetKey) { mutableIntStateOf(0) }
@@ -197,40 +196,11 @@ internal fun ChatRecyclerViewHost(
             update = { recyclerView ->
                 recyclerViewRef.value = recyclerView
                 val layoutManager = recyclerView.layoutManager as? LinearLayoutManager ?: return@AndroidView
-                fun applyPreReleaseViewportCompensationIfNeeded() {
-                    if (activeViewportCompensationRequestId.intValue == 0) return
-                    if (recyclerView.scrollState == RecyclerView.SCROLL_STATE_DRAGGING) return
-                    val heightAtSuppress = suppressedLayoutHeightPx.intValue
-                    val currentHeight = recyclerView.height
-                    val fallbackDelta = pendingViewportCompensationDeltaPx.intValue
-                    val preReleaseDelta =
-                        when {
-                            heightAtSuppress > 0 && currentHeight > 0 -> heightAtSuppress - currentHeight
-                            else -> fallbackDelta
-                        }
-                    if (preReleaseDelta == 0) return
-                    recyclerView.scrollBy(0, preReleaseDelta)
-                    val remainingDelta = pendingViewportCompensationDeltaPx.intValue - preReleaseDelta
-                    pendingViewportCompensationDeltaPx.intValue =
-                        if (abs(remainingDelta) <= 1) 0 else remainingDelta
-                }
                 fun setStartAnchorLayoutSuppressed(suppressed: Boolean) {
-                    if (suppressed) {
-                        if (!startAnchorLayoutSuppressed.value) {
-                            suppressedLayoutHeightPx.intValue = recyclerView.height
-                            recyclerView.suppressLayout(true)
-                        }
-                        startAnchorLayoutSuppressed.value = true
-                        return
+                    if (startAnchorLayoutSuppressed.value != suppressed || !suppressed) {
+                        recyclerView.suppressLayout(suppressed)
                     }
-                    if (startAnchorLayoutSuppressed.value) {
-                        applyPreReleaseViewportCompensationIfNeeded()
-                        recyclerView.suppressLayout(false)
-                    } else {
-                        recyclerView.suppressLayout(false)
-                    }
-                    startAnchorLayoutSuppressed.value = false
-                    suppressedLayoutHeightPx.intValue = 0
+                    startAnchorLayoutSuppressed.value = suppressed
                 }
                 fun completeViewportCompensationRequest() {
                     val activeRequestId = activeViewportCompensationRequestId.intValue
