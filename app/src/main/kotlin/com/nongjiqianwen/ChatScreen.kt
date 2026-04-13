@@ -3119,6 +3119,8 @@ fun ChatScreen() {
         }
         chatListState.scrollToItem(footerIndex)
         chatListState.scrollBy(10000f)
+        withFrameNanos { }
+        chatListState.scrollBy(10000f)
         initialBottomSnapDone = true
     }
 
