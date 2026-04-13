@@ -1418,7 +1418,9 @@ fun ChatScreen() {
     val initialChatListIndex = remember(uiRuntimeResetKey, initialLocalMessages) {
         initialLocalMessages.lastIndex.coerceAtLeast(0)
     }
-    val chatListState = remember(uiRuntimeResetKey) { LazyListState(initialChatListIndex, 0) }
+    val chatListState = rememberSaveable(uiRuntimeResetKey, saver = LazyListState.Saver) {
+        LazyListState(initialChatListIndex, 0)
+    }
     var recyclerScrollInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }

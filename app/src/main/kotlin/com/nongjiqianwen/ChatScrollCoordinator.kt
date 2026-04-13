@@ -9,6 +9,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
@@ -45,7 +46,7 @@ internal fun rememberChatScrollRuntimeState(
     val programmaticScroll = remember(chatScopeId) { mutableStateOf(false) }
     val streamingContentBottomPx = remember(chatScopeId) { mutableIntStateOf(-1) }
     val streamBottomFollowActive = remember(chatScopeId) { mutableStateOf(false) }
-    val initialBottomSnapDone = remember(chatScopeId) { mutableStateOf(false) }
+    val initialBottomSnapDone = rememberSaveable(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember(chatScopeId) { mutableStateOf(false) }
     val pendingFinalBottomSnap = remember(chatScopeId) { mutableStateOf(false) }
     val suppressJumpButtonForImeTransition = remember(chatScopeId) { mutableStateOf(false) }
