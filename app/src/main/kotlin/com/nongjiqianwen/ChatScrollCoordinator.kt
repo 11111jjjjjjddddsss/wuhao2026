@@ -109,10 +109,12 @@ internal fun endProgrammaticChatListScroll(
 
 private suspend fun alignChatListBottom(
     listState: LazyListState,
+    currentLastMessageContentBottomPx: () -> Int,
     currentBottomAlignDeltaPx: () -> Int
 ) {
-    repeat(4) {
+    repeat(8) {
         withFrameNanos { }
+        if (currentLastMessageContentBottomPx() <= 0) return@repeat
         val alignDeltaPx = currentBottomAlignDeltaPx()
         if (alignDeltaPx == 0) return
         listState.scrollBy((-alignDeltaPx).toFloat())
@@ -123,6 +125,7 @@ internal suspend fun scrollChatListToBottom(
     listState: LazyListState?,
     lastIndex: Int,
     animated: Boolean,
+    currentLastMessageContentBottomPx: () -> Int,
     currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
     endProgrammaticScroll: () -> Unit
@@ -138,6 +141,7 @@ internal suspend fun scrollChatListToBottom(
         }
         alignChatListBottom(
             listState = activeListState,
+            currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
             currentBottomAlignDeltaPx = currentBottomAlignDeltaPx
         )
     } catch (_: Throwable) {

@@ -179,6 +179,7 @@ Clean-State 必做回归的范围：
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
+- 发送起步窗口内，工作线与列表底部 padding 优先使用“收口后的稳定输入框几何”，不跟随 composer 瞬时跳动
 - 发送起步不再冻结 `recyclerBottomPaddingPx`；`recyclerBottomPaddingPx` 始终跟随真实 composer 几何实时更新
 - 发送起步不再用 alpha 隐藏“本轮用户消息 + assistant 起步宿主”
 - 发送起步不再冻结整表视觉快照

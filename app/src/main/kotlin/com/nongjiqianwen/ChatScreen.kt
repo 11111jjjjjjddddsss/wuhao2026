@@ -1483,22 +1483,39 @@ fun ChatScreen() {
     val sendStartWaitingShellExtraHeightPx = with(density) {
         ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT.roundToPx()
     }
-    val sendStartVisibleBottomInsetPx = sendStartItemBottomPaddingPx + (sendStartWaitingShellExtraHeightPx / 2)
+    val gptBallContainerSizePx = with(density) { GPT_BALL_CONTAINER_SIZE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
+    }
+    val sendStartVisibleBottomInsetPx = remember(
+        sendStartItemBottomPaddingPx,
+        sendStartWaitingShellExtraHeightPx,
+        assistantLineStepPx,
+        gptBallContainerSizePx
+    ) {
+        sendStartItemBottomPaddingPx +
+            (sendStartWaitingShellExtraHeightPx / 2) +
+            ((assistantLineStepPx - gptBallContainerSizePx).coerceAtLeast(0) / 2)
     }
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
+    val sendStartGeometryLockActive by remember(
+        sendUiSettling,
+        pendingStartAnchorMessageId
+    ) {
+        derivedStateOf { sendUiSettling || pendingStartAnchorMessageId != null }
+    }
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
-        streamVisibleBottomGapPx
+        streamVisibleBottomGapPx,
+        sendStartGeometryLockActive
     ) {
         derivedStateOf {
-            if (composerTopInViewportPx > 0) {
+            if (!sendStartGeometryLockActive && composerTopInViewportPx > 0) {
                 (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 (
@@ -1724,11 +1741,16 @@ fun ChatScreen() {
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
-        streamingExtraReservedHeightPx
+        streamingExtraReservedHeightPx,
+        sendStartGeometryLockActive
     ) {
         derivedStateOf {
             val measuredComposerReservedHeightPx =
-                if (messageViewportHeightPx > 0 && composerTopInViewportPx > 0) {
+                if (
+                    !sendStartGeometryLockActive &&
+                    messageViewportHeightPx > 0 &&
+                    composerTopInViewportPx > 0
+                ) {
                     (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
                 } else {
                     -1
@@ -3052,6 +3074,7 @@ fun ChatScreen() {
             listState = chatListState,
             lastIndex = messages.lastIndex,
             animated = animated,
+            currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
             currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
             beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
             endProgrammaticScroll = ::endProgrammaticChatListScroll

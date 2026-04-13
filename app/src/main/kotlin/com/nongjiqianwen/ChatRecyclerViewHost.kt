@@ -131,8 +131,6 @@ internal fun ChatRecyclerViewHost(
         try {
             repeat(8) {
                 beginStartAnchorScrollIfNeeded()
-                listState.scrollToItem(pendingStartAnchorPosition)
-                withFrameNanos { }
                 val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
                     layoutInfo = listState.layoutInfo,
                     pendingStartAnchorPosition = pendingStartAnchorPosition,
@@ -142,8 +140,21 @@ internal fun ChatRecyclerViewHost(
                     topPaddingPx = topPaddingPx,
                     bottomPaddingPx = bottomPaddingPx
                 )
+                listState.requestScrollToItem(
+                    pendingStartAnchorPosition,
+                    -targetTopOffset
+                )
+                withFrameNanos { }
                 val anchorItem =
                     listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == pendingStartAnchorPosition }
+                        ?: run {
+                            listState.scrollToItem(
+                                pendingStartAnchorPosition,
+                                -targetTopOffset
+                            )
+                            withFrameNanos { }
+                            listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == pendingStartAnchorPosition }
+                        }
                         ?: return@repeat
                 val deltaPx = anchorItem.offset - targetTopOffset
                 if (deltaPx != 0) {
