@@ -51,6 +51,7 @@ internal fun ChatRecyclerViewHost(
     itemIds: List<String>,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
+    bottomFooterHeightPx: Int,
     pendingStartAnchorTargetBottomPx: Int,
     pendingStartAnchorEstimatedHeightPx: Int,
     pendingStartAnchorVisibleBottomInsetPx: Int,
@@ -199,7 +200,7 @@ internal fun ChatRecyclerViewHost(
         item(key = "bottom_footer") {
             Spacer(
                 modifier = with(density) {
-                    Modifier.height(bottomPaddingPx.toDp())
+                    Modifier.height(bottomFooterHeightPx.toDp())
                 }
             )
         }
