@@ -408,13 +408,25 @@ internal fun BindChatListScrollEffects(
         if (messagesCount == 0 || isStreaming || hasStreamingItem) return@LaunchedEffect
         scrollToBottom(false)
         var lastContentBottom = currentLastMessageContentBottomPx()
-        repeat(3) {
+        repeat(8) {
             if (lastContentBottom > 0) return@repeat
             withFrameNanos { }
             lastContentBottom = currentLastMessageContentBottomPx()
         }
-        if (lastContentBottom > 0 && !isWithinBottomTolerance()) {
+        if (lastContentBottom <= 0) {
+            return@LaunchedEffect
+        }
+        if (!isWithinBottomTolerance()) {
             scrollToBottom(false)
+            var settledBottom = currentLastMessageContentBottomPx()
+            repeat(4) {
+                if (settledBottom > 0 && isWithinBottomTolerance()) return@repeat
+                withFrameNanos { }
+                settledBottom = currentLastMessageContentBottomPx()
+            }
+            if (settledBottom <= 0 || !isWithinBottomTolerance()) {
+                return@LaunchedEffect
+            }
         }
         repeat(1) { withFrameNanos { } }
         initialBottomSnapDoneState.value = true
