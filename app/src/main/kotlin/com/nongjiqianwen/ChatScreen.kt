@@ -1415,7 +1415,10 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    val chatListState = remember(uiRuntimeResetKey) { LazyListState(0, 0) }
+    val initialChatListIndex = remember(uiRuntimeResetKey, initialLocalMessages) {
+        initialLocalMessages.lastIndex.coerceAtLeast(0)
+    }
+    val chatListState = remember(uiRuntimeResetKey) { LazyListState(initialChatListIndex, 0) }
     var recyclerScrollInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -1464,7 +1467,7 @@ fun ChatScreen() {
     var composerTopInViewportPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var topChromeMaskBottomPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
-    var hasStartedConversation by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
+    var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
