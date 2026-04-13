@@ -2844,7 +2844,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        var releaseSendUiSettlingInFinally = true
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         if (collapseComposer) {
@@ -2892,7 +2891,6 @@ fun ChatScreen() {
                 streamingMessageId = assistantId
                 pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
-                releaseSendUiSettlingInFinally = false
                 persistTick++
                 snackbarScope.launch {
                     context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
@@ -2937,9 +2935,7 @@ fun ChatScreen() {
                     launchLocalFakeStream(applyInitialDelay = true)
                 }
             } finally {
-                if (releaseSendUiSettlingInFinally) {
-                    sendUiSettling = false
-                }
+                sendUiSettling = false
             }
         }
     }
@@ -3383,7 +3379,6 @@ fun ChatScreen() {
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
-                            sendUiSettling = false
                         },
                         modifier = Modifier
                             .then(
