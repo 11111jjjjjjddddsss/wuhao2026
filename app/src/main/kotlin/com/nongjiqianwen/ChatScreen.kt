@@ -3097,7 +3097,9 @@ fun ChatScreen() {
         hasStreamingItem,
         isStreaming,
         hasStartedConversation,
-        initialBottomSnapDone
+        initialBottomSnapDone,
+        currentLastMessageContentBottomPx(),
+        isWithinBottomTolerance()
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
         if (!startupHydrationBarrierSatisfied || !startupLayoutReady) return@LaunchedEffect
@@ -3110,7 +3112,10 @@ fun ChatScreen() {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        scrollToBottom(false)
+        if (currentLastMessageContentBottomPx() <= 0 || !isWithinBottomTolerance()) {
+            scrollToBottom(false)
+            return@LaunchedEffect
+        }
         initialBottomSnapDone = true
     }
 
