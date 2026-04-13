@@ -205,11 +205,9 @@ internal fun ChatRecyclerViewHost(
                         onPendingStartAnchorHandled()
                     }
 
-                    fun cancelStartAnchorHandling() {
+                    fun abortStartAnchorHandling() {
                         setStartAnchorLayoutSuppressed(false)
                         activeStartAnchorRequestId.intValue = 0
-                        lastAppliedStartAnchorRequestId.intValue = requestId
-                        onPendingStartAnchorHandled()
                     }
 
                     fun isRevealStable(targetTopOffset: Int): Boolean {
@@ -252,7 +250,7 @@ internal fun ChatRecyclerViewHost(
                         setStartAnchorLayoutSuppressed(true)
                         val viewTreeObserver = recyclerView.viewTreeObserver
                         if (!viewTreeObserver.isAlive) {
-                            cancelStartAnchorHandling()
+                            abortStartAnchorHandling()
                             return
                         }
                         val listener = object : ViewTreeObserver.OnPreDrawListener {
@@ -261,7 +259,7 @@ internal fun ChatRecyclerViewHost(
                                     recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
                                 }
                                 if (activeStartAnchorRequestId.intValue != requestId) {
-                                    cancelStartAnchorHandling()
+                                    abortStartAnchorHandling()
                                     return true
                                 }
                                 val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
@@ -271,7 +269,7 @@ internal fun ChatRecyclerViewHost(
                                         scheduleStartAnchorAlignment()
                                         return false
                                     }
-                                    cancelStartAnchorHandling()
+                                    abortStartAnchorHandling()
                                     return true
                                 }
                                 val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
