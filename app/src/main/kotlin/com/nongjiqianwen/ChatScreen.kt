@@ -1513,9 +1513,14 @@ fun ChatScreen() {
     }
     val sendStartGeometryLockActive by remember(
         sendUiSettling,
-        pendingStartAnchorMessageId
+        pendingStartAnchorMessageId,
+        sendStartAnchorActive
     ) {
-        derivedStateOf { sendUiSettling || pendingStartAnchorMessageId != null }
+        derivedStateOf {
+            sendUiSettling ||
+                pendingStartAnchorMessageId != null ||
+                sendStartAnchorActive
+        }
     }
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,

@@ -105,10 +105,16 @@ internal fun ChatRecyclerViewHost(
                     listState.layoutInfo.viewportSize.height > 0
             }.first { it }
             beginStartAnchorScrollIfNeeded()
-            // When the user sends from deep history, the new assistant placeholder is not
-            // visible yet. Bring it into the viewport first, then do the precise workline
-            // alignment once LazyColumn has measured it.
-            listState.scrollToItem(pendingStartAnchorPosition)
+            val anchorAlreadyVisible =
+                listState.layoutInfo.visibleItemsInfo.any {
+                    it.index == pendingStartAnchorPosition && it.size > 0
+                }
+            // Only do the coarse jump when the new assistant placeholder is still outside
+            // the viewport. If it is already visible, skipping this avoids an extra
+            // whole-list jump before the precise workline alignment.
+            if (!anchorAlreadyVisible) {
+                listState.scrollToItem(pendingStartAnchorPosition)
+            }
             snapshotFlow {
                 listState.layoutInfo.visibleItemsInfo
                     .firstOrNull { it.index == pendingStartAnchorPosition }
