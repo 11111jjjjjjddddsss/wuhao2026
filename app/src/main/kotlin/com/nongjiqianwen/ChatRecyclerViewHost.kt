@@ -205,6 +205,13 @@ internal fun ChatRecyclerViewHost(
                         onPendingStartAnchorHandled()
                     }
 
+                    fun cancelStartAnchorHandling() {
+                        setStartAnchorLayoutSuppressed(false)
+                        activeStartAnchorRequestId.intValue = 0
+                        lastAppliedStartAnchorRequestId.intValue = requestId
+                        onPendingStartAnchorHandled()
+                    }
+
                     fun isRevealStable(targetTopOffset: Int): Boolean {
                         val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
                         val precedingView =
@@ -245,8 +252,7 @@ internal fun ChatRecyclerViewHost(
                         setStartAnchorLayoutSuppressed(true)
                         val viewTreeObserver = recyclerView.viewTreeObserver
                         if (!viewTreeObserver.isAlive) {
-                            setStartAnchorLayoutSuppressed(false)
-                            activeStartAnchorRequestId.intValue = 0
+                            cancelStartAnchorHandling()
                             return
                         }
                         val listener = object : ViewTreeObserver.OnPreDrawListener {
@@ -255,6 +261,7 @@ internal fun ChatRecyclerViewHost(
                                     recyclerView.viewTreeObserver.removeOnPreDrawListener(this)
                                 }
                                 if (activeStartAnchorRequestId.intValue != requestId) {
+                                    cancelStartAnchorHandling()
                                     return true
                                 }
                                 val anchorView = layoutManager.findViewByPosition(pendingStartAnchorPosition)
@@ -264,8 +271,7 @@ internal fun ChatRecyclerViewHost(
                                         scheduleStartAnchorAlignment()
                                         return false
                                     }
-                                    setStartAnchorLayoutSuppressed(false)
-                                    activeStartAnchorRequestId.intValue = 0
+                                    cancelStartAnchorHandling()
                                     return true
                                 }
                                 val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
