@@ -281,7 +281,8 @@ internal fun BindChatListScrollEffects(
     resolveStreamingFollowStepPx: (Int) -> Int,
     performStreamingFollowStep: suspend (Int) -> Unit,
     snapStreamingToWorkline: suspend () -> Unit,
-    scrollToBottom: suspend (Boolean) -> Unit
+    scrollToBottom: suspend (Boolean) -> Unit,
+    primeStartupBottomPosition: suspend () -> Unit
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
@@ -406,6 +407,7 @@ internal fun BindChatListScrollEffects(
             return@LaunchedEffect
         }
         if (messagesCount == 0 || isStreaming || hasStreamingItem) return@LaunchedEffect
+        primeStartupBottomPosition()
         scrollToBottom(false)
         var lastContentBottom = currentLastMessageContentBottomPx()
         repeat(8) {
@@ -414,6 +416,7 @@ internal fun BindChatListScrollEffects(
             lastContentBottom = currentLastMessageContentBottomPx()
         }
         if (lastContentBottom <= 0) {
+            initialBottomSnapDoneState.value = true
             return@LaunchedEffect
         }
         if (!isWithinBottomTolerance()) {
@@ -423,9 +426,6 @@ internal fun BindChatListScrollEffects(
                 if (settledBottom > 0 && isWithinBottomTolerance()) return@repeat
                 withFrameNanos { }
                 settledBottom = currentLastMessageContentBottomPx()
-            }
-            if (settledBottom <= 0 || !isWithinBottomTolerance()) {
-                return@LaunchedEffect
             }
         }
         repeat(1) { withFrameNanos { } }

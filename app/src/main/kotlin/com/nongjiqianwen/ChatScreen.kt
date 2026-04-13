@@ -3090,6 +3090,21 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
     }
+    val primeStartupBottomPosition: suspend () -> Unit = primeStartupBottomPosition@{
+        val lastIndex = messages.lastIndex
+        if (lastIndex < 0) return@primeStartupBottomPosition
+        beginProgrammaticChatListScroll()
+        try {
+            chatListState.requestScrollToItem(lastIndex)
+            withFrameNanos { }
+            if (chatListState.layoutInfo.visibleItemsInfo.none { it.index == lastIndex }) {
+                chatListState.scrollToItem(lastIndex)
+                withFrameNanos { }
+            }
+        } finally {
+            endProgrammaticChatListScroll()
+        }
+    }
 
     val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
         com.nongjiqianwen.snapChatListStreamingToWorkline(
@@ -3223,7 +3238,8 @@ fun ChatScreen() {
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
         performStreamingFollowStep = performStreamingFollowStep,
         snapStreamingToWorkline = snapStreamingToWorkline,
-        scrollToBottom = scrollToBottom
+        scrollToBottom = scrollToBottom,
+        primeStartupBottomPosition = primeStartupBottomPosition
     )
 
     BoxWithConstraints(
