@@ -1,8 +1,15 @@
-# 后端边界与后续商城预留
+# 后端边界与后续商城预留（历史归档 / 仅供参考）
+
+本文件只保留历史分析，不再承担当前后端主规则职责。
+
+当前唯一 active 真相只认：
+- [AGENTS.md](D:/wuhao/AGENTS.md)
+- [server-go/AGENTS.md](D:/wuhao/server-go/AGENTS.md)
+- [docs/project-state/current-status.md](D:/wuhao/docs/project-state/current-status.md)
 
 ## 当前主形态
 
-- 当前只保留一套主后端：[server](D:/wuhao/server)
+- 当前只保留一套主后端：[server-go](D:/wuhao/server-go)
 - 图片上传能力并入主后端，不再单独维护第二套上传服务
 - 当前阶段的最小生产组合以 `SAE + PolarDB` 为主，图片正式上线时再补 `OSS`
 

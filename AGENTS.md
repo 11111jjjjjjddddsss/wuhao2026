@@ -11,10 +11,39 @@
 ## 1. 文档规则
 
 - 规则文档只保留这一份：[AGENTS.md](D:/wuhao/AGENTS.md)
+- `app/AGENTS.md`、`server-go/AGENTS.md` 允许存在，但只作为各自目录树内的局部执行补充，不承担仓库主规则职责，口径必须服从根 [AGENTS.md](D:/wuhao/AGENTS.md)
 - [docs/chat-ui-dynamic-interaction-logic.md](D:/wuhao/docs/chat-ui-dynamic-interaction-logic.md)、[docs/chat-ui-clean-state-checklist.md](D:/wuhao/docs/chat-ui-clean-state-checklist.md)、[docs/backend-boundaries.md](D:/wuhao/docs/backend-boundaries.md) 只作参考，不再承担主规则职责
+- [docs/project-state/current-status.md](D:/wuhao/docs/project-state/current-status.md)、[docs/project-state/open-risks.md](D:/wuhao/docs/project-state/open-risks.md)、[docs/project-state/pending-decisions.md](D:/wuhao/docs/project-state/pending-decisions.md)、[docs/project-state/recent-changes.md](D:/wuhao/docs/project-state/recent-changes.md) 是项目交接记忆，不是主规则；后续任何 Codex 都应主动读取并自动维护
+- [docs/adr](D:/wuhao/docs/adr) 用于沉淀“为什么这么定”；[docs/runbooks](D:/wuhao/docs/runbooks) 用于沉淀运维和排障入口；二者都必须和当前代码保持一致
 - 参考文档允许保留历史分析，但必须明确标注“历史归档 / 仅供参考”，不允许继续冒充 active 真相
 - 规则变更、实现边界变化、唯一真相变化，必须同次同步更新本文件
 - 如果本文件与当前代码不一致，优先修本文，不允许放着过期规则不管
+
+### 1.1 项目记忆机制
+
+目标：
+- 让新开的 Codex 窗口在不依赖用户重复口述的前提下，快速接上当前项目真相
+- 让“当前状态 / 风险 / 待决策 / 运维入口 / 关键历史决策”都固化在仓库里，而不是散落在聊天记录里
+
+默认读取顺序：
+1. 根 [AGENTS.md](D:/wuhao/AGENTS.md)
+2. 当前工作目录命中的局部 `AGENTS.md`
+3. [docs/project-state/current-status.md](D:/wuhao/docs/project-state/current-status.md)
+4. [docs/project-state/open-risks.md](D:/wuhao/docs/project-state/open-risks.md)
+5. [docs/project-state/pending-decisions.md](D:/wuhao/docs/project-state/pending-decisions.md)
+6. [docs/project-state/recent-changes.md](D:/wuhao/docs/project-state/recent-changes.md)
+7. 当前任务相关的 ADR / runbook / 参考文档
+
+自动维护规则：
+- 以上项目记忆文件默认由 Codex 自己维护，不要求用户手工更新
+- 每次任务完成后，若涉及当前状态、风险、待决策、运维入口、方案取舍、历史方案淘汰，必须同次同步更新对应文档
+- 已废弃方案不能与现方案并列长期共存；若保留历史说明，必须明确标记“已废弃 / 仅供参考 / 被什么替代”
+- `current-status.md` 只保留当前真相，不堆历史流水账
+- `open-risks.md` 只保留未关闭风险；已解决项应移出或转入变更记录
+- `pending-decisions.md` 只保留仍待拍板事项；已定事项转 ADR 或变更记录
+- `recent-changes.md` 记录最近一段时间的重要变更，默认保留最新 20 条；更早内容以 git 历史和 ADR 为准
+- 运维动作若新增脚本、命令、平台入口或回滚方法，必须同步更新对应 runbook
+- 若发现记忆文件失真、过期、互相矛盾，修正文档本身属于本次任务的一部分，不能留到以后
 
 ## 2. 产品与系统真相
 
@@ -104,6 +133,7 @@
 - Android 改动后编译：`./gradlew.bat :app:compileDebugKotlin`
 - Go 后端改动后编译：`cd server-go && go build ./...`
 - 每次改动后都要检查影响面
+- 若改动影响当前真相、风险、待决策、运维口径或方案取舍，必须同步更新 `docs/project-state`、`docs/adr`、`docs/runbooks`
 - 每次改动后都要提交本地 git，并推送到 `origin/master`
 
 ## 6. Chat UI 总原则

@@ -1,4 +1,4 @@
-# Chat UI Clean-State 回归清单
+# Chat UI Clean-State 回归清单（历史归档 / 仅供参考）
 
 说明：
 - 本文件只作为 clean-state 回归参考，不承担主规则职责
