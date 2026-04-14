@@ -1511,31 +1511,25 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
-    val sendStartWorklineLockActive by remember(
-        sendUiSettling,
-        pendingStartAnchorMessageId
-    ) {
-        derivedStateOf {
-            sendUiSettling || pendingStartAnchorMessageId != null
-        }
-    }
     val sendStartBottomPaddingLockActive by remember(
-        sendStartWorklineLockActive,
+        sendUiSettling,
+        pendingStartAnchorMessageId,
         sendStartAnchorActive
     ) {
         derivedStateOf {
-            sendStartWorklineLockActive || sendStartAnchorActive
+            sendUiSettling ||
+                pendingStartAnchorMessageId != null ||
+                sendStartAnchorActive
         }
     }
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
-        streamVisibleBottomGapPx,
-        sendStartWorklineLockActive
+        streamVisibleBottomGapPx
     ) {
         derivedStateOf {
-            if (!sendStartWorklineLockActive && composerTopInViewportPx > 0) {
+            if (composerTopInViewportPx > 0) {
                 (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 (
@@ -3379,7 +3373,12 @@ fun ChatScreen() {
                         topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         bottomFooterHeightPx = with(density) { 1.dp.roundToPx() },
-                        pendingStartAnchorTargetBottomPx = streamingWorklineBottomPx,
+                        pendingStartAnchorTargetBottomPx =
+                            if (composerTopInViewportPx > 0) {
+                                streamingWorklineBottomPx
+                            } else {
+                                0
+                            },
                         pendingStartAnchorEstimatedHeightPx =
                             sendStartWaitingLineHeightPx +
                                 sendStartItemVerticalPaddingPx +
