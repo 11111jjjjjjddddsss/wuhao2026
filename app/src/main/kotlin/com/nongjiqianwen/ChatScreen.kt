@@ -1472,7 +1472,6 @@ fun ChatScreen() {
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var pendingStartAnchorBottomPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -1577,9 +1576,6 @@ fun ChatScreen() {
     }
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
-    }
-    fun currentPendingStartAnchorMeasuredBottomPx(): Int {
-        return pendingStartAnchorBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
@@ -1736,6 +1732,10 @@ fun ChatScreen() {
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
         .calculateTopPadding()
+    val sendStartAnchorBottomInsetPx = with(density) {
+        CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() +
+            assistantStreamingParagraphTextStyle().lineHeight.roundToPx()
+    }
     val sendStartWorklineBottomPx by remember(
         messageViewportHeightPx,
         stableComposerBottomBarHeightPx,
@@ -3008,7 +3008,6 @@ fun ChatScreen() {
                 // The assistant placeholder itself is the send-start anchor.
                 // Its visible bottom is aligned to the workline, so the user bubble
                 // naturally stays above and the streamed body can grow from there.
-                pendingStartAnchorBottomPx = -1
                 pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
                 persistTick++
@@ -3211,7 +3210,6 @@ fun ChatScreen() {
             isStreaming = false
             sendUiSettling = false
             pendingStartAnchorMessageId = null
-            pendingStartAnchorBottomPx = -1
             sendStartAnchorActive = false
             streamingRevealBuffer = ""
             streamingFreshStart = -1
@@ -3356,6 +3354,20 @@ fun ChatScreen() {
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
+        val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
+        val pendingStartAnchorScrollOffsetPx by remember(
+            chatListTopPaddingPx,
+            sendStartAnchorBottomInsetPx,
+            sendStartWorklineBottomPx
+        ) {
+            derivedStateOf {
+                if (sendStartWorklineBottomPx <= 0) {
+                    Int.MIN_VALUE
+                } else {
+                    chatListTopPaddingPx + sendStartAnchorBottomInsetPx - sendStartWorklineBottomPx
+                }
+            }
+        }
         val pageSurface = Color(0xFFFFFFFF)
         val navigationBottomInset: Dp = WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
@@ -3454,21 +3466,14 @@ fun ChatScreen() {
                         stateResetKey = uiRuntimeResetKey,
                         listState = chatListState,
                         itemIds = messages.map { it.id },
-                        topPaddingPx = with(density) { topBarReservedHeight.roundToPx() },
+                        topPaddingPx = chatListTopPaddingPx,
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         bottomFooterHeightPx = with(density) { 1.dp.roundToPx() },
-                        pendingStartAnchorTargetBottomPx =
-                            if (sendStartWorklineBottomPx > 0) {
-                                sendStartWorklineBottomPx
-                            } else {
-                                0
-                            },
+                        pendingStartAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
-                        currentPendingStartAnchorMeasuredBottomPx = ::currentPendingStartAnchorMeasuredBottomPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
-                            pendingStartAnchorBottomPx = -1
                             sendUiSettling = false
                         },
                         onStartAnchorScrollStarted = {
@@ -3604,18 +3609,6 @@ fun ChatScreen() {
                                                                     (bounds.bottom - messageViewportTopPx).roundToInt()
                                                             } else {
                                                                 messageContentBoundsById.remove(msg.id)
-                                                            }
-                                                        },
-                                                        onWaitingAnchorBoundsChanged = { bounds ->
-                                                            if (
-                                                                renderMode == StreamingRenderMode.Waiting &&
-                                                                pendingStartAnchorMessageId == msg.id
-                                                            ) {
-                                                                pendingStartAnchorBottomPx =
-                                                                    bounds?.bottom
-                                                                        ?.minus(messageViewportTopPx)
-                                                                        ?.roundToInt()
-                                                                        ?: -1
                                                             }
                                                         },
                                                         modifier = Modifier.fillMaxWidth()

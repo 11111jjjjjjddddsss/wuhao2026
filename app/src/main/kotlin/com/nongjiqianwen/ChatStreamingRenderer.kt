@@ -769,7 +769,6 @@ internal fun ChatStreamingRenderer(
     selectionEnabled: Boolean,
     showDisclaimer: Boolean,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)?,
-    onWaitingAnchorBoundsChanged: ((Rect?) -> Unit)? = null,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -787,7 +786,6 @@ internal fun ChatStreamingRenderer(
         selectionEnabled = selectionEnabled,
         showDisclaimer = showDisclaimer,
         onStreamingContentBoundsChanged = onStreamingContentBoundsChanged,
-        onWaitingAnchorBoundsChanged = onWaitingAnchorBoundsChanged,
         expandToFullWidth = expandToFullWidth,
         modifier = modifier
     )
@@ -807,7 +805,6 @@ private fun RendererAssistantMessageContentImpl(
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
-    onWaitingAnchorBoundsChanged: ((Rect?) -> Unit)? = null,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -839,7 +836,6 @@ private fun RendererAssistantMessageContentImpl(
                         .fillMaxWidth()
                 ) {
                     RendererAssistantStreamingWaitingIndicatorImpl(
-                        onWaitingAnchorBoundsChanged = onWaitingAnchorBoundsChanged,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -903,7 +899,6 @@ private fun RendererAssistantMessageContentImpl(
 
 @Composable
 private fun RendererAssistantStreamingWaitingIndicatorImpl(
-    onWaitingAnchorBoundsChanged: ((Rect?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -918,15 +913,6 @@ private fun RendererAssistantStreamingWaitingIndicatorImpl(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(lineHeight)
-                .then(
-                    if (onWaitingAnchorBoundsChanged != null) {
-                        Modifier.onGloballyPositioned { coordinates ->
-                            onWaitingAnchorBoundsChanged.invoke(coordinates.boundsInWindow())
-                        }
-                    } else {
-                        Modifier
-                    }
-                )
                 .padding(start = GPT_BALL_START_PADDING),
             contentAlignment = Alignment.CenterStart
         ) {

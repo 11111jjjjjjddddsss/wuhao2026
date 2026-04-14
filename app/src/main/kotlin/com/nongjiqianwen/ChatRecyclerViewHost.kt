@@ -1,6 +1,5 @@
 package com.nongjiqianwen
 
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -12,7 +11,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -27,10 +25,9 @@ internal fun ChatRecyclerViewHost(
     topPaddingPx: Int,
     bottomPaddingPx: Int,
     bottomFooterHeightPx: Int,
-    pendingStartAnchorTargetBottomPx: Int,
+    pendingStartAnchorScrollOffsetPx: Int,
     pendingStartAnchorMessageId: String?,
     pendingStartAnchorRequestId: Int,
-    currentPendingStartAnchorMeasuredBottomPx: () -> Int,
     onPendingStartAnchorHandled: () -> Unit,
     onStartAnchorScrollStarted: () -> Unit,
     onStartAnchorScrollFinished: () -> Unit,
@@ -44,7 +41,7 @@ internal fun ChatRecyclerViewHost(
         itemIds,
         pendingStartAnchorMessageId,
         pendingStartAnchorRequestId,
-        pendingStartAnchorTargetBottomPx
+        pendingStartAnchorScrollOffsetPx
     ) {
         if (pendingStartAnchorRequestId <= 0) return@LaunchedEffect
         if (pendingStartAnchorRequestId == lastAppliedStartAnchorRequestId.intValue) {
@@ -53,7 +50,10 @@ internal fun ChatRecyclerViewHost(
         val pendingStartAnchorPosition =
             pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 }
                 ?: return@LaunchedEffect
-        val requestId = pendingStartAnchorRequestId
+        if (pendingStartAnchorScrollOffsetPx == Int.MIN_VALUE) {
+            return@LaunchedEffect
+        }
+
         var startAnchorScrollOwned = false
 
         fun beginStartAnchorScrollIfNeeded() {
@@ -67,40 +67,18 @@ internal fun ChatRecyclerViewHost(
                 listState.layoutInfo.totalItemsCount >= itemIds.size &&
                     itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId
             }.first { it }
-            snapshotFlow {
-                pendingStartAnchorTargetBottomPx > 0 &&
-                    listState.layoutInfo.viewportSize.height > 0
-            }.first { it }
+            snapshotFlow { listState.layoutInfo.viewportSize.height > 0 }.first { it }
+
             beginStartAnchorScrollIfNeeded()
-            val anchorAlreadyVisible =
-                listState.layoutInfo.visibleItemsInfo.any {
-                    it.index == pendingStartAnchorPosition && it.size > 0
-                }
-            // Only do the coarse jump when the new assistant placeholder is still outside
-            // the viewport. If it is already visible, skipping this avoids an extra
-            // whole-list jump before the precise workline alignment.
-            if (!anchorAlreadyVisible) {
-                listState.scrollToItem(pendingStartAnchorPosition)
-            }
-            snapshotFlow {
-                listState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.index == pendingStartAnchorPosition }
-                    ?.size
-                    ?.let { it > 0 }
-                    ?: false
-            }.first { it }
-            withFrameNanos { }
-            snapshotFlow { currentPendingStartAnchorMeasuredBottomPx() }
-                .first { it > 0 }
-            withFrameNanos { }
-            val measuredBottomPx = currentPendingStartAnchorMeasuredBottomPx()
-            val scrollDeltaPx = measuredBottomPx - pendingStartAnchorTargetBottomPx
-            // Use the real waiting host bottom instead of an estimated inset. This makes the
-            // send-start anchor deterministic for both first-send and history-send cases.
-            if (scrollDeltaPx != 0) {
-                listState.scrollBy(scrollDeltaPx.toFloat())
-            }
-            lastAppliedStartAnchorRequestId.intValue = requestId
+            // Single-shot send-start alignment. The workline and waiting-host height are both
+            // frozen before this point, so we can jump straight to the final offset without a
+            // second-frame measured scrollBy correction.
+            listState.scrollToItem(
+                index = pendingStartAnchorPosition,
+                scrollOffset = pendingStartAnchorScrollOffsetPx
+            )
+
+            lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
             onPendingStartAnchorHandled()
         } finally {
             if (startAnchorScrollOwned) {
