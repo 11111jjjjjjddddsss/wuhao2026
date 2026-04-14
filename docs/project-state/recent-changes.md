@@ -13,3 +13,4 @@
 - 新增 `scripts/check_project_memory.py` 并接入 Android CI：关键真相文件变更但未同步更新仓库记忆时直接报警
 - `UserBrowsing -> AutoFollow` 回接条件继续收紧：只有生成行真实回到工作线命中带后才重新接回，避免用户上滑查看历史时被主链往下拽
 - 修复项目记忆检查在 GitHub Actions 中的误报：`actions/checkout` 改为 `fetch-depth: 0`，避免浅克隆下 `base..head` revision range 无法解析
+- 发送起步锚点继续收紧：由 assistant 内容宿主底边改为 waiting 小球本体底边，避免 waiting/首字 streaming 切换导致锚点忽高忽低

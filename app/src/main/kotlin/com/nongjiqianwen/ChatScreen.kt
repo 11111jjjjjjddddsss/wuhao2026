@@ -1472,6 +1472,7 @@ fun ChatScreen() {
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var pendingStartAnchorBottomPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -1525,9 +1526,7 @@ fun ChatScreen() {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentPendingStartAnchorMeasuredBottomPx(): Int {
-        val messageId = pendingStartAnchorMessageId ?: return -1
-        val bounds = messageContentBoundsById[messageId] ?: return -1
-        return (bounds.bottom - messageViewportTopPx).roundToInt()
+        return pendingStartAnchorBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
@@ -2933,6 +2932,7 @@ fun ChatScreen() {
                 // The assistant placeholder itself is the send-start anchor.
                 // Its visible bottom is aligned to the workline, so the user bubble
                 // naturally stays above and the streamed body can grow from there.
+                pendingStartAnchorBottomPx = -1
                 pendingStartAnchorMessageId = assistantId
                 pendingStartAnchorRequestId += 1
                 persistTick++
@@ -3379,6 +3379,7 @@ fun ChatScreen() {
                         currentPendingStartAnchorMeasuredBottomPx = ::currentPendingStartAnchorMeasuredBottomPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
+                            pendingStartAnchorBottomPx = -1
                             sendUiSettling = false
                         },
                         onStartAnchorScrollStarted = {
@@ -3514,6 +3515,18 @@ fun ChatScreen() {
                                                                     (bounds.bottom - messageViewportTopPx).roundToInt()
                                                             } else {
                                                                 messageContentBoundsById.remove(msg.id)
+                                                            }
+                                                        },
+                                                        onWaitingAnchorBoundsChanged = { bounds ->
+                                                            if (
+                                                                renderMode == StreamingRenderMode.Waiting &&
+                                                                pendingStartAnchorMessageId == msg.id
+                                                            ) {
+                                                                pendingStartAnchorBottomPx =
+                                                                    bounds?.bottom
+                                                                        ?.minus(messageViewportTopPx)
+                                                                        ?.roundToInt()
+                                                                        ?: -1
                                                             }
                                                         },
                                                         modifier = Modifier.fillMaxWidth()
