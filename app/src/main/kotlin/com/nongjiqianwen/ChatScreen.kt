@@ -2140,6 +2140,7 @@ fun ChatScreen() {
         remoteRecoverySourceUserMessageId = null
         SessionApi.resetUiRuntimeForCleanState()
         QwenClient.resetUiRuntimeForCleanState()
+        sendUiSettling = false
         pendingStartAnchorMessageId = null
         pendingStartAnchorRequestId = 0
         sendStartAnchorActive = false
@@ -2377,6 +2378,7 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
+            sendUiSettling = false
             streamingMessageId = null
             pendingStartAnchorMessageId = null
             streamingRevealBuffer = ""
@@ -2649,6 +2651,7 @@ fun ChatScreen() {
             val finalId = streamingMessageId
             fakeStreamJob = null
             isStreaming = false
+            sendUiSettling = false
             pendingStartAnchorMessageId = null
             streamingRevealBuffer = ""
             streamingFreshStart = -1
@@ -2783,6 +2786,7 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
+            sendUiSettling = false
             pendingStartAnchorMessageId = null
             streamingMessageId = null
             streamingMessageContent = ""
@@ -2986,7 +2990,9 @@ fun ChatScreen() {
                     launchLocalFakeStream(applyInitialDelay = true)
                 }
             } finally {
-                sendUiSettling = false
+                if (pendingStartAnchorMessageId == null) {
+                    sendUiSettling = false
+                }
             }
         }
     }
@@ -3388,6 +3394,7 @@ fun ChatScreen() {
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
+                            sendUiSettling = false
                         },
                         onStartAnchorScrollStarted = {
                             sendStartAnchorActive = true

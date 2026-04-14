@@ -305,8 +305,7 @@ internal fun BindChatListScrollEffects(
             val legalBottom = currentStreamingLegalBottomPx()
             if (sendStartAnchorActiveState.value) {
                 val shouldReleaseStartAnchorProtection =
-                    streamingMessageContent.isNotBlank() &&
-                        contentBottom > 0 &&
+                    contentBottom > 0 &&
                         legalBottom > 0 &&
                         contentBottom >= legalBottom &&
                         isStreamingReadyForAutoFollow()
