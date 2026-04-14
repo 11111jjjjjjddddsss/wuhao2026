@@ -79,8 +79,6 @@ internal enum class StreamingRevealMode {
     Conservative
 }
 
-internal val ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT = 16.dp
-
 internal data class ChatStreamingRuntimeState(
     val isStreaming: MutableState<Boolean>,
     val streamingMessageId: MutableState<String?>,
@@ -912,9 +910,8 @@ private fun RendererAssistantStreamingWaitingIndicatorImpl(
     val lineHeight = with(density) {
         assistantStreamingParagraphTextStyle().lineHeight.toDp()
     }
-    val waitingShellMinHeight = lineHeight + ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT
     Box(
-        modifier = modifier.heightIn(min = waitingShellMinHeight),
+        modifier = modifier.heightIn(min = lineHeight),
         contentAlignment = Alignment.CenterStart
     ) {
         Box(
