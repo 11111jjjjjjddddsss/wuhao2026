@@ -330,7 +330,7 @@ internal fun BindChatListScrollEffects(
                 if (
                     !listScrollInProgress &&
                     !userInteractingState.value &&
-                    isStreamingReadyForAutoFollow()
+                    isWithinBottomTolerance()
                 ) {
                     scrollModeState.value = ScrollMode.AutoFollow
                     continue
