@@ -172,8 +172,9 @@ Clean-State 必做回归的范围：
 
 - 用户消息按正常消息流从上往下排
 - waiting 小球、streaming 正文、settled 完成态共用同一个 assistant 内容宿主
-- 发送起步时，assistant 起步宿主的可见底边围绕工作线落位；小球第一次出现应命中工作线附近
-- 只有正文尾部真正接近工作线后，才允许进入 AutoFollow
+- 列表底座当前使用 `LazyColumn(reverseLayout = true)`；显示顺序与状态顺序分离，视觉上最新消息固定贴近底部工作线
+- 发送起步时，小球所在的 assistant 起步宿主天然贴近工作线；用户消息自然位于其上方
+- 正文从工作线开始向上增长；在底部锚定成立时，不再依赖正向列表那套“先算 offset 再矫正”的发送起步链
 - 用户拖动立即让权，不允许隐藏第二条链抢手
 - 完成态和静态贴底围绕同一条工作线附近目标线收口，不再保留明显更低的第二条底线
 - 底部不应再出现额外可见空白
@@ -182,17 +183,17 @@ Clean-State 必做回归的范围：
 
 1. 发送起步
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 做法：在发送事件源里，插入用户消息和 assistant placeholder 后，基于固定工作线和固定首行宿主高度，直接用单次 `LazyListState.requestScrollToItem(index, offset)` 把 assistant 起步宿主可见底边请求到工作线
+- 做法：在发送事件源里，插入用户消息和 assistant placeholder 后，直接请求 `LazyListState.requestScrollToItem(0)` 回到底部锚点；assistant placeholder 在反向列表里天然落在工作线附近
 - 当前锚点：小球所在的 assistant 起步宿主可见底边
 - 当前目标：小球第一次出现就落在工作线；用户消息在其上方，正文从工作线开始长
 
 2. AutoFollow
 - 主人：[ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)
-- 作用：正文超过工作线后，按 overflow 直接跟随，不再多帧小步追赶
+- 作用：在反向底座里维持“底部锚定”语义；当用户未打断时，生成内容继续向上长，不再依赖正向列表的 overflow 追赶链
 
-3. 发送起步保护期
-- 主人：`sendStartAnchorActive`
-- 作用：发送起步定位完成后，到正文真实命中工作线前，禁止 `snapStreamingToWorkline()` 和 `AutoFollow` 提前接管
+3. 发送期几何稳定
+- 主人：`sendStartBottomPaddingLockActive`
+- 作用：只负责输入区收口期的几何稳定，避免发送那一拍底部保留高度抖动；不再承担正向列表的 offset 保护职责
 
 4. 完成态收口
 - 主人：`scrollToBottom(false)`
@@ -204,7 +205,7 @@ Clean-State 必做回归的范围：
 
 6. 首次进入贴底
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 作用：冷启动且已有历史消息时，直接滚到列表 footer 并补一次到底推送，把底部保留空白露完整；从后台切回时不默认自动贴底
+- 作用：冷启动且已有历史消息时，直接滚到反向列表的 `index = 0`，让最新消息天然贴住底部工作线；从后台切回时不默认自动贴底
 
 铁律：
 - 同一时刻只能有一个主人控制滚动
@@ -213,23 +214,21 @@ Clean-State 必做回归的范围：
 
 ### 7.3 当前实现细则
 
-- 工作线和静态贴底线必须共用同一个物理锚点；编辑态优先跟真实 `composerTopInViewportPx`，发送后输入框已收口成单行时优先跟稳定单行保留高度，避免 workline / bottom padding 再切回另一条线
-- 列表底座当前为纯 Compose `LazyColumn`，不再保留 `RecyclerView` / `stackFromEnd`
+- 工作线和静态贴底线必须共用同一个物理锚点；当前以反向列表的底部锚定 + `recyclerBottomPaddingPx` 共同定义工作线
+- 列表底座当前为纯 Compose `LazyColumn(reverseLayout = true)`，不再保留 `RecyclerView` / `stackFromEnd`
 - 消息区容器高度保持固定；`ChatComposerBottomBar` 已从 `Scaffold.bottomBar` 挪到内容层底部 overlay，输入区高度变化只再影响 `recyclerBottomPaddingPx`，不再直接挤压消息区容器
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
-- 发送起步已不再依赖 waiting 锚点测量回调、`onGloballyPositioned`、协程 `scrollToItem`、UI 层 `SideEffect` 或二次 `scrollBy` 反馈修正；起步 offset 只由固定工作线、列表 top padding 和首行宿主固定高度前馈计算，并在发送事件源里直接通过 `requestScrollToItem(index, offset)` 下发
-- 发送事件必须直接吃当前作用域里的 `pendingStartAnchorScrollOffsetPx` 真值，不允许再通过 `latest...` 之类的缓存桥把 offset 晚一帧喂回发送函数
+- 当前已删除所有只服务正向底座的发送起步 offset 链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 均不再参与运行时定位
+- 发送事件当前不再计算“视口高度 - item 高度”的正向 offset；底部回位统一走反向列表 `index = 0`
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
-- 发送起步目标线应优先取“单行收口后的稳定 composer 底部保留高度”，不能再直接吃发送前多行输入框的实时顶部，否则长短文本会把小球起步线抬高或压低
-- 发送窗口内还必须冻结视口高度快照：`sendStartWorklineBottomPx`、`streamingWorklineBottomPx` 和 `bottomContentReservedHeightPx` 在 `sendStartBottomPaddingLockActive` 期间应优先使用发送瞬间拍下的 `messageViewportHeightPx` 快照，不能继续读取正在收口抖动的实时视口高度
+- `recyclerBottomPaddingPx` 仍负责把底部输入区和工作线留出来；反向底座下最新消息天然贴着这条底部保留线，不再需要额外 footer 或双重到底补推
 - 发送后输入框已回到单行且未聚焦时，`recyclerBottomPaddingPx` 也应继续优先使用稳定单行保留高度，不能刚对齐完锚点又立刻切回实时 `composerTop` 测量
-- `sendStartBottomPaddingLockActive` 覆盖的整个发送窗口内，`streamingWorklineBottomPx` 与 `bottomContentReservedHeightPx` 都必须冻结到稳定单行高度；这段时间严禁读取实时 `composerTopInViewportPx`
-- `sendStartAnchorActive` 必须覆盖 waiting 和早期首字阶段；正文真实命中工作线前，不允许 `Idle snap` 或 `AutoFollow` 抢到发送起步的控制权
+- `sendStartBottomPaddingLockActive` 现在只作为底部输入区收口期的几何稳定开关，不再承担正向列表的视口快照冻结职责
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
-- 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接对 footer 做两次到底推送；从后台切回时不默认自动贴底
+- 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接 `scrollToItem(0)`；从后台切回时不默认自动贴底
 - 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
 
 当前排查顺序：

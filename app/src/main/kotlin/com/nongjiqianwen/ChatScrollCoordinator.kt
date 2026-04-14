@@ -219,7 +219,6 @@ internal suspend fun performJumpToBottom(
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     jumpButtonPulseVisibleState: MutableState<Boolean>,
-    snapStreamingToWorkline: suspend () -> Unit,
     scrollToBottom: suspend (Boolean) -> Unit
 ) {
     if (messagesCount == 0 && !hasStreamingItem) return
@@ -231,11 +230,7 @@ internal suspend fun performJumpToBottom(
     }
     userInteractingState.value = false
     jumpButtonPulseVisibleState.value = false
-    if (jumpingIntoStreaming) {
-        snapStreamingToWorkline()
-    } else {
-        scrollToBottom(false)
-    }
+    scrollToBottom(false)
 }
 
 internal fun prepareScrollRuntimeForStreamingStart(
@@ -275,7 +270,6 @@ internal fun BindChatListScrollEffects(
     messagesCount: Int,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
-    sendStartAnchorActiveState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
     pendingFinalBottomSnapState: MutableState<Boolean>,
     currentLastMessageContentBottomPx: () -> Int,
@@ -298,7 +292,6 @@ internal fun BindChatListScrollEffects(
         isStreaming,
         hasStreamingItem,
         streamingMessageContent,
-        sendStartAnchorActiveState.value,
         scrollMode,
         userInteracting,
         listScrollInProgress,
@@ -306,7 +299,6 @@ internal fun BindChatListScrollEffects(
         currentStreamingLegalBottomPx()
     ) {
         if (!isStreaming || !hasStreamingItem) {
-            sendStartAnchorActiveState.value = false
             streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
@@ -314,21 +306,6 @@ internal fun BindChatListScrollEffects(
             withFrameNanos { }
             val activeScrollMode = scrollModeState.value
             val contentBottom = currentStreamingContentBottomPx()
-            val legalBottom = currentStreamingLegalBottomPx()
-            if (sendStartAnchorActiveState.value) {
-                val overflowDelta = currentStreamingOverflowDelta()
-                val shouldReleaseStartAnchorProtection =
-                    contentBottom > 0 &&
-                        legalBottom > 0 &&
-                        contentBottom >= legalBottom &&
-                        overflowDelta > 0 &&
-                        isStreamingReadyForAutoFollow()
-                if (shouldReleaseStartAnchorProtection) {
-                    sendStartAnchorActiveState.value = false
-                }
-                streamBottomFollowActiveState.value = false
-                continue
-            }
             if (activeScrollMode == ScrollMode.UserBrowsing) {
                 if (
                     !listScrollInProgress &&

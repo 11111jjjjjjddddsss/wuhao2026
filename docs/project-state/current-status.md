@@ -11,17 +11,16 @@
 ## 当前代码真相
 
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
-- 聊天列表当前唯一底座是 `LazyColumn`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
-- 发送起步锚点当前围绕 assistant waiting 宿主的真实可见底边对齐工作线，不再依赖 waiting 壳高度估算
-- 发送起步的目标线当前已改为优先取单行收口后的稳定 composer 保留高度，避免发送前多行输入框把小球锚点临时抬高、再在收口后掉回去
-- 发送起步当前不再读取 waiting 宿主的实时测量值，waiting/streaming 首行的物理高度已固定化，避免首字出现时再走一轮“量完再修”
+- 聊天列表当前唯一底座是 `LazyColumn(reverseLayout = true)`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
+- 运行时消息状态仍保持正常时间顺序，但传给列表的显示顺序已改为 `asReversed()`；视觉上最新消息固定贴近底部工作线
+- 发送起步当前不再走正向列表那套“先算 offset 再 requestScrollToItem(index, offset)”链，发送时只请求 `requestScrollToItem(0)` 回到底部锚点
+- 小球所在的 assistant waiting 宿主当前依然是发送起步锚点；反向底座下它天然贴近工作线，用户消息自然位于其上方
+- waiting/streaming 首行的物理高度已固定化，避免首字出现时宿主高度突变
 - 输入框已回到单行且未聚焦时，列表底部保留高度当前优先继续走稳定单行高度，不再立即切回实时 `composerTop` 测量，减少锚点刚对齐后又被底部几何改写
-- 发送窗口（`sendStartBottomPaddingLockActive`）内，工作线和底部保留高度当前都会冻结到稳定单行高度，不再在发送最乱的几帧里响应实时 `composerTopInViewportPx`
-- 发送窗口内新增了视口高度快照：发送起步会先拍下 `messageViewportHeightPx`，随后 `sendStartWorklineBottomPx`、`streamingWorklineBottomPx` 和 `bottomContentReservedHeightPx` 在保护期内都优先吃这份快照，不再跟着外层容器 1 到 2 帧的高度抖动一起跳
-- waiting 小球宿主当前已收口到与正文首行同一物理高度，不再额外抬高壳子，减少“小球出线后首字一上屏历史区又掉一下”的布局重排
-- 发送起步保护期当前只会在正文真实越过工作线、出现正向 overflow 后才放权给 `AutoFollow`，不再在刚命中工作线那一拍提前切主
-- 发送起步当前已不再依赖 waiting 宿主的 `onGloballyPositioned` 测量结果，也不再走 `scrollToItem + scrollBy` 两拍修正；当前改为在发送事件源里按固定工作线、列表 top padding 和首行宿主固定高度前馈计算 offset，再直接调用 `requestScrollToItem(index, offset)`，不再把起步滚动挂在 UI 层 `SideEffect` 上
-- 发送事件当前直接读取同一作用域里的 `pendingStartAnchorScrollOffsetPx` 真值；之前那条 `SideEffect -> latestPendingStartAnchorScrollOffsetPx` 的晚一帧缓存桥已删除，避免发送瞬间拿到旧 offset 把列表先顶错再拉回
+- 发送窗口（`sendStartBottomPaddingLockActive`）当前只继续承担输入区收口期的几何稳定职责，不再冻结视口高度，也不再参与发送起步 offset 计算
+- 所有只服务正向底座的发送起步变量都已退出主链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已删除
+- 首次进入聊天页当前直接 `scrollToItem(0)` 贴到底部；从后台切回时不默认自动贴底
+- 回到底部按钮在 streaming 场景下当前也直接走 `scrollToBottom(false)`，不再额外走正向列表的底边差值补推
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
 - 主对话锚点与摘要提示词真源位于 `server-go/assets`

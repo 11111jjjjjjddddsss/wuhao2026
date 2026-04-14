@@ -4,6 +4,10 @@
 
 ## 2026-04-15
 
+- 聊天底座已翻为 `LazyColumn(reverseLayout = true)`：运行时消息状态仍保持正序，但传给列表的显示顺序改为 `asReversed()`，让最新消息天然贴近底部工作线，减少正向底座底部插入时的整体回弹
+- 删除所有只服务正向发送起步的 offset / 视口快照链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已退出运行时主链；发送时改为直接 `requestScrollToItem(0)`
+- 首次进入聊天页的贴底逻辑已改为 `scrollToItem(0)`；不再依赖 footer + 两次到底补推
+- streaming 场景下“回到底部”按钮已统一走 `scrollToBottom(false)`，不再额外走正向列表的 `snapStreamingToWorkline` 补差链
 - 发送起步 offset 继续收敛：删掉 `SideEffect -> latestPendingStartAnchorScrollOffsetPx` 的缓存桥，发送事件现在直接读取当前作用域里的 `pendingStartAnchorScrollOffsetPx` 真值，减少发送瞬间先用旧 offset 排版再被新 offset 拉回的上下弹动
 
 ## 2026-04-14
