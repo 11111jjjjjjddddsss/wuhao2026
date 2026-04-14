@@ -282,6 +282,7 @@ internal fun BindChatListScrollEffects(
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
     currentStreamingOverflowDelta: () -> Int,
+    isNearStreamingWorkline: () -> Boolean,
     isWithinBottomTolerance: () -> Boolean,
     isStreamingReadyForAutoFollow: () -> Boolean,
     resolveStreamingFollowStepPx: (Int) -> Int,
@@ -330,7 +331,7 @@ internal fun BindChatListScrollEffects(
                 if (
                     !listScrollInProgress &&
                     !userInteractingState.value &&
-                    isWithinBottomTolerance()
+                    isNearStreamingWorkline()
                 ) {
                     scrollModeState.value = ScrollMode.AutoFollow
                     continue

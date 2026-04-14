@@ -1703,6 +1703,32 @@ fun ChatScreen() {
             )
         }
     }
+    val sendStartWorklineBottomPx by remember(
+        messageViewportHeightPx,
+        stableComposerBottomBarHeightPx,
+        bottomBarHeightPx,
+        composerTopInViewportPx,
+        streamVisibleBottomGapPx
+    ) {
+        derivedStateOf {
+            val stableBottomBarHeight = when {
+                stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
+                bottomBarHeightPx > 0 -> bottomBarHeightPx
+                else -> 0
+            }
+            if (messageViewportHeightPx > 0 && stableBottomBarHeight > 0) {
+                (
+                    messageViewportHeightPx -
+                        stableBottomBarHeight -
+                        streamVisibleBottomGapPx
+                    ).coerceAtLeast(0)
+            } else if (composerTopInViewportPx > 0) {
+                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+            } else {
+                0
+            }
+        }
+    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -2578,6 +2604,7 @@ fun ChatScreen() {
         com.nongjiqianwen.appendAssistantChunk(
             piece = piece,
             mainHandler = mainHandler,
+            isStreaming = { isStreaming },
             currentMessageId = { streamingMessageId },
             currentRevealBuffer = { streamingRevealBuffer },
             anchoredUserMessageId = { anchoredUserMessageId },
@@ -3233,6 +3260,7 @@ fun ChatScreen() {
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
+        isNearStreamingWorkline = ::isNearStreamingWorkline,
         isWithinBottomTolerance = ::isWithinBottomTolerance,
         isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
         resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
@@ -3381,8 +3409,8 @@ fun ChatScreen() {
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         bottomFooterHeightPx = with(density) { 1.dp.roundToPx() },
                         pendingStartAnchorTargetBottomPx =
-                            if (composerTopInViewportPx > 0) {
-                                streamingWorklineBottomPx
+                            if (sendStartWorklineBottomPx > 0) {
+                                sendStartWorklineBottomPx
                             } else {
                                 0
                             },

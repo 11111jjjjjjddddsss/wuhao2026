@@ -221,6 +221,7 @@ Clean-State 必做回归的范围：
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 发送起步已不再用 waiting 壳高度估算或 `visibleBottomInset` 反推位置，而是先让 assistant 起步宿主进入视口，再按真实测到的可见底边一次性对齐工作线
+- 发送起步目标线应优先取“单行收口后的稳定 composer 底部保留高度”，不能再直接吃发送前多行输入框的实时顶部，否则长短文本会把小球起步线抬高或压低
 - `sendStartAnchorActive` 必须覆盖 waiting 和早期首字阶段；正文真实命中工作线前，不允许 `Idle snap` 或 `AutoFollow` 抢到发送起步的控制权
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接对 footer 做两次到底推送；从后台切回时不默认自动贴底

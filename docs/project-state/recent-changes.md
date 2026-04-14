@@ -15,3 +15,5 @@
 - 修复项目记忆检查在 GitHub Actions 中的误报：`actions/checkout` 改为 `fetch-depth: 0`，避免浅克隆下 `base..head` revision range 无法解析
 - 发送起步锚点继续收紧：由 assistant 内容宿主底边改为 waiting 小球本体底边，避免 waiting/首字 streaming 切换导致锚点忽高忽低
 - 本地 fake streaming 的生命周期收口改为同步执行：`ON_PAUSE / ON_STOP` 直接在主线程完成 completed 消息落盘与 draft 清理，减少“切后台再回来只剩半截文本且列表卡住”的竞态窗口
+- `UserBrowsing` 回接条件继续收紧：不再按泛底部容差直接接回，而是要求生成行真实回到工作线附近，减少用户上滑时被 AutoFollow 过早往下拽
+- 发送起步目标线改为优先使用单行收口后的稳定 composer 保留高度，减少长文本发送时“小球先顶高再掉回去”的锚点漂移

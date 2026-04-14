@@ -176,6 +176,7 @@ internal fun ensureStreamingRevealJob(
 internal fun appendAssistantChunk(
     piece: String,
     mainHandler: Handler,
+    isStreaming: () -> Boolean,
     currentMessageId: () -> String?,
     currentRevealBuffer: () -> String,
     anchoredUserMessageId: () -> String?,
@@ -186,6 +187,7 @@ internal fun appendAssistantChunk(
 ) {
     if (piece.isEmpty()) return
     mainHandler.post {
+        if (!isStreaming()) return@post
         val queued = queueStreamingChunk(
             currentMessageId = currentMessageId(),
             currentRevealBuffer = currentRevealBuffer(),

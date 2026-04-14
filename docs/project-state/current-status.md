@@ -13,6 +13,7 @@
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
 - 聊天列表当前唯一底座是 `LazyColumn`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
 - 发送起步锚点当前围绕 assistant waiting 宿主的真实可见底边对齐工作线，不再依赖 waiting 壳高度估算
+- 发送起步的目标线当前已改为优先取单行收口后的稳定 composer 保留高度，避免发送前多行输入框把小球锚点临时抬高、再在收口后掉回去
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
 - 主对话锚点与摘要提示词真源位于 `server-go/assets`
