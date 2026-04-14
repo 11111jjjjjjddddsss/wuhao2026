@@ -221,6 +221,7 @@ Clean-State 必做回归的范围：
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 发送起步已不再依赖 waiting 锚点测量回调、`onGloballyPositioned`、协程 `scrollToItem`、UI 层 `SideEffect` 或二次 `scrollBy` 反馈修正；起步 offset 只由固定工作线、列表 top padding 和首行宿主固定高度前馈计算，并在发送事件源里直接通过 `requestScrollToItem(index, offset)` 下发
+- 发送事件必须直接吃当前作用域里的 `pendingStartAnchorScrollOffsetPx` 真值，不允许再通过 `latest...` 之类的缓存桥把 offset 晚一帧喂回发送函数
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - 发送起步目标线应优先取“单行收口后的稳定 composer 底部保留高度”，不能再直接吃发送前多行输入框的实时顶部，否则长短文本会把小球起步线抬高或压低
 - 发送窗口内还必须冻结视口高度快照：`sendStartWorklineBottomPx`、`streamingWorklineBottomPx` 和 `bottomContentReservedHeightPx` 在 `sendStartBottomPaddingLockActive` 期间应优先使用发送瞬间拍下的 `messageViewportHeightPx` 快照，不能继续读取正在收口抖动的实时视口高度

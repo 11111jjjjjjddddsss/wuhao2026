@@ -2,8 +2,11 @@
 
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 
-## 2026-04-14
+## 2026-04-15
 
+- 发送起步 offset 继续收敛：删掉 `SideEffect -> latestPendingStartAnchorScrollOffsetPx` 的缓存桥，发送事件现在直接读取当前作用域里的 `pendingStartAnchorScrollOffsetPx` 真值，减少发送瞬间先用旧 offset 排版再被新 offset 拉回的上下弹动
+
+## 2026-04-14
 - 建立仓库内长期记忆骨架：新增 `docs/project-state`、`docs/adr`、`docs/runbooks`
 - 根 `AGENTS.md` 增加“项目记忆机制”，要求 Codex 默认读取并自动维护状态、风险、待决策、变更记录和 runbook
 - 新增 `app/AGENTS.md` 与 `server-go/AGENTS.md`，让新窗口进入子系统时自动获取局部口径

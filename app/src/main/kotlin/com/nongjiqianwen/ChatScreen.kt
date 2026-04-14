@@ -93,7 +93,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -1471,7 +1470,6 @@ fun ChatScreen() {
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var latestPendingStartAnchorScrollOffsetPx by remember(uiRuntimeResetKey) { mutableIntStateOf(Int.MIN_VALUE) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -2968,7 +2966,8 @@ fun ChatScreen() {
     fun commitSendMessage(
         text: String,
         existingUserMessageId: String? = null,
-        collapseComposer: Boolean = true
+        collapseComposer: Boolean = true,
+        startAnchorScrollOffsetPx: Int
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         composerCollapseOverlayVisible = false
@@ -3022,12 +3021,12 @@ fun ChatScreen() {
                 val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
                 if (
                     pendingStartAnchorPosition >= 0 &&
-                    latestPendingStartAnchorScrollOffsetPx != Int.MIN_VALUE
+                    startAnchorScrollOffsetPx != Int.MIN_VALUE
                 ) {
                     sendStartAnchorActive = true
                     chatListState.requestScrollToItem(
                         index = pendingStartAnchorPosition,
-                        scrollOffset = latestPendingStartAnchorScrollOffsetPx
+                        scrollOffset = startAnchorScrollOffsetPx
                     )
                 } else {
                     sendStartAnchorActive = false
@@ -3079,54 +3078,6 @@ fun ChatScreen() {
                 sendUiSettling = false
             }
         }
-    }
-
-    fun retryFailedUserMessage(messageId: String) {
-        val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
-        if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-            showComposerStatusHint("当前网络不可用")
-            return
-        }
-        commitSendMessage(
-            text = failedMessage.content,
-            existingUserMessageId = failedMessage.id,
-            collapseComposer = false
-        )
-    }
-
-    fun retryFailedAssistantMessage(assistantMessageId: String) {
-        val failedState = failedAssistantMessageStates[assistantMessageId] ?: return
-        val sourceUserMessage = messages.firstOrNull { it.id == failedState.sourceUserMessageId } ?: return
-        if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-            showComposerStatusHint("当前网络不可用")
-            return
-        }
-        failedAssistantMessageStates.remove(assistantMessageId)
-        val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
-        if (existingAssistantIndex >= 0) {
-            messages.removeAt(existingAssistantIndex)
-        }
-        commitSendMessage(
-            text = sourceUserMessage.content,
-            existingUserMessageId = sourceUserMessage.id,
-            collapseComposer = false
-        )
-    }
-
-    fun sendMessage() {
-        val text = input.value.text
-        val sendGate = buildSendGateState(
-            rawInput = text,
-            isStreaming = isStreaming || sendUiSettling,
-            exceedsInputLimit = text.length > INPUT_MAX_CHARS
-        )
-        if (!sendGate.canSubmit) return
-        val trimmedText = text.trim()
-        if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-            markUserMessageSendFailed(trimmedText)
-            return
-        }
-        commitSendMessage(trimmedText)
     }
 
     fun refreshChatListMetrics(listState: LazyListState) {
@@ -3387,8 +3338,55 @@ fun ChatScreen() {
                 }
             }
         }
-        SideEffect {
-            latestPendingStartAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+        fun retryFailedUserMessage(messageId: String) {
+            val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
+            if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
+                showComposerStatusHint("当前网络不可用")
+                return
+            }
+            commitSendMessage(
+                text = failedMessage.content,
+                existingUserMessageId = failedMessage.id,
+                collapseComposer = false,
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+            )
+        }
+        fun retryFailedAssistantMessage(assistantMessageId: String) {
+            val failedState = failedAssistantMessageStates[assistantMessageId] ?: return
+            val sourceUserMessage = messages.firstOrNull { it.id == failedState.sourceUserMessageId } ?: return
+            if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
+                showComposerStatusHint("当前网络不可用")
+                return
+            }
+            failedAssistantMessageStates.remove(assistantMessageId)
+            val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
+            if (existingAssistantIndex >= 0) {
+                messages.removeAt(existingAssistantIndex)
+            }
+            commitSendMessage(
+                text = sourceUserMessage.content,
+                existingUserMessageId = sourceUserMessage.id,
+                collapseComposer = false,
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+            )
+        }
+        fun sendMessage() {
+            val text = input.value.text
+            val sendGate = buildSendGateState(
+                rawInput = text,
+                isStreaming = isStreaming || sendUiSettling,
+                exceedsInputLimit = text.length > INPUT_MAX_CHARS
+            )
+            if (!sendGate.canSubmit) return
+            val trimmedText = text.trim()
+            if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
+                markUserMessageSendFailed(trimmedText)
+                return
+            }
+            commitSendMessage(
+                text = trimmedText,
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+            )
         }
         val pageSurface = Color(0xFFFFFFFF)
         val navigationBottomInset: Dp = WindowInsets.safeDrawing

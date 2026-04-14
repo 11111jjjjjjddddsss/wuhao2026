@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-14
+最后更新：2026-04-15
 
 ## 项目概况
 
@@ -21,6 +21,7 @@
 - waiting 小球宿主当前已收口到与正文首行同一物理高度，不再额外抬高壳子，减少“小球出线后首字一上屏历史区又掉一下”的布局重排
 - 发送起步保护期当前只会在正文真实越过工作线、出现正向 overflow 后才放权给 `AutoFollow`，不再在刚命中工作线那一拍提前切主
 - 发送起步当前已不再依赖 waiting 宿主的 `onGloballyPositioned` 测量结果，也不再走 `scrollToItem + scrollBy` 两拍修正；当前改为在发送事件源里按固定工作线、列表 top padding 和首行宿主固定高度前馈计算 offset，再直接调用 `requestScrollToItem(index, offset)`，不再把起步滚动挂在 UI 层 `SideEffect` 上
+- 发送事件当前直接读取同一作用域里的 `pendingStartAnchorScrollOffsetPx` 真值；之前那条 `SideEffect -> latestPendingStartAnchorScrollOffsetPx` 的晚一帧缓存桥已删除，避免发送瞬间拿到旧 offset 把列表先顶错再拉回
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
 - 主对话锚点与摘要提示词真源位于 `server-go/assets`
