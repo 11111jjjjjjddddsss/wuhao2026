@@ -7,14 +7,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.flow.first
 
 @Composable
 internal fun ChatRecyclerViewHost(
@@ -36,54 +34,30 @@ internal fun ChatRecyclerViewHost(
     val density = LocalDensity.current
     val lastAppliedStartAnchorRequestId = remember(stateResetKey) { mutableIntStateOf(0) }
 
-    LaunchedEffect(
-        stateResetKey,
-        itemIds,
-        pendingStartAnchorMessageId,
-        pendingStartAnchorRequestId,
-        pendingStartAnchorScrollOffsetPx
-    ) {
-        if (pendingStartAnchorRequestId <= 0) return@LaunchedEffect
+    SideEffect {
+        if (pendingStartAnchorRequestId <= 0) return@SideEffect
         if (pendingStartAnchorRequestId == lastAppliedStartAnchorRequestId.intValue) {
-            return@LaunchedEffect
+            return@SideEffect
         }
         val pendingStartAnchorPosition =
             pendingStartAnchorMessageId?.let(itemIds::indexOf)?.takeIf { it >= 0 }
-                ?: return@LaunchedEffect
+                ?: return@SideEffect
         if (pendingStartAnchorScrollOffsetPx == Int.MIN_VALUE) {
-            return@LaunchedEffect
+            return@SideEffect
         }
-
-        var startAnchorScrollOwned = false
-
-        fun beginStartAnchorScrollIfNeeded() {
-            if (startAnchorScrollOwned) return
-            onStartAnchorScrollStarted()
-            startAnchorScrollOwned = true
-        }
-
+        onStartAnchorScrollStarted()
         try {
-            snapshotFlow {
-                listState.layoutInfo.totalItemsCount >= itemIds.size &&
-                    itemIds.getOrNull(pendingStartAnchorPosition) == pendingStartAnchorMessageId
-            }.first { it }
-            snapshotFlow { listState.layoutInfo.viewportSize.height > 0 }.first { it }
-
-            beginStartAnchorScrollIfNeeded()
-            // Single-shot send-start alignment. The workline and waiting-host height are both
-            // frozen before this point, so we can jump straight to the final offset without a
-            // second-frame measured scrollBy correction.
-            listState.scrollToItem(
+            // requestScrollToItem writes the target directly into the next lazy-list remeasure,
+            // which avoids the extra frame where the list first keeps the old top anchor and
+            // only then applies our send-start offset.
+            listState.requestScrollToItem(
                 index = pendingStartAnchorPosition,
                 scrollOffset = pendingStartAnchorScrollOffsetPx
             )
-
             lastAppliedStartAnchorRequestId.intValue = pendingStartAnchorRequestId
             onPendingStartAnchorHandled()
         } finally {
-            if (startAnchorScrollOwned) {
-                onStartAnchorScrollFinished()
-            }
+            onStartAnchorScrollFinished()
         }
     }
 

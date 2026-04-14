@@ -22,3 +22,4 @@
 - waiting 宿主壳子的额外高度已删除，waiting 与 streaming 首行改为共享同一物理基线，减少首字上屏时历史区轻微下掉
 - 发送起步保护期的释放条件已收紧：只有正文真实越过工作线、出现正向 overflow 后才交给 `AutoFollow`，减少“刚碰线就切主”带来的插入瞬时抖动
 - 发送起步定位链已从“两拍式反馈修正”改为“单拍前馈定位”：删除 waiting 宿主测量回调与 `scrollBy` 精修，只保留基于固定工作线、列表 top padding 和首行宿主固定高度计算出的单次 `scrollToItem(index, offset)`
+- 发送起步继续收口到同步定位：`ChatRecyclerViewHost.kt` 改用 `requestScrollToItem(index, offset)` 直接把目标 offset 写入下一次 LazyColumn 重排，减少 `LaunchedEffect + scrollToItem` 晚一帧导致的插入瞬时反弹
