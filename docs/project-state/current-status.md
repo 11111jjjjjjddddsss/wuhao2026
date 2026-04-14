@@ -11,6 +11,8 @@
 ## 当前代码真相
 
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
+- 聊天列表当前唯一底座是 `LazyColumn`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
+- 发送起步锚点当前围绕 assistant waiting 宿主的真实可见底边对齐工作线，不再依赖 waiting 壳高度估算
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
 - 主对话锚点与摘要提示词真源位于 `server-go/assets`
 - Android 与 Go 均已有基础 CI，但项目交接记忆、ADR、运维 runbook 体系此前缺失，已从本次开始补齐

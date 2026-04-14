@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -19,33 +18,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.first
 
-private fun resolvePendingStartAnchorTargetTopPx(
-    layoutInfo: LazyListLayoutInfo,
-    pendingStartAnchorPosition: Int,
-    pendingStartAnchorTargetBottomPx: Int,
-    pendingStartAnchorEstimatedHeightPx: Int,
-    pendingStartAnchorVisibleBottomInsetPx: Int,
-    topPaddingPx: Int,
-    bottomPaddingPx: Int
-): Int {
-    val anchorHeightPx =
-        layoutInfo.visibleItemsInfo
-            .firstOrNull { it.index == pendingStartAnchorPosition }
-            ?.size
-            ?.takeIf { it > 0 }
-            ?: pendingStartAnchorEstimatedHeightPx.coerceAtLeast(0)
-    // The send-start anchor is the assistant placeholder's visible bottom edge:
-    // the waiting ball should land on the workline, while the user bubble stays above it.
-    val visibleAnchorHeightPx =
-        (anchorHeightPx - pendingStartAnchorVisibleBottomInsetPx.coerceAtLeast(0))
-            .coerceAtLeast(0)
-    val targetBottomPx =
-        pendingStartAnchorTargetBottomPx.takeIf { it > 0 }
-            ?: (layoutInfo.viewportSize.height - bottomPaddingPx).coerceAtLeast(topPaddingPx)
-    return (targetBottomPx - visibleAnchorHeightPx)
-        .coerceAtLeast(topPaddingPx)
-}
-
 @Composable
 internal fun ChatRecyclerViewHost(
     modifier: Modifier = Modifier,
@@ -56,10 +28,9 @@ internal fun ChatRecyclerViewHost(
     bottomPaddingPx: Int,
     bottomFooterHeightPx: Int,
     pendingStartAnchorTargetBottomPx: Int,
-    pendingStartAnchorEstimatedHeightPx: Int,
-    pendingStartAnchorVisibleBottomInsetPx: Int,
     pendingStartAnchorMessageId: String?,
     pendingStartAnchorRequestId: Int,
+    currentPendingStartAnchorMeasuredBottomPx: () -> Int,
     onPendingStartAnchorHandled: () -> Unit,
     onStartAnchorScrollStarted: () -> Unit,
     onStartAnchorScrollFinished: () -> Unit,
@@ -73,11 +44,7 @@ internal fun ChatRecyclerViewHost(
         itemIds,
         pendingStartAnchorMessageId,
         pendingStartAnchorRequestId,
-        pendingStartAnchorTargetBottomPx,
-        pendingStartAnchorEstimatedHeightPx,
-        pendingStartAnchorVisibleBottomInsetPx,
-        topPaddingPx,
-        bottomPaddingPx
+        pendingStartAnchorTargetBottomPx
     ) {
         if (pendingStartAnchorRequestId <= 0) return@LaunchedEffect
         if (pendingStartAnchorRequestId == lastAppliedStartAnchorRequestId.intValue) {
@@ -123,21 +90,16 @@ internal fun ChatRecyclerViewHost(
                     ?: false
             }.first { it }
             withFrameNanos { }
-            val targetTopOffset = resolvePendingStartAnchorTargetTopPx(
-                layoutInfo = listState.layoutInfo,
-                pendingStartAnchorPosition = pendingStartAnchorPosition,
-                pendingStartAnchorTargetBottomPx = pendingStartAnchorTargetBottomPx,
-                pendingStartAnchorEstimatedHeightPx = pendingStartAnchorEstimatedHeightPx,
-                pendingStartAnchorVisibleBottomInsetPx = pendingStartAnchorVisibleBottomInsetPx,
-                topPaddingPx = topPaddingPx,
-                bottomPaddingPx = bottomPaddingPx
-            )
-            // Keep only one direct send-start positioning pass. If the waiting ball still
-            // lands low after this, the remaining issue is elsewhere in the chain.
-            listState.scrollToItem(
-                pendingStartAnchorPosition,
-                -targetTopOffset
-            )
+            snapshotFlow { currentPendingStartAnchorMeasuredBottomPx() }
+                .first { it > 0 }
+            withFrameNanos { }
+            val measuredBottomPx = currentPendingStartAnchorMeasuredBottomPx()
+            val scrollDeltaPx = measuredBottomPx - pendingStartAnchorTargetBottomPx
+            // Use the real waiting host bottom instead of an estimated inset. This makes the
+            // send-start anchor deterministic for both first-send and history-send cases.
+            if (scrollDeltaPx != 0) {
+                listState.scrollBy(scrollDeltaPx.toFloat())
+            }
             lastAppliedStartAnchorRequestId.intValue = requestId
             onPendingStartAnchorHandled()
         } finally {

@@ -183,7 +183,7 @@ internal fun handleChatListScrollStateChanged(
         return
     }
     when {
-        userDragging || scrollInProgress -> {
+        userDragging -> {
             userInteractingState.value = true
             if (
                 isStreaming &&
@@ -192,6 +192,17 @@ internal fun handleChatListScrollStateChanged(
             ) {
                 scrollModeState.value = ScrollMode.UserBrowsing
                 streamBottomFollowActiveState.value = false
+            }
+        }
+
+        scrollInProgress -> {
+            val userOwnedScrollInProgress =
+                userInteractingState.value || scrollModeState.value == ScrollMode.UserBrowsing
+            if (userOwnedScrollInProgress) {
+                userInteractingState.value = true
+                streamBottomFollowActiveState.value = false
+            } else {
+                userInteractingState.value = false
             }
         }
 

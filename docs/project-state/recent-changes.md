@@ -8,3 +8,5 @@
 - 根 `AGENTS.md` 增加“项目记忆机制”，要求 Codex 默认读取并自动维护状态、风险、待决策、变更记录和 runbook
 - 新增 `app/AGENTS.md` 与 `server-go/AGENTS.md`，让新窗口进入子系统时自动获取局部口径
 - 新增 ADR-0001，明确项目长期交接依赖“仓库内结构化记忆”，而不是依赖聊天历史或模型自带记忆
+- Compose 聊天底座继续收敛：发送起步锚点改为按 assistant waiting 宿主真实可见底边对齐工作线，删除旧的 waiting 高度估算链
+- 滚动状态机收紧用户浏览判定：仅真实手指拖动才进入 `UserBrowsing`，程序化滚动尾帧不再误杀 `AutoFollow`

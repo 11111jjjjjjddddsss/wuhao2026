@@ -1485,27 +1485,8 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
-    val sendStartItemVerticalPaddingPx = with(density) { (CHAT_MESSAGE_ITEM_VERTICAL_PADDING * 2).roundToPx() }
-    val sendStartItemBottomPaddingPx = with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
-    val sendStartWaitingShellExtraHeightPx = with(density) {
-        ASSISTANT_WAITING_STABLE_SHELL_EXTRA_HEIGHT.roundToPx()
-    }
-    val gptBallContainerSizePx = with(density) { GPT_BALL_CONTAINER_SIZE.roundToPx() }
-    val sendStartWaitingLineHeightPx = with(density) {
-        assistantStreamingParagraphTextStyle().lineHeight.toPx().roundToInt()
-    }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
-    }
-    val sendStartVisibleBottomInsetPx = remember(
-        sendStartItemBottomPaddingPx,
-        sendStartWaitingShellExtraHeightPx,
-        sendStartWaitingLineHeightPx,
-        gptBallContainerSizePx
-    ) {
-        sendStartItemBottomPaddingPx +
-            (sendStartWaitingShellExtraHeightPx / 2) +
-            ((sendStartWaitingLineHeightPx - gptBallContainerSizePx).coerceAtLeast(0) / 2)
     }
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
@@ -1542,6 +1523,11 @@ fun ChatScreen() {
     }
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
+    }
+    fun currentPendingStartAnchorMeasuredBottomPx(): Int {
+        val messageId = pendingStartAnchorMessageId ?: return -1
+        val bounds = messageContentBoundsById[messageId] ?: return -1
+        return (bounds.bottom - messageViewportTopPx).roundToInt()
     }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
@@ -3388,13 +3374,9 @@ fun ChatScreen() {
                             } else {
                                 0
                             },
-                        pendingStartAnchorEstimatedHeightPx =
-                            sendStartWaitingLineHeightPx +
-                                sendStartItemVerticalPaddingPx +
-                                sendStartWaitingShellExtraHeightPx,
-                        pendingStartAnchorVisibleBottomInsetPx = sendStartVisibleBottomInsetPx,
                         pendingStartAnchorMessageId = pendingStartAnchorMessageId,
                         pendingStartAnchorRequestId = pendingStartAnchorRequestId,
+                        currentPendingStartAnchorMeasuredBottomPx = ::currentPendingStartAnchorMeasuredBottomPx,
                         onPendingStartAnchorHandled = {
                             pendingStartAnchorMessageId = null
                             sendUiSettling = false
