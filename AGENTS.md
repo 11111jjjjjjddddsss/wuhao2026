@@ -224,6 +224,7 @@ Clean-State 必做回归的范围：
 - `sendStartAnchorActive` 必须覆盖 waiting 和早期首字阶段；正文真实命中工作线前，不允许 `Idle snap` 或 `AutoFollow` 抢到发送起步的控制权
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接对 footer 做两次到底推送；从后台切回时不默认自动贴底
+- 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
 
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报

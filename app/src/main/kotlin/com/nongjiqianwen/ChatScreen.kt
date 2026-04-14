@@ -3115,8 +3115,8 @@ fun ChatScreen() {
     }
 
     fun completeStreamingImmediatelyFromBackground() {
-        mainHandler.post {
-            if (!isStreaming) return@post
+        val finalizeStreamingFromBackground: () -> Unit = finalizeStreamingFromBackground@{
+            if (!isStreaming) return@finalizeStreamingFromBackground
             val shouldSnapToBottomOnFinish =
                 com.nongjiqianwen.shouldOfferFinalBottomSnap(
                     scrollMode = scrollMode
@@ -3133,11 +3133,15 @@ fun ChatScreen() {
             streamingMessageContent = finalContent
             streamingRevealBuffer = ""
             isStreaming = false
+            sendUiSettling = false
             pendingStartAnchorMessageId = null
+            pendingStartAnchorBottomPx = -1
+            sendStartAnchorActive = false
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
+            lastStreamingFreshRevealMs = 0L
             streamingBackgrounded = false
             streamingMessageId = null
             streamingMessageContent = ""
@@ -3152,17 +3156,25 @@ fun ChatScreen() {
                     content = finalContent
                 )
                 persistTick++
-                val persistedMessages = persistableMessagesSnapshot()
-                val prewarmMessages = persistedMessages.takeLast(2)
-                snackbarScope.launch {
-                    context.saveLocalChatWindow(chatScopeId, persistedMessages)
-                    context.clearLocalStreamingDraft(chatScopeId)
-                    prewarmAssistantMarkdown(prewarmMessages)
-                }
+                context.saveLocalChatWindowSync(
+                    chatScopeId = chatScopeId,
+                    messages = persistableMessagesSnapshot()
+                )
+                context.clearLocalStreamingDraftSync(chatScopeId)
             } else {
                 removeMessageById(finalId)
                 scrollRuntime.pendingFinalBottomSnap.value = shouldSnapToBottomOnFinish
+                context.saveLocalChatWindowSync(
+                    chatScopeId = chatScopeId,
+                    messages = persistableMessagesSnapshot()
+                )
+                context.clearLocalStreamingDraftSync(chatScopeId)
             }
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            finalizeStreamingFromBackground()
+        } else {
+            mainHandler.post { finalizeStreamingFromBackground() }
         }
     }
 
