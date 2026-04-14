@@ -12,7 +12,12 @@ on:
       - 'gradlew'
       - 'gradlew.bat'
       - 'scripts/check_mojibake.py'
+      - 'scripts/check_project_memory.py'
       - '.mojibake-baseline.txt'
+      - 'AGENTS.md'
+      - 'docs/project-state/**'
+      - 'docs/adr/**'
+      - 'docs/runbooks/**'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [master]
@@ -25,7 +30,12 @@ on:
       - 'gradlew'
       - 'gradlew.bat'
       - 'scripts/check_mojibake.py'
+      - 'scripts/check_project_memory.py'
       - '.mojibake-baseline.txt'
+      - 'AGENTS.md'
+      - 'docs/project-state/**'
+      - 'docs/adr/**'
+      - 'docs/runbooks/**'
       - '.github/workflows/ci.yml'
   workflow_dispatch:
 
@@ -82,6 +92,13 @@ jobs:
 
       - name: Mojibake check
         run: python3 scripts/check_mojibake.py
+
+      - name: Project memory check
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          python3 scripts/check_project_memory.py --base "$BASE_SHA" --head "$HEAD_SHA"
 
       - name: Ensure WebView demo entry removed
         run: |
