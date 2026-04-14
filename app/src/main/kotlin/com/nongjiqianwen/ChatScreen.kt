@@ -1472,6 +1472,7 @@ fun ChatScreen() {
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -1514,6 +1515,19 @@ fun ChatScreen() {
                 sendStartAnchorActive
         }
     }
+    val lockedMessageViewportHeightPx by remember(
+        messageViewportHeightPx,
+        sendStartViewportHeightPx,
+        sendStartBottomPaddingLockActive
+    ) {
+        derivedStateOf {
+            if (sendStartBottomPaddingLockActive && sendStartViewportHeightPx > 0) {
+                sendStartViewportHeightPx
+            } else {
+                messageViewportHeightPx
+            }
+        }
+    }
     val safeBottomInsetPx = with(density) {
         WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
@@ -1535,7 +1549,7 @@ fun ChatScreen() {
         }
     }
     val streamingWorklineBottomPx by remember(
-        messageViewportHeightPx,
+        lockedMessageViewportHeightPx,
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
@@ -1544,6 +1558,7 @@ fun ChatScreen() {
         preferStableCollapsedComposerGeometry
     ) {
         derivedStateOf {
+            val effectiveViewportHeightPx = lockedMessageViewportHeightPx
             val stableBottomBarHeightPx = when {
                 stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
                 bottomBarHeightPx > 0 -> bottomBarHeightPx
@@ -1551,19 +1566,19 @@ fun ChatScreen() {
             }
             val collapsedStableWorklineBottomPx =
                 (
-                    messageViewportHeightPx -
+                    effectiveViewportHeightPx -
                         stableBottomBarHeightPx -
                         streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
             if (
                 sendStartBottomPaddingLockActive &&
-                messageViewportHeightPx > 0 &&
+                effectiveViewportHeightPx > 0 &&
                 stableBottomBarHeightPx > 0
             ) {
                 collapsedStableWorklineBottomPx
             } else if (
                 preferStableCollapsedComposerGeometry &&
-                messageViewportHeightPx > 0 &&
+                effectiveViewportHeightPx > 0 &&
                 stableBottomBarHeightPx > 0
             ) {
                 collapsedStableWorklineBottomPx
@@ -1737,21 +1752,22 @@ fun ChatScreen() {
             assistantStreamingParagraphTextStyle().lineHeight.roundToPx()
     }
     val sendStartWorklineBottomPx by remember(
-        messageViewportHeightPx,
+        lockedMessageViewportHeightPx,
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
         streamVisibleBottomGapPx
     ) {
         derivedStateOf {
+            val effectiveViewportHeightPx = lockedMessageViewportHeightPx
             val stableBottomBarHeight = when {
                 stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
                 bottomBarHeightPx > 0 -> bottomBarHeightPx
                 else -> 0
             }
-            if (messageViewportHeightPx > 0 && stableBottomBarHeight > 0) {
+            if (effectiveViewportHeightPx > 0 && stableBottomBarHeight > 0) {
                 (
-                    messageViewportHeightPx -
+                    effectiveViewportHeightPx -
                         stableBottomBarHeight -
                         streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
@@ -1804,7 +1820,7 @@ fun ChatScreen() {
     )
     val streamingExtraReservedHeightPx = 0
     val bottomContentReservedHeightPx by remember(
-        messageViewportHeightPx,
+        lockedMessageViewportHeightPx,
         composerTopInViewportPx,
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
@@ -1815,6 +1831,7 @@ fun ChatScreen() {
         stableComposerBottomBarHeightPx
     ) {
         derivedStateOf {
+            val effectiveViewportHeightPx = lockedMessageViewportHeightPx
             val stableReservedHeightPx =
                 if (stableComposerBottomBarHeightPx > 0) {
                     stableComposerBottomBarHeightPx + streamingExtraReservedHeightPx.coerceAtLeast(0)
@@ -1825,10 +1842,10 @@ fun ChatScreen() {
                 if (
                     !sendStartBottomPaddingLockActive &&
                     !preferStableCollapsedComposerGeometry &&
-                    messageViewportHeightPx > 0 &&
+                    effectiveViewportHeightPx > 0 &&
                     composerTopInViewportPx > 0
                 ) {
-                    (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
+                    (effectiveViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
                 } else {
                     -1
                 }
@@ -2206,6 +2223,7 @@ fun ChatScreen() {
         sendUiSettling = false
         pendingStartAnchorMessageId = null
         pendingStartAnchorRequestId = 0
+        sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
@@ -2962,6 +2980,7 @@ fun ChatScreen() {
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         composerCollapseOverlayVisible = false
+        sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         if (collapseComposer) {
             val collapsePreparation = prepareComposerCollapse(

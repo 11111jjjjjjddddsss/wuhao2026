@@ -223,6 +223,7 @@ Clean-State 必做回归的范围：
 - 发送起步已不再依赖 waiting 锚点测量回调、`onGloballyPositioned`、协程 `scrollToItem` 或二次 `scrollBy` 反馈修正；起步 offset 只由固定工作线、列表 top padding 和首行宿主固定高度前馈计算，再通过 `requestScrollToItem(index, offset)` 写入下一次 LazyColumn 重排
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - 发送起步目标线应优先取“单行收口后的稳定 composer 底部保留高度”，不能再直接吃发送前多行输入框的实时顶部，否则长短文本会把小球起步线抬高或压低
+- 发送窗口内还必须冻结视口高度快照：`sendStartWorklineBottomPx`、`streamingWorklineBottomPx` 和 `bottomContentReservedHeightPx` 在 `sendStartBottomPaddingLockActive` 期间应优先使用发送瞬间拍下的 `messageViewportHeightPx` 快照，不能继续读取正在收口抖动的实时视口高度
 - 发送后输入框已回到单行且未聚焦时，`recyclerBottomPaddingPx` 也应继续优先使用稳定单行保留高度，不能刚对齐完锚点又立刻切回实时 `composerTop` 测量
 - `sendStartBottomPaddingLockActive` 覆盖的整个发送窗口内，`streamingWorklineBottomPx` 与 `bottomContentReservedHeightPx` 都必须冻结到稳定单行高度；这段时间严禁读取实时 `composerTopInViewportPx`
 - `sendStartAnchorActive` 必须覆盖 waiting 和早期首字阶段；正文真实命中工作线前，不允许 `Idle snap` 或 `AutoFollow` 抢到发送起步的控制权

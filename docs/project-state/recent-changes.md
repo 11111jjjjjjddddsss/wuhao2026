@@ -23,3 +23,4 @@
 - 发送起步保护期的释放条件已收紧：只有正文真实越过工作线、出现正向 overflow 后才交给 `AutoFollow`，减少“刚碰线就切主”带来的插入瞬时抖动
 - 发送起步定位链已从“两拍式反馈修正”改为“单拍前馈定位”：删除 waiting 宿主测量回调与 `scrollBy` 精修，只保留基于固定工作线、列表 top padding 和首行宿主固定高度计算出的单次 `scrollToItem(index, offset)`
 - 发送起步继续收口到同步定位：`ChatRecyclerViewHost.kt` 改用 `requestScrollToItem(index, offset)` 直接把目标 offset 写入下一次 LazyColumn 重排，减少 `LaunchedEffect + scrollToItem` 晚一帧导致的插入瞬时反弹
+- 发送期几何继续收口：`ChatScreen.kt` 新增 `sendStartViewportHeightPx` 视口快照，发送窗口内的 workline 与底部保留高度都优先使用这份快照，减少输入框收口时外层视口高度抖动把新消息再弹一下

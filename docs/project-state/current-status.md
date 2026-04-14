@@ -17,6 +17,7 @@
 - 发送起步当前不再读取 waiting 宿主的实时测量值，waiting/streaming 首行的物理高度已固定化，避免首字出现时再走一轮“量完再修”
 - 输入框已回到单行且未聚焦时，列表底部保留高度当前优先继续走稳定单行高度，不再立即切回实时 `composerTop` 测量，减少锚点刚对齐后又被底部几何改写
 - 发送窗口（`sendStartBottomPaddingLockActive`）内，工作线和底部保留高度当前都会冻结到稳定单行高度，不再在发送最乱的几帧里响应实时 `composerTopInViewportPx`
+- 发送窗口内新增了视口高度快照：发送起步会先拍下 `messageViewportHeightPx`，随后 `sendStartWorklineBottomPx`、`streamingWorklineBottomPx` 和 `bottomContentReservedHeightPx` 在保护期内都优先吃这份快照，不再跟着外层容器 1 到 2 帧的高度抖动一起跳
 - waiting 小球宿主当前已收口到与正文首行同一物理高度，不再额外抬高壳子，减少“小球出线后首字一上屏历史区又掉一下”的布局重排
 - 发送起步保护期当前只会在正文真实越过工作线、出现正向 overflow 后才放权给 `AutoFollow`，不再在刚命中工作线那一拍提前切主
 - 发送起步当前已不再依赖 waiting 宿主的 `onGloballyPositioned` 测量结果，也不再走 `scrollToItem + scrollBy` 两拍修正；当前改为按固定工作线、列表 top padding 和首行宿主固定高度前馈计算 offset，再用 `requestScrollToItem(index, offset)` 直接写入 LazyColumn 的下一次重排
