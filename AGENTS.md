@@ -162,7 +162,7 @@ Clean-State 必做回归的范围：
 - [ChatComposerCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt)：输入框动态、IME、发送收口
 - [ChatComposerPanel.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt)：底部输入区 UI 宿主
 - [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：页面组装、测量值采集、状态接线
-- [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：纯 Compose `LazyColumn` 底座、bottom padding 锚点、发送起步定位；文件名只是历史命名残留，运行时已不是 `RecyclerView`
+- [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：纯 Compose `LazyColumn` 底座与 bottom padding 宿主；文件名只是历史命名残留，运行时已不是 `RecyclerView`
 
 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / frozenBottom / retainedBottomGap` 等旧滚动术语全部视为历史归档，不再执行。
 
@@ -181,8 +181,8 @@ Clean-State 必做回归的范围：
 ### 7.2 五环节铁律
 
 1. 发送起步
-- 主人：[ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)
-- 做法：`LazyColumn` 内基于固定工作线和固定首行宿主高度，直接用单次 `LazyListState.requestScrollToItem(index, offset)` 把 assistant 起步宿主可见底边请求到工作线
+- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
+- 做法：在发送事件源里，插入用户消息和 assistant placeholder 后，基于固定工作线和固定首行宿主高度，直接用单次 `LazyListState.requestScrollToItem(index, offset)` 把 assistant 起步宿主可见底边请求到工作线
 - 当前锚点：小球所在的 assistant 起步宿主可见底边
 - 当前目标：小球第一次出现就落在工作线；用户消息在其上方，正文从工作线开始长
 
@@ -220,7 +220,7 @@ Clean-State 必做回归的范围：
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
-- 发送起步已不再依赖 waiting 锚点测量回调、`onGloballyPositioned`、协程 `scrollToItem` 或二次 `scrollBy` 反馈修正；起步 offset 只由固定工作线、列表 top padding 和首行宿主固定高度前馈计算，再通过 `requestScrollToItem(index, offset)` 写入下一次 LazyColumn 重排
+- 发送起步已不再依赖 waiting 锚点测量回调、`onGloballyPositioned`、协程 `scrollToItem`、UI 层 `SideEffect` 或二次 `scrollBy` 反馈修正；起步 offset 只由固定工作线、列表 top padding 和首行宿主固定高度前馈计算，并在发送事件源里直接通过 `requestScrollToItem(index, offset)` 下发
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - 发送起步目标线应优先取“单行收口后的稳定 composer 底部保留高度”，不能再直接吃发送前多行输入框的实时顶部，否则长短文本会把小球起步线抬高或压低
 - 发送窗口内还必须冻结视口高度快照：`sendStartWorklineBottomPx`、`streamingWorklineBottomPx` 和 `bottomContentReservedHeightPx` 在 `sendStartBottomPaddingLockActive` 期间应优先使用发送瞬间拍下的 `messageViewportHeightPx` 快照，不能继续读取正在收口抖动的实时视口高度

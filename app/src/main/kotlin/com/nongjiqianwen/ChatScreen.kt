@@ -1470,9 +1470,8 @@ fun ChatScreen() {
     var topChromeMaskBottomPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
-    var pendingStartAnchorMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
-    var pendingStartAnchorRequestId by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var latestPendingStartAnchorScrollOffsetPx by remember(uiRuntimeResetKey) { mutableIntStateOf(Int.MIN_VALUE) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -1506,12 +1505,10 @@ fun ChatScreen() {
     }
     val sendStartBottomPaddingLockActive by remember(
         sendUiSettling,
-        pendingStartAnchorMessageId,
         sendStartAnchorActive
     ) {
         derivedStateOf {
             sendUiSettling ||
-                pendingStartAnchorMessageId != null ||
                 sendStartAnchorActive
         }
     }
@@ -2221,8 +2218,6 @@ fun ChatScreen() {
         SessionApi.resetUiRuntimeForCleanState()
         QwenClient.resetUiRuntimeForCleanState()
         sendUiSettling = false
-        pendingStartAnchorMessageId = null
-        pendingStartAnchorRequestId = 0
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
         initialBottomSnapDone = false
@@ -2461,7 +2456,6 @@ fun ChatScreen() {
             isStreaming = false
             sendUiSettling = false
             streamingMessageId = null
-            pendingStartAnchorMessageId = null
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2734,7 +2728,6 @@ fun ChatScreen() {
             fakeStreamJob = null
             isStreaming = false
             sendUiSettling = false
-            pendingStartAnchorMessageId = null
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
@@ -2869,7 +2862,6 @@ fun ChatScreen() {
             streamRevealJob = null
             isStreaming = false
             sendUiSettling = false
-            pendingStartAnchorMessageId = null
             streamingMessageId = null
             streamingMessageContent = ""
             streamingRevealBuffer = ""
@@ -3027,8 +3019,19 @@ fun ChatScreen() {
                 // The assistant placeholder itself is the send-start anchor.
                 // Its visible bottom is aligned to the workline, so the user bubble
                 // naturally stays above and the streamed body can grow from there.
-                pendingStartAnchorMessageId = assistantId
-                pendingStartAnchorRequestId += 1
+                val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
+                if (
+                    pendingStartAnchorPosition >= 0 &&
+                    latestPendingStartAnchorScrollOffsetPx != Int.MIN_VALUE
+                ) {
+                    sendStartAnchorActive = true
+                    chatListState.requestScrollToItem(
+                        index = pendingStartAnchorPosition,
+                        scrollOffset = latestPendingStartAnchorScrollOffsetPx
+                    )
+                } else {
+                    sendStartAnchorActive = false
+                }
                 persistTick++
                 snackbarScope.launch {
                     context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
@@ -3073,9 +3076,7 @@ fun ChatScreen() {
                     launchLocalFakeStream(applyInitialDelay = true)
                 }
             } finally {
-                if (pendingStartAnchorMessageId == null) {
-                    sendUiSettling = false
-                }
+                sendUiSettling = false
             }
         }
     }
@@ -3228,7 +3229,6 @@ fun ChatScreen() {
             streamingRevealBuffer = ""
             isStreaming = false
             sendUiSettling = false
-            pendingStartAnchorMessageId = null
             sendStartAnchorActive = false
             streamingRevealBuffer = ""
             streamingFreshStart = -1
@@ -3387,6 +3387,9 @@ fun ChatScreen() {
                 }
             }
         }
+        SideEffect {
+            latestPendingStartAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+        }
         val pageSurface = Color(0xFFFFFFFF)
         val navigationBottomInset: Dp = WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
@@ -3482,24 +3485,11 @@ fun ChatScreen() {
                     LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
                 ) {
                     ChatRecyclerViewHost(
-                        stateResetKey = uiRuntimeResetKey,
                         listState = chatListState,
                         itemIds = messages.map { it.id },
                         topPaddingPx = chatListTopPaddingPx,
                         bottomPaddingPx = recyclerBottomPaddingPx,
                         bottomFooterHeightPx = with(density) { 1.dp.roundToPx() },
-                        pendingStartAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
-                        pendingStartAnchorMessageId = pendingStartAnchorMessageId,
-                        pendingStartAnchorRequestId = pendingStartAnchorRequestId,
-                        onPendingStartAnchorHandled = {
-                            pendingStartAnchorMessageId = null
-                            sendUiSettling = false
-                        },
-                        onStartAnchorScrollStarted = {
-                            sendStartAnchorActive = true
-                            beginProgrammaticChatListScroll()
-                        },
-                        onStartAnchorScrollFinished = ::endProgrammaticChatListScroll,
                         modifier = Modifier
                             .then(
                                 if (hasActiveMessageSelection) {
