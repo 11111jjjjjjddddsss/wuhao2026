@@ -921,17 +921,20 @@ private fun RendererAssistantStreamingWaitingIndicatorImpl(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(lineHeight)
+                .then(
+                    if (onWaitingAnchorBoundsChanged != null) {
+                        Modifier.onGloballyPositioned { coordinates ->
+                            onWaitingAnchorBoundsChanged.invoke(coordinates.boundsInWindow())
+                        }
+                    } else {
+                        Modifier
+                    }
+                )
                 .padding(start = GPT_BALL_START_PADDING),
             contentAlignment = Alignment.CenterStart
         ) {
             RendererGPTBreathingBallImpl(
-                modifier = if (onWaitingAnchorBoundsChanged != null) {
-                    Modifier.onGloballyPositioned { coordinates ->
-                        onWaitingAnchorBoundsChanged.invoke(coordinates.boundsInWindow())
-                    }
-                } else {
-                    Modifier
-                }
+                modifier = Modifier
             )
         }
     }

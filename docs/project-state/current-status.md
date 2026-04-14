@@ -14,6 +14,8 @@
 - 聊天列表当前唯一底座是 `LazyColumn`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
 - 发送起步锚点当前围绕 assistant waiting 宿主的真实可见底边对齐工作线，不再依赖 waiting 壳高度估算
 - 发送起步的目标线当前已改为优先取单行收口后的稳定 composer 保留高度，避免发送前多行输入框把小球锚点临时抬高、再在收口后掉回去
+- waiting 锚点测量当前已收敛到“小球所在首行宿主底边”，不再量内层呼吸球本体 bottom，减少 waiting 切首字时的几何跳变
+- 输入框已回到单行且未聚焦时，列表底部保留高度当前优先继续走稳定单行高度，不再立即切回实时 `composerTop` 测量，减少锚点刚对齐后又被底部几何改写
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
 - 主对话锚点与摘要提示词真源位于 `server-go/assets`
