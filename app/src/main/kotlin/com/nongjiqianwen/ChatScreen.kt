@@ -1602,8 +1602,11 @@ fun ChatScreen() {
 
     fun isStreamingReadyForAutoFollow(): Boolean {
         if (!isStreaming || !hasStreamingItem) return false
-        if (currentStreamingContentBottomPx() <= 0) return false
-        return isNearStreamingWorkline()
+        val worklineBottom = streamingWorklineBottomPx
+        if (worklineBottom <= 0) return false
+        val contentBottom = currentStreamingContentBottomPx()
+        if (contentBottom <= 0) return false
+        return contentBottom >= (worklineBottom - bottomPositionTolerancePx)
     }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
