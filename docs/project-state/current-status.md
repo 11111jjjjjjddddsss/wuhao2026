@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-15
+最后更新：2026-04-16
 
 ## 项目概况
 
@@ -20,7 +20,7 @@
 - waiting 小球与 streaming 首块当前已收敛到同一个 `ChatStreamingRenderer` 内容宿主里切换，不再走两套 streaming 宿主分支，进一步减少首字出现时的物理高度跳变
 - streaming 分支最外层宿主当前已从 `TopStart` 改为 `BottomStart`，让正文在反向底座里沿同一物理底边向上生长，减少流式换行时“先往下掉一下再被拉回”的体感
 - streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；块间距已改为挂在各 block 自身的 top padding 上，减少段落 / 列表新块诞生时把既有内容整体往下踹一拍
-- 列表底部保留高度与工作线当前优先跟随实时 `composerTop` 测量，不再在发送窗口里额外冻结到稳定单行高度；只有测量尚不可用或 composer collapse overlay 接管时，才回退到现有 bottom bar / overlay 高度
+- 列表底部保留高度与工作线当前只在 streaming 进行时才参考实时 `composerTop` 测量；普通 idle 状态下，不论是否停在底部，列表都改回稳定 bottom bar / overlay 高度，避免聚焦输入框时把历史区或底部最新消息一起向上带动
 - `sendStartBottomPaddingLockActive` 已退出工作线和 `recyclerBottomPaddingPx` 的运行时计算主链；`sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍只服务输入框自身收口和 overlay 生命周期
 - 所有只服务正向底座的发送起步变量都已退出主链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已删除
 - 首次进入聊天页当前直接 `scrollToItem(0)` 贴到底部；从后台切回时不默认自动贴底

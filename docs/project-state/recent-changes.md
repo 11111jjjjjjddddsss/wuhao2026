@@ -2,6 +2,10 @@
 
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 
+## 2026-04-16
+
+- 输入框与文本区继续解耦：`ChatScreen.kt` 现在只在 streaming 进行时才让工作线和 `recyclerBottomPaddingPx` 参考实时 `composerTop`；普通 idle 状态下，不论停在底部还是历史区，列表都改回稳定 bottom bar / overlay 高度，避免输入框弹起时把整段消息区一起往上拽
+
 ## 2026-04-15
 
 - 发送起步继续做减法：`ChatScreen.kt` 已删掉发送链里的 `withFrameNanos`；插入用户消息和 assistant placeholder 后，同一发送事务内立即 `requestScrollToItem(0)`，减少新消息先悬空一拍、下一帧再砸回工作线的可见下坠

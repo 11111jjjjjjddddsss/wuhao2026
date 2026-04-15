@@ -1481,6 +1481,14 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
+    val listShouldTrackRealtimeComposerGeometry by remember(
+        isStreaming,
+        hasStreamingItem
+    ) {
+        derivedStateOf {
+            isStreaming || hasStreamingItem
+        }
+    }
     val safeBottomInsetPx = with(density) {
         WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
@@ -1506,7 +1514,8 @@ fun ChatScreen() {
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
-        streamVisibleBottomGapPx
+        streamVisibleBottomGapPx,
+        listShouldTrackRealtimeComposerGeometry
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = messageViewportHeightPx
@@ -1521,7 +1530,11 @@ fun ChatScreen() {
                         stableBottomBarHeightPx -
                         streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
-            if (effectiveViewportHeightPx > 0 && composerTopInViewportPx > 0) {
+            if (
+                listShouldTrackRealtimeComposerGeometry &&
+                effectiveViewportHeightPx > 0 &&
+                composerTopInViewportPx > 0
+            ) {
                 (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 collapsedStableWorklineBottomPx
@@ -1719,12 +1732,14 @@ fun ChatScreen() {
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
-        streamingExtraReservedHeightPx
+        streamingExtraReservedHeightPx,
+        listShouldTrackRealtimeComposerGeometry
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = messageViewportHeightPx
             val measuredComposerReservedHeightPx =
                 if (
+                    listShouldTrackRealtimeComposerGeometry &&
                     effectiveViewportHeightPx > 0 &&
                     composerTopInViewportPx > 0
                 ) {
