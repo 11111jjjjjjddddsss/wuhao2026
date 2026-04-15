@@ -4,6 +4,8 @@
 
 ## 2026-04-15
 
+- 发送期几何继续做减法：`ChatScreen.kt` 已不再让 `sendStartBottomPaddingLockActive` 或“稳定单行几何”参与工作线 / `recyclerBottomPaddingPx` 的运行时计算；发送后底部保留高度优先跟随实时 `composerTop`，只有测量暂不可用或 overlay 接管时才回退到现有 bottom bar / overlay 高度
+- Markdown block 间距已从父级 `Column(spacedBy(...))` 挪到各 block 自身的 top padding；`ChatStreamingRenderer` 的 streaming / settled 正文现在不再依赖父级统一分缝，减少段落或列表新块出现时把已有内容整体向下推一拍
 - 调整 streaming 宿主生长方向：`ChatStreamingRenderer` 的 streaming 外层宿主已从 `Alignment.TopStart` 改为 `Alignment.BottomStart`，让正文围绕同一物理底边向上长，优先压制流式换行时“先下掉再回弹”的体感
 - 修复一次中间坏提交的 CI：`ChatScreen.kt` 补上 `withFrameNanos` import，恢复“发送插入后下一帧请求 `requestScrollToItem(0)`”这条路径的可编译状态；本次仅修复编译遗漏，不改运行时口径
 - 撤回“发送死区”误判：发送事件重新恢复为对新插入 assistant placeholder 无条件回到底部，但滚动请求改到下一帧执行；用 `requestScrollToItem(0)` 覆盖 keyed `LazyColumn` 对旧可见项的默认位置保护，避免 waiting 小球被挤出视口底部

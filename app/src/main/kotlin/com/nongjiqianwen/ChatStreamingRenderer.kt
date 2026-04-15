@@ -903,6 +903,17 @@ private fun RendererAssistantStreamingWaitingIndicatorImpl(
     }
 }
 
+private fun markdownBlockSpacingModifier(
+    hasPreviousBlock: Boolean,
+    modifier: Modifier = Modifier
+): Modifier {
+    return if (hasPreviousBlock) {
+        modifier.padding(top = MARKDOWN_BLOCK_SPACING)
+    } else {
+        modifier
+    }
+}
+
 @Composable
 private fun RendererAssistantStreamingContentImpl(
     content: String,
@@ -938,8 +949,7 @@ private fun RendererAssistantStreamingContentImpl(
         }
     }
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
+        modifier = modifier.fillMaxWidth()
     ) {
         if (showWaitingBall && completedModels.isEmpty() && activeModel == null) {
             RendererAssistantStreamingWaitingIndicatorImpl(
@@ -954,7 +964,10 @@ private fun RendererAssistantStreamingContentImpl(
                         previous = completedModels.getOrNull(index - 1),
                         current = model
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = markdownBlockSpacingModifier(
+                        hasPreviousBlock = index > 0,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 )
             }
         }
@@ -970,7 +983,10 @@ private fun RendererAssistantStreamingContentImpl(
                 lineAdvanceTick = streamingLineAdvanceTick,
                 strictLineReveal = strictLineReveal,
                 lineRevealLocked = lineRevealLocked,
-                modifier = Modifier.fillMaxWidth()
+                modifier = markdownBlockSpacingModifier(
+                    hasPreviousBlock = completedModels.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth()
+                )
             )
         }
     }
@@ -1480,14 +1496,17 @@ private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modi
         }
     }
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
+        modifier = modifier.fillMaxWidth()
     ) {
         completedModels.forEachIndexed { index, model ->
             key("markdown_completed_$index:${model.hashCode()}") {
                 val showLeadingSectionDivider = shouldShowStreamingSectionDivider(
                     previous = completedModels.getOrNull(index - 1),
                     current = model
+                )
+                val blockModifier = markdownBlockSpacingModifier(
+                    hasPreviousBlock = index > 0,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 if (index == completedModels.lastIndex) {
                     RendererAssistantStreamingActiveBlockImpl(
@@ -1496,13 +1515,13 @@ private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modi
                         lineAdvanceTick = 0,
                         strictLineReveal = false,
                         lineRevealLocked = false,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = blockModifier
                     )
                 } else {
                     RendererAssistantStreamingCommittedBlockImpl(
                         model = model,
                         showLeadingSectionDivider = showLeadingSectionDivider,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = blockModifier
                     )
                 }
             }

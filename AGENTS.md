@@ -200,8 +200,8 @@ Clean-State 必做回归的范围：
 - 作用：在反向底座里只维护“谁拥有滚动控制权”；当用户未打断时，生成内容继续沿底部锚定自然向上长，不再执行正向列表那套 `snap + scrollBy` overflow 追赶链
 
 3. 发送期几何稳定
-- 主人：`sendStartBottomPaddingLockActive`
-- 作用：只负责输入区收口期的几何稳定，避免发送那一拍底部保留高度抖动；不再承担正向列表的 offset 保护职责
+- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的工作线 / `recyclerBottomPaddingPx` 计算
+- 作用：发送时不再冻结底部 padding；工作线和底部保留高度优先跟随实时 composer 几何，仅在测量尚不可用或 overlay 接管时才回退到现有 bottom bar 高度
 
 4. 完成态收口
 - 主人：反向列表天然底部锚定
@@ -229,6 +229,7 @@ Clean-State 必做回归的范围：
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - streaming 渲染当前不再区分“waiting 专用宿主”和“首字后专用宿主”；waiting 小球与 streaming 首块已收敛到同一个 `ChatStreamingRenderer` 内容宿主内切换，首字上屏前后保持同一物理外壳
 - streaming 分支最外层宿主当前以 `Alignment.BottomStart` 对齐，确保正文在同一物理底边上向上生长，避免 `TopStart` 下首块换行时先向下探再被反向列表拉回
+- `ChatStreamingRenderer` 当前不再用父级 `Column(spacedBy(...))` 统一分发 Markdown block 间距；streaming / settled 的块间距都改为跟随各 block 自身的 top padding 生长，减少新区块出现时把已有内容整体向下踹一拍
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 当前已删除所有只服务正向底座的发送起步 offset 链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 均不再参与运行时定位
@@ -238,8 +239,8 @@ Clean-State 必做回归的范围：
 - `ChatScrollCoordinator` 当前不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 streaming 只保留 `Idle / AutoFollow / UserBrowsing` 控制权切换，运行时已无 active `snapStreamingToWorkline / performStreamingFollowStep / resolveStreamingFollowStepPx` 链
 - `scrollToBottom(false)` 当前只保留 `scrollToItem(0)` / `animateScrollToItem(0)` 这一条主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿
 - `recyclerBottomPaddingPx` 仍负责把底部输入区和工作线留出来；反向底座下最新消息天然贴着这条底部保留线，不再需要额外 footer 或双重到底补推
-- 发送后输入框已回到单行且未聚焦时，`recyclerBottomPaddingPx` 也应继续优先使用稳定单行保留高度，不能刚对齐完锚点又立刻切回实时 `composerTop` 测量
-- `sendStartBottomPaddingLockActive` 现在覆盖真实输入区收口窗口：不仅看 `sendUiSettling`，也看 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx`；在 waiting 和早期 streaming 那几帧里，工作线与底部保留高度都必须继续锁在稳定单行几何上
+- `recyclerBottomPaddingPx` 与工作线当前优先使用实时 `composerTop` 测量；只有测量尚未就绪，或 composer collapse overlay 正在接管时，才回退到现有 bottom bar / overlay 高度
+- `sendStartBottomPaddingLockActive` 已退出工作线和底部保留高度的运行时主链；`sendUiSettling`、`composerSettlingMinHeightPx`、`composerSettlingChromeHeightPx` 仍只服务输入框自身收口与 overlay 生命周期，不再冻结列表底部几何
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留反向列表的 item 缓存和滚动锚点
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接 `scrollToItem(0)`；从后台切回时不默认自动贴底

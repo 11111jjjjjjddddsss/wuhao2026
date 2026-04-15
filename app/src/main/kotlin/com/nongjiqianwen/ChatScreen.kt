@@ -1482,28 +1482,6 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
-    val preferStableCollapsedComposerGeometry by remember(
-        input.value.text,
-        inputFieldFocused,
-        imeVisible
-    ) {
-        derivedStateOf {
-            input.value.text.isEmpty() &&
-                !inputFieldFocused &&
-                !imeVisible
-        }
-    }
-    val sendStartBottomPaddingLockActive by remember(
-        sendUiSettling,
-        composerSettlingMinHeightPx,
-        composerSettlingChromeHeightPx
-    ) {
-        derivedStateOf {
-            sendUiSettling ||
-                composerSettlingMinHeightPx > 0 ||
-                composerSettlingChromeHeightPx > 0
-        }
-    }
     val safeBottomInsetPx = with(density) {
         WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
@@ -1529,9 +1507,7 @@ fun ChatScreen() {
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
-        streamVisibleBottomGapPx,
-        sendStartBottomPaddingLockActive,
-        preferStableCollapsedComposerGeometry
+        streamVisibleBottomGapPx
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = messageViewportHeightPx
@@ -1546,19 +1522,7 @@ fun ChatScreen() {
                         stableBottomBarHeightPx -
                         streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
-            if (
-                sendStartBottomPaddingLockActive &&
-                effectiveViewportHeightPx > 0 &&
-                stableBottomBarHeightPx > 0
-            ) {
-                collapsedStableWorklineBottomPx
-            } else if (
-                preferStableCollapsedComposerGeometry &&
-                effectiveViewportHeightPx > 0 &&
-                stableBottomBarHeightPx > 0
-            ) {
-                collapsedStableWorklineBottomPx
-            } else if (composerTopInViewportPx > 0) {
+            if (effectiveViewportHeightPx > 0 && composerTopInViewportPx > 0) {
                 (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 collapsedStableWorklineBottomPx
@@ -1756,23 +1720,12 @@ fun ChatScreen() {
         composerCollapseOverlayVisible,
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
-        streamingExtraReservedHeightPx,
-        sendStartBottomPaddingLockActive,
-        preferStableCollapsedComposerGeometry,
-        stableComposerBottomBarHeightPx
+        streamingExtraReservedHeightPx
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = messageViewportHeightPx
-            val stableReservedHeightPx =
-                if (stableComposerBottomBarHeightPx > 0) {
-                    stableComposerBottomBarHeightPx + streamingExtraReservedHeightPx.coerceAtLeast(0)
-                } else {
-                    -1
-                }
             val measuredComposerReservedHeightPx =
                 if (
-                    !sendStartBottomPaddingLockActive &&
-                    !preferStableCollapsedComposerGeometry &&
                     effectiveViewportHeightPx > 0 &&
                     composerTopInViewportPx > 0
                 ) {
@@ -1789,8 +1742,6 @@ fun ChatScreen() {
             val resolvedReservedHeightPx: Int =
                 when {
                     measuredComposerReservedHeightPx >= 0 -> measuredComposerReservedHeightPx
-                    sendStartBottomPaddingLockActive && stableReservedHeightPx >= 0 -> stableReservedHeightPx
-                    preferStableCollapsedComposerGeometry && stableReservedHeightPx >= 0 -> stableReservedHeightPx
                     else -> fallbackReservedHeightPx
                 }
             resolvedReservedHeightPx
