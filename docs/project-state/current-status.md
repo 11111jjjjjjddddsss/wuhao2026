@@ -21,6 +21,7 @@
 - streaming 分支最外层宿主当前已从 `TopStart` 改为 `BottomStart`，让正文在反向底座里沿同一物理底边向上生长，减少流式换行时“先往下掉一下再被拉回”的体感
 - streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；块间距已改为挂在各 block 自身的 top padding 上，减少段落 / 列表新块诞生时把既有内容整体往下踹一拍
 - 列表底部保留高度与工作线当前只在 streaming 进行时才参考实时 `composerTop` 测量；普通 idle 状态下，不论是否停在底部，列表都改回稳定 bottom bar / overlay 高度，避免聚焦输入框时把历史区或底部最新消息一起向上带动
+- 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起打包给 Gemini / Claude，避免外部方案继续停留在抽象猜测层
 - `sendStartBottomPaddingLockActive` 已退出工作线和 `recyclerBottomPaddingPx` 的运行时计算主链；`sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍只服务输入框自身收口和 overlay 生命周期
 - 所有只服务正向底座的发送起步变量都已退出主链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已删除
 - 首次进入聊天页当前直接 `scrollToItem(0)` 贴到底部；从后台切回时不默认自动贴底
