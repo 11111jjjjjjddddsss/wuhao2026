@@ -827,7 +827,7 @@ private fun RendererAssistantMessageContentImpl(
         }
         Box(
             modifier = hostModifier,
-            contentAlignment = Alignment.TopStart
+            contentAlignment = Alignment.BottomStart
         ) {
             Box(
                 modifier = Modifier

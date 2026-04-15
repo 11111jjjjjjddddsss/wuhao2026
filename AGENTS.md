@@ -228,6 +228,7 @@ Clean-State 必做回归的范围：
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - streaming 渲染当前不再区分“waiting 专用宿主”和“首字后专用宿主”；waiting 小球与 streaming 首块已收敛到同一个 `ChatStreamingRenderer` 内容宿主内切换，首字上屏前后保持同一物理外壳
+- streaming 分支最外层宿主当前以 `Alignment.BottomStart` 对齐，确保正文在同一物理底边上向上生长，避免 `TopStart` 下首块换行时先向下探再被反向列表拉回
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 当前已删除所有只服务正向底座的发送起步 offset 链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 均不再参与运行时定位

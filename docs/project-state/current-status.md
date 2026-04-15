@@ -18,6 +18,7 @@
 - `ChatScrollCoordinator` 当前已不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 AutoFollow 只保留控制权切换，底部锚定主要交给 `reverseLayout` 的天然行为
 - 远端历史 hydrate 当前已不再用 `replaceMessages(clear + addAll)` 整表重建；`replaceMessages(...)` 改为按消息 `id` 做原地增量更新，减少冷启动/恢复阶段的整表震荡
 - waiting 小球与 streaming 首块当前已收敛到同一个 `ChatStreamingRenderer` 内容宿主里切换，不再走两套 streaming 宿主分支，进一步减少首字出现时的物理高度跳变
+- streaming 分支最外层宿主当前已从 `TopStart` 改为 `BottomStart`，让正文在反向底座里沿同一物理底边向上生长，减少流式换行时“先往下掉一下再被拉回”的体感
 - 输入框已回到单行且未聚焦时，列表底部保留高度当前优先继续走稳定单行高度，不再立即切回实时 `composerTop` 测量，减少锚点刚对齐后又被底部几何改写
 - 发送窗口（`sendStartBottomPaddingLockActive`）当前继续承担输入区收口期的几何稳定职责，不再冻结视口高度，也不再参与发送起步 offset 计算；但它的锁定窗口已经扩大到真实 composer 收口期，除了 `sendUiSettling` 之外，也会跟随 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx`
 - 所有只服务正向底座的发送起步变量都已退出主链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已删除
