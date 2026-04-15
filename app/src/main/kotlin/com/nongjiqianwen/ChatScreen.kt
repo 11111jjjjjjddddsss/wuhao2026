@@ -1479,6 +1479,7 @@ fun ChatScreen() {
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
+    val sendStartReturnToBottomDeadZonePx = assistantLineStepPx.coerceAtLeast(bottomPositionTolerancePx * 4)
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
@@ -2361,8 +2362,30 @@ fun ChatScreen() {
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
         val trimmed = sanitizeMessageWindow(newMessages)
-        messages.clear()
-        messages.addAll(trimmed)
+        var targetIndex = 0
+        while (targetIndex < trimmed.size) {
+            val desiredMessage = trimmed[targetIndex]
+            if (targetIndex < messages.size && messages[targetIndex].id == desiredMessage.id) {
+                if (messages[targetIndex] != desiredMessage) {
+                    messages[targetIndex] = desiredMessage
+                }
+            } else {
+                val existingIndex = messages.indexOfFirst { it.id == desiredMessage.id }
+                if (existingIndex >= 0) {
+                    val movedMessage = messages.removeAt(existingIndex)
+                    messages.add(targetIndex, movedMessage)
+                    if (messages[targetIndex] != desiredMessage) {
+                        messages[targetIndex] = desiredMessage
+                    }
+                } else {
+                    messages.add(targetIndex, desiredMessage)
+                }
+            }
+            targetIndex++
+        }
+        while (messages.size > trimmed.size) {
+            messages.removeAt(messages.lastIndex)
+        }
         pruneFailedMessageStates()
     }
 
@@ -2933,11 +2956,15 @@ fun ChatScreen() {
                 // Reverse layout keeps the newest assistant placeholder at the visual
                 // bottom. Returning to index 0 is enough to let the waiting ball sit
                 // on the workline while the user bubble stays above it.
+                val clearlyAwayFromBottom =
+                    recyclerFirstVisibleItemIndex > 0 ||
+                        recyclerFirstVisibleItemScrollOffset > sendStartReturnToBottomDeadZonePx
                 val shouldReturnToBottomForSend =
-                    !atBottom ||
-                        scrollMode == ScrollMode.UserBrowsing ||
-                        recyclerFirstVisibleItemIndex > 0 ||
-                        recyclerFirstVisibleItemScrollOffset > 0
+                    clearlyAwayFromBottom &&
+                        (
+                            !atBottom ||
+                                scrollMode == ScrollMode.UserBrowsing
+                            )
                 val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
                 if (pendingStartAnchorPosition >= 0 && shouldReturnToBottomForSend) {
                     chatListState.requestScrollToItem(index = 0)
