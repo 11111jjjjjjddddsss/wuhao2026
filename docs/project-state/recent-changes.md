@@ -4,6 +4,7 @@
 
 ## 2026-04-15
 
+- 修复一次中间坏提交的 CI：`ChatScreen.kt` 补上 `withFrameNanos` import，恢复“发送插入后下一帧请求 `requestScrollToItem(0)`”这条路径的可编译状态；本次仅修复编译遗漏，不改运行时口径
 - 撤回“发送死区”误判：发送事件重新恢复为对新插入 assistant placeholder 无条件回到底部，但滚动请求改到下一帧执行；用 `requestScrollToItem(0)` 覆盖 keyed `LazyColumn` 对旧可见项的默认位置保护，避免 waiting 小球被挤出视口底部
 - 删除 `pendingFinalBottomSnap` 完成态补滚链：streaming finish / interrupted / 后台同步收口都不再额外置位“再补一拍到底”，完成态直接交给反向列表天然锚定，方便暴露真实剩余几何问题
 - streaming 渲染继续清旧链：`ChatStreamingRenderer` 的 waiting 小球与 streaming 首块已收敛到同一个内容宿主里切换，不再保留“waiting 一套 / 首字后一套”的 streaming 分支，减少首字上屏时的物理宿主切换
