@@ -231,12 +231,12 @@ Clean-State 必做回归的范围：
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 当前已删除所有只服务正向底座的发送起步 offset 链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 均不再参与运行时定位
 - 发送事件当前不再计算“视口高度 - item 高度”的正向 offset；底部回位统一走反向列表 `index = 0`
-- 发送起步当前带有“回底死区”：只有用户明确滑离底部锚点后，发送才会触发 `requestScrollToItem(0)`；底部附近的小偏移不再强推回底，避免发送当拍与反向底座天然锚定并行
+- 发送事件在插入用户消息和 assistant placeholder 后，统一直接 `requestScrollToItem(0)` 回到底部锚点；不再保留“回底死区”这一层分叉判断
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - `ChatScrollCoordinator` 当前不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 streaming 只保留 `Idle / AutoFollow / UserBrowsing` 控制权切换，运行时已无 active `snapStreamingToWorkline / performStreamingFollowStep / resolveStreamingFollowStepPx` 链
 - `recyclerBottomPaddingPx` 仍负责把底部输入区和工作线留出来；反向底座下最新消息天然贴着这条底部保留线，不再需要额外 footer 或双重到底补推
 - 发送后输入框已回到单行且未聚焦时，`recyclerBottomPaddingPx` 也应继续优先使用稳定单行保留高度，不能刚对齐完锚点又立刻切回实时 `composerTop` 测量
-- `sendStartBottomPaddingLockActive` 现在只作为底部输入区收口期的几何稳定开关，不再承担正向列表的视口快照冻结职责
+- `sendStartBottomPaddingLockActive` 现在覆盖真实输入区收口窗口：不仅看 `sendUiSettling`，也看 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx`；在 waiting 和早期 streaming 那几帧里，工作线与底部保留高度都必须继续锁在稳定单行几何上
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留反向列表的 item 缓存和滚动锚点
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接 `scrollToItem(0)`；从后台切回时不默认自动贴底

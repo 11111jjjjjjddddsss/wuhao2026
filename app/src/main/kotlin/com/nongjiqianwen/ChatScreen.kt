@@ -1479,7 +1479,6 @@ fun ChatScreen() {
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
-    val sendStartReturnToBottomDeadZonePx = assistantLineStepPx.coerceAtLeast(bottomPositionTolerancePx * 4)
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
@@ -1495,8 +1494,16 @@ fun ChatScreen() {
                 !imeVisible
         }
     }
-    val sendStartBottomPaddingLockActive by remember(sendUiSettling) {
-        derivedStateOf { sendUiSettling }
+    val sendStartBottomPaddingLockActive by remember(
+        sendUiSettling,
+        composerSettlingMinHeightPx,
+        composerSettlingChromeHeightPx
+    ) {
+        derivedStateOf {
+            sendUiSettling ||
+                composerSettlingMinHeightPx > 0 ||
+                composerSettlingChromeHeightPx > 0
+        }
     }
     val safeBottomInsetPx = with(density) {
         WindowInsets.safeDrawing
@@ -2956,17 +2963,8 @@ fun ChatScreen() {
                 // Reverse layout keeps the newest assistant placeholder at the visual
                 // bottom. Returning to index 0 is enough to let the waiting ball sit
                 // on the workline while the user bubble stays above it.
-                val clearlyAwayFromBottom =
-                    recyclerFirstVisibleItemIndex > 0 ||
-                        recyclerFirstVisibleItemScrollOffset > sendStartReturnToBottomDeadZonePx
-                val shouldReturnToBottomForSend =
-                    clearlyAwayFromBottom &&
-                        (
-                            !atBottom ||
-                                scrollMode == ScrollMode.UserBrowsing
-                            )
                 val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
-                if (pendingStartAnchorPosition >= 0 && shouldReturnToBottomForSend) {
+                if (pendingStartAnchorPosition >= 0) {
                     chatListState.requestScrollToItem(index = 0)
                 }
                 persistTick++

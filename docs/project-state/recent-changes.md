@@ -4,10 +4,10 @@
 
 ## 2026-04-15
 
+- 发送起步再次收敛到单一真相：删除“回底死区”分叉，发送事件在插入用户消息和 assistant placeholder 后统一直接 `requestScrollToItem(0)`，避免反向列表继续按旧 key 维持上一条消息导致 waiting 小球时灵时不灵地掉出工作线
+- 发送期几何锁窗口继续收紧：`sendStartBottomPaddingLockActive` 不再只看 `sendUiSettling`，现在还会覆盖 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 的真实收口期，减少 waiting / 早期 streaming 阶段工作线提前切回实时几何导致的小球下掉和轻微上下弹
 - 主规则新增“会诊优先级”：以后遇到 Android Compose UI / 滚动链 / 渲染时序问题，优先只建议用户找 Gemini；遇到 Go 后端 / 架构边界 / 规则归纳问题，优先建议找 Claude，避免再默认双向并行会诊
-- 发送起步继续收口：新增“回底死区”，只有用户明确滑离底部锚点后，发送才触发 `requestScrollToItem(0)`；底部附近的小偏移不再强推，减少发送当拍与反向底座天然锚定的竞态
 - 远端历史 hydrate 路径继续收口：`replaceMessages(...)` 已从 `messages.clear() + addAll()` 改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，减少冷启动/恢复期的整表重排和滚动缓存丢失
-- 反向底座继续收敛：发送时仅当当前不在底部锚点时才触发 `requestScrollToItem(0)`；若本来就在底部，则交给 `LazyColumn(reverseLayout = true)` 的天然底部锚定处理，减少“已经贴底还再强推一遍”的抖动
 - 删除反向底座下仍在并行的旧 streaming 手动补偿链：`snapStreamingToWorkline`、`performStreamingFollowStep`、`resolveStreamingFollowStepPx`、`currentStreamingAlignDeltaPx` 已退出运行时主链；`ChatScrollCoordinator` 现在只保留 `Idle / AutoFollow / UserBrowsing` 的控制权切换，不再在 streaming 期间主动 `scrollBy` 追工作线
 - 聊天底座已翻为 `LazyColumn(reverseLayout = true)`：运行时消息状态仍保持正序，但传给列表的显示顺序改为 `asReversed()`，让最新消息天然贴近底部工作线，减少正向底座底部插入时的整体回弹
 - 删除所有只服务正向发送起步的 offset / 视口快照链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已退出运行时主链；发送时改为直接 `requestScrollToItem(0)`
