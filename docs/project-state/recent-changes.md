@@ -4,6 +4,7 @@
 
 ## 2026-04-15
 
+- 删除 `pendingFinalBottomSnap` 完成态补滚链：streaming finish / interrupted / 后台同步收口都不再额外置位“再补一拍到底”，完成态直接交给反向列表天然锚定，方便暴露真实剩余几何问题
 - streaming 渲染继续清旧链：`ChatStreamingRenderer` 的 waiting 小球与 streaming 首块已收敛到同一个内容宿主里切换，不再保留“waiting 一套 / 首字后一套”的 streaming 分支，减少首字上屏时的物理宿主切换
 - 删除 `scrollToBottom(false)` 里仍在并行的 `alignChatListBottom()` 8 帧 `scrollBy` 补偿链；回到底部和完成态收口当前只保留 `scrollToItem(0)` / `animateScrollToItem(0)` 这条反向列表主链
 - 本地 fake streaming 结束前已不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 指标收平；正文 reveal 完成后直接 finish，避免尾帧继续被旧收口口径拖出轻微回弹

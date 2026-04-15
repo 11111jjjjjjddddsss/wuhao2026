@@ -22,7 +22,7 @@
 - 发送窗口（`sendStartBottomPaddingLockActive`）当前继续承担输入区收口期的几何稳定职责，不再冻结视口高度，也不再参与发送起步 offset 计算；但它的锁定窗口已经扩大到真实 composer 收口期，除了 `sendUiSettling` 之外，也会跟随 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx`
 - 所有只服务正向底座的发送起步变量都已退出主链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已删除
 - 首次进入聊天页当前直接 `scrollToItem(0)` 贴到底部；从后台切回时不默认自动贴底
-- 回到底部按钮和完成态 final snap 当前都只走 `scrollToBottom(false)` 的 `scrollToItem(0)` 主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿
+- 回到底部按钮当前只走 `scrollToBottom(false)` 的 `scrollToItem(0)` 主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿；streaming 完成态也不再保留 `pendingFinalBottomSnap` 这类额外补滚
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 本地 fake streaming 在正常结束时也不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 指标回落后才 finish；正文 reveal 完成后直接进入完成态收口
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示

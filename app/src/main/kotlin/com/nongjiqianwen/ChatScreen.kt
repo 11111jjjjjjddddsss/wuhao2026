@@ -1429,7 +1429,6 @@ fun ChatScreen() {
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
-    var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
     var suppressJumpButtonForImeTransition by scrollRuntime.suppressJumpButtonForImeTransition
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
@@ -1826,14 +1825,12 @@ fun ChatScreen() {
         hasStreamingItem,
         scrollMode,
         streamingAwayFromWorkline,
-        pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume,
     ) {
         derivedStateOf {
             startupLayoutReady &&
-                !pendingFinalBottomSnap &&
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
@@ -1849,7 +1846,6 @@ fun ChatScreen() {
         startupLayoutReady,
         isStreaming,
         atBottom,
-        pendingFinalBottomSnap,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume,
@@ -1858,7 +1854,6 @@ fun ChatScreen() {
         derivedStateOf {
             startupLayoutReady &&
                 !isStreaming &&
-                !pendingFinalBottomSnap &&
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
@@ -2415,10 +2410,7 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
-            resetScrollRuntimeAfterStreamingStop(
-                runtime = scrollRuntime,
-                offerFinalBottomSnap = false
-            )
+            resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
             if (clearVisibleContent) {
@@ -2635,10 +2627,6 @@ fun ChatScreen() {
 
     fun finishStreaming() {
         mainHandler.post {
-            val shouldSnapToBottomOnFinish =
-                com.nongjiqianwen.shouldOfferFinalBottomSnap(
-                    scrollMode = scrollMode
-                )
             streamRevealJob?.cancel()
             streamRevealJob = null
             flushStreamingRevealBuffer(
@@ -2663,10 +2651,7 @@ fun ChatScreen() {
             streamingFreshEnd = -1
             streamingLineAdvanceTick = 0
             streamingBackgrounded = false
-            resetScrollRuntimeAfterStreamingStop(
-                runtime = scrollRuntime,
-                offerFinalBottomSnap = shouldSnapToBottomOnFinish
-            )
+            resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
@@ -2772,10 +2757,6 @@ fun ChatScreen() {
         mainHandler.post {
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
-            val shouldSnapToBottomOnFinish =
-                com.nongjiqianwen.shouldOfferFinalBottomSnap(
-                    scrollMode = scrollMode
-                )
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
@@ -2790,10 +2771,7 @@ fun ChatScreen() {
             streamingLineAdvanceTick = 0
             lastStreamingFreshRevealMs = 0L
             streamingBackgrounded = false
-            resetScrollRuntimeAfterStreamingStop(
-                runtime = scrollRuntime,
-                offerFinalBottomSnap = false
-            )
+            resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             context.clearLocalStreamingDraftSync(chatScopeId)
             if (canAttemptRemoteAssistantRecovery(reason)) {
                 if (finalContent.isNotBlank()) {
@@ -2819,7 +2797,6 @@ fun ChatScreen() {
                     messageId = finalId,
                     content = finalContent
                 )
-                scrollRuntime.pendingFinalBottomSnap.value = shouldSnapToBottomOnFinish
                 failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
                     sourceUserMessageId = sourceUserMessageId
                 )
@@ -3050,10 +3027,6 @@ fun ChatScreen() {
     fun completeStreamingImmediatelyFromBackground() {
         val finalizeStreamingFromBackground: () -> Unit = finalizeStreamingFromBackground@{
             if (!isStreaming) return@finalizeStreamingFromBackground
-            val shouldSnapToBottomOnFinish =
-                com.nongjiqianwen.shouldOfferFinalBottomSnap(
-                    scrollMode = scrollMode
-                )
             val finalId = streamingMessageId
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
                 ?: "assistant_${UUID.randomUUID()}"
@@ -3075,10 +3048,7 @@ fun ChatScreen() {
             streamingBackgrounded = false
             streamingMessageId = null
             streamingMessageContent = ""
-            resetScrollRuntimeAfterStreamingStop(
-                runtime = scrollRuntime,
-                offerFinalBottomSnap = shouldSnapToBottomOnFinish
-            )
+            resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
@@ -3093,7 +3063,6 @@ fun ChatScreen() {
                 context.clearLocalStreamingDraftSync(chatScopeId)
             } else {
                 removeMessageById(finalId)
-                scrollRuntime.pendingFinalBottomSnap.value = shouldSnapToBottomOnFinish
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
                     messages = persistableMessagesSnapshot()
@@ -3152,16 +3121,11 @@ fun ChatScreen() {
         hasStreamingItem = hasStreamingItem,
         streamingMessageContent = streamingMessageContent,
         listScrollInProgress = recyclerScrollInProgress,
-        messagesCount = messages.size,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
-        pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
-        currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
-        isNearStreamingWorkline = ::isNearStreamingWorkline,
-        isWithinBottomTolerance = ::isWithinBottomTolerance,
-        scrollToBottom = scrollToBottom
+        isNearStreamingWorkline = ::isNearStreamingWorkline
     )
 
     BoxWithConstraints(

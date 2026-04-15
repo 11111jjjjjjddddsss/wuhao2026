@@ -22,7 +22,6 @@ internal data class ChatScrollRuntimeState(
     val streamingContentBottomPx: MutableIntState,
     val streamBottomFollowActive: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
-    val pendingFinalBottomSnap: MutableState<Boolean>,
     val suppressJumpButtonForImeTransition: MutableState<Boolean>,
     val suppressJumpButtonForLifecycleResume: MutableState<Boolean>,
     val bottomBarHeightPx: MutableIntState,
@@ -41,7 +40,6 @@ internal fun rememberChatScrollRuntimeState(
     val streamingContentBottomPx = remember(chatScopeId) { mutableIntStateOf(-1) }
     val streamBottomFollowActive = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember(chatScopeId) { mutableStateOf(false) }
-    val pendingFinalBottomSnap = remember(chatScopeId) { mutableStateOf(false) }
     val suppressJumpButtonForImeTransition = remember(chatScopeId) { mutableStateOf(false) }
     val suppressJumpButtonForLifecycleResume = remember(chatScopeId) { mutableStateOf(false) }
     val bottomBarHeightPx = remember(chatScopeId, startupBottomBarHeightEstimatePx) {
@@ -62,7 +60,6 @@ internal fun rememberChatScrollRuntimeState(
             streamingContentBottomPx = streamingContentBottomPx,
             streamBottomFollowActive = streamBottomFollowActive,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
-            pendingFinalBottomSnap = pendingFinalBottomSnap,
             suppressJumpButtonForImeTransition = suppressJumpButtonForImeTransition,
             suppressJumpButtonForLifecycleResume = suppressJumpButtonForLifecycleResume,
             bottomBarHeightPx = bottomBarHeightPx,
@@ -196,20 +193,17 @@ internal fun prepareScrollRuntimeForStreamingStart(
 ) {
     runtime.streamingContentBottomPx.intValue = -1
     runtime.streamBottomFollowActive.value = false
-    runtime.pendingFinalBottomSnap.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
 }
 
 internal fun resetScrollRuntimeAfterStreamingStop(
-    runtime: ChatScrollRuntimeState,
-    offerFinalBottomSnap: Boolean
+    runtime: ChatScrollRuntimeState
 ) {
     runtime.streamingContentBottomPx.intValue = -1
     runtime.streamBottomFollowActive.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
-    runtime.pendingFinalBottomSnap.value = offerFinalBottomSnap
 }
 
 internal fun resumeScrollRuntimeForStreamingRecovery(
@@ -225,20 +219,14 @@ internal fun BindChatListScrollEffects(
     hasStreamingItem: Boolean,
     streamingMessageContent: String,
     listScrollInProgress: Boolean,
-    messagesCount: Int,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
-    pendingFinalBottomSnapState: MutableState<Boolean>,
-    currentLastMessageContentBottomPx: () -> Int,
     currentStreamingContentBottomPx: () -> Int,
-    isNearStreamingWorkline: () -> Boolean,
-    isWithinBottomTolerance: () -> Boolean,
-    scrollToBottom: suspend (Boolean) -> Unit
+    isNearStreamingWorkline: () -> Boolean
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
-    val pendingFinalBottomSnap = pendingFinalBottomSnapState.value
 
     LaunchedEffect(
         isStreaming,
@@ -283,30 +271,6 @@ internal fun BindChatListScrollEffects(
         }
         streamBottomFollowActiveState.value = false
     }
-
-    LaunchedEffect(
-        pendingFinalBottomSnap,
-        messagesCount,
-        isStreaming,
-        scrollMode,
-        currentLastMessageContentBottomPx(),
-        isWithinBottomTolerance()
-    ) {
-        if (!pendingFinalBottomSnap || isStreaming || scrollMode == ScrollMode.UserBrowsing) {
-            return@LaunchedEffect
-        }
-        if (currentLastMessageContentBottomPx() <= 0) {
-            return@LaunchedEffect
-        }
-        if (isWithinBottomTolerance()) {
-            pendingFinalBottomSnapState.value = false
-            return@LaunchedEffect
-        }
-        scrollToBottom(false)
-        if (isWithinBottomTolerance()) {
-            pendingFinalBottomSnapState.value = false
-        }
-    }
 }
 
 internal fun shouldShowStreamingScrollToBottomButton(
@@ -319,12 +283,6 @@ internal fun shouldShowStreamingScrollToBottomButton(
         hasStreamingItem &&
         scrollMode == ScrollMode.UserBrowsing &&
         !nearWorkline
-}
-
-internal fun shouldOfferFinalBottomSnap(
-    scrollMode: ScrollMode
-): Boolean {
-    return scrollMode != ScrollMode.UserBrowsing
 }
 
 @Composable
