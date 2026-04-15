@@ -4,6 +4,11 @@
 
 ## 2026-04-16
 
+- 发送链继续做减法并清旧方案：`ChatScreen.kt` 已撤掉一度试验过的 `withTimeoutOrNull + snapshotFlow` 延后收口链，重新回到“输入框瞬间清空回缩、小球同拍出现”的单一发送事务，不再让即时收口和延后收口两套方案并存
+- 发送窗口的列表几何已收紧到单一真相：新增 `isComposerSettling` / `shouldUseRealtimeComposerGeometry`，发送与输入区收口窗口里，`streamingWorklineBottomPx` 和 `bottomContentReservedHeightPx` 都会回退到稳定 bottom bar / overlay 高度，不再继续吃实时 `composerTop` 把消息区一起带着抖
+- streaming 块级宿主已改为 unified host：`ChatStreamingRenderer.kt` 现在先把 completed / active blocks 拍平成同一个 `unifiedModels` 列表，再由同一个外壳承接 spacing / divider，active -> committed flush 时不再跨 sibling subtree 搬家
+- unified streaming block 的外壳 key 已收口：append-only 场景下改用稳定的 block index，删除 `hashCode()` 参与 key 生成，减少流式阶段内容变化触发的连续 remount
+- Android 本轮验证已完成 `./gradlew.bat :app:compileDebugKotlin` 与 `./gradlew.bat :app:installDebug`；App 可在当前连接设备上启动，但 adb 自动化只做到有限冒烟，尚未替代人工体感回归
 - 记忆系统继续做减法和收口：`current-status.md` 新增“当前调试焦点”，把聊天 UI 剩余热点明确收敛到发送事务时序和 streaming 块级宿主交接；同时新增 `docs/runbooks/chat-ui-regression.md` 作为统一复现/验收入口，方便新窗口和外部会诊前自查
 - `open-risks.md` 与 `pending-decisions.md` 已同步收平：不再继续写“没有程序化校验”这一过期口径，改为承认 `scripts/check_project_memory.py` 与 CI 已接入，同时明确当前校验粒度仍偏粗
 - 主规则补充“外部会诊现实约束”：Gemini / Claude 等外部模型默认看不到本地仓库与文件链接，只能依赖用户转发的文字、代码片段、截图和日志；因此后续会诊稿必须自包含，不能只报文件名让对方自己猜

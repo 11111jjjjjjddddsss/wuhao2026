@@ -26,8 +26,8 @@
 ## R4 聊天滚动链仍需持续装机回归
 
 - 状态：未关闭
-- 说明：聊天底座已收敛到 `LazyColumn(reverseLayout = true)` 单主链，但当前还剩两处热点问题未完全收口：一是 `ChatScreen.kt` 发送事务里“先收口输入区、后插消息回底”的时序冲突；二是 `ChatStreamingRenderer.kt` 中 completed / active block 双分支在 flush 时可能导致块级宿主切换
-- 风险：若后续继续在抽象层反复调参数，容易把已废弃的旧滚动补偿链重新带回，或让新窗口误以为病灶仍在 `RecyclerView`、`stableLines / activeLine` 或 IME 本身
+- 说明：聊天底座已收敛到 `LazyColumn(reverseLayout = true)` 单主链；本轮又补上了“发送 / 输入区收口窗口冻结实时 composer 几何”和“streaming 块级 unified host + 稳定 index key”两刀，但目前只完成了编译、装包和有限 adb 冒烟，尚未拿到一轮稳定的人工体感回归结论
+- 风险：如果后续新窗口忽略这两刀已经落地、又从抽象层重想“延后收口 / 补一条 scrollBy / 回滚旧底座”，容易把已废弃的旧滚动补偿链重新带回；如果不做真机回归，也无法确认顽固抖动是否已完全收口
 - 后续动作：后续每次动聊天输入区、工作线、生命周期恢复或流式渲染，都要先回归 `docs/runbooks/chat-ui-regression.md` 的场景，并优先围绕当前两处热点代码点做减法
 
 ## R5 外部会诊仍依赖人工转发上下文

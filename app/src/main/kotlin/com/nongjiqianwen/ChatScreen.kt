@@ -1481,12 +1481,31 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
+    val isComposerSettling by remember(
+        sendUiSettling,
+        composerSettlingMinHeightPx,
+        composerSettlingChromeHeightPx
+    ) {
+        derivedStateOf {
+            sendUiSettling ||
+                composerSettlingMinHeightPx > 0 ||
+                composerSettlingChromeHeightPx > 0
+        }
+    }
     val listShouldTrackRealtimeComposerGeometry by remember(
         isStreaming,
         hasStreamingItem
     ) {
         derivedStateOf {
             isStreaming || hasStreamingItem
+        }
+    }
+    val shouldUseRealtimeComposerGeometry by remember(
+        listShouldTrackRealtimeComposerGeometry,
+        isComposerSettling
+    ) {
+        derivedStateOf {
+            listShouldTrackRealtimeComposerGeometry && !isComposerSettling
         }
     }
     val safeBottomInsetPx = with(density) {
@@ -1515,7 +1534,7 @@ fun ChatScreen() {
         bottomBarHeightPx,
         composerTopInViewportPx,
         streamVisibleBottomGapPx,
-        listShouldTrackRealtimeComposerGeometry
+        shouldUseRealtimeComposerGeometry
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = messageViewportHeightPx
@@ -1531,7 +1550,7 @@ fun ChatScreen() {
                         streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
             if (
-                listShouldTrackRealtimeComposerGeometry &&
+                shouldUseRealtimeComposerGeometry &&
                 effectiveViewportHeightPx > 0 &&
                 composerTopInViewportPx > 0
             ) {
@@ -1733,13 +1752,13 @@ fun ChatScreen() {
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
         streamingExtraReservedHeightPx,
-        listShouldTrackRealtimeComposerGeometry
+        shouldUseRealtimeComposerGeometry
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = messageViewportHeightPx
             val measuredComposerReservedHeightPx =
                 if (
-                    listShouldTrackRealtimeComposerGeometry &&
+                    shouldUseRealtimeComposerGeometry &&
                     effectiveViewportHeightPx > 0 &&
                     composerTopInViewportPx > 0
                 ) {
@@ -2789,23 +2808,6 @@ fun ChatScreen() {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         composerCollapseOverlayVisible = false
         sendUiSettling = true
-        if (collapseComposer) {
-            val collapsePreparation = prepareComposerCollapse(
-                inputContentHeightPx = inputContentHeightPx,
-                startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
-                inputChromeRowHeightPx = inputChromeRowHeightPx
-            )
-            composerSettlingMinHeightPx = collapsePreparation.settlingMinHeightPx
-            composerSettlingChromeHeightPx = collapsePreparation.settlingChromeHeightPx
-            suppressInputCursor = collapsePreparation.shouldSuppressCursor
-            inputFieldFocused = false
-            clearInputSelectionToolbar()
-            input.value = TextFieldValue("")
-            if (collapsePreparation.shouldClearFocus) {
-                focusManager.clearFocus(force = true)
-                keyboardController?.hide()
-            }
-        }
         snackbarScope.launch {
             try {
                 hasStartedConversation = true
