@@ -1427,7 +1427,6 @@ fun ChatScreen() {
     var scrollMode by scrollRuntime.scrollMode
     var programmaticScroll by scrollRuntime.programmaticScroll
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
-    var streamBottomFollowActive by scrollRuntime.streamBottomFollowActive
     var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var pendingFinalBottomSnap by scrollRuntime.pendingFinalBottomSnap
@@ -1600,12 +1599,6 @@ fun ChatScreen() {
         val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return Int.MAX_VALUE
         return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
-    }
-    fun currentBottomAlignDeltaPx(): Int {
-        val lastContentBottom = currentLastMessageContentBottomPx()
-        val desiredBottomPx = currentUnifiedBottomTargetPx()
-        if (lastContentBottom <= 0) return 0
-        return desiredBottomPx - lastContentBottom
     }
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
@@ -2640,14 +2633,6 @@ fun ChatScreen() {
         )
     }
 
-    fun currentStreamingOverflowDelta(): Int {
-        val worklineBottom = streamingWorklineBottomPx
-        val visibleBottom = worklineBottom.takeIf { it > 0 }
-            ?: (messageViewportHeightPx - streamVisibleBottomGapPx).coerceAtLeast(0)
-        val contentBottom = currentStreamingContentBottomPx()
-        if (contentBottom <= 0 || visibleBottom <= 0) return 0
-        return contentBottom - visibleBottom
-    }
     fun finishStreaming() {
         mainHandler.post {
             val shouldSnapToBottomOnFinish =
@@ -2747,16 +2732,6 @@ fun ChatScreen() {
             }
             while (isActive && streamingRevealBuffer.isNotEmpty()) {
                 delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
-            }
-            for (attempt in 0 until 18) {
-                if (!isActive || !isStreaming) break
-                val overflow = currentStreamingOverflowDelta()
-                if (!streamBottomFollowActive && overflow <= bottomPositionTolerancePx) {
-                    break
-                }
-                if (attempt < 17) {
-                    delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
-                }
             }
             if (isActive) finishStreaming()
         }
@@ -3040,8 +3015,6 @@ fun ChatScreen() {
             listState = chatListState,
             lastIndex = if (messages.isEmpty()) -1 else 0,
             animated = animated,
-            currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
             beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
             endProgrammaticScroll = ::endProgrammaticChatListScroll
         )

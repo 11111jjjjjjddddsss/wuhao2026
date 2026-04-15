@@ -829,42 +829,22 @@ private fun RendererAssistantMessageContentImpl(
             modifier = hostModifier,
             contentAlignment = Alignment.TopStart
         ) {
-            if (showWaitingBall || content.isBlank()) {
-                Box(
-                    modifier = Modifier
-                        .then(boundsReportingModifier)
-                        .fillMaxWidth()
-                ) {
-                    RendererAssistantStreamingWaitingIndicatorImpl(
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            } else {
-                Box(
-                    modifier = Modifier
-                        .then(boundsReportingModifier)
-                        .fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            RendererAssistantStreamingContentImpl(
-                                content = content,
-                                streamingFreshStart = streamingFreshStart,
-                                streamingFreshEnd = streamingFreshEnd,
-                                streamingFreshTick = streamingFreshTick,
-                                streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                strictLineReveal = strictLineReveal,
-                                lineRevealLocked = lineRevealLocked,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
+            Box(
+                modifier = Modifier
+                    .then(boundsReportingModifier)
+                    .fillMaxWidth()
+            ) {
+                RendererAssistantStreamingContentImpl(
+                    content = content,
+                    streamingFreshStart = streamingFreshStart,
+                    streamingFreshEnd = streamingFreshEnd,
+                    streamingFreshTick = streamingFreshTick,
+                    streamingLineAdvanceTick = streamingLineAdvanceTick,
+                    strictLineReveal = strictLineReveal,
+                    lineRevealLocked = lineRevealLocked,
+                    showWaitingBall = showWaitingBall || content.isBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     } else {
@@ -907,14 +887,14 @@ private fun RendererAssistantStreamingWaitingIndicatorImpl(
     }
     Box(
         modifier = modifier.heightIn(min = lineHeight),
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.BottomStart
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(lineHeight)
+                .heightIn(min = lineHeight)
                 .padding(start = GPT_BALL_START_PADDING),
-            contentAlignment = Alignment.CenterStart
+            contentAlignment = Alignment.BottomStart
         ) {
             RendererGPTBreathingBallImpl(
                 modifier = Modifier
@@ -932,6 +912,7 @@ private fun RendererAssistantStreamingContentImpl(
     streamingLineAdvanceTick: Int,
     strictLineReveal: Boolean,
     lineRevealLocked: Boolean,
+    showWaitingBall: Boolean,
     modifier: Modifier = Modifier
 ) {
     val blockState = remember(content) { splitStreamingBlockState(content) }
@@ -960,6 +941,11 @@ private fun RendererAssistantStreamingContentImpl(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MARKDOWN_BLOCK_SPACING)
     ) {
+        if (showWaitingBall && completedModels.isEmpty() && activeModel == null) {
+            RendererAssistantStreamingWaitingIndicatorImpl(
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         completedModels.forEachIndexed { index, model ->
             key("streaming_completed_$index:${blockState.completedBlocks[index]}") {
                 RendererAssistantStreamingCommittedBlockImpl(

@@ -4,6 +4,9 @@
 
 ## 2026-04-15
 
+- streaming 渲染继续清旧链：`ChatStreamingRenderer` 的 waiting 小球与 streaming 首块已收敛到同一个内容宿主里切换，不再保留“waiting 一套 / 首字后一套”的 streaming 分支，减少首字上屏时的物理宿主切换
+- 删除 `scrollToBottom(false)` 里仍在并行的 `alignChatListBottom()` 8 帧 `scrollBy` 补偿链；回到底部和完成态收口当前只保留 `scrollToItem(0)` / `animateScrollToItem(0)` 这条反向列表主链
+- 本地 fake streaming 结束前已不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 指标收平；正文 reveal 完成后直接 finish，避免尾帧继续被旧收口口径拖出轻微回弹
 - 发送起步再次收敛到单一真相：删除“回底死区”分叉，发送事件在插入用户消息和 assistant placeholder 后统一直接 `requestScrollToItem(0)`，避免反向列表继续按旧 key 维持上一条消息导致 waiting 小球时灵时不灵地掉出工作线
 - 发送期几何锁窗口继续收紧：`sendStartBottomPaddingLockActive` 不再只看 `sendUiSettling`，现在还会覆盖 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 的真实收口期，减少 waiting / 早期 streaming 阶段工作线提前切回实时几何导致的小球下掉和轻微上下弹
 - 主规则新增“会诊优先级”：以后遇到 Android Compose UI / 滚动链 / 渲染时序问题，优先只建议用户找 Gemini；遇到 Go 后端 / 架构边界 / 规则归纳问题，优先建议找 Claude，避免再默认双向并行会诊

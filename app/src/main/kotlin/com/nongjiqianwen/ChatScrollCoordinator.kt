@@ -1,6 +1,5 @@
 package com.nongjiqianwen
 
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -9,7 +8,6 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.withFrameNanos
 
 internal enum class ScrollMode {
     Idle,
@@ -102,26 +100,10 @@ internal fun endProgrammaticChatListScroll(
     listState?.let(refreshChatListMetrics)
 }
 
-private suspend fun alignChatListBottom(
-    listState: LazyListState,
-    currentLastMessageContentBottomPx: () -> Int,
-    currentBottomAlignDeltaPx: () -> Int
-) {
-    repeat(8) {
-        withFrameNanos { }
-        if (currentLastMessageContentBottomPx() <= 0) return@repeat
-        val alignDeltaPx = currentBottomAlignDeltaPx()
-        if (alignDeltaPx == 0) return
-        listState.scrollBy((-alignDeltaPx).toFloat())
-    }
-}
-
 internal suspend fun scrollChatListToBottom(
     listState: LazyListState?,
     lastIndex: Int,
     animated: Boolean,
-    currentLastMessageContentBottomPx: () -> Int,
-    currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
     endProgrammaticScroll: () -> Unit
 ) {
@@ -134,11 +116,6 @@ internal suspend fun scrollChatListToBottom(
         } else {
             activeListState.scrollToItem(lastIndex)
         }
-        alignChatListBottom(
-            listState = activeListState,
-            currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = currentBottomAlignDeltaPx
-        )
     } catch (_: Throwable) {
         endProgrammaticScroll()
         return
