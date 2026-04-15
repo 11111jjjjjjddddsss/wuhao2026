@@ -4,6 +4,7 @@
 
 ## 2026-04-15
 
+- 主规则新增“会诊优先级”：以后遇到 Android Compose UI / 滚动链 / 渲染时序问题，优先只建议用户找 Gemini；遇到 Go 后端 / 架构边界 / 规则归纳问题，优先建议找 Claude，避免再默认双向并行会诊
 - 发送起步继续收口：新增“回底死区”，只有用户明确滑离底部锚点后，发送才触发 `requestScrollToItem(0)`；底部附近的小偏移不再强推，减少发送当拍与反向底座天然锚定的竞态
 - 远端历史 hydrate 路径继续收口：`replaceMessages(...)` 已从 `messages.clear() + addAll()` 改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，减少冷启动/恢复期的整表重排和滚动缓存丢失
 - 反向底座继续收敛：发送时仅当当前不在底部锚点时才触发 `requestScrollToItem(0)`；若本来就在底部，则交给 `LazyColumn(reverseLayout = true)` 的天然底部锚定处理，减少“已经贴底还再强推一遍”的抖动
