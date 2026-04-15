@@ -2916,7 +2916,7 @@ fun ChatScreen() {
                 // bottom. Returning to index 0 is enough to let the waiting ball sit
                 // on the workline while the user bubble stays above it.
                 val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
-                if (pendingStartAnchorPosition >= 0) {
+                if (pendingStartAnchorPosition >= 0 && recyclerFirstVisibleItemIndex > 0) {
                     chatListState.requestScrollToItem(index = 0)
                 }
                 persistTick++
