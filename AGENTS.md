@@ -191,7 +191,7 @@ Clean-State 必做回归的范围：
 
 1. 发送起步
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 做法：在发送事件源里，插入用户消息和 assistant placeholder 后，于下一帧请求 `LazyListState.requestScrollToItem(0)` 回到底部锚点，覆盖稳定 key 对旧可见项的默认保护，确保新插入的小球回到视口底部工作线
+- 做法：在发送事件源里，插入用户消息和 assistant placeholder 后，立即请求 `LazyListState.requestScrollToItem(0)` 回到底部锚点，覆盖稳定 key 对旧可见项的默认保护，确保新插入的小球回到视口底部工作线
 - 当前锚点：小球所在的 assistant 起步宿主可见底边
 - 当前目标：小球第一次出现就落在工作线；用户消息在其上方，正文从工作线开始长
 
@@ -234,7 +234,7 @@ Clean-State 必做回归的范围：
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 当前已删除所有只服务正向底座的发送起步 offset 链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 均不再参与运行时定位
 - 发送事件当前不再计算“视口高度 - item 高度”的正向 offset；底部回位统一走反向列表 `index = 0`
-- 发送事件在插入用户消息和 assistant placeholder 后，会在下一帧请求 `requestScrollToItem(0)` 回到底部锚点；这样既能覆盖 `LazyColumn` 对旧可见项的默认位置保护，避免小球掉出视口，也能错开插入当拍的测量和输入区几何变化
+- 发送事件在插入用户消息和 assistant placeholder 后，会立即请求 `requestScrollToItem(0)` 回到底部锚点；这样能直接覆盖 `LazyColumn` 对旧可见项的默认位置保护，避免小球先悬空一拍再掉回工作线
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - `ChatScrollCoordinator` 当前不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 streaming 只保留 `Idle / AutoFollow / UserBrowsing` 控制权切换，运行时已无 active `snapStreamingToWorkline / performStreamingFollowStep / resolveStreamingFollowStepPx` 链
 - `scrollToBottom(false)` 当前只保留 `scrollToItem(0)` / `animateScrollToItem(0)` 这一条主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿

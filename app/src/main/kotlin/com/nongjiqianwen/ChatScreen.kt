@@ -105,7 +105,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -2867,10 +2866,9 @@ fun ChatScreen() {
                 // Reverse layout keeps the newest assistant placeholder at the visual
                 // bottom. LazyColumn keeps the keyed visible item stable when new
                 // items are inserted ahead of it, so we must override that default
-                // on the next frame and explicitly request index 0.
+                // in the same send transaction and explicitly request index 0.
                 val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
                 if (pendingStartAnchorPosition >= 0) {
-                    withFrameNanos { }
                     chatListState.requestScrollToItem(index = 0)
                 }
                 persistTick++
