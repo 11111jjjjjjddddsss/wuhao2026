@@ -183,13 +183,13 @@ Clean-State 必做回归的范围：
 
 1. 发送起步
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 做法：在发送事件源里，插入用户消息和 assistant placeholder 后，直接请求 `LazyListState.requestScrollToItem(0)` 回到底部锚点；assistant placeholder 在反向列表里天然落在工作线附近
+- 做法：在发送事件源里，插入用户消息和 assistant placeholder 后，仅当当前不在底部锚点时才请求 `LazyListState.requestScrollToItem(0)` 回到底部；若本来就在底部，则交给反向列表的天然底部锚定处理
 - 当前锚点：小球所在的 assistant 起步宿主可见底边
 - 当前目标：小球第一次出现就落在工作线；用户消息在其上方，正文从工作线开始长
 
 2. AutoFollow
 - 主人：[ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)
-- 作用：在反向底座里维持“底部锚定”语义；当用户未打断时，生成内容继续向上长，不再依赖正向列表的 overflow 追赶链
+- 作用：在反向底座里只维护“谁拥有滚动控制权”；当用户未打断时，生成内容继续沿底部锚定自然向上长，不再执行正向列表那套 `snap + scrollBy` overflow 追赶链
 
 3. 发送期几何稳定
 - 主人：`sendStartBottomPaddingLockActive`
@@ -223,7 +223,9 @@ Clean-State 必做回归的范围：
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 当前已删除所有只服务正向底座的发送起步 offset 链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 均不再参与运行时定位
 - 发送事件当前不再计算“视口高度 - item 高度”的正向 offset；底部回位统一走反向列表 `index = 0`
+- 若当前已经处于底部锚点，发送事件不再额外强推 `requestScrollToItem(0)`；避免反向底座天然贴底和手动跳底并行
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
+- `ChatScrollCoordinator` 当前不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 streaming 只保留 `Idle / AutoFollow / UserBrowsing` 控制权切换，运行时已无 active `snapStreamingToWorkline / performStreamingFollowStep / resolveStreamingFollowStepPx` 链
 - `recyclerBottomPaddingPx` 仍负责把底部输入区和工作线留出来；反向底座下最新消息天然贴着这条底部保留线，不再需要额外 footer 或双重到底补推
 - 发送后输入框已回到单行且未聚焦时，`recyclerBottomPaddingPx` 也应继续优先使用稳定单行保留高度，不能刚对齐完锚点又立刻切回实时 `composerTop` 测量
 - `sendStartBottomPaddingLockActive` 现在只作为底部输入区收口期的几何稳定开关，不再承担正向列表的视口快照冻结职责

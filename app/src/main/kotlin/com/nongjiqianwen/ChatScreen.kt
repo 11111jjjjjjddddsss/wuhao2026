@@ -28,7 +28,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -1619,14 +1618,6 @@ fun ChatScreen() {
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
 
-    fun isStreamingReadyForAutoFollow(): Boolean {
-        if (!isStreaming || !hasStreamingItem) return false
-        val worklineBottom = streamingWorklineBottomPx
-        if (worklineBottom <= 0) return false
-        val contentBottom = currentStreamingContentBottomPx()
-        if (contentBottom <= 0) return false
-        return contentBottom >= (worklineBottom - bottomPositionTolerancePx)
-    }
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -2624,24 +2615,8 @@ fun ChatScreen() {
         val visibleBottom = worklineBottom.takeIf { it > 0 }
             ?: (messageViewportHeightPx - streamVisibleBottomGapPx).coerceAtLeast(0)
         val contentBottom = currentStreamingContentBottomPx()
-        return com.nongjiqianwen.currentStreamingOverflowDelta(
-            contentBottom = contentBottom,
-            visibleBottom = visibleBottom
-        )
-    }
-    fun currentStreamingAlignDeltaPx(): Int {
-        val legalBottom = currentStreamingLegalBottomPx()
-        val contentBottom = currentStreamingContentBottomPx()
-        if (legalBottom <= 0 || contentBottom <= 0) return 0
-        val deltaPx = legalBottom - contentBottom
-        return if (deltaPx < 0) deltaPx else 0
-    }
-
-    fun resolveStreamingFollowStepPx(overflow: Int): Int {
-        return com.nongjiqianwen.resolveStreamingFollowStepPx(
-            overflow = overflow,
-            assistantLineStepPx = assistantLineStepPx
-        )
+        if (contentBottom <= 0 || visibleBottom <= 0) return 0
+        return contentBottom - visibleBottom
     }
     fun finishStreaming() {
         mainHandler.post {
@@ -2958,8 +2933,13 @@ fun ChatScreen() {
                 // Reverse layout keeps the newest assistant placeholder at the visual
                 // bottom. Returning to index 0 is enough to let the waiting ball sit
                 // on the workline while the user bubble stays above it.
+                val shouldReturnToBottomForSend =
+                    !atBottom ||
+                        scrollMode == ScrollMode.UserBrowsing ||
+                        recyclerFirstVisibleItemIndex > 0 ||
+                        recyclerFirstVisibleItemScrollOffset > 0
                 val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
-                if (pendingStartAnchorPosition >= 0) {
+                if (pendingStartAnchorPosition >= 0 && shouldReturnToBottomForSend) {
                     chatListState.requestScrollToItem(index = 0)
                 }
                 persistTick++
@@ -3067,24 +3047,6 @@ fun ChatScreen() {
         }
         chatListState.scrollToItem(0)
         initialBottomSnapDone = true
-    }
-
-    val snapStreamingToWorkline: suspend () -> Unit = snapStreamingToWorkline@{
-        com.nongjiqianwen.snapChatListStreamingToWorkline(
-            listState = chatListState,
-            currentStreamingAlignDeltaPx = ::currentStreamingAlignDeltaPx,
-            beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
-            endProgrammaticScroll = ::endProgrammaticChatListScroll
-        )
-    }
-    val performStreamingFollowStep: suspend (Int) -> Unit = performStreamingFollowStep@{ stepPx ->
-        if (stepPx == 0) return@performStreamingFollowStep
-        beginProgrammaticChatListScroll()
-        try {
-            chatListState.scrollBy(stepPx.toFloat())
-        } finally {
-            endProgrammaticChatListScroll()
-        }
     }
 
     fun completeStreamingImmediatelyFromBackground() {
@@ -3199,14 +3161,8 @@ fun ChatScreen() {
         pendingFinalBottomSnapState = scrollRuntime.pendingFinalBottomSnap,
         currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
-        currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
-        currentStreamingOverflowDelta = ::currentStreamingOverflowDelta,
         isNearStreamingWorkline = ::isNearStreamingWorkline,
         isWithinBottomTolerance = ::isWithinBottomTolerance,
-        isStreamingReadyForAutoFollow = ::isStreamingReadyForAutoFollow,
-        resolveStreamingFollowStepPx = ::resolveStreamingFollowStepPx,
-        performStreamingFollowStep = performStreamingFollowStep,
-        snapStreamingToWorkline = snapStreamingToWorkline,
         scrollToBottom = scrollToBottom
     )
 

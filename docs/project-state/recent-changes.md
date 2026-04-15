@@ -4,6 +4,8 @@
 
 ## 2026-04-15
 
+- 反向底座继续收敛：发送时仅当当前不在底部锚点时才触发 `requestScrollToItem(0)`；若本来就在底部，则交给 `LazyColumn(reverseLayout = true)` 的天然底部锚定处理，减少“已经贴底还再强推一遍”的抖动
+- 删除反向底座下仍在并行的旧 streaming 手动补偿链：`snapStreamingToWorkline`、`performStreamingFollowStep`、`resolveStreamingFollowStepPx`、`currentStreamingAlignDeltaPx` 已退出运行时主链；`ChatScrollCoordinator` 现在只保留 `Idle / AutoFollow / UserBrowsing` 的控制权切换，不再在 streaming 期间主动 `scrollBy` 追工作线
 - 聊天底座已翻为 `LazyColumn(reverseLayout = true)`：运行时消息状态仍保持正序，但传给列表的显示顺序改为 `asReversed()`，让最新消息天然贴近底部工作线，减少正向底座底部插入时的整体回弹
 - 删除所有只服务正向发送起步的 offset / 视口快照链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已退出运行时主链；发送时改为直接 `requestScrollToItem(0)`
 - 首次进入聊天页的贴底逻辑已改为 `scrollToItem(0)`；不再依赖 footer + 两次到底补推

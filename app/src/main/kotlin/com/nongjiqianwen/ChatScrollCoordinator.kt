@@ -10,8 +10,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
-import kotlinx.coroutines.isActive
-import kotlin.math.roundToInt
 
 internal enum class ScrollMode {
     Idle,
@@ -148,23 +146,6 @@ internal suspend fun scrollChatListToBottom(
     endProgrammaticScroll()
 }
 
-internal suspend fun snapChatListStreamingToWorkline(
-    listState: LazyListState?,
-    currentStreamingAlignDeltaPx: () -> Int,
-    beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit
-) {
-    val activeListState = listState ?: return
-    val deltaPx = currentStreamingAlignDeltaPx()
-    if (deltaPx == 0) return
-    beginProgrammaticScroll()
-    try {
-        activeListState.scrollBy((-deltaPx).toFloat())
-    } finally {
-        endProgrammaticScroll()
-    }
-}
-
 internal fun handleChatListScrollStateChanged(
     scrollInProgress: Boolean,
     userDragging: Boolean,
@@ -274,14 +255,8 @@ internal fun BindChatListScrollEffects(
     pendingFinalBottomSnapState: MutableState<Boolean>,
     currentLastMessageContentBottomPx: () -> Int,
     currentStreamingContentBottomPx: () -> Int,
-    currentStreamingLegalBottomPx: () -> Int,
-    currentStreamingOverflowDelta: () -> Int,
     isNearStreamingWorkline: () -> Boolean,
     isWithinBottomTolerance: () -> Boolean,
-    isStreamingReadyForAutoFollow: () -> Boolean,
-    resolveStreamingFollowStepPx: (Int) -> Int,
-    performStreamingFollowStep: suspend (Int) -> Unit,
-    snapStreamingToWorkline: suspend () -> Unit,
     scrollToBottom: suspend (Boolean) -> Unit
 ) {
     val scrollMode = scrollModeState.value
@@ -296,73 +271,40 @@ internal fun BindChatListScrollEffects(
         userInteracting,
         listScrollInProgress,
         currentStreamingContentBottomPx(),
-        currentStreamingLegalBottomPx()
+        isNearStreamingWorkline()
     ) {
         if (!isStreaming || !hasStreamingItem) {
             streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
-        while (isActive && isStreaming && hasStreamingItem) {
-            withFrameNanos { }
-            val activeScrollMode = scrollModeState.value
-            val contentBottom = currentStreamingContentBottomPx()
-            if (activeScrollMode == ScrollMode.UserBrowsing) {
-                if (
-                    !listScrollInProgress &&
-                    !userInteractingState.value &&
-                    isNearStreamingWorkline()
-                ) {
-                    scrollModeState.value = ScrollMode.AutoFollow
-                    continue
-                }
-                streamBottomFollowActiveState.value = false
-                continue
+        val activeScrollMode = scrollModeState.value
+        val contentBottom = currentStreamingContentBottomPx()
+        if (activeScrollMode == ScrollMode.UserBrowsing) {
+            if (
+                !listScrollInProgress &&
+                !userInteractingState.value &&
+                isNearStreamingWorkline()
+            ) {
+                scrollModeState.value = ScrollMode.AutoFollow
             }
-            if (listScrollInProgress || userInteractingState.value) {
-                streamBottomFollowActiveState.value = false
-                continue
-            }
-            if (contentBottom <= 0) {
-                streamBottomFollowActiveState.value = false
-                continue
-            }
-            if (activeScrollMode == ScrollMode.Idle) {
-                if (streamingMessageContent.isBlank()) {
-                    streamBottomFollowActiveState.value = false
-                    continue
-                }
-                if (currentStreamingOverflowDelta() > 0 && isStreamingReadyForAutoFollow()) {
-                    snapStreamingToWorkline()
-                }
-                if (isStreamingReadyForAutoFollow()) {
-                    if (
-                        scrollModeState.value == ScrollMode.Idle &&
-                        !userInteractingState.value &&
-                        !listScrollInProgress
-                    ) {
-                        scrollModeState.value = ScrollMode.AutoFollow
-                    }
-                }
-                streamBottomFollowActiveState.value = false
-                continue
-            }
-            if (streamingMessageContent.isBlank() || activeScrollMode != ScrollMode.AutoFollow) {
-                streamBottomFollowActiveState.value = false
-                continue
-            }
-            val overflow = currentStreamingOverflowDelta()
-            val stepPx = resolveStreamingFollowStepPx(overflow)
-            if (stepPx == 0) {
-                streamBottomFollowActiveState.value = false
-                continue
-            }
-            streamBottomFollowActiveState.value = true
-            try {
-                performStreamingFollowStep(stepPx)
-            } finally {
-                streamBottomFollowActiveState.value = false
-            }
+            streamBottomFollowActiveState.value = false
+            return@LaunchedEffect
         }
+        if (listScrollInProgress || userInteractingState.value) {
+            streamBottomFollowActiveState.value = false
+            return@LaunchedEffect
+        }
+        if (contentBottom <= 0 || streamingMessageContent.isBlank()) {
+            streamBottomFollowActiveState.value = false
+            return@LaunchedEffect
+        }
+        // Reverse layout already keeps the newest assistant host pinned at the
+        // visual bottom while the user is not browsing. During streaming we only
+        // need to manage ownership, not run the old overflow-driven scrollBy chain.
+        if (scrollModeState.value != ScrollMode.AutoFollow) {
+            scrollModeState.value = ScrollMode.AutoFollow
+        }
+        streamBottomFollowActiveState.value = false
     }
 
     LaunchedEffect(
@@ -388,25 +330,6 @@ internal fun BindChatListScrollEffects(
             pendingFinalBottomSnapState.value = false
         }
     }
-
-}
-
-internal fun currentStreamingOverflowDelta(
-    contentBottom: Int,
-    visibleBottom: Int
-): Int {
-    if (contentBottom <= 0 || visibleBottom <= 0) return 0
-    return contentBottom - visibleBottom
-}
-
-internal fun resolveStreamingFollowStepPx(
-    overflow: Int,
-    assistantLineStepPx: Int
-): Int {
-    if (overflow <= 0) return 0
-    val triggerThresholdPx = (assistantLineStepPx * 0.04f).roundToInt().coerceAtLeast(3)
-    if (overflow < triggerThresholdPx) return 0
-    return overflow
 }
 
 internal fun shouldShowStreamingScrollToBottomButton(
