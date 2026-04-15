@@ -4,6 +4,7 @@
 
 当前 runbook：
 
+- [chat-ui-regression.md](D:/wuhao/docs/runbooks/chat-ui-regression.md)：聊天 UI 回归与接手入口
 - [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 发版入口
 - [rollback.md](D:/wuhao/docs/runbooks/rollback.md)：回滚入口
 - [logs-sls.md](D:/wuhao/docs/runbooks/logs-sls.md)：日志排查入口

@@ -44,6 +44,25 @@
 - 关键决策：`docs/adr`
 - 运维与排障入口：`docs/runbooks`
 
+## 当前调试焦点
+
+- 当前最值得新窗口优先接手的热点，仍是 Android 聊天 UI 的最后两处顽固抖动；接手时先看这里，再回到完整代码真相
+- 焦点 1：发送瞬间整块消息区会轻微上下抖一下
+  - 当前最可疑代码点：`ChatScreen.kt` 的 `commitSendMessage(...)`
+  - 当前真实顺序仍是：先 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，然后才 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(0)`
+  - 下一刀的正确方向：保留发送门禁和 streaming 起始态原位，只把真正引发输入区高度塌陷的收口动作后移到“placeholder 已进入 Layout 且命中底部容差”之后
+- 焦点 2：streaming 过程中正文仍会“往下掉一下再弹回”
+  - 当前最可疑代码点：`ChatStreamingRenderer.kt` 的 `RendererAssistantStreamingContentImpl(...)`
+  - 当前真实结构仍是：`completedModels.forEachIndexed { ... }` 一套 completed 分支，`activeModel?.let { ... }` 一套 active 分支
+  - 下一刀的正确方向：参考同文件里 `RendererAssistantMarkdownContentImpl(...)` 已存在的单循环 + `blockModifier` 模式，把 streaming 改成块级同构宿主；不要再回到行级 `stableLines / activeLine` 层反复试错
+- 已明确排除、不要再回滚的方向：
+  - 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout` 主链
+  - `alignChatListBottom()` 的 8 帧 `scrollBy` 补偿
+  - `pendingFinalBottomSnap`
+  - 发送链里的 `withFrameNanos` 延迟回底
+  - 普通 idle 聚焦输入框时带着历史区一起联动
+- 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
+
 ## 当前阶段判断
 
 - 代码主干已存在，当前更需要的是把“规则、状态、方案取舍、运维入口”固化进仓库，降低换窗口和长期接手成本

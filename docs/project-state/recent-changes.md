@@ -4,6 +4,8 @@
 
 ## 2026-04-16
 
+- 记忆系统继续做减法和收口：`current-status.md` 新增“当前调试焦点”，把聊天 UI 剩余热点明确收敛到发送事务时序和 streaming 块级宿主交接；同时新增 `docs/runbooks/chat-ui-regression.md` 作为统一复现/验收入口，方便新窗口和外部会诊前自查
+- `open-risks.md` 与 `pending-decisions.md` 已同步收平：不再继续写“没有程序化校验”这一过期口径，改为承认 `scripts/check_project_memory.py` 与 CI 已接入，同时明确当前校验粒度仍偏粗
 - 主规则补充“外部会诊现实约束”：Gemini / Claude 等外部模型默认看不到本地仓库与文件链接，只能依赖用户转发的文字、代码片段、截图和日志；因此后续会诊稿必须自包含，不能只报文件名让对方自己猜
 - 主规则新增“会诊稿规则”：以后会诊前必须先完成本地代码排查；发给 Gemini / Claude 的会诊稿默认要落到具体文件、函数、状态、必要代码片段、已排除项和限制条件，禁止只发抽象症状或让外部模型假设仓库里不存在的接口
 - 输入框与文本区继续解耦：`ChatScreen.kt` 现在只在 streaming 进行时才让工作线和 `recyclerBottomPaddingPx` 参考实时 `composerTop`；普通 idle 状态下，不论停在底部还是历史区，列表都改回稳定 bottom bar / overlay 高度，避免输入框弹起时把整段消息区一起往上拽
