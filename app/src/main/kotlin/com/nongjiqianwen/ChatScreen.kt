@@ -2913,10 +2913,12 @@ fun ChatScreen() {
                 isStreaming = true
                 streamingMessageId = assistantId
                 // Reverse layout keeps the newest assistant placeholder at the visual
-                // bottom. Returning to index 0 is enough to let the waiting ball sit
-                // on the workline while the user bubble stays above it.
+                // bottom. LazyColumn keeps the keyed visible item stable when new
+                // items are inserted ahead of it, so we must override that default
+                // on the next frame and explicitly request index 0.
                 val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
-                if (pendingStartAnchorPosition >= 0 && recyclerFirstVisibleItemIndex > 0) {
+                if (pendingStartAnchorPosition >= 0) {
+                    withFrameNanos { }
                     chatListState.requestScrollToItem(index = 0)
                 }
                 persistTick++
