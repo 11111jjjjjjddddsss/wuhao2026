@@ -1090,7 +1090,7 @@ private fun RendererStreamingAnimatedLineTextImpl(
 
 @Composable
 private fun RendererStreamingCommittedTextBlockImpl(
-    text: String,
+    text: AnnotatedString,
     style: TextStyle,
     emptyLineHeight: Dp,
     modifier: Modifier = Modifier
@@ -1101,7 +1101,7 @@ private fun RendererStreamingCommittedTextBlockImpl(
         val maxWidthPx = with(density) { maxWidth.roundToPx() }
         val measured = remember(text, style, maxWidthPx) {
             val lines = buildStableStreamingLineBuffer(
-                text = AnnotatedString(text),
+                text = text,
                 style = style,
                 availableWidthPx = maxWidthPx,
                 textMeasurer = textMeasurer
@@ -1126,16 +1126,10 @@ private fun RendererAssistantStreamingCommittedBlockImpl(
     showLeadingSectionDivider: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    @Composable
-    fun RichText(text: String, modifier: Modifier = Modifier, style: TextStyle) {
-        val annotated = remember(text) { getCachedAnnotatedString(text) }
-        Text(
-            text = annotated,
-            modifier = modifier,
-            style = style,
-            textAlign = TextAlign.Start
-        )
-    }
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val spacingPx = with(density) { 8.dp.roundToPx() }
+    val paragraphLineHeight = with(density) { assistantStreamingParagraphTextStyle().lineHeight.toDp() }
 
     when (model) {
         StreamingLineModel.Blank -> Spacer(modifier = modifier.height(MARKDOWN_BLOCK_SPACING))
@@ -1146,49 +1140,88 @@ private fun RendererAssistantStreamingCommittedBlockImpl(
             if (showLeadingSectionDivider && model.level <= 2) {
                 RendererMarkdownSectionDividerImpl()
             }
-            RichText(
-                text = model.text,
+            RendererStreamingCommittedTextBlockImpl(
+                text = remember(model.text) { getCachedAnnotatedString(model.text) },
                 modifier = Modifier.fillMaxWidth(),
-                style = assistantStreamingHeadingTextStyle(model.level)
+                style = assistantStreamingHeadingTextStyle(model.level),
+                emptyLineHeight = with(density) { assistantStreamingHeadingTextStyle(model.level).lineHeight.toDp() }
             )
         }
-        is StreamingLineModel.Bullet -> Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "\u2022",
-                style = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
-            )
-            RichText(
-                text = model.text,
-                modifier = Modifier.weight(1f),
-                style = assistantStreamingParagraphTextStyle()
+        is StreamingLineModel.Bullet -> BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+            val bulletStyle = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
+            val bodyStyle = assistantStreamingParagraphTextStyle()
+            val bodyText = remember(model.text) { getCachedAnnotatedString(model.text) }
+            val maxWidthPx = with(density) { maxWidth.roundToPx() }
+            val bulletWidthPx = remember(textMeasurer, bulletStyle) {
+                textMeasurer.measure(AnnotatedString("\u2022"), style = bulletStyle).size.width
+            }
+            val bodyWidthPx = (maxWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
+            val gutterWidth = with(density) { (bulletWidthPx + spacingPx).toDp() }
+            val lines = remember(bodyText, bodyStyle, bodyWidthPx) {
+                val measured = buildStableStreamingLineBuffer(
+                    text = bodyText,
+                    style = bodyStyle,
+                    availableWidthPx = bodyWidthPx,
+                    textMeasurer = textMeasurer
+                )
+                StreamingRenderedLines(
+                    stableLines = if (measured.activeLine != null) measured.stableLines + measured.activeLine else measured.stableLines,
+                    activeLine = null
+                )
+            }
+            RendererStreamingBulletOrNumberedBlockImpl(
+                leading = { Text(text = "\u2022", style = bulletStyle) },
+                gutterWidth = gutterWidth,
+                bodyStyle = bodyStyle,
+                paragraphLineHeight = paragraphLineHeight,
+                lines = lines,
+                freshTailChars = 0,
+                freshTick = 0
             )
         }
-        is StreamingLineModel.Numbered -> Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "${model.number}.",
-                style = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
-            )
-            RichText(
-                text = model.text,
-                modifier = Modifier.weight(1f),
-                style = assistantStreamingParagraphTextStyle()
+        is StreamingLineModel.Numbered -> BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+            val numberStyle = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
+            val bodyStyle = assistantStreamingParagraphTextStyle()
+            val bodyText = remember(model.text) { getCachedAnnotatedString(model.text) }
+            val maxWidthPx = with(density) { maxWidth.roundToPx() }
+            val numberWidthPx = remember(textMeasurer, model.number, numberStyle) {
+                textMeasurer.measure(AnnotatedString("${model.number}."), style = numberStyle).size.width
+            }
+            val bodyWidthPx = (maxWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
+            val gutterWidth = with(density) { (numberWidthPx + spacingPx).toDp() }
+            val lines = remember(bodyText, bodyStyle, bodyWidthPx) {
+                val measured = buildStableStreamingLineBuffer(
+                    text = bodyText,
+                    style = bodyStyle,
+                    availableWidthPx = bodyWidthPx,
+                    textMeasurer = textMeasurer
+                )
+                StreamingRenderedLines(
+                    stableLines = if (measured.activeLine != null) measured.stableLines + measured.activeLine else measured.stableLines,
+                    activeLine = null
+                )
+            }
+            RendererStreamingBulletOrNumberedBlockImpl(
+                leading = { Text(text = "${model.number}.", style = numberStyle) },
+                gutterWidth = gutterWidth,
+                bodyStyle = bodyStyle,
+                paragraphLineHeight = paragraphLineHeight,
+                lines = lines,
+                freshTailChars = 0,
+                freshTick = 0
             )
         }
-        is StreamingLineModel.Quote -> RichText(
-            text = model.text,
+        is StreamingLineModel.Quote -> RendererStreamingCommittedTextBlockImpl(
+            text = remember(model.text) { getCachedAnnotatedString(model.text) },
             modifier = modifier.fillMaxWidth(),
-            style = assistantStreamingParagraphTextStyle()
+            style = assistantStreamingParagraphTextStyle(),
+            emptyLineHeight = paragraphLineHeight
         )
-        is StreamingLineModel.Paragraph -> RichText(
-            text = model.text,
+        is StreamingLineModel.Paragraph -> RendererStreamingCommittedTextBlockImpl(
+            text = remember(model.text) { getCachedAnnotatedString(model.text) },
             modifier = modifier.fillMaxWidth(),
-            style = assistantStreamingParagraphTextStyle()
+            style = assistantStreamingParagraphTextStyle(),
+            emptyLineHeight = paragraphLineHeight
         )
     }
 }
