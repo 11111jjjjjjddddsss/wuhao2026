@@ -28,6 +28,7 @@
 - 列表底部保留高度与工作线当前只在 streaming 进行且不处于发送 / 输入区收口窗口时才参考实时 `composerTop`；`sendUiSettling` 或 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍在结算时，列表会强制回退到稳定 bottom bar / overlay 高度，避免“输入框瞬间回缩 + 小球立即出现”这一拍把消息区一起抖动
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需单发 `requestScrollToItem(0)`。这样完成那一拍不再出现工作线口径、底部判定源、内容宿主同时换挡
 - 发送链当前不再把“输入框收口”和“消息插入 + 回底请求”拆到两拍：`commitSendMessage()` 已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务里，网络/SSE 仅保留在后续协程，专门收“发送瞬间上下抖一下”的事务分帧问题
+- `commitSendMessage()` 当前进一步把发送当拍的 Compose state 写入收口到 `Snapshot.withMutableSnapshot { ... }`：输入框收口、消息插入、streaming 状态切换和 `requestScrollToItem(0)` 现在会作为一次 mutable snapshot 提交，先试着压掉发送瞬间的中间帧抖动；焦点管理和收键盘仍保留在 snapshot 外紧接执行
 - 发送起步窗口当前额外放开了实时 composer 几何：`shouldUseRealtimeComposerGeometry` 现在在 `sendUiSettling == true` 时不再被 `isComposerSettling` 一刀切断，避免输入框瞬间清空回缩时，工作线和 bottom reserved height 先断崖回退、再配合 `requestScrollToItem(0)` 制造整块上下抖
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起打包给 Gemini / Claude，避免外部方案继续停留在抽象猜测层
