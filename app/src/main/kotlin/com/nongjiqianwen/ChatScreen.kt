@@ -1791,7 +1791,7 @@ fun ChatScreen() {
             resolvedReservedHeightPx
         }
     }
-    val recyclerBottomPaddingState = remember(
+    val recyclerBottomPaddingPx by remember(
         bottomContentReservedHeightPx,
         streamVisibleBottomGapPx
     ) {
@@ -1799,7 +1799,6 @@ fun ChatScreen() {
             bottomContentReservedHeightPx + streamVisibleBottomGapPx
         }
     }
-    val recyclerBottomPaddingPx by recyclerBottomPaddingState
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
@@ -3356,7 +3355,7 @@ fun ChatScreen() {
                         listState = chatListState,
                         itemIds = messages.map { it.id },
                         topPaddingPx = chatListTopPaddingPx,
-                        bottomPaddingState = recyclerBottomPaddingState,
+                        bottomPaddingPx = recyclerBottomPaddingPx,
                         modifier = Modifier
                             .then(
                                 if (hasActiveMessageSelection) {

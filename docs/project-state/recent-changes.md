@@ -4,7 +4,6 @@
 
 ## 2026-04-17
 
-- `ChatRecyclerViewHost.kt` 当前不再把 `recyclerBottomPaddingPx` 直接塞给 `LazyColumn.contentPadding.bottom`；列表底部保留高度改为由外层 `Layout` 在测量阶段消费，`ChatScreen.kt` 同步把 `recyclerBottomPaddingPx` 收口成 `State<Int>` 传入，专门针对“发送瞬间整块消息区先上跳再掉回”的 composition/layout 一帧错拍
 - streaming 渲染继续做减法：`ChatStreamingRenderer.kt` 的 unified streaming host 当前不再在 block 外壳 modifier 上挂 `padding(top = MARKDOWN_BLOCK_SPACING)`；非首块间距改为插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，避免新 block 出生那一拍把既有内容整体往下踹
 - streaming block 交接继续收口到同一套测量实现：`RendererAssistantStreamingUnifiedBlockHost(...)` 在 streaming 期间不再让 completed blocks 走 `RendererAssistantStreamingCommittedBlockImpl(...)`；当前所有 block 统一复用 `RendererAssistantStreamingActiveBlockImpl(...)`，仅最后一个 active block 保留 fresh tail 高亮，专门减少 active -> committed 中途交接时的帧级高度重算
 - `ChatStreamingRenderer(...)` 的最外层内容宿主已统一成同一个 `Column`：streaming / settled 现在共用 `boundsReportingModifier` 与宽度约束，streaming 的 `BottomStart` 对齐下沉到内部 `Box`。这次改动只收“生成完成那一下像再次排版的轻微上抬”，避免 renderMode 切换时最外层 `Box -> Column` 换树
