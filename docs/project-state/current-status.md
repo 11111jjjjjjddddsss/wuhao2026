@@ -23,7 +23,7 @@
 - streaming 分支最外层宿主当前已从 `TopStart` 改为 `BottomStart`，让正文在反向底座里沿同一物理底边向上生长，减少流式换行时“先往下掉一下再被拉回”的体感
 - streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；块间距已改为挂在各 block 自身的 top padding 上，减少段落 / 列表新块诞生时把既有内容整体往下踹一拍
 - 列表底部保留高度与工作线当前只在 streaming 进行且不处于发送 / 输入区收口窗口时才参考实时 `composerTop`；`sendUiSettling` 或 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍在结算时，列表会强制回退到稳定 bottom bar / overlay 高度，避免“输入框瞬间回缩 + 小球立即出现”这一拍把消息区一起抖动
-- streaming 正常结束与本地 fake streaming 的后台同步完结，当前都会在 `scrollMode != UserBrowsing` 时补一发 `LazyListState.requestScrollToItem(0)`；目的不是恢复旧 `pendingFinalBottomSnap`，而是让 completed 宿主在下一次 remeasure 里重新贴回底部工作线，修复“完成后上跳一下、底部露白”的近期回归
+- streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需单发 `requestScrollToItem(0)`。这样完成那一拍不再出现工作线口径、底部判定源、内容宿主同时换挡
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起打包给 Gemini / Claude，避免外部方案继续停留在抽象猜测层
 - 当前外部会诊现实约束已明确：Gemini / Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
 - `sendStartBottomPaddingLockActive` 已退出工作线和 `recyclerBottomPaddingPx` 的运行时计算主链；`sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍只服务输入框自身收口和 overlay 生命周期
@@ -66,7 +66,7 @@
   - 发送链里的 `withTimeoutOrNull` 延后收口实验
   - 普通 idle 聚焦输入框时带着历史区一起联动
 - 本轮新增回归修复点：
-  - `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 不再在完成同一拍直接 eager `requestScrollToItem(0)`；当前改为等 completed 宿主真实测量出来后，仅在确认仍离底时才按需单发归位，专门收口“生成结束后偶发上跳、底部留白”和“切后台再回来底部留白”的完成态时序竞态
+- `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 当前不再在完成同一拍直接切 `isStreaming = false`。新的主链是：先写 completed 消息，再用 `pendingStreamingFinalizeMessageId` 把 active assistant 临时切到 settled renderMode，等同一条消息的 fresh completed bounds 到位后，再一次性切掉 streaming 状态；这样底部判定源不会在 bounds 为空时提前换源，专门收口“生成结束后偶发上跳、底部留白”和“切后台再回来底部留白”的时序竞态
 - 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
 
 ## 当前阶段判断

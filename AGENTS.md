@@ -214,8 +214,8 @@ Clean-State 必做回归的范围：
 - 作用：发送时不再冻结底部 padding；工作线和底部保留高度优先跟随实时 composer 几何，仅在测量尚不可用或 overlay 接管时才回退到现有 bottom bar 高度
 
 4. 完成态收口
-- 主人：反向列表天然底部锚定
-- 作用：streaming 结束后不再追加 `pendingFinalBottomSnap` 这类完成态补滚；若用户仍停留在主链、未进入 `UserBrowsing`，只允许在 completed 宿主真实测量落地后做“按需单发” `requestScrollToItem(0)`。禁止在 `finishStreaming` / 后台同步完结的同一拍直接 eager 补滚，避免和宿主切换时序打架，导致完成瞬间偶发上跳与底部留白
+- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
+- 作用：streaming 结束时不再在同一拍直接切 `isStreaming = false`；必须先把最终内容写入 completed 消息，并保持 streaming 几何口径继续生效，同时清掉该消息旧 streaming bounds，等待 completed 宿主 fresh bounds 真正上报后，再原子切换 `isStreaming / streamingMessageId / scrollRuntime`。只有切换完成后仍离底时，才允许按需单发 `requestScrollToItem(0)`，避免完成那一拍工作线口径、底部判定源、内容宿主一起切换导致偶发上跳与底部留白
 
 5. 用户浏览
 - 主人：用户手指

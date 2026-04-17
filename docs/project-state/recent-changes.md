@@ -4,7 +4,7 @@
 
 ## 2026-04-17
 
-- 调整 completed 宿主收口时序：`ChatScreen.kt` 不再在 `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 的同一拍直接 eager `requestScrollToItem(0)`；当前改为等待 completed 宿主真实测量出来后，只在仍离底时按需单发归位，专门收“生成结束偶发上跳、底部露白”的竞态
+- 调整 completed 宿主收口时序：`ChatScreen.kt` 当前改成“两阶段 finalize”。第一阶段先把最终内容写入 completed 消息，但暂不切 `isStreaming`，并按最终消息 `id` 清掉旧 streaming bounds；第二阶段等同一条消息的 fresh completed bounds 真实测量出来后，再原子切掉 streaming 状态，并只在仍离底时按需单发 `requestScrollToItem(0)`，专门收“生成结束偶发上跳、底部露白”和“后台直接完结再回来露白”的竞态
 - 当前仓库真相已同步收口：根 `AGENTS.md` 与 `docs/project-state/current-status.md` 已明确完成态归位仍不是旧 `pendingFinalBottomSnap` 状态机，也不是任何多帧 `scrollBy` 补偿链；旧 final snap 口径继续废弃
 
 ## 2026-04-16

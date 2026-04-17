@@ -1464,7 +1464,12 @@ fun ChatScreen() {
     var messageViewportTopPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
     var composerTopInViewportPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var topChromeMaskBottomPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
-    var pendingSettledBottomAnchorRestore by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var pendingStreamingFinalizeMessageId by remember(uiRuntimeResetKey) {
+        mutableStateOf<String?>(null)
+    }
+    var pendingStreamingFinalizeShouldRestoreBottomAnchor by remember(uiRuntimeResetKey) {
+        mutableStateOf(false)
+    }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -2383,6 +2388,8 @@ fun ChatScreen() {
 
     fun resetStreamingUiState(clearVisibleContent: Boolean) {
         mainHandler.post {
+            pendingStreamingFinalizeMessageId = null
+            pendingStreamingFinalizeShouldRestoreBottomAnchor = false
             remoteRecoveryJob?.cancel()
             remoteRecoveryJob = null
             remoteRecoverySourceUserMessageId = null
@@ -2614,12 +2621,55 @@ fun ChatScreen() {
         )
     }
 
-    fun requestBottomAnchorRestoreAfterStreamingStop(shouldRestore: Boolean) {
-        pendingSettledBottomAnchorRestore = shouldRestore && messages.isNotEmpty()
+    fun clearPendingStreamingFinalize() {
+        pendingStreamingFinalizeMessageId = null
+        pendingStreamingFinalizeShouldRestoreBottomAnchor = false
+    }
+
+    fun beginPendingStreamingFinalize(
+        anchorMessageId: String,
+        shouldRestoreBottomAnchor: Boolean
+    ) {
+        // Drop stale streaming bounds so the finalized settled host must report
+        // a fresh bottom before we hand geometry ownership away from streaming.
+        messageContentBoundsById.remove(anchorMessageId)
+        messageSelectionBoundsById.remove(anchorMessageId)
+        pendingStreamingFinalizeMessageId = anchorMessageId
+        pendingStreamingFinalizeShouldRestoreBottomAnchor = shouldRestoreBottomAnchor
+    }
+
+    fun restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor: Boolean) {
+        if (!shouldRestoreBottomAnchor) return
+        if (scrollMode == ScrollMode.UserBrowsing) return
+        if (messages.isEmpty()) return
+        if (!isWithinBottomTolerance()) {
+            chatListState.requestScrollToItem(index = 0)
+        }
+    }
+
+    fun finalizeStreamingStop(
+        shouldRestoreBottomAnchor: Boolean
+    ) {
+        isStreaming = false
+        sendUiSettling = false
+        streamingMessageId = null
+        streamingMessageContent = ""
+        streamingRevealBuffer = ""
+        streamingFreshStart = -1
+        streamingFreshEnd = -1
+        streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
+        streamingBackgrounded = false
+        fakeStreamJob = null
+        streamRevealJob = null
+        resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
+        restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor)
+        clearPendingStreamingFinalize()
     }
 
     fun finishStreaming() {
         mainHandler.post {
+            if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             streamRevealJob?.cancel()
             streamRevealJob = null
@@ -2638,23 +2688,17 @@ fun ChatScreen() {
             val finalContent = streamingMessageContent
             val finalId = streamingMessageId
             fakeStreamJob = null
-            isStreaming = false
-            sendUiSettling = false
             streamingRevealBuffer = ""
-            streamingFreshStart = -1
-            streamingFreshEnd = -1
-            streamingLineAdvanceTick = 0
-            streamingBackgrounded = false
-            resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
                     messageId = finalId.orEmpty(),
                     content = finalContent
                 )
-                streamingMessageId = null
-                streamingMessageContent = ""
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
+                beginPendingStreamingFinalize(
+                    anchorMessageId = finalId.orEmpty(),
+                    shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
+                )
                 persistTick++
                 val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
@@ -2665,9 +2709,7 @@ fun ChatScreen() {
                 }
             } else {
                 finalId?.let(::removeMessageById)
-                streamingMessageId = null
-                streamingMessageContent = ""
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
+                finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
                 persistTick++
             }
         }
@@ -2721,6 +2763,7 @@ fun ChatScreen() {
     fun recoverStreamingAfterLifecycleLoss() {
         mainHandler.post {
             if (!isStreaming) return@post
+            if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             if (hasRemoteHistorySource) return@post
             resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
             if (streamRevealJob?.isActive == true) {
@@ -2753,21 +2796,12 @@ fun ChatScreen() {
         mainHandler.post {
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
+            clearPendingStreamingFinalize()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
-            isStreaming = false
-            sendUiSettling = false
-            streamingMessageId = null
-            streamingMessageContent = ""
-            streamingRevealBuffer = ""
-            streamingFreshStart = -1
-            streamingFreshEnd = -1
-            streamingLineAdvanceTick = 0
-            lastStreamingFreshRevealMs = 0L
-            streamingBackgrounded = false
-            resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
+            finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             context.clearLocalStreamingDraftSync(chatScopeId)
             if (canAttemptRemoteAssistantRecovery(reason)) {
                 if (finalContent.isNotBlank()) {
@@ -3005,44 +3039,38 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(
-        pendingSettledBottomAnchorRestore,
+        pendingStreamingFinalizeMessageId,
         isStreaming,
-        scrollMode,
         messages.size
     ) {
-        if (!pendingSettledBottomAnchorRestore) return@LaunchedEffect
-        if (isStreaming || scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
-        if (messages.isEmpty()) {
-            pendingSettledBottomAnchorRestore = false
+        val pendingMessageId = pendingStreamingFinalizeMessageId
+        if (pendingMessageId.isNullOrBlank()) return@LaunchedEffect
+        if (!isStreaming) {
+            clearPendingStreamingFinalize()
+            return@LaunchedEffect
+        }
+        if (messages.none { it.id == pendingMessageId }) {
+            clearPendingStreamingFinalize()
             return@LaunchedEffect
         }
         withTimeoutOrNull(200L) {
             snapshotFlow {
-                val newestMessageId = messages.lastOrNull()?.id
-                chatListState.layoutInfo.visibleItemsInfo.any { it.index == 0 } ||
-                    (newestMessageId != null && messageContentBoundsById.containsKey(newestMessageId))
+                messageContentBoundsById.containsKey(pendingMessageId)
             }
                 .filter { it }
                 .first()
         }
-        if (
-            pendingSettledBottomAnchorRestore &&
-            !isStreaming &&
-            scrollMode != ScrollMode.UserBrowsing &&
-            messages.isNotEmpty() &&
-            !isWithinBottomTolerance()
-        ) {
-            // Only restore after the completed host has reported its settled bounds.
-            // This removes the completion-time race where an eager restore can
-            // sometimes re-anchor against a transient geometry and leave a gap.
-            chatListState.requestScrollToItem(index = 0)
+        if (pendingStreamingFinalizeMessageId == pendingMessageId && isStreaming) {
+            finalizeStreamingStop(
+                shouldRestoreBottomAnchor = pendingStreamingFinalizeShouldRestoreBottomAnchor
+            )
         }
-        pendingSettledBottomAnchorRestore = false
     }
 
     fun completeStreamingImmediatelyFromBackground() {
         val finalizeStreamingFromBackground: () -> Unit = finalizeStreamingFromBackground@{
             if (!isStreaming) return@finalizeStreamingFromBackground
+            if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@finalizeStreamingFromBackground
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             val finalId = streamingMessageId
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
@@ -3055,25 +3083,17 @@ fun ChatScreen() {
             streamingMessageId = finalId
             streamingMessageContent = finalContent
             streamingRevealBuffer = ""
-            isStreaming = false
-            sendUiSettling = false
-            streamingRevealBuffer = ""
-            streamingFreshStart = -1
-            streamingFreshEnd = -1
-            streamingLineAdvanceTick = 0
-            lastStreamingFreshRevealMs = 0L
-            streamingBackgrounded = false
-            streamingMessageId = null
-            streamingMessageContent = ""
-            resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
                     messageId = finalId,
                     content = finalContent
                 )
+                beginPendingStreamingFinalize(
+                    anchorMessageId = finalId,
+                    shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
+                )
                 persistTick++
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
                     messages = persistableMessagesSnapshot()
@@ -3086,7 +3106,7 @@ fun ChatScreen() {
                     messages = persistableMessagesSnapshot()
                 )
                 context.clearLocalStreamingDraftSync(chatScopeId)
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
+                finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -3102,7 +3122,7 @@ fun ChatScreen() {
                 suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true
-                    if (!hasRemoteHistorySource) {
+                    if (!hasRemoteHistorySource && pendingStreamingFinalizeMessageId.isNullOrBlank()) {
                         completeStreamingImmediatelyFromBackground()
                     }
                 }
@@ -3110,7 +3130,12 @@ fun ChatScreen() {
                 keyboardController?.hide()
             } else if (event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
-                if (isStreaming && fakeStreamJob?.isActive != true && streamRevealJob?.isActive != true) {
+                if (
+                    isStreaming &&
+                    pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                    fakeStreamJob?.isActive != true &&
+                    streamRevealJob?.isActive != true
+                ) {
                     recoverStreamingAfterLifecycleLoss()
                 }
             }
@@ -3364,6 +3389,9 @@ fun ChatScreen() {
                             msg.role == ChatRole.ASSISTANT &&
                                 msg.id == streamingMessageId &&
                                 (isStreaming || streamingMessageContent.isNotBlank())
+                        val isPendingStreamingFinalizeAssistant =
+                            msg.role == ChatRole.ASSISTANT &&
+                                msg.id == pendingStreamingFinalizeMessageId
                         val assistantDisplayContent =
                             if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
                                 streamingMessageContent
@@ -3435,6 +3463,7 @@ fun ChatScreen() {
                                             ) {
                                                 key(messageSelectionResetEpoch) {
                                                     val renderMode = when {
+                                                        isPendingStreamingFinalizeAssistant -> StreamingRenderMode.Settled
                                                         isStreaming && assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
                                                         isStreaming -> StreamingRenderMode.Streaming
                                                         else -> StreamingRenderMode.Settled
@@ -3443,13 +3472,15 @@ fun ChatScreen() {
                                                         content = assistantDisplayContent,
                                                         renderMode = renderMode,
                                                         revealMode = StreamingRevealMode.Free,
-                                                        freshSuffixEnabled = isStreaming,
+                                                        freshSuffixEnabled = isStreaming &&
+                                                            !isPendingStreamingFinalizeAssistant,
                                                         showWaitingBall = renderMode == StreamingRenderMode.Waiting,
                                                         streamingFreshStart = streamingFreshStart,
                                                         streamingFreshEnd = streamingFreshEnd,
                                                         streamingFreshTick = streamingFreshTick,
                                                         streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                                        selectionEnabled = !isStreaming,
+                                                        selectionEnabled = !isStreaming ||
+                                                            isPendingStreamingFinalizeAssistant,
                                                         showDisclaimer = true,
                                                         onStreamingContentBoundsChanged = { bounds ->
                                                             if (bounds != null) {
