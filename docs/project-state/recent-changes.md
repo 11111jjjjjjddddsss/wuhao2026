@@ -4,6 +4,7 @@
 
 ## 2026-04-17
 
+- 发送起步几何当前改成“窄窗口 IME 动画跟随”：`ChatScreen.kt` 新增 `sendStartAnimationTrackingActive`，仅在 `collapseComposer = true` 且键盘可见的发送路径里，临时让 `bottomContentReservedHeightPx` 与 `streamingWorklineBottomPx` 改用“`stableComposerBottomBarHeightPx + 当前 IME 高度` / `messageViewportHeightPx - animatedReservePx`”这套连续值；编译已通过 `./gradlew.bat :app:compileDebugKotlin`。这次不再尝试固定值锁（fallback / 旧 measured reserve），也不碰 `requestScrollToItem(0)`、AutoFollow、两阶段 finalize 主链；真机体感仍待验证
 - 已回退一次失败的 waiting reserve 短路实验：`bottomContentReservedHeightPx` 曾短暂在 `isStreaming && pendingStreamingFinalizeMessageId == null && streamingMessageContent.isBlank()` 时强制落到 `fallbackReservedHeightPx`，虽然压住了发送瞬间抖动，但会把 waiting 小球锚点整体抬高、重新带回底部空白，并在首字出现时出现“从中部掉回工作线”的回归；后续不要再直接复用这条短路
 - 把聊天 UI 已解决问题继续固化成“禁改记忆”：根 `AGENTS.md` 新增 `7.5 已修复问题的成因与禁改清单`，按“旧现象 / 已确认根因 / 当前修法 / 禁止回退”整理了历史区联动、小球掉线、streaming 下掉、fresh line 锁塌陷、完成态微重排、完成后底部空白、hydrate 整表震荡等已收口问题，方便后续窗口和外部会诊前先对照，避免随手把旧问题带回
 - 真机回归口径已收敛：按最新反馈，“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题当前都已压住；后续会诊和排查只剩“发送瞬间轻微上下抖一下”这一条，不再把已解决问题继续并列

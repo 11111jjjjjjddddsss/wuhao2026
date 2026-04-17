@@ -28,7 +28,7 @@
 - 列表底部保留高度与工作线当前只在 streaming 进行且不处于发送 / 输入区收口窗口时才参考实时 `composerTop`；`sendUiSettling` 或 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍在结算时，列表会强制回退到稳定 bottom bar / overlay 高度，避免“输入框瞬间回缩 + 小球立即出现”这一拍把消息区一起抖动
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需单发 `requestScrollToItem(0)`。这样完成那一拍不再出现工作线口径、底部判定源、内容宿主同时换挡
 - 发送链当前不再把“输入框收口”和“消息插入 + 回底请求”拆到两拍：`commitSendMessage()` 已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务里，网络/SSE 仅保留在后续协程，专门收“发送瞬间上下抖一下”的事务分帧问题
-- 发送起步窗口当前额外放开了实时 composer 几何：`shouldUseRealtimeComposerGeometry` 现在在 `sendUiSettling == true` 时不再被 `isComposerSettling` 一刀切断，避免输入框瞬间清空回缩时，工作线和 bottom reserved height 先断崖回退、再配合 `requestScrollToItem(0)` 制造整块上下抖
+- 发送起步窗口当前新增一条极窄的 IME 动画跟随分支：当 `collapseComposer = true` 且键盘可见时，`bottomContentReservedHeightPx` 与 `streamingWorklineBottomPx` 会短暂改用“`stableComposerBottomBarHeightPx + 当前 IME 高度`”这套连续值，跟着键盘收口动画一起变化；动画结束并且 measured `composerTopInViewportPx` 与预测 top 对齐后，再切回现有 measured composerTop 口径。这样不改 `requestScrollToItem(0)`、AutoFollow、finalize 主链，只单独收发送瞬间的 old/new reserve mismatch
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起打包给 Gemini / Claude，避免外部方案继续停留在抽象猜测层
 - 当前外部会诊现实约束已明确：Gemini / Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
@@ -58,9 +58,9 @@
 - 当前只剩 Android 聊天 UI 的一个顽固体感问题：发送瞬间整块消息区仍会轻微上下抖一下；此前“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题，按最新真机反馈都已压住
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
 - 焦点：发送瞬间整块消息区会轻微上下抖一下
-  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()`、`isComposerSettling`、`shouldUseRealtimeComposerGeometry`
+  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()`、`bottomContentReservedHeightPx`、`streamingWorklineBottomPx`
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(0)`
-  - 当前真实现状：多轮实验后，说明问题大概率不在 streaming/render finalize 链，而集中在“发送当拍的输入区收口 + workline/底部保留高度切换 + `requestScrollToItem(0)`”这条几何竞态链
+  - 当前真实现状：多轮实验后，说明问题大概率不在 streaming/render finalize 链，而集中在“发送当拍的输入区收口 + workline/底部保留高度切换 + `requestScrollToItem(0)`”这条几何竞态链；当前代码已切到“窄窗口 IME 动画跟随”方案，仍待真机验证体感与回归
 - 已明确排除、不要再回滚的方向：
   - 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout` 主链
   - `alignChatListBottom()` 的 8 帧 `scrollBy` 补偿

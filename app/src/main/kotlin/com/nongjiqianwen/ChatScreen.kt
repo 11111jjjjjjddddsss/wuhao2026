@@ -185,6 +185,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedHashMap
+import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
@@ -1487,6 +1488,7 @@ fun ChatScreen() {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
     val imeVisible = WindowInsets.isImeVisible
+    var sendStartAnimationTrackingActive by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
@@ -1539,13 +1541,42 @@ fun ChatScreen() {
             )
         }
     }
+    val currentImeHeightPx = WindowInsets.ime.getBottom(density).coerceAtLeast(0)
+    val animatedReservePx by remember(
+        stableComposerBottomBarHeightPx,
+        currentImeHeightPx,
+        sendStartAnimationTrackingActive
+    ) {
+        derivedStateOf {
+            if (!sendStartAnimationTrackingActive) {
+                -1
+            } else {
+                (stableComposerBottomBarHeightPx + currentImeHeightPx).coerceAtLeast(0)
+            }
+        }
+    }
+    val animatedComposerTopPx by remember(
+        messageViewportHeightPx,
+        animatedReservePx,
+        sendStartAnimationTrackingActive
+    ) {
+        derivedStateOf {
+            if (!sendStartAnimationTrackingActive || messageViewportHeightPx <= 0 || animatedReservePx < 0) {
+                -1
+            } else {
+                (messageViewportHeightPx - animatedReservePx).coerceAtLeast(0)
+            }
+        }
+    }
     val streamingWorklineBottomPx by remember(
         messageViewportHeightPx,
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
         streamVisibleBottomGapPx,
-        shouldUseRealtimeComposerGeometry
+        shouldUseRealtimeComposerGeometry,
+        sendStartAnimationTrackingActive,
+        animatedComposerTopPx
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = messageViewportHeightPx
@@ -1560,6 +1591,9 @@ fun ChatScreen() {
                         stableBottomBarHeightPx -
                         streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
+            if (sendStartAnimationTrackingActive && animatedComposerTopPx > 0) {
+                return@derivedStateOf (animatedComposerTopPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+            }
             if (
                 shouldUseRealtimeComposerGeometry &&
                 effectiveViewportHeightPx > 0 &&
@@ -1763,9 +1797,14 @@ fun ChatScreen() {
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
         streamingExtraReservedHeightPx,
-        shouldUseRealtimeComposerGeometry
+        shouldUseRealtimeComposerGeometry,
+        sendStartAnimationTrackingActive,
+        animatedReservePx
     ) {
         derivedStateOf {
+            if (sendStartAnimationTrackingActive && animatedReservePx >= 0) {
+                return@derivedStateOf animatedReservePx
+            }
             val effectiveViewportHeightPx = messageViewportHeightPx
             val measuredComposerReservedHeightPx =
                 if (
@@ -1789,6 +1828,26 @@ fun ChatScreen() {
                     else -> fallbackReservedHeightPx
                 }
             resolvedReservedHeightPx
+        }
+    }
+    LaunchedEffect(
+        sendStartAnimationTrackingActive,
+        currentImeHeightPx,
+        composerTopInViewportPx,
+        messageViewportHeightPx,
+        stableComposerBottomBarHeightPx
+    ) {
+        if (!sendStartAnimationTrackingActive) return@LaunchedEffect
+        if (currentImeHeightPx != 0) return@LaunchedEffect
+        if (composerTopInViewportPx <= 0 || messageViewportHeightPx <= 0) return@LaunchedEffect
+        val predictedTopPx = (messageViewportHeightPx - stableComposerBottomBarHeightPx).coerceAtLeast(0)
+        if (abs(predictedTopPx - composerTopInViewportPx) <= 3) {
+            sendStartAnimationTrackingActive = false
+        }
+    }
+    LaunchedEffect(isStreaming) {
+        if (!isStreaming && sendStartAnimationTrackingActive) {
+            sendStartAnimationTrackingActive = false
         }
     }
     val recyclerBottomPaddingPx by remember(
@@ -2142,6 +2201,7 @@ fun ChatScreen() {
         remoteRecoverySourceUserMessageId = null
         SessionApi.resetUiRuntimeForCleanState()
         QwenClient.resetUiRuntimeForCleanState()
+        sendStartAnimationTrackingActive = false
         sendUiSettling = false
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
@@ -2401,6 +2461,7 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
+            sendStartAnimationTrackingActive = false
             sendUiSettling = false
             streamingMessageId = null
             streamingRevealBuffer = ""
@@ -2653,6 +2714,7 @@ fun ChatScreen() {
         shouldRestoreBottomAnchor: Boolean
     ) {
         isStreaming = false
+        sendStartAnimationTrackingActive = false
         sendUiSettling = false
         streamingMessageId = null
         streamingMessageContent = ""
@@ -2869,9 +2931,11 @@ fun ChatScreen() {
                 clearFailedAssistantStateForUser(userId)
                 anchoredUserMessageId = userId
                 trimMessagesInPlace()
+                sendStartAnimationTrackingActive = false
                 sendUiSettling = false
                 showComposerStatusHint("当前网络不可用")
             } finally {
+                sendStartAnimationTrackingActive = false
                 sendUiSettling = false
             }
         }
@@ -2892,6 +2956,7 @@ fun ChatScreen() {
             suppressJumpButtonForImeTransition = true
         }
         if (collapseComposer) {
+            sendStartAnimationTrackingActive = imeVisible
             val collapsePreparation = prepareComposerCollapse(
                 inputContentHeightPx = inputContentHeightPx,
                 startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
