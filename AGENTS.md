@@ -215,7 +215,7 @@ Clean-State 必做回归的范围：
 
 4. 完成态收口
 - 主人：反向列表天然底部锚定
-- 作用：streaming 结束后不再追加 `pendingFinalBottomSnap` 这类完成态补滚；但如果用户仍停留在主链、未进入 `UserBrowsing`，允许在 `finishStreaming` / 后台同步完结里补一发 `requestScrollToItem(0)`，只服务 completed 宿主在下一次 remeasure 时重新贴回底部工作线，避免 settled 宿主比 streaming 宿主更矮时露出底部空白
+- 作用：streaming 结束后不再追加 `pendingFinalBottomSnap` 这类完成态补滚；若用户仍停留在主链、未进入 `UserBrowsing`，只允许在 completed 宿主真实测量落地后做“按需单发” `requestScrollToItem(0)`。禁止在 `finishStreaming` / 后台同步完结的同一拍直接 eager 补滚，避免和宿主切换时序打架，导致完成瞬间偶发上跳与底部留白
 
 5. 用户浏览
 - 主人：用户手指

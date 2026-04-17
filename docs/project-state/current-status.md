@@ -66,7 +66,7 @@
   - 发送链里的 `withTimeoutOrNull` 延后收口实验
   - 普通 idle 聚焦输入框时带着历史区一起联动
 - 本轮新增回归修复点：
-  - `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 已补上单发 `requestScrollToItem(0)` 完成态归位，用来修“生成结束后上跳一下、底部留白”和“切后台再回来底部留白”的新回归；它不是旧的 pending/final snap 状态机
+  - `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 不再在完成同一拍直接 eager `requestScrollToItem(0)`；当前改为等 completed 宿主真实测量出来后，仅在确认仍离底时才按需单发归位，专门收口“生成结束后偶发上跳、底部留白”和“切后台再回来底部留白”的完成态时序竞态
 - 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
 
 ## 当前阶段判断

@@ -180,7 +180,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedHashMap
 import kotlin.random.Random
 import kotlin.math.roundToInt
@@ -1461,6 +1464,7 @@ fun ChatScreen() {
     var messageViewportTopPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
     var composerTopInViewportPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var topChromeMaskBottomPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var pendingSettledBottomAnchorRestore by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -2611,11 +2615,7 @@ fun ChatScreen() {
     }
 
     fun requestBottomAnchorRestoreAfterStreamingStop(shouldRestore: Boolean) {
-        if (!shouldRestore || messages.isEmpty()) return
-        // Compose keeps keyed visible items in place across inserts and host swaps.
-        // When streaming settles into the completed host we only want a single
-        // next-remeasure re-anchor, not the old multi-frame compensation chain.
-        chatListState.requestScrollToItem(index = 0)
+        pendingSettledBottomAnchorRestore = shouldRestore && messages.isNotEmpty()
     }
 
     fun finishStreaming() {
@@ -2652,9 +2652,9 @@ fun ChatScreen() {
                     messageId = finalId.orEmpty(),
                     content = finalContent
                 )
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 streamingMessageId = null
                 streamingMessageContent = ""
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 persistTick++
                 val persistedMessages = persistableMessagesSnapshot()
                 val prewarmMessages = persistedMessages.takeLast(2)
@@ -2665,9 +2665,9 @@ fun ChatScreen() {
                 }
             } else {
                 finalId?.let(::removeMessageById)
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 streamingMessageId = null
                 streamingMessageContent = ""
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 persistTick++
             }
         }
@@ -3004,6 +3004,42 @@ fun ChatScreen() {
         initialBottomSnapDone = true
     }
 
+    LaunchedEffect(
+        pendingSettledBottomAnchorRestore,
+        isStreaming,
+        scrollMode,
+        messages.size
+    ) {
+        if (!pendingSettledBottomAnchorRestore) return@LaunchedEffect
+        if (isStreaming || scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
+        if (messages.isEmpty()) {
+            pendingSettledBottomAnchorRestore = false
+            return@LaunchedEffect
+        }
+        withTimeoutOrNull(200L) {
+            snapshotFlow {
+                val newestMessageId = messages.lastOrNull()?.id
+                chatListState.layoutInfo.visibleItemsInfo.any { it.index == 0 } ||
+                    (newestMessageId != null && messageContentBoundsById.containsKey(newestMessageId))
+            }
+                .filter { it }
+                .first()
+        }
+        if (
+            pendingSettledBottomAnchorRestore &&
+            !isStreaming &&
+            scrollMode != ScrollMode.UserBrowsing &&
+            messages.isNotEmpty() &&
+            !isWithinBottomTolerance()
+        ) {
+            // Only restore after the completed host has reported its settled bounds.
+            // This removes the completion-time race where an eager restore can
+            // sometimes re-anchor against a transient geometry and leave a gap.
+            chatListState.requestScrollToItem(index = 0)
+        }
+        pendingSettledBottomAnchorRestore = false
+    }
+
     fun completeStreamingImmediatelyFromBackground() {
         val finalizeStreamingFromBackground: () -> Unit = finalizeStreamingFromBackground@{
             if (!isStreaming) return@finalizeStreamingFromBackground
@@ -3036,8 +3072,8 @@ fun ChatScreen() {
                     messageId = finalId,
                     content = finalContent
                 )
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 persistTick++
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
                     messages = persistableMessagesSnapshot()
@@ -3045,12 +3081,12 @@ fun ChatScreen() {
                 context.clearLocalStreamingDraftSync(chatScopeId)
             } else {
                 removeMessageById(finalId)
-                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
                     messages = persistableMessagesSnapshot()
                 )
                 context.clearLocalStreamingDraftSync(chatScopeId)
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
             }
         }
         if (Looper.myLooper() == Looper.getMainLooper()) {

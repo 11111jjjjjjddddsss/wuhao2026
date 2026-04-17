@@ -4,8 +4,8 @@
 
 ## 2026-04-17
 
-- 修复 completed 宿主收口回归：`ChatScreen.kt` 的 `finishStreaming()` 与 `completeStreamingImmediatelyFromBackground()` 现在都会在 `scrollMode != UserBrowsing` 时补一发 `requestScrollToItem(0)`，只服务 completed 宿主在下一次 remeasure 里重新贴回 `index = 0` 底部锚点，避免“生成结束后往上跳一下、底部露白”和“切后台再回来底部露白”
-- 当前仓库真相已同步收口：根 `AGENTS.md` 与 `docs/project-state/current-status.md` 已明确这发完成态归位不是旧 `pendingFinalBottomSnap` 状态机，也不是任何多帧 `scrollBy` 补偿链；旧 final snap 口径仍保持废弃
+- 调整 completed 宿主收口时序：`ChatScreen.kt` 不再在 `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 的同一拍直接 eager `requestScrollToItem(0)`；当前改为等待 completed 宿主真实测量出来后，只在仍离底时按需单发归位，专门收“生成结束偶发上跳、底部露白”的竞态
+- 当前仓库真相已同步收口：根 `AGENTS.md` 与 `docs/project-state/current-status.md` 已明确完成态归位仍不是旧 `pendingFinalBottomSnap` 状态机，也不是任何多帧 `scrollBy` 补偿链；旧 final snap 口径继续废弃
 
 ## 2026-04-16
 
