@@ -102,7 +102,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
@@ -2884,69 +2883,57 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
-        val assistantId = assistantMessageIdForSourceUser(userId)
-        var shouldClearFocusAfterSend = false
-        Snapshot.withMutableSnapshot {
-            composerCollapseOverlayVisible = false
-            sendUiSettling = true
-            hasStartedConversation = true
-            initialBottomSnapDone = true
-            LaunchUiGate.chatReady = true
-            if (collapseComposer) {
-                suppressJumpButtonForImeTransition = true
-            }
-            if (collapseComposer) {
-                val collapsePreparation = prepareComposerCollapse(
-                    inputContentHeightPx = inputContentHeightPx,
-                    startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
-                    inputChromeRowHeightPx = inputChromeRowHeightPx
-                )
-                composerSettlingMinHeightPx = collapsePreparation.settlingMinHeightPx
-                composerSettlingChromeHeightPx = collapsePreparation.settlingChromeHeightPx
-                suppressInputCursor = collapsePreparation.shouldSuppressCursor
-                inputFieldFocused = false
-                clearInputSelectionToolbar()
-                input.value = TextFieldValue("")
-                shouldClearFocusAfterSend = collapsePreparation.shouldClearFocus
-            }
-            failedUserMessageStates.remove(userId)
-            clearFailedAssistantStateForUser(userId)
-            upsertUserMessage(userId, text)
-            upsertAssistantMessagePlaceholder(
-                messageId = assistantId,
-                sourceUserMessageId = userId
+        composerCollapseOverlayVisible = false
+        sendUiSettling = true
+        hasStartedConversation = true
+        initialBottomSnapDone = true
+        LaunchUiGate.chatReady = true
+        if (collapseComposer) {
+            suppressJumpButtonForImeTransition = true
+        }
+        if (collapseComposer) {
+            val collapsePreparation = prepareComposerCollapse(
+                inputContentHeightPx = inputContentHeightPx,
+                startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
+                inputChromeRowHeightPx = inputChromeRowHeightPx
             )
-            trimMessagesInPlace()
-            anchoredUserMessageId = userId
-            streamingFreshStart = -1
-            streamingFreshEnd = -1
-            streamingLineAdvanceTick = 0
-            lastStreamingFreshRevealMs = 0L
-            isStreaming = true
-            streamingMessageId = assistantId
-            streamingMessageContent = ""
-            streamingRevealBuffer = ""
-            streamingFreshStart = -1
-            streamingFreshEnd = -1
-            streamingLineAdvanceTick = 0
-            lastStreamingFreshRevealMs = 0L
-            streamingBackgrounded = false
-            prepareScrollRuntimeForStreamingStart(scrollRuntime)
-            // Keep composer collapse, message insertion, and reverse-list bottom snap
-            // in the same mutable snapshot so Compose can consume one committed state.
-            if (messages.indexOfFirst { it.id == assistantId } >= 0) {
-                chatListState.requestScrollToItem(index = 0)
+            composerSettlingMinHeightPx = collapsePreparation.settlingMinHeightPx
+            composerSettlingChromeHeightPx = collapsePreparation.settlingChromeHeightPx
+            suppressInputCursor = collapsePreparation.shouldSuppressCursor
+            inputFieldFocused = false
+            clearInputSelectionToolbar()
+            input.value = TextFieldValue("")
+            if (collapsePreparation.shouldClearFocus) {
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
             }
-            persistTick++
         }
-        if (shouldClearFocusAfterSend) {
-            focusManager.clearFocus(force = true)
-            keyboardController?.hide()
-        }
+        val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
+        failedUserMessageStates.remove(userId)
+        clearFailedAssistantStateForUser(userId)
+        val assistantId = assistantMessageIdForSourceUser(userId)
+        upsertUserMessage(userId, text)
+        upsertAssistantMessagePlaceholder(
+            messageId = assistantId,
+            sourceUserMessageId = userId
+        )
+        trimMessagesInPlace()
+        anchoredUserMessageId = userId
+        streamingFreshStart = -1
+        streamingFreshEnd = -1
+        streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
+        isStreaming = true
+        streamingMessageId = assistantId
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
+        streamingMessageContent = ""
+        streamingRevealBuffer = ""
+        streamingFreshStart = -1
+        streamingFreshEnd = -1
+        streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
             draft = LocalStreamingDraft(
@@ -2957,9 +2944,17 @@ fun ChatScreen() {
                 savedAtMs = SystemClock.uptimeMillis()
             )
         )
+        streamingBackgrounded = false
+        prepareScrollRuntimeForStreamingStart(scrollRuntime)
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
+        // Keep composer collapse, message insertion, and reverse-list bottom snap
+        // in the same UI transaction so Compose remeasures them together.
+        if (messages.indexOfFirst { it.id == assistantId } >= 0) {
+            chatListState.requestScrollToItem(index = 0)
+        }
+        persistTick++
         snackbarScope.launch {
             context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
         }

@@ -4,7 +4,6 @@
 
 ## 2026-04-17
 
-- `ChatScreen.kt` 的 `commitSendMessage()` 当前又做了一次最小实验：发送当拍的 Compose state 写入改为包在 `Snapshot.withMutableSnapshot { ... }` 里统一提交，包含输入框收口、消息插入、streaming 状态切换与 `requestScrollToItem(0)`；焦点清理与收键盘紧跟 snapshot 后执行，专门验证发送瞬间那一下抖动能否被“单次 snapshot 提交”压住
 - streaming 渲染继续做减法：`ChatStreamingRenderer.kt` 的 unified streaming host 当前不再在 block 外壳 modifier 上挂 `padding(top = MARKDOWN_BLOCK_SPACING)`；非首块间距改为插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，避免新 block 出生那一拍把既有内容整体往下踹
 - streaming block 交接继续收口到同一套测量实现：`RendererAssistantStreamingUnifiedBlockHost(...)` 在 streaming 期间不再让 completed blocks 走 `RendererAssistantStreamingCommittedBlockImpl(...)`；当前所有 block 统一复用 `RendererAssistantStreamingActiveBlockImpl(...)`，仅最后一个 active block 保留 fresh tail 高亮，专门减少 active -> committed 中途交接时的帧级高度重算
 - `ChatStreamingRenderer(...)` 的最外层内容宿主已统一成同一个 `Column`：streaming / settled 现在共用 `boundsReportingModifier` 与宽度约束，streaming 的 `BottomStart` 对齐下沉到内部 `Box`。这次改动只收“生成完成那一下像再次排版的轻微上抬”，避免 renderMode 切换时最外层 `Box -> Column` 换树
