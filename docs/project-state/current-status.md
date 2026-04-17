@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-16
+最后更新：2026-04-17
 
 ## 项目概况
 
@@ -23,6 +23,7 @@
 - streaming 分支最外层宿主当前已从 `TopStart` 改为 `BottomStart`，让正文在反向底座里沿同一物理底边向上生长，减少流式换行时“先往下掉一下再被拉回”的体感
 - streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；块间距已改为挂在各 block 自身的 top padding 上，减少段落 / 列表新块诞生时把既有内容整体往下踹一拍
 - 列表底部保留高度与工作线当前只在 streaming 进行且不处于发送 / 输入区收口窗口时才参考实时 `composerTop`；`sendUiSettling` 或 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍在结算时，列表会强制回退到稳定 bottom bar / overlay 高度，避免“输入框瞬间回缩 + 小球立即出现”这一拍把消息区一起抖动
+- streaming 正常结束与本地 fake streaming 的后台同步完结，当前都会在 `scrollMode != UserBrowsing` 时补一发 `LazyListState.requestScrollToItem(0)`；目的不是恢复旧 `pendingFinalBottomSnap`，而是让 completed 宿主在下一次 remeasure 里重新贴回底部工作线，修复“完成后上跳一下、底部露白”的近期回归
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起打包给 Gemini / Claude，避免外部方案继续停留在抽象猜测层
 - 当前外部会诊现实约束已明确：Gemini / Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
 - `sendStartBottomPaddingLockActive` 已退出工作线和 `recyclerBottomPaddingPx` 的运行时计算主链；`sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍只服务输入框自身收口和 overlay 生命周期
@@ -64,6 +65,8 @@
   - 发送链里的 `withFrameNanos` 延迟回底
   - 发送链里的 `withTimeoutOrNull` 延后收口实验
   - 普通 idle 聚焦输入框时带着历史区一起联动
+- 本轮新增回归修复点：
+  - `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 已补上单发 `requestScrollToItem(0)` 完成态归位，用来修“生成结束后上跳一下、底部留白”和“切后台再回来底部留白”的新回归；它不是旧的 pending/final snap 状态机
 - 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
 
 ## 当前阶段判断

@@ -215,7 +215,7 @@ Clean-State 必做回归的范围：
 
 4. 完成态收口
 - 主人：反向列表天然底部锚定
-- 作用：streaming 结束后不再追加 `pendingFinalBottomSnap` 这类完成态补滚；若用户仍停留在主链，完成态直接沿当前底部锚定自然收口
+- 作用：streaming 结束后不再追加 `pendingFinalBottomSnap` 这类完成态补滚；但如果用户仍停留在主链、未进入 `UserBrowsing`，允许在 `finishStreaming` / 后台同步完结里补一发 `requestScrollToItem(0)`，只服务 completed 宿主在下一次 remeasure 时重新贴回底部工作线，避免 settled 宿主比 streaming 宿主更矮时露出底部空白
 
 5. 用户浏览
 - 主人：用户手指
@@ -256,6 +256,7 @@ Clean-State 必做回归的范围：
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接 `scrollToItem(0)`；从后台切回时不默认自动贴底
 - 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
 - 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
+- `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时补一发 `requestScrollToItem(0)`；这不是旧 `pendingFinalBottomSnap` 状态机，也不是多帧 `scrollBy` 补偿，只是让 completed 宿主在下一次 remeasure 里重新咬回 `index = 0` 的单次归位
 
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报

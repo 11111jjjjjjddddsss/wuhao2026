@@ -2610,8 +2610,17 @@ fun ChatScreen() {
         )
     }
 
+    fun requestBottomAnchorRestoreAfterStreamingStop(shouldRestore: Boolean) {
+        if (!shouldRestore || messages.isEmpty()) return
+        // Compose keeps keyed visible items in place across inserts and host swaps.
+        // When streaming settles into the completed host we only want a single
+        // next-remeasure re-anchor, not the old multi-frame compensation chain.
+        chatListState.requestScrollToItem(index = 0)
+    }
+
     fun finishStreaming() {
         mainHandler.post {
+            val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             streamRevealJob?.cancel()
             streamRevealJob = null
             flushStreamingRevealBuffer(
@@ -2643,6 +2652,7 @@ fun ChatScreen() {
                     messageId = finalId.orEmpty(),
                     content = finalContent
                 )
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 streamingMessageId = null
                 streamingMessageContent = ""
                 persistTick++
@@ -2655,6 +2665,7 @@ fun ChatScreen() {
                 }
             } else {
                 finalId?.let(::removeMessageById)
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 streamingMessageId = null
                 streamingMessageContent = ""
                 persistTick++
@@ -2996,6 +3007,7 @@ fun ChatScreen() {
     fun completeStreamingImmediatelyFromBackground() {
         val finalizeStreamingFromBackground: () -> Unit = finalizeStreamingFromBackground@{
             if (!isStreaming) return@finalizeStreamingFromBackground
+            val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             val finalId = streamingMessageId
                 ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
                 ?: "assistant_${UUID.randomUUID()}"
@@ -3024,6 +3036,7 @@ fun ChatScreen() {
                     messageId = finalId,
                     content = finalContent
                 )
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 persistTick++
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
@@ -3032,6 +3045,7 @@ fun ChatScreen() {
                 context.clearLocalStreamingDraftSync(chatScopeId)
             } else {
                 removeMessageById(finalId)
+                requestBottomAnchorRestoreAfterStreamingStop(shouldRestoreBottomAnchor)
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
                     messages = persistableMessagesSnapshot()

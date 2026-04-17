@@ -2,6 +2,11 @@
 
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 
+## 2026-04-17
+
+- 修复 completed 宿主收口回归：`ChatScreen.kt` 的 `finishStreaming()` 与 `completeStreamingImmediatelyFromBackground()` 现在都会在 `scrollMode != UserBrowsing` 时补一发 `requestScrollToItem(0)`，只服务 completed 宿主在下一次 remeasure 里重新贴回 `index = 0` 底部锚点，避免“生成结束后往上跳一下、底部露白”和“切后台再回来底部露白”
+- 当前仓库真相已同步收口：根 `AGENTS.md` 与 `docs/project-state/current-status.md` 已明确这发完成态归位不是旧 `pendingFinalBottomSnap` 状态机，也不是任何多帧 `scrollBy` 补偿链；旧 final snap 口径仍保持废弃
+
 ## 2026-04-16
 
 - 发送链继续做减法并清旧方案：`ChatScreen.kt` 已撤掉一度试验过的 `withTimeoutOrNull + snapshotFlow` 延后收口链，重新回到“输入框瞬间清空回缩、小球同拍出现”的单一发送事务，不再让即时收口和延后收口两套方案并存
