@@ -940,6 +940,9 @@ private fun RendererAssistantStreamingContentImpl(
             )
         }
         unifiedModels.forEachIndexed { index, model ->
+            if (index > 0) {
+                Spacer(modifier = Modifier.height(MARKDOWN_BLOCK_SPACING))
+            }
             // Streaming blocks are append-only in render order, so the absolute
             // block index is the stable shell key we want to preserve across
             // active -> committed transitions.
@@ -948,15 +951,11 @@ private fun RendererAssistantStreamingContentImpl(
                     previous = unifiedModels.getOrNull(index - 1),
                     current = model
                 )
-                val blockModifier = markdownBlockSpacingModifier(
-                    hasPreviousBlock = index > 0,
-                    modifier = Modifier.fillMaxWidth()
-                )
                 RendererAssistantStreamingUnifiedBlockHost(
                     model = model,
                     isActive = activeModel != null && index == unifiedModels.lastIndex,
                     showLeadingSectionDivider = showLeadingSectionDivider,
-                    modifier = blockModifier,
+                    modifier = Modifier.fillMaxWidth(),
                     freshTailChars = activeFreshTailChars,
                     freshTick = streamingFreshTick,
                     lineAdvanceTick = streamingLineAdvanceTick,
@@ -984,24 +983,16 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
         if (showLeadingSectionDivider) {
             RendererMarkdownSectionDividerImpl()
         }
-        if (isActive) {
-            RendererAssistantStreamingActiveBlockImpl(
-                model = model,
-                showLeadingSectionDivider = false,
-                freshTailChars = freshTailChars,
-                freshTick = freshTick,
-                lineAdvanceTick = lineAdvanceTick,
-                strictLineReveal = strictLineReveal,
-                lineRevealLocked = lineRevealLocked,
-                modifier = Modifier.fillMaxWidth()
-            )
-        } else {
-            RendererAssistantStreamingCommittedBlockImpl(
-                model = model,
-                showLeadingSectionDivider = false,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        RendererAssistantStreamingActiveBlockImpl(
+            model = model,
+            showLeadingSectionDivider = false,
+            freshTailChars = if (isActive) freshTailChars else 0,
+            freshTick = if (isActive) freshTick else 0,
+            lineAdvanceTick = lineAdvanceTick,
+            strictLineReveal = strictLineReveal,
+            lineRevealLocked = lineRevealLocked,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

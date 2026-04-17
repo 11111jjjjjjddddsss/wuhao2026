@@ -4,6 +4,8 @@
 
 ## 2026-04-17
 
+- streaming 渲染继续做减法：`ChatStreamingRenderer.kt` 的 unified streaming host 当前不再在 block 外壳 modifier 上挂 `padding(top = MARKDOWN_BLOCK_SPACING)`；非首块间距改为插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，避免新 block 出生那一拍把既有内容整体往下踹
+- streaming block 交接继续收口到同一套测量实现：`RendererAssistantStreamingUnifiedBlockHost(...)` 在 streaming 期间不再让 completed blocks 走 `RendererAssistantStreamingCommittedBlockImpl(...)`；当前所有 block 统一复用 `RendererAssistantStreamingActiveBlockImpl(...)`，仅最后一个 active block 保留 fresh tail 高亮，专门减少 active -> committed 中途交接时的帧级高度重算
 - 发送起步窗口新增定向 realtime geometry 例外：`ChatScreen.kt` 的 `shouldUseRealtimeComposerGeometry` 不再在 `sendUiSettling == true` 时被 `isComposerSettling` 一刀切断，避免发送当拍工作线/底部保留高度先断崖回退、再和 `requestScrollToItem(0)` 打架
 - 删除 `ChatStreamingRenderer.kt` 里的 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` fresh line 锁预览层；streaming 行级渲染当前直接使用原始 `StreamingRenderedLines`，不再把 `activeLine` 锁成预览串或空串，专门收口生成过程中偶发“往下掉一下再弹回”的帧级高度塌陷
 - 收紧发送事务时序：`ChatScreen.kt` 的 `commitSendMessage()` 不再先清空输入框、再进协程插消息；当前已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务，专门压“发送瞬间上下抖一下”

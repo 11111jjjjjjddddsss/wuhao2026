@@ -21,7 +21,8 @@
 - `RendererAssistantStreamingContentImpl(...)` 当前已改为 unified block host：completed / active blocks 先拍平成同一个 `unifiedModels` 列表，再由同一个外壳宿主承接 spacing / divider，active -> committed 交接时不再跨 sibling subtree 搬家
 - unified streaming block 当前使用 append-only 场景下稳定的 block index 作为外壳 key，不再把 `hashCode()` 混进 key 里触发流式阶段的连续 remount
 - streaming 分支最外层宿主当前已从 `TopStart` 改为 `BottomStart`，让正文在反向底座里沿同一物理底边向上生长，减少流式换行时“先往下掉一下再被拉回”的体感
-- streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；块间距已改为挂在各 block 自身的 top padding 上，减少段落 / 列表新块诞生时把既有内容整体往下踹一拍
+- streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；其中 streaming 分支已不再把块间距直接挂在 unified block 外壳 modifier 上，而是改成在非首块前插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，尽量减少新 block 诞生时把既有内容整体往下踹一拍
+- streaming 期间 unified block 外壳当前已继续收口到单一测量实现：不论 block 逻辑状态是 completed 还是 active，流式渲染都统一复用 `RendererAssistantStreamingActiveBlockImpl(...)`；只有最后一个 active block 继续吃 fresh tail 高亮，避免 active -> committed 中途交接时因为内部测量树不同构而产生额外高度重算
 - 列表底部保留高度与工作线当前只在 streaming 进行且不处于发送 / 输入区收口窗口时才参考实时 `composerTop`；`sendUiSettling` 或 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍在结算时，列表会强制回退到稳定 bottom bar / overlay 高度，避免“输入框瞬间回缩 + 小球立即出现”这一拍把消息区一起抖动
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需单发 `requestScrollToItem(0)`。这样完成那一拍不再出现工作线口径、底部判定源、内容宿主同时换挡
 - 发送链当前不再把“输入框收口”和“消息插入 + 回底请求”拆到两拍：`commitSendMessage()` 已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务里，网络/SSE 仅保留在后续协程，专门收“发送瞬间上下抖一下”的事务分帧问题
@@ -60,7 +61,7 @@
 - 焦点 2：streaming 过程中正文仍会“往下掉一下再弹回”
   - 本轮已落地代码点：`ChatStreamingRenderer.kt` 的 `RendererAssistantStreamingContentImpl(...)`
   - 当前真实结构已不再是 `completedModels.forEachIndexed { ... } + activeModel?.let { ... }` 两棵 sibling subtree；streaming blocks 已改为单循环 unified host
-  - 本轮真实改法：completed / active 共用同一个 block 外壳，spacing / divider 都挂在壳上，并把外壳 key 收口到 append-only 场景下稳定的 block index
+  - 本轮真实改法：completed / active 共用同一个 block 外壳，append-only 外壳 key 收口到稳定 block index；同时 streaming 期间统一复用 `RendererAssistantStreamingActiveBlockImpl(...)` 这套测量路径，并把非首块间距改成外壳外的独立 `Spacer`
 - 已明确排除、不要再回滚的方向：
   - 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout` 主链
   - `alignChatListBottom()` 的 8 帧 `scrollBy` 补偿
