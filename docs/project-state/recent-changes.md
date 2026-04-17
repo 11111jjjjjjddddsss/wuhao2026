@@ -4,6 +4,8 @@
 
 ## 2026-04-17
 
+- 发送起步窗口新增定向 realtime geometry 例外：`ChatScreen.kt` 的 `shouldUseRealtimeComposerGeometry` 不再在 `sendUiSettling == true` 时被 `isComposerSettling` 一刀切断，避免发送当拍工作线/底部保留高度先断崖回退、再和 `requestScrollToItem(0)` 打架
+- 删除 `ChatStreamingRenderer.kt` 里的 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` fresh line 锁预览层；streaming 行级渲染当前直接使用原始 `StreamingRenderedLines`，不再把 `activeLine` 锁成预览串或空串，专门收口生成过程中偶发“往下掉一下再弹回”的帧级高度塌陷
 - 收紧发送事务时序：`ChatScreen.kt` 的 `commitSendMessage()` 不再先清空输入框、再进协程插消息；当前已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务，专门压“发送瞬间上下抖一下”
 - 收紧 streaming 行释放时序：`STREAM_FRESH_LINE_SETTLE_FRAMES` / `STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES` 已从 `4/3` 改为 `1/0`，同时 `ChatStreamingRenderer.kt` 的 stable / active 行与编号块正文都改成单循环复用 `RendererStreamingAnimatedLineTextImpl`，优先收“生成过程中偶发往下掉一下”的帧级抖动
 - 调整 completed 宿主收口时序：`ChatScreen.kt` 当前改成“两阶段 finalize”。第一阶段先把最终内容写入 completed 消息，但暂不切 `isStreaming`，并按最终消息 `id` 清掉旧 streaming bounds；第二阶段等同一条消息的 fresh completed bounds 真实测量出来后，再原子切掉 streaming 状态，并只在仍离底时按需单发 `requestScrollToItem(0)`，专门收“生成结束偶发上跳、底部露白”和“后台直接完结再回来露白”的竞态

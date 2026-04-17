@@ -1511,10 +1511,12 @@ fun ChatScreen() {
     }
     val shouldUseRealtimeComposerGeometry by remember(
         listShouldTrackRealtimeComposerGeometry,
-        isComposerSettling
+        isComposerSettling,
+        sendUiSettling
     ) {
         derivedStateOf {
-            listShouldTrackRealtimeComposerGeometry && !isComposerSettling
+            listShouldTrackRealtimeComposerGeometry &&
+                (!isComposerSettling || sendUiSettling)
         }
     }
     val safeBottomInsetPx = with(density) {

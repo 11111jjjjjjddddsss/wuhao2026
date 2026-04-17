@@ -38,7 +38,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Rect
@@ -357,28 +356,6 @@ internal fun flushStreamingRevealBuffer(
         ),
         content = currentContent + currentRevealBuffer
     )
-}
-
-internal fun buildLockedStreamingActivePreview(
-    activeLine: AnnotatedString,
-    maxVisibleChars: Int
-): AnnotatedString {
-    if (maxVisibleChars <= 0 || activeLine.text.isEmpty()) {
-        return AnnotatedString("")
-    }
-    val visibleCharCount = activeLine.text.count { !it.isWhitespace() }
-    if (visibleCharCount <= maxVisibleChars) return activeLine
-
-    val preview = StringBuilder()
-    var remaining = activeLine.text
-    var revealedVisibleChars = 0
-    while (remaining.isNotEmpty() && revealedVisibleChars < maxVisibleChars) {
-        val token = takeRendererTypewriterToken(remaining).ifEmpty { remaining.first().toString() }
-        preview.append(token)
-        revealedVisibleChars += token.count { !it.isWhitespace() }
-        remaining = remaining.drop(token.length.coerceAtLeast(1))
-    }
-    return AnnotatedString(preview.toString())
 }
 
 internal fun splitStreamingBlockState(content: String): StreamingBlockState {
@@ -1132,67 +1109,6 @@ private fun RendererStreamingAnimatedLineTextImpl(
 }
 
 @Composable
-private fun rememberRendererLockedStreamingRenderedLinesImpl(
-    lines: StreamingRenderedLines,
-    strictLineReveal: Boolean,
-    lineRevealLocked: Boolean,
-    lineAdvanceTick: Int,
-    maxVisibleCharsWhenLocked: Int
-): StreamingRenderedLines {
-    if (!strictLineReveal || lines.activeLine == null || lines.stableLines.isEmpty()) {
-        return lines
-    }
-    var activeLineUnlockedOnce by remember(lines.stableLines.size) { mutableStateOf(false) }
-    var pendingFreshLineRelease by remember(lines.stableLines.size) { mutableStateOf(true) }
-    var pendingFreshLineTick by remember(lines.stableLines.size) { mutableIntStateOf(lineAdvanceTick) }
-
-    LaunchedEffect(lines.stableLines.size) {
-        pendingFreshLineRelease = true
-        pendingFreshLineTick = lineAdvanceTick
-        activeLineUnlockedOnce = false
-    }
-
-    LaunchedEffect(lines.stableLines.size, lineRevealLocked, lineAdvanceTick) {
-        if (activeLineUnlockedOnce) return@LaunchedEffect
-        if (!pendingFreshLineRelease) {
-            if (!lineRevealLocked) activeLineUnlockedOnce = true
-            return@LaunchedEffect
-        }
-        if (lineRevealLocked) return@LaunchedEffect
-        val settleFrames = if (lineAdvanceTick > pendingFreshLineTick) {
-            STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES
-        } else {
-            STREAM_FRESH_LINE_SETTLE_FRAMES
-        }
-        repeat(settleFrames) { withFrameNanos { } }
-        if (!lineRevealLocked) {
-            pendingFreshLineRelease = false
-            activeLineUnlockedOnce = true
-        }
-    }
-
-    return remember(
-        lines,
-        lineRevealLocked,
-        lineAdvanceTick,
-        activeLineUnlockedOnce,
-        pendingFreshLineRelease,
-        maxVisibleCharsWhenLocked
-    ) {
-        when {
-            activeLineUnlockedOnce -> lines
-            pendingFreshLineRelease || lineRevealLocked -> lines.copy(
-                activeLine = buildLockedStreamingActivePreview(
-                    activeLine = lines.activeLine,
-                    maxVisibleChars = maxVisibleCharsWhenLocked
-                )
-            )
-            else -> lines
-        }
-    }
-}
-
-@Composable
 private fun RendererStreamingCommittedTextBlockImpl(
     text: String,
     style: TextStyle,
@@ -1342,13 +1258,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     val rawLines = remember(model.text, maxWidthPx) {
                         resolveRenderedLines(model.text, headingStyle, maxWidthPx)
                     }
-                    val lines = rememberRendererLockedStreamingRenderedLinesImpl(
-                        lines = rawLines,
-                        strictLineReveal = strictLineReveal,
-                        lineRevealLocked = lineRevealLocked,
-                        lineAdvanceTick = lineAdvanceTick,
-                        maxVisibleCharsWhenLocked = 0
-                    )
+                    val lines = rawLines
                     RendererStreamingSingleActiveLineTextImpl(
                         lines = lines,
                         modifier = Modifier.fillMaxWidth(),
@@ -1368,13 +1278,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 val bodyWidthPx = (maxWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
                 val gutterWidth = with(density) { (bulletWidthPx + spacingPx).toDp() }
                 val rawLines = remember(model.text, bodyWidthPx) { resolveRenderedLines(model.text, bodyStyle, bodyWidthPx) }
-                val lines = rememberRendererLockedStreamingRenderedLinesImpl(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
+                val lines = rawLines
                 RendererStreamingBulletOrNumberedBlockImpl(
                     leading = { Text(text = "\u2022", style = bulletStyle) },
                     gutterWidth = gutterWidth,
@@ -1394,13 +1298,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 val bodyWidthPx = (maxWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
                 val gutterWidth = with(density) { (numberWidthPx + spacingPx).toDp() }
                 val rawLines = remember(model.text, bodyWidthPx) { resolveRenderedLines(model.text, bodyStyle, bodyWidthPx) }
-                val lines = rememberRendererLockedStreamingRenderedLinesImpl(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
+                val lines = rawLines
                 RendererStreamingBulletOrNumberedBlockImpl(
                     leading = { Text(text = "${model.number}.", style = numberStyle) },
                     gutterWidth = gutterWidth,
@@ -1414,13 +1312,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
             is StreamingLineModel.Quote -> {
                 val quoteStyle = assistantStreamingParagraphTextStyle()
                 val rawLines = remember(model.text, maxWidthPx) { resolveRenderedLines(model.text, quoteStyle, maxWidthPx) }
-                val lines = rememberRendererLockedStreamingRenderedLinesImpl(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
+                val lines = rawLines
                 RendererStreamingSingleActiveLineTextImpl(
                     lines = lines,
                     modifier = Modifier.fillMaxWidth(),
@@ -1433,13 +1325,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
             is StreamingLineModel.Paragraph -> {
                 val paragraphStyle = assistantStreamingParagraphTextStyle()
                 val rawLines = remember(model.text, maxWidthPx) { resolveRenderedLines(model.text, paragraphStyle, maxWidthPx) }
-                val lines = rememberRendererLockedStreamingRenderedLinesImpl(
-                    lines = rawLines,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
-                    lineAdvanceTick = lineAdvanceTick,
-                    maxVisibleCharsWhenLocked = 0
-                )
+                val lines = rawLines
                 RendererStreamingSingleActiveLineTextImpl(
                     lines = lines,
                     modifier = Modifier.fillMaxWidth(),

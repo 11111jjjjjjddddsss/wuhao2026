@@ -250,14 +250,14 @@ Clean-State 必做回归的范围：
 - `ChatScrollCoordinator` 当前不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 streaming 只保留 `Idle / AutoFollow / UserBrowsing` 控制权切换，运行时已无 active `snapStreamingToWorkline / performStreamingFollowStep / resolveStreamingFollowStepPx` 链
 - `scrollToBottom(false)` 当前只保留 `scrollToItem(0)` / `animateScrollToItem(0)` 这一条主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿
 - `recyclerBottomPaddingPx` 仍负责把底部输入区和工作线留出来；反向底座下最新消息天然贴着这条底部保留线，不再需要额外 footer 或双重到底补推
-- `recyclerBottomPaddingPx` 与工作线当前只在 streaming 进行且不处于发送/输入区收口窗口时才允许参考实时 `composerTop` 测量；一旦 `sendUiSettling` 或 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍在结算，列表底部几何必须继续回退到稳定 bottom bar / overlay 高度，避免输入框瞬间清空回缩时把消息区一起带着抖
+- `recyclerBottomPaddingPx` 与工作线当前在大多数 `isComposerSettling` 窗口里仍会回退到稳定 bottom bar / overlay 高度；但发送起步这一个极短窗口现在是例外：若 `sendUiSettling` 正在生效，仍允许继续参考实时 `composerTop`，避免发送当拍地基断崖回退后再配合 `requestScrollToItem(0)` 造成整块上下抖
 - `sendStartBottomPaddingLockActive` 已退出工作线和底部保留高度的运行时主链；当前真正负责冻结实时 composer 几何的是 `sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 这组输入区收口状态
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留反向列表的 item 缓存和滚动锚点
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接 `scrollToItem(0)`；从后台切回时不默认自动贴底
 - 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
 - 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
-- streaming 行级 reveal 当前不再保留 4/3 帧的长 settle 锁；`STREAM_FRESH_LINE_SETTLE_FRAMES / STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES` 已收紧到 `1 / 0`，stable / active 行正文也必须尽量复用同一个渲染宿主，避免 activeLine 升格为 stableLine 时再走一套不同节点树
+- streaming 行级 reveal 当前不再走 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览；运行时必须直接用原始 `StreamingRenderedLines` 渲染，禁止再把 `activeLine` 锁成预览串或空串，避免 activeLine 升格为 stableLine 时出现 1 帧高度塌陷
 - `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时补一发 `requestScrollToItem(0)`；这不是旧 `pendingFinalBottomSnap` 状态机，也不是多帧 `scrollBy` 补偿，只是让 completed 宿主在下一次 remeasure 里重新咬回 `index = 0` 的单次归位
 
 当前排查顺序：
