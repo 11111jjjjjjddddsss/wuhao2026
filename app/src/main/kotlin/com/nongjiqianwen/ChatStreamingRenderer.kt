@@ -795,21 +795,21 @@ private fun RendererAssistantMessageContentImpl(
     } else {
         Modifier
     }
-    if (isStreaming) {
-        val hostModifier = if (expandToFullWidth) {
-            modifier
-                .fillMaxWidth()
-        } else {
-            modifier
-        }
-        Box(
-            modifier = hostModifier,
-            contentAlignment = Alignment.BottomStart
-        ) {
+    val hostModifier = if (expandToFullWidth) {
+        modifier
+            .then(boundsReportingModifier)
+            .fillMaxWidth()
+    } else {
+        modifier.then(boundsReportingModifier)
+    }
+    Column(
+        modifier = hostModifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (isStreaming) {
             Box(
-                modifier = Modifier
-                    .then(boundsReportingModifier)
-                    .fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.BottomStart
             ) {
                 RendererAssistantStreamingContentImpl(
                     content = content,
@@ -823,18 +823,7 @@ private fun RendererAssistantMessageContentImpl(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-        }
-    } else {
-        Column(
-            modifier = if (expandToFullWidth) {
-                modifier
-                    .then(boundsReportingModifier)
-                    .fillMaxWidth()
-            } else {
-                modifier.then(boundsReportingModifier)
-            },
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        } else {
             if (selectionEnabled) {
                 SelectionContainer {
                     RendererAssistantMarkdownContentImpl(content = content)

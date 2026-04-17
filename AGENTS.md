@@ -238,7 +238,7 @@ Clean-State 必做回归的范围：
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - streaming 渲染当前不再区分“waiting 专用宿主”和“首字后专用宿主”；waiting 小球与 streaming 首块已收敛到同一个 `ChatStreamingRenderer` 内容宿主内切换，首字上屏前后保持同一物理外壳
-- streaming 分支最外层宿主当前以 `Alignment.BottomStart` 对齐，确保正文在同一物理底边上向上生长，避免 `TopStart` 下首块换行时先向下探再被反向列表拉回
+- `ChatStreamingRenderer` 当前不再让 streaming / settled 走两套最外层宿主；两种 renderMode 已统一复用同一个最外层 `Column` 承接 `boundsReportingModifier` 和宽度约束，streaming 需要的 `Alignment.BottomStart` 底对齐已下沉到内部 `Box`，减少完成态切换那一拍因为外壳换树导致的轻微上抬 / 重排感
 - `ChatStreamingRenderer` 当前不再用父级 `Column(spacedBy(...))` 统一分发 Markdown block 间距；streaming / settled 的块间距都改为跟随各 block 自身的 top padding 生长，减少新区块出现时把已有内容整体向下踹一拍
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
