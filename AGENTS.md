@@ -215,7 +215,7 @@ Clean-State 必做回归的范围：
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
-- 作用：streaming 结束时不再在同一拍直接切 `isStreaming = false`；必须先把最终内容写入 completed 消息，并保持 streaming 几何口径继续生效，同时清掉该消息旧 streaming bounds，等待 completed 宿主 fresh bounds 真正上报后，再原子切换 `isStreaming / streamingMessageId / scrollRuntime`。只有切换完成后仍离底时，才允许按需单发 `requestScrollToItem(0)`，避免完成那一拍工作线口径、底部判定源、内容宿主一起切换导致偶发上跳与底部留白
+- 作用：streaming 结束时不再在同一拍直接切 `isStreaming = false`；必须先把最终内容写入 completed 消息，并保持 streaming 几何口径继续生效，同时清掉该消息旧 streaming bounds，等待 completed 宿主 fresh bounds 真正上报后，再原子切换 `isStreaming / streamingMessageId / scrollRuntime`。第二阶段不能靠短超时硬切；若 app 已退后台，应等回前台后再继续等 fresh bounds，避免完成那一拍工作线口径、底部判定源、内容宿主一起切换导致偶发上跳与底部留白
 
 5. 用户浏览
 - 主人：用户手指

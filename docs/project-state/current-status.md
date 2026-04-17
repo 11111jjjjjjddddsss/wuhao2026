@@ -72,7 +72,7 @@
   - 发送链里的 `withTimeoutOrNull` 延后收口实验
   - 普通 idle 聚焦输入框时带着历史区一起联动
 - 本轮新增回归修复点：
-- `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 当前不再在完成同一拍直接切 `isStreaming = false`。新的主链是：先写 completed 消息，再用 `pendingStreamingFinalizeMessageId` 把 active assistant 临时切到 settled renderMode，等同一条消息的 fresh completed bounds 到位后，再一次性切掉 streaming 状态；这样底部判定源不会在 bounds 为空时提前换源，专门收口“生成结束后偶发上跳、底部留白”和“切后台再回来底部留白”的时序竞态
+- `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 当前不再在完成同一拍直接切 `isStreaming = false`。新的主链是：先写 completed 消息，再用 `pendingStreamingFinalizeMessageId` 把 active assistant 临时切到 settled renderMode，等同一条消息的 fresh completed bounds 真正到位后，再一次性切掉 streaming 状态；第二阶段已不再使用 `200ms` 这类短超时硬切，并且后台期间会暂停等待、回到前台后再继续等 settled bounds，专门收口“生成结束后偶发上跳、底部留白”和“切后台再回来底部留白”的时序竞态
 - 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
 
 ## 当前阶段判断

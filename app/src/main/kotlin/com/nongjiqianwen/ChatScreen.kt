@@ -3040,7 +3040,8 @@ fun ChatScreen() {
     LaunchedEffect(
         pendingStreamingFinalizeMessageId,
         isStreaming,
-        messages.size
+        messages.size,
+        streamingBackgrounded
     ) {
         val pendingMessageId = pendingStreamingFinalizeMessageId
         if (pendingMessageId.isNullOrBlank()) return@LaunchedEffect
@@ -3052,13 +3053,14 @@ fun ChatScreen() {
             clearPendingStreamingFinalize()
             return@LaunchedEffect
         }
-        withTimeoutOrNull(200L) {
-            snapshotFlow {
-                messageContentBoundsById.containsKey(pendingMessageId)
+        if (streamingBackgrounded) return@LaunchedEffect
+        snapshotFlow {
+            messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
+                bounds.bottom > bounds.top && bounds.bottom > 0f
             }
-                .filter { it }
-                .first()
         }
+            .filterNotNull()
+            .first()
         if (pendingStreamingFinalizeMessageId == pendingMessageId && isStreaming) {
             finalizeStreamingStop(
                 shouldRestoreBottomAnchor = pendingStreamingFinalizeShouldRestoreBottomAnchor
