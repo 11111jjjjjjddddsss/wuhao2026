@@ -4,6 +4,7 @@
 
 ## 2026-04-17
 
+- 发送抖动排查进入“共享 measure 宿主”新阶段：`ChatScreen.kt` 当前不再让 `ChatRecyclerViewHost` 继续直接吃 `composerTopInViewportPx -> bottomContentReservedHeightPx -> recyclerBottomPaddingPx` 这条晚一帧链路，而是在列表与 composer 的外层改用 `SubcomposeLayout` 同拍测量，先测 composer，再把同一拍的真实 reserve 直接传给列表 `bottomPaddingPx`；旧 `composerTopInViewportPx / inputFieldBoundsInWindow / messageViewportTopPx` 这组几何链暂时保留成 selection / overlay / workline 的辅助数据，不再单独驱动列表底部保留高度
 - 已回退一次失败的 send-start IME 动画跟随实验：`ChatScreen.kt` 曾在发送窗口引入 `sendStartAnimationTrackingActive`，临时让 `bottomContentReservedHeightPx` / `streamingWorklineBottomPx` 改用“稳定 bottom bar 高度 + 当前 IME 高度”这套连续值；实机反馈显示发送瞬间抖动并未消失，反而重新带回底部空白，并新增一拍更明显的“闪一下”错位感，说明这条 `WindowInsets.ime` 跟随方案在当前代码结构下与真实 composer 收口时序不一致，后续不要继续沿这条方向细磨
 - 已回退一次失败的 waiting reserve 短路实验：`bottomContentReservedHeightPx` 曾短暂在 `isStreaming && pendingStreamingFinalizeMessageId == null && streamingMessageContent.isBlank()` 时强制落到 `fallbackReservedHeightPx`，虽然压住了发送瞬间抖动，但会把 waiting 小球锚点整体抬高、重新带回底部空白，并在首字出现时出现“从中部掉回工作线”的回归；后续不要再直接复用这条短路
 - 把聊天 UI 已解决问题继续固化成“禁改记忆”：根 `AGENTS.md` 新增 `7.5 已修复问题的成因与禁改清单`，按“旧现象 / 已确认根因 / 当前修法 / 禁止回退”整理了历史区联动、小球掉线、streaming 下掉、fresh line 锁塌陷、完成态微重排、完成后底部空白、hydrate 整表震荡等已收口问题，方便后续窗口和外部会诊前先对照，避免随手把旧问题带回

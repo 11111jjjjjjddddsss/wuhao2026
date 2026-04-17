@@ -139,6 +139,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -1756,49 +1757,6 @@ fun ChatScreen() {
         startupLayoutReady = startupLayoutReady
     )
     val streamingExtraReservedHeightPx = 0
-    val bottomContentReservedHeightPx by remember(
-        messageViewportHeightPx,
-        composerTopInViewportPx,
-        composerCollapseOverlayVisible,
-        composerCollapseOverlayBottomHeightPx,
-        effectiveBottomBarHeightPx,
-        streamingExtraReservedHeightPx,
-        shouldUseRealtimeComposerGeometry
-    ) {
-        derivedStateOf {
-            val effectiveViewportHeightPx = messageViewportHeightPx
-            val measuredComposerReservedHeightPx =
-                if (
-                    shouldUseRealtimeComposerGeometry &&
-                    effectiveViewportHeightPx > 0 &&
-                    composerTopInViewportPx > 0
-                ) {
-                    (effectiveViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
-                } else {
-                    -1
-                }
-            val fallbackReservedHeightPx = resolveBottomContentReservedHeightPx(
-                overlayVisible = composerCollapseOverlayVisible,
-                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
-                extraReservedHeightPx = streamingExtraReservedHeightPx
-            )
-            val resolvedReservedHeightPx: Int =
-                when {
-                    measuredComposerReservedHeightPx >= 0 -> measuredComposerReservedHeightPx
-                    else -> fallbackReservedHeightPx
-                }
-            resolvedReservedHeightPx
-        }
-    }
-    val recyclerBottomPaddingPx by remember(
-        bottomContentReservedHeightPx,
-        streamVisibleBottomGapPx
-    ) {
-        derivedStateOf {
-            bottomContentReservedHeightPx + streamVisibleBottomGapPx
-        }
-    }
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
@@ -3292,6 +3250,344 @@ fun ChatScreen() {
         val inputTextToolbar = remember(uiRuntimeResetKey) {
             buildInputSelectionTextToolbar()
         }
+        val renderChatList: @Composable (Int) -> Unit = { bottomPaddingPx ->
+            CompositionLocalProvider(
+                LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
+            ) {
+                ChatRecyclerViewHost(
+                    listState = chatListState,
+                    itemIds = messages.map { it.id },
+                    topPaddingPx = chatListTopPaddingPx,
+                    bottomPaddingPx = bottomPaddingPx,
+                    modifier = Modifier
+                        .then(
+                            if (hasActiveMessageSelection) {
+                                selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .fillMaxSize()
+                        .then(
+                            if (shouldRevealMessageList) {
+                                Modifier
+                            } else {
+                                Modifier.graphicsLayer(alpha = 0f)
+                            }
+                        )
+                ) { itemId ->
+                    val msg = messages.firstOrNull { it.id == itemId } ?: return@ChatRecyclerViewHost
+                    DisposableEffect(msg.id) {
+                        onDispose {
+                            messageSelectionBoundsById.remove(msg.id)
+                            messageContentBoundsById.remove(msg.id)
+                            if (pendingMessageSelectionToolbarState?.messageId == msg.id) {
+                                pendingMessageSelectionToolbarState = null
+                            }
+                            if (messageSelectionToolbarState?.messageId == msg.id) {
+                                messageSelectionToolbarState = null
+                            }
+                        }
+                    }
+                    val isActiveStreamingAssistant =
+                        msg.role == ChatRole.ASSISTANT &&
+                            msg.id == streamingMessageId &&
+                            (isStreaming || streamingMessageContent.isNotBlank())
+                    val isPendingStreamingFinalizeAssistant =
+                        msg.role == ChatRole.ASSISTANT &&
+                            msg.id == pendingStreamingFinalizeMessageId
+                    val assistantDisplayContent =
+                        if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
+                            streamingMessageContent
+                        } else {
+                            msg.content
+                        }
+                    val copySourceContent =
+                        if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
+                    val fullCopyText = remember(msg.role, copySourceContent) {
+                        buildRenderedMessageCopyText(msg.role, copySourceContent)
+                    }
+                    val messageTextToolbar = remember(msg.id, msg.role, fullCopyText) {
+                        buildMessageSelectionTextToolbar(
+                            messageId = msg.id,
+                            role = msg.role,
+                            fullCopyText = fullCopyText
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                horizontal = listHorizontalPadding,
+                                vertical = CHAT_MESSAGE_ITEM_VERTICAL_PADDING
+                            )
+                            .then(
+                                if (
+                                    hasActiveMessageSelection &&
+                                    activeMessageSelectionMessageId != msg.id
+                                ) {
+                                    selectionDismissTapModifier(
+                                        activeMessageSelectionMessageId ?: "selection",
+                                        msg.id
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .widthIn(max = chromeMaxWidth)
+                                .fillMaxWidth()
+                                .onGloballyPositioned { coordinates ->
+                                    if (msg.role == ChatRole.ASSISTANT) {
+                                        val bounds = coordinates.boundsInWindow()
+                                        if (messageSelectionBoundsById[msg.id] != bounds) {
+                                            messageSelectionBoundsById[msg.id] = bounds
+                                        }
+                                        applyPendingMessageSelectionToolbarIfReady(
+                                            messageId = msg.id,
+                                            bounds = bounds
+                                        )
+                                    }
+                                }
+                        ) {
+                            val failedUserState = failedUserMessageStates[msg.id]
+                            val failedAssistantState = failedAssistantMessageStates[msg.id]
+                            if (msg.role == ChatRole.ASSISTANT) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    if (isActiveStreamingAssistant) {
+                                        CompositionLocalProvider(
+                                            LocalTextSelectionColors provides messageSelectionColors,
+                                            LocalTextToolbar provides messageTextToolbar
+                                        ) {
+                                            key(messageSelectionResetEpoch) {
+                                                val renderMode = when {
+                                                    isPendingStreamingFinalizeAssistant -> StreamingRenderMode.Settled
+                                                    isStreaming && assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
+                                                    isStreaming -> StreamingRenderMode.Streaming
+                                                    else -> StreamingRenderMode.Settled
+                                                }
+                                                ChatStreamingRenderer(
+                                                    content = assistantDisplayContent,
+                                                    renderMode = renderMode,
+                                                    revealMode = StreamingRevealMode.Free,
+                                                    freshSuffixEnabled = isStreaming &&
+                                                        !isPendingStreamingFinalizeAssistant,
+                                                    showWaitingBall = renderMode == StreamingRenderMode.Waiting,
+                                                    streamingFreshStart = streamingFreshStart,
+                                                    streamingFreshEnd = streamingFreshEnd,
+                                                    streamingFreshTick = streamingFreshTick,
+                                                    streamingLineAdvanceTick = streamingLineAdvanceTick,
+                                                    selectionEnabled = !isStreaming ||
+                                                        isPendingStreamingFinalizeAssistant,
+                                                    showDisclaimer = true,
+                                                    onStreamingContentBoundsChanged = { bounds ->
+                                                        if (bounds != null) {
+                                                            messageContentBoundsById[msg.id] = bounds
+                                                            streamingContentBottomPx =
+                                                                (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                        } else {
+                                                            messageContentBoundsById.remove(msg.id)
+                                                        }
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        SelectableRenderedStaticMessageContent(
+                                            content = msg.content,
+                                            textSelectionColors = messageSelectionColors,
+                                            textToolbar = messageTextToolbar,
+                                            selectionResetKey = messageSelectionResetEpoch,
+                                            showDisclaimer = true,
+                                            onContentBoundsChanged = { bounds ->
+                                                if (bounds != null) {
+                                                    messageContentBoundsById[msg.id] = bounds
+                                                } else {
+                                                    messageContentBoundsById.remove(msg.id)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                    if (failedAssistantState != null) {
+                                        MessageStatusFooter(
+                                            statusText = "回复未完成",
+                                            actionText = "重试",
+                                            alignEnd = false,
+                                            onActionClick = {
+                                                retryFailedAssistantMessage(msg.id)
+                                            }
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.End,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    SelectableRenderedUserMessageBubble(
+                                        content = msg.content,
+                                        textSelectionColors = messageSelectionColors,
+                                        textToolbar = messageTextToolbar,
+                                        selectionResetKey = messageSelectionResetEpoch,
+                                        userBubbleMaxWidth = userBubbleMaxWidth,
+                                        userBubbleColor = userBubbleColor,
+                                        onBubbleBoundsChanged = { bounds ->
+                                            if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
+                                                messageSelectionBoundsById[msg.id] = bounds
+                                            }
+                                            if (bounds != null) {
+                                                messageContentBoundsById[msg.id] = bounds
+                                            } else {
+                                                messageContentBoundsById.remove(msg.id)
+                                            }
+                                            if (bounds != null) {
+                                                applyPendingMessageSelectionToolbarIfReady(
+                                                    messageId = msg.id,
+                                                    bounds = bounds
+                                                )
+                                            }
+                                        }
+                                    )
+                                    if (failedUserState != null) {
+                                        MessageStatusFooter(
+                                            statusText = "未发送",
+                                            actionText = "重发",
+                                            alignEnd = true,
+                                            onActionClick = {
+                                                retryFailedUserMessage(msg.id)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val renderWelcomePlaceholder: @Composable (Int) -> Unit = { bottomPaddingPx ->
+            if (showWelcomePlaceholder) {
+                val welcomeBottomInset =
+                    with(density) { bottomPaddingPx.toDp() } + 24.dp
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            start = listHorizontalPadding,
+                            end = listHorizontalPadding,
+                            top = topBarReservedHeight,
+                            bottom = welcomeBottomInset
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(max = 360.dp)
+                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color(0xFF141414),
+                            lineHeight = 31.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+        val renderComposerBar: @Composable (Modifier) -> Unit = { hostModifier ->
+            ChatComposerBottomBar(
+                inputValue = input.value,
+                inputSelectionColors = inputSelectionColors,
+                inputTextToolbar = inputTextToolbar,
+                inputFieldFocused = inputFieldFocused,
+                suppressInputCursor = suppressInputCursor,
+                composerSettlingMinHeightPx = composerSettlingMinHeightPx,
+                composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
+                startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
+                inputChromeRowHeightPx = inputChromeRowHeightPx,
+                imeVisible = imeVisible,
+                isStreamingOrSettling = isStreaming || sendUiSettling,
+                inputMaxChars = INPUT_MAX_CHARS,
+                chromeMaxWidth = chromeMaxWidth,
+                inputChromeHorizontalPadding = inputChromeHorizontalPadding,
+                inputChromeBottomPadding = inputChromeBottomPadding,
+                addButtonSize = addButtonSize,
+                addIconSize = addIconSize,
+                sendButtonSize = sendButtonSize,
+                inputBarHeight = inputBarHeight,
+                inputBarMaxHeight = inputBarMaxHeight,
+                inputChromeSurface = inputChromeSurface,
+                inputChromeBorder = inputChromeBorder,
+                inputFieldSurface = inputFieldSurface,
+                inputFieldBorder = inputFieldBorder,
+                overlayHintText = composerOverlayHintText,
+                hostModifier = hostModifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
+                    .zIndex(55f)
+                    .onGloballyPositioned { coordinates ->
+                        composerHostBoundsInWindow = coordinates.boundsInWindow()
+                    },
+                onChromeMeasured = { height ->
+                    inputChromeRowHeightPx = height
+                    if (height > 0) {
+                        inputChromeMeasured = true
+                    }
+                },
+                onChromeBoundsChanged = { bounds ->
+                    composerChromeBoundsInWindow = bounds
+                },
+                onInputBoundsChanged = { bounds ->
+                    inputFieldBoundsInWindow = bounds
+                    composerTopInViewportPx =
+                        (bounds.top - messageViewportTopPx).roundToInt()
+                    composerMeasured = true
+                    applyPendingInputSelectionToolbarIfReady(bounds)
+                },
+                onInputFocused = { focused ->
+                    inputFieldFocused = focused
+                    if (focused) {
+                        suppressInputCursor = false
+                        inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
+                            startupInputContentHeightEstimatePx
+                        )
+                    }
+                },
+                onInputContentHeightChanged = { height ->
+                    inputContentHeightPx = height
+                },
+                onInputValueChange = {
+                    suppressInputCursor = false
+                    input.value = it
+                },
+                onInputLimitExceeded = {
+                    inputLimitHintTick++
+                },
+                onAddClick = { performButtonHaptic() },
+                onSendClick = {
+                    performButtonHaptic()
+                    sendMessage()
+                }
+            )
+        }
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
@@ -3348,344 +3644,53 @@ fun ChatScreen() {
                         messageViewportTopPx = bounds.top
                     }
             ) {
-                CompositionLocalProvider(
-                    LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
-                ) {
-                    ChatRecyclerViewHost(
-                        listState = chatListState,
-                        itemIds = messages.map { it.id },
-                        topPaddingPx = chatListTopPaddingPx,
-                        bottomPaddingPx = recyclerBottomPaddingPx,
-                        modifier = Modifier
-                            .then(
-                                if (hasActiveMessageSelection) {
-                                    selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
-                                } else {
-                                    Modifier
-                                }
+                SubcomposeLayout(
+                    modifier = Modifier.fillMaxSize()
+                ) { constraints ->
+                    val composerPlaceables = subcompose("conversation_composer") {
+                        renderComposerBar(Modifier)
+                    }.map { measurable ->
+                        measurable.measure(
+                            constraints.copy(
+                                minWidth = constraints.maxWidth,
+                                maxWidth = constraints.maxWidth
                             )
-                            .fillMaxSize()
-                            .then(
-                                if (shouldRevealMessageList) {
-                                    Modifier
-                                } else {
-                                    Modifier.graphicsLayer(alpha = 0f)
-                                }
-                            )
-                    ) { itemId ->
-                        val msg = messages.firstOrNull { it.id == itemId } ?: return@ChatRecyclerViewHost
-                        DisposableEffect(msg.id) {
-                            onDispose {
-                                messageSelectionBoundsById.remove(msg.id)
-                                messageContentBoundsById.remove(msg.id)
-                                if (pendingMessageSelectionToolbarState?.messageId == msg.id) {
-                                    pendingMessageSelectionToolbarState = null
-                                }
-                                if (messageSelectionToolbarState?.messageId == msg.id) {
-                                    messageSelectionToolbarState = null
-                                }
-                            }
-                        }
-                        val isActiveStreamingAssistant =
-                            msg.role == ChatRole.ASSISTANT &&
-                                msg.id == streamingMessageId &&
-                                (isStreaming || streamingMessageContent.isNotBlank())
-                        val isPendingStreamingFinalizeAssistant =
-                            msg.role == ChatRole.ASSISTANT &&
-                                msg.id == pendingStreamingFinalizeMessageId
-                        val assistantDisplayContent =
-                            if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
-                                streamingMessageContent
+                        )
+                    }
+                    val measuredComposerHeightPx =
+                        composerPlaceables.maxOfOrNull { it.height } ?: 0
+                    val conversationBottomPaddingPx =
+                        (
+                            if (measuredComposerHeightPx > 0) {
+                                measuredComposerHeightPx
                             } else {
-                                msg.content
-                            }
-                        val copySourceContent =
-                            if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
-                        val fullCopyText = remember(msg.role, copySourceContent) {
-                            buildRenderedMessageCopyText(msg.role, copySourceContent)
-                        }
-                        val messageTextToolbar = remember(msg.id, msg.role, fullCopyText) {
-                            buildMessageSelectionTextToolbar(
-                                messageId = msg.id,
-                                role = msg.role,
-                                fullCopyText = fullCopyText
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    horizontal = listHorizontalPadding,
-                                    vertical = CHAT_MESSAGE_ITEM_VERTICAL_PADDING
+                                resolveBottomContentReservedHeightPx(
+                                    overlayVisible = composerCollapseOverlayVisible,
+                                    overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+                                    effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
+                                    extraReservedHeightPx = streamingExtraReservedHeightPx
                                 )
-                                .then(
-                                    if (
-                                        hasActiveMessageSelection &&
-                                        activeMessageSelectionMessageId != msg.id
-                                    ) {
-                                        selectionDismissTapModifier(
-                                            activeMessageSelectionMessageId ?: "selection",
-                                            msg.id
-                                        )
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .widthIn(max = chromeMaxWidth)
-                                    .fillMaxWidth()
-                                    .onGloballyPositioned { coordinates ->
-                                        if (msg.role == ChatRole.ASSISTANT) {
-                                            val bounds = coordinates.boundsInWindow()
-                                            if (messageSelectionBoundsById[msg.id] != bounds) {
-                                                messageSelectionBoundsById[msg.id] = bounds
-                                            }
-                                            applyPendingMessageSelectionToolbarIfReady(
-                                                messageId = msg.id,
-                                                bounds = bounds
-                                            )
-                                        }
-                                    }
-                            ) {
-                                val failedUserState = failedUserMessageStates[msg.id]
-                                val failedAssistantState = failedAssistantMessageStates[msg.id]
-                                if (msg.role == ChatRole.ASSISTANT) {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        if (isActiveStreamingAssistant) {
-                                            CompositionLocalProvider(
-                                                LocalTextSelectionColors provides messageSelectionColors,
-                                                LocalTextToolbar provides messageTextToolbar
-                                            ) {
-                                                key(messageSelectionResetEpoch) {
-                                                    val renderMode = when {
-                                                        isPendingStreamingFinalizeAssistant -> StreamingRenderMode.Settled
-                                                        isStreaming && assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
-                                                        isStreaming -> StreamingRenderMode.Streaming
-                                                        else -> StreamingRenderMode.Settled
-                                                    }
-                                                    ChatStreamingRenderer(
-                                                        content = assistantDisplayContent,
-                                                        renderMode = renderMode,
-                                                        revealMode = StreamingRevealMode.Free,
-                                                        freshSuffixEnabled = isStreaming &&
-                                                            !isPendingStreamingFinalizeAssistant,
-                                                        showWaitingBall = renderMode == StreamingRenderMode.Waiting,
-                                                        streamingFreshStart = streamingFreshStart,
-                                                        streamingFreshEnd = streamingFreshEnd,
-                                                        streamingFreshTick = streamingFreshTick,
-                                                        streamingLineAdvanceTick = streamingLineAdvanceTick,
-                                                        selectionEnabled = !isStreaming ||
-                                                            isPendingStreamingFinalizeAssistant,
-                                                        showDisclaimer = true,
-                                                        onStreamingContentBoundsChanged = { bounds ->
-                                                            if (bounds != null) {
-                                                                messageContentBoundsById[msg.id] = bounds
-                                                                streamingContentBottomPx =
-                                                                    (bounds.bottom - messageViewportTopPx).roundToInt()
-                                                            } else {
-                                                                messageContentBoundsById.remove(msg.id)
-                                                            }
-                                                        },
-                                                        modifier = Modifier.fillMaxWidth()
-                                                    )
-                                                }
-                                            }
-                                        } else {
-                                            SelectableRenderedStaticMessageContent(
-                                                content = msg.content,
-                                                textSelectionColors = messageSelectionColors,
-                                                textToolbar = messageTextToolbar,
-                                                selectionResetKey = messageSelectionResetEpoch,
-                                                showDisclaimer = true,
-                                                onContentBoundsChanged = { bounds ->
-                                                    if (bounds != null) {
-                                                        messageContentBoundsById[msg.id] = bounds
-                                                    } else {
-                                                        messageContentBoundsById.remove(msg.id)
-                                                    }
-                                                },
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                        if (failedAssistantState != null) {
-                                            MessageStatusFooter(
-                                                statusText = "回复未完成",
-                                                actionText = "重试",
-                                                alignEnd = false,
-                                                onActionClick = {
-                                                    retryFailedAssistantMessage(msg.id)
-                                                }
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    Column(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalAlignment = Alignment.End,
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        SelectableRenderedUserMessageBubble(
-                                            content = msg.content,
-                                            textSelectionColors = messageSelectionColors,
-                                            textToolbar = messageTextToolbar,
-                                            selectionResetKey = messageSelectionResetEpoch,
-                                            userBubbleMaxWidth = userBubbleMaxWidth,
-                                            userBubbleColor = userBubbleColor,
-                                            onBubbleBoundsChanged = { bounds ->
-                                                if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
-                                                    messageSelectionBoundsById[msg.id] = bounds
-                                                }
-                                                if (bounds != null) {
-                                                    messageContentBoundsById[msg.id] = bounds
-                                                } else {
-                                                    messageContentBoundsById.remove(msg.id)
-                                                }
-                                                if (bounds != null) {
-                                                    applyPendingMessageSelectionToolbarIfReady(
-                                                        messageId = msg.id,
-                                                        bounds = bounds
-                                                    )
-                                                }
-                                            }
-                                        )
-                                        if (failedUserState != null) {
-                                            MessageStatusFooter(
-                                                statusText = "未发送",
-                                                actionText = "重发",
-                                                alignEnd = true,
-                                                onActionClick = {
-                                                    retryFailedUserMessage(msg.id)
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                            } + streamVisibleBottomGapPx
+                            ).coerceAtLeast(0)
+                    val listPlaceables = subcompose("conversation_list") {
+                        renderChatList(conversationBottomPaddingPx)
+                    }.map { measurable ->
+                        measurable.measure(constraints)
                     }
+                    val welcomePlaceables = subcompose("conversation_welcome") {
+                        renderWelcomePlaceholder(conversationBottomPaddingPx)
+                    }.map { measurable ->
+                        measurable.measure(constraints)
                     }
-                }
 
-                if (showWelcomePlaceholder) {
-                    val welcomeBottomInset =
-                        with(density) { recyclerBottomPaddingPx.toDp() } +
-                            24.dp
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .fillMaxSize()
-                            .padding(
-                                start = listHorizontalPadding,
-                                end = listHorizontalPadding,
-                                top = topBarReservedHeight,
-                                bottom = welcomeBottomInset
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .widthIn(max = 360.dp)
-                                .padding(horizontal = 20.dp, vertical = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = Color(0xFF141414),
-                                lineHeight = 31.sp,
-                                textAlign = TextAlign.Center
-                            )
+                    layout(constraints.maxWidth, constraints.maxHeight) {
+                        listPlaceables.forEach { it.placeRelative(0, 0) }
+                        welcomePlaceables.forEach { it.placeRelative(0, 0) }
+                        composerPlaceables.forEach { placeable ->
+                            placeable.placeRelative(0, constraints.maxHeight - placeable.height)
                         }
                     }
                 }
-
-                ChatComposerBottomBar(
-                    inputValue = input.value,
-                    inputSelectionColors = inputSelectionColors,
-                    inputTextToolbar = inputTextToolbar,
-                    inputFieldFocused = inputFieldFocused,
-                    suppressInputCursor = suppressInputCursor,
-                    composerSettlingMinHeightPx = composerSettlingMinHeightPx,
-                    composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
-                    startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
-                    inputChromeRowHeightPx = inputChromeRowHeightPx,
-                    imeVisible = imeVisible,
-                    isStreamingOrSettling = isStreaming || sendUiSettling,
-                    inputMaxChars = INPUT_MAX_CHARS,
-                    chromeMaxWidth = chromeMaxWidth,
-                    inputChromeHorizontalPadding = inputChromeHorizontalPadding,
-                    inputChromeBottomPadding = inputChromeBottomPadding,
-                    addButtonSize = addButtonSize,
-                    addIconSize = addIconSize,
-                    sendButtonSize = sendButtonSize,
-                    inputBarHeight = inputBarHeight,
-                    inputBarMaxHeight = inputBarMaxHeight,
-                    inputChromeSurface = inputChromeSurface,
-                    inputChromeBorder = inputChromeBorder,
-                    inputFieldSurface = inputFieldSurface,
-                    inputFieldBorder = inputFieldBorder,
-                    overlayHintText = composerOverlayHintText,
-                    hostModifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding()
-                        .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
-                        .zIndex(55f)
-                        .onGloballyPositioned { coordinates ->
-                            composerHostBoundsInWindow = coordinates.boundsInWindow()
-                        },
-                    onChromeMeasured = { height ->
-                        inputChromeRowHeightPx = height
-                        if (height > 0) {
-                            inputChromeMeasured = true
-                        }
-                    },
-                    onChromeBoundsChanged = { bounds ->
-                        composerChromeBoundsInWindow = bounds
-                    },
-                    onInputBoundsChanged = { bounds ->
-                        inputFieldBoundsInWindow = bounds
-                        composerTopInViewportPx =
-                            (bounds.top - messageViewportTopPx).roundToInt()
-                        composerMeasured = true
-                        applyPendingInputSelectionToolbarIfReady(bounds)
-                    },
-                    onInputFocused = { focused ->
-                        inputFieldFocused = focused
-                        if (focused) {
-                            suppressInputCursor = false
-                            inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
-                                startupInputContentHeightEstimatePx
-                            )
-                        }
-                    },
-                    onInputContentHeightChanged = { height ->
-                        inputContentHeightPx = height
-                    },
-                    onInputValueChange = {
-                        suppressInputCursor = false
-                        input.value = it
-                    },
-                    onInputLimitExceeded = {
-                        inputLimitHintTick++
-                    },
-                    onAddClick = { performButtonHaptic() },
-                    onSendClick = {
-                        performButtonHaptic()
-                        sendMessage()
-                    }
-                )
 
                 ChatComposerCollapseOverlay(
                     visible = composerCollapseOverlayVisible,
@@ -3876,6 +3881,7 @@ fun ChatScreen() {
 
         }
     }
+}
 }
 
 @Composable

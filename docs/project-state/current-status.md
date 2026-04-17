@@ -25,7 +25,8 @@
 - `RendererAssistantStreamingCommittedBlockImpl(...)` 当前也不再直接把正文整段交给单个 `Text(annotated)` 自由换行；heading / quote / paragraph 以及 bullet / numbered 的正文都改为先基于 `AnnotatedString` 做逐行测量，再复用和 active block 一样的逐行堆叠布局，尽量减少 streaming -> settled 时行高 / 行间距算法切换带来的“最后一拍微调”
 - streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；其中 streaming 分支已不再把块间距直接挂在 unified block 外壳 modifier 上，而是改成在非首块前插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，尽量减少新 block 诞生时把既有内容整体往下踹一拍
 - streaming 期间 unified block 外壳当前已继续收口到单一测量实现：不论 block 逻辑状态是 completed 还是 active，流式渲染都统一复用 `RendererAssistantStreamingActiveBlockImpl(...)`；只有最后一个 active block 继续吃 fresh tail 高亮，避免 active -> committed 中途交接时因为内部测量树不同构而产生额外高度重算
-- 列表底部保留高度与工作线当前只在 streaming 进行且不处于发送 / 输入区收口窗口时才参考实时 `composerTop`；`sendUiSettling` 或 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍在结算时，列表会强制回退到稳定 bottom bar / overlay 高度，避免“输入框瞬间回缩 + 小球立即出现”这一拍把消息区一起抖动
+- 聊天页“消息列表 + composer”当前已改成共享 measure 宿主：`ChatScreen.kt` 里用 `SubcomposeLayout` 先测 composer，再把同一拍的真实底部 reserve 直接喂给 `ChatRecyclerViewHost` 的 `bottomPaddingPx`，不再让 `LazyColumn` 的实际 contentPadding 继续完全依赖 `composerTopInViewportPx` 这条晚一帧的异步回写链
+- `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow`、overlay snapshot 这组旧几何链当前继续保留，但职责已降级为 selection / overlay / bounds / workline 辅助口径，不再单独决定列表底部保留高度
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需单发 `requestScrollToItem(0)`。这样完成那一拍不再出现工作线口径、底部判定源、内容宿主同时换挡
 - 发送链当前不再把“输入框收口”和“消息插入 + 回底请求”拆到两拍：`commitSendMessage()` 已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务里，网络/SSE 仅保留在后续协程，专门收“发送瞬间上下抖一下”的事务分帧问题
 - 发送起步窗口当前额外放开了实时 composer 几何：`shouldUseRealtimeComposerGeometry` 现在在 `sendUiSettling == true` 时不再被 `isComposerSettling` 一刀切断，避免输入框瞬间清空回缩时，工作线和 bottom reserved height 先断崖回退、再配合 `requestScrollToItem(0)` 制造整块上下抖
@@ -58,9 +59,9 @@
 - 当前只剩 Android 聊天 UI 的一个顽固体感问题：发送瞬间整块消息区仍会轻微上下抖一下；此前“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题，按最新真机反馈都已压住
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
 - 焦点：发送瞬间整块消息区会轻微上下抖一下
-  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()`、`isComposerSettling`、`shouldUseRealtimeComposerGeometry`
+  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()` 与新引入的共享 measure 宿主
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(0)`
-  - 当前真实现状：多轮实验后，说明问题大概率不在 streaming/render finalize 链，而集中在“发送当拍的输入区收口 + workline/底部保留高度切换 + `requestScrollToItem(0)`”这条几何竞态链
+  - 当前最新尝试：已把列表实际吃到的 bottom padding 改为 composer 同拍实测值，滚动链、finalize、selection、overlay 均先保持原样；是否彻底压住发送抖动，仍需用户真机回归
 - 已明确排除、不要再回滚的方向：
   - 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout` 主链
   - `alignChatListBottom()` 的 8 帧 `scrollBy` 补偿

@@ -212,8 +212,8 @@ Clean-State 必做回归的范围：
 - 作用：在反向底座里只维护“谁拥有滚动控制权”；当用户未打断时，生成内容继续沿底部锚定自然向上长，不再执行正向列表那套 `snap + scrollBy` overflow 追赶链
 
 3. 发送期几何稳定
-- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的工作线 / `recyclerBottomPaddingPx` 计算
-- 作用：发送当拍仍允许即时清空输入框并立即插入消息，但这一个窗口里的工作线与底部保留高度必须保持单一真相；除发送起步这个极短窗口外，`isComposerSettling` 期间应优先回退到稳定 bottom bar / overlay 高度，避免输入区收口时把消息区整体带着抖
+- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的“消息列表 + composer 共享 measure 宿主”
+- 作用：发送当拍仍允许即时清空输入框并立即插入消息，但列表实际吃到的底部保留高度必须与 composer 在同一轮 measure 里产出，不能再完全依赖 `onGloballyPositioned -> composerTopInViewportPx -> derivedStateOf` 这条晚一拍的反馈链；旧 `composerTopInViewportPx` 仅继续服务 selection / overlay / 辅助几何
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
@@ -234,9 +234,9 @@ Clean-State 必做回归的范围：
 
 ### 7.3 当前实现细则
 
-- 工作线和静态贴底线必须共用同一个物理锚点；当前以反向列表的底部锚定 + `recyclerBottomPaddingPx` 共同定义工作线
+- 工作线和静态贴底线必须共用同一个物理锚点；当前以反向列表的底部锚定 + “共享 measure 宿主同拍产出的 composer reserve”共同定义工作线
 - 列表底座当前为纯 Compose `LazyColumn(reverseLayout = true)`，不再保留 `RecyclerView` / `stackFromEnd`
-- 消息区容器高度保持固定；`ChatComposerBottomBar` 已从 `Scaffold.bottomBar` 挪到内容层底部 overlay，输入区高度变化只再影响 `recyclerBottomPaddingPx`，不再直接挤压消息区容器
+- 消息区容器高度保持固定；`ChatComposerBottomBar` 已从 `Scaffold.bottomBar` 挪到内容层底部 overlay，消息列表与底部输入区当前通过 `SubcomposeLayout` 同拍测量：先测 composer，再把真实 reserve 直接喂给 `ChatRecyclerViewHost` 的 `bottomPaddingPx`，不再让消息列表继续完全吃旧的异步回写几何
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - streaming 渲染当前不再区分“waiting 专用宿主”和“首字后专用宿主”；waiting 小球与 streaming 首块已收敛到同一个 `ChatStreamingRenderer` 内容宿主内切换，首字上屏前后保持同一物理外壳
@@ -251,8 +251,8 @@ Clean-State 必做回归的范围：
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - `ChatScrollCoordinator` 当前不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 streaming 只保留 `Idle / AutoFollow / UserBrowsing` 控制权切换，运行时已无 active `snapStreamingToWorkline / performStreamingFollowStep / resolveStreamingFollowStepPx` 链
 - `scrollToBottom(false)` 当前只保留 `scrollToItem(0)` / `animateScrollToItem(0)` 这一条主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿
-- `recyclerBottomPaddingPx` 仍负责把底部输入区和工作线留出来；反向底座下最新消息天然贴着这条底部保留线，不再需要额外 footer 或双重到底补推
-- `recyclerBottomPaddingPx` 与工作线当前在大多数 `isComposerSettling` 窗口里仍会回退到稳定 bottom bar / overlay 高度；但发送起步这一个极短窗口现在是例外：若 `sendUiSettling` 正在生效，仍允许继续参考实时 `composerTop`，避免发送当拍地基断崖回退后再配合 `requestScrollToItem(0)` 造成整块上下抖
+- `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出，并额外叠加 `STREAM_VISIBLE_BOTTOM_GAP`
+- `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
 - `sendStartBottomPaddingLockActive` 已退出工作线和底部保留高度的运行时主链；当前真正负责冻结实时 composer 几何的是 `sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 这组输入区收口状态
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留反向列表的 item 缓存和滚动锚点
