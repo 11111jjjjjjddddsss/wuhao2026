@@ -3355,7 +3355,7 @@ fun ChatScreen() {
                         listState = chatListState,
                         itemIds = messages.map { it.id },
                         topPaddingPx = chatListTopPaddingPx,
-                        bottomPaddingPx = { recyclerBottomPaddingPx },
+                        bottomPaddingPx = recyclerBottomPaddingPx,
                         modifier = Modifier
                             .then(
                                 if (hasActiveMessageSelection) {

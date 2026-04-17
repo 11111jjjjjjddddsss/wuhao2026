@@ -9,7 +9,6 @@
 - `ChatStreamingRenderer(...)` 的最外层内容宿主已统一成同一个 `Column`：streaming / settled 现在共用 `boundsReportingModifier` 与宽度约束，streaming 的 `BottomStart` 对齐下沉到内部 `Box`。这次改动只收“生成完成那一下像再次排版的轻微上抬”，避免 renderMode 切换时最外层 `Box -> Column` 换树
 - `RendererAssistantStreamingCommittedBlockImpl(...)` 继续向 active 测量口径靠齐：completed heading / quote / paragraph 改为基于 `AnnotatedString` 逐行测量并逐行堆叠，bullet / numbered 正文也改为同样的逐行 body 布局；这次只收“完成那一下行与行之间还有轻微重排”的剩余抖动
 - 收紧 finalize 第二阶段等待条件：`ChatScreen.kt` 的 pending finalize 不再只看 `messageContentBoundsById.containsKey(id)` 并在 `200ms` 后硬切；当前改成只在前台等待同一条消息的 settled bounds 真实有效（`bottom > top && bottom > 0`）后再 `finalizeStreamingStop(...)`，后台期间暂停等待、回前台继续，专门收“完成后偶发上跳、底部空白”和“切后台回来更容易露白”的非确定性竞态
-- `ChatRecyclerViewHost.kt` 的底部留白消费点已从 `LazyColumn.contentPadding.bottom` 改成列表内部 `bottom spacer`；同时把 `recyclerBottomPaddingPx` 改为以 lambda 形式传入，并在 spacer 的 layout 阶段读取，专门收“发送瞬间小球和历史文本先上跳一下再掉下来”的两帧 padding 抖动
 - 发送起步窗口新增定向 realtime geometry 例外：`ChatScreen.kt` 的 `shouldUseRealtimeComposerGeometry` 不再在 `sendUiSettling == true` 时被 `isComposerSettling` 一刀切断，避免发送当拍工作线/底部保留高度先断崖回退、再和 `requestScrollToItem(0)` 打架
 - 删除 `ChatStreamingRenderer.kt` 里的 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` fresh line 锁预览层；streaming 行级渲染当前直接使用原始 `StreamingRenderedLines`，不再把 `activeLine` 锁成预览串或空串，专门收口生成过程中偶发“往下掉一下再弹回”的帧级高度塌陷
 - 收紧发送事务时序：`ChatScreen.kt` 的 `commitSendMessage()` 不再先清空输入框、再进协程插消息；当前已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务，专门压“发送瞬间上下抖一下”
