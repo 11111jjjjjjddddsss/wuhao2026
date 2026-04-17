@@ -272,6 +272,52 @@ Clean-State 必做回归的范围：
 - 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
 - 当前唯一未关闭体感问题：发送瞬间整块消息区仍会轻微上下抖一下；后续排查应继续只盯 `commitSendMessage()`、发送期几何切换和 `requestScrollToItem(0)` 这一拍，不再把已收口的 streaming / finalize 问题重新并列回来
 
+### 7.5 已修复问题的成因与禁改清单
+
+以下条目属于“已经收口的旧问题”。后续改聊天 UI 前，必须先对照这里，避免为了修新问题把旧问题重新带回来。
+
+1. 历史区输入框联动
+- 旧现象：停在历史区时，点击输入框或收起输入框，整段历史消息会跟着上下走
+- 已确认根因：列表底部保留高度和工作线在普通 idle / 历史浏览状态下也继续追实时 `composerTop`
+- 当前修法：普通 idle / 历史浏览状态下不再让消息区实时跟随输入框；只有 streaming 主链需要的窗口才允许参考实时 composer 几何
+- 禁止回退：不要再把“输入框弹起 / 收起”直接当成推动历史区列表的理由
+
+2. 小球掉线 / 先悬空再掉回工作线
+- 旧现象：发送后 waiting 小球有时悬空一拍，有时直接掉到工作线下方
+- 已确认根因：反向列表插入新 item 时，`LazyColumn` 默认优先保护旧可见项位置；如果不主动回到底部，新插入的 assistant placeholder 会被挤到视口外
+- 当前修法：发送事件在插入用户消息和 assistant placeholder 后，同一发送事务里立即 `requestScrollToItem(0)`
+- 禁止回退：不要再恢复“发送死区”“只在离底较远时才回底”“用 spacer item 占底”这些方案
+
+3. streaming 过程中往下掉一下再弹回
+- 旧现象：正文往上长时，偶发先往下掉一下再弹回；新段落诞生时更明显
+- 已确认根因：streaming block 外壳把块间距挂成外部 `padding(top)`，再叠加 active / committed 中途切换的测量树差异，导致新区块诞生或块级交接时出现帧级高度塌陷
+- 当前修法：streaming block 改为 unified host；非首块间距改成独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`；streaming 期间 completed / active blocks 统一复用同一套 active 测量实现
+- 禁止回退：不要再把 `MARKDOWN_BLOCK_SPACING` 重新挂回 block 外壳 `padding(top)`；不要再让流式中途 completed / active blocks 走两套不同外壳
+
+4. fresh line 锁导致的行级塌陷
+- 旧现象：有些行在 reveal / 换行那一拍会明显一缩一放，像内容被锁空了一帧
+- 已确认根因：`rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 会把 `activeLine` 锁成预览串甚至空串，直接把原本有高度的 active line 压成更矮的临时节点
+- 当前修法：删除 fresh line 锁预览层，stable / active 行直接用原始 `StreamingRenderedLines` 渲染
+- 禁止回退：不要再引入“锁新字”“锁空串”“等几帧再放行”的旧 preview 链
+
+5. 生成完成瞬间轻微重新排版 / 微调
+- 旧现象：正文生成完成那一瞬间，整体像又重新排版一次；行与行之间会轻微重排
+- 已确认根因：streaming / settled 不仅内容不同，最外层宿主、块级宿主、行级测量路径也不同，`isStreaming` 切换那一拍会换树重测
+- 当前修法：streaming / settled 共用最外层 `Column` 宿主；committed 段落正文向 active 的逐行测量口径靠齐
+- 禁止回退：不要再把 streaming / settled 切回 `Box` 与 `Column` 两套最外壳；不要再让 committed 正文直接自由换行、完全脱离 streaming 的逐行测量口径
+
+6. 完成后上跳与底部空白
+- 旧现象：生成完成后偶尔整体往上跳，底部留一大块空白；切后台再回来更容易触发
+- 已确认根因：旧 finalize 会在 completed 宿主 fresh bounds 尚未就绪时就切掉 `isStreaming`，导致工作线口径、底部判定源、内容宿主同时换挡；后台场景下又会放大这个竞态
+- 当前修法：统一走两阶段 finalize。先把 completed 内容写进去并清 streaming bounds，等同一条消息的 settled fresh bounds 真正有效后，再切 streaming 状态；后台期间暂停等待，回前台继续
+- 禁止回退：不要再用短超时硬切 finalize；不要再恢复 `pendingFinalBottomSnap`、`alignChatListBottom()`、多帧 `scrollBy` 补偿
+
+7. 历史 hydrate / 列表整表震荡
+- 旧现象：冷启动或恢复历史后，列表会整体重排，底部锚点和缓存容易丢
+- 已确认根因：`replaceMessages(clear + addAll)`、发送时 `messages.clear() + addAll()` 会把整表重建，破坏反向列表的 item 缓存与稳定锚点
+- 当前修法：发送与 hydrate 都改成按消息 `id` 原地增改 / move / remove，尽量保留现有 item
+- 禁止回退：不要再把消息替换链改回 `clear() + addAll()`
+
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报
 2. 工作线与静态贴底线是否仍共用同一物理锚点

@@ -56,6 +56,7 @@
 ## 当前调试焦点
 
 - 当前只剩 Android 聊天 UI 的一个顽固体感问题：发送瞬间整块消息区仍会轻微上下抖一下；此前“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题，按最新真机反馈都已压住
+- 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
 - 焦点：发送瞬间整块消息区会轻微上下抖一下
   - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()`、`isComposerSettling`、`shouldUseRealtimeComposerGeometry`
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(0)`

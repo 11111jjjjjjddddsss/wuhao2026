@@ -4,6 +4,7 @@
 
 ## 2026-04-17
 
+- 把聊天 UI 已解决问题继续固化成“禁改记忆”：根 `AGENTS.md` 新增 `7.5 已修复问题的成因与禁改清单`，按“旧现象 / 已确认根因 / 当前修法 / 禁止回退”整理了历史区联动、小球掉线、streaming 下掉、fresh line 锁塌陷、完成态微重排、完成后底部空白、hydrate 整表震荡等已收口问题，方便后续窗口和外部会诊前先对照，避免随手把旧问题带回
 - 真机回归口径已收敛：按最新反馈，“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题当前都已压住；后续会诊和排查只剩“发送瞬间轻微上下抖一下”这一条，不再把已解决问题继续并列
 - streaming 渲染继续做减法：`ChatStreamingRenderer.kt` 的 unified streaming host 当前不再在 block 外壳 modifier 上挂 `padding(top = MARKDOWN_BLOCK_SPACING)`；非首块间距改为插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，避免新 block 出生那一拍把既有内容整体往下踹
 - streaming block 交接继续收口到同一套测量实现：`RendererAssistantStreamingUnifiedBlockHost(...)` 在 streaming 期间不再让 completed blocks 走 `RendererAssistantStreamingCommittedBlockImpl(...)`；当前所有 block 统一复用 `RendererAssistantStreamingActiveBlockImpl(...)`，仅最后一个 active block 保留 fresh tail 高亮，专门减少 active -> committed 中途交接时的帧级高度重算
