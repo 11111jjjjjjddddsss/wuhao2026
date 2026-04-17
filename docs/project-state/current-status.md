@@ -55,21 +55,18 @@
 
 ## 当前调试焦点
 
-- 当前最值得新窗口继续装机回归的，仍是 Android 聊天 UI 的两处顽固体感问题；但代码主刀已落地，下一窗口不该再从抽象层重想方案，而应该先拿真机验证这两刀是否真正收口
-- 焦点 1：发送瞬间整块消息区会轻微上下抖一下
-  - 本轮已落地代码点：`ChatScreen.kt` 的 `isComposerSettling` / `shouldUseRealtimeComposerGeometry`
+- 当前只剩 Android 聊天 UI 的一个顽固体感问题：发送瞬间整块消息区仍会轻微上下抖一下；此前“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题，按最新真机反馈都已压住
+- 焦点：发送瞬间整块消息区会轻微上下抖一下
+  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()`、`isComposerSettling`、`shouldUseRealtimeComposerGeometry`
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(0)`
-  - 本轮真实改法：没有再引入 delay / `withTimeoutOrNull` 延后收口，而是把发送和收口窗口里的实时 `composerTop` 联动冻结掉，让列表在稳定底部几何上完成回底
-- 焦点 2：streaming 过程中正文仍会“往下掉一下再弹回”
-  - 本轮已落地代码点：`ChatStreamingRenderer.kt` 的 `RendererAssistantStreamingContentImpl(...)`
-  - 当前真实结构已不再是 `completedModels.forEachIndexed { ... } + activeModel?.let { ... }` 两棵 sibling subtree；streaming blocks 已改为单循环 unified host
-  - 本轮真实改法：completed / active 共用同一个 block 外壳，append-only 外壳 key 收口到稳定 block index；同时 streaming 期间统一复用 `RendererAssistantStreamingActiveBlockImpl(...)` 这套测量路径，并把非首块间距改成外壳外的独立 `Spacer`
+  - 当前真实现状：多轮实验后，说明问题大概率不在 streaming/render finalize 链，而集中在“发送当拍的输入区收口 + workline/底部保留高度切换 + `requestScrollToItem(0)`”这条几何竞态链
 - 已明确排除、不要再回滚的方向：
   - 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout` 主链
   - `alignChatListBottom()` 的 8 帧 `scrollBy` 补偿
   - `pendingFinalBottomSnap`
   - 发送链里的 `withFrameNanos` 延迟回底
   - 发送链里的 `withTimeoutOrNull` 延后收口实验
+  - 发送链里的 `Snapshot.withMutableSnapshot { ... }` 单次 snapshot 提交实验
   - 普通 idle 聚焦输入框时带着历史区一起联动
 - 本轮新增回归修复点：
 - `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 当前不再在完成同一拍直接切 `isStreaming = false`。新的主链是：先写 completed 消息，再用 `pendingStreamingFinalizeMessageId` 把 active assistant 临时切到 settled renderMode，等同一条消息的 fresh completed bounds 真正到位后，再一次性切掉 streaming 状态；第二阶段已不再使用 `200ms` 这类短超时硬切，并且后台期间会暂停等待、回到前台后再继续等 settled bounds，专门收口“生成结束后偶发上跳、底部留白”和“切后台再回来底部留白”的时序竞态
