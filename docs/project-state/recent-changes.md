@@ -4,6 +4,7 @@
 
 ## 2026-04-17
 
+- 发送起步继续只收“同一把椅子”这一个点：`ChatScreen.kt` 的 `bottomContentReservedHeightPx` 当前新增 waiting 窗口短路，条件收紧为 `isStreaming && pendingStreamingFinalizeMessageId == null && streamingMessageContent.isBlank()`；命中时列表底部保留高度直接使用当前已有的 `fallbackReservedHeightPx`，只在“小球等待首个可见字”这一个极短窗口内避免列表先吃到旧 reserve、下一拍再换新 reserve
 - 把聊天 UI 已解决问题继续固化成“禁改记忆”：根 `AGENTS.md` 新增 `7.5 已修复问题的成因与禁改清单`，按“旧现象 / 已确认根因 / 当前修法 / 禁止回退”整理了历史区联动、小球掉线、streaming 下掉、fresh line 锁塌陷、完成态微重排、完成后底部空白、hydrate 整表震荡等已收口问题，方便后续窗口和外部会诊前先对照，避免随手把旧问题带回
 - 真机回归口径已收敛：按最新反馈，“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题当前都已压住；后续会诊和排查只剩“发送瞬间轻微上下抖一下”这一条，不再把已解决问题继续并列
 - streaming 渲染继续做减法：`ChatStreamingRenderer.kt` 的 unified streaming host 当前不再在 block 外壳 modifier 上挂 `padding(top = MARKDOWN_BLOCK_SPACING)`；非首块间距改为插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，避免新 block 出生那一拍把既有内容整体往下踹

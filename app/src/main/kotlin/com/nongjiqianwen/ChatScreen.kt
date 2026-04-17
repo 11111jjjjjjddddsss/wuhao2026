@@ -1490,6 +1490,17 @@ fun ChatScreen() {
     val hasStreamingItem by remember(isStreaming, streamingMessageId) {
         derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
     }
+    val shouldShortCircuitWaitingBottomReserve by remember(
+        isStreaming,
+        streamingMessageContent,
+        pendingStreamingFinalizeMessageId
+    ) {
+        derivedStateOf {
+            isStreaming &&
+                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                streamingMessageContent.isBlank()
+        }
+    }
     val isComposerSettling by remember(
         sendUiSettling,
         composerSettlingMinHeightPx,
@@ -1763,9 +1774,19 @@ fun ChatScreen() {
         composerCollapseOverlayBottomHeightPx,
         effectiveBottomBarHeightPx,
         streamingExtraReservedHeightPx,
-        shouldUseRealtimeComposerGeometry
+        shouldUseRealtimeComposerGeometry,
+        shouldShortCircuitWaitingBottomReserve
     ) {
         derivedStateOf {
+            val fallbackReservedHeightPx = resolveBottomContentReservedHeightPx(
+                overlayVisible = composerCollapseOverlayVisible,
+                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
+                extraReservedHeightPx = streamingExtraReservedHeightPx
+            )
+            if (shouldShortCircuitWaitingBottomReserve) {
+                return@derivedStateOf fallbackReservedHeightPx
+            }
             val effectiveViewportHeightPx = messageViewportHeightPx
             val measuredComposerReservedHeightPx =
                 if (
@@ -1777,12 +1798,6 @@ fun ChatScreen() {
                 } else {
                     -1
                 }
-            val fallbackReservedHeightPx = resolveBottomContentReservedHeightPx(
-                overlayVisible = composerCollapseOverlayVisible,
-                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
-                extraReservedHeightPx = streamingExtraReservedHeightPx
-            )
             val resolvedReservedHeightPx: Int =
                 when {
                     measuredComposerReservedHeightPx >= 0 -> measuredComposerReservedHeightPx
