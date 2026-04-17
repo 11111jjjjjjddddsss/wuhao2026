@@ -252,7 +252,7 @@ Clean-State 必做回归的范围：
 - `ChatScrollCoordinator` 当前不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 streaming 只保留 `Idle / AutoFollow / UserBrowsing` 控制权切换，运行时已无 active `snapStreamingToWorkline / performStreamingFollowStep / resolveStreamingFollowStepPx` 链
 - `scrollToBottom(false)` 当前只保留 `scrollToItem(0)` / `animateScrollToItem(0)` 这一条主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿
 - `recyclerBottomPaddingPx` 仍负责把底部输入区和工作线留出来；反向底座下最新消息天然贴着这条底部保留线，不再需要额外 footer 或双重到底补推
-- `recyclerBottomPaddingPx` 与工作线当前在大多数 `isComposerSettling` 窗口里仍会回退到稳定 bottom bar / overlay 高度；但发送起步这一个极短窗口现在单独走 IME 动画跟随：当 `collapseComposer = true` 且键盘可见时，`bottomContentReservedHeightPx` 与 `streamingWorklineBottomPx` 会临时改用“稳定 bottom bar 高度 + 当前 IME inset”这一套连续值，避免发送当拍在旧 / 新 reserve 之间瞬时跳变；跟随结束后再回到现有 measured composerTop 口径
+- `recyclerBottomPaddingPx` 与工作线当前在大多数 `isComposerSettling` 窗口里仍会回退到稳定 bottom bar / overlay 高度；但发送起步这一个极短窗口现在是例外：若 `sendUiSettling` 正在生效，仍允许继续参考实时 `composerTop`，避免发送当拍地基断崖回退后再配合 `requestScrollToItem(0)` 造成整块上下抖
 - `sendStartBottomPaddingLockActive` 已退出工作线和底部保留高度的运行时主链；当前真正负责冻结实时 composer 几何的是 `sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 这组输入区收口状态
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留反向列表的 item 缓存和滚动锚点
