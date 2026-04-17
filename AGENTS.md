@@ -196,6 +196,8 @@ Clean-State 必做回归的范围：
 - 用户拖动立即让权，不允许隐藏第二条链抢手
 - 完成态和静态贴底围绕同一条工作线附近目标线收口，不再保留明显更低的第二条底线
 - 底部不应再出现额外可见空白
+- 历史区浏览时，输入框弹起 / 收起不应再带着消息区整体联动；底部态也应尽量减轻这种联动
+- 当前除“发送瞬间轻微上下抖一下”外，其它主滚动 / streaming / finalize 体感问题都已按现阶段真机反馈收口
 
 ### 7.2 五环节铁律
 
@@ -211,7 +213,7 @@ Clean-State 必做回归的范围：
 
 3. 发送期几何稳定
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的工作线 / `recyclerBottomPaddingPx` 计算
-- 作用：发送时不再冻结底部 padding；工作线和底部保留高度优先跟随实时 composer 几何，仅在测量尚不可用或 overlay 接管时才回退到现有 bottom bar 高度
+- 作用：发送当拍仍允许即时清空输入框并立即插入消息，但这一个窗口里的工作线与底部保留高度必须保持单一真相；除发送起步这个极短窗口外，`isComposerSettling` 期间应优先回退到稳定 bottom bar / overlay 高度，避免输入区收口时把消息区整体带着抖
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
@@ -239,7 +241,7 @@ Clean-State 必做回归的范围：
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
 - streaming 渲染当前不再区分“waiting 专用宿主”和“首字后专用宿主”；waiting 小球与 streaming 首块已收敛到同一个 `ChatStreamingRenderer` 内容宿主内切换，首字上屏前后保持同一物理外壳
 - `ChatStreamingRenderer` 当前不再让 streaming / settled 走两套最外层宿主；两种 renderMode 已统一复用同一个最外层 `Column` 承接 `boundsReportingModifier` 和宽度约束，streaming 需要的 `Alignment.BottomStart` 底对齐已下沉到内部 `Box`，减少完成态切换那一拍因为外壳换树导致的轻微上抬 / 重排感
-- `ChatStreamingRenderer` 当前不再用父级 `Column(spacedBy(...))` 统一分发 Markdown block 间距；streaming / settled 的块间距都改为跟随各 block 自身的 top padding 生长，减少新区块出现时把已有内容整体向下踹一拍
+- `ChatStreamingRenderer` 当前不再用父级 `Column(spacedBy(...))` 统一分发 Markdown block 间距；streaming 非首块改为在 block 前插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，减少新区块出现时把已有内容整体向下踹一拍
 - 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
 - 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
 - 当前已删除所有只服务正向底座的发送起步 offset 链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 均不再参与运行时定位
@@ -259,6 +261,16 @@ Clean-State 必做回归的范围：
 - 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
 - streaming 行级 reveal 当前不再走 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览；运行时必须直接用原始 `StreamingRenderedLines` 渲染，禁止再把 `activeLine` 锁成预览串或空串，避免 activeLine 升格为 stableLine 时出现 1 帧高度塌陷
 - `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时补一发 `requestScrollToItem(0)`；这不是旧 `pendingFinalBottomSnap` 状态机，也不是多帧 `scrollBy` 补偿，只是让 completed 宿主在下一次 remeasure 里重新咬回 `index = 0` 的单次归位
+
+### 7.4 当前已收口的交互规则记忆
+
+- 历史区浏览：用户进入 `UserBrowsing` 后，主链立即让权；输入框弹起 / 收起不再作为把历史区一起推着走的理由
+- 底部态生成：waiting 小球、streaming 首行、正文增长、completed 收口都围绕同一条工作线和同一条底边宿主进行，不再允许等待态、首字态、完成态各走一套壳子
+- 自动跟随：当前只有 `Idle / AutoFollow / UserBrowsing` 这一套控制权真相；不再允许背后并存第二条 `scrollBy` 补偿链
+- 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
+- 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
+- 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
+- 当前唯一未关闭体感问题：发送瞬间整块消息区仍会轻微上下抖一下；后续排查应继续只盯 `commitSendMessage()`、发送期几何切换和 `requestScrollToItem(0)` 这一拍，不再把已收口的 streaming / finalize 问题重新并列回来
 
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报
