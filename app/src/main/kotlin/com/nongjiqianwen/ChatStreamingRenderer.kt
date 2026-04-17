@@ -1037,27 +1037,17 @@ private fun RendererStreamingSingleActiveLineTextImpl(
     freshTick: Int = 0,
     modifier: Modifier = Modifier
 ) {
+    val renderedLines = remember(lines.stableLines, lines.activeLine) {
+        buildList<Pair<AnnotatedString, Boolean>> {
+            lines.stableLines.forEach { add(it to false) }
+            lines.activeLine?.let { add(it to true) }
+        }
+    }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        lines.stableLines.forEach { line ->
-            if (line.text.isEmpty()) {
-                Spacer(modifier = Modifier.height(emptyLineHeight))
-            } else {
-                Text(
-                    text = line,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = emptyLineHeight),
-                    style = style,
-                    textAlign = TextAlign.Start,
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-        }
-        lines.activeLine?.let { line ->
+        renderedLines.forEach { (line, isActiveLine) ->
             if (line.text.isEmpty()) {
                 Spacer(modifier = Modifier.height(emptyLineHeight))
             } else {
@@ -1067,8 +1057,8 @@ private fun RendererStreamingSingleActiveLineTextImpl(
                         .fillMaxWidth()
                         .heightIn(min = emptyLineHeight),
                     style = style,
-                    freshTailChars = freshTailChars,
-                    freshTick = freshTick
+                    freshTailChars = if (isActiveLine) freshTailChars else 0,
+                    freshTick = if (isActiveLine) freshTick else 0
                 )
             }
         }
@@ -1473,49 +1463,33 @@ private fun RendererStreamingBulletOrNumberedBlockImpl(
     freshTailChars: Int,
     freshTick: Int
 ) {
+    val renderedLines = remember(lines.stableLines, lines.activeLine) {
+        buildList<Pair<AnnotatedString, Boolean>> {
+            lines.stableLines.forEach { add(it to false) }
+            lines.activeLine?.let { add(it to true) }
+        }
+    }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        if (lines.activeLine != null || lines.stableLines.isNotEmpty()) {
-            val firstLine = lines.stableLines.firstOrNull() ?: lines.activeLine
+        renderedLines.forEachIndexed { index, (line, isActiveLine) ->
             Row(
                 modifier = Modifier.fillMaxWidth().heightIn(min = paragraphLineHeight),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                leading()
-                firstLine?.let { line ->
+                if (index == 0) {
+                    leading()
+                } else {
+                    Spacer(modifier = Modifier.width(gutterWidth))
+                }
+                if (line.text.isEmpty()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
                     RendererStreamingAnimatedLineTextImpl(
                         text = line,
                         modifier = Modifier.weight(1f),
                         style = bodyStyle,
-                        freshTailChars = if (lines.stableLines.isEmpty()) freshTailChars else 0,
-                        freshTick = if (lines.stableLines.isEmpty()) freshTick else 0
+                        freshTailChars = if (isActiveLine) freshTailChars else 0,
+                        freshTick = if (isActiveLine) freshTick else 0
                     )
-                }
-            }
-            lines.stableLines.drop(1).forEach { line ->
-                Row(modifier = Modifier.fillMaxWidth().heightIn(min = paragraphLineHeight)) {
-                    Spacer(modifier = Modifier.width(gutterWidth))
-                    Text(
-                        text = line,
-                        modifier = Modifier.weight(1f),
-                        style = bodyStyle,
-                        textAlign = TextAlign.Start,
-                        maxLines = 1,
-                        softWrap = false
-                    )
-                }
-            }
-            if (lines.stableLines.isNotEmpty()) {
-                lines.activeLine?.let { line ->
-                    Row(modifier = Modifier.fillMaxWidth().heightIn(min = paragraphLineHeight)) {
-                        Spacer(modifier = Modifier.width(gutterWidth))
-                        RendererStreamingAnimatedLineTextImpl(
-                            text = line,
-                            modifier = Modifier.weight(1f),
-                            style = bodyStyle,
-                            freshTailChars = freshTailChars,
-                            freshTick = freshTick
-                        )
-                    }
                 }
             }
         }

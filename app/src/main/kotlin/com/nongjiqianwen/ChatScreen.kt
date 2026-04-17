@@ -255,8 +255,8 @@ internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
 internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 4
 private const val STREAM_DELAY_MULTIPLIER = 1.18
-internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 4
-internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 3
+internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
+internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
 internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
@@ -2883,6 +2883,12 @@ fun ChatScreen() {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         composerCollapseOverlayVisible = false
         sendUiSettling = true
+        hasStartedConversation = true
+        initialBottomSnapDone = true
+        LaunchUiGate.chatReady = true
+        if (collapseComposer) {
+            suppressJumpButtonForImeTransition = true
+        }
         if (collapseComposer) {
             val collapsePreparation = prepareComposerCollapse(
                 inputContentHeightPx = inputContentHeightPx,
@@ -2900,67 +2906,58 @@ fun ChatScreen() {
                 keyboardController?.hide()
             }
         }
+        val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
+        failedUserMessageStates.remove(userId)
+        clearFailedAssistantStateForUser(userId)
+        val assistantId = assistantMessageIdForSourceUser(userId)
+        upsertUserMessage(userId, text)
+        upsertAssistantMessagePlaceholder(
+            messageId = assistantId,
+            sourceUserMessageId = userId
+        )
+        trimMessagesInPlace()
+        anchoredUserMessageId = userId
+        streamingFreshStart = -1
+        streamingFreshEnd = -1
+        streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
+        isStreaming = true
+        streamingMessageId = assistantId
+        remoteRecoveryJob?.cancel()
+        remoteRecoveryJob = null
+        remoteRecoverySourceUserMessageId = null
+        streamingMessageContent = ""
+        streamingRevealBuffer = ""
+        streamingFreshStart = -1
+        streamingFreshEnd = -1
+        streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
+        context.saveLocalStreamingDraftSync(
+            chatScopeId = chatScopeId,
+            draft = LocalStreamingDraft(
+                messageId = streamingMessageId.orEmpty(),
+                content = "",
+                revealBuffer = "",
+                anchoredUserMessageId = anchoredUserMessageId,
+                savedAtMs = SystemClock.uptimeMillis()
+            )
+        )
+        streamingBackgrounded = false
+        prepareScrollRuntimeForStreamingStart(scrollRuntime)
+        fakeStreamJob?.cancel()
+        streamRevealJob?.cancel()
+        streamRevealJob = null
+        // Keep composer collapse, message insertion, and reverse-list bottom snap
+        // in the same UI transaction so Compose remeasures them together.
+        if (messages.indexOfFirst { it.id == assistantId } >= 0) {
+            chatListState.requestScrollToItem(index = 0)
+        }
+        persistTick++
+        snackbarScope.launch {
+            context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
+        }
         snackbarScope.launch {
             try {
-                hasStartedConversation = true
-                initialBottomSnapDone = true
-                LaunchUiGate.chatReady = true
-                if (collapseComposer) {
-                    suppressJumpButtonForImeTransition = true
-                }
-                val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
-                failedUserMessageStates.remove(userId)
-                clearFailedAssistantStateForUser(userId)
-                val assistantId = assistantMessageIdForSourceUser(userId)
-                upsertUserMessage(userId, text)
-                upsertAssistantMessagePlaceholder(
-                    messageId = assistantId,
-                    sourceUserMessageId = userId
-                )
-                trimMessagesInPlace()
-                anchoredUserMessageId = userId
-                streamingFreshStart = -1
-                streamingFreshEnd = -1
-                streamingLineAdvanceTick = 0
-                lastStreamingFreshRevealMs = 0L
-                isStreaming = true
-                streamingMessageId = assistantId
-                // Reverse layout keeps the newest assistant placeholder at the visual
-                // bottom. LazyColumn keeps the keyed visible item stable when new
-                // items are inserted ahead of it, so we must override that default
-                // in the same send transaction and explicitly request index 0.
-                val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
-                if (pendingStartAnchorPosition >= 0) {
-                    chatListState.requestScrollToItem(index = 0)
-                }
-                persistTick++
-                snackbarScope.launch {
-                    context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
-                }
-                remoteRecoveryJob?.cancel()
-                remoteRecoveryJob = null
-                remoteRecoverySourceUserMessageId = null
-                streamingMessageContent = ""
-                streamingRevealBuffer = ""
-                streamingFreshStart = -1
-                streamingFreshEnd = -1
-                streamingLineAdvanceTick = 0
-                lastStreamingFreshRevealMs = 0L
-                context.saveLocalStreamingDraftSync(
-                    chatScopeId = chatScopeId,
-                    draft = LocalStreamingDraft(
-                        messageId = streamingMessageId.orEmpty(),
-                        content = "",
-                        revealBuffer = "",
-                        anchoredUserMessageId = anchoredUserMessageId,
-                        savedAtMs = SystemClock.uptimeMillis()
-                    )
-                )
-                streamingBackgrounded = false
-                prepareScrollRuntimeForStreamingStart(scrollRuntime)
-                fakeStreamJob?.cancel()
-                streamRevealJob?.cancel()
-                streamRevealJob = null
                 if (hasRemoteHistorySource) {
                     SessionApi.cancelCurrentStream()
                     SessionApi.streamChat(
