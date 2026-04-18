@@ -249,7 +249,7 @@ Clean-State 必做回归的范围：
 - 发送事件当前会在插入用户消息和 assistant placeholder 后，按 assistant placeholder 在正向列表里的真实位置，请求 `requestScrollToItem(index, scrollOffset)`；不再把“底部 = index 0”当成唯一口径
 - 发送事务当前必须在进入网络 / SSE 协程前，同步完成输入框收口、用户消息 upsert、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)` 与单次 `requestScrollToItem(index, offset)`；不允许再把“输入框清空”和“消息插入 + 回底请求”拆成两拍，否则会重新带回发送瞬间上下抖
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
-- `ChatScrollCoordinator` 当前在 streaming 期间重新承担“继续贴底”的责任；正向底座下若最新 assistant 宿主偏离工作线，允许显式走 `scrollToBottom(false)` 拉回目标线，但不允许恢复旧的多状态并行补偿链
+- `ChatScrollCoordinator` 当前在 streaming 期间重新承担“继续贴底”的责任；正向底座下若最新 assistant 宿主偏离工作线，AutoFollow 只允许在现有列表偏移量上按“当前内容底边 - 工作线底边”的单次 delta 做 `scrollBy` 微调，不再对每个 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，但也不允许恢复旧的多状态并行补偿链
 - `scrollToBottom(false)` 当前重新带回 `alignChatListBottom()` 这层有限次数的底边补偿，用来把正向列表最后一条消息的可见底边重新压回工作线；禁止把它扩张回旧的多链路 scrollBy 状态机
 - `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出，并额外叠加 `STREAM_VISIBLE_BOTTOM_GAP`
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
@@ -271,7 +271,7 @@ Clean-State 必做回归的范围：
 - 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
 - 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
 - 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
-- 当前唯一未关闭体感问题：发送瞬间整块消息区仍会轻微上下抖一下；后续排查应继续只盯 `commitSendMessage()`、发送期几何切换和“发送起步那一拍的 `requestScrollToItem(index, offset)`”，不再把已收口的 streaming / finalize 问题重新并列回来
+- 当前未关闭体感问题当前重新收敛为 3 条：首次进入聊天页且已有历史时，列表仍可能先从上方露出来、还没立刻贴底；本地 fake streaming 过程中，长 assistant 文本仍可能出现“像重叠一样持续闪烁”的体感；发送瞬间整块消息区仍会轻微上下抖一下。后续排查顺序先看“首次进入贴底”和“fake-stream 闪烁”，再回到 `commitSendMessage()`、发送期几何切换和“发送起步那一拍的 `requestScrollToItem(index, offset)``
 
 ### 7.5 已修复问题的成因与禁改清单
 

@@ -250,7 +250,7 @@ internal fun BindChatListScrollEffects(
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
     isNearStreamingWorkline: () -> Boolean,
-    scrollToBottom: suspend (Boolean) -> Unit
+    followStreamingByDelta: suspend (Int) -> Unit
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
@@ -304,7 +304,7 @@ internal fun BindChatListScrollEffects(
                 streamBottomFollowActiveState.value = false
                 continue
             }
-            if (contentBottom <= 0 || streamingMessageContent.isBlank()) {
+            if (contentBottom <= 0 || legalBottom <= 0 || streamingMessageContent.isBlank()) {
                 streamBottomFollowActiveState.value = false
                 continue
             }
@@ -317,7 +317,10 @@ internal fun BindChatListScrollEffects(
             }
             streamBottomFollowActiveState.value = true
             try {
-                scrollToBottom(false)
+                val followDeltaPx = contentBottom - legalBottom
+                if (followDeltaPx != 0) {
+                    followStreamingByDelta(followDeltaPx)
+                }
             } finally {
                 streamBottomFollowActiveState.value = false
             }

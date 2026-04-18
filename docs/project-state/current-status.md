@@ -16,7 +16,7 @@
 - 运行时消息状态与显示顺序当前保持一致，不再通过 `asReversed()` 翻转；旧消息在上，新消息在下
 - 发送起步当前重新启用正向列表的单次 offset 起步：发送事务会基于工作线和 waiting 首行高度前馈计算 `startAnchorScrollOffsetPx`，再对 assistant placeholder 执行单次 `requestScrollToItem(index, offset)`，把小球起步宿主对齐到工作线
 - 小球所在的 assistant waiting 宿主当前依然是发送起步锚点；在正向列表下它不再依赖“反向天然贴底”，而是依赖显式起步对位和后续底部归位
-- `ChatScrollCoordinator` 当前重新承担 streaming 期间的继续贴底责任；用户未打断时，如果最新 assistant 宿主偏离工作线，会显式走 `scrollToBottom(false)` 把它拉回
+- `ChatScrollCoordinator` 当前重新承担 streaming 期间的继续贴底责任；用户未打断时，如果最新 assistant 宿主偏离工作线，AutoFollow 已不再对每个 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，而是只按当前底边偏差做单次 delta `scrollBy` 微调，优先压“假文本生成过程中像重叠一样持续闪烁”的体感
 - 远端历史 hydrate 当前已不再用 `replaceMessages(clear + addAll)` 整表重建；`replaceMessages(...)` 改为按消息 `id` 做原地增量更新，减少冷启动/恢复阶段的整表震荡
 - waiting 小球与 streaming 首块当前已收敛到同一个 `ChatStreamingRenderer` 内容宿主里切换，不再走两套 streaming 宿主分支，进一步减少首字出现时的物理高度跳变
 - `RendererAssistantStreamingContentImpl(...)` 当前已改为 unified block host：completed / active blocks 先拍平成同一个 `unifiedModels` 列表，再由同一个外壳宿主承接 spacing / divider，active -> committed 交接时不再跨 sibling subtree 搬家
@@ -63,10 +63,18 @@
 
 ## 当前调试焦点
 
-- 当前只剩 Android 聊天 UI 的一个顽固体感问题：发送瞬间整块消息区仍会轻微上下抖一下；此前“streaming 过程中往下掉一下再弹回”“生成完成瞬间轻微重新排版感”“完成后偶发底部留白”这几条主问题，按最新真机反馈都已压住
+- 当前 Android 聊天 UI 按最新真机口径重新收敛为 3 条未关闭体感问题：首次进入聊天页且已有历史时仍可能先不贴底；本地 fake streaming 过程中长 assistant 文本仍会出现“像重叠一样持续闪烁”；发送瞬间整块消息区仍会轻微上下抖一下
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
-- 焦点：发送瞬间整块消息区会轻微上下抖一下
-  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()` 与新引入的共享 measure 宿主
+- 焦点 1：首次进入有历史时不贴底
+  - 当前主要代码点：`ChatScreen.kt` 的 `chatListState` 初始位置与首次贴底 effect
+  - 当前代码仍从 `LazyListState(0, 0)` 起步，再等待 `messageViewportMeasured` 后补一发 `scrollToBottom(false)`；因此 reveal 已放行但首次贴底尚未执行的窗口里，用户仍可能先看到历史从上方露出来
+  - 后续限制：不要再把首屏 reveal / 欢迎语重新绑回 `messageViewportMeasured`、`composerMeasured` 或 `initialBottomSnapDone`
+- 焦点 2：fake streaming 过程中正文像重叠一样持续闪烁
+  - 当前主要代码点：`ChatScrollCoordinator.kt` 的 `BindChatListScrollEffects(...)`
+  - 本轮最新尝试：streaming AutoFollow 已不再对每次 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，而是只按 `contentBottom - legalBottom` 的单次 delta 做 `scrollBy` 微调，优先切掉 `scrollToItem(lastIndex) + alignChatListBottom()` 与 bounds 回写形成的重排反馈环
+  - 当前状态：代码已落地并通过 Kotlin 编译，仍需用户真机回归确认“重叠闪烁”是否真正压住
+- 焦点 3：发送瞬间整块消息区轻微上下抖
+  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()` 与共享 measure 宿主
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(index, offset)`
   - 当前最新尝试：列表已切回正向口径，同时保留 composer/list 共享测量宿主、两阶段 finalize、streaming/settled 同构等近几轮修复；发送起步、AutoFollow、静态贴底是否全部重新跑顺，仍需用户真机回归
 - 已明确排除、不要再回滚的方向：

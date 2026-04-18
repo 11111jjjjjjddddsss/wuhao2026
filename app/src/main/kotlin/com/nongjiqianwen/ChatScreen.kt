@@ -33,6 +33,7 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
@@ -3106,6 +3107,15 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
     }
+    val followStreamingByDelta: suspend (Int) -> Unit = followStreamingByDelta@{ deltaPx ->
+        if (deltaPx == 0) return@followStreamingByDelta
+        beginProgrammaticChatListScroll()
+        try {
+            chatListState.scrollBy(deltaPx.toFloat())
+        } finally {
+            endProgrammaticChatListScroll()
+        }
+    }
     LaunchedEffect(
         startupHydrationBarrierSatisfied,
         messageViewportMeasured,
@@ -3262,7 +3272,7 @@ fun ChatScreen() {
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         isNearStreamingWorkline = ::isNearStreamingWorkline,
-        scrollToBottom = scrollToBottom
+        followStreamingByDelta = followStreamingByDelta
     )
 
     BoxWithConstraints(
