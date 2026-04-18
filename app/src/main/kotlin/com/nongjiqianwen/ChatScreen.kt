@@ -1718,6 +1718,15 @@ fun ChatScreen() {
                     )
         }
     }
+    val startupListReady by remember(
+        startupHydrationBarrierSatisfied,
+        messageViewportMeasured
+    ) {
+        derivedStateOf {
+            startupHydrationBarrierSatisfied &&
+                messageViewportMeasured
+        }
+    }
     val startupLayoutReady by remember(
         startupHydrationBarrierSatisfied,
         messageViewportMeasured,
@@ -1747,13 +1756,13 @@ fun ChatScreen() {
         }
     }
     val shouldRevealMessageList by remember(
-        startupHydrationBarrierSatisfied,
+        startupListReady,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
             when {
-                !startupHydrationBarrierSatisfied -> false
+                !startupListReady -> false
                 messages.isNotEmpty() -> true
                 hasStreamingItem -> true
                 else -> false
@@ -1761,12 +1770,12 @@ fun ChatScreen() {
         }
     }
     val showWelcomePlaceholder by remember(
-        startupHydrationBarrierSatisfied,
+        startupListReady,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
-            startupHydrationBarrierSatisfied && messages.isEmpty() && !hasStreamingItem
+            startupListReady && messages.isEmpty() && !hasStreamingItem
         }
     }
     val topInset = WindowInsets.safeDrawing
@@ -1921,7 +1930,7 @@ fun ChatScreen() {
         autoHideMs = JUMP_BUTTON_AUTO_HIDE_MS
     )
     LaunchedEffect(
-        startupLayoutReady,
+        startupListReady,
         startupHydrationBarrierSatisfied,
         shouldRevealMessageList,
         showWelcomePlaceholder,
@@ -1930,8 +1939,7 @@ fun ChatScreen() {
         hasStreamingItem
     ) {
         LaunchUiGate.chatReady =
-            startupHydrationBarrierSatisfied &&
-                startupLayoutReady &&
+            startupListReady &&
                 (shouldRevealMessageList || showWelcomePlaceholder)
     }
     var messageSelectionToolbarState by remember(uiRuntimeResetKey) {
@@ -3074,7 +3082,7 @@ fun ChatScreen() {
         )
     }
     LaunchedEffect(
-        startupLayoutReady,
+        startupListReady,
         startupHydrationBarrierSatisfied,
         messageViewportMeasured,
         messages.size,
@@ -3082,7 +3090,7 @@ fun ChatScreen() {
         initialBottomSnapDone
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
-        if (!startupHydrationBarrierSatisfied || !startupLayoutReady || !messageViewportMeasured) {
+        if (!startupHydrationBarrierSatisfied || !startupListReady || !messageViewportMeasured) {
             return@LaunchedEffect
         }
         if (messages.isEmpty() && !hasStreamingItem) {
