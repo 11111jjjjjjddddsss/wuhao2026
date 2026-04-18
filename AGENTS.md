@@ -254,6 +254,7 @@ Clean-State 必做回归的范围：
 - `scrollToBottom(false)` 当前重新带回 `alignChatListBottom()` 这层有限次数的底边补偿，用来把正向列表最后一条消息的可见底边重新压回工作线；如果最后一条当前已在可见区，必须直接走 bottom-align 精修，避免先用 `scrollToItem(lastIndex)` 触发 top-anchor 跳顶。禁止把它扩张回旧的多链路 scrollBy 状态机
 - `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出，并继续额外叠加 `STREAM_VISIBLE_BOTTOM_GAP`。这段 64dp breathing gap 需要在 streaming、settled 完成态和首屏历史态都保持可见，不能在静态态被收掉
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
+- 普通 idle / 历史浏览状态下，列表与工作线仍不能重新长期追实时 `composerTop`；但“首次进入且有历史、`initialBottomSnapDone` 还没命中”的启动贴底窗口允许临时借一次实时 composer 几何，把最后几像素压准到真实工作线。命中后必须立刻退回当前静态口径，不能把这条临时窗口扩张成新的历史区联动链
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，只服务 `sendStartViewportHeightPx` 的锁定和起步 offset 计算；不允许再把它扩张成长期冻结列表底部 reserve 的旧几何锁
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留正向列表的 item 缓存和滚动锚点

@@ -1521,12 +1521,28 @@ fun ChatScreen() {
                 composerSettlingChromeHeightPx > 0
         }
     }
-    val listShouldTrackRealtimeComposerGeometry by remember(
+    val startupShouldTrackRealtimeComposerGeometry by remember(
+        initialBottomSnapDone,
+        hasStartedConversation,
+        messages.size,
         isStreaming,
         hasStreamingItem
     ) {
         derivedStateOf {
-            isStreaming || hasStreamingItem
+            !initialBottomSnapDone &&
+                !hasStartedConversation &&
+                messages.isNotEmpty() &&
+                !isStreaming &&
+                !hasStreamingItem
+        }
+    }
+    val listShouldTrackRealtimeComposerGeometry by remember(
+        isStreaming,
+        hasStreamingItem,
+        startupShouldTrackRealtimeComposerGeometry
+    ) {
+        derivedStateOf {
+            isStreaming || hasStreamingItem || startupShouldTrackRealtimeComposerGeometry
         }
     }
     val shouldUseRealtimeComposerGeometry by remember(
