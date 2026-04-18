@@ -3070,10 +3070,9 @@ fun ChatScreen() {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        if (messages.isEmpty()) {
-            initialBottomSnapDone = true
-            return@LaunchedEffect
-        }
+        snapshotFlow { currentLastMessageContentBottomPx() }
+            .filter { it > 0 }
+            .first()
         scrollToBottom(false)
         initialBottomSnapDone = true
     }
