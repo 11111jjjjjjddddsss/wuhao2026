@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-18
+最后更新：2026-04-19
 
 ## 项目概况
 
@@ -42,11 +42,12 @@
 - `sendUiSettling` 当前已重新收紧成“只覆盖发送起步同步窗口”的短锁：输入框收口、消息原地增改、首发 `requestScrollToItem(index, offset)` 一完成就立即释放，不再把长文本 composer 的多行高度锁到整段 fake streaming / SSE 结束，专门收口“发送长文本后输入框有时不回缩”的时序竞态
 - 发送起步窗口当前重新启用 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量，但只服务正向列表的单次起步定位，不再恢复成旧的多拍补偿链
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
-- 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起打包给 Gemini / Claude，避免外部方案继续停留在抽象猜测层
-- 当前外部会诊现实约束已明确：Gemini / Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
+- 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起整理成发给 Claude 的短稿，避免外部方案继续停留在抽象猜测层
+- 当前外部会诊现实约束已明确：Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，但只服务 `sendStartViewportHeightPx` 锁定和起步 offset 计算，不再充当长期冻结列表 reserve 的几何锁
 - 首次进入聊天页当前直接 `scrollToBottom(false)` 贴到底部；从后台切回时不默认自动贴底
 - 回到底部主链当前继续只走 `scrollToBottom(false)`；其中非动画路径已进一步收紧成“只有最后一条底边已经进入可视区，才允许只做 `alignChatListBottom()` 精修”。如果最后一条只是顶部露头、底边仍远在可视区外，正向列表会先做一次大位移滚到底，再由 `alignChatListBottom()` 把最后几像素压回工作线，专门收口首屏进入仍差一大段文字的问题
+- 按最新真机反馈，首次进入聊天页且本地有历史时的贴底已确认收口；当前工作线以下的 breathing gap 继续保持可见，不需要再为“首屏不贴底”单独开新链
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 本地 fake streaming 在正常结束时也不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 指标回落后才 finish；正文 reveal 完成后直接进入完成态收口
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
@@ -66,30 +67,16 @@
 
 ## 当前调试焦点
 
-- 当前 Android 聊天 UI 按最新真机口径重新收敛为 3 条关注点：本轮重新校正后的“首次进入聊天页有历史时直接收在工作线、并露出工作线以下空白”、以及“生成完成后继续稳定停在工作线而不是跑到输入框边上”都需要真机回归确认；另外发送瞬间整块消息区仍会轻微上下抖一下
+- 当前 Android 聊天 UI 按最新真机口径已重新收敛为 1 条主问题：发送瞬间整块消息区仍会轻微上下抖一下。首屏有历史时直接贴底当前已确认收口；streaming 过程重叠闪烁、完成态跳到长文本开头都转为回归观察项，不再与主问题并列
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
-- 焦点 1：首次进入有历史时直接贴底
-  - 当前主要代码点：`ChatScreen.kt` 的 `chatListState` 初始位置与首次贴底 effect
-  - 当前代码已不再从 `LazyListState(0, 0)` 起步；如果本地已有历史，会先用最后一条历史消息作为初始可见项。首次贴底 effect 现在会等 `startupLayoutReady` 后再启动，并且只有在 `isWithinBottomTolerance()` 命中后才把 `initialBottomSnapDone` 置真；若第一次 `scrollToBottom(false)` 发生在目标线或内容 bounds 还没稳定的窗口里，会继续自动重试，而不是滚一次就关门。与此同时，首屏贴底窗口会临时参考一次实时 composer 几何，把静态估算与实际 composer 高度之间那几像素误差压掉；`scrollToBottom(false)` 的非动画路径也已补上“最后一条底边未进可视区时先做正向硬位移到底”的一次真重定位，避免只靠 `alignChatListBottom()` 微调却仍差一大段文字
-  - 后续限制：不要再把首屏 reveal / 欢迎语重新绑回 `messageViewportMeasured`、`composerMeasured` 或 `initialBottomSnapDone`
-- 焦点 2：生成完成后不要跳到长文本开头
-  - 当前主要代码点：`ChatScreen.kt` 的 `finalizeStreamingStop()` 收口后补归位逻辑
-  - 本轮最新尝试：完成态若仍离底，不再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部，而是改为复用现有 `scrollToBottom(false)` 静态底线主链
-  - 后续限制：不要把两阶段 finalize 改回同拍硬切、短超时硬切或 `pendingFinalBottomSnap`
-- 焦点 3：发送瞬间整块消息区轻微上下抖
-  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()` 与共享 measure 宿主
+- 焦点 1：发送瞬间整块消息区轻微上下抖
+  - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()`、composer/list 共享 measure 宿主、`pendingStartAnchorScrollOffsetPx` 与发送起步那一拍的 `requestScrollToItem(index, offset)`
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(index, offset)`
-  - 当前最新尝试：列表已切回正向口径，同时保留 composer/list 共享测量宿主、两阶段 finalize、streaming/settled 同构等近几轮修复；发送起步、AutoFollow、静态贴底是否全部重新跑顺，仍需用户真机回归
-- 已明确排除、不要再回滚的方向：
-  - 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout` 主链
-  - `alignChatListBottom()` 的 8 帧 `scrollBy` 补偿
-  - `pendingFinalBottomSnap`
-  - 发送链里的 `withFrameNanos` 延迟回底
-  - 发送链里的 `withTimeoutOrNull` 延后收口实验
-  - 发送链里的 `Snapshot.withMutableSnapshot { ... }` 单次 snapshot 提交实验
-  - 普通 idle 聚焦输入框时带着历史区一起联动
-- 本轮新增回归修复点：
-- `finishStreaming()` / `completeStreamingImmediatelyFromBackground()` 当前不再在完成同一拍直接切 `isStreaming = false`。新的主链是：先写 completed 消息，再用 `pendingStreamingFinalizeMessageId` 把 active assistant 临时切到 settled renderMode，等同一条消息的 fresh completed bounds 真正到位后，再一次性切掉 streaming 状态；第二阶段已不再使用 `200ms` 这类短超时硬切，并且后台期间会暂停等待、回到前台后再继续等 settled bounds，专门收口“生成结束后偶发上跳、底部留白”和“切后台再回来底部留白”的时序竞态
+  - 当前排查限制：不要再恢复 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot` 这类发送期补丁；也不要把旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout`、`pendingFinalBottomSnap`、fresh-line lock 预览层或历史区输入框联动链带回来
+- 回归观察项：
+  - 首次进入有历史时继续直接贴底，并保持工作线以下 breathing gap 可见
+  - 生成完成后不要跳到长 assistant 文本开头
+  - 发送长文本后输入框要稳定回缩，不要再次出现“有时回缩、有时不回缩”的竞态
 - 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
 
 ## 当前阶段判断

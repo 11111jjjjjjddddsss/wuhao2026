@@ -131,9 +131,10 @@
 
 会诊优先级：
 - 不要默认同时找多个外部模型并行会诊；先选一个最匹配的对象，避免用户重复复制和多头口径互相干扰
-- Android Compose UI、滚动链、动画、渲染时序、布局抖动、输入区/工作线几何问题：优先建议用户只找 Gemini 会诊
-- 后端 Go、业务边界、接口职责、数据流、架构复盘、文档归纳：优先建议用户找 Claude 会诊
-- OpenAI / Codex / API / 官方产品能力与限制：优先查官方文档或官方资料，不把 Claude / Gemini 当真源
+- 当前用户已明确不再使用 Gemini；本项目如需外部会诊，默认优先整理成发给 Claude 的短稿。除非用户之后明确指定，否则不要再建议 Gemini
+- Android Compose UI、滚动链、动画、渲染时序、布局抖动、输入区/工作线几何问题：当前也默认优先建议用户找 Claude 会诊，但前提仍是 Codex 先本地锁定到具体代码点，再外发短稿
+- 后端 Go、业务边界、接口职责、数据流、架构复盘、文档归纳：继续优先建议用户找 Claude 会诊
+- OpenAI / Codex / API / 官方产品能力与限制：优先查官方文档或官方资料，不把 Claude 等外部模型当真源
 - Codex 的职责始终是：结合仓库当前代码落地修改、检查旧方案是否并行、编译验证、更新文档并提交推送
 - 如果问题类型已经明显匹配上面某一类，后续窗口应直接点名建议用户找对应对象，不要再让用户自己猜“该问谁”
 
@@ -143,7 +144,7 @@
 - 会诊问题必须尽量收敛到具体实现，不要只发“为什么会抖”“怎么优化”这类抽象描述；要明确让对方基于当前代码回答，不要假设仓库里不存在的接口、状态或组件
 - 若当前问题已经定位到某几个可疑点，会诊稿应直接要求对方围绕这些代码点给最小可落地方案，并明确禁止跑题到已被排除的方向
 - 收到会诊建议后，Codex 必须先对照当前代码核验：有没有假设不存在的字段、有没有和现有主链冲突、有没有把旧方案重新带回来；核验不过不直接下刀
-- 当前默认现实前提：外部会诊对象（如 Gemini、Claude）通常无法直接读取本地仓库、文件链接或真实运行环境；它们看到的只有用户手动转发过去的文字、截图、代码片段与日志
+- 当前默认现实前提：外部会诊对象（如 Claude）通常无法直接读取本地仓库、文件链接或真实运行环境；它们看到的只有用户手动转发过去的文字、截图、代码片段与日志
 - 因此外发会诊稿必须自包含：不能只写“看 ChatScreen.kt”“看仓库最新代码”，而要把对方作答所必需的关键代码片段、状态名、调用顺序、限制条件直接贴进消息里；若缺少这些上下文，会诊结果默认不可信
 - 如果外部会诊通过手机聊天软件进行，优先压缩成“问题说明 + 关键代码片段 + 明确追问”的短稿，避免对方因为上下文不全继续脑补仓库结构
 
@@ -273,7 +274,7 @@ Clean-State 必做回归的范围：
 - 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
 - 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
 - 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
-- 当前未关闭体感问题当前重新收敛为 2 条：发送瞬间整块消息区仍会轻微上下抖一下；以及本轮刚落地的“首次进入有历史先贴底”“生成完成后不要跳到长文本开头”两处收口仍需真机回归确认。后续排查顺序先验首次进入贴底和 finalize 收口是否稳定，再回到 `commitSendMessage()`、发送期几何切换和“发送起步那一拍的 `requestScrollToItem(index, offset)``
+- 当前未关闭体感问题当前重新收敛为 1 条：发送瞬间整块消息区仍会轻微上下抖一下。首屏首次进入贴底已按最新真机反馈收口；“生成完成后不要跳到长文本开头”和“发送长文本后输入框稳定回缩”当前转为回归观察项，不再与主问题并列。后续排查只继续盯 `commitSendMessage()`、发送期几何切换和“发送起步那一拍的 `requestScrollToItem(index, offset)``
 
 ### 7.5 已修复问题的成因与禁改清单
 
@@ -326,6 +327,12 @@ Clean-State 必做回归的范围：
 - 已确认根因：首屏白屏最终是四类问题叠加。第一类是启动门槛曾把 `composerMeasured` 也当成首屏显示前置，导致列表/欢迎语明明该显示却被几何迟到卡住；第二类是后续又把 reveal / splash 放行重新绑到了 `messageViewportMeasured`，让“能不能先显示文字”和“视口是否已测量可做首次贴底”再次混在一起；第三类是 `rememberSaveable` 恢复出的 stale streaming runtime（`isStreaming`、`streamingMessageId` 等）在冷启动 reset 前先参与了首屏判定，造成 `hasStreamingItem = true`、欢迎语被关掉，但 `messages` 实际为空，于是 reveal 出来的只是一张空列表白页；第四类是共享 measure 宿主在 `SubcomposeLayout` 里测 composer 时把父级整屏 `minHeight` 原样传了下去，导致 composer 被量成接近整屏高，列表 / 欢迎语底部 reserve 失真后，欢迎语和历史文本会一起被挤没
 - 当前修法：首屏显示链当前只看 hydration barrier。`shouldRevealMessageList`、`showWelcomePlaceholder`、`LaunchUiGate.chatReady` 都不再等待 `initialBottomSnapDone`、`composerMeasured` 或 `messageViewportMeasured`；首次贴底继续作为独立 effect，但它现在只在 `startupLayoutReady` 后启动，并且只有已经命中底部容差才把 `initialBottomSnapDone` 置真，避免“首屏滚过一次就关门、后续几何稳定了却不再补底”。与此同时，冷启动 reset 会主动清空 streaming runtime，`hasStreamingItem` 也收紧成“既要 streaming 状态存在，也要 `messages` 里真的有对应 item”；共享 measure 宿主在测 composer slot 时额外放松 `minHeight = 0`，只保留精确宽度，避免 reserve 被整屏高误伤
 - 禁止回退：不要再把 `shouldRevealMessageList` 重新绑回 `initialBottomSnapDone`；不要再把 `showWelcomePlaceholder`、`LaunchUiGate.chatReady`、首屏 reveal 重新绑回 `composerMeasured` / `onInputBoundsChanged` / `messageViewportMeasured`；不要再把 `hasStreamingItem` 简化回只看 `isStreaming && streamingMessageId != null`；不要再让共享 measure 宿主把父级整屏 `minHeight` 直接传给 composer slot
+
+9. 首次进入有历史时不贴底
+- 旧现象：冷启动进入聊天页后，历史消息会先停在离底一大段的位置，或者只差几像素却始终压不到工作线
+- 已确认根因：首屏首次贴底 effect 曾在目标线或 bounds 还没稳定时过早记账完成；同时正向列表里“最后一条已可见”的判断过宽，只要 last item 顶部露头就会跳过那次真正需要的到底重定位
+- 当前修法：首次贴底 effect 只在 `startupLayoutReady` 后启动，并且只有命中 `isWithinBottomTolerance()` 才把 `initialBottomSnapDone` 置真；启动窗口允许临时参考一次 realtime composer geometry；`scrollToBottom(false)` 的非动画路径若发现最后一条底边仍在可视区外，会先做一次正向 hard bottom reposition，再交给 `alignChatListBottom()` 精修
+- 禁止回退：不要再把首屏贴底改回“一次 `scrollToBottom(false)` 就记完成”；不要再把 `messageViewportMeasured` / `composerMeasured` 重新绑回 reveal；不要再把到底重定位改回 `scrollToItem(lastIndex)` 这类 top-anchor
 
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报

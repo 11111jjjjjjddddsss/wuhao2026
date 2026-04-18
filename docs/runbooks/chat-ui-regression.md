@@ -1,6 +1,6 @@
 # Chat UI 回归与接手 Runbook
 
-最后更新：2026-04-16
+最后更新：2026-04-19
 
 ## 目的
 
@@ -16,15 +16,16 @@
 
 ### 1. 发送瞬间整块消息区上下抖
 
-- 当前最可疑位置：`ChatScreen.kt` 的 `commitSendMessage(...)`
-- 当前判断：发送事务里“先收口输入区、后插消息回底”仍可能导致底部地基在对齐前先塌陷
-- 下一刀重点：保留发送门禁和 streaming 起始态，只后移 `prepareComposerCollapse(...)`、清空文本、清焦点、收键盘
+- 当前最可疑位置：`ChatScreen.kt` 的 `commitSendMessage(...)`、composer/list 共享 measure 宿主、`pendingStartAnchorScrollOffsetPx` 与发送起步那一拍的 `requestScrollToItem(index, offset)`
+- 当前判断：发送事务里“输入框收口、消息原地增改、起步锚定请求”仍可能在同一拍里让底部几何切换过早，导致上方文本轻微上下抖
+- 下一刀重点：只围绕发送起步这一段同步窗口排查，不恢复旧的延迟补丁或多拍补偿链
 
-### 2. Streaming 过程中正文往下掉一下再弹回
+### 2. 已收口但必须继续回归的观察项
 
-- 当前最可疑位置：`ChatStreamingRenderer.kt` 的 `RendererAssistantStreamingContentImpl(...)`
-- 当前判断：`completedModels.forEachIndexed { ... }` 和 `activeModel?.let { ... }` 双分支在 flush 时仍可能触发块级宿主切换
-- 下一刀重点：参考 `RendererAssistantMarkdownContentImpl(...)` 的单循环结构，改成块级同构宿主
+- 首次进入聊天页且本地有历史时，应直接贴到底部工作线，并继续露出工作线以下 breathing gap
+- streaming 过程不应再出现正文重叠闪烁
+- 生成完成后不应跳到长文本开头
+- 发送长文本后输入框应稳定回缩
 
 ## 回归场景
 
@@ -32,7 +33,7 @@
 
 - 步骤：打开已有历史消息的聊天页，停在历史区，点击输入框唤起键盘
 - 预期：现有历史消息不应跟着整体上抬
-- 若失败，优先排查：`ChatScreen.kt` 中工作线 / `recyclerBottomPaddingPx` 是否在 idle 仍引用实时 `composerTop`
+- 若失败，优先排查：`ChatScreen.kt` 中工作线 / 列表 bottom reserve 是否在 idle 仍引用实时 `composerTop`
 
 ### B. 底部 idle 聚焦输入框尽量不联动
 
@@ -60,6 +61,7 @@
 
 ## 会诊提示
 
+- 如需外部会诊，当前默认整理成发给 Claude 的短稿
 - 外部会诊对象默认看不到本地仓库
-- 发给 Gemini / Claude 的内容必须自包含：问题说明 + 关键代码片段 + 已排除项 + 限制条件
+- 发给外部模型的内容必须自包含：问题说明 + 关键代码片段 + 已排除项 + 限制条件
 - 不要只发文件名，不要只发抽象症状

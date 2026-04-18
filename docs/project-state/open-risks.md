@@ -1,6 +1,6 @@
 # 当前未关闭风险
 
-最后更新：2026-04-18
+最后更新：2026-04-19
 
 ## R1 运维入口仍以文档骨架为主
 
@@ -26,13 +26,13 @@
 ## R4 聊天滚动链仍需持续装机回归
 
 - 状态：未关闭
-- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构等近几轮修复继续保留。现在最大的风险不再是“要不要回退旧方案”，而是正向列表下发送起步、AutoFollow、静态贴底三段是否都能重新跑顺
-- 风险：如果后续新窗口忽略“已切回正向底座、但不是整套回滚到旧时代代码”这个当前真相，直接把旧正向多拍补偿链整包搬回，很容易和共享 measure 宿主、两阶段 finalize、统一 streaming 宿主这些新修复打架；反过来，如果继续按反向列表思维排查，也会误判当前发送起步和底部归位问题
-- 后续动作：下一轮真机回归优先只看 5 件事：首次进入有历史时是否直接贴底、生成完成后是否还会跳到长 assistant 文本开头、发送起步小球是否回到工作线、完成态是否仍无底部空白、回到底部按钮是否仍只走主链；若继续改发送抖动，只围绕 `commitSendMessage()`、`pendingStartAnchorScrollOffsetPx`、发送起步 offset 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，不要把旧 `scrollToBottom(false) + alignChatListBottom()` 多拍补偿重新扩回 streaming 中途
+- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，首屏首次进入贴底已收口，当前剩余主风险集中在发送起步事务是否仍会带来一拍上下抖
+- 风险：如果后续为了压发送抖动重新把旧发送补丁、旧滚动补偿或旧历史区联动链带回运行时，很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏；反过来，如果继续按反向列表思维排查，也会误判当前发送起步和底部归位问题
+- 后续动作：下一轮真机回归优先只看 4 件事：发送瞬间整块消息区是否仍上下抖、发送后输入框是否稳定回缩、首次进入有历史是否继续直接贴底、生成完成后是否还会跳到长 assistant 文本开头。若继续改发送抖动，只围绕 `commitSendMessage()`、共享 measure 宿主、`pendingStartAnchorScrollOffsetPx` 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，不要把旧 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot` 或 `scrollToBottom(false)` 多拍补偿链重新扩回发送期
 
 ## R5 外部会诊仍依赖人工转发上下文
 
 - 状态：未关闭
-- 说明：Gemini / Claude 等外部模型默认看不到本地仓库，只能依赖用户通过聊天软件转发的代码片段、日志和截图；即使仓库内规则已收紧，会诊结果仍受转发上下文完整度影响
+- 说明：Claude 等外部模型默认看不到本地仓库，只能依赖用户通过聊天软件转发的代码片段、日志和截图；即使仓库内规则已收紧，会诊结果仍受转发上下文完整度影响
 - 风险：如果外发内容不自包含，对方仍可能脑补仓库结构、假设不存在的接口，导致方案听起来合理但无法直接落地
 - 后续动作：继续坚持“问题说明 + 关键代码片段 + 明确追问 + 已排除项 + 限制条件”的短稿格式；收到方案后先由 Codex 对照当前代码核验再下刀
