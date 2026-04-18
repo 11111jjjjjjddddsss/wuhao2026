@@ -93,6 +93,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -1487,6 +1488,8 @@ fun ChatScreen() {
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
+    var latestConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var lockedConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -2962,6 +2965,16 @@ fun ChatScreen() {
         startAnchorScrollOffsetPx: Int
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
+        val conversationBottomPaddingSnapshotPx =
+            latestConversationBottomPaddingPx.takeIf { it >= 0 }
+                ?: (
+                    resolveBottomContentReservedHeightPx(
+                        overlayVisible = composerCollapseOverlayVisible,
+                        overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+                        effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
+                        extraReservedHeightPx = streamingExtraReservedHeightPx
+                    ) + streamVisibleBottomGapPx
+                    ).coerceAtLeast(0)
         composerCollapseOverlayVisible = false
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
@@ -3034,12 +3047,14 @@ fun ChatScreen() {
             pendingStartAnchorPosition >= 0 &&
             startAnchorScrollOffsetPx != Int.MIN_VALUE
         ) {
+            lockedConversationBottomPaddingPx = conversationBottomPaddingSnapshotPx
             sendStartAnchorActive = true
             chatListState.requestScrollToItem(
                 index = pendingStartAnchorPosition,
                 scrollOffset = startAnchorScrollOffsetPx
             )
         } else {
+            lockedConversationBottomPaddingPx = -1
             sendStartAnchorActive = false
         }
         // The send-settling lock only protects the synchronous send-start window.
@@ -3147,6 +3162,14 @@ fun ChatScreen() {
         scrollToBottom(false)
     }
 
+    LaunchedEffect(
+        sendStartAnchorActive,
+        sendUiSettling
+    ) {
+        if (!sendStartAnchorActive && !sendUiSettling) {
+            lockedConversationBottomPaddingPx = -1
+        }
+    }
     LaunchedEffect(
         pendingStreamingFinalizeMessageId,
         isStreaming,
@@ -3425,6 +3448,11 @@ fun ChatScreen() {
             buildInputSelectionTextToolbar()
         }
         val renderChatList: @Composable (Int) -> Unit = { bottomPaddingPx ->
+            SideEffect {
+                latestConversationBottomPaddingPx = bottomPaddingPx
+            }
+            val effectiveBottomPaddingPx =
+                lockedConversationBottomPaddingPx.takeIf { it >= 0 } ?: bottomPaddingPx
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
             ) {
@@ -3432,7 +3460,7 @@ fun ChatScreen() {
                     listState = chatListState,
                     itemIds = messages.map { it.id },
                     topPaddingPx = chatListTopPaddingPx,
-                    bottomPaddingPx = bottomPaddingPx,
+                    bottomPaddingPx = effectiveBottomPaddingPx,
                     bottomFooterHeightPx = with(density) { 1.dp.roundToPx() },
                     modifier = Modifier
                         .then(

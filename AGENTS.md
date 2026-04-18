@@ -257,6 +257,7 @@ Clean-State 必做回归的范围：
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
 - 普通 idle / 历史浏览状态下，列表与工作线仍不能重新长期追实时 `composerTop`；但“首次进入且有历史、`initialBottomSnapDone` 还没命中”的启动贴底窗口允许临时借一次实时 composer 几何，把最后几像素压准到真实工作线。命中后必须立刻退回当前静态口径，不能把这条临时窗口扩张成新的历史区联动链
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，只服务 `sendStartViewportHeightPx` 的锁定和起步 offset 计算；不允许再把它扩张成长期冻结列表底部 reserve 的旧几何锁
+- 2026-04-19 按最新真机逐帧 trace 落地的发送期新保护：`commitSendMessage()` 在发出 `requestScrollToItem(index, offset)` 前，会先拍下发送当拍的 `conversationBottomPaddingPx`；`sendStartAnchorActive` 保护窗口内，`ChatRecyclerViewHost` 只临时把这份快照喂给 `LazyColumn` 的 `bottomPaddingPx` 消费点，等保护窗口退出后再退回实时值。这个锁只能作用在列表 contentPadding 消费点，不能再扩张回全局 reserve / workline 锁；`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 overflow 判定本身仍必须保留实时口径
 - 2026-04-19 最新真机逐帧 trace 已确认：发送抖动发生时，`sendStartAnchorActive` 仍为 `true`，`followStreamingByDelta(...)` 计数为 0；真正先连续变化的是 `composerTopInViewportPx`、共享 measure 宿主给出的 `conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 `firstVisibleItemScrollOffset`。也就是说当前主因不在 release gate，也不在 follow delta，而在发送起步窗口里工作线 / reserve / 列表偏移仍在同一时间段多帧改写
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留正向列表的 item 缓存和滚动锚点
@@ -275,7 +276,7 @@ Clean-State 必做回归的范围：
 - 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
 - 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
 - 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
-- 当前未关闭体感问题当前重新收敛为 1 条：发送瞬间整块消息区仍会轻微上下抖一下。首屏首次进入贴底已按最新真机反馈收口；“生成完成后不要跳到长文本开头”和“发送长文本后输入框稳定回缩”当前转为回归观察项，不再与主问题并列。最新真机逐帧 trace 已排除“release gate 过早”和“follow delta 抢控制权”这两个方向；后续排查只继续盯 `shouldUseRealtimeComposerGeometry`、`sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`，以及发送起步那一拍的 `requestScrollToItem(index, offset)`，不要再回到旧 release gate / follow delta 假根因
+- 当前未关闭体感问题当前重新收敛为 1 条：发送瞬间整块消息区仍会轻微上下抖一下。首屏首次进入贴底已按最新真机反馈收口；“生成完成后不要跳到长文本开头”和“发送长文本后输入框稳定回缩”当前转为回归观察项，不再与主问题并列。最新真机逐帧 trace 已排除“release gate 过早”和“follow delta 抢控制权”这两个方向；当前运行时代码也已新增“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护，用来验证是否能切断 `conversationBottomPaddingPx` 连续变化导致的原生重排。后续排查仍只继续盯 `shouldUseRealtimeComposerGeometry`、`sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`，以及发送起步那一拍的 `requestScrollToItem(index, offset)`，不要再回到旧 release gate / follow delta 假根因
 
 ### 7.5 已修复问题的成因与禁改清单
 

@@ -41,6 +41,7 @@
 - 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
 - `sendUiSettling` 当前已重新收紧成“只覆盖发送起步同步窗口”的短锁：输入框收口、消息原地增改、首发 `requestScrollToItem(index, offset)` 一完成就立即释放，不再把长文本 composer 的多行高度锁到整段 fake streaming / SSE 结束，专门收口“发送长文本后输入框有时不回缩”的时序竞态
 - 发送起步窗口当前重新启用 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量，但只服务正向列表的单次起步定位，不再恢复成旧的多拍补偿链
+- 发送起步窗口当前又新增了一层更窄的保护：`commitSendMessage()` 在发出 `requestScrollToItem(index, offset)` 前，会先拍下当拍的 `conversationBottomPaddingPx`；`sendStartAnchorActive` 期间，`ChatRecyclerViewHost` 只临时把这份快照作为 `LazyColumn` 的 `bottomPaddingPx` 消费值，保护窗口退出后立即退回实时值。它只锁列表 contentPadding 消费点，不锁 workline、overflow 判定或全局 reserve，专门验证 `conversationBottomPaddingPx` 连续变化是否就是发送微抖的直接触发器
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起整理成发给 Claude 的短稿，避免外部方案继续停留在抽象猜测层
 - 当前外部会诊现实约束已明确：Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
@@ -74,6 +75,7 @@
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(index, offset)`
   - 最新真机逐帧 trace 结论：发送后的 100ms 到 200ms 窗口里，`sendStartAnchorActive` 仍然为 `true`，`followStreamingByDelta(...)` 一次都没执行；但 `composerTopInViewportPx`、共享 measure 宿主产出的 `conversationBottomPaddingPx`、`streamingWorklineBottomPx` 与 `chatListState.firstVisibleItemScrollOffset` 会在同一窗口里连续多帧变化。当前已确认 release gate 不是主因，follow delta 也不是主因
   - 当前最值得继续盯的真实代码点：`shouldUseRealtimeComposerGeometry`、`sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`，以及发送起步那一拍的 `requestScrollToItem(index, offset)` 是否仍在消费不同几何基准
+  - 当前最新验证刀法：发送事务发出 `requestScrollToItem(index, offset)` 前先拍下当拍 `conversationBottomPaddingPx`，`sendStartAnchorActive` 期间 `ChatRecyclerViewHost` 继续把这份快照喂给 `LazyColumn` 的 `bottomPaddingPx`，直到保护窗口退出后再退回实时值；目的不是锁死工作线，而是避免 `contentPadding` 在 IME / composer 收口期间连续变化时让 `LazyColumn` 自己原生 reposition
   - 当前排查限制：不要再恢复 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot` 这类发送期补丁；也不要把旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout`、`pendingFinalBottomSnap`、fresh-line lock 预览层或历史区输入框联动链带回来；同时不要再把主因继续压回 `ChatScrollCoordinator.kt` 的 release gate / follow delta
 - 回归观察项：
   - 首次进入有历史时继续直接贴底，并保持工作线以下 breathing gap 可见
