@@ -267,6 +267,9 @@ internal fun BindChatListScrollEffects(
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
+    val sendStartAnchorReleaseArmedState = remember(sendStartAnchorActiveState) {
+        mutableStateOf(false)
+    }
 
     LaunchedEffect(
         isStreaming,
@@ -283,6 +286,7 @@ internal fun BindChatListScrollEffects(
     ) {
         if (!isStreaming || !hasStreamingItem) {
             sendStartAnchorActiveState.value = false
+            sendStartAnchorReleaseArmedState.value = false
             streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
@@ -298,11 +302,19 @@ internal fun BindChatListScrollEffects(
                         isNearStreamingWorkline() &&
                         !isComposerSettling
                 if (shouldReleaseStartAnchorProtection) {
-                    sendStartAnchorActiveState.value = false
+                    if (sendStartAnchorReleaseArmedState.value) {
+                        sendStartAnchorActiveState.value = false
+                        sendStartAnchorReleaseArmedState.value = false
+                    } else {
+                        sendStartAnchorReleaseArmedState.value = true
+                    }
+                } else {
+                    sendStartAnchorReleaseArmedState.value = false
                 }
                 streamBottomFollowActiveState.value = false
                 continue
             }
+            sendStartAnchorReleaseArmedState.value = false
             if (activeScrollMode == ScrollMode.UserBrowsing) {
                 if (
                     !listScrollInProgress &&
