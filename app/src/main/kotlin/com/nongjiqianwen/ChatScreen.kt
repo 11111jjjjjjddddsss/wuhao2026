@@ -1424,9 +1424,7 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    val initialChatListIndex = remember(uiRuntimeResetKey, initialLocalMessages) {
-        initialLocalMessages.lastIndex.coerceAtLeast(0)
-    }
+    val initialChatListIndex = remember(uiRuntimeResetKey) { 0 }
     val chatListState = rememberSaveable(uiRuntimeResetKey, saver = LazyListState.Saver) {
         LazyListState(initialChatListIndex, 0)
     }
@@ -3070,9 +3068,6 @@ fun ChatScreen() {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        snapshotFlow { currentLastMessageContentBottomPx() }
-            .filter { it > 0 }
-            .first()
         scrollToBottom(false)
         initialBottomSnapDone = true
     }

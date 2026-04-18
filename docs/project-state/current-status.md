@@ -29,7 +29,7 @@
 - 聊天页“消息列表 + composer”当前已改成共享 measure 宿主：`ChatScreen.kt` 里用 `SubcomposeLayout` 先测 composer，再把同一拍的真实底部 reserve 直接喂给 `ChatRecyclerViewHost` 的 `bottomPaddingPx`，不再让 `LazyColumn` 的实际 contentPadding 继续完全依赖 `composerTopInViewportPx` 这条晚一帧的异步回写链
 - 首屏显示门槛当前已收紧到“只要 hydration barrier 通过就允许露内容”：欢迎占位不再额外等待 `startupLayoutReady`，历史消息首次进入的 reveal 也不再被 `startupLayoutReady` 卡死；`startupLayoutReady` 继续只服务 jump button、部分启动辅助几何与渐进稳定逻辑
 - 首屏 reveal 当前也不再依赖 `initialBottomSnapDone`：只要 hydration barrier 已通过且 `messages` 非空，就直接显示历史列表；首次贴底继续在后台单独完成，不能再让“还没贴底完”把整页历史消息一起藏成白屏
-- 首次打开有历史消息时，`initialBottomSnapDone` 当前改为“等待最后一条消息的 content bottom 真正可用后，再补一次 `scrollToBottom(false)`”；也就是说先显示历史消息，再单独贴底，不再把显示和贴底绑成一个门槛
+- 首次打开有历史消息时，列表初始滚动位置当前已改回 `index = 0`，避免正向列表一上来就把最后一条消息顶到顶部遮罩下面；`initialBottomSnapDone` 会在 hydration barrier + viewport ready 后直接补一次 `scrollToBottom(false)`，由同一条底部主链完成首次贴底
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow`、overlay snapshot 这组旧几何链当前继续保留，但职责已降级为 selection / overlay / bounds / workline 辅助口径，不再单独决定列表底部保留高度
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需补一次到底归位
 - 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
