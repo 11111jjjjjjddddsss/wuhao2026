@@ -1394,7 +1394,7 @@ fun ChatScreen() {
             append("|backend=").append(if (hasRemoteHistorySource) 1 else 0)
         }
     }
-    val input = rememberSaveable(uiRuntimeResetKey, stateSaver = TextFieldValue.Saver) {
+    val input = remember(uiRuntimeResetKey) {
         mutableStateOf(TextFieldValue(""))
     }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
@@ -1426,7 +1426,7 @@ fun ChatScreen() {
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
     val initialChatListIndex = remember(uiRuntimeResetKey) { 0 }
-    val chatListState = rememberSaveable(uiRuntimeResetKey, saver = LazyListState.Saver) {
+    val chatListState = remember(uiRuntimeResetKey) {
         LazyListState(initialChatListIndex, 0)
     }
     var recyclerScrollInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -2202,6 +2202,23 @@ fun ChatScreen() {
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
+        inputLimitHintVisible = false
+        composerStatusHintVisible = false
+        composerStatusHintText = ""
+        inputFieldFocused = false
+        suppressInputCursor = false
+        input.value = TextFieldValue("")
+        inputContentHeightPx = startupInputContentHeightEstimatePx
+        composerSettlingMinHeightPx = 0
+        composerSettlingChromeHeightPx = 0
+        inputFieldBoundsInWindow = null
+        composerHostBoundsInWindow = null
+        composerChromeBoundsInWindow = null
+        composerCollapseOverlayVisible = false
+        composerCollapseOverlayHostBoundsSnapshot = null
+        composerCollapseOverlayChromeBoundsSnapshot = null
+        composerCollapseOverlayBottomHeightPx = 0
+        composerRuntime.composerCollapseOverlayPrewarmed.value = false
         sendUiSettling = false
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
@@ -2209,6 +2226,8 @@ fun ChatScreen() {
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
         clearInputSelectionToolbar()
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         LaunchUiGate.chatReady = false
     }
 
@@ -3786,6 +3805,7 @@ fun ChatScreen() {
                     }.map { measurable ->
                         measurable.measure(
                             constraints.copy(
+                                minHeight = 0,
                                 minWidth = constraints.maxWidth,
                                 maxWidth = constraints.maxWidth
                             )

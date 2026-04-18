@@ -5,6 +5,7 @@
 
 ## 2026-04-18
 
+- 继续收口启动前几秒“文本像重叠、在长消息里闪动”的问题：`ChatScreen.kt` 的聊天列表状态当前已不再使用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复旧 `LazyListState`。录屏显示启动前几秒会先落在同一条长 assistant 文本的中段，再被首次贴底主链拉回当前位置；旧的滚动恢复链和当前“首次贴底”主链叠在一起后，就会产生“文字重影 / 重复闪烁”的体感。现在统一改成每次进入聊天页都从初始 `index = 0` 起步，再交给首次贴底 effect 收口
 - 继续修首屏白屏：`ChatScreen.kt` 当前已把 `startupListReady` 整个从首屏显示链里撤掉。列表 reveal、欢迎语 reveal 和 `LaunchUiGate.chatReady` 重新只看 hydration barrier；`messageViewportMeasured` 继续只留给首次贴底 effect。原因是 `088bdf1` 把“能不能显示”和“视口是否已测量”重新绑死后，又把首屏带回了白屏态
 - 继续修首屏白屏：`ChatScreen.kt` 当前会在 `LaunchedEffect(uiRuntimeResetKey)` 启动 reset 时主动清空 saveable 的 streaming runtime（`isStreaming / streamingMessageId / streamingMessageContent / streamingRevealBuffer` 等），同时把 `hasStreamingItem` 收紧成“当前 streaming 状态存在且 `messages` 里真的有这条消息”。这样即使系统曾在 streaming 中杀进程，冷启动也不会先恢复出一个假的 streaming 占位，把欢迎语关掉、却只 reveal 出空列表白页
 - 历史过程：`ChatScreen.kt` 曾引入 `startupListReady`，试图把“列表/欢迎语显示、LaunchUiGate.chatReady、首屏首次贴底补一发”从 `startupLayoutReady` 里拆出来；但它后来又把显示重新绑回了 `messageViewportMeasured`，并再次诱发首屏白屏。当前运行时已不再使用这条门闩控制 reveal
