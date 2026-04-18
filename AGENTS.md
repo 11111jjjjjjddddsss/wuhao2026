@@ -194,7 +194,7 @@ Clean-State 必做回归的范围：
 - 发送起步时，小球所在的 assistant 起步宿主需要通过单次 `requestScrollToItem(index, offset)` 主动对齐到工作线；用户消息位于其上方
 - 正文从工作线开始向上增长；正向底座下不再依赖“反向列表天然贴底”，而是由发送起步 + 显式 `scrollToBottom(false)` 共同维持底部锚定
 - 用户拖动立即让权，不允许隐藏第二条链抢手
-- 完成态和静态贴底围绕同一条工作线附近目标线收口，不再保留明显更低的第二条底线
+- waiting 小球和 streaming 正文继续围绕工作线生长；但 settled 完成态与首屏历史态的“贴底”目标是 composer 上方的真实列表底部，不再把工作线以下的 breathing gap 一起算进静态底线
 - 底部不应再出现额外可见空白
 - 历史区浏览时，输入框弹起 / 收起不应再带着消息区整体联动；底部态也应尽量减轻这种联动
 - 当前除“发送瞬间轻微上下抖一下”外，其它主滚动 / streaming / finalize 体感问题都已按现阶段真机反馈收口
@@ -252,7 +252,7 @@ Clean-State 必做回归的范围：
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - `ChatScrollCoordinator` 当前在 streaming 期间重新承担“继续贴底”的责任；正向底座下若最新 assistant 宿主偏离工作线，AutoFollow 只允许在现有列表偏移量上按“当前内容底边 - 工作线底边”的单次 delta 做 `scrollBy` 微调，不再对每个 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，但也不允许恢复旧的多状态并行补偿链
 - `scrollToBottom(false)` 当前重新带回 `alignChatListBottom()` 这层有限次数的底边补偿，用来把正向列表最后一条消息的可见底边重新压回工作线；如果最后一条当前已在可见区，必须直接走 bottom-align 精修，避免先用 `scrollToItem(lastIndex)` 触发 top-anchor 跳顶。禁止把它扩张回旧的多链路 scrollBy 状态机
-- `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出，并额外叠加 `STREAM_VISIBLE_BOTTOM_GAP`
+- `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出。`STREAM_VISIBLE_BOTTOM_GAP` 只在 streaming / waiting 期间作为 breathing gap 叠加，settled 完成态和首屏历史态不再把这段 64dp 空白算进 `contentPadding.bottom`
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，只服务 `sendStartViewportHeightPx` 的锁定和起步 offset 计算；不允许再把它扩张成长期冻结列表底部 reserve 的旧几何锁
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建

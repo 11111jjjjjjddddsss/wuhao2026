@@ -34,6 +34,7 @@
 - 首次打开且本地已有历史消息时，聊天列表当前已不再从 `index = 0` 起步；`LazyListState` 会先以最后一条历史消息作为初始可见项，避免 reveal 放行后先把顶部旧历史露出来，然后继续交给现有首次贴底 effect 做一次精确 `scrollToBottom(false)` 校正
 - 聊天列表当前不再用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复上次会话的 `LazyListState`；启动时如果先恢复到某条长 assistant 文本的中段，再由首次贴底 effect 改回当前位置，会表现成“前几秒文本重影 / 一直在闪”。现在冷启动与重进聊天页都统一从“最后一条历史消息起步，而不是恢复旧停留位置”进入，再交给首次贴底主链收口
 - 首屏与普通静态历史当前不再沿用 streaming 工作线做“是否贴到底部”的判定；`currentUnifiedBottomTargetPx()` 在非 streaming 场景下已恢复旧的静态底线口径：优先以 `composerTopInViewportPx - BOTTOM_OVERLAY_CONTENT_CLEARANCE(4dp)` 为目标，没有实时 composer 几何时再回退到 `viewportHeight - bottomBarHeight - 4dp`。只有 streaming / waiting 期间才继续使用 `streamingWorklineBottomPx`
+- 共享 measure 宿主当前又进一步收口了底部 reserve：`conversationBottomPaddingPx` 不再在 settled 完成态和首屏历史态无条件叠加 `STREAM_VISIBLE_BOTTOM_GAP(64dp)`；这段 gap 现在只在 `isStreaming || hasStreamingItem` 时进入 `contentPadding.bottom`，避免最后一条消息始终被一段空白 padding 顶在工作线附近、贴不到 composer 上方的真实列表底部
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow`、overlay snapshot 这组旧几何链当前继续保留，但职责已降级为 selection / overlay / bounds / workline 辅助口径，不再单独决定列表底部保留高度
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需补一次到底归位。完成态归位当前已明确复用 `scrollToBottom(false)` 静态底线主链，不再使用 `requestScrollToItem(lastIndex)` 这种把最后一条消息顶到视口顶部的 top-anchor
 - 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
@@ -64,7 +65,7 @@
 
 ## 当前调试焦点
 
-- 当前 Android 聊天 UI 按最新真机口径重新收敛为 3 条关注点：本轮刚落地的“首次进入聊天页有历史时直接落在尾部附近再精确贴底”、以及“生成完成后不要跳到长 assistant 文本开头”都需要真机回归确认；另外发送瞬间整块消息区仍会轻微上下抖一下
+- 当前 Android 聊天 UI 按最新真机口径重新收敛为 3 条关注点：本轮刚落地的“首次进入聊天页有历史时直接贴到 composer 上方真实底部”、以及“生成完成后不要停在工作线、而要下沉到真实底部”都需要真机回归确认；另外发送瞬间整块消息区仍会轻微上下抖一下
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
 - 焦点 1：首次进入有历史时直接贴底
   - 当前主要代码点：`ChatScreen.kt` 的 `chatListState` 初始位置与首次贴底 effect

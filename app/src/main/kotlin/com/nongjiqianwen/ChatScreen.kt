@@ -3831,6 +3831,11 @@ fun ChatScreen() {
                     }
                     val measuredComposerHeightPx =
                         composerPlaceables.maxOfOrNull { it.height } ?: 0
+                    val bottomGapPaddingPx = if (isStreaming || hasStreamingItem) {
+                        streamVisibleBottomGapPx
+                    } else {
+                        0
+                    }
                     val conversationBottomPaddingPx =
                         (
                             if (measuredComposerHeightPx > 0) {
@@ -3842,7 +3847,7 @@ fun ChatScreen() {
                                     effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
                                     extraReservedHeightPx = streamingExtraReservedHeightPx
                                 )
-                            } + streamVisibleBottomGapPx
+                            } + bottomGapPaddingPx
                             ).coerceAtLeast(0)
                     val listPlaceables = subcompose("conversation_list") {
                         renderChatList(conversationBottomPaddingPx)
