@@ -1426,7 +1426,9 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    val initialChatListIndex = remember(uiRuntimeResetKey) { 0 }
+    val initialChatListIndex = remember(uiRuntimeResetKey, initialLocalMessages.size) {
+        initialLocalMessages.lastIndex.coerceAtLeast(0)
+    }
     val chatListState = remember(uiRuntimeResetKey) {
         LazyListState(initialChatListIndex, 0)
     }
@@ -2723,15 +2725,7 @@ fun ChatScreen() {
         pendingStreamingFinalizeMessageId = anchorMessageId
         pendingStreamingFinalizeShouldRestoreBottomAnchor = shouldRestoreBottomAnchor
     }
-
-    fun restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor: Boolean) {
-        if (!shouldRestoreBottomAnchor) return
-        if (scrollMode == ScrollMode.UserBrowsing) return
-        if (messages.isEmpty()) return
-        if (!isWithinBottomTolerance()) {
-            chatListState.requestScrollToItem(index = messages.lastIndex)
-        }
-    }
+    var restoreBottomAnchorIfNeededAfterStreamingStop: (Boolean) -> Unit = {}
 
     fun finalizeStreamingStop(
         shouldRestoreBottomAnchor: Boolean
@@ -3116,6 +3110,15 @@ fun ChatScreen() {
             endProgrammaticChatListScroll()
         }
     }
+    restoreBottomAnchorIfNeededAfterStreamingStop =
+        restoreBottomAnchorIfNeededAfterStreamingStop@{ shouldRestoreBottomAnchor ->
+            if (!shouldRestoreBottomAnchor) return@restoreBottomAnchorIfNeededAfterStreamingStop
+            if (messages.isEmpty()) return@restoreBottomAnchorIfNeededAfterStreamingStop
+            if (isWithinBottomTolerance()) return@restoreBottomAnchorIfNeededAfterStreamingStop
+            snackbarScope.launch {
+                scrollToBottom(false)
+            }
+        }
     LaunchedEffect(
         startupHydrationBarrierSatisfied,
         messageViewportMeasured,

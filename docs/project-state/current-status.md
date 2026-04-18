@@ -31,11 +31,11 @@
 - 首屏启动门槛当前已重新收敛：列表 reveal、欢迎语 reveal 和 `LaunchUiGate.chatReady` 只再依赖 hydration barrier，不再继续额外等待 `messageViewportMeasured`；`startupLayoutReady` 继续只服务 jump button、部分启动辅助几何与 composer 真值相关逻辑，不再把 `composerMeasured` 直接当成首屏显示硬门槛
 - 首屏启动当前还会在 `uiRuntimeResetKey` 进入时主动清空 saveable 的 streaming runtime（`isStreaming / streamingMessageId / streamingMessageContent / streamingRevealBuffer` 等）；`hasStreamingItem` 也已收紧成“当前 streaming 状态存在且 `messages` 中确实存在对应消息”。这样冷启动或系统杀进程恢复时，不会再因为残留假 streaming 状态把欢迎语关掉、却只 reveal 出空列表白页
 - 首屏显示与首次贴底当前已经彻底解耦：只要 hydration barrier 通过且 `messages` 非空，历史列表就直接 reveal，不再等待 `initialBottomSnapDone`，也不再额外等待 `messageViewportMeasured`；首次贴底保留为独立补一发 `scrollToBottom(false)` 的辅助动作，并继续单独等待 viewport 已测量
-- 首次打开有历史消息时，列表初始滚动位置当前已改回 `index = 0`，避免正向列表一上来就把最后一条消息顶到顶部遮罩下面；同时首屏贴底 effect 现在只负责“补一次到底”，不再要求 `scrollToBottom(false) + alignChatListBottom() + tolerance + settled` 这条 strict 链命中成功后才允许显示
-- 聊天列表当前不再用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复上次会话的 `LazyListState`；启动时如果先恢复到某条长 assistant 文本的中段，再由首次贴底 effect 改回当前位置，会表现成“前几秒文本重影 / 一直在闪”。现在冷启动与重进聊天页都统一从初始 `index = 0` 起步，再交给首次贴底主链收口
+- 首次打开且本地已有历史消息时，聊天列表当前已不再从 `index = 0` 起步；`LazyListState` 会先以最后一条历史消息作为初始可见项，避免 reveal 放行后先把顶部旧历史露出来，然后继续交给现有首次贴底 effect 做一次精确 `scrollToBottom(false)` 校正
+- 聊天列表当前不再用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复上次会话的 `LazyListState`；启动时如果先恢复到某条长 assistant 文本的中段，再由首次贴底 effect 改回当前位置，会表现成“前几秒文本重影 / 一直在闪”。现在冷启动与重进聊天页都统一从“最后一条历史消息起步，而不是恢复旧停留位置”进入，再交给首次贴底主链收口
 - 首屏与普通静态历史当前不再沿用 streaming 工作线做“是否贴到底部”的判定；`currentUnifiedBottomTargetPx()` 在非 streaming 场景下已恢复旧的静态底线口径：优先以 `composerTopInViewportPx - BOTTOM_OVERLAY_CONTENT_CLEARANCE(4dp)` 为目标，没有实时 composer 几何时再回退到 `viewportHeight - bottomBarHeight - 4dp`。只有 streaming / waiting 期间才继续使用 `streamingWorklineBottomPx`
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow`、overlay snapshot 这组旧几何链当前继续保留，但职责已降级为 selection / overlay / bounds / workline 辅助口径，不再单独决定列表底部保留高度
-- streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需补一次到底归位
+- streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需补一次到底归位。完成态归位当前已明确复用 `scrollToBottom(false)` 静态底线主链，不再使用 `requestScrollToItem(lastIndex)` 这种把最后一条消息顶到视口顶部的 top-anchor
 - 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
 - 发送起步窗口当前重新启用 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量，但只服务正向列表的单次起步定位，不再恢复成旧的多拍补偿链
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
@@ -63,16 +63,16 @@
 
 ## 当前调试焦点
 
-- 当前 Android 聊天 UI 按最新真机口径重新收敛为 3 条未关闭体感问题：首次进入聊天页且已有历史时仍可能先不贴底；本地 fake streaming 过程中长 assistant 文本仍会出现“像重叠一样持续闪烁”；发送瞬间整块消息区仍会轻微上下抖一下
+- 当前 Android 聊天 UI 按最新真机口径重新收敛为 3 条关注点：本轮刚落地的“首次进入聊天页有历史时直接落在尾部附近再精确贴底”、以及“生成完成后不要跳到长 assistant 文本开头”都需要真机回归确认；另外发送瞬间整块消息区仍会轻微上下抖一下
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
-- 焦点 1：首次进入有历史时不贴底
+- 焦点 1：首次进入有历史时直接贴底
   - 当前主要代码点：`ChatScreen.kt` 的 `chatListState` 初始位置与首次贴底 effect
-  - 当前代码仍从 `LazyListState(0, 0)` 起步，再等待 `messageViewportMeasured` 后补一发 `scrollToBottom(false)`；因此 reveal 已放行但首次贴底尚未执行的窗口里，用户仍可能先看到历史从上方露出来
+  - 当前代码已不再从 `LazyListState(0, 0)` 起步；如果本地已有历史，会先用最后一条历史消息作为初始可见项，再等待 `messageViewportMeasured` 后补一发 `scrollToBottom(false)` 做精确贴底
   - 后续限制：不要再把首屏 reveal / 欢迎语重新绑回 `messageViewportMeasured`、`composerMeasured` 或 `initialBottomSnapDone`
-- 焦点 2：fake streaming 过程中正文像重叠一样持续闪烁
-  - 当前主要代码点：`ChatScrollCoordinator.kt` 的 `BindChatListScrollEffects(...)`
-  - 本轮最新尝试：streaming AutoFollow 已不再对每次 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，而是只按 `contentBottom - legalBottom` 的单次 delta 做 `scrollBy` 微调，优先切掉 `scrollToItem(lastIndex) + alignChatListBottom()` 与 bounds 回写形成的重排反馈环
-  - 当前状态：代码已落地并通过 Kotlin 编译，仍需用户真机回归确认“重叠闪烁”是否真正压住
+- 焦点 2：生成完成后不要跳到长文本开头
+  - 当前主要代码点：`ChatScreen.kt` 的 `finalizeStreamingStop()` 收口后补归位逻辑
+  - 本轮最新尝试：完成态若仍离底，不再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部，而是改为复用现有 `scrollToBottom(false)` 静态底线主链
+  - 后续限制：不要把两阶段 finalize 改回同拍硬切、短超时硬切或 `pendingFinalBottomSnap`
 - 焦点 3：发送瞬间整块消息区轻微上下抖
   - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()` 与共享 measure 宿主
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(index, offset)`

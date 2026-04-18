@@ -257,11 +257,11 @@ Clean-State 必做回归的范围：
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留正向列表的 item 缓存和滚动锚点
 - 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接 `scrollToBottom(false)`；从后台切回时不默认自动贴底
-- 聊天列表当前不再用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复上次停留的 `LazyListState`。冷启动 / 重进聊天页时，列表优先按当前历史从初始 `index = 0` 起步，再交给“首次贴底”主链补到底；不要再让系统先把长消息中段或旧历史停留位置恢复出来，否则首几秒会出现“文本像重叠 / 在同一条长消息里来回闪”的启动假象
+- 聊天列表当前不再用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复上次停留的 `LazyListState`。冷启动 / 重进聊天页且本地已有历史时，`LazyListState` 会先从最后一条历史消息起步，避免 reveal 放行后先从顶部露出旧历史；随后仍继续交给“首次贴底”主链补一次精确到底。不要再让系统先把长消息中段或旧历史停留位置恢复出来，否则首几秒会出现“文本像重叠 / 在同一条长消息里来回闪”的启动假象
 - 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
 - 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
 - streaming 行级 reveal 当前不再走 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览；运行时必须直接用原始 `StreamingRenderedLines` 渲染，禁止再把 `activeLine` 锁成预览串或空串，避免 activeLine 升格为 stableLine 时出现 1 帧高度塌陷
-- `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时按需补一发“回到底部”归位；这不是旧 `pendingFinalBottomSnap` 状态机，但在正向底座下不再把 `index = 0` 当成底锚
+- `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时按需补一发“回到底部”归位；这不是旧 `pendingFinalBottomSnap` 状态机，完成态收口后若仍离底，必须复用现有 `scrollToBottom(false)` 静态底线主链，不允许再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部
 
 ### 7.4 当前已收口的交互规则记忆
 
@@ -271,7 +271,7 @@ Clean-State 必做回归的范围：
 - 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
 - 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
 - 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
-- 当前未关闭体感问题当前重新收敛为 3 条：首次进入聊天页且已有历史时，列表仍可能先从上方露出来、还没立刻贴底；本地 fake streaming 过程中，长 assistant 文本仍可能出现“像重叠一样持续闪烁”的体感；发送瞬间整块消息区仍会轻微上下抖一下。后续排查顺序先看“首次进入贴底”和“fake-stream 闪烁”，再回到 `commitSendMessage()`、发送期几何切换和“发送起步那一拍的 `requestScrollToItem(index, offset)``
+- 当前未关闭体感问题当前重新收敛为 2 条：发送瞬间整块消息区仍会轻微上下抖一下；以及本轮刚落地的“首次进入有历史先贴底”“生成完成后不要跳到长文本开头”两处收口仍需真机回归确认。后续排查顺序先验首次进入贴底和 finalize 收口是否稳定，再回到 `commitSendMessage()`、发送期几何切换和“发送起步那一拍的 `requestScrollToItem(index, offset)``
 
 ### 7.5 已修复问题的成因与禁改清单
 

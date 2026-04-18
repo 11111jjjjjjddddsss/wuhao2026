@@ -28,7 +28,7 @@
 - 状态：未关闭
 - 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构等近几轮修复继续保留。现在最大的风险不再是“要不要回退旧方案”，而是正向列表下发送起步、AutoFollow、静态贴底三段是否都能重新跑顺
 - 风险：如果后续新窗口忽略“已切回正向底座、但不是整套回滚到旧时代代码”这个当前真相，直接把旧正向多拍补偿链整包搬回，很容易和共享 measure 宿主、两阶段 finalize、统一 streaming 宿主这些新修复打架；反过来，如果继续按反向列表思维排查，也会误判当前发送起步和底部归位问题
-- 后续动作：下一轮真机回归优先只看 5 件事：首次进入有历史时是否直接贴底、fake streaming 长文本是否还会重叠闪烁、发送起步小球是否回到工作线、完成态是否仍无底部空白、回到底部按钮是否仍只走主链；若继续改发送抖动，只围绕 `commitSendMessage()`、`pendingStartAnchorScrollOffsetPx`、发送起步 offset 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，不要把旧 `scrollToBottom(false) + alignChatListBottom()` 多拍补偿重新扩回 streaming 中途
+- 后续动作：下一轮真机回归优先只看 5 件事：首次进入有历史时是否直接贴底、生成完成后是否还会跳到长 assistant 文本开头、发送起步小球是否回到工作线、完成态是否仍无底部空白、回到底部按钮是否仍只走主链；若继续改发送抖动，只围绕 `commitSendMessage()`、`pendingStartAnchorScrollOffsetPx`、发送起步 offset 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，不要把旧 `scrollToBottom(false) + alignChatListBottom()` 多拍补偿重新扩回 streaming 中途
 
 ## R5 外部会诊仍依赖人工转发上下文
 
