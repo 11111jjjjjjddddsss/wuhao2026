@@ -1503,8 +1503,13 @@ fun ChatScreen() {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
     val imeVisible = WindowInsets.isImeVisible
-    val hasStreamingItem by remember(isStreaming, streamingMessageId) {
-        derivedStateOf { isStreaming && !streamingMessageId.isNullOrBlank() }
+    val hasStreamingItem by remember(isStreaming, streamingMessageId, messages.size) {
+        derivedStateOf {
+            val messageId = streamingMessageId
+            isStreaming &&
+                !messageId.isNullOrBlank() &&
+                messages.any { it.id == messageId }
+        }
     }
     val isComposerSettling by remember(
         sendUiSettling,
@@ -2196,6 +2201,17 @@ fun ChatScreen() {
         remoteRecoverySourceUserMessageId = null
         SessionApi.resetUiRuntimeForCleanState()
         QwenClient.resetUiRuntimeForCleanState()
+        isStreaming = false
+        streamingMessageId = null
+        streamingMessageContent = ""
+        streamingRevealBuffer = ""
+        streamingFreshStart = -1
+        streamingFreshEnd = -1
+        streamingLineAdvanceTick = 0
+        lastStreamingFreshRevealMs = 0L
+        streamingBackgrounded = false
+        pendingStreamingFinalizeMessageId = null
+        pendingStreamingFinalizeShouldRestoreBottomAnchor = false
         sendUiSettling = false
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
