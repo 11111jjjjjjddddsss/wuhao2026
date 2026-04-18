@@ -275,7 +275,6 @@ internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 64.dp
-private const val SEND_START_BALL_ANCHOR_RATIO = 0.4f
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
@@ -1787,13 +1786,28 @@ fun ChatScreen() {
         CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() +
             assistantStreamingParagraphTextStyle().lineHeight.roundToPx()
     }
-    val sendStartBallAnchorBottomPx by remember(
-        lockedMessageViewportHeightPx
+    val sendStartWorklineBottomPx by remember(
+        lockedMessageViewportHeightPx,
+        stableComposerBottomBarHeightPx,
+        bottomBarHeightPx,
+        composerTopInViewportPx,
+        streamVisibleBottomGapPx
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = lockedMessageViewportHeightPx
-            if (effectiveViewportHeightPx > 0) {
-                (effectiveViewportHeightPx * SEND_START_BALL_ANCHOR_RATIO).roundToInt()
+            val stableBottomBarHeight = when {
+                stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
+                bottomBarHeightPx > 0 -> bottomBarHeightPx
+                else -> 0
+            }
+            if (effectiveViewportHeightPx > 0 && stableBottomBarHeight > 0) {
+                (
+                    effectiveViewportHeightPx -
+                        stableBottomBarHeight -
+                        streamVisibleBottomGapPx
+                    ).coerceAtLeast(0)
+            } else if (composerTopInViewportPx > 0) {
+                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 0
             }
@@ -3349,13 +3363,13 @@ fun ChatScreen() {
         val pendingStartAnchorScrollOffsetPx by remember(
             chatListTopPaddingPx,
             sendStartAnchorBottomInsetPx,
-            sendStartBallAnchorBottomPx
+            sendStartWorklineBottomPx
         ) {
             derivedStateOf {
-                if (sendStartBallAnchorBottomPx <= 0) {
+                if (sendStartWorklineBottomPx <= 0) {
                     Int.MIN_VALUE
                 } else {
-                    chatListTopPaddingPx + sendStartAnchorBottomInsetPx - sendStartBallAnchorBottomPx
+                    chatListTopPaddingPx + sendStartAnchorBottomInsetPx - sendStartWorklineBottomPx
                 }
             }
         }
