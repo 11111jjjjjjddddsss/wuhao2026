@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
@@ -25,6 +26,7 @@ internal fun ChatRecyclerViewHost(
     LazyColumn(
         modifier = modifier,
         state = listState,
+        verticalArrangement = Arrangement.Bottom,
         contentPadding = with(density) {
             PaddingValues(
                 top = topPaddingPx.toDp(),

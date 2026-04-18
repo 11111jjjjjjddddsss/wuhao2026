@@ -5,6 +5,7 @@
 
 ## 2026-04-18
 
+- 继续修首屏白屏：`ChatRecyclerViewHost.kt` 的正向 `LazyColumn` 当前新增 `verticalArrangement = Arrangement.Bottom`。原因是 forward 底座在“历史内容不足一屏”时没有 `stackFromEnd` 能力，首帧又直接从最新消息附近 reveal，导致短内容默认趴在顶部并被顶栏白色遮罩盖住，看起来像整页白屏；现在先让短内容天然压到底部工作区，不动发送链和滚动主链
 - 收紧首次贴底触发时机：`ChatScreen.kt` 的 `initialBottomSnapDone` effect 当前不再在“viewport 一量出来就直接到底”，而是先等 `currentLastMessageContentBottomPx() > 0`，确认最后一条消息的内容底边已经可用，再补一发 `scrollToBottom(false)`；这样首屏有历史消息时先显示，再贴底，不再把显示和首次贴底绑死
 - 继续修首屏白屏：`ChatScreen.kt` 的 `shouldRevealMessageList` 不再把“已有历史消息但 `initialBottomSnapDone` 还没完成”视为隐藏条件。现在首屏只要 hydration barrier 已通过且 `messages` 非空，就直接显示历史消息；首次贴底仍在后面单独执行，避免因为等待贴底而把整页列表误杀成白屏
 - 修复首屏白屏：`ChatScreen.kt` 的欢迎占位和历史消息 reveal 不再额外等待 `startupLayoutReady`；首次进入的初始贴底也改成只依赖 hydration barrier + viewport 已测量，避免 clean state 或已有历史时因为某个 measured 标志迟迟没亮，整页一直只剩白底没有任何文字
