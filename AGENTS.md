@@ -248,6 +248,7 @@ Clean-State 必做回归的范围：
 - 当前重新启用正向发送起步定位链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 重新参与发送当拍的起步定位，但只服务正向列表的单次起步锚定，不得回退成旧的多拍补偿链
 - 发送事件当前会在插入用户消息和 assistant placeholder 后，按 assistant placeholder 在正向列表里的真实位置，请求 `requestScrollToItem(index, scrollOffset)`；不再把“底部 = index 0”当成唯一口径
 - 发送事务当前必须在进入网络 / SSE 协程前，同步完成输入框收口、用户消息 upsert、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)` 与单次 `requestScrollToItem(index, offset)`；不允许再把“输入框清空”和“消息插入 + 回底请求”拆成两拍，否则会重新带回发送瞬间上下抖
+- `sendUiSettling` 当前只允许覆盖“发送起步这一小段同步窗口”：即输入框收口、消息原地增改、placeholder 插入和首发 `requestScrollToItem(index, offset)`。一旦起步锚定请求已经发出，就必须立即让位给 `sendStartAnchorActive` / streaming 主链，不能再把长文本输入框的多行高度锁到整段 streaming 结束
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - `ChatScrollCoordinator` 当前在 streaming 期间重新承担“继续贴底”的责任；正向底座下若最新 assistant 宿主偏离工作线，AutoFollow 只允许在现有列表偏移量上按“当前内容底边 - 工作线底边”的单次 delta 做 `scrollBy` 微调，不再对每个 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，但也不允许恢复旧的多状态并行补偿链
 - `scrollToBottom(false)` 当前重新带回 `alignChatListBottom()` 这层有限次数的底边补偿，用来把正向列表最后一条消息的可见底边重新压回工作线；禁止把它扩张回旧的多链路 scrollBy 状态机

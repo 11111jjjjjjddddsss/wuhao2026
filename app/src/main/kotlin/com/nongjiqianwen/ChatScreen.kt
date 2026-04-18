@@ -3044,6 +3044,11 @@ fun ChatScreen() {
         } else {
             sendStartAnchorActive = false
         }
+        // The send-settling lock only protects the synchronous send-start window.
+        // Once the composer has collapsed and the first anchor request is queued,
+        // keep streaming ownership on the list side instead of pinning the
+        // composer at the expanded multi-line height for the whole stream.
+        sendUiSettling = false
         persistTick++
         snackbarScope.launch {
             context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
