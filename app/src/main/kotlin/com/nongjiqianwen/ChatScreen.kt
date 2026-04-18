@@ -1723,12 +1723,18 @@ fun ChatScreen() {
     }
     val shouldRevealMessageList by remember(
         startupHydrationBarrierSatisfied,
+        hasStartedConversation,
+        initialBottomSnapDone,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
             when {
                 !startupHydrationBarrierSatisfied -> false
+                !hasStartedConversation &&
+                    messages.isNotEmpty() &&
+                    !hasStreamingItem &&
+                    !initialBottomSnapDone -> false
                 messages.isNotEmpty() -> true
                 hasStreamingItem -> true
                 else -> false
