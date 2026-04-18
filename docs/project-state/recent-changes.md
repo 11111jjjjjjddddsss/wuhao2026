@@ -5,6 +5,7 @@
 
 ## 2026-04-18
 
+- 继续收口 `scrollToBottom(false)` 的 top-anchor 问题：`ChatScrollCoordinator.kt` 的底部归位 helper 当前已不再对“最后一条本来就已可见”的场景强制先跑 `scrollToItem(lastIndex)`；这类场景现在直接走 `alignChatListBottom()` 精修，专门压首次进入贴底和 finalize 完成态归位时那一下“先跳到长文本开头上面”的视觉跳动
 - 继续收口“长文本发送后输入框有时不回缩”：`ChatScreen.kt` 的 `sendUiSettling` 当前已不再贯穿整段 fake streaming / SSE 生命周期，而是只覆盖发送起步这段同步事务。首发 `requestScrollToItem(index, offset)` 发出后就立即释放 composer settling 锁，避免长文本输入框的多行高度被一直钉到整段 streaming 结束
 - 继续收口首次进入贴底与 finalize 跳顶：`ChatScreen.kt` 的 `LazyListState` 启动时若本地已有历史，当前会先从最后一条历史消息起步，不再固定从 `index = 0` 露出顶部旧历史；同时 finalize 收口后若仍离底，也已不再用 `requestScrollToItem(lastIndex)` 把最后一条 assistant 文本顶到视口顶部，而是改为复用现有 `scrollToBottom(false)` 静态底线主链
 - 继续收口“假文本生成过程中像重叠一样持续闪烁”：`ChatScrollCoordinator.kt` 的 streaming AutoFollow 当前已不再对每次 fake-stream 内容更新都反复调用 `scrollToBottom(false)`。新的主链只在现有 `LazyListState` 偏移量上按“当前内容底边 - 工作线底边”的单次 delta 做 `scrollBy` 微调，减少 `scrollToItem(lastIndex) + alignChatListBottom()` 这类整列表重定位在同一条长 assistant 文本上反复触发布局回写，优先压正文生成过程中的持续抖动

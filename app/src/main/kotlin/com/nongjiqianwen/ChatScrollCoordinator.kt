@@ -127,10 +127,13 @@ internal suspend fun scrollChatListToBottom(
     if (lastIndex < 0) return
     beginProgrammaticScroll()
     try {
-        if (animated) {
-            activeListState.animateScrollToItem(lastIndex)
-        } else {
-            activeListState.scrollToItem(lastIndex)
+        val lastItemAlreadyVisible = activeListState.layoutInfo.visibleItemsInfo.any { it.index == lastIndex }
+        if (!lastItemAlreadyVisible) {
+            if (animated) {
+                activeListState.animateScrollToItem(lastIndex)
+            } else {
+                activeListState.scrollToItem(lastIndex)
+            }
         }
         alignChatListBottom(
             listState = activeListState,

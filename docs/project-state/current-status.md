@@ -44,7 +44,7 @@
 - 当前外部会诊现实约束已明确：Gemini / Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，但只服务 `sendStartViewportHeightPx` 锁定和起步 offset 计算，不再充当长期冻结列表 reserve 的几何锁
 - 首次进入聊天页当前直接 `scrollToBottom(false)` 贴到底部；从后台切回时不默认自动贴底
-- 回到底部按钮当前继续只走 `scrollToBottom(false)` 这条主链；但在正向列表下，这条主链重新带回了有限次数的 `alignChatListBottom()` 底边补偿，用来把最后一条消息的可见底边压回工作线，streaming 完成态仍不再保留 `pendingFinalBottomSnap` 这类额外补滚
+- 回到底部按钮当前继续只走 `scrollToBottom(false)` 这条主链；但在正向列表下，这条主链当前已改成“最后一条已可见时直接 `alignChatListBottom()` 精修，只有完全不在可见区时才先 `scrollToItem(lastIndex)` 再补对齐”，专门避免首次贴底 / finalize 归位时先 top-anchor 到消息开头
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 本地 fake streaming 在正常结束时也不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 指标回落后才 finish；正文 reveal 完成后直接进入完成态收口
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
