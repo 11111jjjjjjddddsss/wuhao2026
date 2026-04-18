@@ -26,9 +26,9 @@
 ## R4 聊天滚动链仍需持续装机回归
 
 - 状态：未关闭
-- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，首屏首次进入贴底已收口，当前剩余主风险集中在发送起步事务是否仍会带来一拍上下抖
-- 风险：如果后续为了压发送抖动重新把旧发送补丁、旧滚动补偿或旧历史区联动链带回运行时，很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏；反过来，如果继续按反向列表思维排查，也会误判当前发送起步和底部归位问题
-- 后续动作：下一轮真机回归优先只看 4 件事：发送瞬间整块消息区是否仍上下抖、发送后输入框是否稳定回缩、首次进入有历史是否继续直接贴底、生成完成后是否还会跳到长 assistant 文本开头。若继续改发送抖动，只围绕 `commitSendMessage()`、共享 measure 宿主、`pendingStartAnchorScrollOffsetPx` 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，不要把旧 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot` 或 `scrollToBottom(false)` 多拍补偿链重新扩回发送期
+- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，首屏首次进入贴底已收口，当前剩余主风险集中在发送起步事务是否仍会带来一拍上下抖。2026-04-19 的真机逐帧 trace 已进一步确认：抖动窗口内 `sendStartAnchorActive` 仍为 `true`，`followStreamingByDelta(...)` 计数为 0，真正先连续变化的是 `composerTopInViewportPx`、`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 `firstVisibleItemScrollOffset`
+- 风险：如果后续为了压发送抖动继续围着 release gate / follow delta 打转，或者把旧发送补丁、旧滚动补偿、旧历史区联动链带回运行时，很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏
+- 后续动作：下一轮真机回归优先只看 4 件事：发送瞬间整块消息区是否仍上下抖、发送后输入框是否稳定回缩、首次进入有历史是否继续直接贴底、生成完成后是否还会跳到长 assistant 文本开头。若继续改发送抖动，只围绕 `shouldUseRealtimeComposerGeometry`、`sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`、`pendingStartAnchorScrollOffsetPx` 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，不要再把旧 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot`、`scrollToBottom(false)` 多拍补偿链，或 release gate / follow delta 假根因重新扩回发送期
 
 ## R5 外部会诊仍依赖人工转发上下文
 

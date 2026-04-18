@@ -72,8 +72,9 @@
 - 焦点 1：发送瞬间整块消息区轻微上下抖
   - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()`、composer/list 共享 measure 宿主、`pendingStartAnchorScrollOffsetPx` 与发送起步那一拍的 `requestScrollToItem(index, offset)`
   - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(index, offset)`
-  - 当前最新尝试：`ChatScrollCoordinator.kt` 已把发送起步保护的 release gate 从“命中工作线容差就释放”收紧成“命中工作线且 composer 已稳定后，再连续一帧命中才释放”。当前不改发送顺序，也不改几何计算，只延后 `sendStartAnchorActive` 的真正 release，避免 `requestScrollToItem(index, offset)` 首次命中后，composer 仍在 settling 或刚稳定的边界帧就过早让 follow delta 接管
-  - 当前排查限制：不要再恢复 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot` 这类发送期补丁；也不要把旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout`、`pendingFinalBottomSnap`、fresh-line lock 预览层或历史区输入框联动链带回来
+  - 最新真机逐帧 trace 结论：发送后的 100ms 到 200ms 窗口里，`sendStartAnchorActive` 仍然为 `true`，`followStreamingByDelta(...)` 一次都没执行；但 `composerTopInViewportPx`、共享 measure 宿主产出的 `conversationBottomPaddingPx`、`streamingWorklineBottomPx` 与 `chatListState.firstVisibleItemScrollOffset` 会在同一窗口里连续多帧变化。当前已确认 release gate 不是主因，follow delta 也不是主因
+  - 当前最值得继续盯的真实代码点：`shouldUseRealtimeComposerGeometry`、`sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`，以及发送起步那一拍的 `requestScrollToItem(index, offset)` 是否仍在消费不同几何基准
+  - 当前排查限制：不要再恢复 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot` 这类发送期补丁；也不要把旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout`、`pendingFinalBottomSnap`、fresh-line lock 预览层或历史区输入框联动链带回来；同时不要再把主因继续压回 `ChatScrollCoordinator.kt` 的 release gate / follow delta
 - 回归观察项：
   - 首次进入有历史时继续直接贴底，并保持工作线以下 breathing gap 可见
   - 生成完成后不要跳到长 assistant 文本开头
