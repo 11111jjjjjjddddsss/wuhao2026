@@ -964,6 +964,15 @@ private fun trimMessageWindow(source: List<ChatMessage>): List<ChatMessage> {
     return source.drop(startIndex)
 }
 
+private fun resolveSendStartAnchorScrollOffsetPx(
+    chatListTopPaddingPx: Int,
+    sendStartAnchorBottomInsetPx: Int,
+    worklineBottomPx: Int
+): Int {
+    if (worklineBottomPx <= 0) return Int.MIN_VALUE
+    return chatListTopPaddingPx + sendStartAnchorBottomInsetPx - worklineBottomPx
+}
+
 private fun dedupeAdjacentMessages(source: List<ChatMessage>): List<ChatMessage> {
     if (source.size < 2) return source
     val deduped = ArrayList<ChatMessage>(source.size)
@@ -2962,7 +2971,9 @@ fun ChatScreen() {
         text: String,
         existingUserMessageId: String? = null,
         collapseComposer: Boolean = true,
-        startAnchorScrollOffsetPx: Int
+        startAnchorScrollOffsetPx: Int,
+        startAnchorTopPaddingPx: Int,
+        startAnchorBottomInsetPx: Int
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         val currentConversationBottomPaddingSnapshotPx =
@@ -2985,6 +2996,22 @@ fun ChatScreen() {
                 (stableBottomBarHeightPx + streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 currentConversationBottomPaddingSnapshotPx
+            }
+        val lockedSendStartWorklineBottomPx =
+            if (conversationBottomPaddingLockPx > 0 && messageViewportHeightPx > 0) {
+                (messageViewportHeightPx - conversationBottomPaddingLockPx).coerceAtLeast(0)
+            } else {
+                0
+            }
+        val resolvedStartAnchorScrollOffsetPx =
+            if (lockedSendStartWorklineBottomPx > 0) {
+                resolveSendStartAnchorScrollOffsetPx(
+                    chatListTopPaddingPx = startAnchorTopPaddingPx,
+                    sendStartAnchorBottomInsetPx = startAnchorBottomInsetPx,
+                    worklineBottomPx = lockedSendStartWorklineBottomPx
+                )
+            } else {
+                startAnchorScrollOffsetPx
             }
         composerCollapseOverlayVisible = false
         sendStartViewportHeightPx = messageViewportHeightPx
@@ -3056,13 +3083,13 @@ fun ChatScreen() {
         val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
         if (
             pendingStartAnchorPosition >= 0 &&
-            startAnchorScrollOffsetPx != Int.MIN_VALUE
+            resolvedStartAnchorScrollOffsetPx != Int.MIN_VALUE
         ) {
             lockedConversationBottomPaddingPx = conversationBottomPaddingLockPx
             sendStartAnchorActive = true
             chatListState.requestScrollToItem(
                 index = pendingStartAnchorPosition,
-                scrollOffset = startAnchorScrollOffsetPx
+                scrollOffset = resolvedStartAnchorScrollOffsetPx
             )
         } else {
             lockedConversationBottomPaddingPx = -1
@@ -3366,11 +3393,11 @@ fun ChatScreen() {
             sendStartWorklineBottomPx
         ) {
             derivedStateOf {
-                if (sendStartWorklineBottomPx <= 0) {
-                    Int.MIN_VALUE
-                } else {
-                    chatListTopPaddingPx + sendStartAnchorBottomInsetPx - sendStartWorklineBottomPx
-                }
+                resolveSendStartAnchorScrollOffsetPx(
+                    chatListTopPaddingPx = chatListTopPaddingPx,
+                    sendStartAnchorBottomInsetPx = sendStartAnchorBottomInsetPx,
+                    worklineBottomPx = sendStartWorklineBottomPx
+                )
             }
         }
         fun retryFailedUserMessage(messageId: String) {
@@ -3383,7 +3410,9 @@ fun ChatScreen() {
                 text = failedMessage.content,
                 existingUserMessageId = failedMessage.id,
                 collapseComposer = false,
-                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
+                startAnchorTopPaddingPx = chatListTopPaddingPx,
+                startAnchorBottomInsetPx = sendStartAnchorBottomInsetPx
             )
         }
         fun retryFailedAssistantMessage(assistantMessageId: String) {
@@ -3402,7 +3431,9 @@ fun ChatScreen() {
                 text = sourceUserMessage.content,
                 existingUserMessageId = sourceUserMessage.id,
                 collapseComposer = false,
-                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
+                startAnchorTopPaddingPx = chatListTopPaddingPx,
+                startAnchorBottomInsetPx = sendStartAnchorBottomInsetPx
             )
         }
         fun sendMessage() {
@@ -3420,7 +3451,9 @@ fun ChatScreen() {
             }
             commitSendMessage(
                 text = trimmedText,
-                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
+                startAnchorTopPaddingPx = chatListTopPaddingPx,
+                startAnchorBottomInsetPx = sendStartAnchorBottomInsetPx
             )
         }
         val pageSurface = Color(0xFFFFFFFF)
