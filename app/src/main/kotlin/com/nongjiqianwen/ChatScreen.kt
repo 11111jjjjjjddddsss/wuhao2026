@@ -1724,7 +1724,6 @@ fun ChatScreen() {
         }
     }
     val shouldRevealMessageList by remember(
-        startupLayoutReady,
         startupHydrationBarrierSatisfied,
         hasStartedConversation,
         initialBottomSnapDone,
@@ -1734,7 +1733,6 @@ fun ChatScreen() {
         derivedStateOf {
             when {
                 !startupHydrationBarrierSatisfied -> false
-                !startupLayoutReady -> false
                 !hasStartedConversation && messages.isNotEmpty() && !hasStreamingItem && !initialBottomSnapDone -> false
                 hasStartedConversation -> true
                 hasStreamingItem -> true
@@ -1743,13 +1741,12 @@ fun ChatScreen() {
         }
     }
     val showWelcomePlaceholder by remember(
-        startupLayoutReady,
         startupHydrationBarrierSatisfied,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
-            startupLayoutReady && startupHydrationBarrierSatisfied && messages.isEmpty() && !hasStreamingItem
+            startupHydrationBarrierSatisfied && messages.isEmpty() && !hasStreamingItem
         }
     }
     val topInset = WindowInsets.safeDrawing
@@ -3058,7 +3055,7 @@ fun ChatScreen() {
     }
     LaunchedEffect(
         startupHydrationBarrierSatisfied,
-        startupLayoutReady,
+        messageViewportMeasured,
         messages.size,
         hasStreamingItem,
         isStreaming,
@@ -3066,7 +3063,7 @@ fun ChatScreen() {
         initialBottomSnapDone
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
-        if (!startupHydrationBarrierSatisfied || !startupLayoutReady) return@LaunchedEffect
+        if (!startupHydrationBarrierSatisfied || !messageViewportMeasured) return@LaunchedEffect
         if (messages.isEmpty() && !hasStreamingItem) {
             initialBottomSnapDone = true
             return@LaunchedEffect

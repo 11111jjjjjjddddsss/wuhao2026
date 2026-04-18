@@ -5,6 +5,7 @@
 
 ## 2026-04-18
 
+- 修复首屏白屏：`ChatScreen.kt` 的欢迎占位和历史消息 reveal 不再额外等待 `startupLayoutReady`；首次进入的初始贴底也改成只依赖 hydration barrier + viewport 已测量，避免 clean state 或已有历史时因为某个 measured 标志迟迟没亮，整页一直只剩白底没有任何文字
 - 做了一次“反向残留语义清洁”：`ChatScreen.kt` 中按 client message id 倒序找 round、`QwenClient.kt` 中 SSE fallback 倒序扫 payload，都已从 `asReversed()` 改成显式倒序循环，避免后续窗口把这类与聊天列表方向无关的倒序遍历误判成“反向列表残留”
 - 聊天底座已从反向 `LazyColumn(reverseLayout = true)` 切回正向 `LazyColumn(reverseLayout = false)`；`ChatRecyclerViewHost.kt` 不再对 `itemIds` 做 `asReversed()`，运行时消息顺序与显示顺序重新保持一致，旧消息在上，新消息在下
 - 发送起步当前重新启用正向列表的单次 offset 锚定：`ChatScreen.kt` 恢复 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量；发送事务在插入 assistant placeholder 后，不再把“底部 = index 0”当成唯一真相，而是按 placeholder 的真实位置执行单次 `requestScrollToItem(index, offset)`
