@@ -274,6 +274,7 @@ internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 64.dp
+private val BOTTOM_OVERLAY_CONTENT_CLEARANCE = 4.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
@@ -1495,6 +1496,9 @@ fun ChatScreen() {
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
+    val bottomOverlayContentClearancePx = with(density) {
+        BOTTOM_OVERLAY_CONTENT_CLEARANCE.roundToPx()
+    }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -1631,8 +1635,29 @@ fun ChatScreen() {
     fun currentStreamingLegalBottomPx(): Int {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
     }
+    fun currentStaticBottomTargetPx(): Int {
+        val effectiveViewportHeightPx = lockedMessageViewportHeightPx
+        val stableBottomBarHeightPx = when {
+            bottomBarHeightPx > 0 -> bottomBarHeightPx
+            stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
+            else -> startupBottomBarHeightEstimatePx
+        }
+        return if (composerTopInViewportPx > 0) {
+            (composerTopInViewportPx - bottomOverlayContentClearancePx).coerceAtLeast(0)
+        } else {
+            (
+                effectiveViewportHeightPx -
+                    stableBottomBarHeightPx -
+                    bottomOverlayContentClearancePx
+                ).coerceAtLeast(0)
+        }
+    }
     fun currentUnifiedBottomTargetPx(): Int {
-        return currentStreamingLegalBottomPx().coerceAtLeast(0)
+        return if (isStreaming || hasStreamingItem) {
+            currentStreamingLegalBottomPx().coerceAtLeast(0)
+        } else {
+            currentStaticBottomTargetPx()
+        }
     }
     fun currentBottomOverflowPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()

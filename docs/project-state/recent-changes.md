@@ -5,6 +5,7 @@
 
 ## 2026-04-18
 
+- 继续修首屏白屏：`ChatScreen.kt` 的底部对齐目标当前不再把“首屏静态历史 / 非 streaming 列表”统一按 `streamingWorklineBottomPx` 判断。对比早期正常版本后，已把 `currentUnifiedBottomTargetPx()` 恢复成分场景口径：非 streaming 时走旧的静态底线（`composerTop - 4dp` 或 `viewportHeight - bottomBarHeight - 4dp`），只有 streaming / waiting 才继续走工作线。这样首屏 `initialBottomSnapDone` 不会再永远拿错尺子、一直判定“还没贴到底”
 - 继续把首屏启动链往“以前正常那版”靠拢：`ChatScreen.kt` 的 `initialBottomSnapDone` 当前不再在首屏打一发 `scrollToBottom(false)` 就直接放行，而是恢复为等待 `startupLayoutReady` 后，多次补发 `scrollToBottom(false)`，并要求底部位置连续稳定数帧才算成功。目的不是改滚动主链，而是把过去那条“先确认首屏真的贴到底，再 reveal 历史列表”的启动口径局部搬回来
 - 继续收口首屏启动策略：`ChatScreen.kt` 的 `shouldRevealMessageList` 重新恢复“有历史时先贴底、再 reveal”这条门槛。现在欢迎语依旧只看 hydration barrier，但历史列表会在 `initialBottomSnapDone` 前继续隐藏，避免 forward 列表首帧还没压到底部时，内容先暴露到顶部白遮罩下面
 - 继续修首屏白屏：`ChatRecyclerViewHost.kt` 的正向 `LazyColumn` 当前新增 `verticalArrangement = Arrangement.Bottom`。原因是 forward 底座在“历史内容不足一屏”时没有 `stackFromEnd` 能力，首帧又直接从最新消息附近 reveal，导致短内容默认趴在顶部并被顶栏白色遮罩盖住，看起来像整页白屏；现在先让短内容天然压到底部工作区，不动发送链和滚动主链

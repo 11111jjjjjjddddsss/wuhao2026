@@ -30,6 +30,7 @@
 - 首屏显示门槛当前已收紧到“只要 hydration barrier 通过就允许露内容”：欢迎占位不再额外等待 `startupLayoutReady`，历史消息首次进入的 reveal 也不再被 `startupLayoutReady` 卡死；`startupLayoutReady` 继续只服务 jump button、部分启动辅助几何与渐进稳定逻辑
 - 首屏 reveal 当前重新收回到“有历史时先贴底、再显示”的口径：欢迎占位仍只看 hydration barrier，但历史消息列表会在 `initialBottomSnapDone` 完成前继续隐藏，避免 forward 列表首帧还没压到底部就先把内容暴露到顶部遮罩下面
 - 首次打开有历史消息时，列表初始滚动位置当前已改回 `index = 0`，避免正向列表一上来就把最后一条消息顶到顶部遮罩下面；`initialBottomSnapDone` 当前也不再“打一发 `scrollToBottom(false)` 就放行”，而是恢复成等待 `startupLayoutReady` 后多次补发 `scrollToBottom(false)`，并要求底部容差连续稳定几帧，确认首屏真的贴底后才 reveal
+- 首屏与普通静态历史当前不再沿用 streaming 工作线做“是否贴到底部”的判定；`currentUnifiedBottomTargetPx()` 在非 streaming 场景下已恢复旧的静态底线口径：优先以 `composerTopInViewportPx - BOTTOM_OVERLAY_CONTENT_CLEARANCE(4dp)` 为目标，没有实时 composer 几何时再回退到 `viewportHeight - bottomBarHeight - 4dp`。只有 streaming / waiting 期间才继续使用 `streamingWorklineBottomPx`
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow`、overlay snapshot 这组旧几何链当前继续保留，但职责已降级为 selection / overlay / bounds / workline 辅助口径，不再单独决定列表底部保留高度
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需补一次到底归位
 - 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
