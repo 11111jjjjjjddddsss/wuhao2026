@@ -105,7 +105,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -1690,14 +1689,6 @@ fun ChatScreen() {
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
 
-    suspend fun isBottomSettled(stableFrames: Int = 4): Boolean {
-        repeat(stableFrames) {
-            withFrameNanos { }
-            if (!isWithinBottomTolerance()) return false
-        }
-        return true
-    }
-
     val appCenterTint = Color.White
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -1757,18 +1748,12 @@ fun ChatScreen() {
     }
     val shouldRevealMessageList by remember(
         startupHydrationBarrierSatisfied,
-        hasStartedConversation,
-        initialBottomSnapDone,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
             when {
                 !startupHydrationBarrierSatisfied -> false
-                !hasStartedConversation &&
-                    messages.isNotEmpty() &&
-                    !hasStreamingItem &&
-                    !initialBottomSnapDone -> false
                 messages.isNotEmpty() -> true
                 hasStreamingItem -> true
                 else -> false
@@ -3094,8 +3079,6 @@ fun ChatScreen() {
         messageViewportMeasured,
         messages.size,
         hasStreamingItem,
-        isStreaming,
-        hasStartedConversation,
         initialBottomSnapDone
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
@@ -3107,21 +3090,8 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
-        if (hasStartedConversation) {
-            initialBottomSnapDone = true
-            return@LaunchedEffect
-        }
-        repeat(3) { withFrameNanos { } }
-        repeat(4) { attempt ->
-            scrollToBottom(false)
-            if (isWithinBottomTolerance() && isBottomSettled()) {
-                initialBottomSnapDone = true
-                return@LaunchedEffect
-            }
-            if (attempt < 3) {
-                delay(32)
-            }
-        }
+        scrollToBottom(false)
+        initialBottomSnapDone = true
     }
 
     LaunchedEffect(

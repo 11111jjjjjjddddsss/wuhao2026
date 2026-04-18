@@ -317,6 +317,12 @@ Clean-State 必做回归的范围：
 - 当前修法：发送与 hydrate 都改成按消息 `id` 原地增改 / move / remove，尽量保留现有 item
 - 禁止回退：不要再把消息替换链改回 `clear() + addAll()`
 
+8. 首屏白屏 / 有历史却不显示
+- 旧现象：首次进入聊天页时整页白底；即使本地已有历史消息，也会因为列表没 reveal 看起来像“什么都没加载出来”
+- 已确认根因：历史列表 reveal 被 `initialBottomSnapDone` 绑死；而前向列表下首次贴底又依赖 `scrollToBottom(false) + alignChatListBottom() + tolerance + settled` 这条 strict 判定链，一旦首屏 strict snap 没命中，列表就会一直挂着 `alpha = 0f`
+- 当前修法：历史列表显示与首次贴底彻底解耦；只要 hydration barrier 通过且 `messages` 非空就直接 reveal，首次贴底保留为独立补一发 `scrollToBottom(false)` 的辅助动作，不再承担“决定列表能不能显示”的门禁职责
+- 禁止回退：不要再把 `shouldRevealMessageList` 重新绑回 `initialBottomSnapDone`；不要再要求首屏 strict snap 成功后才允许历史列表露出来
+
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报
 2. 工作线与静态贴底线是否仍共用同一物理锚点
