@@ -320,7 +320,8 @@ object QwenClient {
                 val fallbackText = try {
                     val jsonCandidate = run {
                         var candidate: String? = null
-                        for (payload in dataPayloads.asReversed()) {
+                        for (index in dataPayloads.lastIndex downTo 0) {
+                            val payload = dataPayloads[index]
                             try {
                                 val payloadJson = gson.fromJson(payload, JsonObject::class.java) ?: continue
                                 val payloadChoices = payloadJson.getAsJsonArray("choices") ?: continue

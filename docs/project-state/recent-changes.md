@@ -1,9 +1,11 @@
 # 近期重要变更
 
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
+说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”等表述，默认都只是历史过程，不代表当前运行时真相。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
 ## 2026-04-18
 
+- 做了一次“反向残留语义清洁”：`ChatScreen.kt` 中按 client message id 倒序找 round、`QwenClient.kt` 中 SSE fallback 倒序扫 payload，都已从 `asReversed()` 改成显式倒序循环，避免后续窗口把这类与聊天列表方向无关的倒序遍历误判成“反向列表残留”
 - 聊天底座已从反向 `LazyColumn(reverseLayout = true)` 切回正向 `LazyColumn(reverseLayout = false)`；`ChatRecyclerViewHost.kt` 不再对 `itemIds` 做 `asReversed()`，运行时消息顺序与显示顺序重新保持一致，旧消息在上，新消息在下
 - 发送起步当前重新启用正向列表的单次 offset 锚定：`ChatScreen.kt` 恢复 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量；发送事务在插入 assistant placeholder 后，不再把“底部 = index 0”当成唯一真相，而是按 placeholder 的真实位置执行单次 `requestScrollToItem(index, offset)`
 - `ChatScrollCoordinator.kt` 当前重新承担正向底座的继续贴底责任：AutoFollow 不再依赖反向列表的天然底锚，而是在用户未打断且最新 assistant 宿主偏离工作线时，显式走 `scrollToBottom(false)` 回到底部；`scrollToBottom(false)` 同时重新带回有限次数的 `alignChatListBottom()` 底边补偿，但只服务正向底座的单条主链，不再恢复旧的多状态并行补滚链

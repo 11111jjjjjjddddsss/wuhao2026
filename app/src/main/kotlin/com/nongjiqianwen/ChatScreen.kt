@@ -1144,12 +1144,19 @@ private suspend fun awaitRemoteSnapshot(): SessionSnapshot? =
 
 private fun SessionSnapshot.findRoundByClientMessageId(clientMessageId: String): ARound? {
     if (clientMessageId.isBlank()) return null
-    return a_rounds_full
-        .asReversed()
-        .firstOrNull { it.client_msg_id == clientMessageId }
-        ?: a_rounds_for_ui
-            .asReversed()
-            .firstOrNull { it.client_msg_id == clientMessageId }
+    for (index in a_rounds_full.lastIndex downTo 0) {
+        val round = a_rounds_full[index]
+        if (round.client_msg_id == clientMessageId) {
+            return round
+        }
+    }
+    for (index in a_rounds_for_ui.lastIndex downTo 0) {
+        val round = a_rounds_for_ui[index]
+        if (round.client_msg_id == clientMessageId) {
+            return round
+        }
+    }
+    return null
 }
 
 private fun trailingRecoverableUserMessageId(source: List<ChatMessage>): String? =
