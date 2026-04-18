@@ -5,6 +5,7 @@
 
 ## 2026-04-18
 
+- 继续收口“首次进入仍差一大段文字不贴底”：`ChatScrollCoordinator.kt` 的 `scrollChatListToBottom()` 当前已收紧“最后一条已可见”的判断，不再因为 last item 顶部露头就跳过重定位。非动画路径下，如果最后一条底边仍远在可视区外，会先做一次正向硬位移到底，再交给 `alignChatListBottom()` 做工作线精修，专门补上正向列表里缺失的那次“真重定位”
 - 继续收口“首次进入有历史时仍差几像素没到底”：`ChatScreen.kt` 当前给“首次进入且 `initialBottomSnapDone` 还没命中”的启动贴底窗口补了一次临时 realtime composer geometry。这样 `scrollToBottom(false)` 在首屏历史态会按真实 composer 顶边去找工作线，不再只靠静态 bottom bar 估算；但一旦首屏已经命中底部容差，就立刻退回现有静态口径，避免把历史区输入框联动问题带回来
 - 继续收口“首次进入有历史却不贴底”：`ChatScreen.kt` 的首屏首次贴底 effect 当前不再在 `messageViewportMeasured` 一亮、打一发 `scrollToBottom(false)` 后就立刻把 `initialBottomSnapDone` 置真；现在改成等 `startupLayoutReady` 后再启动，并且只有已经命中 `isWithinBottomTolerance()` 才记完成。这样如果首屏第一次补底发生在工作线目标或最后一条内容 bounds 仍未稳定的窗口里，后续几何稳定后还能自动继续补，不会“一次试完就关门”
 - 继续校正工作线口径：根据最新真机反馈，settled 完成态和首屏历史态也必须继续收在工作线，并且工作线以下的 `STREAM_VISIBLE_BOTTOM_GAP(64dp)` 需要继续露出来给尾部提示词 / 免责声明占位；因此 `ChatScreen.kt` 当前已重新把静态底线目标收回 `streamingWorklineBottomPx`，并保留 `conversationBottomPaddingPx = composer reserve + STREAM_VISIBLE_BOTTOM_GAP`

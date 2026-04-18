@@ -46,7 +46,7 @@
 - 当前外部会诊现实约束已明确：Gemini / Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，但只服务 `sendStartViewportHeightPx` 锁定和起步 offset 计算，不再充当长期冻结列表 reserve 的几何锁
 - 首次进入聊天页当前直接 `scrollToBottom(false)` 贴到底部；从后台切回时不默认自动贴底
-- 回到底部按钮当前继续只走 `scrollToBottom(false)` 这条主链；但在正向列表下，这条主链当前已改成“最后一条已可见时直接 `alignChatListBottom()` 精修，只有完全不在可见区时才先 `scrollToItem(lastIndex)` 再补对齐”，专门避免首次贴底 / finalize 归位时先 top-anchor 到消息开头
+- 回到底部主链当前继续只走 `scrollToBottom(false)`；其中非动画路径已进一步收紧成“只有最后一条底边已经进入可视区，才允许只做 `alignChatListBottom()` 精修”。如果最后一条只是顶部露头、底边仍远在可视区外，正向列表会先做一次大位移滚到底，再由 `alignChatListBottom()` 把最后几像素压回工作线，专门收口首屏进入仍差一大段文字的问题
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 本地 fake streaming 在正常结束时也不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 指标回落后才 finish；正文 reveal 完成后直接进入完成态收口
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
@@ -70,7 +70,7 @@
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
 - 焦点 1：首次进入有历史时直接贴底
   - 当前主要代码点：`ChatScreen.kt` 的 `chatListState` 初始位置与首次贴底 effect
-  - 当前代码已不再从 `LazyListState(0, 0)` 起步；如果本地已有历史，会先用最后一条历史消息作为初始可见项。首次贴底 effect 现在会等 `startupLayoutReady` 后再启动，并且只有在 `isWithinBottomTolerance()` 命中后才把 `initialBottomSnapDone` 置真；若第一次 `scrollToBottom(false)` 发生在目标线或内容 bounds 还没稳定的窗口里，会继续自动重试，而不是滚一次就关门。与此同时，首屏贴底窗口会临时参考一次实时 composer 几何，把静态估算与实际 composer 高度之间那几像素误差压掉
+  - 当前代码已不再从 `LazyListState(0, 0)` 起步；如果本地已有历史，会先用最后一条历史消息作为初始可见项。首次贴底 effect 现在会等 `startupLayoutReady` 后再启动，并且只有在 `isWithinBottomTolerance()` 命中后才把 `initialBottomSnapDone` 置真；若第一次 `scrollToBottom(false)` 发生在目标线或内容 bounds 还没稳定的窗口里，会继续自动重试，而不是滚一次就关门。与此同时，首屏贴底窗口会临时参考一次实时 composer 几何，把静态估算与实际 composer 高度之间那几像素误差压掉；`scrollToBottom(false)` 的非动画路径也已补上“最后一条底边未进可视区时先做正向硬位移到底”的一次真重定位，避免只靠 `alignChatListBottom()` 微调却仍差一大段文字
   - 后续限制：不要再把首屏 reveal / 欢迎语重新绑回 `messageViewportMeasured`、`composerMeasured` 或 `initialBottomSnapDone`
 - 焦点 2：生成完成后不要跳到长文本开头
   - 当前主要代码点：`ChatScreen.kt` 的 `finalizeStreamingStop()` 收口后补归位逻辑

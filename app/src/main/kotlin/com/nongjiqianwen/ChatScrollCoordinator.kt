@@ -12,6 +12,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.isActive
 
+private const val FORWARD_LIST_HARD_BOTTOM_REPOSITION_PX = 1_000_000f
+
 internal enum class ScrollMode {
     Idle,
     AutoFollow,
@@ -127,12 +129,19 @@ internal suspend fun scrollChatListToBottom(
     if (lastIndex < 0) return
     beginProgrammaticScroll()
     try {
-        val lastItemAlreadyVisible = activeListState.layoutInfo.visibleItemsInfo.any { it.index == lastIndex }
-        if (!lastItemAlreadyVisible) {
+        val layoutInfo = activeListState.layoutInfo
+        val viewportEndOffset = layoutInfo.viewportEndOffset
+        val lastVisibleItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == lastIndex }
+        val lastItemFullyInViewport =
+            lastVisibleItem != null &&
+                (lastVisibleItem.offset + lastVisibleItem.size) <= viewportEndOffset
+        if (!lastItemFullyInViewport) {
             if (animated) {
                 activeListState.animateScrollToItem(lastIndex)
             } else {
-                activeListState.scrollToItem(lastIndex)
+                // In the forward list, a large positive delta is the closest equivalent to the
+                // reverse-layout era's "real bottom snap" without reintroducing top-anchor jumps.
+                activeListState.scrollBy(FORWARD_LIST_HARD_BOTTOM_REPOSITION_PX)
             }
         }
         alignChatListBottom(
