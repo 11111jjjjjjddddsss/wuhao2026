@@ -2965,7 +2965,7 @@ fun ChatScreen() {
         startAnchorScrollOffsetPx: Int
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        val conversationBottomPaddingSnapshotPx =
+        val currentConversationBottomPaddingSnapshotPx =
             latestConversationBottomPaddingPx.takeIf { it >= 0 }
                 ?: (
                     resolveBottomContentReservedHeightPx(
@@ -2975,6 +2975,17 @@ fun ChatScreen() {
                         extraReservedHeightPx = streamingExtraReservedHeightPx
                     ) + streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
+        val stableBottomBarHeightPx = when {
+            stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
+            bottomBarHeightPx > 0 -> bottomBarHeightPx
+            else -> 0
+        }
+        val conversationBottomPaddingLockPx =
+            if (collapseComposer && stableBottomBarHeightPx > 0) {
+                (stableBottomBarHeightPx + streamVisibleBottomGapPx).coerceAtLeast(0)
+            } else {
+                currentConversationBottomPaddingSnapshotPx
+            }
         composerCollapseOverlayVisible = false
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
@@ -3047,7 +3058,7 @@ fun ChatScreen() {
             pendingStartAnchorPosition >= 0 &&
             startAnchorScrollOffsetPx != Int.MIN_VALUE
         ) {
-            lockedConversationBottomPaddingPx = conversationBottomPaddingSnapshotPx
+            lockedConversationBottomPaddingPx = conversationBottomPaddingLockPx
             sendStartAnchorActive = true
             chatListState.requestScrollToItem(
                 index = pendingStartAnchorPosition,

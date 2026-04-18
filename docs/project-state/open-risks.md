@@ -26,8 +26,8 @@
 ## R4 聊天滚动链仍需持续装机回归
 
 - 状态：未关闭
-- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，首屏首次进入贴底已收口，当前剩余主风险集中在发送起步事务是否仍会带来一拍上下抖。2026-04-19 的真机逐帧 trace 已进一步确认：抖动窗口内 `sendStartAnchorActive` 仍为 `true`，`followStreamingByDelta(...)` 计数为 0，真正先连续变化的是 `composerTopInViewportPx`、`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 `firstVisibleItemScrollOffset`；当前运行时代码已新增“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护，用来验证是否能切断这条连续重排链
-- 风险：如果这层新保护命中不准，就可能出现两类残余问题：一类是发送微抖仍在，说明真正触发器不止 contentPadding；另一类是保护窗口里列表 `bottomPaddingPx` 与 composer 真实位置短暂脱钩，可能带来瞬时空隙或遮挡。与此同时，如果后续又为了压抖动回到 release gate / follow delta 假根因，或者把旧发送补丁、旧滚动补偿、旧历史区联动链带回运行时，也很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏
+- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，首屏首次进入贴底已收口，当前剩余主风险集中在发送起步事务是否仍会带来一拍上下抖。2026-04-19 的真机逐帧 trace 已进一步确认：抖动窗口内 `sendStartAnchorActive` 仍为 `true`，`followStreamingByDelta(...)` 计数为 0，真正先连续变化的是 `composerTopInViewportPx`、`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 `firstVisibleItemScrollOffset`；当前运行时代码已新增“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护，并进一步把普通发送的锁值收紧到“稳定底栏高度 + gap”，避免止抖后又把小球整体顶到屏幕中上部
+- 风险：如果这层新保护命中不准，就可能出现三类残余问题：一类是发送微抖仍在，说明真正触发器不止 contentPadding；一类是保护窗口里列表 `bottomPaddingPx` 与 composer 真实位置短暂脱钩，可能带来瞬时空隙或遮挡；还有一类是若稳定底栏高度估错，小球锚点仍可能偏离工作线。与此同时，如果后续又为了压抖动回到 release gate / follow delta 假根因，或者把旧发送补丁、旧滚动补偿、旧历史区联动链带回运行时，也很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏
 - 后续动作：下一轮真机回归优先只看 4 件事：发送瞬间整块消息区是否仍上下抖、发送后输入框是否稳定回缩、首次进入有历史是否继续直接贴底、生成完成后是否还会跳到长 assistant 文本开头。若继续改发送抖动，只围绕 `shouldUseRealtimeComposerGeometry`、`sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`、`pendingStartAnchorScrollOffsetPx` 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，并优先验证这层“列表 `bottomPaddingPx` 快照锁”是否命中；不要再把旧 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot`、`scrollToBottom(false)` 多拍补偿链，或 release gate / follow delta 假根因重新扩回发送期
 
 ## R5 外部会诊仍依赖人工转发上下文
