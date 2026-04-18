@@ -26,9 +26,9 @@
 ## R4 聊天滚动链仍需持续装机回归
 
 - 状态：未关闭
-- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，首屏首次进入贴底已收口，当前剩余主风险集中在发送起步事务是否仍会带来一拍上下抖。2026-04-19 的真机逐帧 trace 已进一步确认：抖动窗口内 `sendStartAnchorActive` 仍为 `true`，`followStreamingByDelta(...)` 计数为 0，真正先连续变化的是 `composerTopInViewportPx`、`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 `firstVisibleItemScrollOffset`；当前运行时代码已新增“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护，并进一步把普通发送的锁值收紧到“稳定底栏高度 + gap”，避免止抖后又把小球整体顶到屏幕中上部
-- 风险：如果这层新保护命中不准，就可能出现三类残余问题：一类是发送微抖仍在，说明真正触发器不止 contentPadding；一类是保护窗口里列表 `bottomPaddingPx` 与 composer 真实位置短暂脱钩，可能带来瞬时空隙或遮挡；还有一类是若稳定底栏高度估错，小球锚点仍可能偏离工作线。与此同时，如果后续又为了压抖动回到 release gate / follow delta 假根因，或者把旧发送补丁、旧滚动补偿、旧历史区联动链带回运行时，也很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏
-- 后续动作：下一轮真机回归优先只看 4 件事：发送瞬间整块消息区是否仍上下抖、发送后输入框是否稳定回缩、首次进入有历史是否继续直接贴底、生成完成后是否还会跳到长 assistant 文本开头。若继续改发送抖动，只围绕 `shouldUseRealtimeComposerGeometry`、`sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`、`pendingStartAnchorScrollOffsetPx` 和 `requestScrollToItem(index, offset)` 这一条正向主链排查，并优先验证这层“列表 `bottomPaddingPx` 快照锁”是否命中；不要再把旧 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot`、`scrollToBottom(false)` 多拍补偿链，或 release gate / follow delta 假根因重新扩回发送期
+- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，发送微抖、首屏首次进入贴底、完成态归位与 streaming 闪烁都已收口；当前运行时代码已保留“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护，并把发送瞬间的小球首发锚点改为消息 viewport 的 `40%` 高度，也就是中部偏上
+- 风险：当前主要风险不再是“抖动没修掉”，而是新的视觉口径是否稳定适配所有场景：如果 `0.4f` 的首发锚点在某些屏幕或长短文本下显得忽高忽低，或者发送保护窗口里的 `bottomPaddingPx` 锁与这个新首发锚点打架，仍可能出现小球首发位置不稳、与输入框距离不自然，或极短暂遮挡/空隙。同时，如果后续又为了调首发位置把旧发送补丁、旧滚动补偿、旧历史区联动链带回运行时，也很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏
+- 后续动作：下一轮真机回归优先只看 4 件事：发送瞬间小球是否稳定落在中部偏上、发送瞬间是否仍不抖、发送后输入框是否稳定回缩、生成完成后是否仍按现有 finalize 主链回到工作线而不跳到长 assistant 文本开头。若继续调发送首发位置，只围绕 `sendStartBallAnchorBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`、`pendingStartAnchorScrollOffsetPx` 和 `requestScrollToItem(index, offset)` 这一条正向主链排查；不要再把旧 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot`、`scrollToBottom(false)` 多拍补偿链，或 release gate / follow delta 假根因重新扩回发送期
 
 ## R5 外部会诊仍依赖人工转发上下文
 
