@@ -3276,6 +3276,7 @@ fun ChatScreen() {
         hasStreamingItem = hasStreamingItem,
         streamingMessageContent = streamingMessageContent,
         listScrollInProgress = recyclerScrollInProgress,
+        isComposerSettling = isComposerSettling,
         sendStartAnchorActiveState = sendStartAnchorActiveState,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,

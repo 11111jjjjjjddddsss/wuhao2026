@@ -255,6 +255,7 @@ internal fun BindChatListScrollEffects(
     hasStreamingItem: Boolean,
     streamingMessageContent: String,
     listScrollInProgress: Boolean,
+    isComposerSettling: Boolean,
     sendStartAnchorActiveState: MutableState<Boolean>,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
@@ -275,6 +276,7 @@ internal fun BindChatListScrollEffects(
         scrollMode,
         userInteracting,
         listScrollInProgress,
+        isComposerSettling,
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx(),
         isNearStreamingWorkline()
@@ -293,7 +295,8 @@ internal fun BindChatListScrollEffects(
                 val shouldReleaseStartAnchorProtection =
                     contentBottom > 0 &&
                         legalBottom > 0 &&
-                        isNearStreamingWorkline()
+                        isNearStreamingWorkline() &&
+                        !isComposerSettling
                 if (shouldReleaseStartAnchorProtection) {
                     sendStartAnchorActiveState.value = false
                 }
