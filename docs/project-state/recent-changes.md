@@ -5,8 +5,9 @@
 
 ## 2026-04-18
 
+- 继续修首屏白屏：`ChatScreen.kt` 当前已把 `startupListReady` 整个从首屏显示链里撤掉。列表 reveal、欢迎语 reveal 和 `LaunchUiGate.chatReady` 重新只看 hydration barrier；`messageViewportMeasured` 继续只留给首次贴底 effect。原因是 `088bdf1` 把“能不能显示”和“视口是否已测量”重新绑死后，又把首屏带回了白屏态
 - 继续修首屏白屏：`ChatScreen.kt` 当前会在 `LaunchedEffect(uiRuntimeResetKey)` 启动 reset 时主动清空 saveable 的 streaming runtime（`isStreaming / streamingMessageId / streamingMessageContent / streamingRevealBuffer` 等），同时把 `hasStreamingItem` 收紧成“当前 streaming 状态存在且 `messages` 里真的有这条消息”。这样即使系统曾在 streaming 中杀进程，冷启动也不会先恢复出一个假的 streaming 占位，把欢迎语关掉、却只 reveal 出空列表白页
-- 继续修首屏白屏：`ChatScreen.kt` 当前新增 `startupListReady`，把“列表/欢迎语显示、LaunchUiGate.chatReady、首屏首次贴底补一发”从 `startupLayoutReady` 里拆出来，不再继续被 `composerMeasured -> onInputBoundsChanged` 这条首帧可能迟到的链卡死；`startupLayoutReady` 继续只服务 jump button 和需要 composer 几何真值的链路
+- 历史过程：`ChatScreen.kt` 曾引入 `startupListReady`，试图把“列表/欢迎语显示、LaunchUiGate.chatReady、首屏首次贴底补一发”从 `startupLayoutReady` 里拆出来；但它后来又把显示重新绑回了 `messageViewportMeasured`，并再次诱发首屏白屏。当前运行时已不再使用这条门闩控制 reveal
 - 修复首屏白屏：`ChatScreen.kt` 当前已把“历史列表 reveal”和“首次贴底成功”彻底拆开。`shouldRevealMessageList` 不再依赖 `initialBottomSnapDone` / `hasStartedConversation`，只要 hydration barrier 通过且 `messages` 非空就直接显示历史消息；首屏贴底 effect 也不再要求 `scrollToBottom(false) + alignChatListBottom() + tolerance + settled` 这条 strict 链命中成功才放行，而是改成独立补一发到底后直接记账完成。这样 forward 列表即使首帧没一次性严丝合缝贴到底，也不会再因为列表长期 `alpha = 0f` 而白屏
 - 继续修首屏白屏：`ChatScreen.kt` 的底部对齐目标当前不再把“首屏静态历史 / 非 streaming 列表”统一按 `streamingWorklineBottomPx` 判断。对比早期正常版本后，已把 `currentUnifiedBottomTargetPx()` 恢复成分场景口径：非 streaming 时走旧的静态底线（`composerTop - 4dp` 或 `viewportHeight - bottomBarHeight - 4dp`），只有 streaming / waiting 才继续走工作线。这样首屏 `initialBottomSnapDone` 不会再永远拿错尺子、一直判定“还没贴到底”
 - 继续把首屏启动链往“以前正常那版”靠拢：`ChatScreen.kt` 的 `initialBottomSnapDone` 当前不再在首屏打一发 `scrollToBottom(false)` 就直接放行，而是恢复为等待 `startupLayoutReady` 后，多次补发 `scrollToBottom(false)`，并要求底部位置连续稳定数帧才算成功。目的不是改滚动主链，而是把过去那条“先确认首屏真的贴到底，再 reveal 历史列表”的启动口径局部搬回来

@@ -1723,15 +1723,6 @@ fun ChatScreen() {
                     )
         }
     }
-    val startupListReady by remember(
-        startupHydrationBarrierSatisfied,
-        messageViewportMeasured
-    ) {
-        derivedStateOf {
-            startupHydrationBarrierSatisfied &&
-                messageViewportMeasured
-        }
-    }
     val startupLayoutReady by remember(
         startupHydrationBarrierSatisfied,
         messageViewportMeasured,
@@ -1761,13 +1752,13 @@ fun ChatScreen() {
         }
     }
     val shouldRevealMessageList by remember(
-        startupListReady,
+        startupHydrationBarrierSatisfied,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
             when {
-                !startupListReady -> false
+                !startupHydrationBarrierSatisfied -> false
                 messages.isNotEmpty() -> true
                 hasStreamingItem -> true
                 else -> false
@@ -1775,12 +1766,12 @@ fun ChatScreen() {
         }
     }
     val showWelcomePlaceholder by remember(
-        startupListReady,
+        startupHydrationBarrierSatisfied,
         messages.size,
         hasStreamingItem
     ) {
         derivedStateOf {
-            startupListReady && messages.isEmpty() && !hasStreamingItem
+            startupHydrationBarrierSatisfied && messages.isEmpty() && !hasStreamingItem
         }
     }
     val topInset = WindowInsets.safeDrawing
@@ -1935,7 +1926,6 @@ fun ChatScreen() {
         autoHideMs = JUMP_BUTTON_AUTO_HIDE_MS
     )
     LaunchedEffect(
-        startupListReady,
         startupHydrationBarrierSatisfied,
         shouldRevealMessageList,
         showWelcomePlaceholder,
@@ -1944,7 +1934,7 @@ fun ChatScreen() {
         hasStreamingItem
     ) {
         LaunchUiGate.chatReady =
-            startupListReady &&
+            startupHydrationBarrierSatisfied &&
                 (shouldRevealMessageList || showWelcomePlaceholder)
     }
     var messageSelectionToolbarState by remember(uiRuntimeResetKey) {
@@ -3098,7 +3088,6 @@ fun ChatScreen() {
         )
     }
     LaunchedEffect(
-        startupListReady,
         startupHydrationBarrierSatisfied,
         messageViewportMeasured,
         messages.size,
@@ -3106,7 +3095,7 @@ fun ChatScreen() {
         initialBottomSnapDone
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
-        if (!startupHydrationBarrierSatisfied || !startupListReady || !messageViewportMeasured) {
+        if (!startupHydrationBarrierSatisfied || !messageViewportMeasured) {
             return@LaunchedEffect
         }
         if (messages.isEmpty() && !hasStreamingItem) {

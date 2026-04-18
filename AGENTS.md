@@ -319,9 +319,9 @@ Clean-State 必做回归的范围：
 
 8. 首屏白屏 / 有历史却不显示
 - 旧现象：首次进入聊天页时整页白底；即使本地已有历史消息，也会因为列表没 reveal 看起来像“什么都没加载出来”
-- 已确认根因：首屏白屏最终是两类问题叠加。第一类是启动门槛曾把 `composerMeasured` 也当成首屏显示前置，导致列表/欢迎语明明该显示却被几何迟到卡住；第二类是 `rememberSaveable` 恢复出的 stale streaming runtime（`isStreaming`、`streamingMessageId` 等）在冷启动 reset 前先参与了首屏判定，造成 `hasStreamingItem = true`、欢迎语被关掉，但 `messages` 实际为空，于是 reveal 出来的只是一张空列表白页
-- 当前修法：启动门槛已拆成两层。`startupListReady` 只负责“列表/欢迎语是否可显示、LaunchUiGate 是否可放行、首屏首次贴底是否可补一发”；同时冷启动 reset 会主动清空 streaming runtime，`hasStreamingItem` 也收紧成“既要 streaming 状态存在，也要 `messages` 里真的有对应 item”。这样既不会再被 composer 首帧测量迟到卡住，也不会被假 streaming 残留误判成空白列表
-- 禁止回退：不要再把 `shouldRevealMessageList` 重新绑回 `initialBottomSnapDone`；不要再把 `showWelcomePlaceholder`、`LaunchUiGate.chatReady`、首屏首次贴底重新绑回 `composerMeasured` / `onInputBoundsChanged`；不要再把 `hasStreamingItem` 简化回只看 `isStreaming && streamingMessageId != null`
+- 已确认根因：首屏白屏最终是三类问题叠加。第一类是启动门槛曾把 `composerMeasured` 也当成首屏显示前置，导致列表/欢迎语明明该显示却被几何迟到卡住；第二类是后续又把 reveal / splash 放行重新绑到了 `messageViewportMeasured`，让“能不能先显示文字”和“视口是否已测量可做首次贴底”再次混在一起；第三类是 `rememberSaveable` 恢复出的 stale streaming runtime（`isStreaming`、`streamingMessageId` 等）在冷启动 reset 前先参与了首屏判定，造成 `hasStreamingItem = true`、欢迎语被关掉，但 `messages` 实际为空，于是 reveal 出来的只是一张空列表白页
+- 当前修法：首屏显示链当前只看 hydration barrier。`shouldRevealMessageList`、`showWelcomePlaceholder`、`LaunchUiGate.chatReady` 都不再等待 `initialBottomSnapDone`、`composerMeasured` 或 `messageViewportMeasured`；首次贴底继续作为独立 effect 只等 viewport 已测量后补一发。与此同时，冷启动 reset 会主动清空 streaming runtime，`hasStreamingItem` 也收紧成“既要 streaming 状态存在，也要 `messages` 里真的有对应 item”
+- 禁止回退：不要再把 `shouldRevealMessageList` 重新绑回 `initialBottomSnapDone`；不要再把 `showWelcomePlaceholder`、`LaunchUiGate.chatReady`、首屏 reveal 重新绑回 `composerMeasured` / `onInputBoundsChanged` / `messageViewportMeasured`；不要再把 `hasStreamingItem` 简化回只看 `isStreaming && streamingMessageId != null`
 
 当前排查顺序：
 1. assistant 真实内容底边是否仍由同一宿主上报
