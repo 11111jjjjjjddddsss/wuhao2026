@@ -2,6 +2,14 @@
 
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 
+## 2026-04-18
+
+- 聊天底座已从反向 `LazyColumn(reverseLayout = true)` 切回正向 `LazyColumn(reverseLayout = false)`；`ChatRecyclerViewHost.kt` 不再对 `itemIds` 做 `asReversed()`，运行时消息顺序与显示顺序重新保持一致，旧消息在上，新消息在下
+- 发送起步当前重新启用正向列表的单次 offset 锚定：`ChatScreen.kt` 恢复 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量；发送事务在插入 assistant placeholder 后，不再把“底部 = index 0”当成唯一真相，而是按 placeholder 的真实位置执行单次 `requestScrollToItem(index, offset)`
+- `ChatScrollCoordinator.kt` 当前重新承担正向底座的继续贴底责任：AutoFollow 不再依赖反向列表的天然底锚，而是在用户未打断且最新 assistant 宿主偏离工作线时，显式走 `scrollToBottom(false)` 回到底部；`scrollToBottom(false)` 同时重新带回有限次数的 `alignChatListBottom()` 底边补偿，但只服务正向底座的单条主链，不再恢复旧的多状态并行补滚链
+- `ChatRecyclerViewHost.kt` 当前重新在列表尾部插入极薄 `bottom_footer` spacer，配合正向列表的底边对齐使用；这不是旧的“大 footer + 两次到底补推”方案，只保留最小 footer 厚度，避免最后一条消息可见底边贴工作线时被列表边界裁切
+- 本轮改动明确保留了近几轮已收口的修复：共享 measure 宿主（composer/list 同拍产出 reserve）、两阶段 finalize、streaming/settled 最外壳同构、Markdown block 间距改 `Spacer`、committed 逐行测量与 fresh-line 锁删除都继续保留；这次只替换列表方向和与之直接耦合的发送起步 / AutoFollow / 静态贴底逻辑，不回退这些已验证有效的修复
+
 ## 2026-04-17
 
 - 发送抖动排查进入“共享 measure 宿主”新阶段：`ChatScreen.kt` 当前不再让 `ChatRecyclerViewHost` 继续直接吃 `composerTopInViewportPx -> bottomContentReservedHeightPx -> recyclerBottomPaddingPx` 这条晚一帧链路，而是在列表与 composer 的外层改用 `SubcomposeLayout` 同拍测量，先测 composer，再把同一拍的真实 reserve 直接传给列表 `bottomPaddingPx`；旧 `composerTopInViewportPx / inputFieldBoundsInWindow / messageViewportTopPx` 这组几何链暂时保留成 selection / overlay / workline 的辅助数据，不再单独驱动列表底部保留高度

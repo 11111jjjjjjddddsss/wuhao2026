@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-17
+最后更新：2026-04-18
 
 ## 项目概况
 
@@ -11,32 +11,31 @@
 ## 当前代码真相
 
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
-- 聊天列表当前唯一底座是 `LazyColumn(reverseLayout = true)`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
-- 运行时消息状态仍保持正常时间顺序，但传给列表的显示顺序已改为 `asReversed()`；视觉上最新消息固定贴近底部工作线
-- 发送起步当前不再走正向列表那套“先算 offset 再 requestScrollToItem(index, offset)”链；发送时会在插入用户消息和 assistant placeholder 的同一发送事务里立即请求 `requestScrollToItem(0)` 回到底部锚点，用来覆盖 `LazyColumn` 对旧可见项的默认位置保护，避免新插入的小球先悬空一拍再掉出视口
-- 小球所在的 assistant waiting 宿主当前依然是发送起步锚点；反向底座下它天然贴近工作线，用户消息自然位于其上方
-- `ChatScrollCoordinator` 当前已不再在 streaming 期间主动 `scrollBy` 追工作线；反向底座下 AutoFollow 只保留控制权切换，底部锚定主要交给 `reverseLayout` 的天然行为
+- 聊天列表当前唯一底座已切回正向 `LazyColumn(reverseLayout = false)`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
+- 运行时消息状态与显示顺序当前保持一致，不再通过 `asReversed()` 翻转；旧消息在上，新消息在下
+- 发送起步当前重新启用正向列表的单次 offset 起步：发送事务会基于工作线和 waiting 首行高度前馈计算 `startAnchorScrollOffsetPx`，再对 assistant placeholder 执行单次 `requestScrollToItem(index, offset)`，把小球起步宿主对齐到工作线
+- 小球所在的 assistant waiting 宿主当前依然是发送起步锚点；在正向列表下它不再依赖“反向天然贴底”，而是依赖显式起步对位和后续底部归位
+- `ChatScrollCoordinator` 当前重新承担 streaming 期间的继续贴底责任；用户未打断时，如果最新 assistant 宿主偏离工作线，会显式走 `scrollToBottom(false)` 把它拉回
 - 远端历史 hydrate 当前已不再用 `replaceMessages(clear + addAll)` 整表重建；`replaceMessages(...)` 改为按消息 `id` 做原地增量更新，减少冷启动/恢复阶段的整表震荡
 - waiting 小球与 streaming 首块当前已收敛到同一个 `ChatStreamingRenderer` 内容宿主里切换，不再走两套 streaming 宿主分支，进一步减少首字出现时的物理高度跳变
 - `RendererAssistantStreamingContentImpl(...)` 当前已改为 unified block host：completed / active blocks 先拍平成同一个 `unifiedModels` 列表，再由同一个外壳宿主承接 spacing / divider，active -> committed 交接时不再跨 sibling subtree 搬家
 - unified streaming block 当前使用 append-only 场景下稳定的 block index 作为外壳 key，不再把 `hashCode()` 混进 key 里触发流式阶段的连续 remount
-- streaming 分支最外层宿主当前已从 `TopStart` 改为 `BottomStart`，让正文在反向底座里沿同一物理底边向上生长，减少流式换行时“先往下掉一下再被拉回”的体感
+- streaming 分支最外层宿主当前仍保持 `BottomStart` 口径，让正文沿同一物理底边向上生长；这条修复与列表正反向无关，继续保留
 - `ChatStreamingRenderer(...)` 当前继续收口到同一个最外层宿主：streaming / settled 都改为共用外层 `Column` 承接 `boundsReportingModifier` 和 `fillMaxWidth()`，streaming 所需的 `BottomStart` 对齐仅保留在内部 `Box`；这样生成完成从 streaming 切 settled 时，不再因为最外层 `Box -> Column` 换树而额外重测一拍
 - `RendererAssistantStreamingCommittedBlockImpl(...)` 当前也不再直接把正文整段交给单个 `Text(annotated)` 自由换行；heading / quote / paragraph 以及 bullet / numbered 的正文都改为先基于 `AnnotatedString` 做逐行测量，再复用和 active block 一样的逐行堆叠布局，尽量减少 streaming -> settled 时行高 / 行间距算法切换带来的“最后一拍微调”
 - streaming / settled Markdown 正文当前都不再依赖父级 `Column(spacedBy(...))` 推块间距；其中 streaming 分支已不再把块间距直接挂在 unified block 外壳 modifier 上，而是改成在非首块前插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，尽量减少新 block 诞生时把既有内容整体往下踹一拍
 - streaming 期间 unified block 外壳当前已继续收口到单一测量实现：不论 block 逻辑状态是 completed 还是 active，流式渲染都统一复用 `RendererAssistantStreamingActiveBlockImpl(...)`；只有最后一个 active block 继续吃 fresh tail 高亮，避免 active -> committed 中途交接时因为内部测量树不同构而产生额外高度重算
 - 聊天页“消息列表 + composer”当前已改成共享 measure 宿主：`ChatScreen.kt` 里用 `SubcomposeLayout` 先测 composer，再把同一拍的真实底部 reserve 直接喂给 `ChatRecyclerViewHost` 的 `bottomPaddingPx`，不再让 `LazyColumn` 的实际 contentPadding 继续完全依赖 `composerTopInViewportPx` 这条晚一帧的异步回写链
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow`、overlay snapshot 这组旧几何链当前继续保留，但职责已降级为 selection / overlay / bounds / workline 辅助口径，不再单独决定列表底部保留高度
-- streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需单发 `requestScrollToItem(0)`。这样完成那一拍不再出现工作线口径、底部判定源、内容宿主同时换挡
-- 发送链当前不再把“输入框收口”和“消息插入 + 回底请求”拆到两拍：`commitSendMessage()` 已把 `upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、`requestScrollToItem(0)` 收回到同步 UI 事务里，网络/SSE 仅保留在后续协程，专门收“发送瞬间上下抖一下”的事务分帧问题
-- 发送起步窗口当前额外放开了实时 composer 几何：`shouldUseRealtimeComposerGeometry` 现在在 `sendUiSettling == true` 时不再被 `isComposerSettling` 一刀切断，避免输入框瞬间清空回缩时，工作线和 bottom reserved height 先断崖回退、再配合 `requestScrollToItem(0)` 制造整块上下抖
+- streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需补一次到底归位
+- 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
+- 发送起步窗口当前重新启用 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量，但只服务正向列表的单次起步定位，不再恢复成旧的多拍补偿链
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起打包给 Gemini / Claude，避免外部方案继续停留在抽象猜测层
 - 当前外部会诊现实约束已明确：Gemini / Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
-- `sendStartBottomPaddingLockActive` 已退出工作线和 `recyclerBottomPaddingPx` 的运行时计算主链；`sendUiSettling` 与 `composerSettlingMinHeightPx / composerSettlingChromeHeightPx` 仍只服务输入框自身收口和 overlay 生命周期
-- 所有只服务正向底座的发送起步变量都已退出主链：`pendingStartAnchorScrollOffsetPx`、`sendStartViewportHeightPx`、`sendStartWorklineBottomPx` 已删除
-- 首次进入聊天页当前直接 `scrollToItem(0)` 贴到底部；从后台切回时不默认自动贴底
-- 回到底部按钮当前只走 `scrollToBottom(false)` 的 `scrollToItem(0)` 主链，不再串 `alignChatListBottom()` 那套 8 帧 `scrollBy` 底边补偿；streaming 完成态也不再保留 `pendingFinalBottomSnap` 这类额外补滚
+- `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，但只服务 `sendStartViewportHeightPx` 锁定和起步 offset 计算，不再充当长期冻结列表 reserve 的几何锁
+- 首次进入聊天页当前直接 `scrollToBottom(false)` 贴到底部；从后台切回时不默认自动贴底
+- 回到底部按钮当前继续只走 `scrollToBottom(false)` 这条主链；但在正向列表下，这条主链重新带回了有限次数的 `alignChatListBottom()` 底边补偿，用来把最后一条消息的可见底边压回工作线，streaming 完成态仍不再保留 `pendingFinalBottomSnap` 这类额外补滚
 - 本地 fake streaming 在切后台时改为同步收口成 completed 消息，并同步写回本地聊天窗口、清掉 streaming draft，避免秒切后台/前台时把半截流式状态带回屏幕
 - 本地 fake streaming 在正常结束时也不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 指标回落后才 finish；正文 reveal 完成后直接进入完成态收口
 - 后端是唯一业务真相来源，前端只负责 UI、输入与展示
@@ -60,8 +59,8 @@
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
 - 焦点：发送瞬间整块消息区会轻微上下抖一下
   - 当前主要代码点：`ChatScreen.kt` 的 `commitSendMessage()` 与新引入的共享 measure 宿主
-  - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(0)`
-  - 当前最新尝试：已把列表实际吃到的 bottom padding 改为 composer 同拍实测值，滚动链、finalize、selection、overlay 均先保持原样；是否彻底压住发送抖动，仍需用户真机回归
+  - 当前真实顺序仍保持产品要求：先即时 `prepareComposerCollapse(...)`、`input.value = TextFieldValue("")`、`clearFocus/hide keyboard`，再 `upsertUserMessage(...)`、`upsertAssistantMessagePlaceholder(...)`、`requestScrollToItem(index, offset)`
+  - 当前最新尝试：列表已切回正向口径，同时保留 composer/list 共享测量宿主、两阶段 finalize、streaming/settled 同构等近几轮修复；发送起步、AutoFollow、静态贴底是否全部重新跑顺，仍需用户真机回归
 - 已明确排除、不要再回滚的方向：
   - 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout` 主链
   - `alignChatListBottom()` 的 8 帧 `scrollBy` 补偿

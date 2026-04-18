@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -8,6 +9,8 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
+import kotlinx.coroutines.isActive
 
 internal enum class ScrollMode {
     Idle,
@@ -97,10 +100,26 @@ internal fun endProgrammaticChatListScroll(
     listState?.let(refreshChatListMetrics)
 }
 
+private suspend fun alignChatListBottom(
+    listState: LazyListState,
+    currentLastMessageContentBottomPx: () -> Int,
+    currentBottomAlignDeltaPx: () -> Int
+) {
+    repeat(8) {
+        withFrameNanos { }
+        if (currentLastMessageContentBottomPx() <= 0) return@repeat
+        val alignDeltaPx = currentBottomAlignDeltaPx()
+        if (alignDeltaPx == 0) return
+        listState.scrollBy((-alignDeltaPx).toFloat())
+    }
+}
+
 internal suspend fun scrollChatListToBottom(
     listState: LazyListState?,
     lastIndex: Int,
     animated: Boolean,
+    currentLastMessageContentBottomPx: () -> Int,
+    currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
     endProgrammaticScroll: () -> Unit
 ) {
@@ -113,6 +132,11 @@ internal suspend fun scrollChatListToBottom(
         } else {
             activeListState.scrollToItem(lastIndex)
         }
+        alignChatListBottom(
+            listState = activeListState,
+            currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
+            currentBottomAlignDeltaPx = currentBottomAlignDeltaPx
+        )
     } catch (_: Throwable) {
         endProgrammaticScroll()
         return
@@ -219,11 +243,14 @@ internal fun BindChatListScrollEffects(
     hasStreamingItem: Boolean,
     streamingMessageContent: String,
     listScrollInProgress: Boolean,
+    sendStartAnchorActiveState: MutableState<Boolean>,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
     streamBottomFollowActiveState: MutableState<Boolean>,
     currentStreamingContentBottomPx: () -> Int,
-    isNearStreamingWorkline: () -> Boolean
+    currentStreamingLegalBottomPx: () -> Int,
+    isNearStreamingWorkline: () -> Boolean,
+    scrollToBottom: suspend (Boolean) -> Unit
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
@@ -232,44 +259,69 @@ internal fun BindChatListScrollEffects(
         isStreaming,
         hasStreamingItem,
         streamingMessageContent,
+        sendStartAnchorActiveState.value,
         scrollMode,
         userInteracting,
         listScrollInProgress,
         currentStreamingContentBottomPx(),
+        currentStreamingLegalBottomPx(),
         isNearStreamingWorkline()
     ) {
         if (!isStreaming || !hasStreamingItem) {
+            sendStartAnchorActiveState.value = false
             streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
-        val activeScrollMode = scrollModeState.value
-        val contentBottom = currentStreamingContentBottomPx()
-        if (activeScrollMode == ScrollMode.UserBrowsing) {
-            if (
-                !listScrollInProgress &&
-                !userInteractingState.value &&
-                isNearStreamingWorkline()
-            ) {
+        while (isActive && isStreaming && hasStreamingItem) {
+            withFrameNanos { }
+            val activeScrollMode = scrollModeState.value
+            val contentBottom = currentStreamingContentBottomPx()
+            val legalBottom = currentStreamingLegalBottomPx()
+            if (sendStartAnchorActiveState.value) {
+                val shouldReleaseStartAnchorProtection =
+                    contentBottom > 0 &&
+                        legalBottom > 0 &&
+                        isNearStreamingWorkline()
+                if (shouldReleaseStartAnchorProtection) {
+                    sendStartAnchorActiveState.value = false
+                }
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            if (activeScrollMode == ScrollMode.UserBrowsing) {
+                if (
+                    !listScrollInProgress &&
+                    !userInteractingState.value &&
+                    isNearStreamingWorkline()
+                ) {
+                    scrollModeState.value = ScrollMode.AutoFollow
+                    continue
+                }
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            if (listScrollInProgress || userInteractingState.value) {
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            if (contentBottom <= 0 || streamingMessageContent.isBlank()) {
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            if (activeScrollMode != ScrollMode.AutoFollow) {
                 scrollModeState.value = ScrollMode.AutoFollow
             }
-            streamBottomFollowActiveState.value = false
-            return@LaunchedEffect
+            if (isNearStreamingWorkline()) {
+                streamBottomFollowActiveState.value = false
+                continue
+            }
+            streamBottomFollowActiveState.value = true
+            try {
+                scrollToBottom(false)
+            } finally {
+                streamBottomFollowActiveState.value = false
+            }
         }
-        if (listScrollInProgress || userInteractingState.value) {
-            streamBottomFollowActiveState.value = false
-            return@LaunchedEffect
-        }
-        if (contentBottom <= 0 || streamingMessageContent.isBlank()) {
-            streamBottomFollowActiveState.value = false
-            return@LaunchedEffect
-        }
-        // Reverse layout already keeps the newest assistant host pinned at the
-        // visual bottom while the user is not browsing. During streaming we only
-        // need to manage ownership, not run the old overflow-driven scrollBy chain.
-        if (scrollModeState.value != ScrollMode.AutoFollow) {
-            scrollModeState.value = ScrollMode.AutoFollow
-        }
-        streamBottomFollowActiveState.value = false
     }
 }
 

@@ -186,6 +186,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedHashMap
+import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
@@ -1416,7 +1417,9 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    val initialChatListIndex = remember(uiRuntimeResetKey) { 0 }
+    val initialChatListIndex = remember(uiRuntimeResetKey, initialLocalMessages) {
+        initialLocalMessages.lastIndex.coerceAtLeast(0)
+    }
     val chatListState = rememberSaveable(uiRuntimeResetKey, saver = LazyListState.Saver) {
         LazyListState(initialChatListIndex, 0)
     }
@@ -1473,6 +1476,9 @@ fun ChatScreen() {
     }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var sendStartAnchorActive by sendStartAnchorActiveState
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -1520,6 +1526,27 @@ fun ChatScreen() {
                 (!isComposerSettling || sendUiSettling)
         }
     }
+    val sendStartBottomPaddingLockActive by remember(
+        sendUiSettling,
+        sendStartAnchorActive
+    ) {
+        derivedStateOf {
+            sendUiSettling || sendStartAnchorActive
+        }
+    }
+    val lockedMessageViewportHeightPx by remember(
+        messageViewportHeightPx,
+        sendStartViewportHeightPx,
+        sendStartBottomPaddingLockActive
+    ) {
+        derivedStateOf {
+            if (sendStartBottomPaddingLockActive && sendStartViewportHeightPx > 0) {
+                sendStartViewportHeightPx
+            } else {
+                messageViewportHeightPx
+            }
+        }
+    }
     val safeBottomInsetPx = with(density) {
         WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
@@ -1541,7 +1568,7 @@ fun ChatScreen() {
         }
     }
     val streamingWorklineBottomPx by remember(
-        messageViewportHeightPx,
+        lockedMessageViewportHeightPx,
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
@@ -1549,7 +1576,7 @@ fun ChatScreen() {
         shouldUseRealtimeComposerGeometry
     ) {
         derivedStateOf {
-            val effectiveViewportHeightPx = messageViewportHeightPx
+            val effectiveViewportHeightPx = lockedMessageViewportHeightPx
             val stableBottomBarHeightPx = when {
                 stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
                 bottomBarHeightPx > 0 -> bottomBarHeightPx
@@ -1589,7 +1616,7 @@ fun ChatScreen() {
         if (bounds != null) {
             return (bounds.bottom - messageViewportTopPx).roundToInt()
         }
-        val newestDisplayIndex = 0
+        val newestDisplayIndex = messages.lastIndex
         val fallbackItem =
             chatListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == newestDisplayIndex }
                 ?: return -1
@@ -1605,7 +1632,13 @@ fun ChatScreen() {
         val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return Int.MAX_VALUE
-        return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
+        return abs(desiredBottomPx - lastContentBottom)
+    }
+    fun currentBottomAlignDeltaPx(): Int {
+        val lastContentBottom = currentLastMessageContentBottomPx()
+        val desiredBottomPx = currentUnifiedBottomTargetPx()
+        if (lastContentBottom <= 0) return 0
+        return desiredBottomPx - lastContentBottom
     }
     fun isWithinBottomTolerance(): Boolean {
         val overflowPx = currentBottomOverflowPx()
@@ -1716,6 +1749,37 @@ fun ChatScreen() {
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
         .calculateTopPadding()
+    val sendStartAnchorBottomInsetPx = with(density) {
+        CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() +
+            assistantStreamingParagraphTextStyle().lineHeight.roundToPx()
+    }
+    val sendStartWorklineBottomPx by remember(
+        lockedMessageViewportHeightPx,
+        stableComposerBottomBarHeightPx,
+        bottomBarHeightPx,
+        composerTopInViewportPx,
+        streamVisibleBottomGapPx
+    ) {
+        derivedStateOf {
+            val effectiveViewportHeightPx = lockedMessageViewportHeightPx
+            val stableBottomBarHeight = when {
+                stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
+                bottomBarHeightPx > 0 -> bottomBarHeightPx
+                else -> 0
+            }
+            if (effectiveViewportHeightPx > 0 && stableBottomBarHeight > 0) {
+                (
+                    effectiveViewportHeightPx -
+                        stableBottomBarHeight -
+                        streamVisibleBottomGapPx
+                    ).coerceAtLeast(0)
+            } else if (composerTopInViewportPx > 0) {
+                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+            } else {
+                0
+            }
+        }
+    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -2101,6 +2165,8 @@ fun ChatScreen() {
         SessionApi.resetUiRuntimeForCleanState()
         QwenClient.resetUiRuntimeForCleanState()
         sendUiSettling = false
+        sendStartViewportHeightPx = 0
+        sendStartAnchorActive = false
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
@@ -2360,6 +2426,8 @@ fun ChatScreen() {
             streamRevealJob = null
             isStreaming = false
             sendUiSettling = false
+            sendStartViewportHeightPx = 0
+            sendStartAnchorActive = false
             streamingMessageId = null
             streamingRevealBuffer = ""
             streamingFreshStart = -1
@@ -2603,7 +2671,7 @@ fun ChatScreen() {
         if (scrollMode == ScrollMode.UserBrowsing) return
         if (messages.isEmpty()) return
         if (!isWithinBottomTolerance()) {
-            chatListState.requestScrollToItem(index = 0)
+            chatListState.requestScrollToItem(index = messages.lastIndex)
         }
     }
 
@@ -2612,6 +2680,8 @@ fun ChatScreen() {
     ) {
         isStreaming = false
         sendUiSettling = false
+        sendStartViewportHeightPx = 0
+        sendStartAnchorActive = false
         streamingMessageId = null
         streamingMessageContent = ""
         streamingRevealBuffer = ""
@@ -2838,10 +2908,12 @@ fun ChatScreen() {
     fun commitSendMessage(
         text: String,
         existingUserMessageId: String? = null,
-        collapseComposer: Boolean = true
+        collapseComposer: Boolean = true,
+        startAnchorScrollOffsetPx: Int
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         composerCollapseOverlayVisible = false
+        sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
         initialBottomSnapDone = true
@@ -2907,10 +2979,18 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        // Keep composer collapse, message insertion, and reverse-list bottom snap
-        // in the same UI transaction so Compose remeasures them together.
-        if (messages.indexOfFirst { it.id == assistantId } >= 0) {
-            chatListState.requestScrollToItem(index = 0)
+        val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
+        if (
+            pendingStartAnchorPosition >= 0 &&
+            startAnchorScrollOffsetPx != Int.MIN_VALUE
+        ) {
+            sendStartAnchorActive = true
+            chatListState.requestScrollToItem(
+                index = pendingStartAnchorPosition,
+                scrollOffset = startAnchorScrollOffsetPx
+            )
+        } else {
+            sendStartAnchorActive = false
         }
         persistTick++
         snackbarScope.launch {
@@ -2961,8 +3041,10 @@ fun ChatScreen() {
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
-            lastIndex = if (messages.isEmpty()) -1 else 0,
+            lastIndex = messages.lastIndex,
             animated = animated,
+            currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
+            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
             beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
             endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
@@ -2991,7 +3073,7 @@ fun ChatScreen() {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        chatListState.scrollToItem(0)
+        scrollToBottom(false)
         initialBottomSnapDone = true
     }
 
@@ -3124,11 +3206,14 @@ fun ChatScreen() {
         hasStreamingItem = hasStreamingItem,
         streamingMessageContent = streamingMessageContent,
         listScrollInProgress = recyclerScrollInProgress,
+        sendStartAnchorActiveState = sendStartAnchorActiveState,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
         streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
-        isNearStreamingWorkline = ::isNearStreamingWorkline
+        currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
+        isNearStreamingWorkline = ::isNearStreamingWorkline,
+        scrollToBottom = scrollToBottom
     )
 
     BoxWithConstraints(
@@ -3170,6 +3255,19 @@ fun ChatScreen() {
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
+        val pendingStartAnchorScrollOffsetPx by remember(
+            chatListTopPaddingPx,
+            sendStartAnchorBottomInsetPx,
+            sendStartWorklineBottomPx
+        ) {
+            derivedStateOf {
+                if (sendStartWorklineBottomPx <= 0) {
+                    Int.MIN_VALUE
+                } else {
+                    chatListTopPaddingPx + sendStartAnchorBottomInsetPx - sendStartWorklineBottomPx
+                }
+            }
+        }
         fun retryFailedUserMessage(messageId: String) {
             val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
@@ -3179,7 +3277,8 @@ fun ChatScreen() {
             commitSendMessage(
                 text = failedMessage.content,
                 existingUserMessageId = failedMessage.id,
-                collapseComposer = false
+                collapseComposer = false,
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
             )
         }
         fun retryFailedAssistantMessage(assistantMessageId: String) {
@@ -3197,7 +3296,8 @@ fun ChatScreen() {
             commitSendMessage(
                 text = sourceUserMessage.content,
                 existingUserMessageId = sourceUserMessage.id,
-                collapseComposer = false
+                collapseComposer = false,
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
             )
         }
         fun sendMessage() {
@@ -3213,7 +3313,10 @@ fun ChatScreen() {
                 markUserMessageSendFailed(trimmedText)
                 return
             }
-            commitSendMessage(text = trimmedText)
+            commitSendMessage(
+                text = trimmedText,
+                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx
+            )
         }
         val pageSurface = Color(0xFFFFFFFF)
         val navigationBottomInset: Dp = WindowInsets.safeDrawing
@@ -3259,6 +3362,7 @@ fun ChatScreen() {
                     itemIds = messages.map { it.id },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = bottomPaddingPx,
+                    bottomFooterHeightPx = with(density) { 1.dp.roundToPx() },
                     modifier = Modifier
                         .then(
                             if (hasActiveMessageSelection) {
