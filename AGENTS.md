@@ -257,7 +257,7 @@ Clean-State 必做回归的范围：
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，只服务 `sendStartViewportHeightPx` 的锁定和起步 offset 计算；不允许再把它扩张成长期冻结列表底部 reserve 的旧几何锁
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留正向列表的 item 缓存和滚动锚点
-- 首次进入聊天页的贴底当前由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 直接 `scrollToBottom(false)`；从后台切回时不默认自动贴底
+- 首次进入聊天页的贴底当前继续由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的独立 effect 负责；但这条 effect 只会在 `startupLayoutReady` 后启动，并且只有真的命中底部容差才会把 `initialBottomSnapDone` 记完成。若首屏第一次 `scrollToBottom(false)` 发生在目标线或内容 bounds 仍未稳定的窗口里，必须允许后续几何稳定后自动重试；从后台切回时不默认自动贴底
 - 聊天列表当前不再用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复上次停留的 `LazyListState`。冷启动 / 重进聊天页且本地已有历史时，`LazyListState` 会先从最后一条历史消息起步，避免 reveal 放行后先从顶部露出旧历史；随后仍继续交给“首次贴底”主链补一次精确到底。不要再让系统先把长消息中段或旧历史停留位置恢复出来，否则首几秒会出现“文本像重叠 / 在同一条长消息里来回闪”的启动假象
 - 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
 - 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
@@ -323,7 +323,7 @@ Clean-State 必做回归的范围：
 8. 首屏白屏 / 有历史却不显示
 - 旧现象：首次进入聊天页时整页白底；即使本地已有历史消息，也会因为列表没 reveal 看起来像“什么都没加载出来”
 - 已确认根因：首屏白屏最终是四类问题叠加。第一类是启动门槛曾把 `composerMeasured` 也当成首屏显示前置，导致列表/欢迎语明明该显示却被几何迟到卡住；第二类是后续又把 reveal / splash 放行重新绑到了 `messageViewportMeasured`，让“能不能先显示文字”和“视口是否已测量可做首次贴底”再次混在一起；第三类是 `rememberSaveable` 恢复出的 stale streaming runtime（`isStreaming`、`streamingMessageId` 等）在冷启动 reset 前先参与了首屏判定，造成 `hasStreamingItem = true`、欢迎语被关掉，但 `messages` 实际为空，于是 reveal 出来的只是一张空列表白页；第四类是共享 measure 宿主在 `SubcomposeLayout` 里测 composer 时把父级整屏 `minHeight` 原样传了下去，导致 composer 被量成接近整屏高，列表 / 欢迎语底部 reserve 失真后，欢迎语和历史文本会一起被挤没
-- 当前修法：首屏显示链当前只看 hydration barrier。`shouldRevealMessageList`、`showWelcomePlaceholder`、`LaunchUiGate.chatReady` 都不再等待 `initialBottomSnapDone`、`composerMeasured` 或 `messageViewportMeasured`；首次贴底继续作为独立 effect 只等 viewport 已测量后补一发。与此同时，冷启动 reset 会主动清空 streaming runtime，`hasStreamingItem` 也收紧成“既要 streaming 状态存在，也要 `messages` 里真的有对应 item”；共享 measure 宿主在测 composer slot 时额外放松 `minHeight = 0`，只保留精确宽度，避免 reserve 被整屏高误伤
+- 当前修法：首屏显示链当前只看 hydration barrier。`shouldRevealMessageList`、`showWelcomePlaceholder`、`LaunchUiGate.chatReady` 都不再等待 `initialBottomSnapDone`、`composerMeasured` 或 `messageViewportMeasured`；首次贴底继续作为独立 effect，但它现在只在 `startupLayoutReady` 后启动，并且只有已经命中底部容差才把 `initialBottomSnapDone` 置真，避免“首屏滚过一次就关门、后续几何稳定了却不再补底”。与此同时，冷启动 reset 会主动清空 streaming runtime，`hasStreamingItem` 也收紧成“既要 streaming 状态存在，也要 `messages` 里真的有对应 item”；共享 measure 宿主在测 composer slot 时额外放松 `minHeight = 0`，只保留精确宽度，避免 reserve 被整屏高误伤
 - 禁止回退：不要再把 `shouldRevealMessageList` 重新绑回 `initialBottomSnapDone`；不要再把 `showWelcomePlaceholder`、`LaunchUiGate.chatReady`、首屏 reveal 重新绑回 `composerMeasured` / `onInputBoundsChanged` / `messageViewportMeasured`；不要再把 `hasStreamingItem` 简化回只看 `isStreaming && streamingMessageId != null`；不要再让共享 measure 宿主把父级整屏 `minHeight` 直接传给 composer slot
 
 当前排查顺序：

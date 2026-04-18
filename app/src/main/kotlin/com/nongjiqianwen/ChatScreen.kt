@@ -3108,13 +3108,15 @@ fun ChatScreen() {
         }
     LaunchedEffect(
         startupHydrationBarrierSatisfied,
-        messageViewportMeasured,
+        startupLayoutReady,
         messages.size,
+        isStreaming,
         hasStreamingItem,
-        initialBottomSnapDone
+        initialBottomSnapDone,
+        currentBottomOverflowPx()
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
-        if (!startupHydrationBarrierSatisfied || !messageViewportMeasured) {
+        if (!startupHydrationBarrierSatisfied || !startupLayoutReady) {
             return@LaunchedEffect
         }
         if (messages.isEmpty() && !hasStreamingItem) {
@@ -3122,8 +3124,11 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
+        if (isWithinBottomTolerance()) {
+            initialBottomSnapDone = true
+            return@LaunchedEffect
+        }
         scrollToBottom(false)
-        initialBottomSnapDone = true
     }
 
     LaunchedEffect(
