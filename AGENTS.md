@@ -150,6 +150,7 @@
 
 交付要求：
 - Android 改动后编译：`./gradlew.bat :app:compileDebugKotlin`
+- Android 改动默认只做编译验证，不主动执行 `:app:installDebug`；真机安装与回归默认由用户自行完成，只有用户明确要求 Codex 装机时才执行安装
 - Go 后端改动后编译：`cd server-go && go build ./...`
 - 每次改动后都要检查影响面
 - 若改动影响当前真相、风险、待决策、运维口径或方案取舍，必须同步更新 `docs/project-state`、`docs/adr`、`docs/runbooks`
@@ -257,7 +258,7 @@ Clean-State 必做回归的范围：
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
 - 普通 idle / 历史浏览状态下，列表与工作线仍不能重新长期追实时 `composerTop`；但“首次进入且有历史、`initialBottomSnapDone` 还没命中”的启动贴底窗口允许临时借一次实时 composer 几何，把最后几像素压准到真实工作线。命中后必须立刻退回当前静态口径，不能把这条临时窗口扩张成新的历史区联动链
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，只服务 `sendStartViewportHeightPx` 的锁定和起步 offset 计算；不允许再把它扩张成长期冻结列表底部 reserve 的旧几何锁
-- 2026-04-19 按最新真机逐帧 trace 落地的发送期新保护：`commitSendMessage()` 在发出 `requestScrollToItem(index, offset)` 前，会先拍下发送当拍的 `conversationBottomPaddingPx`；`sendStartAnchorActive` 保护窗口内，`ChatRecyclerViewHost` 只临时把这份快照喂给 `LazyColumn` 的 `bottomPaddingPx` 消费点，等保护窗口退出后再退回实时值。这个锁只能作用在列表 contentPadding 消费点，不能再扩张回全局 reserve / workline 锁；`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 overflow 判定本身仍必须保留实时口径
+- 2026-04-19 按最新真机逐帧 trace 落地的发送期新保护：`commitSendMessage()` 在发出 `requestScrollToItem(index, offset)` 前，会先为 `LazyColumn` 选出一个临时 `bottomPaddingPx` 锁值。普通发送且会收口 composer 时，锁值必须与 `sendStartWorklineBottomPx` 使用同一套“稳定底栏高度 + `STREAM_VISIBLE_BOTTOM_GAP`”基准，不能再锁发送瞬间那个偏大的旧 padding；只有 `collapseComposer = false` 这类不收口发送才退回当前快照。`sendStartAnchorActive` 保护窗口内，`ChatRecyclerViewHost` 只临时把这份锁值喂给列表 contentPadding 消费点，等保护窗口退出后再退回实时值。这个锁只能作用在列表 contentPadding 消费点，不能再扩张回全局 reserve / workline 锁；`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 overflow 判定本身仍必须保留实时口径
 - 2026-04-19 最新真机逐帧 trace 已确认：发送抖动发生时，`sendStartAnchorActive` 仍为 `true`，`followStreamingByDelta(...)` 计数为 0；真正先连续变化的是 `composerTopInViewportPx`、共享 measure 宿主给出的 `conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 `firstVisibleItemScrollOffset`。也就是说当前主因不在 release gate，也不在 follow delta，而在发送起步窗口里工作线 / reserve / 列表偏移仍在同一时间段多帧改写
 - 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
 - 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留正向列表的 item 缓存和滚动锚点
