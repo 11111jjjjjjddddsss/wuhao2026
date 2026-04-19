@@ -274,6 +274,7 @@ Clean-State 必做回归的范围：
 - `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时按需补一发“回到底部”归位；这不是旧 `pendingFinalBottomSnap` 状态机，完成态收口后若仍离底，必须复用现有 `scrollToBottom(false)` 静态底线主链，不允许再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部
 - 两阶段 finalize 的第一阶段一旦已经把最终 assistant 内容写入 `messages`，本地持久化快照就不能再把这条 assistant 当成“仍在 streaming 的 transient item”过滤掉；否则切后台 / 杀进程后，本地聊天窗口只会剩下用户消息，看起来像“明明生成过但没落进记录”。当前 `persistableMessagesSnapshot()` 必须继续允许 `pendingStreamingFinalizeMessageId` 对应的 assistant 落盘
 - 本地聊天窗口快照当前不再只保存 `List<ChatMessage>`；失败 user / failed assistant 的状态也必须和消息正文一起落盘，并继续兼容旧数组格式缓存。带后端模式下，远端 hydrate 如果还没覆盖这些本地失败尾巴，必须把它们和失败态 metadata 一起并回首屏快照，不能再让远端快照把本地失败消息擦成“只剩历史 / 只剩用户消息”。当前 footer 语义仍是 `重发 / 重试`，不是“继续生成”
+- assistant 失败态当前继续向前补齐到 0 token 场景：如果 assistant 在首 token 前就失败，运行时也必须保留对应的 assistant placeholder item，并写入 failed assistant state；本地快照不能再把这类“空内容但 failed assistant”当成普通空壳过滤掉。这样切后台 / 杀进程 / 重进后，`回复未完成 / 重试` 仍然有稳定锚点，不会再次退化成“只剩用户消息 + 顶部 hint”
 
 ### 7.4 当前已收口的交互规则记忆
 

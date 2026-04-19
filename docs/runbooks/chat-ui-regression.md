@@ -65,6 +65,7 @@
   1. assistant 已完成落地
   2. user 发送失败，出现 `未发送  重发`
   3. assistant 中断失败，出现 `回复未完成  重试`
+  4. assistant 在首 token 前就失败，只出现 failed assistant footer
 - 预期：重进后，已完成正文应继续在历史里；失败消息正文和各自 footer 也要一起恢复，不能只剩正文、只剩历史，或只剩用户消息
 - 若失败，优先排查：`ChatScreen.kt` 的 `persistableLocalChatWindowSnapshot()`、本地 snapshot 读写、以及远端 hydrate 是否把本地 failed-state metadata 擦掉
 

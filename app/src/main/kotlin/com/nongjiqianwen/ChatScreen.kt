@@ -2486,9 +2486,13 @@ fun ChatScreen() {
                     message.id == transientAssistantId &&
                     isStreaming &&
                     finalizedAssistantId != message.id
+            val isFailedAssistantPlaceholder =
+                message.role == ChatRole.ASSISTANT &&
+                    message.content.isBlank() &&
+                    failedAssistantMessageStates.containsKey(message.id)
             message.role == ChatRole.ASSISTANT &&
                 (
-                    message.content.isBlank() ||
+                    (message.content.isBlank() && !isFailedAssistantPlaceholder) ||
                         isTransientStreamingAssistant
                     )
         }
@@ -2583,13 +2587,17 @@ fun ChatScreen() {
                 messageId = assistantMessageId,
                 content = finalContent
             )
-            failedAssistantMessageStates[assistantMessageId] = FailedAssistantMessageState(
+        } else {
+            upsertAssistantMessagePlaceholder(
+                messageId = assistantMessageId,
                 sourceUserMessageId = sourceUserMessageId
             )
-            persistTick++
-        } else {
             showComposerStatusHint(interruptedHintText(reason))
         }
+        failedAssistantMessageStates[assistantMessageId] = FailedAssistantMessageState(
+            sourceUserMessageId = sourceUserMessageId
+        )
+        persistTick++
     }
 
     fun applyRecoveredAssistantRound(sourceUserMessageId: String, recoveredRound: ARound) {
@@ -3155,12 +3163,11 @@ fun ChatScreen() {
                     messageId = finalId,
                     content = finalContent
                 )
-                failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
+            } else {
+                upsertAssistantMessagePlaceholder(
+                    messageId = finalId,
                     sourceUserMessageId = sourceUserMessageId
                 )
-                persistTick++
-            } else {
-                removeMessageById(finalId)
                 showComposerStatusHint(
                     when (reason) {
                         "network" -> "网络波动，回复未完成"
@@ -3170,6 +3177,10 @@ fun ChatScreen() {
                     }
                 )
             }
+            failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
+                sourceUserMessageId = sourceUserMessageId
+            )
+            persistTick++
         }
     }
 

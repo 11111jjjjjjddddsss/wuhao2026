@@ -41,6 +41,7 @@
 - 本地聊天窗口持久化当前又补了一刀：两阶段 finalize 的第一阶段只要已经把 completed assistant 写回 `messages`，`persistableMessagesSnapshot()` 就不再把这条 assistant 当成 transient streaming item 过滤掉。这样 fake streaming 正常结束、切后台同步完结、以及“生成完刚落地就切出去”这几类场景，本地聊天窗口都会带上 assistant 完成态，不再只剩用户消息
 - 本地聊天窗口快照当前继续扩成“消息 + 失败态 metadata”一起落盘：失败 user 的 `未发送/重发`、失败 assistant 的 `回复未完成/重试` 现在都会和正文一起保存在同一个本地 snapshot 里，重进后仍能恢复 footer；同时继续兼容旧 `List<ChatMessage>` 数组格式缓存
 - 带后端模式下，远端 hydrate 当前也不再无脑覆盖本地失败尾巴：如果远端快照还没覆盖这些本地失败消息，首屏会把本地失败消息和对应 failed-state metadata 一起并回 hydrated snapshot，而不是再被远端历史擦成“只剩普通历史 / 只剩用户消息”；当前 footer 语义仍保持 `重发 / 重试`，不是“继续生成”
+- assistant 失败态当前又补齐到 0 token 场景：如果 assistant 在首 token 前就中断，`ChatScreen.kt` 也会保留对应的 assistant placeholder item，并写入 failed assistant state；本地 snapshot 不再把这类“空内容但 failed assistant”当成普通空壳过滤掉。这样重进后依然能恢复 `回复未完成 / 重试`，不再只剩顶部 hint 或只剩用户消息
 - 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
 - `sendUiSettling` 当前已重新收紧成“只覆盖发送起步同步窗口”的短锁：输入框收口、消息原地增改、首发 `requestScrollToItem(index, offset)` 一完成就立即释放，不再把长文本 composer 的多行高度锁到整段 fake streaming / SSE 结束，专门收口“发送长文本后输入框有时不回缩”的时序竞态
 - 发送起步窗口当前重新启用 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量，但只服务正向列表的单次起步定位，不再恢复成旧的多拍补偿链

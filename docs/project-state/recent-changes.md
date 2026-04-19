@@ -5,6 +5,7 @@
 
 ## 2026-04-19
 
+- assistant 失败态继续补齐到 0 token 场景：`ChatScreen.kt` 现在不会再把“首 token 前就失败”的 assistant 直接删掉并只弹顶部 hint，而是会保留对应的 assistant placeholder item、写入 failed assistant state，并允许本地 snapshot 持久化这类“空内容但 failed assistant”的 item。这样切后台 / 杀进程 / 重进后，`回复未完成 / 重试` 仍然有稳定锚点
 - `docs/runbooks/chat-ui-regression.md` 当前已补上“切后台 / 杀进程后，完成态正文和失败态 footer 都必须恢复”的回归项，后续真机回归需要明确覆盖 completed assistant、`未发送/重发`、`回复未完成/重试` 这 3 类场景，避免只测正文不测 footer
 - 本地聊天窗口持久化继续扩成 snapshot 口径：`ChatScreen.kt` 当前不再只落 `List<ChatMessage>`，而是把消息正文、failed user state、failed assistant state 一起保存到同一个本地 snapshot；读取时继续兼容旧数组格式缓存。这样 `未发送/重发`、`回复未完成/重试` 这两类 footer 在切后台、杀进程、重进后也能跟着消息一起恢复，不再只剩正文或只剩用户消息
 - 带后端模式下的首屏 hydrate 也补了一刀：`SessionApi.getSnapshot()` 回来的远端历史如果还没覆盖本地失败尾巴，`ChatScreen.kt` 会把这些本地失败消息和 failed-state metadata 一起并进 hydrated snapshot，而不是让远端快照无脑把它们擦掉；同时启动时的 trailing recoverable user 也会跳过本地 failed user，避免把“未发送”误当成需要对远端做 assistant recovery 的正常尾轮
