@@ -692,10 +692,16 @@ private fun ComposerInputShell(
         shadowElevation = 0.dp,
         modifier = modifier
             .shadow(
-                elevation = 10.dp,
+                elevation = 14.dp,
                 shape = shellShape,
-                ambientColor = Color(0x12000000),
-                spotColor = Color(0x28000000)
+                ambientColor = Color.Black.copy(alpha = 0.045f),
+                spotColor = Color.Black.copy(alpha = 0.05f)
+            )
+            .shadow(
+                elevation = 4.dp,
+                shape = shellShape,
+                ambientColor = Color.Black.copy(alpha = 0.02f),
+                spotColor = Color.Black.copy(alpha = 0.085f)
             )
     ) {
         Box(
