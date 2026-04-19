@@ -1923,7 +1923,8 @@ fun ChatScreen() {
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
 
-    val appCenterTint = Color.White
+    val chatPageSurface = Color(0xFFF6F7F8)
+    val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
     val userBubbleColor = Color(0xFFF4F4F7)
@@ -3721,7 +3722,7 @@ fun ChatScreen() {
                 startAnchorBottomInsetPx = sendStartAnchorBottomInsetPx
             )
         }
-        val pageSurface = Color(0xFFFFFFFF)
+        val pageSurface = chatPageSurface
         val navigationBottomInset: Dp = WindowInsets.safeDrawing
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
