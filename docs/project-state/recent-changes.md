@@ -5,6 +5,7 @@
 
 ## 2026-04-19
 
+- 静态态贴底精度继续做了最小一刀：`ChatScreen.kt` 把 `STATIC_BOTTOM_POSITION_TOLERANCE` 从 `1.dp` 收到 `0.dp`，只取消“代码主动允许 1dp 偏差存在”这件事，不动工作线、`STREAM_VISIBLE_BOTTOM_GAP`、bounds 取源和现有 `alignChatListBottom()` 主链。当前策略是先用最小风险的容差收口看能否压掉“最后一丝”，若真机上仍残留，再单独评估 Float 精度，而不是直接上 scrollBy 探针
 - 静态态贴底又收紧了一刀：`ChatRecyclerViewHost.kt` 已移除正向列表尾部那颗额外的 `1dp` footer spacer，`ChatScreen.kt` 里的静态到底容差也继续收紧；首屏历史贴底、完成态归位和静态回到底部按钮不再把这颗尾项误当成“还没到底的真实内容”，专门压“看起来只差一丝、往上还能轻轻扒一点”的残余体感，同时不动工作线以下真正要保留的 `STREAM_VISIBLE_BOTTOM_GAP`
 - assistant 失败态继续补齐到 0 token 场景：`ChatScreen.kt` 现在不会再把“首 token 前就失败”的 assistant 直接删掉并只弹顶部 hint，而是会保留对应的 assistant placeholder item、写入 failed assistant state，并允许本地 snapshot 持久化这类“空内容但 failed assistant”的 item。这样切后台 / 杀进程 / 重进后，`回复未完成 / 重试` 仍然有稳定锚点
 - `docs/runbooks/chat-ui-regression.md` 当前已补上“切后台 / 杀进程后，完成态正文和失败态 footer 都必须恢复”的回归项，后续真机回归需要明确覆盖 completed assistant、`未发送/重发`、`回复未完成/重试` 这 3 类场景，避免只测正文不测 footer
