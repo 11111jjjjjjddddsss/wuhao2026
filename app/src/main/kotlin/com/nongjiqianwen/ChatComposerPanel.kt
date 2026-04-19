@@ -258,7 +258,7 @@ internal fun ChatComposerBottomBar(
                             .padding(start = 2.dp),
                         singleLine = false,
                         minLines = 1,
-                        maxLines = 6,
+                        maxLines = 8,
                         textStyle = TextStyle(
                             fontSize = 16.sp,
                             lineHeight = 22.sp,

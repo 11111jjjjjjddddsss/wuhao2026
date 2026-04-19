@@ -3644,7 +3644,7 @@ fun ChatScreen() {
             else -> 22.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 92.dp else 96.dp
-        val inputBarMaxHeight = if (maxWidth < 360.dp) 176.dp else 200.dp
+        val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
         val actionCircleSize = if (maxWidth < 360.dp) 44.dp else 46.dp
         val addButtonSize = actionCircleSize
