@@ -38,6 +38,7 @@
 - 共享 measure 宿主当前继续把 `STREAM_VISIBLE_BOTTOM_GAP(64dp)` 计入 `conversationBottomPaddingPx`；这段 gap 不是多余空白，而是工作线以下要露出来的 breathing gap，用来给尾部提示词 / 免责声明预留可见空间，不能在 settled 完成态和首屏历史态被收掉
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow`、overlay snapshot 这组旧几何链当前继续保留，但职责已降级为 selection / overlay / bounds / workline 辅助口径，不再单独决定列表底部保留高度
 - streaming 正常结束与本地 fake streaming 的后台同步完结，当前统一走“两阶段 finalize”收口：第一阶段先把最终内容落进 completed 消息并保留 streaming 几何口径，同时清掉该消息旧 streaming bounds；第二阶段等同一条消息的 completed fresh bounds 真正上报后，再原子切 `isStreaming / streamingMessageId / scrollRuntime`，并只在仍离底时按需补一次到底归位。完成态归位当前已明确复用 `scrollToBottom(false)` 静态底线主链，不再使用 `requestScrollToItem(lastIndex)` 这种把最后一条消息顶到视口顶部的 top-anchor
+- 本地聊天窗口持久化当前又补了一刀：两阶段 finalize 的第一阶段只要已经把 completed assistant 写回 `messages`，`persistableMessagesSnapshot()` 就不再把这条 assistant 当成 transient streaming item 过滤掉。这样 fake streaming 正常结束、切后台同步完结、以及“生成完刚落地就切出去”这几类场景，本地聊天窗口都会带上 assistant 完成态，不再只剩用户消息
 - 发送链当前重新收回到“正向列表 + 单次起步 offset”口径：`commitSendMessage()` 会先完成输入框收口、`upsertUserMessage`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`，再按 assistant placeholder 的真实位置请求 `requestScrollToItem(index, offset)`；网络/SSE 仅保留在后续协程
 - `sendUiSettling` 当前已重新收紧成“只覆盖发送起步同步窗口”的短锁：输入框收口、消息原地增改、首发 `requestScrollToItem(index, offset)` 一完成就立即释放，不再把长文本 composer 的多行高度锁到整段 fake streaming / SSE 结束，专门收口“发送长文本后输入框有时不回缩”的时序竞态
 - 发送起步窗口当前重新启用 `sendStartViewportHeightPx / sendStartWorklineBottomPx / pendingStartAnchorScrollOffsetPx` 这组前馈量，但只服务正向列表的单次起步定位，不再恢复成旧的多拍补偿链

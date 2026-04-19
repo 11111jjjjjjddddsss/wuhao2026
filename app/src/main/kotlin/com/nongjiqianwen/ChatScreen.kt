@@ -2333,17 +2333,19 @@ fun ChatScreen() {
             addAll(failedAssistantMessageStates.keys)
         }
         val transientAssistantId = streamingMessageId
+        val finalizedAssistantId = pendingStreamingFinalizeMessageId
         return messages.filterNot { message ->
+            val isTransientStreamingAssistant =
+                transientAssistantId != null &&
+                    message.id == transientAssistantId &&
+                    isStreaming &&
+                    finalizedAssistantId != message.id
             message.id in failedIds ||
                 (
                     message.role == ChatRole.ASSISTANT &&
                         (
                             message.content.isBlank() ||
-                                (
-                                    transientAssistantId != null &&
-                                        message.id == transientAssistantId &&
-                                        isStreaming
-                                    )
+                                isTransientStreamingAssistant
                             )
                     )
         }
