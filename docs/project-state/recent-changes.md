@@ -7,6 +7,7 @@
 
 - 发送起步高度基准继续收窄：`ChatScreen.kt` 普通发送且会收口 composer 时，`conversationBottomPaddingLockPx` 不再吃当前多行输入框量出来的 `stableComposerBottomBarHeightPx`，也不再吃拍脑袋的 collapsed 常量；运行时会在“输入为空 + 无 focus + IME 已收起 + composer 非 settling”的稳定收口窗口记录真实底部 reserve（`observedCollapsedBottomReservePx`），发送起步优先直接复用这份观察值，`requestScrollToItem(index, offset)` 也继续从这份 lock 反推最终工作线，专门压“小球长文本更高、短文本更低”的现象
 - 为了减少冷启动第一次发送时观察值还没采到的风险，`ChatScreen.kt` 当前又补了一层更早的预热：只要页面处于“输入为空 + 无 focus + IME 已收起 + composer 非 settling + 未处于 sendStart lock”的稳定收口窗口，就会优先从共享 measure 宿主已经拿到的 `latestConversationBottomPaddingPx` 预热 `observedCollapsedBottomReservePx`（减去 `STREAM_VISIBLE_BOTTOM_GAP`）；`composerTopInViewportPx` 那条旧观察链继续保留，作为后续校准
+- 静态态贴底精度继续收口：`ChatScreen.kt` 当前把“首屏历史贴底 / 完成态归位 / 静态回到底部按钮”的到底容差从 streaming 工作线命中带里拆开，改用更紧的静态容差；专门压“已经到底但还能再往上扒出一丁点空白”的感觉，不动 streaming 过程中的工作线跟随口径
 - 发送起步工作线又补了一刀同源修正：`ChatScreen.kt` 里 `commitSendMessage()` 在选定这次要锁给 `LazyColumn` 的 `conversationBottomPaddingLockPx` 后，会直接用这份锁值反推本次 `requestScrollToItem(index, offset)` 的最终 offset，不再让列表实际吃进去的是“锁定 padding”，而发送起步 offset 还继续沿用另一条预先派生的工作线快照；`pendingStartAnchorScrollOffsetPx` 只保留为锁值拿不到时的兜底
 - 历史规则已单独落库：仓库当前明确把“发送瞬间小球首发位置”和“底部空白 / 完成态上跳”拆成两类问题。旧历史里多次出现“小球一上抬就出事”，本质是当时发送起步抖动、`conversationBottomPaddingPx` 连续变化和 finalize 几何链都没收口；现在发送微抖已由列表 `bottomPaddingPx` 锁压住，底部空白也已由两阶段 finalize 收口，所以这两类问题理论上已经拆开。只是按最新产品回归，小球一旦上抬到中部以上，失败态和短文本收口又会变差，所以当前仍固定回工作线
 - “中部偏上首发锚点”方案已回收：`ChatScreen.kt` 恢复由 `sendStartWorklineBottomPx` 驱动 `pendingStartAnchorScrollOffsetPx`，发送瞬间的小球重新稳定贴在工作线；发送期 `bottomPaddingPx` 锁、streaming / finalize / 首屏历史态主链都保持不动

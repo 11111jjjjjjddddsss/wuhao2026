@@ -276,6 +276,7 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 64.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
+private val STATIC_BOTTOM_POSITION_TOLERANCE = 4.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
@@ -1511,6 +1512,7 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val staticBottomPositionTolerancePx = with(density) { STATIC_BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
     }
@@ -1738,12 +1740,15 @@ fun ChatScreen() {
         if (lastContentBottom <= 0) return 0
         return desiredBottomPx - lastContentBottom
     }
-    fun isWithinBottomTolerance(): Boolean {
+    fun isWithinBottomTolerance(tolerancePx: Int): Boolean {
         val overflowPx = currentBottomOverflowPx()
-        return overflowPx != Int.MAX_VALUE && overflowPx <= bottomPositionTolerancePx
+        return overflowPx != Int.MAX_VALUE && overflowPx <= tolerancePx
     }
-    val atBottom by remember(bottomPositionTolerancePx) {
-        derivedStateOf { isWithinBottomTolerance() }
+    fun isWithinStaticBottomTolerance(): Boolean {
+        return isWithinBottomTolerance(staticBottomPositionTolerancePx)
+    }
+    val atBottom by remember(staticBottomPositionTolerancePx) {
+        derivedStateOf { isWithinStaticBottomTolerance() }
     }
     fun isNearStreamingWorkline(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
@@ -3221,7 +3226,7 @@ fun ChatScreen() {
         restoreBottomAnchorIfNeededAfterStreamingStop@{ shouldRestoreBottomAnchor ->
             if (!shouldRestoreBottomAnchor) return@restoreBottomAnchorIfNeededAfterStreamingStop
             if (messages.isEmpty()) return@restoreBottomAnchorIfNeededAfterStreamingStop
-            if (isWithinBottomTolerance()) return@restoreBottomAnchorIfNeededAfterStreamingStop
+            if (isWithinStaticBottomTolerance()) return@restoreBottomAnchorIfNeededAfterStreamingStop
             snackbarScope.launch {
                 scrollToBottom(false)
             }
@@ -3244,7 +3249,7 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
-        if (isWithinBottomTolerance()) {
+        if (isWithinStaticBottomTolerance()) {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
