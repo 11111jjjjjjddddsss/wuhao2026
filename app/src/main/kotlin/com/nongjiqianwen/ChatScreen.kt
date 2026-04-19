@@ -1610,6 +1610,30 @@ fun ChatScreen() {
         }
     }
     LaunchedEffect(
+        latestConversationBottomPaddingPx,
+        sendStartBottomPaddingLockActive,
+        isComposerSettling,
+        inputFieldFocused,
+        imeVisible,
+        input.value.text
+    ) {
+        val collapsedStable =
+            !sendStartBottomPaddingLockActive &&
+                !isComposerSettling &&
+                !inputFieldFocused &&
+                !imeVisible &&
+                input.value.text.isEmpty()
+        if (!collapsedStable) return@LaunchedEffect
+        val prewarmedCollapsedBottomReservePx =
+            (latestConversationBottomPaddingPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+        if (
+            prewarmedCollapsedBottomReservePx > 0 &&
+            prewarmedCollapsedBottomReservePx != observedCollapsedBottomReservePx
+        ) {
+            observedCollapsedBottomReservePx = prewarmedCollapsedBottomReservePx
+        }
+    }
+    LaunchedEffect(
         composerTopInViewportPx,
         messageViewportHeightPx,
         isComposerSettling,
