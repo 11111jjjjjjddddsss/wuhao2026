@@ -1850,24 +1850,16 @@ fun ChatScreen() {
         if (lastMessage.role == ChatRole.ASSISTANT && hasStreamingItem && currentStreamingContentBottomPx() > 0) {
             return currentStreamingContentBottomPx()
         }
-        val newestDisplayIndex = messages.lastIndex
-        chatListState.layoutInfo.visibleItemsInfo
-            .firstOrNull { it.index == newestDisplayIndex }
-            ?.let { lastVisibleItem ->
-                // Static bottom alignment must use the full measured Lazy item bottom.
-                // Inner content bounds can miss row padding and optional status footers,
-                // leaving a tiny but real remaining scroll range.
-                return lastVisibleItem.offset + lastVisibleItem.size
-            }
         val lastMessageId = lastMessage.id
         val bounds = if (lastMessage.role == ChatRole.ASSISTANT) {
-            messageSelectionBoundsById[lastMessageId] ?: messageContentBoundsById[lastMessageId]
+            messageContentBoundsById[lastMessageId]
         } else {
             messageContentBoundsById[lastMessageId] ?: messageSelectionBoundsById[lastMessageId]
         }
         if (bounds != null) {
             return (bounds.bottom - messageViewportTopPx).roundToInt()
         }
+        val newestDisplayIndex = messages.lastIndex
         val fallbackItem =
             chatListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == newestDisplayIndex }
                 ?: return -1

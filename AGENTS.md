@@ -254,7 +254,7 @@ Clean-State 必做回归的范围：
 - waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
 - `ChatScrollCoordinator` 当前在 streaming 期间重新承担“继续贴底”的责任；正向底座下若最新 assistant 宿主偏离工作线，AutoFollow 只允许在现有列表偏移量上按“当前内容底边 - 工作线底边”的单次 delta 做 `scrollBy` 微调，不再对每个 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，但也不允许恢复旧的多状态并行补偿链
 - `scrollToBottom(false)` 当前重新带回 `alignChatListBottom()` 这层有限次数的底边补偿，用来把正向列表最后一条消息的可见底边重新压回工作线；但“最后一条已可见”必须收紧成“最后一条底边已进入可视区”，不能只因为顶部露头就跳过重定位。若最后一条底边仍远在可视区外，非动画路径必须先做一次正向硬位移到底，再交给 `alignChatListBottom()` 精修，避免首屏贴底仍差一大段文字；同时禁止把它改回 `scrollToItem(lastIndex)` 这种 top-anchor 跳顶
-- 静态态“是否已经到底”的当前口径已与 streaming 工作线命中带拆开：streaming 期间继续保留较宽的工作线容差，避免跟随链过于敏感；首屏历史态、完成态归位和静态回到底部按钮则使用更紧的静态容差，只收“还能轻轻往上扒出一丁点空白”的剩余体感，不去碰 streaming 主链。与此同时，静态态对“最后一条消息底边”的判定当前优先取 `LazyColumn` 里最后一条可见 item 的真实测量底边，不再只看 assistant / user 内层 content bounds，避免把 item 外层 padding 或失败 footer 漏掉
+- 静态态“是否已经到底”的当前口径已与 streaming 工作线命中带拆开：streaming 期间继续保留较宽的工作线容差，避免跟随链过于敏感；首屏历史态、完成态归位和静态回到底部按钮则使用更紧的静态容差，只收“还能轻轻往上扒出一丁点空白”的剩余体感，不去碰 streaming 主链
 - `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出，并继续额外叠加 `STREAM_VISIBLE_BOTTOM_GAP`。这段 64dp breathing gap 需要在 streaming、settled 完成态和首屏历史态都保持可见，不能在静态态被收掉
 - `ChatRecyclerViewHost` 当前也不再额外插入列表尾部 footer spacer 来“补底”；静态态真实底边只允许由最后一条消息 + `conversationBottomPaddingPx` 定义，不能再混入额外的 1dp 尾项，否则会重新带回“看着只差一丝、但其实还能继续往上扒一点”的假未贴底体感
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
