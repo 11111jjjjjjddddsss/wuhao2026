@@ -688,15 +688,14 @@ private fun ComposerInputShell(
     Surface(
         shape = shellShape,
         color = inputFieldSurface,
-        border = BorderStroke(1.16.dp, inputFieldBorder.copy(alpha = 0.98f)),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
         modifier = modifier
             .shadow(
-                elevation = 8.dp,
+                elevation = 10.dp,
                 shape = shellShape,
-                ambientColor = Color(0x16000000),
-                spotColor = Color(0x22000000)
+                ambientColor = Color(0x12000000),
+                spotColor = Color(0x28000000)
             )
     ) {
         Box(
