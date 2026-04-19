@@ -1927,7 +1927,8 @@ fun ChatScreen() {
     val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
-    val userBubbleColor = Color(0xFFF4F4F7)
+    val userBubbleColor = Color.White
+    val userBubbleBorderColor = Color(0xFFDCE1E7).copy(alpha = 0.92f)
     var inputChromeMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var messageViewportMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var composerMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -3945,17 +3946,18 @@ fun ChatScreen() {
                                     horizontalAlignment = Alignment.End,
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    SelectableRenderedUserMessageBubble(
-                                        content = msg.content,
-                                        textSelectionColors = messageSelectionColors,
-                                        textToolbar = messageTextToolbar,
-                                        selectionResetKey = messageSelectionResetEpoch,
-                                        userBubbleMaxWidth = userBubbleMaxWidth,
-                                        userBubbleColor = userBubbleColor,
-                                        onBubbleBoundsChanged = { bounds ->
-                                            if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
-                                                messageSelectionBoundsById[msg.id] = bounds
-                                            }
+                                        SelectableRenderedUserMessageBubble(
+                                            content = msg.content,
+                                            textSelectionColors = messageSelectionColors,
+                                            textToolbar = messageTextToolbar,
+                                            selectionResetKey = messageSelectionResetEpoch,
+                                            userBubbleMaxWidth = userBubbleMaxWidth,
+                                            userBubbleColor = userBubbleColor,
+                                            userBubbleBorderColor = userBubbleBorderColor,
+                                            onBubbleBoundsChanged = { bounds ->
+                                                if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
+                                                    messageSelectionBoundsById[msg.id] = bounds
+                                                }
                                             if (bounds != null) {
                                                 messageContentBoundsById[msg.id] = bounds
                                             } else {
@@ -4673,8 +4675,10 @@ private fun SelectableRenderedUserMessageBubble(
     selectionResetKey: Int,
     userBubbleMaxWidth: Dp,
     userBubbleColor: Color,
+    userBubbleBorderColor: Color,
     onBubbleBoundsChanged: (Rect?) -> Unit = {}
 ) {
+    val bubbleShape = RoundedCornerShape(20.dp)
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -4683,8 +4687,9 @@ private fun SelectableRenderedUserMessageBubble(
             modifier = Modifier
                 .wrapContentWidth(Alignment.End)
                 .widthIn(max = userBubbleMaxWidth)
-                .clip(RoundedCornerShape(20.dp))
+                .clip(bubbleShape)
                 .background(userBubbleColor)
+                .border(BorderStroke(0.8.dp, userBubbleBorderColor), bubbleShape)
                 .onGloballyPositioned { coordinates ->
                     onBubbleBoundsChanged(coordinates.boundsInWindow())
                 }
