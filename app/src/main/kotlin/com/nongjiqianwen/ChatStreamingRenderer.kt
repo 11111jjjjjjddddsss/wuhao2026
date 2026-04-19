@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -986,6 +987,67 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
 }
 
 @Composable
+private fun rememberGatedStreamingRenderedLines(
+    lines: StreamingRenderedLines,
+    freshTick: Int
+): StreamingRenderedLines {
+    var displayedLines by remember { mutableStateOf(lines) }
+    var armedStableCount by remember { mutableIntStateOf(-1) }
+    var armedActiveLineText by remember { mutableStateOf("") }
+
+    val currentActiveLineText = lines.activeLine?.text ?: ""
+    val gatedLines = when {
+        freshTick == 0 -> lines
+        lines.stableLines.size < displayedLines.stableLines.size -> lines
+        armedStableCount >= 0 &&
+            lines.stableLines.size == armedStableCount &&
+            currentActiveLineText == armedActiveLineText -> displayedLines
+        armedStableCount >= 0 -> lines
+        lines.stableLines.size > displayedLines.stableLines.size -> displayedLines
+        else -> lines
+    }
+
+    SideEffect {
+        when {
+            freshTick == 0 -> {
+                displayedLines = lines
+                armedStableCount = -1
+                armedActiveLineText = ""
+            }
+
+            lines.stableLines.size < displayedLines.stableLines.size -> {
+                displayedLines = lines
+                armedStableCount = -1
+                armedActiveLineText = ""
+            }
+
+            armedStableCount >= 0 &&
+                lines.stableLines.size == armedStableCount &&
+                currentActiveLineText == armedActiveLineText -> Unit
+
+            armedStableCount >= 0 -> {
+                displayedLines = lines
+                armedStableCount = -1
+                armedActiveLineText = ""
+            }
+
+            lines.stableLines.size > displayedLines.stableLines.size -> {
+                armedStableCount = lines.stableLines.size
+                armedActiveLineText = currentActiveLineText
+            }
+
+            else -> {
+                displayedLines = lines
+                armedStableCount = -1
+                armedActiveLineText = ""
+            }
+        }
+    }
+
+    return gatedLines
+}
+
+@Composable
 private fun RendererStreamingSingleActiveLineTextImpl(
     lines: StreamingRenderedLines,
     style: TextStyle,
@@ -994,10 +1056,11 @@ private fun RendererStreamingSingleActiveLineTextImpl(
     freshTick: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val renderedLines = remember(lines.stableLines, lines.activeLine) {
+    val gatedLines = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
+    val renderedLines = remember(gatedLines.stableLines, gatedLines.activeLine) {
         buildList<Pair<AnnotatedString, Boolean>> {
-            lines.stableLines.forEach { add(it to false) }
-            lines.activeLine?.let { add(it to true) }
+            gatedLines.stableLines.forEach { add(it to false) }
+            gatedLines.activeLine?.let { add(it to true) }
         }
     }
     Column(
@@ -1362,10 +1425,11 @@ private fun RendererStreamingBulletOrNumberedBlockImpl(
     freshTailChars: Int,
     freshTick: Int
 ) {
-    val renderedLines = remember(lines.stableLines, lines.activeLine) {
+    val gatedLines = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
+    val renderedLines = remember(gatedLines.stableLines, gatedLines.activeLine) {
         buildList<Pair<AnnotatedString, Boolean>> {
-            lines.stableLines.forEach { add(it to false) }
-            lines.activeLine?.let { add(it to true) }
+            gatedLines.stableLines.forEach { add(it to false) }
+            gatedLines.activeLine?.let { add(it to true) }
         }
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {

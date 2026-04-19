@@ -51,6 +51,7 @@
 - 为了减少冷启动第一次发送时“观察值还没采到”导致的小球略高/略低，`observedCollapsedBottomReservePx` 当前会先从共享 measure 宿主已拿到的 `latestConversationBottomPaddingPx` 预热（减去 `STREAM_VISIBLE_BOTTOM_GAP`）；只要页面处于“输入为空 + 无 focus + IME 已收起 + composer 非 settling + 未处于 sendStart lock”的稳定收口窗口，就允许把这份真实 reserve 记下来。`composerTopInViewportPx` 那条旧观察链继续保留，用来后续校准
 - 静态态贴底当前又收紧了一刀：首屏历史贴底、完成态归位和静态回到底部按钮，已经不再和 streaming 共用同一个“16dp 算到底”口径，而是单独走更紧的静态容差；同时 `ChatRecyclerViewHost` 已移除列表尾部那颗额外的 1dp footer spacer，`ChatScreen.kt` 当前把静态容差继续收到了 `0.dp`，静态态真实底边仍只由最后一条消息和 `conversationBottomPaddingPx` 决定。streaming 工作线命中带保持原样，专门收“开机进入 / 生成完成后还能再扒出一丁点空白”的剩余体感；如果真机上还剩最后一丝，再单独评估 Float 精度，不直接引入 scrollBy 探针
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
+- `ChatStreamingRenderer.kt` 当前又补了一层更窄的显示门闩：当 `buildStableStreamingLineBuffer(...)` 首次测出“上一行可升格为 stable、下一行开始成为 activeLine”时，渲染层不会立刻把这一拍的新 `stableLines + activeLine` 整组见光，而是先继续保留上一拍的整组已显示结果；只有后续再次观察到 activeLine 真实继续吐字，才放行新的整组结果。这样工作线下面的新行不会在上一行尚未真正推上去时提前冒头，同时也不恢复旧 fresh-line preview 的锁空串/预览串方案
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起整理成发给 Claude 的短稿，避免外部方案继续停留在抽象猜测层
 - 当前外部会诊现实约束已明确：Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，但只服务 `sendStartViewportHeightPx` 锁定和起步 offset 计算，不再充当长期冻结列表 reserve 的几何锁
@@ -91,6 +92,7 @@
   - 首次进入有历史时继续直接贴底，并保持工作线以下 breathing gap 可见
   - 生成完成后不要跳到长 assistant 文本开头
   - 发送长文本后输入框要稳定回缩，不要再次出现“有时回缩、有时不回缩”的竞态
+  - streaming 长段落换行时，工作线下面的新一行不要在上一行尚未上推完成前提前冒头；重点观察是否还会出现“下一行一闪一消失”的残留
 - 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
 
 ## 当前阶段判断
