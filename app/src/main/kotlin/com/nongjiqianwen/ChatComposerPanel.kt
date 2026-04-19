@@ -697,19 +697,19 @@ private fun ComposerInputShell(
             .dropShadow(
                 shape = shellShape,
                 shadow = Shadow(
-                    radius = 24.dp,
-                    spread = 1.dp,
-                    color = Color.Black.copy(alpha = 0.12f),
-                    offset = DpOffset(x = 0.dp, y = 10.dp)
+                    radius = 28.dp,
+                    spread = 2.dp,
+                    color = Color.Black.copy(alpha = 0.14f),
+                    offset = DpOffset(x = 0.dp, y = 12.dp)
                 )
             )
             .dropShadow(
                 shape = shellShape,
                 shadow = Shadow(
-                    radius = 9.dp,
+                    radius = 10.dp,
                     spread = 0.dp,
-                    color = Color.Black.copy(alpha = 0.14f),
-                    offset = DpOffset(x = 0.dp, y = 3.dp)
+                    color = Color.Black.copy(alpha = 0.18f),
+                    offset = DpOffset(x = 0.dp, y = 4.dp)
                 )
             )
     ) {
