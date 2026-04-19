@@ -986,39 +986,26 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
     }
 }
 
-private data class GatedStreamingRenderedLinesState(
-    val visibleLines: StreamingRenderedLines,
-    val hiddenTrailingStableLineCount: Int
-)
-
 @Composable
 private fun rememberGatedStreamingRenderedLines(
     lines: StreamingRenderedLines,
     freshTick: Int
-): GatedStreamingRenderedLinesState {
+): StreamingRenderedLines {
     var displayedLines by remember { mutableStateOf(lines) }
     var armedStableCount by remember { mutableIntStateOf(-1) }
     var armedActiveLineText by remember { mutableStateOf("") }
 
     val currentActiveLineText = lines.activeLine?.text ?: ""
-    val keepPreviousVisibleLines =
-        when {
-            freshTick == 0 -> false
-            lines.stableLines.size < displayedLines.stableLines.size -> false
-            armedStableCount >= 0 &&
-                lines.stableLines.size == armedStableCount &&
-                currentActiveLineText == armedActiveLineText -> true
-            armedStableCount >= 0 -> false
-            lines.stableLines.size > displayedLines.stableLines.size -> true
-            else -> false
-        }
-    val visibleLines = if (keepPreviousVisibleLines) displayedLines else lines
-    val hiddenTrailingStableLineCount =
-        if (keepPreviousVisibleLines) {
-            (lines.stableLines.size - displayedLines.stableLines.size).coerceAtLeast(0)
-        } else {
-            0
-        }
+    val gatedLines = when {
+        freshTick == 0 -> lines
+        lines.stableLines.size < displayedLines.stableLines.size -> lines
+        armedStableCount >= 0 &&
+            lines.stableLines.size == armedStableCount &&
+            currentActiveLineText == armedActiveLineText -> displayedLines
+        armedStableCount >= 0 -> lines
+        lines.stableLines.size > displayedLines.stableLines.size -> displayedLines
+        else -> lines
+    }
 
     SideEffect {
         when {
@@ -1057,10 +1044,7 @@ private fun rememberGatedStreamingRenderedLines(
         }
     }
 
-    return GatedStreamingRenderedLinesState(
-        visibleLines = visibleLines,
-        hiddenTrailingStableLineCount = hiddenTrailingStableLineCount
-    )
+    return gatedLines
 }
 
 @Composable
@@ -1072,43 +1056,30 @@ private fun RendererStreamingSingleActiveLineTextImpl(
     freshTick: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val gatedState = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
-    val gatedLines = gatedState.visibleLines
+    val gatedLines = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
     val renderedLines = remember(gatedLines.stableLines, gatedLines.activeLine) {
         buildList<Pair<AnnotatedString, Boolean>> {
             gatedLines.stableLines.forEach { add(it to false) }
             gatedLines.activeLine?.let { add(it to true) }
         }
     }
-    val reservedLineCount = renderedLines.size + gatedState.hiddenTrailingStableLineCount
-    Box(modifier = modifier.fillMaxWidth()) {
-        if (gatedState.hiddenTrailingStableLineCount > 0 && reservedLineCount > 0) {
-            Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(emptyLineHeight * reservedLineCount)
-            )
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomStart),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            renderedLines.forEach { (line, isActiveLine) ->
-                if (line.text.isEmpty()) {
-                    Spacer(modifier = Modifier.height(emptyLineHeight))
-                } else {
-                    RendererStreamingAnimatedLineTextImpl(
-                        text = line,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = emptyLineHeight),
-                        style = style,
-                        freshTailChars = if (isActiveLine) freshTailChars else 0,
-                        freshTick = if (isActiveLine) freshTick else 0
-                    )
-                }
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        renderedLines.forEach { (line, isActiveLine) ->
+            if (line.text.isEmpty()) {
+                Spacer(modifier = Modifier.height(emptyLineHeight))
+            } else {
+                RendererStreamingAnimatedLineTextImpl(
+                    text = line,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = emptyLineHeight),
+                    style = style,
+                    freshTailChars = if (isActiveLine) freshTailChars else 0,
+                    freshTick = if (isActiveLine) freshTick else 0
+                )
             }
         }
     }
@@ -1454,50 +1425,34 @@ private fun RendererStreamingBulletOrNumberedBlockImpl(
     freshTailChars: Int,
     freshTick: Int
 ) {
-    val gatedState = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
-    val gatedLines = gatedState.visibleLines
+    val gatedLines = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
     val renderedLines = remember(gatedLines.stableLines, gatedLines.activeLine) {
         buildList<Pair<AnnotatedString, Boolean>> {
             gatedLines.stableLines.forEach { add(it to false) }
             gatedLines.activeLine?.let { add(it to true) }
         }
     }
-    val reservedLineCount = renderedLines.size + gatedState.hiddenTrailingStableLineCount
-    Box(modifier = Modifier.fillMaxWidth()) {
-        if (gatedState.hiddenTrailingStableLineCount > 0 && reservedLineCount > 0) {
-            Spacer(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(paragraphLineHeight * reservedLineCount)
-            )
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomStart),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            renderedLines.forEachIndexed { index, (line, isActiveLine) ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = paragraphLineHeight),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (index == 0) {
-                        leading()
-                    } else {
-                        Spacer(modifier = Modifier.width(gutterWidth))
-                    }
-                    if (line.text.isEmpty()) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    } else {
-                        RendererStreamingAnimatedLineTextImpl(
-                            text = line,
-                            modifier = Modifier.weight(1f),
-                            style = bodyStyle,
-                            freshTailChars = if (isActiveLine) freshTailChars else 0,
-                            freshTick = if (isActiveLine) freshTick else 0
-                        )
-                    }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        renderedLines.forEachIndexed { index, (line, isActiveLine) ->
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = paragraphLineHeight),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (index == 0) {
+                    leading()
+                } else {
+                    Spacer(modifier = Modifier.width(gutterWidth))
+                }
+                if (line.text.isEmpty()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    RendererStreamingAnimatedLineTextImpl(
+                        text = line,
+                        modifier = Modifier.weight(1f),
+                        style = bodyStyle,
+                        freshTailChars = if (isActiveLine) freshTailChars else 0,
+                        freshTick = if (isActiveLine) freshTick else 0
+                    )
                 }
             }
         }
