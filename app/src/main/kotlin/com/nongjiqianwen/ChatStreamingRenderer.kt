@@ -79,6 +79,8 @@ internal enum class StreamingRevealMode {
     Conservative
 }
 
+private const val STREAMING_LINE_PROMOTION_MIN_VISIBLE_CHARS = 2
+
 internal data class ChatStreamingRuntimeState(
     val isStreaming: MutableState<Boolean>,
     val streamingMessageId: MutableState<String?>,
@@ -993,15 +995,24 @@ private fun rememberGatedStreamingRenderedLines(
 ): StreamingRenderedLines {
     var displayedLines by remember { mutableStateOf(lines) }
     var armedStableCount by remember { mutableIntStateOf(-1) }
-    var armedActiveLineText by remember { mutableStateOf("") }
+    var armedFreshTick by remember { mutableIntStateOf(0) }
 
-    val currentActiveLineText = lines.activeLine?.text ?: ""
+    val currentActiveLineVisibleChars = remember(lines.activeLine) {
+        lines.activeLine
+            ?.text
+            ?.count { !it.isWhitespace() }
+            ?: 0
+    }
+    val promotionReady =
+        armedStableCount >= 0 &&
+            freshTick > armedFreshTick &&
+            currentActiveLineVisibleChars >= STREAMING_LINE_PROMOTION_MIN_VISIBLE_CHARS
     val gatedLines = when {
         freshTick == 0 -> lines
         lines.stableLines.size < displayedLines.stableLines.size -> lines
         armedStableCount >= 0 &&
             lines.stableLines.size == armedStableCount &&
-            currentActiveLineText == armedActiveLineText -> displayedLines
+            !promotionReady -> displayedLines
         armedStableCount >= 0 -> lines
         lines.stableLines.size > displayedLines.stableLines.size -> displayedLines
         else -> lines
@@ -1012,34 +1023,34 @@ private fun rememberGatedStreamingRenderedLines(
             freshTick == 0 -> {
                 displayedLines = lines
                 armedStableCount = -1
-                armedActiveLineText = ""
+                armedFreshTick = 0
             }
 
             lines.stableLines.size < displayedLines.stableLines.size -> {
                 displayedLines = lines
                 armedStableCount = -1
-                armedActiveLineText = ""
+                armedFreshTick = 0
             }
 
             armedStableCount >= 0 &&
                 lines.stableLines.size == armedStableCount &&
-                currentActiveLineText == armedActiveLineText -> Unit
+                !promotionReady -> Unit
 
             armedStableCount >= 0 -> {
                 displayedLines = lines
                 armedStableCount = -1
-                armedActiveLineText = ""
+                armedFreshTick = 0
             }
 
             lines.stableLines.size > displayedLines.stableLines.size -> {
                 armedStableCount = lines.stableLines.size
-                armedActiveLineText = currentActiveLineText
+                armedFreshTick = freshTick
             }
 
             else -> {
                 displayedLines = lines
                 armedStableCount = -1
-                armedActiveLineText = ""
+                armedFreshTick = 0
             }
         }
     }
