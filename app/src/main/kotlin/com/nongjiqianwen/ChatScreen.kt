@@ -4119,12 +4119,18 @@ fun ChatScreen() {
                     .background(pageSurface)
                     .pointerInput(imeVisible) {
                         awaitEachGesture {
-                            awaitFirstDown(
+                            val down = awaitFirstDown(
                                 requireUnconsumed = false,
                                 pass = PointerEventPass.Initial
                             )
                             val up = waitForUpIgnoringConsumption(pass = PointerEventPass.Initial)
                             if (up == null) return@awaitEachGesture
+                            val gestureDistancePx = (up.position - down.position).getDistance()
+                            val isTapGesture = gestureDistancePx <= viewConfiguration.touchSlop
+                            val downInWindow = Offset(
+                                x = down.position.x + messageViewportLeftPx,
+                                y = down.position.y + messageViewportTopPx
+                            )
                             val tapInWindow = Offset(
                                 x = up.position.x + messageViewportLeftPx,
                                 y = up.position.y + messageViewportTopPx
@@ -4132,12 +4138,14 @@ fun ChatScreen() {
                             if (inputSelectionMenuBoundsInRoot?.containsPoint(tapInWindow) == true) {
                                 return@awaitEachGesture
                             }
+                            val startedInsideInputField =
+                                inputFieldBoundsInWindow?.containsPoint(downInWindow) == true
                             val tappedInsideInputField =
                                 inputFieldBoundsInWindow?.containsPoint(tapInWindow) == true
-                            if (inputSelectionToolbarState != null && !tappedInsideInputField) {
+                            if (isTapGesture && inputSelectionToolbarState != null && !tappedInsideInputField) {
                                 clearInputSelectionToolbar()
                             }
-                            if (imeVisible) {
+                            if (imeVisible && isTapGesture && !startedInsideInputField && !tappedInsideInputField) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()
                             }

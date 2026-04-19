@@ -5,6 +5,7 @@
 
 ## 2026-04-19
 
+- `ChatScreen.kt` 修正了聊天页最外层“点空白处收键盘”的手势判定：现在会先区分轻点和拖动，并同时检查手势起点/终点是否都在输入框外。输入框内部长文本上下滑动、以及从输入框内部起手的拖动，不再误触发 `clearFocus + hide keyboard`，专门压“长文本编辑时一滑就收输入法、光标位置跟着乱跳”的问题
 - `ChatComposerPanel.kt` / `ChatScreen.kt` 继续做了一轮输入区纯样式收口：聊天页底色统一改成中性浅灰 `#F6F7F8`，输入框保持纯白；外壳阴影从均匀 `shadow()` 收成偏下沉的双层 `dropShadow()`，让下边立体感更重；同时把输入框常态高度抬到 `92/96dp`，长文本上限放到 `232/248dp`，`maxLines` 提到 8。当前这刀仍只动外观和长文本增长上限，不改工作线、滚动链、发送期 `bottomPaddingPx` 锁或 finalize 主链
 - `ChatComposerPanel.kt` / `ChatScreen.kt` 先做了一版“只换壳子”的输入区重排：宿主白底去掉，输入框改成更接近悬浮卡片的圆角浮层，加号收进左下、发送键收进右下，并同步调整了输入区尺寸与描边/阴影参数。当前这刀只动 composer 外壳与尺寸参数，不改单次 `requestScrollToItem(index, offset)`、发送期 `bottomPaddingPx` 锁、工作线算法或 finalize 主链；工作线与底部免责空白仍继续跟随 composer 的真实测量高度
 - `8fb410f` 已回退 `1cdbf23 Tighten streaming line promotion gate`。当前冻结基线继续保留 `ff4480f` 的 strict follow gate 和 `283f118` 的基础显示门闩；“工作线下面下一行提前冒头 / 一闪一消失”仍按未收口风险处理，明天若继续会诊就从这条基线出发，不再顺手多撤其他滚动链修复
