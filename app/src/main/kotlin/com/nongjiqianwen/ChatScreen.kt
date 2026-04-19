@@ -1609,10 +1609,14 @@ fun ChatScreen() {
         }
     }
     val collapsedComposerBottomBarHeightPx by remember(
+        startupInputChromeRowHeightEstimatePx,
+        safeBottomInsetPx,
         startupBottomBarHeightEstimatePx
     ) {
         derivedStateOf {
             deriveComposerCollapsedBottomBarHeightPx(
+                collapsedChromeRowHeightEstimatePx = startupInputChromeRowHeightEstimatePx,
+                safeBottomInsetPx = safeBottomInsetPx,
                 startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx
             )
         }

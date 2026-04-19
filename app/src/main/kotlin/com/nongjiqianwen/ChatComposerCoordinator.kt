@@ -106,9 +106,12 @@ internal fun deriveComposerStableBottomBarHeightPx(
 }
 
 internal fun deriveComposerCollapsedBottomBarHeightPx(
+    collapsedChromeRowHeightEstimatePx: Int,
+    safeBottomInsetPx: Int,
     startupBottomBarHeightEstimatePx: Int
 ): Int {
-    return startupBottomBarHeightEstimatePx.coerceAtLeast(0)
+    return (collapsedChromeRowHeightEstimatePx + safeBottomInsetPx)
+        .coerceAtLeast(startupBottomBarHeightEstimatePx)
 }
 
 internal fun shouldApplyComposerBottomBarHeight(
