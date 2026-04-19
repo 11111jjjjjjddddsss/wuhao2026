@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
@@ -46,6 +47,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -57,6 +59,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -691,19 +694,23 @@ private fun ComposerInputShell(
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
         modifier = modifier
-            .shadow(
-                elevation = 24.dp,
+            .dropShadow(
                 shape = shellShape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.08f),
-                spotColor = Color.Black.copy(alpha = 0.12f)
+                shadow = Shadow(
+                    radius = 24.dp,
+                    spread = 1.dp,
+                    color = Color.Black.copy(alpha = 0.12f),
+                    offset = DpOffset(x = 0.dp, y = 10.dp)
+                )
             )
-            .shadow(
-                elevation = 6.dp,
+            .dropShadow(
                 shape = shellShape,
-                clip = false,
-                ambientColor = Color.Black.copy(alpha = 0.15f),
-                spotColor = Color.Black.copy(alpha = 0.20f)
+                shadow = Shadow(
+                    radius = 9.dp,
+                    spread = 0.dp,
+                    color = Color.Black.copy(alpha = 0.14f),
+                    offset = DpOffset(x = 0.dp, y = 3.dp)
+                )
             )
     ) {
         Box(
