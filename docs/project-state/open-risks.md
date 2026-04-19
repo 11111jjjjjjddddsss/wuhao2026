@@ -27,7 +27,7 @@
 
 - 状态：未关闭
 - 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，发送微抖、首屏首次进入贴底、完成态归位与 streaming 闪烁都已收口；当前运行时代码已保留“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护，并把发送瞬间的小球锚点继续固定在工作线，避免失败态和短文本收口再次变差
-- 风险：当前主要风险不再是“抖动没修掉”，而是工作线锚点这条产品口径能否在所有场景里继续稳定成立：发送期 `bottomPaddingPx` 锁已经压住抖动，最新代码也把 `requestScrollToItem(index, offset)` 改成直接复用这次实际锁定的 `conversationBottomPaddingLockPx` 反推最终 offset，但这刀还需要继续靠真机确认长文本/短文本/失败重发时，小球与工作线的距离是否都稳定一致。同时，如果后续又为了调首发位置把旧发送补丁、旧滚动补偿、旧历史区联动链带回运行时，也很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏
+- 风险：当前主要风险不再是“抖动没修掉”，而是工作线锚点这条产品口径能否在所有场景里继续稳定成立：发送期 `bottomPaddingPx` 锁已经压住抖动，普通发送时的锁值也已改成 collapsed 单行底栏估算，理论上不再随多行输入框高度漂移；但这刀仍需要继续靠真机确认长文本/短文本场景里，小球与工作线的距离是否真的收平。另外，`collapseComposer = false` 的失败重发/不收口分支仍继续走旧快照兜底，如果后续用户又开始盯失败态首发位置，这里仍可能成为新的体感差异源。同时，如果后续又为了调首发位置把旧发送补丁、旧滚动补偿、旧历史区联动链带回运行时，也很容易把已经收口的首屏贴底、streaming 闪烁和 finalize 归位再次打坏
 - 后续动作：下一轮真机回归优先只看 4 件事：发送瞬间小球是否稳定贴在工作线、发送瞬间是否仍不抖、发送后输入框是否稳定回缩、生成完成后是否仍按现有 finalize 主链回到工作线而不跳到长 assistant 文本开头。若以后再次评估小球首发位置，只围绕发送首发链、共享 measure 宿主里的 `conversationBottomPaddingPx`、`conversationBottomPaddingLockPx`、`pendingStartAnchorScrollOffsetPx` 和 `requestScrollToItem(index, offset)` 这一条正向主链排查；不要再把旧 `withFrameNanos` / `withTimeoutOrNull` / `Snapshot.withMutableSnapshot`、`scrollToBottom(false)` 多拍补偿链，或 release gate / follow delta 假根因重新扩回发送期
 
 ## R5 外部会诊仍依赖人工转发上下文

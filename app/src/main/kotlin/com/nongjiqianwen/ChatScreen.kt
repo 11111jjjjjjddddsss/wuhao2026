@@ -1608,6 +1608,19 @@ fun ChatScreen() {
             )
         }
     }
+    val collapsedComposerBottomBarHeightPx by remember(
+        startupInputChromeRowHeightEstimatePx,
+        safeBottomInsetPx,
+        startupBottomBarHeightEstimatePx
+    ) {
+        derivedStateOf {
+            deriveComposerCollapsedBottomBarHeightPx(
+                collapsedChromeRowHeightEstimatePx = startupInputChromeRowHeightEstimatePx,
+                safeBottomInsetPx = safeBottomInsetPx,
+                startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx
+            )
+        }
+    }
     val streamingWorklineBottomPx by remember(
         lockedMessageViewportHeightPx,
         stableComposerBottomBarHeightPx,
@@ -2986,14 +2999,15 @@ fun ChatScreen() {
                         extraReservedHeightPx = streamingExtraReservedHeightPx
                     ) + streamVisibleBottomGapPx
                     ).coerceAtLeast(0)
-        val stableBottomBarHeightPx = when {
+        val sendStartBottomBarHeightPx = when {
+            collapseComposer && collapsedComposerBottomBarHeightPx > 0 -> collapsedComposerBottomBarHeightPx
             stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
             bottomBarHeightPx > 0 -> bottomBarHeightPx
             else -> 0
         }
         val conversationBottomPaddingLockPx =
-            if (collapseComposer && stableBottomBarHeightPx > 0) {
-                (stableBottomBarHeightPx + streamVisibleBottomGapPx).coerceAtLeast(0)
+            if (collapseComposer && sendStartBottomBarHeightPx > 0) {
+                (sendStartBottomBarHeightPx + streamVisibleBottomGapPx).coerceAtLeast(0)
             } else {
                 currentConversationBottomPaddingSnapshotPx
             }
