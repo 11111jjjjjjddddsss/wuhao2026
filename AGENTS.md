@@ -273,6 +273,7 @@ Clean-State 必做回归的范围：
 - streaming 行级 reveal 当前不再走 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览；运行时必须直接用原始 `StreamingRenderedLines` 渲染，禁止再把 `activeLine` 锁成预览串或空串，避免 activeLine 升格为 stableLine 时出现 1 帧高度塌陷
 - `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时按需补一发“回到底部”归位；这不是旧 `pendingFinalBottomSnap` 状态机，完成态收口后若仍离底，必须复用现有 `scrollToBottom(false)` 静态底线主链，不允许再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部
 - 两阶段 finalize 的第一阶段一旦已经把最终 assistant 内容写入 `messages`，本地持久化快照就不能再把这条 assistant 当成“仍在 streaming 的 transient item”过滤掉；否则切后台 / 杀进程后，本地聊天窗口只会剩下用户消息，看起来像“明明生成过但没落进记录”。当前 `persistableMessagesSnapshot()` 必须继续允许 `pendingStreamingFinalizeMessageId` 对应的 assistant 落盘
+- 本地聊天窗口快照当前不再只保存 `List<ChatMessage>`；失败 user / failed assistant 的状态也必须和消息正文一起落盘，并继续兼容旧数组格式缓存。带后端模式下，远端 hydrate 如果还没覆盖这些本地失败尾巴，必须把它们和失败态 metadata 一起并回首屏快照，不能再让远端快照把本地失败消息擦成“只剩历史 / 只剩用户消息”。当前 footer 语义仍是 `重发 / 重试`，不是“继续生成”
 
 ### 7.4 当前已收口的交互规则记忆
 
@@ -386,6 +387,7 @@ Markdown 表格：
 - AI 回复未完成：`回复未完成  重试`
 - footer 必须渲染在各自消息 item 内部，不允许做成悬浮层
 - `重发 / 重试` 不新增用户消息，不重复计轮次
+- 失败消息正文和 footer 当前必须随本地聊天窗口快照一起持久化；切后台 / 杀进程 / 重进后仍要一起恢复，不能只剩正文、只剩历史，或只剩用户消息
 
 自动恢复：
 - 依赖稳定 `client_msg_id`

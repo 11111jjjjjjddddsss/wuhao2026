@@ -200,6 +200,18 @@ private data class ChatMessage(val id: String, val role: ChatRole, val content: 
 @Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
 @Immutable
+private data class LocalChatWindowSnapshot(
+    val messages: List<ChatMessage> = emptyList(),
+    val failedUserMessageStates: Map<String, String> = emptyMap(),
+    val failedAssistantMessageStates: Map<String, FailedAssistantMessageState> = emptyMap()
+)
+@Immutable
+private data class LocalChatWindowSnapshotPayload(
+    val messages: List<ChatMessage>? = null,
+    val failedUserMessageStates: Map<String, String>? = null,
+    val failedAssistantMessageStates: Map<String, FailedAssistantMessageState>? = null
+)
+@Immutable
 private data class LocalStreamingDraft(
     val messageId: String,
     val content: String,
@@ -993,6 +1005,93 @@ private fun sanitizeMessageWindow(source: List<ChatMessage>): List<ChatMessage> 
     return dedupeAdjacentMessages(trimMessageWindow(source))
 }
 
+private fun sanitizeLocalChatWindowSnapshot(snapshot: LocalChatWindowSnapshot): LocalChatWindowSnapshot {
+    val trimmedMessages = sanitizeMessageWindow(snapshot.messages)
+    val persistedMessageIds = trimmedMessages
+        .mapTo(mutableSetOf()) { it.id }
+        .filter(String::isNotBlank)
+        .toSet()
+    val failedUserStates = snapshot.failedUserMessageStates
+        .filter { (messageId, reason) ->
+            messageId.isNotBlank() && reason.isNotBlank() && messageId in persistedMessageIds
+        }
+    val failedAssistantStates = snapshot.failedAssistantMessageStates
+        .filter { (messageId, state) ->
+            messageId.isNotBlank() &&
+                state.sourceUserMessageId.isNotBlank() &&
+                messageId in persistedMessageIds &&
+                state.sourceUserMessageId in persistedMessageIds
+        }
+    return LocalChatWindowSnapshot(
+        messages = trimmedMessages,
+        failedUserMessageStates = failedUserStates,
+        failedAssistantMessageStates = failedAssistantStates
+    )
+}
+
+private fun normalizeLocalChatWindowSnapshot(
+    payload: LocalChatWindowSnapshotPayload?
+): LocalChatWindowSnapshot =
+    sanitizeLocalChatWindowSnapshot(
+        LocalChatWindowSnapshot(
+            messages = payload?.messages.orEmpty(),
+            failedUserMessageStates = payload?.failedUserMessageStates.orEmpty(),
+            failedAssistantMessageStates = payload?.failedAssistantMessageStates.orEmpty()
+        )
+    )
+
+private fun mergeHydratedMessagesWithLocalFailures(
+    remoteMessages: List<ChatMessage>,
+    localSnapshot: LocalChatWindowSnapshot
+): LocalChatWindowSnapshot {
+    val mergedMessages = sanitizeMessageWindow(remoteMessages).toMutableList()
+    val localFailedSnapshot = sanitizeLocalChatWindowSnapshot(localSnapshot)
+    if (localFailedSnapshot.failedUserMessageStates.isEmpty() &&
+        localFailedSnapshot.failedAssistantMessageStates.isEmpty()
+    ) {
+        return LocalChatWindowSnapshot(messages = mergedMessages)
+    }
+    val existingIds = mergedMessages.mapTo(mutableSetOf()) { it.id }
+    val retainedFailedUserStates = mutableMapOf<String, String>()
+    val retainedFailedAssistantStates = mutableMapOf<String, FailedAssistantMessageState>()
+    localFailedSnapshot.messages.forEach { localMessage ->
+        val failedUserReason = localFailedSnapshot.failedUserMessageStates[localMessage.id]
+        if (failedUserReason != null) {
+            if (existingIds.add(localMessage.id)) {
+                mergedMessages.add(localMessage)
+                retainedFailedUserStates[localMessage.id] = failedUserReason
+            }
+            return@forEach
+        }
+        val failedAssistantState = localFailedSnapshot.failedAssistantMessageStates[localMessage.id] ?: return@forEach
+        if (!existingIds.add(localMessage.id)) return@forEach
+        val sourceUserIndex = mergedMessages.indexOfFirst { it.id == failedAssistantState.sourceUserMessageId }
+        if (sourceUserIndex >= 0) {
+            mergedMessages.add(sourceUserIndex + 1, localMessage)
+        } else {
+            mergedMessages.add(localMessage)
+        }
+        retainedFailedAssistantStates[localMessage.id] = failedAssistantState
+    }
+    return sanitizeLocalChatWindowSnapshot(
+        LocalChatWindowSnapshot(
+            messages = mergedMessages,
+            failedUserMessageStates = retainedFailedUserStates,
+            failedAssistantMessageStates = retainedFailedAssistantStates
+        )
+    )
+}
+
+private fun shouldApplyHydratedSnapshot(
+    currentMessages: List<ChatMessage>,
+    currentFailedUserMessageStates: Map<String, String>,
+    currentFailedAssistantMessageStates: Map<String, FailedAssistantMessageState>,
+    hydratedSnapshot: LocalChatWindowSnapshot
+): Boolean =
+    shouldReplaceHydratedMessages(currentMessages, hydratedSnapshot.messages) ||
+        currentFailedUserMessageStates != hydratedSnapshot.failedUserMessageStates ||
+        currentFailedAssistantMessageStates != hydratedSnapshot.failedAssistantMessageStates
+
 private fun appendCompletedAssistantMessage(
     source: List<ChatMessage>,
     messageId: String,
@@ -1042,41 +1141,67 @@ private fun applyCompletedAssistantMessageInPlace(
     }
 }
 
-private suspend fun Context.loadLocalChatWindow(chatScopeId: String): List<ChatMessage> = withContext(Dispatchers.IO) {
+private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatWindowSnapshot = withContext(Dispatchers.IO) {
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", null)
         .orEmpty()
-    if (raw.isBlank()) return@withContext emptyList()
+    if (raw.isBlank()) return@withContext LocalChatWindowSnapshot()
     runCatching {
-        @Suppress("UNCHECKED_CAST")
-        (chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList())
-    }.getOrDefault(emptyList())
+        if (raw.trimStart().startsWith("[")) {
+            @Suppress("UNCHECKED_CAST")
+            LocalChatWindowSnapshot(
+                messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
+            )
+        } else {
+            normalizeLocalChatWindowSnapshot(
+                chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+            )
+        }
+    }.getOrDefault(LocalChatWindowSnapshot())
 }
 
-private fun Context.loadLocalChatWindowSync(chatScopeId: String): List<ChatMessage> {
+private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindowSnapshot {
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", null)
         .orEmpty()
-    if (raw.isBlank()) return emptyList()
+    if (raw.isBlank()) return LocalChatWindowSnapshot()
     return runCatching {
-        @Suppress("UNCHECKED_CAST")
-        (chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList())
-    }.getOrDefault(emptyList())
+        if (raw.trimStart().startsWith("[")) {
+            @Suppress("UNCHECKED_CAST")
+            LocalChatWindowSnapshot(
+                messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
+            )
+        } else {
+            normalizeLocalChatWindowSnapshot(
+                chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+            )
+        }
+    }.getOrDefault(LocalChatWindowSnapshot())
 }
 
-private suspend fun Context.saveLocalChatWindow(chatScopeId: String, messages: List<ChatMessage>) = withContext(Dispatchers.IO) {
-    val trimmed = sanitizeMessageWindow(messages)
+private suspend fun Context.saveLocalChatWindow(chatScopeId: String, snapshot: LocalChatWindowSnapshot) = withContext(Dispatchers.IO) {
+    val sanitizedSnapshot = sanitizeLocalChatWindowSnapshot(snapshot)
+    val payload = LocalChatWindowSnapshotPayload(
+        messages = sanitizedSnapshot.messages,
+        failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates,
+        failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates
+    )
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
-        .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(trimmed))
+        .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(payload))
         .commit()
 }
 
-private fun Context.saveLocalChatWindowSync(chatScopeId: String, messages: List<ChatMessage>) {
-    val trimmed = sanitizeMessageWindow(messages)
+private fun Context.saveLocalChatWindowSync(chatScopeId: String, snapshot: LocalChatWindowSnapshot) {
+    val sanitizedSnapshot = sanitizeLocalChatWindowSnapshot(snapshot)
+    val payload = LocalChatWindowSnapshotPayload(
+        messages = sanitizedSnapshot.messages,
+        failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates,
+        failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates
+    )
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
-        .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(trimmed))
+        .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(payload))
         .commit()
 }
 
@@ -1130,15 +1255,19 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
             )
 }
 
-private fun recoverStreamingDraftAsCompletedMessage(
-    localMessages: List<ChatMessage>,
+private fun recoverStreamingDraftAsCompletedSnapshot(
+    localSnapshot: LocalChatWindowSnapshot,
     draft: LocalStreamingDraft?
-): List<ChatMessage> {
-    if (draft == null) return sanitizeMessageWindow(localMessages)
-    return appendCompletedAssistantMessage(
-        source = localMessages,
-        messageId = draft.messageId,
-        content = FAKE_STREAM_TEXT
+) : LocalChatWindowSnapshot {
+    if (draft == null) return sanitizeLocalChatWindowSnapshot(localSnapshot)
+    return sanitizeLocalChatWindowSnapshot(
+        localSnapshot.copy(
+            messages = appendCompletedAssistantMessage(
+                source = localSnapshot.messages,
+                messageId = draft.messageId,
+                content = FAKE_STREAM_TEXT
+            )
+        )
     )
 }
 
@@ -1171,9 +1300,16 @@ private fun SessionSnapshot.findRoundByClientMessageId(clientMessageId: String):
     return null
 }
 
-private fun trailingRecoverableUserMessageId(source: List<ChatMessage>): String? =
+private fun trailingRecoverableUserMessageId(
+    source: List<ChatMessage>,
+    ignoredUserMessageIds: Set<String> = emptySet()
+): String? =
     source.lastOrNull()
-        ?.takeIf { it.role == ChatRole.USER && it.id.isNotBlank() }
+        ?.takeIf {
+            it.role == ChatRole.USER &&
+                it.id.isNotBlank() &&
+                it.id !in ignoredUserMessageIds
+        }
         ?.id
 
 private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = withContext(Dispatchers.Default) {
@@ -1391,16 +1527,17 @@ fun ChatScreen() {
             context.loadLocalStreamingDraftSync(chatScopeId)
         }
     }
-    val initialLocalMessages = remember(chatScopeId, initialStreamingDraft) {
-        recoverStreamingDraftAsCompletedMessage(
-            localMessages = context.loadLocalChatWindowSync(chatScopeId),
+    val initialLocalSnapshot = remember(chatScopeId, initialStreamingDraft) {
+        recoverStreamingDraftAsCompletedSnapshot(
+            localSnapshot = context.loadLocalChatWindowSync(chatScopeId),
             draft = initialStreamingDraft
         )
     }
-    val uiRuntimeResetKey = remember(chatScopeId, initialLocalMessages, initialStreamingDraft, hasRemoteHistorySource) {
+    val initialLocalMessages = remember(initialLocalSnapshot) { initialLocalSnapshot.messages }
+    val uiRuntimeResetKey = remember(chatScopeId, initialLocalSnapshot, initialStreamingDraft, hasRemoteHistorySource) {
         buildString {
             append(chatScopeId)
-            append("|local=").append(initialLocalMessages.hashCode())
+            append("|local=").append(initialLocalSnapshot.hashCode())
             append("|draft=").append(initialStreamingDraft?.hashCode() ?: 0)
             append("|backend=").append(if (hasRemoteHistorySource) 1 else 0)
         }
@@ -1411,8 +1548,15 @@ fun ChatScreen() {
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
     }
-    val startupRecoverableUserMessageId = remember(chatScopeId, initialLocalMessages, hasRemoteHistorySource) {
-        if (hasRemoteHistorySource) trailingRecoverableUserMessageId(initialLocalMessages) else null
+    val startupRecoverableUserMessageId = remember(chatScopeId, initialLocalSnapshot, hasRemoteHistorySource) {
+        if (hasRemoteHistorySource) {
+            trailingRecoverableUserMessageId(
+                source = initialLocalMessages,
+                ignoredUserMessageIds = initialLocalSnapshot.failedUserMessageStates.keys
+            )
+        } else {
+            null
+        }
     }
     val messages = remember(uiRuntimeResetKey) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
@@ -1504,9 +1648,15 @@ fun ChatScreen() {
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
-    val failedUserMessageStates = remember(uiRuntimeResetKey) { mutableStateMapOf<String, String>() }
+    val failedUserMessageStates = remember(uiRuntimeResetKey) {
+        mutableStateMapOf<String, String>().apply {
+            putAll(initialLocalSnapshot.failedUserMessageStates)
+        }
+    }
     val failedAssistantMessageStates = remember(uiRuntimeResetKey) {
-        mutableStateMapOf<String, FailedAssistantMessageState>()
+        mutableStateMapOf<String, FailedAssistantMessageState>().apply {
+            putAll(initialLocalSnapshot.failedAssistantMessageStates)
+        }
     }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2328,10 +2478,6 @@ fun ChatScreen() {
     }
 
     fun persistableMessagesSnapshot(): List<ChatMessage> {
-        val failedIds = buildSet {
-            addAll(failedUserMessageStates.keys)
-            addAll(failedAssistantMessageStates.keys)
-        }
         val transientAssistantId = streamingMessageId
         val finalizedAssistantId = pendingStreamingFinalizeMessageId
         return messages.filterNot { message ->
@@ -2340,15 +2486,29 @@ fun ChatScreen() {
                     message.id == transientAssistantId &&
                     isStreaming &&
                     finalizedAssistantId != message.id
-            message.id in failedIds ||
+            message.role == ChatRole.ASSISTANT &&
                 (
-                    message.role == ChatRole.ASSISTANT &&
-                        (
-                            message.content.isBlank() ||
-                                isTransientStreamingAssistant
-                            )
+                    message.content.isBlank() ||
+                        isTransientStreamingAssistant
                     )
         }
+    }
+
+    fun persistableLocalChatWindowSnapshot(): LocalChatWindowSnapshot {
+        val persistedMessages = persistableMessagesSnapshot()
+        val persistedMessageIds = persistedMessages.mapTo(mutableSetOf()) { it.id }
+        return sanitizeLocalChatWindowSnapshot(
+            LocalChatWindowSnapshot(
+                messages = persistedMessages,
+                failedUserMessageStates = failedUserMessageStates
+                    .filterKeys(persistedMessageIds::contains),
+                failedAssistantMessageStates = failedAssistantMessageStates
+                    .filter { (messageId, state) ->
+                        messageId in persistedMessageIds &&
+                            state.sourceUserMessageId in persistedMessageIds
+                    }
+            )
+        )
     }
 
     fun upsertUserMessage(messageId: String, content: String) {
@@ -2452,10 +2612,11 @@ fun ChatScreen() {
         }
         pruneFailedMessageStates()
         persistTick++
-        val persistedMessages = persistableMessagesSnapshot()
+        val persistedSnapshot = persistableLocalChatWindowSnapshot()
+        val persistedMessages = persistedSnapshot.messages
         val prewarmMessages = persistedMessages.takeLast(2)
         snackbarScope.launch {
-            context.saveLocalChatWindow(chatScopeId, persistedMessages)
+            context.saveLocalChatWindow(chatScopeId, persistedSnapshot)
             context.clearLocalStreamingDraft(chatScopeId)
             prewarmAssistantMarkdown(prewarmMessages)
         }
@@ -2582,6 +2743,10 @@ fun ChatScreen() {
         if (shouldHydrateRemoteHistory) {
                 SessionApi.getSnapshot { snapshot ->
                 val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
+                val hydratedSnapshot = mergeHydratedMessagesWithLocalFailures(
+                    remoteMessages = remoteMessages,
+                    localSnapshot = initialLocalSnapshot
+                )
                 if (remoteMessages.isNotEmpty()) {
                     snackbarScope.launch {
                         prewarmAssistantMarkdown(remoteMessages)
@@ -2589,8 +2754,21 @@ fun ChatScreen() {
                 }
                 mainHandler.post {
                         if (remoteMessages.isNotEmpty()) {
-                            if (!hasStartedConversation && !isStreaming && shouldReplaceHydratedMessages(messages, remoteMessages)) {
-                                replaceMessages(remoteMessages)
+                            if (
+                                !hasStartedConversation &&
+                                !isStreaming &&
+                                shouldApplyHydratedSnapshot(
+                                    currentMessages = messages,
+                                    currentFailedUserMessageStates = failedUserMessageStates,
+                                    currentFailedAssistantMessageStates = failedAssistantMessageStates,
+                                    hydratedSnapshot = hydratedSnapshot
+                                )
+                            ) {
+                                replaceMessages(hydratedSnapshot.messages)
+                                failedUserMessageStates.clear()
+                                failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
+                                failedAssistantMessageStates.clear()
+                                failedAssistantMessageStates.putAll(hydratedSnapshot.failedAssistantMessageStates)
                                 initialBottomSnapDone = false
                                 persistTick++
                             }
@@ -2605,7 +2783,7 @@ fun ChatScreen() {
 
     LaunchedEffect(uiRuntimeResetKey, initialStreamingDraft) {
         if (initialStreamingDraft == null) return@LaunchedEffect
-        context.saveLocalChatWindow(chatScopeId, initialLocalMessages)
+        context.saveLocalChatWindow(chatScopeId, initialLocalSnapshot)
         context.clearLocalStreamingDraft(chatScopeId)
     }
 
@@ -2633,7 +2811,7 @@ fun ChatScreen() {
     LaunchedEffect(persistTick) {
         if (persistTick == 0) return@LaunchedEffect
         delay(if (isStreaming) 220 else 80)
-        context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
+        context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
     }
 
     LaunchedEffect(inputLimitHintTick) {
@@ -2849,10 +3027,11 @@ fun ChatScreen() {
                     shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
                 )
                 persistTick++
-                val persistedMessages = persistableMessagesSnapshot()
+                val persistedSnapshot = persistableLocalChatWindowSnapshot()
+                val persistedMessages = persistedSnapshot.messages
                 val prewarmMessages = persistedMessages.takeLast(2)
                 snackbarScope.launch {
-                    context.saveLocalChatWindow(chatScopeId, persistedMessages)
+                    context.saveLocalChatWindow(chatScopeId, persistedSnapshot)
                     context.clearLocalStreamingDraft(chatScopeId)
                     prewarmAssistantMarkdown(prewarmMessages)
                 }
@@ -3017,6 +3196,11 @@ fun ChatScreen() {
                 anchoredUserMessageId = userId
                 trimMessagesInPlace()
                 sendUiSettling = false
+                persistTick++
+                context.saveLocalChatWindow(
+                    chatScopeId,
+                    persistableLocalChatWindowSnapshot()
+                )
                 showComposerStatusHint("当前网络不可用")
             } finally {
                 sendUiSettling = false
@@ -3160,7 +3344,7 @@ fun ChatScreen() {
         sendUiSettling = false
         persistTick++
         snackbarScope.launch {
-            context.saveLocalChatWindow(chatScopeId, persistableMessagesSnapshot())
+            context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
         }
         snackbarScope.launch {
             try {
@@ -3326,14 +3510,14 @@ fun ChatScreen() {
                 persistTick++
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
-                    messages = persistableMessagesSnapshot()
+                    snapshot = persistableLocalChatWindowSnapshot()
                 )
                 context.clearLocalStreamingDraftSync(chatScopeId)
             } else {
                 removeMessageById(finalId)
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
-                    messages = persistableMessagesSnapshot()
+                    snapshot = persistableLocalChatWindowSnapshot()
                 )
                 context.clearLocalStreamingDraftSync(chatScopeId)
                 finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
