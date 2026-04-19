@@ -3732,10 +3732,10 @@ fun ChatScreen() {
             else -> chromeHorizontalPadding
         }
         val inputChromeBottomPadding = 8.dp
-        val inputChromeSurface = Color.White.copy(alpha = 0.56f)
-        val inputChromeBorder = Color(0xFF777D84).copy(alpha = 0.86f)
-        val inputFieldSurface = Color.White.copy(alpha = 0.94f)
-        val inputFieldBorder = Color(0xFFD3D8DE).copy(alpha = 0.98f)
+        val inputChromeSurface = Color.White
+        val inputChromeBorder = Color(0xFFB9C0C8).copy(alpha = 0.88f)
+        val inputFieldSurface = Color.White
+        val inputFieldBorder = Color(0xFFD7DCE2).copy(alpha = 0.98f)
         val composerHostBounds =
             if (composerCollapseOverlayVisible) {
                 composerCollapseOverlayHostBoundsSnapshot ?: composerHostBoundsInWindow
