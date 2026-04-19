@@ -287,7 +287,7 @@ Clean-State 必做回归的范围：
 - 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
 - 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
 - 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
-- 当前主滚动 / streaming / finalize 体感问题已按最新真机反馈收口。发送微抖已被“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护压住；当前产品口径继续保持：发送瞬间的小球锚点稳定在工作线，避免失败态和短文本收口再次变差。后续回归只继续盯 `sendStartWorklineBottomPx`、共享 measure 宿主里的 `conversationBottomPaddingPx`、`requestScrollToItem(index, offset)` 与 finalize 主链之间是否仍然互不打架，不要再回到旧 release gate / follow delta 假根因
+- 当前主滚动 / 发送抖动 / 首屏贴底 / finalize 体感问题已按最新真机反馈收口。发送微抖已被“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护压住；当前产品口径继续保持：发送瞬间的小球锚点稳定在工作线，避免失败态和短文本收口再次变差。当前唯一仍未收口的 Android 聊天 UI 主要体感问题，已经收敛为 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”；后续若继续处理，只围绕 `ChatStreamingRenderer.kt` 的行级 reveal / `ChatScreen.kt` 与 `ChatScrollCoordinator.kt` 的 follow 时序边界排查，不要重新把整条滚动链翻回未收口状态，也不要回到旧 release gate / follow delta 假根因
 
 ### 7.5 已修复问题的成因与禁改清单
 
