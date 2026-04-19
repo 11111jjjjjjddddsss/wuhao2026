@@ -3651,7 +3651,7 @@ fun ChatScreen() {
         val addButtonSize = actionCircleSize
         val addIconSize = if (maxWidth < 360.dp) 28.dp else 30.dp
         val sendButtonSize = actionCircleSize
-        val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
+        val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
         val pendingStartAnchorScrollOffsetPx by remember(
