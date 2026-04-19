@@ -1911,6 +1911,17 @@ fun ChatScreen() {
         val upperTolerancePx = assistantLineStepPx.coerceAtLeast(bottomPositionTolerancePx)
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
+    fun isAtStreamingWorklineStrict(): Boolean {
+        if (!isStreaming || !hasStreamingItem) return atBottom
+        val worklineBottom = streamingWorklineBottomPx
+        if (worklineBottom <= 0) return atBottom
+        val contentBottom = currentStreamingContentBottomPx()
+        if (contentBottom <= 0) return false
+        val deltaPx = contentBottom - worklineBottom
+        val lowerTolerancePx = bottomPositionTolerancePx
+        val upperTolerancePx = bottomPositionTolerancePx
+        return deltaPx in -lowerTolerancePx..upperTolerancePx
+    }
 
     val appCenterTint = Color.White
     val chromeSurface = Color.White
@@ -3598,6 +3609,7 @@ fun ChatScreen() {
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         isNearStreamingWorkline = ::isNearStreamingWorkline,
+        isAtStreamingWorklineStrict = ::isAtStreamingWorklineStrict,
         followStreamingByDelta = followStreamingByDelta
     )
 

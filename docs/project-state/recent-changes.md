@@ -5,6 +5,7 @@
 
 ## 2026-04-19
 
+- `ChatScreen.kt` / `ChatScrollCoordinator.kt` 把 streaming follow 的“是否已经回到工作线”判断从发送起步 release gate 里拆开：原 `isNearStreamingWorkline()` 继续给 sendStart 保护释放等宽容差消费者用，但新增了只给 follow suppression 使用的 `isAtStreamingWorklineStrict()`，把上容差从 `assistantLineStepPx`（一整行高度）收到 `BOTTOM_POSITION_TOLERANCE(16dp)`。这样代码不再主动允许工作线下方先露出一整行才开始 follow；发送起步 release gate 则保持原宽容差，不把已收住的发送保护重新打坏
 - `ChatStreamingRenderer.kt` 新增了一个只落在显示层的 streaming 行级门闩：当 `buildStableStreamingLineBuffer(...)` 第一次测出“上一行升格为 stable、下一行开始成为 activeLine”时，渲染层先继续保留上一拍已经显示出来的整组行结果，等 activeLine 后续再次真实吐字时再放行新的整组 `stableLines + activeLine`。这刀只改 renderer 单文件，不改 `ChatScreen.kt` 的 `revealMode = Free`、`onTick = {}` 或 `streamingLineAdvanceTick` 接线，专门压“工作线下面下一行提前冒头、一闪一消失”的行级 reveal 问题，同时避免恢复旧 fresh-line lock preview 的锁空串塌陷
 - 静态态贴底精度继续做了最小一刀：`ChatScreen.kt` 把 `STATIC_BOTTOM_POSITION_TOLERANCE` 从 `1.dp` 收到 `0.dp`，只取消“代码主动允许 1dp 偏差存在”这件事，不动工作线、`STREAM_VISIBLE_BOTTOM_GAP`、bounds 取源和现有 `alignChatListBottom()` 主链。当前策略是先用最小风险的容差收口看能否压掉“最后一丝”，若真机上仍残留，再单独评估 Float 精度，而不是直接上 scrollBy 探针
 - 静态态贴底又收紧了一刀：`ChatRecyclerViewHost.kt` 已移除正向列表尾部那颗额外的 `1dp` footer spacer，`ChatScreen.kt` 里的静态到底容差也继续收紧；首屏历史贴底、完成态归位和静态回到底部按钮不再把这颗尾项误当成“还没到底的真实内容”，专门压“看起来只差一丝、往上还能轻轻扒一点”的残余体感，同时不动工作线以下真正要保留的 `STREAM_VISIBLE_BOTTOM_GAP`

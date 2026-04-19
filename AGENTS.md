@@ -273,6 +273,7 @@ Clean-State 必做回归的范围：
 - 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
 - streaming 行级 reveal 当前不再走 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览；运行时必须直接用原始 `StreamingRenderedLines` 渲染，禁止再把 `activeLine` 锁成预览串或空串，避免 activeLine 升格为 stableLine 时出现 1 帧高度塌陷
 - streaming 行级 reveal 当前又补了一层更窄的“显示结果门闩”：当 `buildStableStreamingLineBuffer(...)` 首次测出“上一行升格为 stable、下一行开始成为 activeLine”时，渲染层不会立刻把这一拍的新 `stableLines + activeLine` 整组见光，而是先继续保留上一拍已经显示出来的整组结果；只有后续再次观察到 activeLine 真实继续吐字时，才放行新的整组结果。这样工作线下面的新一行不会在上一行尚未真正推上去时提前冒头，同时也不能把它回退成旧 fresh-line preview 那种“锁空串 / 锁预览串”的实现
+- streaming follow 对“是否已经回到工作线”的判断当前也已与发送起步 release gate 拆开：原 `isNearStreamingWorkline()` 继续保留给 sendStart 保护释放等宽容差消费者使用，但 `ChatScrollCoordinator.kt` 的 follow suppression 必须改用更严格的 `isAtStreamingWorklineStrict()`。这个严格版上容差只能收在 `BOTTOM_POSITION_TOLERANCE` 量级，不能再继续吃 `assistantLineStepPx` 那种“一整行高度”的上容差，否则代码会主动允许工作线下方先露出一整行才开始 follow
 - `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时按需补一发“回到底部”归位；这不是旧 `pendingFinalBottomSnap` 状态机，完成态收口后若仍离底，必须复用现有 `scrollToBottom(false)` 静态底线主链，不允许再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部
 - 两阶段 finalize 的第一阶段一旦已经把最终 assistant 内容写入 `messages`，本地持久化快照就不能再把这条 assistant 当成“仍在 streaming 的 transient item”过滤掉；否则切后台 / 杀进程后，本地聊天窗口只会剩下用户消息，看起来像“明明生成过但没落进记录”。当前 `persistableMessagesSnapshot()` 必须继续允许 `pendingStreamingFinalizeMessageId` 对应的 assistant 落盘
 - 本地聊天窗口快照当前不再只保存 `List<ChatMessage>`；失败 user / failed assistant 的状态也必须和消息正文一起落盘，并继续兼容旧数组格式缓存。带后端模式下，远端 hydrate 如果还没覆盖这些本地失败尾巴，必须把它们和失败态 metadata 一起并回首屏快照，不能再让远端快照把本地失败消息擦成“只剩历史 / 只剩用户消息”。当前 footer 语义仍是 `重发 / 重试`，不是“继续生成”
@@ -318,9 +319,9 @@ Clean-State 必做回归的范围：
 
 4.1 streaming 新行提前冒头 / 一闪一消失
 - 旧现象：工作线这一行还没真正上推完成时，工作线下面的新一行会提前冒头；随后上一行升格，新一行像“一闪一消失”
-- 已确认根因：当前 `revealMode = Free` 且 `onTick = {}`，`streamingLineAdvanceTick / strictLineReveal / lineRevealLocked` 这组 reveal 参数实际未生效；`buildStableStreamingLineBuffer(...)` 只要一测出换行就会立刻产出新的 `stableLines + activeLine`，显示层如果直接整组渲染，就会让下一行过早见光
-- 当前修法：`ChatStreamingRenderer.kt` 在显示层加“整组结果延迟放行”门闩：换行首拍先继续显示上一拍整组结果，等后续再次观察到 activeLine 真实继续吐字时，才放行新的整组 `stableLines + activeLine`
-- 禁止回退：不要直接把“延迟 stableLines 数量”当成修法后就让新 activeLine 单独上屏，否则上一行会凭空消失；也不要为了修这个现象去恢复旧 fresh-line preview、锁空串、接 delay/定时器，或把滚动链 / finalize 一起改进去
+- 已确认根因：这是双重问题。其一，当前 `revealMode = Free` 且 `onTick = {}`，`streamingLineAdvanceTick / strictLineReveal / lineRevealLocked` 这组 reveal 参数实际未生效；`buildStableStreamingLineBuffer(...)` 只要一测出换行就会立刻产出新的 `stableLines + activeLine`，显示层如果直接整组渲染，就会让下一行过早见光。其二，旧 `isNearStreamingWorkline()` 的上容差曾直接吃 `assistantLineStepPx`（一整行高度），`ChatScrollCoordinator.kt` 的 streaming follow suppression 如果继续共用它，就等于代码主动允许工作线下方先露出一整行才开始 follow
+- 当前修法：先在 `ChatStreamingRenderer.kt` 显示层加“整组结果延迟放行”门闩：换行首拍先继续显示上一拍整组结果，等后续再次观察到 activeLine 真实继续吐字时，才放行新的整组 `stableLines + activeLine`；再把 streaming follow 的 gate 从 `isNearStreamingWorkline()` 里拆出来，改用更严格的 `isAtStreamingWorklineStrict()`，把上容差从一整行收回 `BOTTOM_POSITION_TOLERANCE`
+- 禁止回退：不要直接把“延迟 stableLines 数量”当成修法后就让新 activeLine 单独上屏，否则上一行会凭空消失；不要为了修这个现象去恢复旧 fresh-line preview、锁空串、接 delay/定时器；也不要让 streaming follow 再次共用“一整行上容差”的 release gate 判断
 
 5. 生成完成瞬间轻微重新排版 / 微调
 - 旧现象：正文生成完成那一瞬间，整体像又重新排版一次；行与行之间会轻微重排

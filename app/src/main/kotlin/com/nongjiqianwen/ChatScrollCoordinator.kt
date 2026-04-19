@@ -263,6 +263,7 @@ internal fun BindChatListScrollEffects(
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
     isNearStreamingWorkline: () -> Boolean,
+    isAtStreamingWorklineStrict: () -> Boolean,
     followStreamingByDelta: suspend (Int) -> Unit
 ) {
     val scrollMode = scrollModeState.value
@@ -282,7 +283,8 @@ internal fun BindChatListScrollEffects(
         isComposerSettling,
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx(),
-        isNearStreamingWorkline()
+        isNearStreamingWorkline(),
+        isAtStreamingWorklineStrict()
     ) {
         if (!isStreaming || !hasStreamingItem) {
             sendStartAnchorActiveState.value = false
@@ -338,7 +340,7 @@ internal fun BindChatListScrollEffects(
             if (activeScrollMode != ScrollMode.AutoFollow) {
                 scrollModeState.value = ScrollMode.AutoFollow
             }
-            if (isNearStreamingWorkline()) {
+            if (isAtStreamingWorklineStrict()) {
                 streamBottomFollowActiveState.value = false
                 continue
             }
