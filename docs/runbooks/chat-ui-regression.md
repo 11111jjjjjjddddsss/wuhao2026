@@ -59,6 +59,15 @@
 - 预期：不应重新看到半截旧 draft 回灌到屏幕；后台期间若已收口，应保持 completed 结果
 - 若失败，优先排查：本地 fake streaming 的 pause/stop 收口与本地 draft 清理
 
+### F. 切后台 / 杀进程后完成态与失败态都要恢复
+
+- 步骤：分别验证 3 种情况后切后台或直接杀进程重进：
+  1. assistant 已完成落地
+  2. user 发送失败，出现 `未发送  重发`
+  3. assistant 中断失败，出现 `回复未完成  重试`
+- 预期：重进后，已完成正文应继续在历史里；失败消息正文和各自 footer 也要一起恢复，不能只剩正文、只剩历史，或只剩用户消息
+- 若失败，优先排查：`ChatScreen.kt` 的 `persistableLocalChatWindowSnapshot()`、本地 snapshot 读写、以及远端 hydrate 是否把本地 failed-state metadata 擦掉
+
 ## 会诊提示
 
 - 如需外部会诊，当前默认整理成发给 Claude 的短稿
