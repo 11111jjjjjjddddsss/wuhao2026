@@ -256,6 +256,7 @@ Clean-State 必做回归的范围：
 - `scrollToBottom(false)` 当前重新带回 `alignChatListBottom()` 这层有限次数的底边补偿，用来把正向列表最后一条消息的可见底边重新压回工作线；但“最后一条已可见”必须收紧成“最后一条底边已进入可视区”，不能只因为顶部露头就跳过重定位。若最后一条底边仍远在可视区外，非动画路径必须先做一次正向硬位移到底，再交给 `alignChatListBottom()` 精修，避免首屏贴底仍差一大段文字；同时禁止把它改回 `scrollToItem(lastIndex)` 这种 top-anchor 跳顶
 - 静态态“是否已经到底”的当前口径已与 streaming 工作线命中带拆开：streaming 期间继续保留较宽的工作线容差，避免跟随链过于敏感；首屏历史态、完成态归位和静态回到底部按钮则使用更紧的静态容差，只收“还能轻轻往上扒出一丁点空白”的剩余体感，不去碰 streaming 主链
 - `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出，并继续额外叠加 `STREAM_VISIBLE_BOTTOM_GAP`。这段 64dp breathing gap 需要在 streaming、settled 完成态和首屏历史态都保持可见，不能在静态态被收掉
+- `ChatRecyclerViewHost` 当前也不再额外插入列表尾部 footer spacer 来“补底”；静态态真实底边只允许由最后一条消息 + `conversationBottomPaddingPx` 定义，不能再混入额外的 1dp 尾项，否则会重新带回“看着只差一丝、但其实还能继续往上扒一点”的假未贴底体感
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
 - 普通 idle / 历史浏览状态下，列表与工作线仍不能重新长期追实时 `composerTop`；但“首次进入且有历史、`initialBottomSnapDone` 还没命中”的启动贴底窗口允许临时借一次实时 composer 几何，把最后几像素压准到真实工作线。命中后必须立刻退回当前静态口径，不能把这条临时窗口扩张成新的历史区联动链
 - `sendStartBottomPaddingLockActive` 当前重新参与正向发送起步窗口，只服务 `sendStartViewportHeightPx` 的锁定和起步 offset 计算；不允许再把它扩张成长期冻结列表底部 reserve 的旧几何锁

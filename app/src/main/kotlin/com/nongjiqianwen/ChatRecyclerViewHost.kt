@@ -2,8 +2,6 @@ package com.nongjiqianwen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -18,7 +16,6 @@ internal fun ChatRecyclerViewHost(
     itemIds: List<String>,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
-    bottomFooterHeightPx: Int,
     itemContent: @Composable (String) -> Unit
 ) {
     val density = LocalDensity.current
@@ -40,13 +37,6 @@ internal fun ChatRecyclerViewHost(
             key = { it }
         ) { itemId ->
             itemContent(itemId)
-        }
-        item(key = "bottom_footer") {
-            Spacer(
-                modifier = with(density) {
-                    Modifier.height(bottomFooterHeightPx.toDp())
-                }
-            )
         }
     }
 }
