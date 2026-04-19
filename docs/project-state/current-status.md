@@ -11,6 +11,7 @@
 ## 当前代码真相
 
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
+- 底部 composer 当前已先按“只换壳子、不动主链”的口径改成更接近悬浮卡片的输入壳：宿主白底去掉、输入框改为圆角浮层卡片、加号收进左下、发送键收进右下；当前只动 `ChatComposerPanel.kt` 和少量尺寸/颜色参数，不改单次 `requestScrollToItem(index, offset)`、发送期 `bottomPaddingPx` 锁、工作线算法或 finalize 主链
 - 聊天列表当前唯一底座已切回正向 `LazyColumn(reverseLayout = false)`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
 - `ChatRecyclerViewHost.kt` 当前额外启用了 `LazyColumn(verticalArrangement = Arrangement.Bottom)`；在正向列表下，当历史内容总高度不足一屏时，列表会优先把短内容压在底部工作区，而不是默认趴到顶部遮罩下面
 - 运行时消息状态与显示顺序当前保持一致，不再通过 `asReversed()` 翻转；旧消息在上，新消息在下

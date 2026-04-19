@@ -5,6 +5,7 @@
 
 ## 2026-04-19
 
+- `ChatComposerPanel.kt` / `ChatScreen.kt` 先做了一版“只换壳子”的输入区重排：宿主白底去掉，输入框改成更接近悬浮卡片的圆角浮层，加号收进左下、发送键收进右下，并同步调整了输入区尺寸与描边/阴影参数。当前这刀只动 composer 外壳与尺寸参数，不改单次 `requestScrollToItem(index, offset)`、发送期 `bottomPaddingPx` 锁、工作线算法或 finalize 主链；工作线与底部免责空白仍继续跟随 composer 的真实测量高度
 - `8fb410f` 已回退 `1cdbf23 Tighten streaming line promotion gate`。当前冻结基线继续保留 `ff4480f` 的 strict follow gate 和 `283f118` 的基础显示门闩；“工作线下面下一行提前冒头 / 一闪一消失”仍按未收口风险处理，明天若继续会诊就从这条基线出发，不再顺手多撤其他滚动链修复
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 把 streaming follow 的“是否已经回到工作线”判断从发送起步 release gate 里拆开：原 `isNearStreamingWorkline()` 继续给 sendStart 保护释放等宽容差消费者用，但新增了只给 follow suppression 使用的 `isAtStreamingWorklineStrict()`，把上容差从 `assistantLineStepPx`（一整行高度）收到 `BOTTOM_POSITION_TOLERANCE(16dp)`。这样代码不再主动允许工作线下方先露出一整行才开始 follow；发送起步 release gate 则保持原宽容差，不把已收住的发送保护重新打坏
 - `ChatStreamingRenderer.kt` 新增了一个只落在显示层的 streaming 行级门闩：当 `buildStableStreamingLineBuffer(...)` 第一次测出“上一行升格为 stable、下一行开始成为 activeLine”时，渲染层先继续保留上一拍已经显示出来的整组行结果，等 activeLine 后续再次真实吐字时再放行新的整组 `stableLines + activeLine`。这刀只改 renderer 单文件，不改 `ChatScreen.kt` 的 `revealMode = Free`、`onTick = {}` 或 `streamingLineAdvanceTick` 接线，专门压“工作线下面下一行提前冒头、一闪一消失”的行级 reveal 问题，同时避免恢复旧 fresh-line lock preview 的锁空串塌陷

@@ -3642,12 +3642,12 @@ fun ChatScreen() {
             maxWidth < 600.dp -> 14.dp
             else -> 22.dp
         }
-        val inputBarHeight = if (maxWidth < 360.dp) 52.dp else 56.dp
-        val inputBarMaxHeight = if (maxWidth < 360.dp) 132.dp else 156.dp
+        val inputBarHeight = if (maxWidth < 360.dp) 80.dp else 84.dp
+        val inputBarMaxHeight = if (maxWidth < 360.dp) 160.dp else 184.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
-        val actionCircleSize = if (maxWidth < 360.dp) 42.dp else 44.dp
+        val actionCircleSize = if (maxWidth < 360.dp) 44.dp else 46.dp
         val addButtonSize = actionCircleSize
-        val addIconSize = if (maxWidth < 360.dp) 27.dp else 29.dp
+        val addIconSize = if (maxWidth < 360.dp) 28.dp else 30.dp
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.8f else 432.dp
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
@@ -3732,10 +3732,10 @@ fun ChatScreen() {
             else -> chromeHorizontalPadding
         }
         val inputChromeBottomPadding = 8.dp
-        val inputChromeSurface = Color.White
-        val inputChromeBorder = Color(0xFFBCC2CA).copy(alpha = 0.9f)
-        val inputFieldSurface = Color.White
-        val inputFieldBorder = Color(0xFFBCC2CA).copy(alpha = 0.88f)
+        val inputChromeSurface = Color.White.copy(alpha = 0.56f)
+        val inputChromeBorder = Color(0xFF777D84).copy(alpha = 0.86f)
+        val inputFieldSurface = Color.White.copy(alpha = 0.94f)
+        val inputFieldBorder = Color(0xFFD3D8DE).copy(alpha = 0.98f)
         val composerHostBounds =
             if (composerCollapseOverlayVisible) {
                 composerCollapseOverlayHostBoundsSnapshot ?: composerHostBoundsInWindow

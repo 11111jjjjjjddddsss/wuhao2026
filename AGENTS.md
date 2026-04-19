@@ -239,6 +239,7 @@ Clean-State 必做回归的范围：
 - 工作线和静态贴底线必须共用同一个物理锚点；当前以正向列表最后一条消息的可见底边 + “共享 measure 宿主同拍产出的 composer reserve”共同定义工作线
 - 列表底座当前为纯 Compose `LazyColumn(reverseLayout = false)`，消息顺序与显示顺序一致，不再保留 `RecyclerView` / `stackFromEnd`
 - 消息区容器高度保持固定；`ChatComposerBottomBar` 已从 `Scaffold.bottomBar` 挪到内容层底部 overlay，消息列表与底部输入区当前通过 `SubcomposeLayout` 同拍测量：先测 composer，再把真实 reserve 直接喂给 `ChatRecyclerViewHost` 的 `bottomPaddingPx`，不再让消息列表继续完全吃旧的异步回写几何
+- 底部 composer 壳子当前允许单独做视觉改造（例如悬浮卡片、宿主透明化、加号左下、发送右下），但这类调整默认只改 `ChatComposerPanel.kt` 和少量尺寸/颜色参数；工作线、底部 reserve、发送起步和 finalize 主链仍继续吃 composer 的真实测量高度，不额外派生第二套假几何
 - 共享 measure 宿主里，composer slot 只能继承“精确宽度 + `minHeight = 0`”这条测量约束，不能把父级整屏 `minHeight` 原样传下去；否则 composer 会被量成接近整屏高，列表 / 欢迎语的底部 reserve 也会被一起撑爆，重新带回“欢迎语不显示、历史文本整页空白”
 - sending / streaming / completed 不允许再切换成不同内容宿主上报底边
 - waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高

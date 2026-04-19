@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -25,8 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
@@ -169,7 +168,7 @@ internal fun ChatComposerBottomBar(
     val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
     val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
 
-    Box(modifier = hostModifier.background(Color.White)) {
+    Box(modifier = hostModifier.background(Color.Transparent)) {
         if (overlayHintText != null) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
@@ -339,7 +338,7 @@ internal fun ChatComposerCollapseOverlay(
             )
             .width(composerCollapseOverlayHostWidth)
             .height(composerCollapseOverlayHostHeight)
-            .background(pageSurface)
+            .background(pageSurface.copy(alpha = 0f))
     ) {
         ComposerChromeRow(
             modifier = Modifier
@@ -512,7 +511,6 @@ private fun ChatInputField(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, end = 10.dp, top = 11.dp, bottom = 11.dp)
                     .heightIn(min = settlingSnapshotMinHeight),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -600,40 +598,8 @@ private fun ComposerPlusCrossIcon(
 }
 
 @Composable
-private fun ComposerCircleButton(
-    size: Dp,
-    surfaceColor: Color,
-    borderColor: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-    icon: @Composable BoxScope.() -> Unit
-) {
-    Surface(
-        shape = CircleShape,
-        color = surfaceColor,
-        border = BorderStroke(1.28.dp, borderColor.copy(alpha = 0.96f)),
-        shadowElevation = 0.dp,
-        tonalElevation = 0.dp,
-        modifier = modifier
-            .size(size)
-            .shadow(
-                elevation = 1.6.dp,
-                shape = CircleShape,
-                ambientColor = Color(0x16000000),
-                spotColor = Color(0x16000000)
-            )
-    ) {
-        IconButton(
-            onClick = onClick,
-            colors = IconButtonDefaults.iconButtonColors(contentColor = Color(0xFF1A1A1A))
-        ) {
-            Box(contentAlignment = Alignment.Center, content = icon)
-        }
-    }
-}
-
-@Composable
 private fun ComposerSendActionButton(
+    modifier: Modifier = Modifier,
     size: Dp,
     backgroundColor: Color,
     tint: Color,
@@ -642,9 +608,14 @@ private fun ComposerSendActionButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Box(
-        modifier = Modifier
-            .padding(start = 6.dp)
+        modifier = modifier
             .size(size)
+            .shadow(
+                elevation = 1.8.dp,
+                shape = CircleShape,
+                ambientColor = Color(0x19000000),
+                spotColor = Color(0x19000000)
+            )
             .clip(CircleShape)
             .background(backgroundColor)
             .clickable(
@@ -664,12 +635,47 @@ private fun ComposerSendActionButton(
 }
 
 @Composable
+private fun ComposerInlineAddButton(
+    size: Dp,
+    iconSize: Dp,
+    surfaceColor: Color,
+    borderColor: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Box(
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(surfaceColor.copy(alpha = 0.7f))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        ComposerPlusCrossIcon(
+            tint = borderColor.copy(alpha = 0.76f),
+            modifier = Modifier.size(iconSize)
+        )
+    }
+}
+
+@Composable
 private fun ComposerInputShell(
     modifier: Modifier = Modifier,
+    addButtonSize: Dp,
+    addIconSize: Dp,
+    inputChromeSurface: Color,
+    inputChromeBorder: Color,
     inputFieldSurface: Color,
     inputFieldBorder: Color,
     inputBarHeight: Dp,
     inputBarMaxHeight: Dp,
+    onAddClick: () -> Unit,
     content: @Composable RowScope.() -> Unit,
     sendButtonSize: Dp,
     sendButtonEnabled: Boolean,
@@ -677,29 +683,63 @@ private fun ComposerInputShell(
     sendButtonTint: Color,
     onSendClick: () -> Unit
 ) {
+    val shellShape = RoundedCornerShape(28.dp)
+    val actionDockHeight = if (addButtonSize > sendButtonSize) addButtonSize else sendButtonSize
     Surface(
-        shape = RoundedCornerShape(30.dp),
+        shape = shellShape,
         color = inputFieldSurface,
-        border = BorderStroke(1.22.dp, inputFieldBorder.copy(alpha = 0.98f)),
+        border = BorderStroke(1.08.dp, inputFieldBorder.copy(alpha = 0.96f)),
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
         modifier = modifier
             .shadow(
-                elevation = 1.35.dp,
-                shape = RoundedCornerShape(30.dp),
+                elevation = 6.dp,
+                shape = shellShape,
                 ambientColor = Color(0x14000000),
-                spotColor = Color(0x14000000)
+                spotColor = Color(0x17000000)
             )
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
-                .padding(end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            content()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 12.dp,
+                        bottom = actionDockHeight + 8.dp
+                    ),
+                verticalAlignment = Alignment.Top
+            ) {
+                content()
+            }
+
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ComposerInlineAddButton(
+                    size = addButtonSize,
+                    iconSize = addIconSize,
+                    surfaceColor = inputChromeSurface,
+                    borderColor = inputChromeBorder,
+                    onClick = onAddClick
+                )
+                Spacer(modifier = Modifier.weight(1f))
+            }
+
             ComposerSendActionButton(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 8.dp, bottom = 8.dp),
                 size = sendButtonSize,
                 backgroundColor = sendButtonBackgroundColor,
                 tint = sendButtonTint,
@@ -730,37 +770,24 @@ private fun ComposerChromeRow(
     sendButtonTint: Color,
     onSendClick: () -> Unit
 ) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        ComposerCircleButton(
-            size = addButtonSize,
-            surfaceColor = inputChromeSurface,
-            borderColor = inputChromeBorder,
-            onClick = onAddClick
-        ) {
-            ComposerPlusCrossIcon(
-                tint = Color(0xFF6F7277),
-                modifier = Modifier.size(addIconSize)
-            )
-        }
-
-        ComposerInputShell(
-            modifier = Modifier.weight(1f).then(inputShellModifier),
-            inputFieldSurface = inputFieldSurface,
-            inputFieldBorder = inputFieldBorder,
-            inputBarHeight = inputBarHeight,
-            inputBarMaxHeight = inputBarMaxHeight,
-            content = inputContent,
-            sendButtonSize = sendButtonSize,
-            sendButtonEnabled = sendButtonEnabled,
-            sendButtonBackgroundColor = sendButtonBackgroundColor,
-            sendButtonTint = sendButtonTint,
-            onSendClick = onSendClick
-        )
-    }
+    ComposerInputShell(
+        modifier = modifier.then(inputShellModifier),
+        addButtonSize = addButtonSize,
+        addIconSize = addIconSize,
+        inputChromeSurface = inputChromeSurface,
+        inputChromeBorder = inputChromeBorder,
+        inputFieldSurface = inputFieldSurface,
+        inputFieldBorder = inputFieldBorder,
+        inputBarHeight = inputBarHeight,
+        inputBarMaxHeight = inputBarMaxHeight,
+        onAddClick = onAddClick,
+        content = inputContent,
+        sendButtonSize = sendButtonSize,
+        sendButtonEnabled = sendButtonEnabled,
+        sendButtonBackgroundColor = sendButtonBackgroundColor,
+        sendButtonTint = sendButtonTint,
+        onSendClick = onSendClick
+    )
 }
 
 private data class InputActionMenuItem(
