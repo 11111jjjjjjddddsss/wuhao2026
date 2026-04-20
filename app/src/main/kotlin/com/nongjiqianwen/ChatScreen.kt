@@ -877,7 +877,9 @@ private fun resolveStreamingWrapGuardDecision(
     scrollMode: ScrollMode,
     sendStartAnchorActive: Boolean,
     isComposerSettling: Boolean,
-    currentTargetLineCount: Int
+    currentTargetLineCount: Int,
+    currentContentBottomPx: Int,
+    currentLegalBottomPx: Int
 ): StreamingWrapGuardDecision {
     if (availableWidthPx <= 0) return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     if (sendStartAnchorActive || isComposerSettling || scrollMode == ScrollMode.UserBrowsing) {
@@ -899,10 +901,20 @@ private fun resolveStreamingWrapGuardDecision(
         return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     }
     if (currentTargetLineCount == nextLayout.lineCount) {
-        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+        val geometryReleaseReady =
+            currentContentBottomPx > 0 &&
+                currentLegalBottomPx > 0 &&
+                currentContentBottomPx < currentLegalBottomPx
+        return StreamingWrapGuardDecision(
+            holdAdvance = !geometryReleaseReady,
+            nextTargetLineCount = if (geometryReleaseReady) -1 else currentTargetLineCount
+        )
     }
     val deltaPx = (nextLayout.heightPx - currentLayout.heightPx).coerceAtLeast(0)
     if (deltaPx <= 0) return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    if (!listState.canScrollBackward) {
+        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    }
     listState.dispatchRawDelta(deltaPx.toFloat())
     return StreamingWrapGuardDecision(
         holdAdvance = true,
@@ -3013,7 +3025,9 @@ fun ChatScreen() {
                     scrollMode = scrollMode,
                     sendStartAnchorActive = sendStartAnchorActiveState.value,
                     isComposerSettling = isComposerSettling,
-                    currentTargetLineCount = streamingWrapGuardTargetLineCount
+                    currentTargetLineCount = streamingWrapGuardTargetLineCount,
+                    currentContentBottomPx = currentStreamingContentBottomPx(),
+                    currentLegalBottomPx = currentStreamingLegalBottomPx()
                 )
                 streamingWrapGuardTargetLineCount = wrapGuardDecision.nextTargetLineCount
                 if (wrapGuardDecision.holdAdvance) {
