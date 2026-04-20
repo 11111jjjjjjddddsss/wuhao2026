@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-19
+最后更新：2026-04-20
 
 ## 项目概况
 
@@ -52,6 +52,7 @@
 - 发送起步 offset 当前也已和这份发送期 `bottomPaddingPx` 锁对齐：`commitSendMessage()` 选出 `conversationBottomPaddingLockPx` 后，会直接用这份锁值反推本次 `requestScrollToItem(index, offset)` 的最终工作线位置，不再让列表实际吃进去的是“锁定 padding”，而发送起步 offset 仍继续沿用另一条预先派生的工作线快照。`pendingStartAnchorScrollOffsetPx` 现在只保留为锁值拿不到时的兜底
 - 最新一刀继续把发送起步共同基准收窄：普通发送且会收口 composer 时，`conversationBottomPaddingLockPx` 已不再吃当前多行输入框量出来的 `stableComposerBottomBarHeightPx`，也不再吃拍脑袋的 collapsed 常量；运行时会在“输入为空 + 无 focus + IME 已收起 + composer 非 settling”的稳定收口窗口记录真实底部 reserve（`messageViewportHeightPx - composerTopInViewportPx`），发送起步优先直接复用这份观察值，专门压“长文本发送时工作线被算高、小球更靠上”的现象；`stableComposerBottomBarHeightPx` 仍保留给普通运行时几何和 streaming 主链使用，不和发送期 lock 混用
 - 为了减少冷启动第一次发送时“观察值还没采到”导致的小球略高/略低，`observedCollapsedBottomReservePx` 当前会先从共享 measure 宿主已拿到的 `latestConversationBottomPaddingPx` 预热（减去 `STREAM_VISIBLE_BOTTOM_GAP`）；只要页面处于“输入为空 + 无 focus + IME 已收起 + composer 非 settling + 未处于 sendStart lock”的稳定收口窗口，就允许把这份真实 reserve 记下来。`composerTopInViewportPx` 那条旧观察链继续保留，用来后续校准
+- clean-state / 冷启动首发当前又补了一层更早的 cold-start 预热：当 `uiRuntimeResetKey` 刚重建、`observedCollapsedBottomReservePx` 仍为未建立状态时，只要共享 measure 宿主已经产出首个有效的 `latestConversationBottomPaddingPx`，就立即减去 `STREAM_VISIBLE_BOTTOM_GAP` 写入这份观察值，不再等“输入为空 + 无 focus + IME 已收起”的稳定态窗口先跑出来。这样清数据后的第一条消息不该再轻易掉回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 那条旧 fallback 几何口径；原有稳定态观察链继续保留做后续校准
 - 静态态贴底当前又收紧了一刀：首屏历史贴底、完成态归位和静态回到底部按钮，已经不再和 streaming 共用同一个“16dp 算到底”口径，而是单独走更紧的静态容差；同时 `ChatRecyclerViewHost` 已移除列表尾部那颗额外的 1dp footer spacer，`ChatScreen.kt` 当前把静态容差继续收到了 `0.dp`，静态态真实底边仍只由最后一条消息和 `conversationBottomPaddingPx` 决定。streaming 工作线命中带保持原样，专门收“开机进入 / 生成完成后还能再扒出一丁点空白”的剩余体感；如果真机上还剩最后一丝，再单独评估 Float 精度，不直接引入 scrollBy 探针
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
 - `ChatStreamingRenderer.kt` 当前又补了一层更窄的显示门闩：当 `buildStableStreamingLineBuffer(...)` 首次测出“上一行可升格为 stable、下一行开始成为 activeLine”时，渲染层不会立刻把这一拍的新 `stableLines + activeLine` 整组见光，而是先继续保留上一拍的整组已显示结果；只有后续再次观察到 activeLine 真实继续吐字，才放行新的整组结果。这样工作线下面的新行不会在上一行尚未真正推上去时提前冒头，同时也不恢复旧 fresh-line preview 的锁空串/预览串方案

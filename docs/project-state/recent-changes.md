@@ -3,8 +3,11 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
-## 2026-04-19
+## 2026-04-20
 
+- `ChatScreen.kt` 给 `observedCollapsedBottomReservePx` 又补了一层更早的 cold-start 预热：当 `uiRuntimeResetKey` 刚重建、共享 measure 宿主已经给出首个有效 `latestConversationBottomPaddingPx` 时，就立即减去 `STREAM_VISIBLE_BOTTOM_GAP` 建立这份发送起步观察值，不再强依赖稳定态窗口先跑出来。这样 clean-state / 冷启动首发时，发送起步不该再轻易掉回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 那条旧 fallback 几何口径；原有两条稳定态观察链继续保留，用来后续校准
+
+## 2026-04-19
 - `ChatScreen.kt` 把右侧用户消息气泡的最大宽度从 `chromeMaxWidth * 0.8 / 432.dp` 小幅放宽到 `0.84 / 448.dp`。目的只是让长段中文别那么早换行，视觉上更舒展一点；当前仍保持用户气泡是右侧消息气泡，不把它放大到接近整屏
 - `ChatScreen.kt` 补了一刀用户消息气泡对比度：在聊天页底色改成中性浅灰后，用户消息原来的 `#F4F4F7` 底色和页面背景太接近，边界开始发糊。当前已把用户气泡改成纯白底，并补了一条极轻的描边，让右侧用户消息在浅灰页面上重新有清晰边界；这刀只动用户气泡样式，不改 assistant 文本区、工作线或滚动链
 - `ChatScreen.kt` 修正了聊天页最外层“点空白处收键盘”的手势判定：现在会先区分轻点和拖动，并同时检查手势起点/终点是否都在输入框外。输入框内部长文本上下滑动、以及从输入框内部起手的拖动，不再误触发 `clearFocus + hide keyboard`，专门压“长文本编辑时一滑就收输入法、光标位置跟着乱跳”的问题

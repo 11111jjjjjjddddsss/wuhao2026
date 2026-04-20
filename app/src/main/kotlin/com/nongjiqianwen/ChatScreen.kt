@@ -1810,6 +1810,18 @@ fun ChatScreen() {
             observedCollapsedBottomReservePx = currentCollapsedBottomReservePx
         }
     }
+    LaunchedEffect(
+        uiRuntimeResetKey,
+        latestConversationBottomPaddingPx
+    ) {
+        if (observedCollapsedBottomReservePx > 0) return@LaunchedEffect
+        if (latestConversationBottomPaddingPx <= 0) return@LaunchedEffect
+        val coldStartReservePx =
+            (latestConversationBottomPaddingPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+        if (coldStartReservePx > 0) {
+            observedCollapsedBottomReservePx = coldStartReservePx
+        }
+    }
     val streamingWorklineBottomPx by remember(
         lockedMessageViewportHeightPx,
         stableComposerBottomBarHeightPx,
