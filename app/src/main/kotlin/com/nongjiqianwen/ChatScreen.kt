@@ -862,7 +862,12 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
     }
 }
 
-private fun preScrollStreamingLineAdvanceIfNeeded(
+private data class StreamingWrapGuardDecision(
+    val holdAdvance: Boolean,
+    val nextTargetLineCount: Int
+)
+
+private fun resolveStreamingWrapGuardDecision(
     listState: LazyListState,
     currentContent: String,
     nextContent: String,
@@ -871,26 +876,38 @@ private fun preScrollStreamingLineAdvanceIfNeeded(
     textMeasurer: TextMeasurer,
     scrollMode: ScrollMode,
     sendStartAnchorActive: Boolean,
-    isComposerSettling: Boolean
-) {
-    if (availableWidthPx <= 0) return
-    if (sendStartAnchorActive || isComposerSettling || scrollMode == ScrollMode.UserBrowsing) return
+    isComposerSettling: Boolean,
+    currentTargetLineCount: Int
+): StreamingWrapGuardDecision {
+    if (availableWidthPx <= 0) return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    if (sendStartAnchorActive || isComposerSettling || scrollMode == ScrollMode.UserBrowsing) {
+        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    }
     val currentLayout = measureStreamingActiveBlockLayout(
         content = currentContent,
         availableWidthPx = availableWidthPx,
         density = density,
         textMeasurer = textMeasurer
-    ) ?: return
+    ) ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     val nextLayout = measureStreamingActiveBlockLayout(
         content = nextContent,
         availableWidthPx = availableWidthPx,
         density = density,
         textMeasurer = textMeasurer
-    ) ?: return
-    if (currentLayout.lineCount <= 0 || nextLayout.lineCount <= currentLayout.lineCount) return
+    ) ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    if (currentLayout.lineCount <= 0 || nextLayout.lineCount <= currentLayout.lineCount) {
+        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    }
+    if (currentTargetLineCount == nextLayout.lineCount) {
+        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    }
     val deltaPx = (nextLayout.heightPx - currentLayout.heightPx).coerceAtLeast(0)
-    if (deltaPx <= 0) return
+    if (deltaPx <= 0) return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     listState.dispatchRawDelta(deltaPx.toFloat())
+    return StreamingWrapGuardDecision(
+        holdAdvance = true,
+        nextTargetLineCount = nextLayout.lineCount
+    )
 }
 
 internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
@@ -1610,11 +1627,11 @@ fun ChatScreen() {
     var streamingMessageContent by streamingRuntime.streamingMessageContent
     var streamingRevealBuffer by streamingRuntime.streamingRevealBuffer
     var streamRevealJob by streamingRuntime.streamRevealJob
-    var streamingLineAdvanceTick by streamingRuntime.streamingLineAdvanceTick
     var streamingFreshStart by streamingRuntime.streamingFreshStart
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
+    var streamingWrapGuardTargetLineCount by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     val initialChatListIndex = remember(uiRuntimeResetKey, initialLocalMessages.size) {
         initialLocalMessages.lastIndex.coerceAtLeast(0)
     }
@@ -2468,7 +2485,7 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingLineAdvanceTick = 0
+        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
@@ -2781,7 +2798,7 @@ fun ChatScreen() {
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
-            streamingLineAdvanceTick = 0
+            streamingWrapGuardTargetLineCount = -1
             lastStreamingFreshRevealMs = 0L
             resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             composerSettlingMinHeightPx = 0
@@ -2985,7 +3002,8 @@ fun ChatScreen() {
             assistantIdProvider = ::assistantMessageIdForSourceUser,
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
-                preScrollStreamingLineAdvanceIfNeeded(
+                streamingMessageId = advance.messageId
+                val wrapGuardDecision = resolveStreamingWrapGuardDecision(
                     listState = chatListState,
                     currentContent = streamingMessageContent,
                     nextContent = advance.content,
@@ -2994,17 +3012,20 @@ fun ChatScreen() {
                     textMeasurer = streamingAdvanceTextMeasurer,
                     scrollMode = scrollMode,
                     sendStartAnchorActive = sendStartAnchorActiveState.value,
-                    isComposerSettling = isComposerSettling
+                    isComposerSettling = isComposerSettling,
+                    currentTargetLineCount = streamingWrapGuardTargetLineCount
                 )
-                streamingMessageId = advance.messageId
+                streamingWrapGuardTargetLineCount = wrapGuardDecision.nextTargetLineCount
+                if (wrapGuardDecision.holdAdvance) {
+                    return@ensureStreamingRevealJob
+                }
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
                 streamingMessageContent = advance.content
                 streamingFreshEnd = advance.freshEnd
                 streamingFreshTick = advance.freshTick
                 lastStreamingFreshRevealMs = advance.lastFreshRevealMs
-            },
-            onTick = { }
+            }
         )
     }
 
@@ -3056,7 +3077,7 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingLineAdvanceTick = 0
+        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         fakeStreamJob = null
@@ -3369,7 +3390,7 @@ fun ChatScreen() {
         anchoredUserMessageId = userId
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingLineAdvanceTick = 0
+        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         isStreaming = true
         streamingMessageId = assistantId
@@ -3380,7 +3401,7 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingLineAdvanceTick = 0
+        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3961,14 +3982,12 @@ fun ChatScreen() {
                                                 ChatStreamingRenderer(
                                                     content = assistantDisplayContent,
                                                     renderMode = renderMode,
-                                                    revealMode = StreamingRevealMode.Free,
                                                     freshSuffixEnabled = isStreaming &&
                                                         !isPendingStreamingFinalizeAssistant,
                                                     showWaitingBall = renderMode == StreamingRenderMode.Waiting,
                                                     streamingFreshStart = streamingFreshStart,
                                                     streamingFreshEnd = streamingFreshEnd,
                                                     streamingFreshTick = streamingFreshTick,
-                                                    streamingLineAdvanceTick = streamingLineAdvanceTick,
                                                     selectionEnabled = !isStreaming ||
                                                         isPendingStreamingFinalizeAssistant,
                                                     showDisclaimer = true,
@@ -4722,13 +4741,11 @@ private fun SelectableRenderedStaticMessageContent(
             ChatStreamingRenderer(
                 content = content,
                 renderMode = StreamingRenderMode.Settled,
-                revealMode = StreamingRevealMode.Free,
                 freshSuffixEnabled = false,
                 showWaitingBall = false,
                 streamingFreshStart = -1,
                 streamingFreshEnd = -1,
                 streamingFreshTick = 0,
-                streamingLineAdvanceTick = 0,
                 selectionEnabled = true,
                 showDisclaimer = showDisclaimer,
                 onStreamingContentBoundsChanged = onContentBoundsChanged,

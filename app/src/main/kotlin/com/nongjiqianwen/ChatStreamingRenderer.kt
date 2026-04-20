@@ -76,18 +76,12 @@ internal enum class StreamingRenderMode {
     Settled
 }
 
-internal enum class StreamingRevealMode {
-    Free,
-    Conservative
-}
-
 internal data class ChatStreamingRuntimeState(
     val isStreaming: MutableState<Boolean>,
     val streamingMessageId: MutableState<String?>,
     val streamingMessageContent: MutableState<String>,
     val streamingRevealBuffer: MutableState<String>,
     val streamRevealJob: MutableState<kotlinx.coroutines.Job?>,
-    val streamingLineAdvanceTick: MutableIntState,
     val streamingFreshStart: MutableIntState,
     val streamingFreshEnd: MutableIntState,
     val streamingFreshTick: MutableIntState,
@@ -101,7 +95,6 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
     val streamingMessageContent = rememberSaveable(chatScopeId) { mutableStateOf("") }
     val streamingRevealBuffer = rememberSaveable(chatScopeId) { mutableStateOf("") }
     val streamRevealJob = remember(chatScopeId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val streamingLineAdvanceTick = remember(chatScopeId) { mutableIntStateOf(0) }
     val streamingFreshStart = remember(chatScopeId) { mutableIntStateOf(-1) }
     val streamingFreshEnd = remember(chatScopeId) { mutableIntStateOf(-1) }
     val streamingFreshTick = remember(chatScopeId) { mutableIntStateOf(0) }
@@ -113,7 +106,6 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
             streamingMessageContent = streamingMessageContent,
             streamingRevealBuffer = streamingRevealBuffer,
             streamRevealJob = streamRevealJob,
-            streamingLineAdvanceTick = streamingLineAdvanceTick,
             streamingFreshStart = streamingFreshStart,
             streamingFreshEnd = streamingFreshEnd,
             streamingFreshTick = streamingFreshTick,
@@ -135,8 +127,7 @@ internal fun ensureStreamingRevealJob(
     anchoredUserMessageId: () -> String?,
     assistantIdProvider: (String) -> String,
     fallbackIdProvider: () -> String,
-    onAdvance: suspend (StreamingRevealAdvance) -> Unit,
-    onTick: () -> Unit
+    onAdvance: suspend (StreamingRevealAdvance) -> Unit
 ) {
     if (currentJob?.isActive == true) return
     setJob(
@@ -166,7 +157,6 @@ internal fun ensureStreamingRevealJob(
                     continue
                 }
                 onAdvance(advance)
-                onTick()
                 delay(advance.delayMs)
             }
         }
@@ -832,13 +822,11 @@ private fun StringBuilder.appendRendererParagraphLine(line: String) {
 internal fun ChatStreamingRenderer(
     content: String,
     renderMode: StreamingRenderMode,
-    revealMode: StreamingRevealMode,
     freshSuffixEnabled: Boolean,
     showWaitingBall: Boolean,
     streamingFreshStart: Int,
     streamingFreshEnd: Int,
     streamingFreshTick: Int,
-    streamingLineAdvanceTick: Int,
     selectionEnabled: Boolean,
     showDisclaimer: Boolean,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)?,
@@ -851,11 +839,7 @@ internal fun ChatStreamingRenderer(
         streamingFreshStart = streamingFreshStart,
         streamingFreshEnd = streamingFreshEnd,
         streamingFreshTick = if (freshSuffixEnabled) streamingFreshTick else 0,
-        streamingLineAdvanceTick = streamingLineAdvanceTick,
         showWaitingBall = showWaitingBall,
-        strictLineReveal = renderMode != StreamingRenderMode.Settled &&
-            revealMode != StreamingRevealMode.Free,
-        lineRevealLocked = revealMode == StreamingRevealMode.Conservative,
         selectionEnabled = selectionEnabled,
         showDisclaimer = showDisclaimer,
         onStreamingContentBoundsChanged = onStreamingContentBoundsChanged,
@@ -871,10 +855,7 @@ private fun RendererAssistantMessageContentImpl(
     streamingFreshStart: Int = -1,
     streamingFreshEnd: Int = -1,
     streamingFreshTick: Int = 0,
-    streamingLineAdvanceTick: Int = 0,
     showWaitingBall: Boolean = false,
-    strictLineReveal: Boolean = false,
-    lineRevealLocked: Boolean = false,
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
@@ -912,9 +893,6 @@ private fun RendererAssistantMessageContentImpl(
                     streamingFreshStart = streamingFreshStart,
                     streamingFreshEnd = streamingFreshEnd,
                     streamingFreshTick = streamingFreshTick,
-                    streamingLineAdvanceTick = streamingLineAdvanceTick,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked,
                     showWaitingBall = showWaitingBall || content.isBlank(),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -982,9 +960,6 @@ private fun RendererAssistantStreamingContentImpl(
     streamingFreshStart: Int,
     streamingFreshEnd: Int,
     streamingFreshTick: Int,
-    streamingLineAdvanceTick: Int,
-    strictLineReveal: Boolean,
-    lineRevealLocked: Boolean,
     showWaitingBall: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -1042,10 +1017,7 @@ private fun RendererAssistantStreamingContentImpl(
                     showLeadingSectionDivider = showLeadingSectionDivider,
                     modifier = Modifier.fillMaxWidth(),
                     freshTailChars = activeFreshTailChars,
-                    freshTick = streamingFreshTick,
-                    lineAdvanceTick = streamingLineAdvanceTick,
-                    strictLineReveal = strictLineReveal,
-                    lineRevealLocked = lineRevealLocked
+                    freshTick = streamingFreshTick
                 )
             }
         }
@@ -1059,9 +1031,6 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
     showLeadingSectionDivider: Boolean,
     freshTailChars: Int,
     freshTick: Int,
-    lineAdvanceTick: Int,
-    strictLineReveal: Boolean,
-    lineRevealLocked: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -1073,9 +1042,6 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
             showLeadingSectionDivider = false,
             freshTailChars = if (isActive) freshTailChars else 0,
             freshTick = if (isActive) freshTick else 0,
-            lineAdvanceTick = lineAdvanceTick,
-            strictLineReveal = strictLineReveal,
-            lineRevealLocked = lineRevealLocked,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -1339,9 +1305,6 @@ private fun RendererAssistantStreamingActiveBlockImpl(
     showLeadingSectionDivider: Boolean = false,
     freshTailChars: Int = 0,
     freshTick: Int = 0,
-    lineAdvanceTick: Int = 0,
-    strictLineReveal: Boolean = true,
-    lineRevealLocked: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val textMeasurer = rememberTextMeasurer()
@@ -1517,9 +1480,6 @@ private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modi
                     RendererAssistantStreamingActiveBlockImpl(
                         model = model,
                         showLeadingSectionDivider = showLeadingSectionDivider,
-                        lineAdvanceTick = 0,
-                        strictLineReveal = false,
-                        lineRevealLocked = false,
                         modifier = blockModifier
                     )
                 } else {

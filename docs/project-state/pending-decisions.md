@@ -29,5 +29,5 @@
 ## D5 Android 聊天 UI 下一轮只围绕哪一条继续会诊
 
 - 当前选项：明天仅围绕“streaming 下一行提前冒头 / 一闪一消失”发 Claude 自包含短稿；或先冻结当前基线继续观察，不重新会诊整条滚动链
-- 现状：滚动主链、发送微抖、首屏贴底和 finalize 归位按当前真机口径已收口；当前冻结基线保留 `ff4480f` 的 strict follow gate、保留 `283f118` 的基础显示门闩，`1cdbf23` 已由 `8fb410f` 回退
-- 待定原因：当前唯一开放问题已经缩到 renderer 行级 reveal / follow 时序边界；如果下一窗口不写死范围，很容易重新把已收口的滚动链问题一起翻回来
+- 现状：滚动主链、发送微抖、首屏贴底和 finalize 归位按当前真机口径已收口；当前冻结基线保留 `ff4480f` 的 strict follow gate，但 streaming 新行主修法已经切到 `ChatScreen.kt` 的 `onAdvance` reveal-layer wrap guard。旧 `rememberGatedStreamingRenderedLines(...)`、preview lock、draw-phase clip，以及 `StreamingRevealMode.Conservative / strictLineReveal / lineRevealLocked / streamingLineAdvanceTick` 这条 reveal 空转链都已删除
+- 待定原因：当前唯一开放问题已经缩到 `onAdvance` 提交口与 active block pre-measure 的交界；如果下一窗口不写死“只看 wrap guard / pre-measure / follow refine”，很容易把已收口的滚动链问题重新一起翻回来
