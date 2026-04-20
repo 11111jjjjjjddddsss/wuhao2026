@@ -146,12 +146,14 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextMotion
@@ -160,6 +162,7 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
@@ -857,6 +860,37 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
             return null
         }
     }
+}
+
+private suspend fun preScrollStreamingLineAdvanceIfNeeded(
+    listState: LazyListState,
+    currentContent: String,
+    nextContent: String,
+    availableWidthPx: Int,
+    density: Density,
+    textMeasurer: TextMeasurer,
+    scrollMode: ScrollMode,
+    sendStartAnchorActive: Boolean,
+    isComposerSettling: Boolean
+) {
+    if (availableWidthPx <= 0) return
+    if (sendStartAnchorActive || isComposerSettling || scrollMode == ScrollMode.UserBrowsing) return
+    val currentLayout = measureStreamingActiveBlockLayout(
+        content = currentContent,
+        availableWidthPx = availableWidthPx,
+        density = density,
+        textMeasurer = textMeasurer
+    ) ?: return
+    val nextLayout = measureStreamingActiveBlockLayout(
+        content = nextContent,
+        availableWidthPx = availableWidthPx,
+        density = density,
+        textMeasurer = textMeasurer
+    ) ?: return
+    if (currentLayout.lineCount <= 0 || nextLayout.lineCount <= currentLayout.lineCount) return
+    val deltaPx = (nextLayout.heightPx - currentLayout.heightPx).coerceAtLeast(0)
+    if (deltaPx <= 0) return
+    listState.scrollBy(deltaPx.toFloat())
 }
 
 internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
@@ -1566,6 +1600,7 @@ fun ChatScreen() {
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
+    val streamingAdvanceTextMeasurer = rememberTextMeasurer()
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
@@ -1623,6 +1658,7 @@ fun ChatScreen() {
     var persistTick by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var chatRootWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var chatRootHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var streamingAdvanceAvailableWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var messageViewportWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var chatRootLeftPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
@@ -2949,6 +2985,17 @@ fun ChatScreen() {
             assistantIdProvider = ::assistantMessageIdForSourceUser,
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
+                preScrollStreamingLineAdvanceIfNeeded(
+                    listState = chatListState,
+                    currentContent = streamingMessageContent,
+                    nextContent = advance.content,
+                    availableWidthPx = streamingAdvanceAvailableWidthPx,
+                    density = density,
+                    textMeasurer = streamingAdvanceTextMeasurer,
+                    scrollMode = scrollMode,
+                    sendStartAnchorActive = sendStartAnchorActiveState.value,
+                    isComposerSettling = isComposerSettling
+                )
                 streamingMessageId = advance.messageId
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
@@ -3647,6 +3694,12 @@ fun ChatScreen() {
             maxWidth < 360.dp -> 12.dp
             maxWidth < 600.dp -> 14.dp
             else -> 22.dp
+        }
+        val listHorizontalPaddingPx = with(density) { listHorizontalPadding.roundToPx() }
+        val activeStreamingMeasureWidthPx = (with(density) { maxWidth.roundToPx() } - listHorizontalPaddingPx * 2)
+            .coerceAtLeast(0)
+        SideEffect {
+            streamingAdvanceAvailableWidthPx = activeStreamingMeasureWidthPx
         }
         val inputBarHeight = if (maxWidth < 360.dp) 92.dp else 96.dp
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp

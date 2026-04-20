@@ -54,7 +54,7 @@
 - `composerTopInViewportPx` 那条旧观察链当前只剩启动 fallback 身份：只有当列表侧的 `latestConversationBottomPaddingPx` 仍未产出时，才允许用 `messageViewportHeightPx - composerTopInViewportPx` 去写 `observedCollapsedBottomReservePx`；一旦共享 measure 真值已经到位，旧链就不再继续回写同一个状态。同时，上一版“只要拿到首个有效 `latestConversationBottomPaddingPx` 就无条件做 cold-start 预热”的宽松写法已经删除，避免 clean-state 首发后把 focus/send 锁窗口里的 padding 误记成稳定 reserve
 - 静态态贴底当前又收紧了一刀：首屏历史贴底、完成态归位和静态回到底部按钮，已经不再和 streaming 共用同一个“16dp 算到底”口径，而是单独走更紧的静态容差；同时 `ChatRecyclerViewHost` 已移除列表尾部那颗额外的 1dp footer spacer，`ChatScreen.kt` 当前把静态容差继续收到了 `0.dp`，静态态真实底边仍只由最后一条消息和 `conversationBottomPaddingPx` 决定。streaming 工作线命中带保持原样，专门收“开机进入 / 生成完成后还能再扒出一丁点空白”的剩余体感；如果真机上还剩最后一丝，再单独评估 Float 精度，不直接引入 scrollBy 探针
 - `ChatStreamingRenderer.kt` 当前已彻底移除 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览，stable / active 行都直接用原始 `StreamingRenderedLines` 渲染；不再允许 activeLine 在某一拍被锁成预览串或空串，专门收口 streaming 过程中偶发“往下掉一下再弹回”的 1 帧高度塌陷
-- `ChatStreamingRenderer.kt` 当前又补了一层更窄的显示门闩：当 `buildStableStreamingLineBuffer(...)` 首次测出“上一行可升格为 stable、下一行开始成为 activeLine”时，渲染层不会立刻把这一拍的新 `stableLines + activeLine` 整组见光，而是先继续保留上一拍的整组已显示结果；只有后续再次观察到 activeLine 真实继续吐字，才放行新的整组结果。这样工作线下面的新行不会在上一行尚未真正推上去时提前冒头，同时也不恢复旧 fresh-line preview 的锁空串/预览串方案
+- streaming 新行防闪当前已从“叶子 renderer 显示门闩”切到“advance 层前馈预滚”：`ChatStreamingRenderer.kt` 移除了 `rememberGatedStreamingRenderedLines(...)`，`ChatScreen.kt` 的 streaming `onAdvance` 现在会在写入下一拍内容前，先用 `measureStreamingActiveBlockLayout(...)` 对 active block 做同宽度、同样式的 pre-measure；若检测到物理行数增加，就先按实测高度差执行一次 `scrollBy(deltaPx)`，再写入新的 `streamingMessageContent`。原有 bounds -> follow 主链仍保留做后续精修
 - streaming follow 当前又和发送起步 release gate 正式拆开了容差：`ChatScreen.kt` 继续保留原 `isNearStreamingWorkline()` 给发送起步保护释放等“宽容差”消费者使用，但新增了只给 streaming follow 抑制链使用的 `isAtStreamingWorklineStrict()`，把“工作线下方还算到位”的上容差从一整行高度收紧到 `BOTTOM_POSITION_TOLERANCE(16dp)`。`ChatScrollCoordinator.kt` 的 follow suppression 现在只认这个严格版 gate，专门压“工作线下面先露出一整行才开始跟随”的现象；sendStart release gate、jump button 等原宽容差消费者保持不变
 - 会诊协作口径当前已收紧：后续针对 UI 抖动、滚动链、渲染时序这类问题，默认先由 Codex 本地锁定到具体代码点，再把文件路径、函数名、关键状态、已排除项和限制条件一起整理成发给 Claude 的短稿，避免外部方案继续停留在抽象猜测层
 - 当前外部会诊现实约束已明确：Claude 等外部模型默认看不到本地仓库和文件链接，只能依赖用户通过聊天软件转发的代码片段、日志、截图；因此会诊稿必须自包含，关键代码不能只报文件名不贴内容
@@ -82,8 +82,8 @@
 ## 当前调试焦点
 
 - 当前 Android 聊天 UI 按最新真机口径，主滚动 / 发送抖动 / 首屏贴底 / finalize 归位问题都已收口。当前产品口径继续保持：发送瞬间的小球锚点稳定在工作线，而 streaming / settled / 首屏历史态也继续围绕工作线收口
-- 当前唯一仍开放的主要体感问题，已经收敛为 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”；这条先按 renderer 行级 reveal / follow 时序边界问题处理，不要重新把整个滚动链翻回未收口状态
-- 今天收工冻结基线：继续保留 `ff4480f` 的 strict follow gate 和 `283f118` 的基础显示门闩；`1cdbf23 Tighten streaming line promotion gate` 已由 `8fb410f` 回退。明天如果继续会诊，就从这条基线出发，不再顺手多撤其他滚动链修复
+- 当前唯一仍开放的主要体感问题，仍然是 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”；但当前主修法已经切到 `onAdvance` 前馈预滚，不再继续靠 renderer 叶子门闩去延迟整组 `stableLines + activeLine` 的显示。这条问题后续只再按 active block pre-measure / pre-scroll / bounds refine 这条链处理，不要重新把整个滚动链翻回未收口状态
+- 当前冻结基线：继续保留 `ff4480f` 的 strict follow gate，移除 `283f118` 那类叶子显示门闩思路；`1cdbf23 Tighten streaming line promotion gate` 仍维持回退。后续如果继续会诊或回归，就从“`onAdvance` 前馈预滚 + strict follow gate 精修”这条基线出发，不再顺手多撤其他滚动链修复
 - 历史上“把小球抬到中部以上会带出底部空白”这件事，当前已经确认不是一个单独成立的规律。旧问题的本质是：当时发送起步抖动、`conversationBottomPaddingPx` 连续变化、以及 finalize 几何链都还没收口，小球上抬只是把抖动视觉稀释了，没修掉底层几何；真正的底部空白根因在 finalize / 底部几何切换，而不在小球首发位置本身。现在这几条底层链路虽然已经分开收口，但按最新产品回归，失败态和短文本收口在“小球上抬”时仍会变差，所以当前仍固定回工作线
 - 上述已收口问题的“现象 / 根因 / 当前修法 / 禁止回退”已统一固化进根 `AGENTS.md` 的 `7.5 已修复问题的成因与禁改清单`；后续新窗口如果又想改聊天滚动链，必须先对照这份清单，避免把旧问题重新带回
 - 焦点 1：发送起步锚点稳定贴工作线后的回归观察
@@ -98,10 +98,10 @@
   - 首次进入有历史时继续直接贴底，并保持工作线以下 breathing gap 可见
   - 生成完成后不要跳到长 assistant 文本开头
   - 发送长文本后输入框要稳定回缩，不要再次出现“有时回缩、有时不回缩”的竞态
-  - streaming 长段落换行时，工作线下面的新一行不要在上一行尚未上推完成前提前冒头；重点观察是否还会出现“下一行一闪一消失”的残留
+  - streaming 长段落换行时，工作线下面的新一行不要在上一行尚未上推完成前提前冒头；重点观察 `onAdvance` 前馈预滚后是否还会残留“下一行一闪一消失”或带来新的轻微过补偿
 - 下个窗口入口：
-  - 聊天滚动链默认先视为已收口；新窗口如果继续 Android UI，只盯“下一行提前冒头 / 一闪一消失”这一条
-  - 会诊时默认直接带上当前冻结基线：保留 `ff4480f`、保留 `283f118`、`1cdbf23` 已回退，不要把已收住的发送微抖 / 首屏贴底 / finalize 归位重新打散
+  - 聊天滚动链默认先视为已收口；新窗口如果继续 Android UI，只盯“下一行提前冒头 / 一闪一消失”这一条，并先检查 `measureStreamingActiveBlockLayout(...)` 的宽度/样式是否和真实 active block 一致
+  - 会诊时默认直接带上当前冻结基线：保留 `ff4480f`，叶子显示门闩已移除、`1cdbf23` 已回退；不要把已收住的发送微抖 / 首屏贴底 / finalize 归位重新打散
 - 推荐回归入口：`docs/runbooks/chat-ui-regression.md`
 
 ## 当前阶段判断

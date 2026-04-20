@@ -55,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -133,7 +134,7 @@ internal fun ensureStreamingRevealJob(
     anchoredUserMessageId: () -> String?,
     assistantIdProvider: (String) -> String,
     fallbackIdProvider: () -> String,
-    onAdvance: (StreamingRevealAdvance) -> Unit,
+    onAdvance: suspend (StreamingRevealAdvance) -> Unit,
     onTick: () -> Unit
 ) {
     if (currentJob?.isActive == true) return
@@ -516,6 +517,78 @@ internal fun buildStableStreamingLineBuffer(
     }
 
     return StreamingRenderedLines(stableLines = stableLines, activeLine = activeLine)
+}
+
+internal data class StreamingActiveBlockLayout(
+    val lineCount: Int,
+    val heightPx: Int
+)
+
+internal fun measureStreamingActiveBlockLayout(
+    content: String,
+    availableWidthPx: Int,
+    density: Density,
+    textMeasurer: TextMeasurer
+): StreamingActiveBlockLayout? {
+    if (content.isBlank() || availableWidthPx <= 0) return null
+    val activeBlock = splitStreamingBlockState(content).activeBlock ?: return null
+    val model = classifyActiveStreamingLine(activeBlock)
+    val spacingPx = with(density) { 8.dp.roundToPx() }
+    val (measuredText, measuredStyle, measuredWidthPx) = when (model) {
+        StreamingLineModel.Blank -> return null
+        is StreamingLineModel.Heading -> Triple(
+            AnnotatedString(model.text),
+            assistantStreamingHeadingTextStyle(model.level),
+            availableWidthPx
+        )
+        is StreamingLineModel.Paragraph -> Triple(
+            AnnotatedString(model.text),
+            assistantStreamingParagraphTextStyle(),
+            availableWidthPx
+        )
+        is StreamingLineModel.Quote -> Triple(
+            AnnotatedString(model.text),
+            assistantStreamingParagraphTextStyle(),
+            availableWidthPx
+        )
+        is StreamingLineModel.Bullet -> {
+            val bulletStyle = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
+            val bodyStyle = assistantStreamingParagraphTextStyle()
+            val bulletWidthPx = textMeasurer.measure(
+                text = AnnotatedString("\u2022"),
+                style = bulletStyle
+            ).size.width
+            Triple(
+                AnnotatedString(model.text),
+                bodyStyle,
+                (availableWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
+            )
+        }
+        is StreamingLineModel.Numbered -> {
+            val numberStyle = assistantStreamingParagraphTextStyle().copy(fontWeight = FontWeight.SemiBold)
+            val bodyStyle = assistantStreamingParagraphTextStyle()
+            val numberWidthPx = textMeasurer.measure(
+                text = AnnotatedString("${model.number}."),
+                style = numberStyle
+            ).size.width
+            Triple(
+                AnnotatedString(model.text),
+                bodyStyle,
+                (availableWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
+            )
+        }
+    }
+    if (measuredText.isEmpty() || measuredWidthPx <= 0) return null
+    val layout = textMeasurer.measure(
+        text = measuredText,
+        style = measuredStyle,
+        constraints = Constraints(maxWidth = measuredWidthPx)
+    )
+    if (layout.lineCount <= 0) return null
+    return StreamingActiveBlockLayout(
+        lineCount = layout.lineCount,
+        heightPx = layout.size.height
+    )
 }
 
 private fun ensureStreamingMessageId(
@@ -987,67 +1060,6 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
 }
 
 @Composable
-private fun rememberGatedStreamingRenderedLines(
-    lines: StreamingRenderedLines,
-    freshTick: Int
-): StreamingRenderedLines {
-    var displayedLines by remember { mutableStateOf(lines) }
-    var armedStableCount by remember { mutableIntStateOf(-1) }
-    var armedActiveLineText by remember { mutableStateOf("") }
-
-    val currentActiveLineText = lines.activeLine?.text ?: ""
-    val gatedLines = when {
-        freshTick == 0 -> lines
-        lines.stableLines.size < displayedLines.stableLines.size -> lines
-        armedStableCount >= 0 &&
-            lines.stableLines.size == armedStableCount &&
-            currentActiveLineText == armedActiveLineText -> displayedLines
-        armedStableCount >= 0 -> lines
-        lines.stableLines.size > displayedLines.stableLines.size -> displayedLines
-        else -> lines
-    }
-
-    SideEffect {
-        when {
-            freshTick == 0 -> {
-                displayedLines = lines
-                armedStableCount = -1
-                armedActiveLineText = ""
-            }
-
-            lines.stableLines.size < displayedLines.stableLines.size -> {
-                displayedLines = lines
-                armedStableCount = -1
-                armedActiveLineText = ""
-            }
-
-            armedStableCount >= 0 &&
-                lines.stableLines.size == armedStableCount &&
-                currentActiveLineText == armedActiveLineText -> Unit
-
-            armedStableCount >= 0 -> {
-                displayedLines = lines
-                armedStableCount = -1
-                armedActiveLineText = ""
-            }
-
-            lines.stableLines.size > displayedLines.stableLines.size -> {
-                armedStableCount = lines.stableLines.size
-                armedActiveLineText = currentActiveLineText
-            }
-
-            else -> {
-                displayedLines = lines
-                armedStableCount = -1
-                armedActiveLineText = ""
-            }
-        }
-    }
-
-    return gatedLines
-}
-
-@Composable
 private fun RendererStreamingSingleActiveLineTextImpl(
     lines: StreamingRenderedLines,
     style: TextStyle,
@@ -1056,11 +1068,10 @@ private fun RendererStreamingSingleActiveLineTextImpl(
     freshTick: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    val gatedLines = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
-    val renderedLines = remember(gatedLines.stableLines, gatedLines.activeLine) {
+    val renderedLines = remember(lines.stableLines, lines.activeLine) {
         buildList<Pair<AnnotatedString, Boolean>> {
-            gatedLines.stableLines.forEach { add(it to false) }
-            gatedLines.activeLine?.let { add(it to true) }
+            lines.stableLines.forEach { add(it to false) }
+            lines.activeLine?.let { add(it to true) }
         }
     }
     Column(
@@ -1425,11 +1436,10 @@ private fun RendererStreamingBulletOrNumberedBlockImpl(
     freshTailChars: Int,
     freshTick: Int
 ) {
-    val gatedLines = rememberGatedStreamingRenderedLines(lines = lines, freshTick = freshTick)
-    val renderedLines = remember(gatedLines.stableLines, gatedLines.activeLine) {
+    val renderedLines = remember(lines.stableLines, lines.activeLine) {
         buildList<Pair<AnnotatedString, Boolean>> {
-            gatedLines.stableLines.forEach { add(it to false) }
-            gatedLines.activeLine?.let { add(it to true) }
+            lines.stableLines.forEach { add(it to false) }
+            lines.activeLine?.let { add(it to true) }
         }
     }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
