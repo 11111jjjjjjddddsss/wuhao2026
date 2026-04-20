@@ -3696,8 +3696,11 @@ fun ChatScreen() {
             else -> 22.dp
         }
         val listHorizontalPaddingPx = with(density) { listHorizontalPadding.roundToPx() }
-        val activeStreamingMeasureWidthPx = (with(density) { maxWidth.roundToPx() } - listHorizontalPaddingPx * 2)
-            .coerceAtLeast(0)
+        val chromeMaxWidthPx = with(density) { chromeMaxWidth.roundToPx() }
+        val activeStreamingMeasureWidthPx = minOf(
+            (with(density) { maxWidth.roundToPx() } - listHorizontalPaddingPx * 2).coerceAtLeast(0),
+            chromeMaxWidthPx
+        )
         SideEffect {
             streamingAdvanceAvailableWidthPx = activeStreamingMeasureWidthPx
         }

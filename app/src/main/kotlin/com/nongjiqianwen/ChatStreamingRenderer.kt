@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.max
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.TextMeasurer
 import kotlinx.coroutines.CoroutineScope
@@ -524,6 +525,13 @@ internal data class StreamingActiveBlockLayout(
     val heightPx: Int
 )
 
+private data class StreamingActiveBlockMeasureSpec(
+    val text: AnnotatedString,
+    val style: TextStyle,
+    val widthPx: Int,
+    val minLineHeightPx: Int
+)
+
 internal fun measureStreamingActiveBlockLayout(
     content: String,
     availableWidthPx: Int,
@@ -534,23 +542,35 @@ internal fun measureStreamingActiveBlockLayout(
     val activeBlock = splitStreamingBlockState(content).activeBlock ?: return null
     val model = classifyActiveStreamingLine(activeBlock)
     val spacingPx = with(density) { 8.dp.roundToPx() }
-    val (measuredText, measuredStyle, measuredWidthPx) = when (model) {
+    val spec = when (model) {
         StreamingLineModel.Blank -> return null
-        is StreamingLineModel.Heading -> Triple(
-            AnnotatedString(model.text),
-            assistantStreamingHeadingTextStyle(model.level),
-            availableWidthPx
-        )
-        is StreamingLineModel.Paragraph -> Triple(
-            AnnotatedString(model.text),
-            assistantStreamingParagraphTextStyle(),
-            availableWidthPx
-        )
-        is StreamingLineModel.Quote -> Triple(
-            AnnotatedString(model.text),
-            assistantStreamingParagraphTextStyle(),
-            availableWidthPx
-        )
+        is StreamingLineModel.Heading -> {
+            val style = assistantStreamingHeadingTextStyle(model.level)
+            StreamingActiveBlockMeasureSpec(
+                text = AnnotatedString(model.text),
+                style = style,
+                widthPx = availableWidthPx,
+                minLineHeightPx = with(density) { style.lineHeight.roundToPx() }
+            )
+        }
+        is StreamingLineModel.Paragraph -> {
+            val style = assistantStreamingParagraphTextStyle()
+            StreamingActiveBlockMeasureSpec(
+                text = AnnotatedString(model.text),
+                style = style,
+                widthPx = availableWidthPx,
+                minLineHeightPx = with(density) { style.lineHeight.roundToPx() }
+            )
+        }
+        is StreamingLineModel.Quote -> {
+            val style = assistantStreamingParagraphTextStyle()
+            StreamingActiveBlockMeasureSpec(
+                text = AnnotatedString(model.text),
+                style = style,
+                widthPx = availableWidthPx,
+                minLineHeightPx = with(density) { style.lineHeight.roundToPx() }
+            )
+        }
         is StreamingLineModel.Bullet -> {
             val bulletStyle = assistantStreamingParagraphTextStyle().copy(fontSize = 18.sp)
             val bodyStyle = assistantStreamingParagraphTextStyle()
@@ -558,10 +578,11 @@ internal fun measureStreamingActiveBlockLayout(
                 text = AnnotatedString("\u2022"),
                 style = bulletStyle
             ).size.width
-            Triple(
-                AnnotatedString(model.text),
-                bodyStyle,
-                (availableWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
+            StreamingActiveBlockMeasureSpec(
+                text = AnnotatedString(model.text),
+                style = bodyStyle,
+                widthPx = (availableWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0),
+                minLineHeightPx = with(density) { bodyStyle.lineHeight.roundToPx() }
             )
         }
         is StreamingLineModel.Numbered -> {
@@ -571,23 +592,24 @@ internal fun measureStreamingActiveBlockLayout(
                 text = AnnotatedString("${model.number}."),
                 style = numberStyle
             ).size.width
-            Triple(
-                AnnotatedString(model.text),
-                bodyStyle,
-                (availableWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
+            StreamingActiveBlockMeasureSpec(
+                text = AnnotatedString(model.text),
+                style = bodyStyle,
+                widthPx = (availableWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0),
+                minLineHeightPx = with(density) { bodyStyle.lineHeight.roundToPx() }
             )
         }
     }
-    if (measuredText.isEmpty() || measuredWidthPx <= 0) return null
+    if (spec.text.isEmpty() || spec.widthPx <= 0) return null
     val layout = textMeasurer.measure(
-        text = measuredText,
-        style = measuredStyle,
-        constraints = Constraints(maxWidth = measuredWidthPx)
+        text = spec.text,
+        style = spec.style,
+        constraints = Constraints(maxWidth = spec.widthPx)
     )
     if (layout.lineCount <= 0) return null
     return StreamingActiveBlockLayout(
         lineCount = layout.lineCount,
-        heightPx = layout.size.height
+        heightPx = max(layout.size.height, spec.minLineHeightPx * layout.lineCount)
     )
 }
 
