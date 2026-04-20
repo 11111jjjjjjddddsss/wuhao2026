@@ -862,7 +862,7 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
     }
 }
 
-private suspend fun preScrollStreamingLineAdvanceIfNeeded(
+private fun preScrollStreamingLineAdvanceIfNeeded(
     listState: LazyListState,
     currentContent: String,
     nextContent: String,
@@ -890,7 +890,7 @@ private suspend fun preScrollStreamingLineAdvanceIfNeeded(
     if (currentLayout.lineCount <= 0 || nextLayout.lineCount <= currentLayout.lineCount) return
     val deltaPx = (nextLayout.heightPx - currentLayout.heightPx).coerceAtLeast(0)
     if (deltaPx <= 0) return
-    listState.scrollBy(deltaPx.toFloat())
+    listState.dispatchRawDelta(deltaPx.toFloat())
 }
 
 internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
