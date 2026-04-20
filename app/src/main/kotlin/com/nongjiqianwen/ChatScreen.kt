@@ -120,7 +120,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -3883,25 +3882,6 @@ fun ChatScreen() {
                     val isPendingStreamingFinalizeAssistant =
                         msg.role == ChatRole.ASSISTANT &&
                             msg.id == pendingStreamingFinalizeMessageId
-                    val streamingWorklineClipBottomPx =
-                        if (
-                            msg.role == ChatRole.ASSISTANT &&
-                            isActiveStreamingAssistant &&
-                            isStreaming &&
-                            !isPendingStreamingFinalizeAssistant
-                        ) {
-                            val hostBounds = messageSelectionBoundsById[msg.id]
-                            if (hostBounds != null && streamingWorklineBottomPx > 0) {
-                                (
-                                    (messageViewportTopPx + streamingWorklineBottomPx) -
-                                        hostBounds.top
-                                    ).roundToInt().coerceAtLeast(0)
-                            } else {
-                                -1
-                            }
-                        } else {
-                            -1
-                        }
                     val assistantDisplayContent =
                         if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
                             streamingMessageContent
@@ -3978,25 +3958,6 @@ fun ChatScreen() {
                                                     isStreaming -> StreamingRenderMode.Streaming
                                                     else -> StreamingRenderMode.Settled
                                                 }
-                                                val streamingWorklineClipModifier =
-                                                    if (streamingWorklineClipBottomPx > 0) {
-                                                        Modifier.drawWithContent {
-                                                            val clipBottom =
-                                                                streamingWorklineClipBottomPx
-                                                                    .toFloat()
-                                                                    .coerceIn(0f, size.height)
-                                                            clipRect(
-                                                                left = 0f,
-                                                                top = 0f,
-                                                                right = size.width,
-                                                                bottom = clipBottom
-                                                            ) {
-                                                                this@drawWithContent.drawContent()
-                                                            }
-                                                        }
-                                                    } else {
-                                                        Modifier
-                                                    }
                                                 ChatStreamingRenderer(
                                                     content = assistantDisplayContent,
                                                     renderMode = renderMode,
@@ -4020,9 +3981,7 @@ fun ChatScreen() {
                                                             messageContentBoundsById.remove(msg.id)
                                                         }
                                                     },
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .then(streamingWorklineClipModifier)
+                                                    modifier = Modifier.fillMaxWidth()
                                                 )
                                             }
                                         }
