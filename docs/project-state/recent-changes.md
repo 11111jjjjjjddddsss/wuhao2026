@@ -7,6 +7,7 @@
 
 - `ChatScreen.kt` / `ChatStreamingRenderer.kt` 把 streaming 新行防闪从“叶子 renderer 显示门闩”切到了 `onAdvance` 前馈预滚：`rememberGatedStreamingRenderedLines(...)` 已删除，两个 active renderer 现在直接渲染原始 `StreamingRenderedLines`；同时新增 `measureStreamingActiveBlockLayout(...)` 用当前 active block 的真实样式和宽度做 pre-measure，`onAdvance` 在写入下一拍 `streamingMessageContent` 前若检测到物理行数增加，就先按实测高度差 `scrollBy(deltaPx)`，旧 bounds -> follow 主链继续保留做后续精修。随后又补了一刀精度：前馈宽度与真实 assistant 宿主的 `chromeMaxWidth` 对齐，补偿高度也改成“文本实测高度”和“最小行高 * 行数”取更大值，避免只轻一点但仍残留几像素闪露
 - `ChatScreen.kt` 继续收口了前馈预滚的时机：`preScrollStreamingLineAdvanceIfNeeded(...)` 已从挂起式 `listState.scrollBy(...)` 改成同步 `listState.dispatchRawDelta(...)`。目的不是改补偿量，而是避免 `scrollBy` 在旧内容仍较短时先进入 scroll session、delta 被当前 layout bounds 提前截断；现在前馈偏移会和同一个 `onAdvance` 同步块里的 content 更新一起进入下一帧 layout，再看真机是否能把剩余那一层“轻微残影”压掉
+- `ChatScreen.kt` 又补了一层只落在 draw phase 的 workline clip：对 active streaming assistant，按消息外层宿主的 window top 和 `streamingWorklineBottomPx` 计算本拍可见下边界，再通过 `drawWithContent + clipRect` 把工作线以下的像素裁掉。目的不是替代 pre-scroll 或 follow，而是把已经收敛到最后 1 帧左右的“下一行提前冒头残影”继续挡掉，同时不引入整行延迟显示/憋字
 - `ChatScreen.kt` 继续收口了 clean-state 发送起步观察值的写入链：共享 measure 宿主现在会在 `renderChatList(...)` 的 `SideEffect` 里，于“输入为空 + 无 focus + IME 已收起 + composer 非 settling + 未处于 sendStart lock”的稳定窗口中，直接用首个有效 `bottomPaddingPx - STREAM_VISIBLE_BOTTOM_GAP` 种下 `observedCollapsedBottomReservePx`；同时把 `composerTopInViewportPx` 那条旧观察链收窄成“只有列表侧 `latestConversationBottomPaddingPx` 还没产出时才允许写入”的启动 fallback。上一版无条件 cold-start 预热已删除，避免 clean-state 首发后把 focus/send 锁窗口里的 padding 误记成稳定 reserve
 
 ## 2026-04-19
