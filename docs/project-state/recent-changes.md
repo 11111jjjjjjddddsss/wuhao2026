@@ -5,7 +5,7 @@
 
 ## 2026-04-20
 
-- `ChatScreen.kt` 给 `observedCollapsedBottomReservePx` 又补了一层更早的 cold-start 预热：当 `uiRuntimeResetKey` 刚重建、共享 measure 宿主已经给出首个有效 `latestConversationBottomPaddingPx` 时，就立即减去 `STREAM_VISIBLE_BOTTOM_GAP` 建立这份发送起步观察值，不再强依赖稳定态窗口先跑出来。这样 clean-state / 冷启动首发时，发送起步不该再轻易掉回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 那条旧 fallback 几何口径；原有两条稳定态观察链继续保留，用来后续校准
+- `ChatScreen.kt` 继续收口了 clean-state 发送起步观察值的写入链：共享 measure 宿主现在会在 `renderChatList(...)` 的 `SideEffect` 里，于“输入为空 + 无 focus + IME 已收起 + composer 非 settling + 未处于 sendStart lock”的稳定窗口中，直接用首个有效 `bottomPaddingPx - STREAM_VISIBLE_BOTTOM_GAP` 种下 `observedCollapsedBottomReservePx`；同时把 `composerTopInViewportPx` 那条旧观察链收窄成“只有列表侧 `latestConversationBottomPaddingPx` 还没产出时才允许写入”的启动 fallback。上一版无条件 cold-start 预热已删除，避免 clean-state 首发后把 focus/send 锁窗口里的 padding 误记成稳定 reserve
 
 ## 2026-04-19
 - `ChatScreen.kt` 把右侧用户消息气泡的最大宽度从 `chromeMaxWidth * 0.8 / 432.dp` 小幅放宽到 `0.84 / 448.dp`。目的只是让长段中文别那么早换行，视觉上更舒展一点；当前仍保持用户气泡是右侧消息气泡，不把它放大到接近整屏

@@ -1788,12 +1788,15 @@ fun ChatScreen() {
     LaunchedEffect(
         composerTopInViewportPx,
         messageViewportHeightPx,
+        latestConversationBottomPaddingPx,
+        sendStartBottomPaddingLockActive,
         isComposerSettling,
         inputFieldFocused,
         imeVisible,
         input.value.text
     ) {
         val collapsedStable =
+            !sendStartBottomPaddingLockActive &&
             !isComposerSettling &&
                 !inputFieldFocused &&
                 !imeVisible &&
@@ -1801,6 +1804,7 @@ fun ChatScreen() {
                 composerTopInViewportPx > 0 &&
                 messageViewportHeightPx > 0
         if (!collapsedStable) return@LaunchedEffect
+        if (latestConversationBottomPaddingPx > 0) return@LaunchedEffect
         val currentCollapsedBottomReservePx =
             (messageViewportHeightPx - composerTopInViewportPx).coerceAtLeast(0)
         if (
@@ -1808,18 +1812,6 @@ fun ChatScreen() {
             currentCollapsedBottomReservePx != observedCollapsedBottomReservePx
         ) {
             observedCollapsedBottomReservePx = currentCollapsedBottomReservePx
-        }
-    }
-    LaunchedEffect(
-        uiRuntimeResetKey,
-        latestConversationBottomPaddingPx
-    ) {
-        if (observedCollapsedBottomReservePx > 0) return@LaunchedEffect
-        if (latestConversationBottomPaddingPx <= 0) return@LaunchedEffect
-        val coldStartReservePx =
-            (latestConversationBottomPaddingPx - streamVisibleBottomGapPx).coerceAtLeast(0)
-        if (coldStartReservePx > 0) {
-            observedCollapsedBottomReservePx = coldStartReservePx
         }
     }
     val streamingWorklineBottomPx by remember(
@@ -3773,6 +3765,19 @@ fun ChatScreen() {
         val renderChatList: @Composable (Int) -> Unit = { bottomPaddingPx ->
             SideEffect {
                 latestConversationBottomPaddingPx = bottomPaddingPx
+                val collapsedStable =
+                    !sendStartBottomPaddingLockActive &&
+                        !isComposerSettling &&
+                        !inputFieldFocused &&
+                        !imeVisible &&
+                        input.value.text.isEmpty()
+                if (collapsedStable && observedCollapsedBottomReservePx <= 0) {
+                    val prewarmedCollapsedBottomReservePx =
+                        (bottomPaddingPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+                    if (prewarmedCollapsedBottomReservePx > 0) {
+                        observedCollapsedBottomReservePx = prewarmedCollapsedBottomReservePx
+                    }
+                }
             }
             val effectiveBottomPaddingPx =
                 lockedConversationBottomPaddingPx.takeIf { it >= 0 } ?: bottomPaddingPx

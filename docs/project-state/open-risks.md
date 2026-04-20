@@ -28,7 +28,7 @@
 - 状态：未关闭
 - 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新真机反馈，发送微抖、首屏首次进入贴底和完成态归位都已收口；当前冻结基线继续保留 `ff4480f` 的 strict follow gate 与 `283f118` 的基础显示门闩，而更激进的 `1cdbf23 Tighten streaming line promotion gate` 已由 `8fb410f` 回退
 - 风险：当前唯一仍开放的聊天 UI 主要体感风险，是 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”。这条问题不能再按“streaming 闪烁都已收口”处理，也不要因为它把整条滚动链重新判回未收口
-- 风险补充：发送期 `bottomPaddingPx` 锁已经压住抖动，普通发送时的锁值当前优先使用最近一次观察到的稳定收口 reserve，理论上不再随多行输入框高度漂移；并且当前已经补了“从 `latestConversationBottomPaddingPx` 预热观察值”这道提前量，冷启动首发走兜底链的概率会更低。但如果某次首发发生在观察值和预热值都还没拿到之前，代码仍会短暂退回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 兜底链；另外，`collapseComposer = false` 的失败重发/不收口分支仍继续走旧快照兜底，这两条边界仍要继续留意
+- 风险补充：发送期 `bottomPaddingPx` 锁已经压住抖动，普通发送时的锁值当前优先使用最近一次观察到的稳定收口 reserve，理论上不再随多行输入框高度漂移；`observedCollapsedBottomReservePx` 现在也已经明确收成“共享 measure 为主、`composerTopInViewportPx` 只在列表侧 `latestConversationBottomPaddingPx` 尚未产出时才负责启动 fallback”。这比之前更不容易被旧观察链反向覆盖，但如果某次首发发生在共享 measure 真值和尚未就绪的启动 fallback 之间，代码仍会短暂退回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 兜底链；另外，`collapseComposer = false` 的失败重发/不收口分支仍继续走旧快照兜底，这两条边界仍要继续留意
 - 风险再补充：`283f118` 那层只落在显示层的基础门闩仍然保留，但 `revealMode = Free`、`onTick = {}` 和 `streamingLineAdvanceTick` 接线并未形成真正生效的 reveal 主链；同时 `ff4480f` 已把 follow suppression 的上容差从一整行收到 `BOTTOM_POSITION_TOLERANCE(16dp)`。因此后续若还残留轻微闪烁，需要继续把它当成“renderer 行级 reveal + bounds/follow 时序边界”的组合问题，而不是重新退回旧 release gate / follow delta 假根因
 - 后续动作：下一轮会诊或真机回归优先只看 5 件事：发送瞬间小球是否稳定贴在工作线、发送瞬间是否仍不抖、发送后输入框是否稳定回缩、生成完成后是否仍按现有 finalize 主链回到工作线而不跳到长 assistant 文本开头、streaming 长段落换行时下一行是否还会提前冒头。如果明天继续找 Claude，会诊稿默认直接带上这条冻结基线：保留 `ff4480f`、保留 `283f118`、`1cdbf23` 已回退；不要顺手多撤其他滚动链修复
 
