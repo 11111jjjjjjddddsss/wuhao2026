@@ -2,7 +2,7 @@
 
 日期：2026-04-22
 
-状态：已决策，待实现
+状态：已决策，第一刀已实现，待真机验证
 
 ## 背景
 
@@ -53,7 +53,7 @@
 
 ## 第一刀实施边界
 
-第一刀目标：覆盖“用户停留底部看 AI 生成”的主场景，并为“用户上滑后回到底部恢复 Overlay”预留状态边界。第一刀可以先分步落地，但文档真相不能把“本轮不再回 Overlay”写成最终产品目标。
+第一刀目标：覆盖“用户停留底部看 AI 生成”的主场景，并为“用户上滑后回到底部恢复 Overlay”预留状态边界。第一刀已在 `ChatScreen.kt` 落地，真机体感待验证；文档真相不能把“本轮不再回 Overlay”写成最终产品目标。
 
 建议新增状态：
 
@@ -69,7 +69,7 @@ private enum class StreamingLocation {
 - `commitSendMessage()` 发送起步后，`streamingLocation = OVERLAY`。
 - `LazyColumn` 内仍保留 assistant placeholder / waiting 小球锚点；Overlay 模式下不在列表 item 内渲染 streaming 正文。
 - `onAdvance` 在 Overlay 模式下直接更新 `streamingMessageContent` / fresh range / reveal buffer，不再走 `resolveStreamingWrapGuardDecision(...)`、`dispatchRawDelta(...)` 或 wrap guard hold。
-- 页面外层增加 `StreamingOverlayHost`，位置与当前工作线一致，宽度和 `chromeMaxWidth / listHorizontalPadding` 口径一致，内部复用 `ChatStreamingRenderer(renderMode = Streaming/Waiting)`。
+- 页面外层通过 `SubcomposeLayout` 同层新增 streaming overlay slot，位置与当前工作线一致，宽度和 `chromeMaxWidth / listHorizontalPadding` 口径一致，内部复用 `ChatStreamingRenderer(renderMode = Streaming)`。
 - Overlay 模式下 `ChatScrollCoordinator` 不应再对 streaming 正文执行 follow delta，因为正文不在列表内长高。
 - 生成完成时先保证 completed assistant 写回 `messages`，再关闭 Overlay。若第一刀无法做到完美交接，至少要让交接路径集中，方便第二刀精修。
 - 如果用户从历史浏览回到底部，且仍在 streaming、没有 active message selection / input selection、列表不在用户拖动或 fling 的中间态，应允许从 `LAZY_COLUMN` 重新切回 `OVERLAY`。切回条件必须收紧，避免用户复制、长按选择或手势进行中突然换层。

@@ -26,8 +26,8 @@
 - 现状：仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也新补了 `docs/runbooks/infra-readiness.md` 作为采购前检查单；但真实云资源、Region、环境命名和实例规格都还没定
 - 待定原因：你现在还没买服务器，正式环境资源一旦落地，就会影响后续部署、日志、数据库、域名、环境变量和 runbook 的真实入口
 
-## D5 Android streaming Overlay 第一刀怎么落地
+## D5 Android streaming Overlay 后续是否继续精修
 
-- 当前选项：按 [ADR-0002](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md) 分刀实施 Bottom-Anchored Streaming Overlay；或继续冻结当前基线先转后端
-- 现状：外部会诊和本地排查已收敛，局部补丁路线（clip / renderer gate / 32ms hold / requestScrollToItem 行锚定 / hard bounds wait / dispatchRawDelta 调参）都已试过或排除。当前已决策 Overlay 是下一轮根治“下一行残影 / 每行轻抖 / 尾部轻抖”的结构方向，但代码尚未实施。最新产品目标已明确：用户上滑时可以交回 LazyColumn，但只要用户回到底部且仍在 streaming，就必须恢复 Overlay，不把“本轮不再回 Overlay”作为最终方案
-- 待定原因：Overlay 第一刀会碰到生成态正文归属、用户上滑 / 回底切层和 finalize 交接，虽然不重写整条滚动链，但属于主结构调整。下个窗口若继续 Android UI，应直接按 ADR-0002 写实施计划并开第一刀；若产品节奏优先，也可以明确冻结当前 UI 基线转后端
+- 当前选项：在 Overlay 第一刀真机验证后，继续做完成态交接精修 / 切层条件修正；或如果体感已经达标，冻结当前 UI 基线转后端
+- 现状：外部会诊和本地排查已收敛，局部补丁路线（clip / renderer gate / 32ms hold / requestScrollToItem 行锚定 / hard bounds wait / dispatchRawDelta 调参）都已试过或排除。`ChatScreen.kt` 当前已按 [ADR-0002](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md) 实施 Overlay 第一刀：底部观看 streaming 正文进 Overlay，用户浏览交回 `LazyColumn`，回到底部且仍在 streaming 时恢复 Overlay；旧 wrap guard/raw delta/follow 只保留给 `LAZY_COLUMN` fallback
+- 待定原因：第一刀已编译通过但尚未真机验证。是否需要第二刀，取决于真机上“下一行残影 / 每行轻抖 / 尾部轻抖 / 上滑回底切层 / 复制选择”这几项反馈

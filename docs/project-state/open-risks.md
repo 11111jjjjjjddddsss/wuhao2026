@@ -23,15 +23,15 @@
 - 风险：跨窗口协作能接住仓库内真相，但任务排队、责任归属、变更说明仍不够结构化
 - 后续动作：需要时再按最小改动补 GitHub 协作层
 
-## R4 聊天滚动链已基本稳，但 streaming 残影/每行轻抖/尾部轻抖仍待 Overlay 改造
+## R4 聊天滚动链已基本稳，但 streaming Overlay 第一刀仍待真机验证
 
 - 状态：未关闭
-- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新代码，发送微抖、首屏首次进入贴底和完成态归位基本收口；但 streaming 生成中仍有三个同源体感问题：长段落换行时工作线下方下一行轻微残影 / 冒头、每一行向上排版时轻微发抖、全部文本完成后尾部收口偶尔轻微抖。当前已判断这些问题共同来自“生成态 assistant 正文在正向 LazyColumn item 内动态长高”，局部补丁已经到头，下一轮根治方向是 [ADR-0002 Bottom-Anchored Streaming Overlay](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md)
-- 风险：Overlay 尚未实现前，当前基线只能维持“残影已减轻但未根治”的状态。不要继续在 `dispatchRawDelta` / bounds release / requestScrollToItem 行锚定 / renderer gate / clip/mask / 32ms hold 这些已排除路径里追加补丁；否则很容易再次把尾部收口、吐字流畅度或已收口滚动链打坏
+- 说明：聊天底座当前已切回正向 `LazyColumn(reverseLayout = false)`；共享 measure 宿主、两阶段 finalize、streaming/settled 同构、首屏贴底 hard reposition 等近几轮修复继续保留。按最新代码，发送微抖、首屏首次进入贴底和完成态归位基本收口；streaming 生成中三个同源体感问题（下一行残影 / 每行轻抖 / 尾部轻抖）已经按 [ADR-0002 Bottom-Anchored Streaming Overlay](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md) 落了第一刀：底部观看时正文进 Overlay，用户浏览时交回 `LazyColumn`，回到底部且仍在 streaming 时恢复 Overlay。小球锚点、发送起步、历史列表、输入框 reserve 和复制链主结构未重写
+- 风险：Overlay 第一刀已经编译通过，但尚未真机回归。需要重点确认：底部观看时下一行残影是否彻底消失、每行上推是否不再像列表补滚、用户上滑是否不抢手、回到底部是否恢复 Overlay、完成态收口是否不比上一基线更抖、复制/输入选择期间是否不会切层。不要继续在 `dispatchRawDelta` / bounds release / requestScrollToItem 行锚定 / renderer gate / clip/mask / 32ms hold 这些已排除路径里追加补丁；这些旧链路当前只允许作为 `LAZY_COLUMN` fallback 存在
 - 风险补充：发送期 `bottomPaddingPx` 锁已经压住抖动，普通发送时的锁值当前优先使用最近一次观察到的稳定收口 reserve，理论上不再随多行输入框高度漂移；`observedCollapsedBottomReservePx` 现在也已经明确收成“共享 measure 为主、`composerTopInViewportPx` 只在列表侧 `latestConversationBottomPaddingPx` 尚未产出时才负责启动 fallback”。这比之前更不容易被旧观察链反向覆盖，但如果某次首发发生在共享 measure 真值和尚未就绪的启动 fallback 之间，代码仍会短暂退回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 兜底链；另外，`collapseComposer = false` 的失败重发/不收口分支仍继续走旧快照兜底，这两条边界仍要继续留意
 - 风险再补充：当前 wrap guard 依赖 ChatScreen 侧缓存的 active block 可用宽度与 style 映射做 pre-measure。paragraph / heading / quote / bullet / numbered 已尽量按当前 renderer 语义对齐，但如果某些 block 的真实宽度、gutter 或 style 与前馈测量仍有偏差，最坏会出现漏补偿（仍有轻微闪露）或轻微过补偿（被 bounds refine 再拉回）。另外，当前 hold 的是整批 reveal batch，而不是精确 wrap cutoff；虽然最新代码已经把 release 条件从“重复 lineCount”收紧成“已观察到旧内容底边真实上移后再放行”，但它仍然不是精确字符级 cutoff，理论上依旧可能留下极轻微 batch 级停顿，或在某些宽度/高度估值不准的 block 上残留少量影子
 - 风险补充 2026-04-21：静态/动态文本上下滑动的丝滑度当前已做过一组只减负、不改主链语义的优化：移除 item 线性反查、缓存列表 padding、bounds/chat metrics 相同值去重、收窄 message content bounds 跟踪范围、jump button offset 分桶、streaming wrap guard pre-measure 小缓存、按 `USER / ASSISTANT` 设置 `LazyColumn contentType`、把 settled markdown committed block 测量收敛到 message 级、把普通滑动期的 selection bounds 写入从 Compose state map 降到非 state cache。另已新增 `:baselineprofile` 模块覆盖冷启动、聊天页滑动、输入框聚焦 / 输入 / 收起的 UI 预编译路径。这些改动都应保留；若真机仍觉得发涩，下一步优先走 Baseline Profile 生成 / Macrobenchmark / JankStats / Perfetto 定位，不要再凭感觉重开工作线、wrap guard、SelectionContainer 结构或 finalize 链
-- 后续动作：下个窗口若继续 Android UI，直接读取 ADR-0002 并按“三刀”推进：第一刀做底部 AutoFollow 态 streaming 正文进 Overlay + 基础完成态交接，并为“用户回到底部恢复 Overlay”预留状态边界；第二刀做用户上滑交回 LazyColumn、回到底部再恢复 Overlay；第三刀做完成态交接精修。若第一刀前需要实施计划，应只围绕 Overlay 写计划，不再重新会诊局部补丁。回归仍需覆盖：发送瞬间小球是否稳定贴工作线、发送后输入框是否稳定回缩、用户不滑时下一行是否还会冒头、用户上滑后回到底部是否恢复 Overlay、每行上推是否还轻抖、完成态尾部是否更稳、切后台 / 杀进程后 completed assistant 是否落盘恢复
+- 后续动作：先让用户真机装机验证 Overlay 第一刀。若底部残影已消但收口仍轻抖，下一刀只做完成态交接精修；若用户上滑/回底切层有问题，先修切层条件，不要重开列表补滚方案。回归仍需覆盖：发送瞬间小球是否稳定贴工作线、发送后输入框是否稳定回缩、用户不滑时下一行是否还会冒头、用户上滑后回到底部是否恢复 Overlay、每行上推是否还轻抖、完成态尾部是否更稳、切后台 / 杀进程后 completed assistant 是否落盘恢复
 
 ## R5 外部会诊仍依赖人工转发上下文
 

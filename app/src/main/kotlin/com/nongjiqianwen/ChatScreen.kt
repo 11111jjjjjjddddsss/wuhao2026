@@ -161,6 +161,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
@@ -867,6 +868,11 @@ private data class StreamingWrapGuardDecision(
     val holdAdvance: Boolean,
     val nextTargetLineCount: Int
 )
+
+private enum class StreamingLocation {
+    OVERLAY,
+    LAZY_COLUMN
+}
 
 private data class StreamingAdvanceMeasureCacheKey(
     val content: String,
@@ -1640,6 +1646,9 @@ fun ChatScreen() {
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
     var streamingWrapGuardTargetLineCount by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var streamingLocation by remember(uiRuntimeResetKey) {
+        mutableStateOf(StreamingLocation.LAZY_COLUMN)
+    }
     val streamingAdvanceMeasureCache = remember(uiRuntimeResetKey) {
         LinkedHashMap<StreamingAdvanceMeasureCacheKey, StreamingActiveBlockLayout?>()
     }
@@ -1911,12 +1920,24 @@ fun ChatScreen() {
             }
         }
     }
+    val streamingOverlayVisible =
+        isStreaming &&
+            streamingLocation == StreamingLocation.OVERLAY &&
+            streamingMessageContent.isNotBlank()
+    val streamingBodyOwnedByOverlay =
+        streamingOverlayVisible &&
+            pendingStreamingFinalizeMessageId.isNullOrBlank()
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
-        if (lastMessage.role == ChatRole.ASSISTANT && hasStreamingItem && currentStreamingContentBottomPx() > 0) {
+        if (
+            lastMessage.role == ChatRole.ASSISTANT &&
+            hasStreamingItem &&
+            !streamingBodyOwnedByOverlay &&
+            currentStreamingContentBottomPx() > 0
+        ) {
             return currentStreamingContentBottomPx()
         }
         val lastMessageId = lastMessage.id
@@ -2538,6 +2559,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
+        streamingLocation = StreamingLocation.LAZY_COLUMN
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
@@ -2851,6 +2873,7 @@ fun ChatScreen() {
             streamingFreshStart = -1
             streamingFreshEnd = -1
             streamingWrapGuardTargetLineCount = -1
+            streamingLocation = StreamingLocation.LAZY_COLUMN
             lastStreamingFreshRevealMs = 0L
             resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             composerSettlingMinHeightPx = 0
@@ -3067,6 +3090,57 @@ fun ChatScreen() {
         )
     }
 
+    LaunchedEffect(
+        isStreaming,
+        streamingLocation,
+        streamingMessageContent,
+        pendingStreamingFinalizeMessageId,
+        scrollMode,
+        recyclerScrollInProgress,
+        chatListUserDragging,
+        programmaticScroll,
+        sendStartAnchorActive,
+        isComposerSettling,
+        hasActiveMessageSelection,
+        messageSelectionToolbarState,
+        pendingMessageSelectionToolbarState,
+        inputSelectionToolbarState,
+        pendingInputSelectionToolbarState,
+        isAtStreamingWorklineStrict()
+    ) {
+        if (!isStreaming) {
+            streamingLocation = StreamingLocation.LAZY_COLUMN
+            return@LaunchedEffect
+        }
+        if (streamingLocation == StreamingLocation.OVERLAY && scrollMode == ScrollMode.UserBrowsing) {
+            streamingLocation = StreamingLocation.LAZY_COLUMN
+            streamingWrapGuardTargetLineCount = -1
+            return@LaunchedEffect
+        }
+        val canRestoreOverlay =
+            streamingLocation == StreamingLocation.LAZY_COLUMN &&
+                streamingMessageContent.isNotBlank() &&
+                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                scrollMode == ScrollMode.AutoFollow &&
+                !recyclerScrollInProgress &&
+                !chatListUserDragging &&
+                !programmaticScroll &&
+                !sendStartAnchorActive &&
+                !isComposerSettling &&
+                !hasActiveMessageSelection &&
+                messageSelectionToolbarState == null &&
+                pendingMessageSelectionToolbarState == null &&
+                inputSelectionToolbarState == null &&
+                pendingInputSelectionToolbarState == null &&
+                isAtStreamingWorklineStrict()
+        if (canRestoreOverlay) {
+            streamingLocation = StreamingLocation.OVERLAY
+            streamingWrapGuardTargetLineCount = -1
+            streamingContentBottomPx = -1
+            streamingMessageId?.let { messageContentBoundsById.remove(it) }
+        }
+    }
+
     LaunchedEffect(chatListUserDragging, programmaticScroll, imeVisible) {
         if (!programmaticScroll && chatListUserDragging && imeVisible) {
             keyboardController?.hide()
@@ -3090,25 +3164,32 @@ fun ChatScreen() {
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
                 streamingMessageId = advance.messageId
-                val wrapGuardDecision = resolveStreamingWrapGuardDecision(
-                    listState = chatListState,
-                    availableWidthPx = streamingAdvanceAvailableWidthPx,
-                    scrollMode = scrollMode,
-                    sendStartAnchorActive = sendStartAnchorActiveState.value,
-                    isComposerSettling = isComposerSettling,
-                    currentTargetLineCount = streamingWrapGuardTargetLineCount,
-                    currentContentBottomPx = currentStreamingContentBottomPx(),
-                    currentLegalBottomPx = currentStreamingLegalBottomPx(),
-                    currentLayoutProvider = {
-                        measureStreamingAdvanceLayout(streamingMessageContent)
-                    },
-                    nextLayoutProvider = {
-                        measureStreamingAdvanceLayout(advance.content)
+                if (
+                    streamingLocation == StreamingLocation.OVERLAY &&
+                    pendingStreamingFinalizeMessageId.isNullOrBlank()
+                ) {
+                    streamingWrapGuardTargetLineCount = -1
+                } else {
+                    val wrapGuardDecision = resolveStreamingWrapGuardDecision(
+                        listState = chatListState,
+                        availableWidthPx = streamingAdvanceAvailableWidthPx,
+                        scrollMode = scrollMode,
+                        sendStartAnchorActive = sendStartAnchorActiveState.value,
+                        isComposerSettling = isComposerSettling,
+                        currentTargetLineCount = streamingWrapGuardTargetLineCount,
+                        currentContentBottomPx = currentStreamingContentBottomPx(),
+                        currentLegalBottomPx = currentStreamingLegalBottomPx(),
+                        currentLayoutProvider = {
+                            measureStreamingAdvanceLayout(streamingMessageContent)
+                        },
+                        nextLayoutProvider = {
+                            measureStreamingAdvanceLayout(advance.content)
+                        }
+                    )
+                    streamingWrapGuardTargetLineCount = wrapGuardDecision.nextTargetLineCount
+                    if (wrapGuardDecision.holdAdvance) {
+                        return@ensureStreamingRevealJob
                     }
-                )
-                streamingWrapGuardTargetLineCount = wrapGuardDecision.nextTargetLineCount
-                if (wrapGuardDecision.holdAdvance) {
-                    return@ensureStreamingRevealJob
                 }
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
@@ -3170,6 +3251,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
+        streamingLocation = StreamingLocation.LAZY_COLUMN
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         fakeStreamJob = null
@@ -3279,6 +3361,8 @@ fun ChatScreen() {
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             if (hasRemoteHistorySource) return@post
             resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
+            streamingLocation = StreamingLocation.OVERLAY
+            streamingWrapGuardTargetLineCount = -1
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -3494,6 +3578,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
+        streamingLocation = StreamingLocation.OVERLAY
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3764,9 +3849,9 @@ fun ChatScreen() {
     }
 
     BindChatListScrollEffects(
-        isStreaming = isStreaming,
-        hasStreamingItem = hasStreamingItem,
-        streamingMessageContent = streamingMessageContent,
+        isStreaming = isStreaming && !streamingBodyOwnedByOverlay,
+        hasStreamingItem = hasStreamingItem && !streamingBodyOwnedByOverlay,
+        streamingMessageContent = if (streamingBodyOwnedByOverlay) "" else streamingMessageContent,
         listScrollInProgress = recyclerScrollInProgress,
         isComposerSettling = isComposerSettling,
         sendStartAnchorActiveState = sendStartAnchorActiveState,
@@ -3834,6 +3919,9 @@ fun ChatScreen() {
         val addIconSize = if (maxWidth < 360.dp) 28.dp else 30.dp
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
+        val overlaySuppressedStreamingPlaceholderHeight = with(density) {
+            assistantStreamingParagraphTextStyle().lineHeight.toDp()
+        }
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
         val pendingStartAnchorScrollOffsetPx by remember(
@@ -4005,6 +4093,9 @@ fun ChatScreen() {
                     val isPendingStreamingFinalizeAssistant =
                         msg.role == ChatRole.ASSISTANT &&
                             msg.id == pendingStreamingFinalizeMessageId
+                    val suppressStreamingBodyInList =
+                        isActiveStreamingAssistant &&
+                            streamingBodyOwnedByOverlay
                     val assistantDisplayContent =
                         if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
                             streamingMessageContent
@@ -4067,7 +4158,13 @@ fun ChatScreen() {
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    if (isActiveStreamingAssistant) {
+                                    if (suppressStreamingBodyInList) {
+                                        Spacer(
+                                            modifier = Modifier.height(
+                                                overlaySuppressedStreamingPlaceholderHeight
+                                            )
+                                        )
+                                    } else if (isActiveStreamingAssistant) {
                                         CompositionLocalProvider(
                                             LocalTextSelectionColors provides messageSelectionColors,
                                             LocalTextToolbar provides messageTextToolbar
@@ -4206,6 +4303,36 @@ fun ChatScreen() {
                             color = Color(0xFF141414),
                             lineHeight = 31.sp,
                             textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+        val renderStreamingOverlay: @Composable () -> Unit = {
+            if (streamingOverlayVisible) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = listHorizontalPadding)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .widthIn(max = chromeMaxWidth)
+                            .fillMaxWidth()
+                    ) {
+                        ChatStreamingRenderer(
+                            content = streamingMessageContent,
+                            renderMode = StreamingRenderMode.Streaming,
+                            freshSuffixEnabled = pendingStreamingFinalizeMessageId.isNullOrBlank(),
+                            showWaitingBall = false,
+                            streamingFreshStart = streamingFreshStart,
+                            streamingFreshEnd = streamingFreshEnd,
+                            streamingFreshTick = streamingFreshTick,
+                            selectionEnabled = false,
+                            showDisclaimer = false,
+                            onStreamingContentBoundsChanged = null,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
@@ -4416,10 +4543,32 @@ fun ChatScreen() {
                     }.map { measurable ->
                         measurable.measure(constraints)
                     }
+                    val streamingOverlayPlaceables = subcompose("conversation_streaming_overlay") {
+                        renderStreamingOverlay()
+                    }.map { measurable ->
+                        measurable.measure(
+                            constraints.copy(
+                                minHeight = 0,
+                                minWidth = constraints.maxWidth,
+                                maxWidth = constraints.maxWidth,
+                                maxHeight = Constraints.Infinity
+                            )
+                        )
+                    }
 
                     layout(constraints.maxWidth, constraints.maxHeight) {
                         listPlaceables.forEach { it.placeRelative(0, 0) }
                         welcomePlaceables.forEach { it.placeRelative(0, 0) }
+                        val overlayBottomPx =
+                            constraints.maxHeight -
+                                measuredComposerHeightPx -
+                                streamVisibleBottomGapPx
+                        streamingOverlayPlaceables.forEach { placeable ->
+                            placeable.placeRelative(
+                                x = 0,
+                                y = overlayBottomPx - placeable.height
+                            )
+                        }
                         composerPlaceables.forEach { placeable ->
                             placeable.placeRelative(0, constraints.maxHeight - placeable.height)
                         }
