@@ -275,7 +275,7 @@ Clean-State 必做回归的范围：
 - 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
 - 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
 - streaming 行级 reveal 当前不再走 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览；运行时必须直接用原始 `StreamingRenderedLines` 渲染，禁止再把 `activeLine` 锁成预览串或空串，避免 activeLine 升格为 stableLine 时出现 1 帧高度塌陷
-- streaming 新行防闪当前不再依赖叶子 renderer 的显示门闩；`rememberGatedStreamingRenderedLines(...)` 已移除。当前改为在 `ChatScreen.kt` 的 streaming `onAdvance` 回调里，基于 `TextMeasurer` 对 active block 做同宽度、同样式的 pre-measure；如果下一拍 active block 的物理行数增加，就先按实测高度差做一次前馈 `scrollBy(deltaPx)`，再写入新的 streaming content。旧的 bounds -> follow 主链继续保留做后续精修，不再把“下一行提前冒头”继续交给晚一拍的 bounds 回写链
+- streaming 新行防闪当前不再依赖叶子 renderer 的显示门闩；`rememberGatedStreamingRenderedLines(...)` 已移除。当前改为在 `ChatScreen.kt` 的 streaming `onAdvance` 回调里，基于 `TextMeasurer` 对 active block 做同宽度、同样式的 pre-measure；如果下一拍 active block 的物理行数增加，就先按实测高度差做一次前馈 `dispatchRawDelta(deltaPx)`，并记录 `streamingWrapGuardTargetLineCount + streamingWrapGuardHoldStartMs`，当前 batch 先不写入 `streamingMessageContent`。release 不再依赖 bounds 证明“已经上移”，而是让出约两帧（当前 `STREAMING_WRAP_GUARD_HOLD_MS = 32ms`）给 LazyColumn 消费这次预滚；到点后必须放行，避免上一版 bounds 硬门闩导致“一行一卡”。旧的 bounds -> follow 主链继续保留做后续精修，不再把“下一行提前冒头”继续交给晚一拍的 bounds 回写链
 - streaming follow 对“是否已经回到工作线”的判断当前也已与发送起步 release gate 拆开：原 `isNearStreamingWorkline()` 继续保留给 sendStart 保护释放等宽容差消费者使用，但 `ChatScrollCoordinator.kt` 的 follow suppression 必须改用更严格的 `isAtStreamingWorklineStrict()`。这个严格版上容差只能收在 `BOTTOM_POSITION_TOLERANCE` 量级，不能再继续吃 `assistantLineStepPx` 那种“一整行高度”的上容差，否则代码会主动允许工作线下方先露出一整行才开始 follow
 - `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时按需补一发“回到底部”归位；这不是旧 `pendingFinalBottomSnap` 状态机，完成态收口后若仍离底，必须复用现有 `scrollToBottom(false)` 静态底线主链，不允许再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部
 - 两阶段 finalize 的第一阶段一旦已经把最终 assistant 内容写入 `messages`，本地持久化快照就不能再把这条 assistant 当成“仍在 streaming 的 transient item”过滤掉；否则切后台 / 杀进程后，本地聊天窗口只会剩下用户消息，看起来像“明明生成过但没落进记录”。当前 `persistableMessagesSnapshot()` 必须继续允许 `pendingStreamingFinalizeMessageId` 对应的 assistant 落盘
@@ -290,7 +290,7 @@ Clean-State 必做回归的范围：
 - 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
 - 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
 - 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
-- 当前主滚动 / 发送抖动 / 首屏贴底 / finalize 体感问题已按最新真机反馈收口。发送微抖已被“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护压住；当前产品口径继续保持：发送瞬间的小球锚点稳定在工作线，避免失败态和短文本收口再次变差。当前唯一仍需继续真机观察的 Android 聊天 UI 主要体感问题，仍是 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”；但当前主修法已切到 `ChatScreen.kt` 的 `onAdvance` 前馈预滚 + `ChatScrollCoordinator.kt` 的 strict follow gate 精修。后续若继续处理，只围绕 active block pre-measure 的宽度/样式对齐、pre-scroll 高度差和 bounds refine 时序排查，不要重新把整条滚动链翻回未收口状态，也不要回到旧 release gate / follow delta 假根因
+- 当前主滚动 / 发送抖动 / 首屏贴底 / finalize 体感问题已按最新真机反馈收口。发送微抖已被“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护压住；当前产品口径继续保持：发送瞬间的小球锚点稳定在工作线，避免失败态和短文本收口再次变差。当前唯一仍需继续真机观察的 Android 聊天 UI 主要体感问题，仍是 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”；但当前主修法已切到 `ChatScreen.kt` 的 `onAdvance` reveal-layer wrap guard（前馈预滚 + 32ms time-based yield）+ `ChatScrollCoordinator.kt` 的 strict follow gate 精修。后续若继续处理，只围绕 active block pre-measure 的宽度/样式对齐、pre-scroll 高度差、time-based hold 时长和 bounds refine 时序排查，不要重新把整条滚动链翻回未收口状态，也不要回到叶子 renderer 门闩 / clip / bounds 硬 release 这些已排除方向
 
 ### 7.5 已修复问题的成因与禁改清单
 
@@ -323,7 +323,7 @@ Clean-State 必做回归的范围：
 4.1 streaming 新行提前冒头 / 一闪一消失
 - 旧现象：工作线这一行还没真正上推完成时，工作线下面的新一行会提前冒头；随后上一行升格，新一行像“一闪一消失”
 - 已确认根因：主因是 active block 涨行那一拍，内容宿主会先增高，而旧链路要等 bounds 回调把 `streamingContentBottomPx` 写回后，下一拍 follow 才会补滚；在正向 `LazyColumn` 下，这个 bounds -> follow 的异步 lag 就会把工作线下面的新一行短暂露出来。旧 `isNearStreamingWorkline()` 的上容差曾直接吃 `assistantLineStepPx`（一整行高度），如果 streaming follow suppression 继续共用它，又会把这类闪露进一步放大
-- 当前修法：移除叶子 renderer 的 `rememberGatedStreamingRenderedLines(...)` 显示门闩，改为在 `ChatScreen.kt` 的 streaming `onAdvance` 回调里，先用 `measureStreamingActiveBlockLayout(...)` 对当前 active block 与下一拍 active block 做同宽度、同样式的 pre-measure；若下一拍物理行数增加，则在写入 `streamingMessageContent` 前先按实测高度差做一次前馈 `scrollBy(deltaPx)`。`ChatScrollCoordinator.kt` 里的 streaming follow suppression 继续使用更严格的 `isAtStreamingWorklineStrict()`，作为 bounds 主链的后续精修
+- 当前修法：移除叶子 renderer 的 `rememberGatedStreamingRenderedLines(...)` 显示门闩，改为在 `ChatScreen.kt` 的 streaming `onAdvance` 回调里，先用 `measureStreamingActiveBlockLayout(...)` 对当前 active block 与下一拍 active block 做同宽度、同样式的 pre-measure；若下一拍物理行数增加，则在写入 `streamingMessageContent` 前先按实测高度差做一次前馈 `dispatchRawDelta(deltaPx)`，记录目标行数与 hold 起点时间，并让出约两帧后再放行 commit。`ChatScrollCoordinator.kt` 里的 streaming follow suppression 继续使用更严格的 `isAtStreamingWorklineStrict()`，作为 bounds 主链的后续精修
 - 禁止回退：不要再把“行提交时机”堆回叶子 renderer；不要恢复 `rememberGatedStreamingRenderedLines(...)`、旧 fresh-line preview、锁空串/锁预览串，也不要用拍脑袋的固定 `lineHeight` 常量替代同一次 `TextMeasurer` 量出来的真实高度差
 
 5. 生成完成瞬间轻微重新排版 / 微调
