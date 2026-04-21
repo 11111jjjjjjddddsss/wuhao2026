@@ -35,7 +35,8 @@
 - 正在生成的 assistant 正文，在用户停留底部观看时，临时从 `LazyColumn` 中拿出来，放到一个浮在列表上方的 Overlay 层。
 - Overlay 底边固定在输入框上方的工作线，内部继续复用现有 `ChatStreamingRenderer`。文本变高时只能向上长，不会向工作线下方冒头。
 - 发送起步小球锚点不改。用户消息和 assistant placeholder / 小球仍按当前 `LazyColumn` 起步链进入列表，继续复用当前 `requestScrollToItem(index, offset)` 发送锚点。
-- 用户手动上滑时采用简单版策略：立即把当前 streaming 内容交回 `LazyColumn`，关闭 Overlay，进入 `UserBrowsing`；本轮后续不再切回 Overlay。
+- 用户手动上滑时，立即把当前 streaming 内容交回 `LazyColumn`，关闭 Overlay，进入 `UserBrowsing`，避免遮挡历史内容和制造双层滚动 / 选择冲突。
+- 如果用户回到底部且本轮仍在 streaming，应重新进入 Overlay。最终产品目标是：**只要用户回到底部观看生成，就继续享受 Overlay 的无残影、无每行补滚抖动体验**。
 - 生成完成时，把完整 assistant 内容写回 `LazyColumn`，再关闭 Overlay；交接这一拍是本方案最需要精修的风险点。
 
 这不是重写整条滚动链，而是把“生成中的动态正文”从滚动链中剥离出来，让 `LazyColumn` 不再承担 bottom-up 高频生长动画。
@@ -48,11 +49,11 @@
 - 改小球首发锚点。
 - 改用户消息、历史消息、首屏贴底、输入框工作线或底部 reserve 主链。
 - 恢复旧 `RecyclerView` / reverseLayout / footer probe / preview lock / renderer gate / clip / 32ms hold / requestScrollToItem 行锚定。
-- 在用户浏览历史时继续悬浮一个大面积 streaming overlay 遮挡历史内容。
+- 在用户浏览历史且未回到底部时继续悬浮一个大面积 streaming overlay 遮挡历史内容。
 
 ## 第一刀实施边界
 
-第一刀目标：只覆盖“用户未打断、停留底部看 AI 生成”的主场景。
+第一刀目标：覆盖“用户停留底部看 AI 生成”的主场景，并为“用户上滑后回到底部恢复 Overlay”预留状态边界。第一刀可以先分步落地，但文档真相不能把“本轮不再回 Overlay”写成最终产品目标。
 
 建议新增状态：
 
@@ -71,13 +72,15 @@ private enum class StreamingLocation {
 - 页面外层增加 `StreamingOverlayHost`，位置与当前工作线一致，宽度和 `chromeMaxWidth / listHorizontalPadding` 口径一致，内部复用 `ChatStreamingRenderer(renderMode = Streaming/Waiting)`。
 - Overlay 模式下 `ChatScrollCoordinator` 不应再对 streaming 正文执行 follow delta，因为正文不在列表内长高。
 - 生成完成时先保证 completed assistant 写回 `messages`，再关闭 Overlay。若第一刀无法做到完美交接，至少要让交接路径集中，方便第二刀精修。
+- 如果用户从历史浏览回到底部，且仍在 streaming、没有 active message selection / input selection、列表不在用户拖动或 fling 的中间态，应允许从 `LAZY_COLUMN` 重新切回 `OVERLAY`。切回条件必须收紧，避免用户复制、长按选择或手势进行中突然换层。
 
 ## 后续分刀
 
-第二刀：用户上滑交回 `LazyColumn`。
+第二刀：用户上滑交回 `LazyColumn`，回到底部再恢复 Overlay。
 
 - 一旦用户拖动进入 `UserBrowsing`，把当前 `streamingMessageContent` 写回列表内 active assistant item，`streamingLocation = LAZY_COLUMN`。
-- 本轮后续不再回 Overlay，避免 overlay 与列表之间反复交接引入新抖动。
+- 当用户点击“回到底部”或自然滚回底部，且仍在 streaming、列表已回到工作线附近、没有选择/复制态、没有拖动/惯性滚动时，再把当前 active streaming 正文从 `LazyColumn` 切回 Overlay。
+- 切回 Overlay 不是重写滚动链；它只改变当前 streaming 正文的渲染归属。历史消息、用户消息、小球锚点、输入框 reserve、首屏贴底和 completed 消息仍继续由原链路负责。
 
 第三刀：完成态交接精修。
 
@@ -98,6 +101,7 @@ private enum class StreamingLocation {
 当 `streamingLocation == LAZY_COLUMN`：
 
 - 保持当前基线：reveal-layer wrap guard + active block pre-measure + strict follow gate 仍可作为用户浏览态 / 回退态兜底。
+- 若用户回到底部并切回 Overlay，应同时清掉 wrap guard pending 状态（例如 `streamingWrapGuardTargetLineCount = -1`），避免旧 guard 在 Overlay 模式里继续 hold。
 
 ## 验收项
 
@@ -108,6 +112,7 @@ private enum class StreamingLocation {
 - 每行向上排版时，不再出现明显的列表补滚式轻抖。
 - 生成完成后，尾部收口不比当前基线更差；若仍轻微抖，记录到第三刀处理。
 - 用户手动上滑时不抢手、不遮挡历史。
+- 用户上滑后再回到底部，如果仍在 streaming，应恢复 Overlay，并且回底后不再出现下一行残影 / 每行补滚式轻抖。
 - 输入框 reserve、placeholder、发送禁用逻辑不回退。
 - completed assistant 正常落盘，切后台 / 杀进程后仍能恢复。
 

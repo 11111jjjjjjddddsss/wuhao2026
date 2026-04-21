@@ -6,6 +6,7 @@
 ## 2026-04-22
 
 - 新增 [ADR-0002](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md)，正式把下一轮 Android 生成态 UI 方向从局部补丁收敛到 Bottom-Anchored Streaming Overlay。当前判断：streaming 下一行残影、每行上推轻微发抖、完成态尾部轻微抖动共同来自“生成态 assistant 正文在正向 `LazyColumn` item 内动态长高”。已排除并禁止继续盲试的方向包括 clip/mask、renderer gate、32ms hold、requestScrollToItem 行锚定、hard bounds wait 和继续调 `dispatchRawDelta`。下一窗口若继续 Android UI，应直接按 ADR-0002 写实施计划并开 Overlay 第一刀：底部 AutoFollow 态 streaming 正文进 Overlay，小球锚点和当前发送起步链不重写。
+- ADR-0002 随最新产品目标补充：用户上滑时可以把当前 streaming 正文交回 `LazyColumn`，避免 overlay 遮挡历史；但只要用户回到底部且仍在 streaming，就必须恢复 Overlay。也就是说“本轮不再回 Overlay”只能作为临时降级，不是最终方案。切回条件必须避开文字选择、输入选择、手指拖动和惯性滚动中途，其他滚动链仍不重写。
 - `ChatComposerPanel.kt` 把输入框占位文案“描述种植问题”的隐藏条件从“生成中或发送收口中都隐藏”收窄为“仅 composer / IME 收口几何仍未稳定时隐藏”。当前生成中只要输入框已经清空且收口稳定，占位文案会提前回来，不再等 streaming finalize 最后一拍才和 completed 切换、发送按钮恢复一起出现。这刀只改输入框视觉显示门，不改发送禁用逻辑、工作线、streaming wrap guard、AutoFollow 或 finalize 主链。
 
 ## 2026-04-21

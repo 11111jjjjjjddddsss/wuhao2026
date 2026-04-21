@@ -29,5 +29,5 @@
 ## D5 Android streaming Overlay 第一刀怎么落地
 
 - 当前选项：按 [ADR-0002](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md) 分刀实施 Bottom-Anchored Streaming Overlay；或继续冻结当前基线先转后端
-- 现状：外部会诊和本地排查已收敛，局部补丁路线（clip / renderer gate / 32ms hold / requestScrollToItem 行锚定 / hard bounds wait / dispatchRawDelta 调参）都已试过或排除。当前已决策 Overlay 是下一轮根治“下一行残影 / 每行轻抖 / 尾部轻抖”的结构方向，但代码尚未实施
-- 待定原因：Overlay 第一刀会碰到生成态正文归属和 finalize 交接，虽然不重写整条滚动链，但属于主结构调整。下个窗口若继续 Android UI，应直接按 ADR-0002 写实施计划并开第一刀；若产品节奏优先，也可以明确冻结当前 UI 基线转后端
+- 现状：外部会诊和本地排查已收敛，局部补丁路线（clip / renderer gate / 32ms hold / requestScrollToItem 行锚定 / hard bounds wait / dispatchRawDelta 调参）都已试过或排除。当前已决策 Overlay 是下一轮根治“下一行残影 / 每行轻抖 / 尾部轻抖”的结构方向，但代码尚未实施。最新产品目标已明确：用户上滑时可以交回 LazyColumn，但只要用户回到底部且仍在 streaming，就必须恢复 Overlay，不把“本轮不再回 Overlay”作为最终方案
+- 待定原因：Overlay 第一刀会碰到生成态正文归属、用户上滑 / 回底切层和 finalize 交接，虽然不重写整条滚动链，但属于主结构调整。下个窗口若继续 Android UI，应直接按 ADR-0002 写实施计划并开第一刀；若产品节奏优先，也可以明确冻结当前 UI 基线转后端
