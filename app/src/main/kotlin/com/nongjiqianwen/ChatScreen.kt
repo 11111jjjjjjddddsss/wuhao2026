@@ -3632,6 +3632,10 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (streamingBackgrounded) return@LaunchedEffect
+        if (!pendingStreamingFinalizeShouldRestoreBottomAnchor) {
+            finalizeStreamingStop(shouldRestoreBottomAnchor = false)
+            return@LaunchedEffect
+        }
         snapshotFlow {
             messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
                 bounds.bottom > bounds.top && bounds.bottom > 0f
