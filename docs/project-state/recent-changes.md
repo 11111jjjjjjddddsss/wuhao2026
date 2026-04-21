@@ -6,7 +6,7 @@
 ## 2026-04-21
 
 - `ChatScreen.kt` 修复了“聊天列表还在滚动/惯性中点输入框，输入框刚打开又立刻被关掉”的小 bug。原逻辑在 `recyclerScrollInProgress && imeVisible` 时会立即 `clearFocus + hide keyboard`，把 fling 惯性滚动也当成需要收键盘；现在这条收键盘链只在用户手指正在拖动列表（`chatListUserDragging`）时触发，列表惯性未停时点输入框不再被误杀。正常在消息区主动拖动时收键盘的行为仍保留
-- `ChatRecyclerViewHost.kt` / `ChatScreen.kt` 先做了一轮聊天文本上下滑动丝滑度的低风险优化：列表宿主改为直接接收消息对象和稳定 key，移除 `itemIds = messages.map { ... }` 与每个可见 item 内部的 `messages.firstOrNull { ... }` 线性反查；`LazyColumn` 的 `PaddingValues` 改为按 padding/density `remember` 缓存；`ChatScreen.kt` 对 chat metrics、message content bounds、root/viewport/composer bounds 等高频回写点增加相同值去重，减少滑动期间无意义重组。这刀不处理 streaming 下一行冒头残影，也不改工作线 / wrap guard / AutoFollow / finalize 主链
+- `ChatRecyclerViewHost.kt` / `ChatScreen.kt` 先做了一轮聊天文本上下滑动丝滑度的低风险优化：列表宿主改为直接接收消息对象和稳定 key，移除 `itemIds = messages.map { ... }` 与每个可见 item 内部的 `messages.firstOrNull { ... }` 线性反查；`LazyColumn` 的 `PaddingValues` 改为按 padding/density `remember` 缓存；`ChatScreen.kt` 对 chat metrics、message content bounds、root/viewport/composer bounds 等高频回写点增加相同值去重，并进一步把 content bounds 跟踪收窄到最后一条消息 / active streaming / pending finalize，把 jump button 需要的首项滚动 offset 按 24px 分桶。动态生成侧只额外给 `onAdvance` wrap guard 的 active block pre-measure 加了 4 条小缓存，减少同内容同宽度的重复 `TextMeasurer` 测量。这刀不处理 streaming 下一行冒头残影，也不改工作线 / wrap guard 语义 / AutoFollow / finalize 主链
 
 ## 2026-04-20
 

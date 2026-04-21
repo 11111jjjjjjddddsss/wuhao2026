@@ -286,6 +286,7 @@ private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 16
 private const val INPUT_MAX_CHARS = 6000
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
+private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
 internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
@@ -867,36 +868,31 @@ private data class StreamingWrapGuardDecision(
     val nextTargetLineCount: Int
 )
 
+private data class StreamingAdvanceMeasureCacheKey(
+    val content: String,
+    val widthPx: Int
+)
+
 private fun resolveStreamingWrapGuardDecision(
     listState: LazyListState,
-    currentContent: String,
-    nextContent: String,
     availableWidthPx: Int,
-    density: Density,
-    textMeasurer: TextMeasurer,
     scrollMode: ScrollMode,
     sendStartAnchorActive: Boolean,
     isComposerSettling: Boolean,
     currentTargetLineCount: Int,
     currentContentBottomPx: Int,
-    currentLegalBottomPx: Int
+    currentLegalBottomPx: Int,
+    currentLayoutProvider: () -> StreamingActiveBlockLayout?,
+    nextLayoutProvider: () -> StreamingActiveBlockLayout?
 ): StreamingWrapGuardDecision {
     if (availableWidthPx <= 0) return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     if (sendStartAnchorActive || isComposerSettling || scrollMode == ScrollMode.UserBrowsing) {
         return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     }
-    val currentLayout = measureStreamingActiveBlockLayout(
-        content = currentContent,
-        availableWidthPx = availableWidthPx,
-        density = density,
-        textMeasurer = textMeasurer
-    ) ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
-    val nextLayout = measureStreamingActiveBlockLayout(
-        content = nextContent,
-        availableWidthPx = availableWidthPx,
-        density = density,
-        textMeasurer = textMeasurer
-    ) ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    val currentLayout = currentLayoutProvider()
+        ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
+    val nextLayout = nextLayoutProvider()
+        ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     if (currentLayout.lineCount <= 0 || nextLayout.lineCount <= currentLayout.lineCount) {
         return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1)
     }
@@ -1644,6 +1640,9 @@ fun ChatScreen() {
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
     var streamingWrapGuardTargetLineCount by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    val streamingAdvanceMeasureCache = remember(uiRuntimeResetKey) {
+        LinkedHashMap<StreamingAdvanceMeasureCacheKey, StreamingActiveBlockLayout?>()
+    }
     val initialChatListIndex = remember(uiRuntimeResetKey, initialLocalMessages.size) {
         initialLocalMessages.lastIndex.coerceAtLeast(0)
     }
@@ -2299,7 +2298,19 @@ fun ChatScreen() {
         )
     }
 
+    fun shouldTrackMessageContentBounds(messageId: String): Boolean {
+        return messageId == messages.lastOrNull()?.id ||
+            messageId == streamingMessageId ||
+            messageId == pendingStreamingFinalizeMessageId
+    }
+
     fun updateMessageContentBounds(messageId: String, bounds: Rect?) {
+        if (!shouldTrackMessageContentBounds(messageId)) {
+            if (messageContentBoundsById.containsKey(messageId)) {
+                messageContentBoundsById.remove(messageId)
+            }
+            return
+        }
         if (bounds != null) {
             if (messageContentBoundsById[messageId] != bounds) {
                 messageContentBoundsById[messageId] = bounds
@@ -2969,9 +2980,37 @@ fun ChatScreen() {
         if (recyclerFirstVisibleItemIndex != metrics.firstVisibleItemIndex) {
             recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
         }
-        if (recyclerFirstVisibleItemScrollOffset != metrics.firstVisibleItemScrollOffset) {
-            recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
+        val scrollOffsetBucket =
+            metrics.firstVisibleItemScrollOffset / SCROLL_OFFSET_METRIC_BUCKET_PX
+        val currentScrollOffsetBucket =
+            recyclerFirstVisibleItemScrollOffset / SCROLL_OFFSET_METRIC_BUCKET_PX
+        if (currentScrollOffsetBucket != scrollOffsetBucket) {
+            recyclerFirstVisibleItemScrollOffset =
+                scrollOffsetBucket * SCROLL_OFFSET_METRIC_BUCKET_PX
         }
+    }
+
+    fun measureStreamingAdvanceLayout(content: String): StreamingActiveBlockLayout? {
+        val widthPx = streamingAdvanceAvailableWidthPx
+        val key = StreamingAdvanceMeasureCacheKey(
+            content = content,
+            widthPx = widthPx
+        )
+        if (streamingAdvanceMeasureCache.containsKey(key)) {
+            return streamingAdvanceMeasureCache[key]
+        }
+        val layout = measureStreamingActiveBlockLayout(
+            content = content,
+            availableWidthPx = widthPx,
+            density = density,
+            textMeasurer = streamingAdvanceTextMeasurer
+        )
+        streamingAdvanceMeasureCache[key] = layout
+        while (streamingAdvanceMeasureCache.size > 4) {
+            val oldestKey = streamingAdvanceMeasureCache.keys.firstOrNull() ?: break
+            streamingAdvanceMeasureCache.remove(oldestKey)
+        }
+        return layout
     }
 
     LaunchedEffect(chatListState) {
@@ -3034,17 +3073,19 @@ fun ChatScreen() {
                 streamingMessageId = advance.messageId
                 val wrapGuardDecision = resolveStreamingWrapGuardDecision(
                     listState = chatListState,
-                    currentContent = streamingMessageContent,
-                    nextContent = advance.content,
                     availableWidthPx = streamingAdvanceAvailableWidthPx,
-                    density = density,
-                    textMeasurer = streamingAdvanceTextMeasurer,
                     scrollMode = scrollMode,
                     sendStartAnchorActive = sendStartAnchorActiveState.value,
                     isComposerSettling = isComposerSettling,
                     currentTargetLineCount = streamingWrapGuardTargetLineCount,
                     currentContentBottomPx = currentStreamingContentBottomPx(),
-                    currentLegalBottomPx = currentStreamingLegalBottomPx()
+                    currentLegalBottomPx = currentStreamingLegalBottomPx(),
+                    currentLayoutProvider = {
+                        measureStreamingAdvanceLayout(streamingMessageContent)
+                    },
+                    nextLayoutProvider = {
+                        measureStreamingAdvanceLayout(advance.content)
+                    }
                 )
                 streamingWrapGuardTargetLineCount = wrapGuardDecision.nextTargetLineCount
                 if (wrapGuardDecision.holdAdvance) {
