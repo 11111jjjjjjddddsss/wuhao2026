@@ -151,6 +151,7 @@
 交付要求：
 - Android 改动后编译：`./gradlew.bat :app:compileDebugKotlin`
 - Android 改动默认只做编译验证，不主动执行 `:app:installDebug`；真机安装与回归默认由用户自行完成，只有用户明确要求 Codex 装机时才执行安装
+- Android 若改动聊天页关键 UI 预热路径（`ChatScreen.kt`、`ChatStreamingRenderer.kt`、`ChatComposerPanel.kt`、`ChatComposerCoordinator.kt`、`ChatRecyclerViewHost.kt`，或 Selection / Markdown / LazyColumn / 输入框 IME 主链），必须同步检查 [docs/runbooks/android-baseline-profile.md](D:/wuhao/docs/runbooks/android-baseline-profile.md)：确认是否需要更新 `:baselineprofile` 的关键路径脚本、是否需要重新生成 Baseline Profile。小样式 / 文案通常不需要，但发版前若关键路径变更，应重跑 `:app:generateReleaseBaselineProfile`
 - Go 后端改动后编译：`cd server-go && go build ./...`
 - 每次改动后都要检查影响面
 - 若改动影响当前真相、风险、待决策、运维口径或方案取舍，必须同步更新 `docs/project-state`、`docs/adr`、`docs/runbooks`

@@ -21,6 +21,25 @@
 
 当前关键路径只做 UI 预热，不点击发送，不触发后端 / 模型调用。
 
+## Codex 修改检查清单
+
+以后只要改到聊天页关键 UI 路径，Codex 需要主动检查本 runbook 和 `:baselineprofile` 脚本是否要跟着更新，不要让用户自己记。
+
+必须检查的常见改动范围：
+
+- `ChatScreen.kt` 的首屏、hydrate、聊天列表、输入框接线、IME、Selection、发送起步、streaming / finalize 主链
+- `ChatStreamingRenderer.kt` 的 Markdown、SelectionContainer 包裹范围、TextLayout / TextMeasurer、streaming / settled 渲染结构
+- `ChatComposerPanel.kt` / `ChatComposerCoordinator.kt` 的输入框聚焦、输入、回缩、长文本编辑、键盘交互
+- `ChatRecyclerViewHost.kt` 的 LazyColumn item 结构、key、contentType、padding、滚动容器
+- 新增会影响“冷启动首次进入、首次滑长文、首次点输入框”的关键交互
+
+处理规则：
+
+- 如果只是颜色、文案、很小的视觉参数，通常不需要更新 baseline profile 脚本
+- 如果关键路径或可点击 / 可滑动 / 可聚焦节点发生变化，需要同步检查 `BaselineProfileGenerator.exerciseChatCriticalPath(...)` 和 `ChatMacrobenchmark.chatScrollAndComposer`
+- 如果新增了新的首屏关键路径或替换了输入框 / 列表主结构，应把新路径加入 baseline profile 采集
+- 正式发版前，如果这些关键 UI 路径近期变过，应重新运行 `.\gradlew.bat :app:generateReleaseBaselineProfile`
+
 ## 本地编译验证
 
 ```powershell
