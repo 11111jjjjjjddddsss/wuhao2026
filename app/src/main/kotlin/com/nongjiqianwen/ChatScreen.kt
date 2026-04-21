@@ -1722,6 +1722,7 @@ fun ChatScreen() {
             putAll(initialLocalSnapshot.failedAssistantMessageStates)
         }
     }
+    val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
@@ -2244,7 +2245,7 @@ fun ChatScreen() {
     }
     var messageSelectionResetEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
-        messageSelectionBoundsById[state.messageId]
+        messageSelectionBoundsById[state.messageId] ?: messageSelectionBoundsCacheById[state.messageId]
 
     fun buildResolvedMessageSelectionToolbarState(
         messageId: String,
@@ -2296,6 +2297,24 @@ fun ChatScreen() {
             onCopyRequested = pending.onCopyRequested,
             onCopyFullRequested = pending.onCopyFullRequested
         )
+    }
+
+    fun shouldTrackMessageSelectionBounds(messageId: String): Boolean {
+        return messageSelectionToolbarState?.messageId == messageId ||
+            pendingMessageSelectionToolbarState?.messageId == messageId
+    }
+
+    fun updateMessageSelectionBoundsIfNeeded(messageId: String, bounds: Rect) {
+        messageSelectionBoundsCacheById[messageId] = bounds
+        if (!shouldTrackMessageSelectionBounds(messageId)) {
+            if (messageSelectionBoundsById.containsKey(messageId)) {
+                messageSelectionBoundsById.remove(messageId)
+            }
+            return
+        }
+        if (messageSelectionBoundsById[messageId] != bounds) {
+            messageSelectionBoundsById[messageId] = bounds
+        }
     }
 
     fun shouldTrackMessageContentBounds(messageId: String): Boolean {
@@ -2452,7 +2471,7 @@ fun ChatScreen() {
                         text = fullCopyText
                     )
                 }
-                val bounds = messageSelectionBoundsById[messageId]
+                val bounds = messageSelectionBoundsById[messageId] ?: messageSelectionBoundsCacheById[messageId]
                 if (bounds == null) {
                     pendingMessageSelectionToolbarState = PendingMessageSelectionToolbarState(
                         messageId = messageId,
@@ -3131,6 +3150,7 @@ fun ChatScreen() {
         // Drop stale streaming bounds so the finalized settled host must report
         // a fresh bottom before we hand geometry ownership away from streaming.
         messageContentBoundsById.remove(anchorMessageId)
+        messageSelectionBoundsCacheById.remove(anchorMessageId)
         messageSelectionBoundsById.remove(anchorMessageId)
         pendingStreamingFinalizeMessageId = anchorMessageId
         pendingStreamingFinalizeShouldRestoreBottomAnchor = shouldRestoreBottomAnchor
@@ -4032,9 +4052,7 @@ fun ChatScreen() {
                                 .onGloballyPositioned { coordinates ->
                                     if (msg.role == ChatRole.ASSISTANT) {
                                         val bounds = coordinates.boundsInWindow()
-                                        if (messageSelectionBoundsById[msg.id] != bounds) {
-                                            messageSelectionBoundsById[msg.id] = bounds
-                                        }
+                                        updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
                                         applyPendingMessageSelectionToolbarIfReady(
                                             messageId = msg.id,
                                             bounds = bounds
@@ -4128,8 +4146,8 @@ fun ChatScreen() {
                                         userBubbleColor = userBubbleColor,
                                         userBubbleBorderColor = userBubbleBorderColor,
                                         onBubbleBoundsChanged = { bounds ->
-                                            if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
-                                                messageSelectionBoundsById[msg.id] = bounds
+                                            if (bounds != null) {
+                                                updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
                                             }
                                             updateMessageContentBounds(msg.id, bounds)
                                             if (bounds != null) {
