@@ -876,8 +876,12 @@ private fun requestStreamingLineAdvanceAnchorIfNeeded(
     isComposerSettling: Boolean,
     streamingItemIndex: Int,
     currentLayoutProvider: () -> StreamingActiveBlockLayout?,
-    nextLayoutProvider: () -> StreamingActiveBlockLayout?
+    nextLayoutProvider: () -> StreamingActiveBlockLayout?,
+    enabled: Boolean = true
 ): Boolean {
+    if (!enabled) {
+        return false
+    }
     if (availableWidthPx <= 0) {
         return false
     }
@@ -1622,6 +1626,8 @@ fun ChatScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
+    var finishAfterRevealDrainJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
+    var streamingSourceExhausted by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val density = LocalDensity.current
     val streamingAdvanceTextMeasurer = rememberTextMeasurer()
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
@@ -2521,6 +2527,8 @@ fun ChatScreen() {
         mainHandler.removeCallbacksAndMessages(null)
         fakeStreamJob?.cancel()
         fakeStreamJob = null
+        finishAfterRevealDrainJob?.cancel()
+        finishAfterRevealDrainJob = null
         streamRevealJob?.cancel()
         streamRevealJob = null
         remoteRecoveryJob?.cancel()
@@ -2535,6 +2543,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         lastStreamingFreshRevealMs = 0L
+        streamingSourceExhausted = false
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
@@ -2571,6 +2580,7 @@ fun ChatScreen() {
         onDispose {
             mainHandler.removeCallbacksAndMessages(null)
             fakeStreamJob?.cancel()
+            finishAfterRevealDrainJob?.cancel()
             streamRevealJob?.cancel()
             remoteRecoveryJob?.cancel()
             SessionApi.resetUiRuntimeForCleanState()
@@ -2836,6 +2846,8 @@ fun ChatScreen() {
             SessionApi.cancelCurrentStream()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
+            finishAfterRevealDrainJob?.cancel()
+            finishAfterRevealDrainJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
@@ -2847,6 +2859,7 @@ fun ChatScreen() {
             streamingFreshStart = -1
             streamingFreshEnd = -1
             lastStreamingFreshRevealMs = 0L
+            streamingSourceExhausted = false
             resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
@@ -3097,7 +3110,8 @@ fun ChatScreen() {
                     },
                     nextLayoutProvider = {
                         measureStreamingAdvanceLayout(advance.content)
-                    }
+                    },
+                    enabled = !streamingSourceExhausted
                 )
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
@@ -3149,6 +3163,8 @@ fun ChatScreen() {
     fun finalizeStreamingStop(
         shouldRestoreBottomAnchor: Boolean
     ) {
+        finishAfterRevealDrainJob?.cancel()
+        finishAfterRevealDrainJob = null
         isStreaming = false
         sendUiSettling = false
         sendStartViewportHeightPx = 0
@@ -3159,6 +3175,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         lastStreamingFreshRevealMs = 0L
+        streamingSourceExhausted = false
         streamingBackgrounded = false
         fakeStreamJob = null
         streamRevealJob = null
@@ -3170,6 +3187,30 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
+            streamingSourceExhausted = true
+            if (streamingRevealBuffer.isNotEmpty()) {
+                ensureStreamingRevealJob()
+                if (finishAfterRevealDrainJob?.isActive != true) {
+                    finishAfterRevealDrainJob = snackbarScope.launch {
+                        while (
+                            isActive &&
+                            isStreaming &&
+                            pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                            streamingRevealBuffer.isNotEmpty()
+                        ) {
+                            delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+                        }
+                        if (
+                            isActive &&
+                            isStreaming &&
+                            pendingStreamingFinalizeMessageId.isNullOrBlank()
+                        ) {
+                            finishStreaming()
+                        }
+                    }
+                }
+                return@post
+            }
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             streamRevealJob?.cancel()
             streamRevealJob = null
@@ -3237,6 +3278,7 @@ fun ChatScreen() {
 
             var remaining = fullText.drop(safeSkipChars)
             if (remaining.isEmpty()) {
+                streamingSourceExhausted = true
                 while (isActive && streamingRevealBuffer.isNotEmpty()) {
                     delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
                 }
@@ -3254,6 +3296,7 @@ fun ChatScreen() {
                     delay(step.delayMs)
                 }
             }
+            streamingSourceExhausted = true
             while (isActive && streamingRevealBuffer.isNotEmpty()) {
                 delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
             }
@@ -3300,6 +3343,8 @@ fun ChatScreen() {
             clearPendingStreamingFinalize()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
+            finishAfterRevealDrainJob?.cancel()
+            finishAfterRevealDrainJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
@@ -3476,6 +3521,9 @@ fun ChatScreen() {
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
+        finishAfterRevealDrainJob?.cancel()
+        finishAfterRevealDrainJob = null
+        streamingSourceExhausted = false
         streamingMessageContent = ""
         streamingRevealBuffer = ""
         streamingFreshStart = -1
@@ -3531,7 +3579,12 @@ fun ChatScreen() {
                             images = emptyList()
                         ),
                         onChunk = { piece -> appendAssistantChunk(piece) },
-                        onComplete = { finishStreaming() },
+                        onComplete = {
+                            mainHandler.post {
+                                streamingSourceExhausted = true
+                                finishStreaming()
+                            }
+                        },
                         onInterrupted = { reason -> handleAssistantInterrupted(userId, reason) }
                     )
                 } else {
@@ -3667,11 +3720,14 @@ fun ChatScreen() {
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
             fakeStreamJob?.cancel()
             fakeStreamJob = null
+            finishAfterRevealDrainJob?.cancel()
+            finishAfterRevealDrainJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             streamingMessageId = finalId
             streamingMessageContent = finalContent
             streamingRevealBuffer = ""
+            streamingSourceExhausted = true
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,

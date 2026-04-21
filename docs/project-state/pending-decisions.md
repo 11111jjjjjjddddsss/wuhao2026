@@ -1,6 +1,6 @@
 # 待决策事项
 
-最后更新：2026-04-19
+最后更新：2026-04-21
 
 ## D1 运维入口优先固化到什么形式
 
@@ -29,5 +29,5 @@
 ## D5 Android 聊天 UI 下一轮只围绕哪一条继续会诊
 
 - 当前选项：明天仅围绕“streaming 下一行提前冒头 / 一闪一消失”发 Claude 自包含短稿；或先冻结当前基线继续观察，不重新会诊整条滚动链
-- 现状：滚动主链、发送微抖、首屏贴底和 finalize 归位按当前真机口径已收口；当前冻结基线保留 `ff4480f` 的 strict follow gate，但 streaming 新行主修法已经切到 `ChatScreen.kt` 的 `onAdvance` reveal-layer wrap guard。旧 `rememberGatedStreamingRenderedLines(...)`、preview lock、draw-phase clip，以及 `StreamingRevealMode.Conservative / strictLineReveal / lineRevealLocked / streamingLineAdvanceTick` 这条 reveal 空转链都已删除
-- 待定原因：当前唯一开放问题已经缩到 `onAdvance` 提交口与 active block pre-measure 的交界；如果下一窗口不写死“只看 wrap guard / pre-measure / follow refine”，很容易把已收口的滚动链问题重新一起翻回来
+- 现状：滚动主链、发送微抖、首屏贴底和 finalize 归位按当前真机口径已基本收口；当前冻结基线保留 `ff4480f` 的 strict follow gate，streaming 新行主修法已从 reveal-layer wrap guard 进一步切到 `ChatScreen.kt` 的 `onAdvance` active block pre-measure + `requestScrollToItem(index, scrollOffset)` remeasure 锚定。远端/本地源头结束后只剩本地 `streamingRevealBuffer` 尾巴时，当前会暂停新的行锚定，先 drain 尾巴再进入两阶段 finalize，专门观察尾部完成瞬间是否恢复稳定。旧 `rememberGatedStreamingRenderedLines(...)`、preview lock、draw-phase clip、`dispatchRawDelta + 32ms hold`，以及 `StreamingRevealMode.Conservative / strictLineReveal / lineRevealLocked / streamingLineAdvanceTick` 这条 reveal 空转链都已删除
+- 待定原因：当前唯一开放问题已经缩到 `onAdvance` 提交口、active block pre-measure、`requestScrollToItem` offset 语义、terminal drain 与 bounds follow 精修的交界；如果下一窗口不写死“只看这几处”，很容易把已收口的滚动链问题重新一起翻回来
