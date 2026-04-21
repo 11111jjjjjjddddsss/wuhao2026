@@ -1,6 +1,6 @@
 # 待决策事项
 
-最后更新：2026-04-21
+最后更新：2026-04-22
 
 ## D1 运维入口优先固化到什么形式
 
@@ -26,8 +26,8 @@
 - 现状：仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也新补了 `docs/runbooks/infra-readiness.md` 作为采购前检查单；但真实云资源、Region、环境命名和实例规格都还没定
 - 待定原因：你现在还没买服务器，正式环境资源一旦落地，就会影响后续部署、日志、数据库、域名、环境变量和 runbook 的真实入口
 
-## D5 Android 聊天 UI 下一轮只围绕哪一条继续会诊
+## D5 Android streaming Overlay 第一刀怎么落地
 
-- 当前选项：明天仅围绕“streaming 下一行提前冒头 / 一闪一消失”发 Claude 自包含短稿；或先冻结当前基线继续观察，不重新会诊整条滚动链
-- 现状：滚动主链、发送微抖、首屏贴底和 finalize 归位按当前真机口径已收口；当前冻结基线保留 `ff4480f` 的 strict follow gate，但 streaming 新行主修法已经切到 `ChatScreen.kt` 的 `onAdvance` reveal-layer wrap guard。旧 `rememberGatedStreamingRenderedLines(...)`、preview lock、draw-phase clip，以及 `StreamingRevealMode.Conservative / strictLineReveal / lineRevealLocked / streamingLineAdvanceTick` 这条 reveal 空转链都已删除
-- 待定原因：当前唯一开放问题已经缩到 `onAdvance` 提交口与 active block pre-measure 的交界；如果下一窗口不写死“只看 wrap guard / pre-measure / follow refine”，很容易把已收口的滚动链问题重新一起翻回来
+- 当前选项：按 [ADR-0002](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md) 分刀实施 Bottom-Anchored Streaming Overlay；或继续冻结当前基线先转后端
+- 现状：外部会诊和本地排查已收敛，局部补丁路线（clip / renderer gate / 32ms hold / requestScrollToItem 行锚定 / hard bounds wait / dispatchRawDelta 调参）都已试过或排除。当前已决策 Overlay 是下一轮根治“下一行残影 / 每行轻抖 / 尾部轻抖”的结构方向，但代码尚未实施
+- 待定原因：Overlay 第一刀会碰到生成态正文归属和 finalize 交接，虽然不重写整条滚动链，但属于主结构调整。下个窗口若继续 Android UI，应直接按 ADR-0002 写实施计划并开第一刀；若产品节奏优先，也可以明确冻结当前 UI 基线转后端
