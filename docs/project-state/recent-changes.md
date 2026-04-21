@@ -5,6 +5,7 @@
 
 ## 2026-04-21
 
+- `ChatScreen.kt` 修复了“聊天列表还在滚动/惯性中点输入框，输入框刚打开又立刻被关掉”的小 bug。原逻辑在 `recyclerScrollInProgress && imeVisible` 时会立即 `clearFocus + hide keyboard`，导致滚动中主动点输入框也被误杀；现在输入框若是在当前滚动尚未停止时获得 focus，会临时保护这一轮 focus，等滚动停止后自动解除。正常在消息区滑动时收键盘的行为仍保留
 - `ChatRecyclerViewHost.kt` / `ChatScreen.kt` 先做了一轮聊天文本上下滑动丝滑度的低风险优化：列表宿主改为直接接收消息对象和稳定 key，移除 `itemIds = messages.map { ... }` 与每个可见 item 内部的 `messages.firstOrNull { ... }` 线性反查；`LazyColumn` 的 `PaddingValues` 改为按 padding/density `remember` 缓存；`ChatScreen.kt` 对 chat metrics、message content bounds、root/viewport/composer bounds 等高频回写点增加相同值去重，减少滑动期间无意义重组。这刀不处理 streaming 下一行冒头残影，也不改工作线 / wrap guard / AutoFollow / finalize 主链
 
 ## 2026-04-20

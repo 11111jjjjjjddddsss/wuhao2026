@@ -1653,6 +1653,9 @@ fun ChatScreen() {
     var recyclerScrollInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var recyclerFirstVisibleItemScrollOffset by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var suppressKeyboardDismissForInputFocusDuringScroll by remember(uiRuntimeResetKey) {
+        mutableStateOf(false)
+    }
     val scrollRuntime = rememberChatScrollRuntimeState(
         chatScopeId = uiRuntimeResetKey,
         startupBottomBarHeightEstimatePx = startupBottomBarHeightEstimatePx,
@@ -2535,6 +2538,7 @@ fun ChatScreen() {
         initialBottomSnapDone = false
         suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
+        suppressKeyboardDismissForInputFocusDuringScroll = false
         clearInputSelectionToolbar()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
@@ -3009,8 +3013,24 @@ fun ChatScreen() {
         )
     }
 
-    LaunchedEffect(recyclerScrollInProgress, programmaticScroll, imeVisible) {
-        if (!programmaticScroll && recyclerScrollInProgress && imeVisible) {
+    LaunchedEffect(recyclerScrollInProgress) {
+        if (!recyclerScrollInProgress) {
+            suppressKeyboardDismissForInputFocusDuringScroll = false
+        }
+    }
+
+    LaunchedEffect(
+        recyclerScrollInProgress,
+        programmaticScroll,
+        imeVisible,
+        suppressKeyboardDismissForInputFocusDuringScroll
+    ) {
+        if (
+            !programmaticScroll &&
+            recyclerScrollInProgress &&
+            imeVisible &&
+            !suppressKeyboardDismissForInputFocusDuringScroll
+        ) {
             keyboardController?.hide()
             focusManager.clearFocus(force = true)
         }
@@ -4216,10 +4236,15 @@ fun ChatScreen() {
                 onInputFocused = { focused ->
                     inputFieldFocused = focused
                     if (focused) {
+                        if (recyclerScrollInProgress) {
+                            suppressKeyboardDismissForInputFocusDuringScroll = true
+                        }
                         suppressInputCursor = false
                         inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
                             startupInputContentHeightEstimatePx
                         )
+                    } else {
+                        suppressKeyboardDismissForInputFocusDuringScroll = false
                     }
                 },
                 onInputContentHeightChanged = { height ->
