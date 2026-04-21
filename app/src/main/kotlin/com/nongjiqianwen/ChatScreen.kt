@@ -1723,6 +1723,7 @@ fun ChatScreen() {
         }
     }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
+    val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
@@ -2244,7 +2245,7 @@ fun ChatScreen() {
     }
     var messageSelectionResetEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     fun currentSelectionMessageBounds(state: MessageSelectionToolbarState): Rect? =
-        messageSelectionBoundsById[state.messageId]
+        messageSelectionBoundsById[state.messageId] ?: messageSelectionBoundsCacheById[state.messageId]
 
     fun buildResolvedMessageSelectionToolbarState(
         messageId: String,
@@ -2296,6 +2297,27 @@ fun ChatScreen() {
             onCopyRequested = pending.onCopyRequested,
             onCopyFullRequested = pending.onCopyFullRequested
         )
+    }
+
+    fun shouldPublishMessageSelectionBounds(messageId: String): Boolean {
+        return messageSelectionToolbarState?.messageId == messageId ||
+            pendingMessageSelectionToolbarState?.messageId == messageId
+    }
+
+    fun updateMessageSelectionBounds(messageId: String, bounds: Rect?) {
+        if (bounds == null) {
+            messageSelectionBoundsCacheById.remove(messageId)
+            if (messageSelectionBoundsById.containsKey(messageId)) {
+                messageSelectionBoundsById.remove(messageId)
+            }
+            return
+        }
+        if (messageSelectionBoundsCacheById[messageId] != bounds) {
+            messageSelectionBoundsCacheById[messageId] = bounds
+        }
+        if (shouldPublishMessageSelectionBounds(messageId) && messageSelectionBoundsById[messageId] != bounds) {
+            messageSelectionBoundsById[messageId] = bounds
+        }
     }
 
     fun shouldTrackMessageContentBounds(messageId: String): Boolean {
@@ -2452,7 +2474,7 @@ fun ChatScreen() {
                         text = fullCopyText
                     )
                 }
-                val bounds = messageSelectionBoundsById[messageId]
+                val bounds = messageSelectionBoundsCacheById[messageId] ?: messageSelectionBoundsById[messageId]
                 if (bounds == null) {
                     pendingMessageSelectionToolbarState = PendingMessageSelectionToolbarState(
                         messageId = messageId,
@@ -2461,6 +2483,9 @@ fun ChatScreen() {
                         onCopyFullRequested = onCopyFull
                     )
                     return
+                }
+                if (messageSelectionBoundsById[messageId] != bounds) {
+                    messageSelectionBoundsById[messageId] = bounds
                 }
                 val nextState = buildResolvedMessageSelectionToolbarState(
                     messageId = messageId,
@@ -3015,6 +3040,12 @@ fun ChatScreen() {
 
     LaunchedEffect(chatListState) {
         snapshotFlow { readChatListMetrics(chatListState) }
+            .distinctUntilChanged { old, new ->
+                old.scrollInProgress == new.scrollInProgress &&
+                    old.firstVisibleItemIndex == new.firstVisibleItemIndex &&
+                    old.firstVisibleItemScrollOffset / SCROLL_OFFSET_METRIC_BUCKET_PX ==
+                    new.firstVisibleItemScrollOffset / SCROLL_OFFSET_METRIC_BUCKET_PX
+            }
             .collect { metrics ->
                 updateChatListMetrics(metrics)
             }
@@ -3963,6 +3994,7 @@ fun ChatScreen() {
                 ) { msg ->
                     DisposableEffect(msg.id) {
                         onDispose {
+                            messageSelectionBoundsCacheById.remove(msg.id)
                             messageSelectionBoundsById.remove(msg.id)
                             messageContentBoundsById.remove(msg.id)
                             if (pendingMessageSelectionToolbarState?.messageId == msg.id) {
@@ -4027,9 +4059,7 @@ fun ChatScreen() {
                                 .onGloballyPositioned { coordinates ->
                                     if (msg.role == ChatRole.ASSISTANT) {
                                         val bounds = coordinates.boundsInWindow()
-                                        if (messageSelectionBoundsById[msg.id] != bounds) {
-                                            messageSelectionBoundsById[msg.id] = bounds
-                                        }
+                                        updateMessageSelectionBounds(msg.id, bounds)
                                         applyPendingMessageSelectionToolbarIfReady(
                                             messageId = msg.id,
                                             bounds = bounds
@@ -4123,9 +4153,7 @@ fun ChatScreen() {
                                         userBubbleColor = userBubbleColor,
                                         userBubbleBorderColor = userBubbleBorderColor,
                                         onBubbleBoundsChanged = { bounds ->
-                                            if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
-                                                messageSelectionBoundsById[msg.id] = bounds
-                                            }
+                                            updateMessageSelectionBounds(msg.id, bounds)
                                             updateMessageContentBounds(msg.id, bounds)
                                             if (bounds != null) {
                                                 applyPendingMessageSelectionToolbarIfReady(
