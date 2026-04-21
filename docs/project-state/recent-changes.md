@@ -5,6 +5,7 @@
 
 ## 2026-04-21
 
+- `ChatScreen.kt` 修复最近几轮新行锚定后出现的“全部文本完成后尾部往上弹一下”：远端 `onComplete` 到达时，如果本地 `streamingRevealBuffer` 还没按 typewriter 节奏吐完，现在不再取消 reveal job 并一次性 `flushStreamingRevealBuffer(...)` 到可见正文，而是启动一个很小的等待 job，等现有 reveal job 把尾巴消化完后再进入两阶段 finalize。这样最后几字 / 半行继续经过 `onAdvance` 的 active block pre-measure + `requestScrollToItem` remeasure 锚定，不绕过 streaming 新行防闪主链；新发送、reset、dispose、后台同步完成等路径都会清理这个等待 job，避免残留
 - `ChatScreen.kt` 继续替换 streaming 新行防闪主链：上一版 `dispatchRawDelta + streamingWrapGuardTargetLineCount / streamingWrapGuardHoldStartMs + 32ms time-based yield` 真机仍能看到工作线下方闪字，且继续叠加会让方案并存。当前已把这套 time gate 撤掉，改为在 `onAdvance` 里仅做 active block pre-measure；若下一批字符会让物理行数增加，就根据当前可见 streaming item 的 top offset 与实测高度差发出 `requestScrollToItem(index, scrollOffset)`，请求下一次 remeasure 时 item 顶边上移同等高度，然后同拍提交 `streamingMessageContent`。旧 renderer 门闩、clip、freshTick / lineAdvanceTick、bounds 硬等待和 32ms hold 均不恢复
 - `ChatScreen.kt` 同时给 streaming 完成态收口加了一个很窄的 2dp finalize-only 容差：当 completed fresh bounds 已经和工作线几乎对齐时，不再为了最后几像素额外补一发 `scrollToBottom(false)`，避免“全部文本完成后最后一拍微抖”。静态态首屏贴底和回到底部按钮仍保持原来的 0dp 静态容差
 - `ChatScreen.kt` 把 streaming wrap guard 的 release 从 bounds 硬门闩改成 time-based yield：如果 active block pre-measure 检测到下一批字符会让物理行数增加，仍先 `dispatchRawDelta(deltaPx)` 前馈预滚并 hold 这一批 reveal；但 release 不再等待 `currentStreamingContentBottomPx()` 证明完整上移，而是记录 `streamingWrapGuardHoldStartMs`，让出约两帧（32ms）后强制放行。上一版“等旧内容底边真实上移 requiredDeltaPx”已回退，因为真机上会导致吐字一行一卡、不会自动下滚；新方案目标是避免卡死，同时给 LazyColumn 一小段时间消费预滚。旧 renderer 门闩、clip、freshTick / lineAdvanceTick 和 reveal 空转参数仍不恢复

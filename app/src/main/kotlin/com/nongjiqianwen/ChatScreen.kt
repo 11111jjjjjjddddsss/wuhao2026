@@ -1623,6 +1623,7 @@ fun ChatScreen() {
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
+    var finishAfterRevealDrainJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
     val streamingAdvanceTextMeasurer = rememberTextMeasurer()
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
@@ -2523,6 +2524,8 @@ fun ChatScreen() {
         mainHandler.removeCallbacksAndMessages(null)
         fakeStreamJob?.cancel()
         fakeStreamJob = null
+        finishAfterRevealDrainJob?.cancel()
+        finishAfterRevealDrainJob = null
         streamRevealJob?.cancel()
         streamRevealJob = null
         remoteRecoveryJob?.cancel()
@@ -2573,6 +2576,7 @@ fun ChatScreen() {
         onDispose {
             mainHandler.removeCallbacksAndMessages(null)
             fakeStreamJob?.cancel()
+            finishAfterRevealDrainJob?.cancel()
             streamRevealJob?.cancel()
             remoteRecoveryJob?.cancel()
             SessionApi.resetUiRuntimeForCleanState()
@@ -2838,6 +2842,8 @@ fun ChatScreen() {
             SessionApi.cancelCurrentStream()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
+            finishAfterRevealDrainJob?.cancel()
+            finishAfterRevealDrainJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
@@ -3151,6 +3157,8 @@ fun ChatScreen() {
     fun finalizeStreamingStop(
         shouldRestoreBottomAnchor: Boolean
     ) {
+        finishAfterRevealDrainJob?.cancel()
+        finishAfterRevealDrainJob = null
         isStreaming = false
         sendUiSettling = false
         sendStartViewportHeightPx = 0
@@ -3172,6 +3180,29 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
+            if (streamingRevealBuffer.isNotEmpty()) {
+                ensureStreamingRevealJob()
+                if (finishAfterRevealDrainJob?.isActive != true) {
+                    finishAfterRevealDrainJob = snackbarScope.launch {
+                        while (
+                            isActive &&
+                            isStreaming &&
+                            pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                            streamingRevealBuffer.isNotEmpty()
+                        ) {
+                            delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
+                        }
+                        if (
+                            isActive &&
+                            isStreaming &&
+                            pendingStreamingFinalizeMessageId.isNullOrBlank()
+                        ) {
+                            finishStreaming()
+                        }
+                    }
+                }
+                return@post
+            }
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             streamRevealJob?.cancel()
             streamRevealJob = null
@@ -3302,6 +3333,8 @@ fun ChatScreen() {
             clearPendingStreamingFinalize()
             fakeStreamJob?.cancel()
             fakeStreamJob = null
+            finishAfterRevealDrainJob?.cancel()
+            finishAfterRevealDrainJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
@@ -3478,6 +3511,8 @@ fun ChatScreen() {
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
+        finishAfterRevealDrainJob?.cancel()
+        finishAfterRevealDrainJob = null
         streamingMessageContent = ""
         streamingRevealBuffer = ""
         streamingFreshStart = -1
@@ -3671,6 +3706,8 @@ fun ChatScreen() {
             val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
             fakeStreamJob?.cancel()
             fakeStreamJob = null
+            finishAfterRevealDrainJob?.cancel()
+            finishAfterRevealDrainJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             streamingMessageId = finalId
