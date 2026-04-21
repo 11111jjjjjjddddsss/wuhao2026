@@ -1927,6 +1927,7 @@ fun ChatScreen() {
     val streamingBodyOwnedByOverlay =
         streamingOverlayVisible &&
             pendingStreamingFinalizeMessageId.isNullOrBlank()
+    val streamingBodyFollowEnabled = !streamingOverlayVisible
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
@@ -1941,7 +1942,13 @@ fun ChatScreen() {
             return currentStreamingContentBottomPx()
         }
         val lastMessageId = lastMessage.id
-        val bounds = if (lastMessage.role == ChatRole.ASSISTANT) {
+        val shouldIgnoreOverlayAssistantBounds =
+            lastMessage.role == ChatRole.ASSISTANT &&
+                lastMessage.id == streamingMessageId &&
+                streamingOverlayVisible
+        val bounds = if (shouldIgnoreOverlayAssistantBounds) {
+            null
+        } else if (lastMessage.role == ChatRole.ASSISTANT) {
             messageContentBoundsById[lastMessageId]
         } else {
             messageContentBoundsById[lastMessageId] ?: messageSelectionBoundsById[lastMessageId]
@@ -3108,11 +3115,21 @@ fun ChatScreen() {
         pendingInputSelectionToolbarState,
         isAtStreamingWorklineStrict()
     ) {
+        val selectionInactive =
+            !hasActiveMessageSelection &&
+                messageSelectionToolbarState == null &&
+                pendingMessageSelectionToolbarState == null &&
+                inputSelectionToolbarState == null &&
+                pendingInputSelectionToolbarState == null
         if (!isStreaming) {
             streamingLocation = StreamingLocation.LAZY_COLUMN
             return@LaunchedEffect
         }
-        if (streamingLocation == StreamingLocation.OVERLAY && scrollMode == ScrollMode.UserBrowsing) {
+        if (
+            streamingLocation == StreamingLocation.OVERLAY &&
+            scrollMode == ScrollMode.UserBrowsing &&
+            selectionInactive
+        ) {
             streamingLocation = StreamingLocation.LAZY_COLUMN
             streamingWrapGuardTargetLineCount = -1
             return@LaunchedEffect
@@ -3127,11 +3144,7 @@ fun ChatScreen() {
                 !programmaticScroll &&
                 !sendStartAnchorActive &&
                 !isComposerSettling &&
-                !hasActiveMessageSelection &&
-                messageSelectionToolbarState == null &&
-                pendingMessageSelectionToolbarState == null &&
-                inputSelectionToolbarState == null &&
-                pendingInputSelectionToolbarState == null &&
+                selectionInactive &&
                 isAtStreamingWorklineStrict()
         if (canRestoreOverlay) {
             streamingLocation = StreamingLocation.OVERLAY
@@ -3849,9 +3862,10 @@ fun ChatScreen() {
     }
 
     BindChatListScrollEffects(
-        isStreaming = isStreaming && !streamingBodyOwnedByOverlay,
-        hasStreamingItem = hasStreamingItem && !streamingBodyOwnedByOverlay,
-        streamingMessageContent = if (streamingBodyOwnedByOverlay) "" else streamingMessageContent,
+        isStreaming = isStreaming,
+        hasStreamingItem = hasStreamingItem,
+        streamingMessageContent = streamingMessageContent,
+        streamingBodyFollowEnabled = streamingBodyFollowEnabled,
         listScrollInProgress = recyclerScrollInProgress,
         isComposerSettling = isComposerSettling,
         sendStartAnchorActiveState = sendStartAnchorActiveState,
@@ -4096,6 +4110,9 @@ fun ChatScreen() {
                     val suppressStreamingBodyInList =
                         isActiveStreamingAssistant &&
                             streamingBodyOwnedByOverlay
+                    val hideFinalizedBodyUnderOverlay =
+                        isPendingStreamingFinalizeAssistant &&
+                            streamingOverlayVisible
                     val assistantDisplayContent =
                         if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
                             streamingMessageContent
@@ -4200,7 +4217,11 @@ fun ChatScreen() {
                                                             updateMessageContentBounds(msg.id, null)
                                                         }
                                                     },
-                                                    modifier = Modifier.fillMaxWidth()
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .alpha(
+                                                            if (hideFinalizedBodyUnderOverlay) 0f else 1f
+                                                        )
                                                 )
                                             }
                                         }

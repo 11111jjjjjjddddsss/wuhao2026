@@ -254,6 +254,7 @@ internal fun BindChatListScrollEffects(
     isStreaming: Boolean,
     hasStreamingItem: Boolean,
     streamingMessageContent: String,
+    streamingBodyFollowEnabled: Boolean,
     listScrollInProgress: Boolean,
     isComposerSettling: Boolean,
     sendStartAnchorActiveState: MutableState<Boolean>,
@@ -276,6 +277,7 @@ internal fun BindChatListScrollEffects(
         isStreaming,
         hasStreamingItem,
         streamingMessageContent,
+        streamingBodyFollowEnabled,
         sendStartAnchorActiveState.value,
         scrollMode,
         userInteracting,
@@ -317,6 +319,10 @@ internal fun BindChatListScrollEffects(
                 continue
             }
             sendStartAnchorReleaseArmedState.value = false
+            if (!streamingBodyFollowEnabled) {
+                streamBottomFollowActiveState.value = false
+                continue
+            }
             if (activeScrollMode == ScrollMode.UserBrowsing) {
                 if (
                     !listScrollInProgress &&
