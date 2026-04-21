@@ -2299,6 +2299,16 @@ fun ChatScreen() {
         )
     }
 
+    fun updateMessageContentBounds(messageId: String, bounds: Rect?) {
+        if (bounds != null) {
+            if (messageContentBoundsById[messageId] != bounds) {
+                messageContentBoundsById[messageId] = bounds
+            }
+        } else if (messageContentBoundsById.containsKey(messageId)) {
+            messageContentBoundsById.remove(messageId)
+        }
+    }
+
     fun selectionDismissTapModifier(vararg keys: Any): Modifier =
         Modifier.pointerInput(*keys) {
             detectTapGestures(onTap = { clearMessageSelection() })
@@ -2952,12 +2962,22 @@ fun ChatScreen() {
         )
     }
 
+    fun updateChatListMetrics(metrics: ChatListMetrics) {
+        if (recyclerScrollInProgress != metrics.scrollInProgress) {
+            recyclerScrollInProgress = metrics.scrollInProgress
+        }
+        if (recyclerFirstVisibleItemIndex != metrics.firstVisibleItemIndex) {
+            recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
+        }
+        if (recyclerFirstVisibleItemScrollOffset != metrics.firstVisibleItemScrollOffset) {
+            recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
+        }
+    }
+
     LaunchedEffect(chatListState) {
         snapshotFlow { readChatListMetrics(chatListState) }
             .collect { metrics ->
-                recyclerScrollInProgress = metrics.scrollInProgress
-                recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
-                recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
+                updateChatListMetrics(metrics)
             }
     }
 
@@ -2982,10 +3002,7 @@ fun ChatScreen() {
                     programmaticScrollState = scrollRuntime.programmaticScroll,
                     listState = chatListState,
                     refreshChatListMetrics = { listState ->
-                        val metrics = readChatListMetrics(listState)
-                        recyclerScrollInProgress = metrics.scrollInProgress
-                        recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
-                        recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
+                        updateChatListMetrics(readChatListMetrics(listState))
                     }
                 )
             }
@@ -3480,10 +3497,7 @@ fun ChatScreen() {
     }
 
     fun refreshChatListMetrics(listState: LazyListState) {
-        val metrics = readChatListMetrics(listState)
-        recyclerScrollInProgress = metrics.scrollInProgress
-        recyclerFirstVisibleItemIndex = metrics.firstVisibleItemIndex
-        recyclerFirstVisibleItemScrollOffset = metrics.firstVisibleItemScrollOffset
+        updateChatListMetrics(readChatListMetrics(listState))
     }
 
     fun beginProgrammaticChatListScroll() {
@@ -3706,13 +3720,21 @@ fun ChatScreen() {
             .fillMaxSize()
             .background(appCenterTint)
             .onSizeChanged {
-                chatRootWidthPx = it.width
-                chatRootHeightPx = it.height
+                if (chatRootWidthPx != it.width) {
+                    chatRootWidthPx = it.width
+                }
+                if (chatRootHeightPx != it.height) {
+                    chatRootHeightPx = it.height
+                }
             }
             .onGloballyPositioned { coordinates ->
                 val bounds = coordinates.boundsInWindow()
-                chatRootLeftPx = bounds.left
-                chatRootTopPx = bounds.top
+                if (chatRootLeftPx != bounds.left) {
+                    chatRootLeftPx = bounds.left
+                }
+                if (chatRootTopPx != bounds.top) {
+                    chatRootTopPx = bounds.top
+                }
             }
     ) {
         val chromeMaxWidth: Dp = when {
@@ -3877,7 +3899,8 @@ fun ChatScreen() {
             ) {
                 ChatRecyclerViewHost(
                     listState = chatListState,
-                    itemIds = messages.map { it.id },
+                    items = messages,
+                    itemKey = { it.id },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = effectiveBottomPaddingPx,
                     modifier = Modifier
@@ -3896,8 +3919,7 @@ fun ChatScreen() {
                                 Modifier.graphicsLayer(alpha = 0f)
                             }
                         )
-                ) { itemId ->
-                    val msg = messages.firstOrNull { it.id == itemId } ?: return@ChatRecyclerViewHost
+                ) { msg ->
                     DisposableEffect(msg.id) {
                         onDispose {
                             messageSelectionBoundsById.remove(msg.id)
@@ -4007,11 +4029,14 @@ fun ChatScreen() {
                                                     showDisclaimer = true,
                                                     onStreamingContentBoundsChanged = { bounds ->
                                                         if (bounds != null) {
-                                                            messageContentBoundsById[msg.id] = bounds
-                                                            streamingContentBottomPx =
+                                                            updateMessageContentBounds(msg.id, bounds)
+                                                            val nextStreamingContentBottomPx =
                                                                 (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                            if (streamingContentBottomPx != nextStreamingContentBottomPx) {
+                                                                streamingContentBottomPx = nextStreamingContentBottomPx
+                                                            }
                                                         } else {
-                                                            messageContentBoundsById.remove(msg.id)
+                                                            updateMessageContentBounds(msg.id, null)
                                                         }
                                                     },
                                                     modifier = Modifier.fillMaxWidth()
@@ -4026,11 +4051,7 @@ fun ChatScreen() {
                                             selectionResetKey = messageSelectionResetEpoch,
                                             showDisclaimer = true,
                                             onContentBoundsChanged = { bounds ->
-                                                if (bounds != null) {
-                                                    messageContentBoundsById[msg.id] = bounds
-                                                } else {
-                                                    messageContentBoundsById.remove(msg.id)
-                                                }
+                                                updateMessageContentBounds(msg.id, bounds)
                                             },
                                             modifier = Modifier.fillMaxWidth()
                                         )
@@ -4052,23 +4073,19 @@ fun ChatScreen() {
                                     horizontalAlignment = Alignment.End,
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                        SelectableRenderedUserMessageBubble(
-                                            content = msg.content,
-                                            textSelectionColors = messageSelectionColors,
-                                            textToolbar = messageTextToolbar,
-                                            selectionResetKey = messageSelectionResetEpoch,
-                                            userBubbleMaxWidth = userBubbleMaxWidth,
-                                            userBubbleColor = userBubbleColor,
-                                            userBubbleBorderColor = userBubbleBorderColor,
-                                            onBubbleBoundsChanged = { bounds ->
-                                                if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
-                                                    messageSelectionBoundsById[msg.id] = bounds
-                                                }
-                                            if (bounds != null) {
-                                                messageContentBoundsById[msg.id] = bounds
-                                            } else {
-                                                messageContentBoundsById.remove(msg.id)
+                                    SelectableRenderedUserMessageBubble(
+                                        content = msg.content,
+                                        textSelectionColors = messageSelectionColors,
+                                        textToolbar = messageTextToolbar,
+                                        selectionResetKey = messageSelectionResetEpoch,
+                                        userBubbleMaxWidth = userBubbleMaxWidth,
+                                        userBubbleColor = userBubbleColor,
+                                        userBubbleBorderColor = userBubbleBorderColor,
+                                        onBubbleBoundsChanged = { bounds ->
+                                            if (bounds != null && messageSelectionBoundsById[msg.id] != bounds) {
+                                                messageSelectionBoundsById[msg.id] = bounds
                                             }
+                                            updateMessageContentBounds(msg.id, bounds)
                                             if (bounds != null) {
                                                 applyPendingMessageSelectionToolbarIfReady(
                                                     messageId = msg.id,
@@ -4164,22 +4181,36 @@ fun ChatScreen() {
                     .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
                     .zIndex(55f)
                     .onGloballyPositioned { coordinates ->
-                        composerHostBoundsInWindow = coordinates.boundsInWindow()
+                        val bounds = coordinates.boundsInWindow()
+                        if (composerHostBoundsInWindow != bounds) {
+                            composerHostBoundsInWindow = bounds
+                        }
                     },
                 onChromeMeasured = { height ->
-                    inputChromeRowHeightPx = height
-                    if (height > 0) {
+                    if (inputChromeRowHeightPx != height) {
+                        inputChromeRowHeightPx = height
+                    }
+                    if (height > 0 && !inputChromeMeasured) {
                         inputChromeMeasured = true
                     }
                 },
                 onChromeBoundsChanged = { bounds ->
-                    composerChromeBoundsInWindow = bounds
+                    if (composerChromeBoundsInWindow != bounds) {
+                        composerChromeBoundsInWindow = bounds
+                    }
                 },
                 onInputBoundsChanged = { bounds ->
-                    inputFieldBoundsInWindow = bounds
-                    composerTopInViewportPx =
+                    if (inputFieldBoundsInWindow != bounds) {
+                        inputFieldBoundsInWindow = bounds
+                    }
+                    val nextComposerTopInViewportPx =
                         (bounds.top - messageViewportTopPx).roundToInt()
-                    composerMeasured = true
+                    if (composerTopInViewportPx != nextComposerTopInViewportPx) {
+                        composerTopInViewportPx = nextComposerTopInViewportPx
+                    }
+                    if (!composerMeasured) {
+                        composerMeasured = true
+                    }
                     applyPendingInputSelectionToolbarIfReady(bounds)
                 },
                 onInputFocused = { focused ->
@@ -4192,7 +4223,9 @@ fun ChatScreen() {
                     }
                 },
                 onInputContentHeightChanged = { height ->
-                    inputContentHeightPx = height
+                    if (inputContentHeightPx != height) {
+                        inputContentHeightPx = height
+                    }
                 },
                 onInputValueChange = {
                     suppressInputCursor = false
@@ -4260,16 +4293,24 @@ fun ChatScreen() {
                         }
                     }
                     .onSizeChanged {
-                        messageViewportWidthPx = it.width
-                        messageViewportHeightPx = it.height
+                        if (messageViewportWidthPx != it.width) {
+                            messageViewportWidthPx = it.width
+                        }
+                        if (messageViewportHeightPx != it.height) {
+                            messageViewportHeightPx = it.height
+                        }
                         if (it.width > 0 && it.height > 0) {
                             messageViewportMeasured = true
                         }
                     }
                     .onGloballyPositioned { coordinates ->
                         val bounds = coordinates.boundsInWindow()
-                        messageViewportLeftPx = bounds.left
-                        messageViewportTopPx = bounds.top
+                        if (messageViewportLeftPx != bounds.left) {
+                            messageViewportLeftPx = bounds.left
+                        }
+                        if (messageViewportTopPx != bounds.top) {
+                            messageViewportTopPx = bounds.top
+                        }
                     }
             ) {
                 SubcomposeLayout(
@@ -4377,7 +4418,11 @@ fun ChatScreen() {
                     .fillMaxWidth()
                     .height(topBarReservedHeight)
                     .onGloballyPositioned { coordinates ->
-                        topChromeMaskBottomPx = coordinates.boundsInWindow().bottom.roundToInt()
+                        val nextTopChromeMaskBottomPx =
+                            coordinates.boundsInWindow().bottom.roundToInt()
+                        if (topChromeMaskBottomPx != nextTopChromeMaskBottomPx) {
+                            topChromeMaskBottomPx = nextTopChromeMaskBottomPx
+                        }
                     }
                     .background(pageSurface)
                     .zIndex(45f)

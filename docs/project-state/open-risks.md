@@ -1,6 +1,6 @@
 # 当前未关闭风险
 
-最后更新：2026-04-20
+最后更新：2026-04-21
 
 ## R1 运维入口仍以文档骨架为主
 
@@ -30,6 +30,7 @@
 - 风险：当前唯一仍开放的聊天 UI 主要体感风险，是 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”。虽然主修法已经切到 reveal-layer wrap guard，但这条问题仍需要真机验证，不能现在就按“streaming 闪烁已收口”处理，也不要因为它把整条滚动链重新判回未收口
 - 风险补充：发送期 `bottomPaddingPx` 锁已经压住抖动，普通发送时的锁值当前优先使用最近一次观察到的稳定收口 reserve，理论上不再随多行输入框高度漂移；`observedCollapsedBottomReservePx` 现在也已经明确收成“共享 measure 为主、`composerTopInViewportPx` 只在列表侧 `latestConversationBottomPaddingPx` 尚未产出时才负责启动 fallback”。这比之前更不容易被旧观察链反向覆盖，但如果某次首发发生在共享 measure 真值和尚未就绪的启动 fallback 之间，代码仍会短暂退回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 兜底链；另外，`collapseComposer = false` 的失败重发/不收口分支仍继续走旧快照兜底，这两条边界仍要继续留意
 - 风险再补充：当前 wrap guard 依赖 ChatScreen 侧缓存的 active block 可用宽度与 style 映射做 pre-measure。paragraph / heading / quote / bullet / numbered 已尽量按当前 renderer 语义对齐，但如果某些 block 的真实宽度、gutter 或 style 与前馈测量仍有偏差，最坏会出现漏补偿（仍有轻微闪露）或轻微过补偿（被 bounds refine 再拉回）。另外，当前 hold 的是整批 reveal batch，而不是精确 wrap cutoff；虽然最新代码已经把 release 条件从“重复 lineCount”收紧成“已观察到旧内容底边真实上移后再放行”，但它仍然不是精确字符级 cutoff，理论上依旧可能留下极轻微 batch 级停顿，或在某些宽度/高度估值不准的 block 上残留少量影子
+- 风险补充 2026-04-21：静态/动态文本上下滑动的丝滑度当前只先做了低风险优化（移除 item 线性反查、缓存列表 padding、bounds/chat metrics 相同值去重）。这刀不改变滚动主链语义，也不承诺已经完全消除所有滑动不丝滑；若真机仍觉得发涩，下一步再单独评估 `snapshotFlow(readChatListMetrics)` 的每像素 offset 写入、长 Markdown/SelectableText 的重组成本和 selection bounds 更新范围，不能借这个问题去重开工作线、wrap guard 或 finalize 链
 - 后续动作：下一轮会诊或真机回归优先只看 5 件事：发送瞬间小球是否稳定贴在工作线、发送瞬间是否仍不抖、发送后输入框是否稳定回缩、生成完成后是否仍按现有 finalize 主链回到工作线而不跳到长 assistant 文本开头、streaming 长段落换行时下一行是否还会提前冒头。如果继续找 Claude，会诊稿默认直接带上这条冻结基线：保留 `ff4480f`，主修法已经切到 `onAdvance` 的 reveal-layer wrap guard，旧叶子门闩 / clip / Conservative reveal 参数都已移除；不要顺手多撤其他滚动链修复
 
 ## R5 外部会诊仍依赖人工转发上下文

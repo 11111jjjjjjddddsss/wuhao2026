@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-20
+最后更新：2026-04-21
 
 ## 项目概况
 
@@ -16,6 +16,7 @@
 - 输入框长文本编辑当前又补了一刀手势修正：聊天页最外层用于“点空白处收键盘”的 `pointerInput`，现在只会在“外部轻点”时才执行 `clearFocus + hide keyboard`；输入框内部长文本上下拖动、以及从输入框内部起手的拖动，不再被误判成外部失焦手势。这样长文本编辑时上下滑查看内容，不应再把输入法突然收掉并打乱中间插字位置
 - 聊天列表当前唯一底座已切回正向 `LazyColumn(reverseLayout = false)`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
 - `ChatRecyclerViewHost.kt` 当前额外启用了 `LazyColumn(verticalArrangement = Arrangement.Bottom)`；在正向列表下，当历史内容总高度不足一屏时，列表会优先把短内容压在底部工作区，而不是默认趴到顶部遮罩下面
+- 聊天列表上下滑动丝滑度当前已先做一轮低风险优化：`ChatRecyclerViewHost.kt` 直接接收消息对象和稳定 key，不再让每个可见 item 通过 id 反查 `messages`；`LazyColumn` 的 `PaddingValues` 也改为按 padding/density 缓存。`ChatScreen.kt` 同步给 chat metrics、message content bounds、root/viewport/composer bounds 等高频回写点加了相同值去重，减少滚动期无意义 state 写入。这刀不改工作线、发送起步、streaming wrap guard、AutoFollow 或 finalize 主链
 - 运行时消息状态与显示顺序当前保持一致，不再通过 `asReversed()` 翻转；旧消息在上，新消息在下
 - 发送起步当前重新启用正向列表的单次 offset 起步：发送事务会基于工作线和 waiting 首行高度前馈计算 `startAnchorScrollOffsetPx`，再对 assistant placeholder 执行单次 `requestScrollToItem(index, offset)`，把小球起步宿主对齐到工作线
 - 小球所在的 assistant waiting 宿主当前依然是发送起步锚点；在正向列表下它不再依赖“反向天然贴底”，而是依赖显式起步对位和后续底部归位

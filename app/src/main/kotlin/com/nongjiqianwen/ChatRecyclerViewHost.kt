@@ -6,37 +6,42 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 
 @Composable
-internal fun ChatRecyclerViewHost(
+internal fun <T> ChatRecyclerViewHost(
     modifier: Modifier = Modifier,
     listState: LazyListState,
-    itemIds: List<String>,
+    items: List<T>,
+    itemKey: (T) -> Any,
     topPaddingPx: Int,
     bottomPaddingPx: Int,
-    itemContent: @Composable (String) -> Unit
+    itemContent: @Composable (T) -> Unit
 ) {
     val density = LocalDensity.current
+    val contentPadding = remember(density, topPaddingPx, bottomPaddingPx) {
+        with(density) {
+            PaddingValues(
+                top = topPaddingPx.toDp(),
+                bottom = bottomPaddingPx.toDp()
+            )
+        }
+    }
 
     LazyColumn(
         modifier = modifier,
         state = listState,
         verticalArrangement = Arrangement.Bottom,
-        contentPadding = with(density) {
-            PaddingValues(
-                top = topPaddingPx.toDp(),
-                bottom = bottomPaddingPx.toDp()
-            )
-        },
+        contentPadding = contentPadding,
         userScrollEnabled = true
     ) {
         items(
-            items = itemIds,
-            key = { it }
-        ) { itemId ->
-            itemContent(itemId)
+            items = items,
+            key = itemKey
+        ) { item ->
+            itemContent(item)
         }
     }
 }

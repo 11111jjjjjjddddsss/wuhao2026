@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-04-21
+
+- `ChatRecyclerViewHost.kt` / `ChatScreen.kt` 先做了一轮聊天文本上下滑动丝滑度的低风险优化：列表宿主改为直接接收消息对象和稳定 key，移除 `itemIds = messages.map { ... }` 与每个可见 item 内部的 `messages.firstOrNull { ... }` 线性反查；`LazyColumn` 的 `PaddingValues` 改为按 padding/density `remember` 缓存；`ChatScreen.kt` 对 chat metrics、message content bounds、root/viewport/composer bounds 等高频回写点增加相同值去重，减少滑动期间无意义重组。这刀不处理 streaming 下一行冒头残影，也不改工作线 / wrap guard / AutoFollow / finalize 主链
+
 ## 2026-04-20
 
 - `ChatScreen.kt` / `ChatStreamingRenderer.kt` 把 streaming 新行防闪主链继续收口到 reveal 提交口：`onAdvance` 不再对 `advance.content` 无条件 commit，而是新增 `streamingWrapGuardTargetLineCount` 这层一次性 wrap guard。当前若 active block pre-measure 检测到“这批字符会让物理行数增加”，代码会先按实测高度差 `dispatchRawDelta(...)` 预滚，并暂时 hold 这一拍的 content/fresh 提交；下一拍同一目标行数再次出现时再放行真正 commit。这样遵守的是“上一行没完全推上去前，下一行不出现”，不是等新行进树后再做遮挡
