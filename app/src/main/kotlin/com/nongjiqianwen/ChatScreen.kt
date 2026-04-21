@@ -3946,6 +3946,7 @@ fun ChatScreen() {
                     listState = chatListState,
                     items = messages,
                     itemKey = { it.id },
+                    itemContentType = { it.role },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = effectiveBottomPaddingPx,
                     modifier = Modifier

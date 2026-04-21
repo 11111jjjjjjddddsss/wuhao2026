@@ -16,6 +16,7 @@ internal fun <T> ChatRecyclerViewHost(
     listState: LazyListState,
     items: List<T>,
     itemKey: (T) -> Any,
+    itemContentType: (T) -> Any? = { null },
     topPaddingPx: Int,
     bottomPaddingPx: Int,
     itemContent: @Composable (T) -> Unit
@@ -39,7 +40,8 @@ internal fun <T> ChatRecyclerViewHost(
     ) {
         items(
             items = items,
-            key = itemKey
+            key = itemKey,
+            contentType = itemContentType
         ) { item ->
             itemContent(item)
         }
