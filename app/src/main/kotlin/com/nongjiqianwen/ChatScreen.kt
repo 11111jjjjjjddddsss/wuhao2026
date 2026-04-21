@@ -98,7 +98,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -864,67 +863,57 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
     }
 }
 
-private data class StreamingWrapGuardDecision(
-    val holdAdvance: Boolean,
-    val nextTargetLineCount: Int,
-    val nextHoldStartMs: Long
-)
-
 private data class StreamingAdvanceMeasureCacheKey(
     val content: String,
     val widthPx: Int
 )
 
-private const val STREAMING_WRAP_GUARD_HOLD_MS = 32L
-
-private fun resolveStreamingWrapGuardDecision(
+private fun requestStreamingLineAdvanceAnchorIfNeeded(
     listState: LazyListState,
     availableWidthPx: Int,
     scrollMode: ScrollMode,
     sendStartAnchorActive: Boolean,
     isComposerSettling: Boolean,
-    currentTargetLineCount: Int,
-    currentHoldStartMs: Long,
-    nowMs: Long,
+    streamingItemIndex: Int,
     currentLayoutProvider: () -> StreamingActiveBlockLayout?,
     nextLayoutProvider: () -> StreamingActiveBlockLayout?
-): StreamingWrapGuardDecision {
+): Boolean {
     if (availableWidthPx <= 0) {
-        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1, nextHoldStartMs = 0L)
+        return false
     }
     if (sendStartAnchorActive || isComposerSettling || scrollMode == ScrollMode.UserBrowsing) {
-        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1, nextHoldStartMs = 0L)
+        return false
+    }
+    if (streamingItemIndex < 0) {
+        return false
     }
     val currentLayout = currentLayoutProvider()
-        ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1, nextHoldStartMs = 0L)
+        ?: return false
     val nextLayout = nextLayoutProvider()
-        ?: return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1, nextHoldStartMs = 0L)
+        ?: return false
     if (currentLayout.lineCount <= 0 || nextLayout.lineCount <= currentLayout.lineCount) {
-        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1, nextHoldStartMs = 0L)
-    }
-    if (currentTargetLineCount == nextLayout.lineCount) {
-        val releaseReady =
-            currentHoldStartMs <= 0L ||
-                nowMs - currentHoldStartMs >= STREAMING_WRAP_GUARD_HOLD_MS
-        return StreamingWrapGuardDecision(
-            holdAdvance = !releaseReady,
-            nextTargetLineCount = if (releaseReady) -1 else currentTargetLineCount,
-            nextHoldStartMs = if (releaseReady) 0L else currentHoldStartMs
-        )
+        return false
     }
     val deltaPx = (nextLayout.heightPx - currentLayout.heightPx).coerceAtLeast(0)
     if (deltaPx <= 0) {
-        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1, nextHoldStartMs = 0L)
+        return false
     }
     if (!listState.canScrollBackward) {
-        return StreamingWrapGuardDecision(holdAdvance = false, nextTargetLineCount = -1, nextHoldStartMs = 0L)
+        return false
     }
-    listState.dispatchRawDelta(deltaPx.toFloat())
-    return StreamingWrapGuardDecision(
-        holdAdvance = true,
-        nextTargetLineCount = nextLayout.lineCount,
-        nextHoldStartMs = nowMs
+    val streamingItemInfo = listState.layoutInfo.visibleItemsInfo
+        .firstOrNull { it.index == streamingItemIndex }
+        ?: return false
+
+    val desiredTopOffsetPx = streamingItemInfo.offset - deltaPx
+    // requestScrollToItem's offset is scroll distance into the item, not the
+    // visible top coordinate. Negating the desired top keeps the growing item
+    // bottom visually anchored when the next content is committed.
+    listState.requestScrollToItem(
+        index = streamingItemInfo.index,
+        scrollOffset = -desiredTopOffsetPx
     )
+    return true
 }
 
 internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
@@ -1648,8 +1637,6 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    var streamingWrapGuardTargetLineCount by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
-    var streamingWrapGuardHoldStartMs by remember(uiRuntimeResetKey) { mutableLongStateOf(0L) }
     val streamingAdvanceMeasureCache = remember(uiRuntimeResetKey) {
         LinkedHashMap<StreamingAdvanceMeasureCacheKey, StreamingActiveBlockLayout?>()
     }
@@ -2547,8 +2534,6 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
-        streamingWrapGuardHoldStartMs = 0L
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
@@ -2861,8 +2846,6 @@ fun ChatScreen() {
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
-            streamingWrapGuardTargetLineCount = -1
-            streamingWrapGuardHoldStartMs = 0L
             lastStreamingFreshRevealMs = 0L
             resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             composerSettlingMinHeightPx = 0
@@ -3102,15 +3085,13 @@ fun ChatScreen() {
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
                 streamingMessageId = advance.messageId
-                val wrapGuardDecision = resolveStreamingWrapGuardDecision(
+                requestStreamingLineAdvanceAnchorIfNeeded(
                     listState = chatListState,
                     availableWidthPx = streamingAdvanceAvailableWidthPx,
                     scrollMode = scrollMode,
                     sendStartAnchorActive = sendStartAnchorActiveState.value,
                     isComposerSettling = isComposerSettling,
-                    currentTargetLineCount = streamingWrapGuardTargetLineCount,
-                    currentHoldStartMs = streamingWrapGuardHoldStartMs,
-                    nowMs = SystemClock.uptimeMillis(),
+                    streamingItemIndex = messages.indexOfFirst { it.id == advance.messageId },
                     currentLayoutProvider = {
                         measureStreamingAdvanceLayout(streamingMessageContent)
                     },
@@ -3118,11 +3099,6 @@ fun ChatScreen() {
                         measureStreamingAdvanceLayout(advance.content)
                     }
                 )
-                streamingWrapGuardTargetLineCount = wrapGuardDecision.nextTargetLineCount
-                streamingWrapGuardHoldStartMs = wrapGuardDecision.nextHoldStartMs
-                if (wrapGuardDecision.holdAdvance) {
-                    return@ensureStreamingRevealJob
-                }
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
                 streamingMessageContent = advance.content
@@ -3182,8 +3158,6 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
-        streamingWrapGuardHoldStartMs = 0L
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         fakeStreamJob = null
@@ -3496,8 +3470,6 @@ fun ChatScreen() {
         anchoredUserMessageId = userId
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
-        streamingWrapGuardHoldStartMs = 0L
         lastStreamingFreshRevealMs = 0L
         isStreaming = true
         streamingMessageId = assistantId
@@ -3508,8 +3480,6 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
-        streamingWrapGuardHoldStartMs = 0L
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
