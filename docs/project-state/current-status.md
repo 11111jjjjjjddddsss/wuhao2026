@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-21
+最后更新：2026-04-22
 
 ## 项目概况
 
@@ -13,6 +13,7 @@
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
 - 底部 composer 当前已先按“只换壳子、不动主链”的口径改成更接近悬浮卡片的输入壳：宿主白底去掉、输入框改为圆角浮层卡片、加号收进左下、发送键收进右下；当前只动 `ChatComposerPanel.kt` 和少量尺寸/颜色参数，不改单次 `requestScrollToItem(index, offset)`、发送期 `bottomPaddingPx` 锁、工作线算法或 finalize 主链
 - 聊天页当前又补了一轮纯样式调参：整页底色已从纯白统一收成中性浅灰 `#F6F7F8`，输入框壳子继续保持纯白；`ComposerInputShell` 已改成偏下沉的双层 `dropShadow()`，重点加强“下边比上边更重”的悬浮感；输入框常态高度当前为 `92/96dp`（窄屏/常规），长文本最高高度当前为 `232/248dp`，输入区 `maxLines` 已放到 8 行。这一轮仍属于纯外观与长文本上限调参，不改工作线、发送起步 offset、streaming / finalize 主链
+- 输入框占位文案“描述种植问题”当前不再被整段 streaming 状态压住。发送后只要输入框已清空且 composer / IME 收口几何稳定，占位会提前回到输入框内；生成中发送按钮仍按 `isStreaming || sendUiSettling` 禁用，避免并发发送。这条只改 composer 视觉显示门，不参与工作线、streaming wrap guard、AutoFollow 或 finalize 主链
 - 输入框长文本编辑当前又补了一刀手势修正：聊天页最外层用于“点空白处收键盘”的 `pointerInput`，现在只会在“外部轻点”时才执行 `clearFocus + hide keyboard`；输入框内部长文本上下拖动、以及从输入框内部起手的拖动，不再被误判成外部失焦手势。这样长文本编辑时上下滑查看内容，不应再把输入法突然收掉并打乱中间插字位置；同时“列表滑动时收键盘”当前只在用户手指正在拖动列表（`chatListUserDragging`）时触发，不再把 fling 惯性滚动（`recyclerScrollInProgress`）当成收键盘理由，避免列表惯性未停时点输入框又被立刻关掉
 - 聊天列表当前唯一底座已切回正向 `LazyColumn(reverseLayout = false)`；`ChatRecyclerViewHost.kt` 只是历史文件名残留，运行时已无 active `RecyclerView` 链
 - `ChatRecyclerViewHost.kt` 当前额外启用了 `LazyColumn(verticalArrangement = Arrangement.Bottom)`；在正向列表下，当历史内容总高度不足一屏时，列表会优先把短内容压在底部工作区，而不是默认趴到顶部遮罩下面

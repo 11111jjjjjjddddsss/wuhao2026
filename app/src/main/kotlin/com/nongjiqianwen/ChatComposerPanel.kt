@@ -235,8 +235,7 @@ internal fun ChatComposerBottomBar(
                         suppressCursor = suppressInputCursor,
                         settlingMinHeightPx = composerSettlingMinHeightPx,
                         suppressPlaceholder =
-                            isStreamingOrSettling ||
-                                (imeVisible && composerSettlingMinHeightPx > 0) ||
+                            (imeVisible && composerSettlingMinHeightPx > 0) ||
                                 composerSettlingChromeHeightPx > 0,
                         onFocusChanged = { focused ->
                             onInputFocused(focused)

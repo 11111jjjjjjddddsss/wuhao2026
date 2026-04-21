@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-04-22
+
+- `ChatComposerPanel.kt` 把输入框占位文案“描述种植问题”的隐藏条件从“生成中或发送收口中都隐藏”收窄为“仅 composer / IME 收口几何仍未稳定时隐藏”。当前生成中只要输入框已经清空且收口稳定，占位文案会提前回来，不再等 streaming finalize 最后一拍才和 completed 切换、发送按钮恢复一起出现。这刀只改输入框视觉显示门，不改发送禁用逻辑、工作线、streaming wrap guard、AutoFollow 或 finalize 主链。
+
 ## 2026-04-21
 
 - 按真机“尾部完成又开始抖”的反馈，已把 `9d36f10` 之后围绕“继续压 streaming 下一行冒头残影”的实验刀整体回退，回到“Baseline Profile 预热系统完成后”的代码口径。也就是说，`requestScrollToItem(index, scrollOffset)` remeasure 行锚定、32ms time-based hold、terminal drain 禁新锚定、以及相关文档口径都撤掉；当前 streaming 新行仍以此前的 reveal-layer wrap guard + active block pre-measure + strict follow gate 为基线，先优先恢复尾部收口稳定，再决定是否重新会诊残影问题
