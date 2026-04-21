@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "wuhao"
 include(":app")
+include(":baselineprofile")
