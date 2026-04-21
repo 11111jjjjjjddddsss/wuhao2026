@@ -5,6 +5,7 @@
 
 ## 2026-04-21
 
+- `ChatStreamingRenderer.kt` 继续按真机“静态 / 动态长文本滑动都有轻微不丝滑”的方向做了一刀更靠近根因的渲染减负：settled assistant markdown 现在只在整条消息外层保留一个 `BoxWithConstraints` 取得宽度，并把同一个 message 级 `TextMeasurer` 和 `availableWidthPx` 传给各个 committed block；committed paragraph/heading/bullet/numbered 不再各自创建 `TextMeasurer` 或在 bullet/numbered 内部再套 `BoxWithConstraints`。这刀只覆盖完成态 markdown 的 committed blocks，最后一个 active block、streaming 生成主链、SelectionContainer、bounds 上报和 LazyColumn 滚动链都不动
 - `ChatScreen.kt` 修复了一个偶发“生成已结束、用户已输入新文字，但发送键仍保持灰色，直到把列表扒到底才亮”的状态卡住问题。根因是两阶段 finalize 在用户浏览态下也继续等待 completed assistant 的 fresh bounds 上报；如果最终 assistant 当时不可见，bounds 不会上报，`isStreaming` 就会长期保持 true，composer 的 `isStreamingOrSettling` 也会继续禁用发送。现在只有需要恢复底部锚点时才等待 fresh bounds；用户浏览态这种不需要回底的 finalize 会直接结束 streaming 状态，不再阻塞下一次输入发送
 - `ChatStreamingRenderer.kt` 对 assistant markdown 渲染做了一刀很小的滑动减负：settled/streaming block 内的 paragraph / heading / bullet / numbered `TextStyle` 改为局部 `remember` 复用，并把 settled markdown block key 从 `index + model.hashCode()` 收成仅按 block index。目的只是减少长文本滑入视口时的对象创建、字符串 key 拼接和 bullet/number 宽度测量缓存噪音；没有动 `BoxWithConstraints`、SelectionContainer、bounds 上报、LazyColumn 滚动链或 streaming wrap guard，避免把上一刀已撤回的“文字调整感”重新带回来
 - 已回退 `323f507 Reduce chat selection scroll churn`。那一刀把普通滑动期的 message selection bounds 改成普通缓存，并给 `snapshotFlow(readChatListMetrics)` 额外加了分桶 distinct；真机体感反馈可能带来文字“调整 / 动一下”的感觉，所以先撤回，避免把丝滑度问题越修越玄。当前保留上一版较安全的减负基线：item 线性反查移除、列表 padding 缓存、bounds/chat metrics 相同值去重、content bounds 跟踪收窄、jump button offset 分桶、streaming wrap guard pre-measure 小缓存

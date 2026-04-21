@@ -1156,40 +1156,38 @@ private fun RendererStreamingCommittedTextBlockImpl(
     text: AnnotatedString,
     style: TextStyle,
     emptyLineHeight: Dp,
+    availableWidthPx: Int,
+    textMeasurer: TextMeasurer,
     modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
-    val textMeasurer = rememberTextMeasurer()
-    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val maxWidthPx = with(density) { maxWidth.roundToPx() }
-        val measured = remember(text, style, maxWidthPx) {
-            val lines = buildStableStreamingLineBuffer(
-                text = text,
-                style = style,
-                availableWidthPx = maxWidthPx,
-                textMeasurer = textMeasurer
-            )
-            StreamingRenderedLines(
-                stableLines = if (lines.activeLine != null) lines.stableLines + lines.activeLine else lines.stableLines,
-                activeLine = null
-            )
-        }
-        RendererStreamingSingleActiveLineTextImpl(
-            lines = measured,
+    val measured = remember(text, style, availableWidthPx, textMeasurer) {
+        val lines = buildStableStreamingLineBuffer(
+            text = text,
             style = style,
-            emptyLineHeight = emptyLineHeight,
-            modifier = Modifier.fillMaxWidth()
+            availableWidthPx = availableWidthPx,
+            textMeasurer = textMeasurer
+        )
+        StreamingRenderedLines(
+            stableLines = if (lines.activeLine != null) lines.stableLines + lines.activeLine else lines.stableLines,
+            activeLine = null
         )
     }
+    RendererStreamingSingleActiveLineTextImpl(
+        lines = measured,
+        style = style,
+        emptyLineHeight = emptyLineHeight,
+        modifier = modifier.fillMaxWidth()
+    )
 }
 
 @Composable
 private fun RendererAssistantStreamingCommittedBlockImpl(
     model: StreamingLineModel,
+    availableWidthPx: Int,
+    textMeasurer: TextMeasurer,
     showLeadingSectionDivider: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val spacingPx = with(density) { 8.dp.roundToPx() }
     val paragraphStyle = remember { assistantStreamingParagraphTextStyle() }
@@ -1209,20 +1207,21 @@ private fun RendererAssistantStreamingCommittedBlockImpl(
                 text = remember(model.text) { getCachedAnnotatedString(model.text) },
                 modifier = Modifier.fillMaxWidth(),
                 style = headingStyle,
-                emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() }
+                emptyLineHeight = with(density) { headingStyle.lineHeight.toDp() },
+                availableWidthPx = availableWidthPx,
+                textMeasurer = textMeasurer
             )
         }
-        is StreamingLineModel.Bullet -> BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        is StreamingLineModel.Bullet -> {
             val bulletStyle = remember(paragraphStyle) { paragraphStyle.copy(fontSize = 18.sp) }
             val bodyStyle = paragraphStyle
             val bodyText = remember(model.text) { getCachedAnnotatedString(model.text) }
-            val maxWidthPx = with(density) { maxWidth.roundToPx() }
             val bulletWidthPx = remember(textMeasurer, bulletStyle) {
                 textMeasurer.measure(AnnotatedString("\u2022"), style = bulletStyle).size.width
             }
-            val bodyWidthPx = (maxWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
+            val bodyWidthPx = (availableWidthPx - bulletWidthPx - spacingPx).coerceAtLeast(0)
             val gutterWidth = with(density) { (bulletWidthPx + spacingPx).toDp() }
-            val lines = remember(bodyText, bodyStyle, bodyWidthPx) {
+            val lines = remember(bodyText, bodyStyle, bodyWidthPx, textMeasurer) {
                 val measured = buildStableStreamingLineBuffer(
                     text = bodyText,
                     style = bodyStyle,
@@ -1244,17 +1243,16 @@ private fun RendererAssistantStreamingCommittedBlockImpl(
                 freshTick = 0
             )
         }
-        is StreamingLineModel.Numbered -> BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        is StreamingLineModel.Numbered -> {
             val numberStyle = remember(paragraphStyle) { paragraphStyle.copy(fontWeight = FontWeight.SemiBold) }
             val bodyStyle = paragraphStyle
             val bodyText = remember(model.text) { getCachedAnnotatedString(model.text) }
-            val maxWidthPx = with(density) { maxWidth.roundToPx() }
             val numberWidthPx = remember(textMeasurer, model.number, numberStyle) {
                 textMeasurer.measure(AnnotatedString("${model.number}."), style = numberStyle).size.width
             }
-            val bodyWidthPx = (maxWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
+            val bodyWidthPx = (availableWidthPx - numberWidthPx - spacingPx).coerceAtLeast(0)
             val gutterWidth = with(density) { (numberWidthPx + spacingPx).toDp() }
-            val lines = remember(bodyText, bodyStyle, bodyWidthPx) {
+            val lines = remember(bodyText, bodyStyle, bodyWidthPx, textMeasurer) {
                 val measured = buildStableStreamingLineBuffer(
                     text = bodyText,
                     style = bodyStyle,
@@ -1280,13 +1278,17 @@ private fun RendererAssistantStreamingCommittedBlockImpl(
             text = remember(model.text) { getCachedAnnotatedString(model.text) },
             modifier = modifier.fillMaxWidth(),
             style = paragraphStyle,
-            emptyLineHeight = paragraphLineHeight
+            emptyLineHeight = paragraphLineHeight,
+            availableWidthPx = availableWidthPx,
+            textMeasurer = textMeasurer
         )
         is StreamingLineModel.Paragraph -> RendererStreamingCommittedTextBlockImpl(
             text = remember(model.text) { getCachedAnnotatedString(model.text) },
             modifier = modifier.fillMaxWidth(),
             style = paragraphStyle,
-            emptyLineHeight = paragraphLineHeight
+            emptyLineHeight = paragraphLineHeight,
+            availableWidthPx = availableWidthPx,
+            textMeasurer = textMeasurer
         )
     }
 }
@@ -1466,31 +1468,36 @@ private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modi
             blockState.activeBlock?.let { add(classifyStreamingLine(it)) }
         }
     }
-    Column(
-        modifier = modifier.fillMaxWidth()
-    ) {
-        completedModels.forEachIndexed { index, model ->
-            key("markdown_completed_$index") {
-                val showLeadingSectionDivider = shouldShowStreamingSectionDivider(
-                    previous = completedModels.getOrNull(index - 1),
-                    current = model
-                )
-                val blockModifier = markdownBlockSpacingModifier(
-                    hasPreviousBlock = index > 0,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                if (index == completedModels.lastIndex) {
-                    RendererAssistantStreamingActiveBlockImpl(
-                        model = model,
-                        showLeadingSectionDivider = showLeadingSectionDivider,
-                        modifier = blockModifier
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val availableWidthPx = with(density) { maxWidth.roundToPx() }
+        Column(modifier = Modifier.fillMaxWidth()) {
+            completedModels.forEachIndexed { index, model ->
+                key("markdown_completed_$index") {
+                    val showLeadingSectionDivider = shouldShowStreamingSectionDivider(
+                        previous = completedModels.getOrNull(index - 1),
+                        current = model
                     )
-                } else {
-                    RendererAssistantStreamingCommittedBlockImpl(
-                        model = model,
-                        showLeadingSectionDivider = showLeadingSectionDivider,
-                        modifier = blockModifier
+                    val blockModifier = markdownBlockSpacingModifier(
+                        hasPreviousBlock = index > 0,
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    if (index == completedModels.lastIndex) {
+                        RendererAssistantStreamingActiveBlockImpl(
+                            model = model,
+                            showLeadingSectionDivider = showLeadingSectionDivider,
+                            modifier = blockModifier
+                        )
+                    } else {
+                        RendererAssistantStreamingCommittedBlockImpl(
+                            model = model,
+                            availableWidthPx = availableWidthPx,
+                            textMeasurer = textMeasurer,
+                            showLeadingSectionDivider = showLeadingSectionDivider,
+                            modifier = blockModifier
+                        )
+                    }
                 }
             }
         }
