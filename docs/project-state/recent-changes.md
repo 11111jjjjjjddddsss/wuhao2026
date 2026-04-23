@@ -5,6 +5,7 @@
 
 ## 2026-04-23
 
+- `ChatScreen.kt` 修正了 Overlay 第一刀里最直接的重叠问题：此前 `LazyColumn` 在 `suppressStreamingBodyInList` 时只给 active assistant item 留了一行 paragraph lineHeight 的假占位，Overlay 一旦长成多行正文，就会直接压住上方历史文本和用户气泡。现在 `SubcomposeLayout` 会先同拍测出 Overlay 的真实高度，再把这份实际高度传回 `renderChatList(...)` 作为列表占位；也就是“Overlay 多高，列表就给它留多高”，不再出现整段正文浮在历史消息上方的硬重叠。这刀不改小球起步、不改 Overlay 切层条件、不改旧 fallback 主链。`./gradlew.bat :app:compileDebugKotlin` 已通过。
 - `ChatScreen.kt` 继续把 Overlay 第一刀的收尾交接补成更接近 completed 同构：`pendingStreamingFinalizeMessageId` 非空但 Overlay 仍在场时，Overlay 已不再固定走 `StreamingRenderMode.Streaming + showDisclaimer = false`，而是切到 `StreamingRenderMode.Settled + showDisclaimer = true`。这刀不重写 Overlay 主结构、不动发送起步小球链、不重开 `dispatchRawDelta` / wrap guard，只专门压“Overlay 消失、列表 completed alpha 恢复那一拍”因为 renderMode / disclaimer 高度差带来的尾部轻微抖动风险。`./gradlew.bat :app:compileDebugKotlin` 已通过，真机尾抖是否继续减轻待回归。
 
 ## 2026-04-22

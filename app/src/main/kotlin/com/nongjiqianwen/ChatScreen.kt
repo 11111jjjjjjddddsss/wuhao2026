@@ -3933,9 +3933,6 @@ fun ChatScreen() {
         val addIconSize = if (maxWidth < 360.dp) 28.dp else 30.dp
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
-        val overlaySuppressedStreamingPlaceholderHeight = with(density) {
-            assistantStreamingParagraphTextStyle().lineHeight.toDp()
-        }
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
         val pendingStartAnchorScrollOffsetPx by remember(
@@ -4042,7 +4039,7 @@ fun ChatScreen() {
         val inputTextToolbar = remember(uiRuntimeResetKey) {
             buildInputSelectionTextToolbar()
         }
-        val renderChatList: @Composable (Int) -> Unit = { bottomPaddingPx ->
+        val renderChatList: @Composable (Int, Int) -> Unit = { bottomPaddingPx, overlayPlaceholderHeightPx ->
             SideEffect {
                 latestConversationBottomPaddingPx = bottomPaddingPx
                 val collapsedStable =
@@ -4064,6 +4061,9 @@ fun ChatScreen() {
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
             ) {
+                val overlayPlaceholderHeight = with(density) {
+                    overlayPlaceholderHeightPx.coerceAtLeast(0).toDp()
+                }
                 ChatRecyclerViewHost(
                     listState = chatListState,
                     items = messages,
@@ -4178,7 +4178,7 @@ fun ChatScreen() {
                                     if (suppressStreamingBodyInList) {
                                         Spacer(
                                             modifier = Modifier.height(
-                                                overlaySuppressedStreamingPlaceholderHeight
+                                                overlayPlaceholderHeight
                                             )
                                         )
                                     } else if (isActiveStreamingAssistant) {
@@ -4560,16 +4560,6 @@ fun ChatScreen() {
                                 )
                             } + streamVisibleBottomGapPx
                             ).coerceAtLeast(0)
-                    val listPlaceables = subcompose("conversation_list") {
-                        renderChatList(conversationBottomPaddingPx)
-                    }.map { measurable ->
-                        measurable.measure(constraints)
-                    }
-                    val welcomePlaceables = subcompose("conversation_welcome") {
-                        renderWelcomePlaceholder(conversationBottomPaddingPx)
-                    }.map { measurable ->
-                        measurable.measure(constraints)
-                    }
                     val streamingOverlayPlaceables = subcompose("conversation_streaming_overlay") {
                         renderStreamingOverlay()
                     }.map { measurable ->
@@ -4581,6 +4571,18 @@ fun ChatScreen() {
                                 maxHeight = Constraints.Infinity
                             )
                         )
+                    }
+                    val overlayPlaceholderHeightPx =
+                        streamingOverlayPlaceables.maxOfOrNull { it.height } ?: 0
+                    val listPlaceables = subcompose("conversation_list") {
+                        renderChatList(conversationBottomPaddingPx, overlayPlaceholderHeightPx)
+                    }.map { measurable ->
+                        measurable.measure(constraints)
+                    }
+                    val welcomePlaceables = subcompose("conversation_welcome") {
+                        renderWelcomePlaceholder(conversationBottomPaddingPx)
+                    }.map { measurable ->
+                        measurable.measure(constraints)
                     }
 
                     layout(constraints.maxWidth, constraints.maxHeight) {
