@@ -2,7 +2,9 @@
 
 日期：2026-04-22
 
-状态：已决策，已从 assistant-only overlay 第一刀推进到底部统一活跃区宿主，待真机验证
+状态：历史归档 / 已被 2026-04-24 的“单一运行时主人 + 反向列表”主线替代
+
+> 说明：本 ADR 记录的是 2026-04-22 到 2026-04-23 期间围绕 assistant overlay / bottom active zone 做过的结构尝试。当前代码已经不再把它作为运行时真相；若与根 `AGENTS.md`、`docs/project-state/current-status.md` 或最新代码冲突，以当前真相为准。
 
 ## 背景
 
@@ -51,11 +53,11 @@
 - 恢复旧 `RecyclerView` / reverseLayout / footer probe / preview lock / renderer gate / clip / 32ms hold / requestScrollToItem 行锚定。
 - 在用户浏览历史且未回到底部时继续悬浮一个大面积 streaming overlay 遮挡历史内容。
 
-## 第一刀实施边界
+## 历史第一刀实施边界（仅归档，不再执行）
 
 第一刀目标原本是“用户停留底部看 AI 生成”场景的 assistant-only overlay。当前实现已继续演进：底部不再只渲染 assistant body，而是由 `BottomActiveZoneSlice` 切出当前轮 user / assistant 与 1 条前置历史尾巴，统一交给底部活跃区宿主。真机体感仍待验证；文档真相不能再把“列表 placeholder + overlay 追滚桥”写成现行实现。
 
-建议新增状态：
+当时建议新增状态（当前代码已删除）：
 
 ```kotlin
 private enum class StreamingLocation {

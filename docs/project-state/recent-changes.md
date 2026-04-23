@@ -3,7 +3,15 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
-## 2026-04-23
+## 2026-04-24
+
+- `ChatRecyclerViewHost.kt` / `ChatScreen.kt` / `ChatScrollCoordinator.kt` 已停止继续修 mixed active-zone / overlay 运行时，正式切回“单一运行时主人 + 反向列表”主线。当前 `ChatRecyclerViewHost.kt` 已改为 `LazyColumn(reverseLayout = true)` + `items.asReversed()`；`chatListMessages` 重新收平到 `messages`；`currentLastMessageContentBottomPx()` 的 fallback 与 `scrollToBottom(false)` 也同步回到 reverse-list 口径，底部最新显示项按 index `0` 处理。
+- `ChatScreen.kt` 当前已删除 mixed active-zone 主链的核心切管结构：`StreamingLocation`、`BottomActiveZoneSlice / resolveBottomActiveZoneSlice(...)`、`renderBottomActiveZone()`、Overlay 恢复门、active-zone 拖动接管和 `requestSendStartBottomSnap()` 都已退出运行时主路径。聊天消息重新只由列表承接；底部 composer 继续保留为输入 UI 宿主，但不再承担消息运行时所有权。
+- 发送起步当前也已回到 list-side 单主人口径：`commitSendMessage()` 在同一事务里继续完成输入框收口、user + assistant placeholder 插入、`prepareScrollRuntimeForStreamingStart(...)`、`sendStartAnchorActive = true` 和发送期 reserve 锁；同时按 reverse-list 语义条件式 `requestScrollToItem(0)` 回到底部。旧 active-zone 时代那种“先切层、再只滚 historyMessages”的发送起步链已经删除。
+- 完成态收口这轮没有回退。`beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize 继续保留；本次重构只移除了 mixed active-zone / overlay 的运行时切管，不把尾部收口稳定性重新换掉。
+- 项目记忆同步切换：`current-status.md`、`open-risks.md` 和根 `AGENTS.md` 已把当前真相收口到“反向列表单主人”；旧的 active-zone / overlay 路线保留在 git 历史与 ADR 中，只作为历史归档，不再冒充当前运行时真相。
+
+## 2026-04-23（历史 active-zone / overlay 阶段，仅供归档）
 
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 又补了一刀底部统一活跃区的发送起步与拖动所有权保护：发送事务里重新把 `sendStartAnchorActive` 置回 `true`，让 `BindChatListScrollEffects(...)` 在 active zone 主链里继续承担发送起步保护窗口；其 release 条件也已收紧成“命中工作线、composer 已稳定、并且列表已经停止滚动”后再连续一拍放行，避免 history list 的发送回底尚未停稳时就提前让权。同次，底部活跃区手动浏览后的 Overlay 恢复也不再是“永久不自动恢复”，而是改成：拖动起手先把 `bottomActiveZoneOverlayRestoreArmed` 置 `false` 并交回 `LAZY_COLUMN`，只有等列表真正停下、滚动模式回到 `AutoFollow`、且仍命中工作线后，才先 re-arm，再下一拍恢复 `OVERLAY`。这刀只针对“发送瞬间仍抖一下”和“上下拖动时正文乱窜 / 与用户消息重叠”这两条主链收口，不重开旧 placeholder / overlay follow / requestScrollToItem 行锚定。`./gradlew.bat :app:compileDebugKotlin` 已通过。
 - `ChatScreen.kt` 继续收口了底部统一活跃区的底部量算口径：`LazyColumn` 现在重新量满整个消息区高度，不再只量到 `conversationBodyHeightPx`；Overlay 可见时，列表 `bottomPaddingPx` 改为统一吃“composer reserve + breathing gap + active zone height”，不再把 composer reserve 和 active zone 分别落在“裁短列表高度”和“底部 padding”两处双重避让。同时，`currentHistoryListBottomTargetPx()` 与 send-start 锁期间的有效 bottom padding 也同步改成沿用这同一口径，避免 history list 的底边目标仍按旧公式漏掉 composer reserve，继续留下“输入框上方像多出一整节白色高度 / 静态底部文本下方空白过大 / 发送瞬间抖一下”这组回归。`./gradlew.bat :app:compileDebugKotlin` 已通过。

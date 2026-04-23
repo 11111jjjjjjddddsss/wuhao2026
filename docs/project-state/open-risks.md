@@ -1,6 +1,6 @@
 # 当前未关闭风险
 
-最后更新：2026-04-23
+最后更新：2026-04-24
 
 ## R1 运维入口仍以文档骨架为主
 
@@ -23,20 +23,13 @@
 - 风险：跨窗口协作能接住仓库内真相，但任务排队、责任归属、变更说明仍不够结构化
 - 后续动作：需要时再按最小改动补 GitHub 协作层
 
-## R4 聊天滚动链已切入底部统一活跃区结构刀，仍待真机验证
+## R4 聊天运行时已切回反向列表单主人，但仍待真机验证
 
 - 状态：未关闭
-- 说明：聊天底座当前仍是正向 `LazyColumn(reverseLayout = false)`，共享 measure 宿主、首屏贴底 hard reposition、静态底线和大部分滚动主链继续保留；但 streaming 生成态已经不再走“assistant-only overlay + 列表 placeholder + pending follow bridge”。按最新代码，`ChatScreen.kt` 会在 `StreamingLocation.OVERLAY` 下把“当前轮用户消息 + 当前 assistant（waiting / streaming / settled）+ 前置 1 条历史尾巴”切进 `BottomActiveZoneSlice`，由 `renderBottomActiveZone()` 在 `SubcomposeLayout` 里统一承接；`LazyColumn` 此时只再渲染更早的 `historyMessages`。旧 overlay placeholder、高度追滚、`SideEffect + dispatchRawDelta(...)`、pending finalize twin tree 已不再属于当前主链，只保留 `LAZY_COLUMN` fallback 下的 wrap guard / strict follow / 两阶段 finalize 兜底
-- 风险：这次结构刀已经编译通过，但还没真机回归。需要重点确认：1) 连接处那一点“擦边重影/一上一下”是否因为尾部统一归到底部活跃区而明显减轻；2) finalize 收口时是否不再因为 overlay/list 双树交接而轻抖；3) streaming 过程中上下拖动时“发虚/不稳”的感觉是否减轻；4) 发送起步新链（切入 active zone 后补一发 `scrollToBottom(false)` 压历史列表到底）是否没有误伤小球起步、回到底部和 `UserBrowsing` 主链；5) `resolveBottomActiveZoneSlice(...)` 当前吞 1 条前历史的范围是否已经足够覆盖用户最敏感的连接处
-- 风险补充 2026-04-23 晚：最新真机回归又暴露了 3 个新回归点——静态/生成中的底部文本在 active zone 区域里有时完全划不动、发送起步的小球与历史文本重新出现轻微抖动、以及部分场景下 history list 没有被精修到底而在输入框上方留下过大的空白。这三点当前已在 `ChatScreen.kt` 做了最小修正：active zone 根节点开始直接把竖向 drag 接给 `LazyListState` 并切 `UserBrowsing`；Overlay 模式下的 `scrollToBottom(false)` 改回 history list 自己的 bottom-align delta 精修；发送起步短窗口重新在 `requestSendStartBottomSnap()` 前后持有 `lockedConversationBottomPaddingPx`，等回底真正执行完再释放。代码已编译通过，但是否彻底压住这三处回归还没有新的真机结论
-- 风险补充 2026-04-23 深夜：上一轮最明显的“输入框上方多出一整节白色空白、静态态底部文本拖不动、开机进入不贴底”当前不再按“延迟切进 OVERLAY”处理，而是改成了两条更直接的修正：1）`SubcomposeLayout` 里不再用 `conversationBodyHeightPx - bottomActiveZoneHeightPx` 去裁短列表高度，而是让列表继续量满 `conversationBodyHeightPx`，并在 Overlay 下把 `bottomActiveZoneHeightPx` 当作 `listBottomPaddingPx` 覆盖列表底部空区；2）发送起步重新恢复为同拍切 `OVERLAY`，`requestSendStartBottomSnap()` 只再对 `historyMessages` 做回底。`finalizeStreamingStop()`、`resetStreamingUiState(...)` 和 `uiRuntimeResetKey` 里清掉 `anchoredUserMessageId`、收回 `LAZY_COLUMN` 的退场逻辑继续保留。代码已编译通过，但这条新口径还没有真机验证，需要重点确认白色空白、开机不贴底和发送瞬间抖动是否一起回落
-- 风险补充 2026-04-23 更晚：按最新代码排查，上一条“padding 覆盖”其实还只做了一半。`SubcomposeLayout` 虽然已经让 Overlay 下的 `listBottomPaddingPx` 吃 `bottomActiveZoneHeightPx`，但 `LazyColumn` 物理高度仍只量到 `conversationBodyHeightPx`，history list 的底边目标也只减了 active zone 高度，没有把 composer reserve 与 send-start 锁口径一起纳入同一套 bottom target。当前已继续修正为：列表重新量满整个消息区、Overlay 下 list padding 统一吃“composer reserve + gap + active zone height”，`currentHistoryListBottomTargetPx()` 以及 send-start 锁期间的有效 bottom padding 也同步切到同一口径。代码已编译通过，但这条量算口径修正仍未真机验证；如果白色空白、首屏不贴底或发送起步抖动仍在，下一步更应该排查启动专用贴底 effect 与 send-start 专用锚点链，而不是再回头怀疑输入框本体高度
-- 风险补充 2026-04-23 深夜更晚：最新本地排查进一步确认，发送瞬间轻抖与“上下拖动后正文乱窜 / 与用户消息重叠”不是一条根因。当前已在代码里重新接回两条最小保护：1）发送事务重新把 `sendStartAnchorActive` 置回 `true`，并把 `ChatScrollCoordinator.kt` 的 release 条件收紧成“命中工作线、composer 已稳定、且列表已停止滚动”后再连续一拍放行，专门压 history list 发送回底尚未停稳时的抢权；2）底部活跃区拖动后不再是永久停在 `LAZY_COLUMN`，而是拖动起手先把 `bottomActiveZoneOverlayRestoreArmed` 置 `false`，只有等列表停止、滚动模式回到 `AutoFollow`、且仍命中工作线后，才先 re-arm，再下一拍恢复 `OVERLAY`。代码已编译通过，但这两条保护都还没真机验证；需要重点确认它们是否真的压住了发送瞬间抖动，以及“随意上滑下滑后正文乱窜 / 与用户消息重叠”这组最新回归。
-- 风险补充：上一轮“渲染归 BottomActiveZoneSlice、几何仍 assistant-centric”的主矛盾，当前已经先在 `OVERLAY` 主链里切掉了一半：`isNearStreamingWorkline()`、`isAtStreamingWorklineStrict()` 和静态 `atBottom` / restore 已不再继续依赖单条 assistant 的 `streamingContentBottomPx`。但 `streamingContentBottomPx` 这条单 assistant bounds 口径本身仍然保留给 `LAZY_COLUMN` fallback 和部分旧 helper 使用；如果后续真机上连接处残影、回底判断或 finalize 体感仍有余量，下一刀仍应继续排查“哪些几何判断还 assistant-centric，哪些已经该完全切到 active zone / history list 口径”。
-- 风险补充：发送期 `bottomPaddingPx` 锁已经压住抖动，普通发送时的锁值当前优先使用最近一次观察到的稳定收口 reserve，理论上不再随多行输入框高度漂移；`observedCollapsedBottomReservePx` 现在也已经明确收成“共享 measure 为主、`composerTopInViewportPx` 只在列表侧 `latestConversationBottomPaddingPx` 尚未产出时才负责启动 fallback”。这比之前更不容易被旧观察链反向覆盖，但如果某次首发发生在共享 measure 真值和尚未就绪的启动 fallback 之间，代码仍会短暂退回 `stableComposerBottomBarHeightPx / bottomBarHeightPx` 兜底链；另外，`collapseComposer = false` 的失败重发/不收口分支仍继续走旧快照兜底，这两条边界仍要继续留意
-- 风险再补充：当前 wrap guard 依赖 ChatScreen 侧缓存的 active block 可用宽度与 style 映射做 pre-measure。paragraph / heading / quote / bullet / numbered 已尽量按当前 renderer 语义对齐，但如果某些 block 的真实宽度、gutter 或 style 与前馈测量仍有偏差，最坏会出现漏补偿（仍有轻微闪露）或轻微过补偿（被 bounds refine 再拉回）。另外，当前 hold 的是整批 reveal batch，而不是精确 wrap cutoff；虽然最新代码已经把 release 条件从“重复 lineCount”收紧成“已观察到旧内容底边真实上移后再放行”，但它仍然不是精确字符级 cutoff，理论上依旧可能留下极轻微 batch 级停顿，或在某些宽度/高度估值不准的 block 上残留少量影子
-- 风险补充 2026-04-21：静态/动态文本上下滑动的丝滑度当前已做过一组只减负、不改主链语义的优化：移除 item 线性反查、缓存列表 padding、bounds/chat metrics 相同值去重、收窄 message content bounds 跟踪范围、jump button offset 分桶、streaming wrap guard pre-measure 小缓存、按 `USER / ASSISTANT` 设置 `LazyColumn contentType`、把 settled markdown committed block 测量收敛到 message 级、把普通滑动期的 selection bounds 写入从 Compose state map 降到非 state cache。另已新增 `:baselineprofile` 模块覆盖冷启动、聊天页滑动、输入框聚焦 / 输入 / 收起的 UI 预编译路径。这些改动都应保留；若真机仍觉得发涩，下一步优先走 Baseline Profile 生成 / Macrobenchmark / JankStats / Perfetto 定位，不要再凭感觉重开工作线、wrap guard、SelectionContainer 结构或 finalize 链
-- 后续动作：先让用户真机装机验证这轮“底部统一活跃区”结构刀。若主观体感明显改善，再继续精修 `resolveBottomActiveZoneSlice(...)` 的切片范围和 finalize 收尾；若发送起步、小球、回到底部或用户浏览被误伤，优先修 `commitSendMessage()` 的新发送起步回底和 `scrollToBottom(false)` 在 Overlay 模式下只对 `historyMessages` 生效这两处，不要把旧 placeholder / overlay 追滚桥重新带回来
+- 说明：当前聊天消息运行时已经从 mixed active-zone / overlay 架构切回单一列表主人：`ChatRecyclerViewHost.kt` 使用 `LazyColumn(reverseLayout = true)` + `items.asReversed()`，`ChatScreen.kt` 中的 `StreamingLocation`、`BottomActiveZoneSlice`、`renderBottomActiveZone()`、Overlay 恢复门和 `requestSendStartBottomSnap()` 已退出主链；发送起步回到 list-side 口径，继续保留 `sendStartBottomPaddingLockActive` / `lockedConversationBottomPaddingPx` 与 `sendStartAnchorActive`，同时完成态继续保留两阶段 finalize
+- 风险：这次反向列表单主人重构已经编译通过，但还没有新的真机回归。当前最需要确认的是：1) 首屏进入有历史时是否仍稳定贴底；2) 发送瞬间的小球 / 历史文本是否仍抖动；3) streaming 过程中上下拖动是否不再乱窜、重叠、抢手；4) finalize 收口是否仍保持前几轮压下去的稳定度；5) 输入框上方和静态文本底部是否不再出现额外白块
+- 风险补充：上一次 reverse-layout 尝试（`8730933` / `a6996b9` / `b9aee22`）后来被 `93ce82f` 切回正向，不代表反向物理模型本身错误，而是当时还背着旧 streaming follow、旧 startup/finalize 链和旧发送起步包袱。这次如果真机上仍出现问题，下一刀应优先排查“旧正向列表假设是否仍残留在 send-start、startup snap、jump button 或 finalize helper 中”，而不是重新把 mixed active-zone runtime 带回来
+- 后续动作：先让用户真机回归这轮反向列表单主人主线；若 send-start 仍抖，优先对照 reverse-layout 旧稳定期的 list-side 锚点释放条件继续收紧；若拖动仍乱窜或重叠，先检查是否还有 forward-list / active-zone 口径残留，而不是恢复 overlay 切管
 
 ## R5 外部会诊仍依赖人工转发上下文
 

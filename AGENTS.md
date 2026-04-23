@@ -191,180 +191,93 @@ Clean-State 必做回归的范围：
 
 ### 7.1 总口径
 
-- 用户消息按正常消息流从上往下排
-- waiting 小球、streaming 正文、settled 完成态共用同一个 assistant 内容宿主
-- 列表底座当前已切回正向 `LazyColumn(reverseLayout = false)`；显示顺序与状态顺序一致，视觉上旧消息在上，新消息在下
-- 生成态当前已从“assistant-only overlay + 列表 placeholder + 追滚桥”升级为底部统一活跃区宿主：`StreamingLocation.OVERLAY` 下，会把“当前轮用户消息 + 当前 assistant（waiting / streaming / settled）+ 1 条前置历史尾巴”切进 `BottomActiveZoneSlice`，由 `SubcomposeLayout` 里的 `conversation_bottom_active_zone` 统一承接；`LazyColumn` 此时只再渲染更早历史消息
-- 正文仍从工作线开始向上增长；正向底座下不再依赖“反向列表天然贴底”，但发送起步已不再对 assistant placeholder 发单独 `requestScrollToItem(index, offset)`，而是在切入底部活跃区后，用现有 `scrollToBottom(false)` 只把“更早历史的 `LazyColumn`”压回底部
-- 用户拖动立即让权，不允许隐藏第二条链抢手
-- waiting 小球、streaming 正文、settled 完成态和首屏历史态当前统一围绕同一条工作线收口；工作线可以故意比 composer 顶边更高一点，工作线以下的 breathing gap 需要继续露出来，给尾部提示词 / 免责声明预留可见空间
-- 底部不应再出现额外可见空白
-- 历史区浏览时，输入框弹起 / 收起不应再带着消息区整体联动；底部态也应尽量减轻这种联动
-- 当前旧的发送抖动、首屏贴底、失败态和大块 finalize 归位问题已基本收口；但这轮底部统一活跃区结构刀仍待真机验证，当前重点仍是连接处擦边重影、尾部 finalize 微抖，以及 streaming 过程中上下拖动时的发虚/不稳
+- 聊天消息运行时当前只允许有一个主人：`LazyColumn(reverseLayout = true)`
+- `ChatRecyclerViewHost.kt` 当前使用：
+  - `LazyColumn(reverseLayout = true)`
+  - `items.asReversed()`
+  - 原因是仓库里的 `messages` 仍按“旧在前、新在后”存储，反向列表需要用反转后的显示序列把最新消息放到视觉底部
+- 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
+- waiting 小球、streaming 正文、settled 完成态当前继续共用同一条 assistant item 渲染主线；不再允许在运行时从列表摘出去交给第二个消息宿主
+- mixed active-zone / overlay 运行时当前已退出主链：
+  - `StreamingLocation`
+  - `BottomActiveZoneSlice / resolveBottomActiveZoneSlice(...)`
+  - `renderBottomActiveZone()`
+  - active-zone 拖动接管 / Overlay 恢复门
+  - `requestSendStartBottomSnap()` 那条“只滚 historyMessages”的发送起步链
+- 工作线和静态贴底线继续共用同一个物理锚点；当前口径是“列表里最新消息的可见底边 + 共享 measure 宿主同拍产出的 composer reserve”
+- 底部不应再出现额外可见空白；历史区浏览时，输入框弹起 / 收起也不应再带着消息区整体联动
 
 ### 7.2 五环节铁律
 
 1. 发送起步
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 做法：在发送事件源里，同步完成输入框收口、用户消息 upsert、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)` 与 `streamingLocation = OVERLAY`；随后补一发 `scrollToBottom(false)`，把只剩更早历史消息的 `LazyColumn` 压回底部，而当前轮 user / assistant 由底部活跃区自己贴底承接
-- 当前锚点：底部活跃区的工作线；当前轮 user / assistant 与 1 条前置历史尾巴在同一个宿主里一起向上长
-- 当前目标：小球和正文第一次出现就稳定落在底部活跃区工作线，不再让列表和底部当前轮分属两套主人
+- 做法：在同一发送事务里同步完成输入框收口、`upsertUserMessage(...)`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、发送期 reserve 锁，以及按 reverse-list 口径条件式 `requestScrollToItem(0)`
+- 当前目标：发送起步仍保持单一列表主人；不再靠 active zone / overlay 切主人来承接当前轮消息
 
-2. AutoFollow
+2. AutoFollow / 回到底部
 - 主人：[ChatScrollCoordinator.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt)
-- 作用：正向底座下同时维护“谁拥有滚动控制权”和“谁负责继续贴底”；当用户未打断时，生成内容若偏离工作线，需要显式走 `scrollToBottom(false)` 回到底部目标线
+- 作用：继续只维护一套 `Idle / AutoFollow / UserBrowsing` 滚动状态机；`scrollToBottom(false)`、jump button 和 follow 都只围绕反向列表主链派生，不允许并存第二条补滚链
 
 3. 发送期几何稳定
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的“消息列表 + composer 共享 measure 宿主”
-- 作用：发送当拍仍允许即时清空输入框并立即插入消息，但列表实际吃到的底部保留高度必须与 composer 在同一轮 measure 里产出，不能再完全依赖 `onGloballyPositioned -> composerTopInViewportPx -> derivedStateOf` 这条晚一拍的反馈链；旧 `composerTopInViewportPx` 仅继续服务 selection / overlay / 辅助几何
+- 作用：发送当拍允许即时清空输入框并立即插入消息，但列表实际吃到的底部 reserve 仍必须和 composer 在同一轮 measure 里产出；旧 `composerTopInViewportPx` 只保留为辅助几何 / fallback，不再重新升回唯一真相
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
-- 作用：当前 finalize 已按 `StreamingLocation` 分口径。`OVERLAY` 下，当前轮 assistant 直接在底部活跃区宿主里从 streaming 切 settled，再执行 `finalizeStreamingStop(...)`，不再走 overlay/list 双树交接；只有 `LAZY_COLUMN` fallback 仍保留旧的两阶段 finalize（`beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)`）。两阶段 fallback 不能靠短超时硬切；若 app 已退后台，应等回前台后再继续等 fresh bounds，避免完成那一拍工作线口径、底部判定源、内容宿主一起切换导致偶发上跳与底部留白
+- 作用：streaming -> settled 继续在同一个列表 item 内完成；当前仍保留 `beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize，不允许回退成“同拍直接切 settled”的简化版
 
-5. 用户浏览
-- 主人：用户手指
-- 作用：进入 `UserBrowsing` 后立即让权；不看滑动方向，不做额外恢复链。只有当生成行真实回到工作线命中带并且用户结束交互时，或通过“回到底部”/新一轮发送，才重新接回主链
-
-6. 首次进入贴底
-- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 作用：冷启动且已有历史消息时，直接走 `scrollToBottom(false)` 把最后一条历史消息贴到底部工作线；从后台切回时不默认自动贴底
+5. 用户浏览与首次进入
+- 主人：用户手指 / [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
+- 作用：用户进入 `UserBrowsing` 后立即让权，但仍在同一个列表主人里浏览，不再发生 overlay/list 切管；冷启动且已有历史时，继续走 `scrollToBottom(false)` 贴到底部；从后台切回时不默认自动贴底
 
 铁律：
-- 同一时刻只能有一个主人控制滚动
+- 同一时刻只能有一个消息主人控制滚动与渲染
 - 新增任何 scroll 调用前，必须说明它属于哪一个环节
-- 回到底部按钮只能从主链派生，不能另挂第二套补滚链
+- 回到底部按钮只能从单一列表主链派生，不能另挂第二套“overlay 恢复 / active zone 回收”链
 
 ### 7.3 当前实现细则
 
-- 工作线和静态贴底线必须共用同一个物理锚点；当前以正向列表最后一条消息的可见底边 + “共享 measure 宿主同拍产出的 composer reserve”共同定义工作线
-- 列表底座当前为纯 Compose `LazyColumn(reverseLayout = false)`，消息顺序与显示顺序一致，不再保留 `RecyclerView` / `stackFromEnd`
-- 消息区容器高度保持固定；`ChatComposerBottomBar` 已从 `Scaffold.bottomBar` 挪到内容层底部 overlay，消息列表与底部输入区当前通过 `SubcomposeLayout` 同拍测量：先测 composer，再把真实 reserve 直接喂给 `ChatRecyclerViewHost` 的 `bottomPaddingPx`，不再让消息列表继续完全吃旧的异步回写几何
-- 底部 composer 壳子当前允许单独做视觉改造（例如悬浮卡片、宿主透明化、加号左下、发送右下），但这类调整默认只改 `ChatComposerPanel.kt` 和少量尺寸/颜色参数；工作线、底部 reserve、发送起步和 finalize 主链仍继续吃 composer 的真实测量高度，不额外派生第二套假几何
-- 共享 measure 宿主里，composer slot 只能继承“精确宽度 + `minHeight = 0`”这条测量约束，不能把父级整屏 `minHeight` 原样传下去；否则 composer 会被量成接近整屏高，列表 / 欢迎语的底部 reserve 也会被一起撑爆，重新带回“欢迎语不显示、历史文本整页空白”
-- sending / streaming / completed 不允许再切换成不同内容宿主上报底边
-- waiting 小球与 streaming 首行共用稳定宿主外壳；waiting 壳子高度必须接近首行正文高度，避免首字出现时宿主突然变高
-- streaming 渲染当前不再区分“waiting 专用宿主”和“首字后专用宿主”；waiting 小球与 streaming 首块已收敛到同一个 `ChatStreamingRenderer` 内容宿主内切换，首字上屏前后保持同一物理外壳
-- `ChatStreamingRenderer` 当前不再让 streaming / settled 走两套最外层宿主；两种 renderMode 已统一复用同一个最外层 `Column` 承接 `boundsReportingModifier` 和宽度约束，streaming 需要的 `Alignment.BottomStart` 底对齐已下沉到内部 `Box`，减少完成态切换那一拍因为外壳换树导致的轻微上抬 / 重排感
-- `ChatStreamingRenderer` 当前不再用父级 `Column(spacedBy(...))` 统一分发 Markdown block 间距；streaming 非首块改为在 block 前插入独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`，减少新区块出现时把已有内容整体向下踹一拍
-- 不再做中部上抬；用户消息、waiting 小球、streaming、完成态、失败态的最低边界统一围绕工作线
-- 发送起步和后续跟随都只走 `LazyListState`，运行时已无 active `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / scrollToPositionWithOffset` 链
-- 当前发送起步已不再对 assistant placeholder 做 list-side `requestScrollToItem(index, offset)` 行锚定，也不再保留旧的 placeholder 可见底边请求链。真实顺序是：发送事务内同步完成输入框收口、用户消息 upsert、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、切 `streamingLocation = OVERLAY`，随后补一发 `scrollToBottom(false)`，只把“更早历史的 `LazyColumn`”压回底部，而当前轮 user / assistant 与 1 条前置历史尾巴由底部活跃区自己贴底承接
-- `sendUiSettling` 当前只允许覆盖“发送起步这一小段同步窗口”：即输入框收口、消息原地增改、切入底部活跃区和历史列表的发送起步回底。不要再把长文本输入框的多行高度锁到整段 streaming 结束，也不要恢复旧的 list-side placeholder 锚点请求
-- waiting / streaming 首行必须共用同一物理高度；发送起步不允许再保留额外 waiting 壳高或“测完再修”的旧反馈链
-- `ChatScrollCoordinator` 当前在 streaming 期间重新承担“继续贴底”的责任；正向底座下若最新 assistant 宿主偏离工作线，AutoFollow 只允许在现有列表偏移量上按“当前内容底边 - 工作线底边”的单次 delta 做 `scrollBy` 微调，不再对每个 fake-stream chunk 反复走 `scrollToBottom(false)` 整体重定位，但也不允许恢复旧的多状态并行补偿链
-- `scrollToBottom(false)` 当前重新带回 `alignChatListBottom()` 这层有限次数的底边补偿，用来把正向列表最后一条消息的可见底边重新压回工作线；但“最后一条已可见”必须收紧成“最后一条底边已进入可视区”，不能只因为顶部露头就跳过重定位。若最后一条底边仍远在可视区外，非动画路径必须先做一次正向硬位移到底，再交给 `alignChatListBottom()` 精修，避免首屏贴底仍差一大段文字；同时禁止把它改回 `scrollToItem(lastIndex)` 这种 top-anchor 跳顶
-- 静态态“是否已经到底”的当前口径已与 streaming 工作线命中带拆开：streaming 期间继续保留较宽的工作线容差，避免跟随链过于敏感；首屏历史态、完成态归位和静态回到底部按钮则使用更紧的静态容差，只收“还能轻轻往上扒出一丁点空白”的剩余体感，不去碰 streaming 主链
-- `ChatRecyclerViewHost` 当前不再直接消费 `recyclerBottomPaddingPx` 这条旧反馈链；列表底部保留高度改由共享 measure 宿主在同一拍根据 composer 实测高度直接给出，并继续额外叠加 `STREAM_VISIBLE_BOTTOM_GAP`。Overlay 模式下，`LazyColumn` 只量到“去掉 composer reserve 与底部活跃区之后”的剩余空间，不再靠 placeholder 或 overlay 追滚给当前轮让位；这段 64dp breathing gap 需要在 streaming、settled 完成态和首屏历史态都保持可见，不能在静态态被收掉
-- `ChatRecyclerViewHost` 当前也不再额外插入列表尾部 footer spacer 来“补底”；静态态真实底边只允许由最后一条消息 + `conversationBottomPaddingPx` 定义，不能再混入额外的 1dp 尾项，否则会重新带回“看着只差一丝、但其实还能继续往上扒一点”的假未贴底体感
-- `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态当前继续保留，但只再服务 selection / overlay / bounds / workline 辅助口径；后续如果继续改发送抖动，不允许再把它们重新升回列表 bottom padding 的唯一真相
-- 普通 idle / 历史浏览状态下，列表与工作线仍不能重新长期追实时 `composerTop`；但“首次进入且有历史、`initialBottomSnapDone` 还没命中”的启动贴底窗口允许临时借一次实时 composer 几何，把最后几像素压准到真实工作线。命中后必须立刻退回当前静态口径，不能把这条临时窗口扩张成新的历史区联动链
-- `sendStartBottomPaddingLockActive` 当前只剩短窗口锁的身份：它仍服务发送当拍的 viewport / reserve 稳定，但不再去计算 list-side 行锚定 offset，也不允许再扩张成长期冻结列表底部 reserve 的旧几何锁
-- 发送起步当前已经不再依赖 `requestScrollToItem(index, offset)` 行锚定，也不再保留旧的 `conversationBottomPaddingLockPx + sendStartAnchorActive` 发送期 placeholder 锚点组合。发送时真正要做的，是把当前轮切入底部活跃区，再用现有 `scrollToBottom(false)` 把“更早历史的 `LazyColumn`”压回底部；`conversationBottomPaddingPx`、`streamingWorklineBottomPx` 和 overflow 判定本身仍必须保留实时口径
-- 2026-04-23 当前运行时只保留 `observedCollapsedBottomReservePx`、`latestConversationBottomPaddingPx` 和 `lockedConversationBottomPaddingPx` 这组 reserve 真值链，用来给共享 measure 宿主、收口窗口和列表侧 reserve 兜底；旧的 `pendingStartAnchorScrollOffsetPx / sendStartWorklineBottomPx / requestScrollToItem(...)` 已退出主链，不要再按“前馈算 offset”那套方案回退
-- 2026-04-19 `observedCollapsedBottomReservePx` 的当前主口径已重新收平：当列表已经渲染，且页面处于“输入为空 + 无 focus + IME 已收起 + composer 非 settling + 未处于 sendStart lock”的稳定窗口时，只认共享 measure 宿主给出的 `latestConversationBottomPaddingPx - STREAM_VISIBLE_BOTTOM_GAP` 作为稳定收口 reserve；`renderChatList(...)` 会在首个有效 `bottomPaddingPx` 出现的同拍直接种下这份值，稳定态 `LaunchedEffect` 继续做后续校准
-- 2026-04-20 `composerTopInViewportPx` 那条旧观察链当前只保留为“列表侧真值尚未产出时”的启动 fallback：只有 `latestConversationBottomPaddingPx` 仍未可用时，才允许用 `messageViewportHeightPx - composerTopInViewportPx` 写入 `observedCollapsedBottomReservePx`；一旦共享 measure 真值已经到位，旧链必须停止回写。同时，上一版“只要拿到首个有效 `latestConversationBottomPaddingPx` 就无条件做 cold-start 预热”的宽松写入已删除，避免 clean-state 首发后把 focus/send 锁窗口里的 padding 误记成稳定 reserve
-- 发送起步当前唯一口径：当前轮的等待态 / 正文 / settled 都应优先由底部活跃区承接；`LazyColumn` 只负责更早历史消息的回底与用户浏览。不要再把 assistant placeholder 在列表中的位置当成发送起步的唯一真相，也不要把旧 `pendingStartAnchorScrollOffsetPx / sendStartWorklineBottomPx / requestScrollToItem(...)` 重新升回主链
-- `BottomActiveZoneSlice` 接管渲染后，`OVERLAY` 主链里的工作线命中与 restore 判断当前已不再继续吃单条 assistant 的 `streamingContentBottomPx`：`isNearStreamingWorkline()`、`isAtStreamingWorklineStrict()` 在 `StreamingLocation.OVERLAY` 下直接视为命中，而静态 `atBottom` / restore 则改用 history list 自己的 viewportEndOffset 与最后一条历史消息 bottom 比较。后续不要再把 Overlay 内“是否贴工作线”重新绑回单条 assistant bounds
-- 发送当拍只允许对消息列表做原地增改（`upsert` 用户消息 + assistant placeholder），不允许再用 `messages.clear() + addAll()` 清空列表后重建
-- 远端历史 hydrate 当前也不再使用 `messages.clear() + addAll()`；`replaceMessages(...)` 已改为按消息 `id` 原地 `set/add/move/remove` 的增量更新，尽量保留正向列表的 item 缓存和滚动锚点
-- 首次进入聊天页的贴底当前继续由 [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的独立 effect 负责；但这条 effect 只会在 `startupLayoutReady` 后启动，并且只有真的命中底部容差才会把 `initialBottomSnapDone` 记完成。若首屏第一次 `scrollToBottom(false)` 发生在目标线或内容 bounds 仍未稳定的窗口里，必须允许后续几何稳定后自动重试；从后台切回时不默认自动贴底
-- 聊天列表当前不再用 `rememberSaveable(..., saver = LazyListState.Saver)` 恢复上次停留的 `LazyListState`。冷启动 / 重进聊天页且本地已有历史时，`LazyListState` 会先从最后一条历史消息起步，避免 reveal 放行后先从顶部露出旧历史；随后仍继续交给“首次贴底”主链补一次精确到底。不要再让系统先把长消息中段或旧历史停留位置恢复出来，否则首几秒会出现“文本像重叠 / 在同一条长消息里来回闪”的启动假象
-- 本地 fake streaming 在 `ON_PAUSE / ON_STOP` 时必须同步收口成 completed 消息，并同步落本地聊天窗口、清 streaming draft；切回前台时不允许再靠异步恢复链把半截 draft 重新拉回屏幕
-- 本地 fake streaming 结束前不再等待 `currentStreamingOverflowDelta()` 这类旧 overflow 口径“自行收平”后再 finish；正文刷完后直接进入完成态收口，避免旧收口链继续制造尾帧回弹
-- streaming 行级 reveal 当前不再走 `rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 这层 fresh line 锁预览；运行时必须直接用原始 `StreamingRenderedLines` 渲染，禁止再把 `activeLine` 锁成预览串或空串，避免 activeLine 升格为 stableLine 时出现 1 帧高度塌陷
-- streaming 新行防闪当前不再依赖叶子 renderer 的显示门闩；`rememberGatedStreamingRenderedLines(...)` 已移除。当前改为在 `ChatScreen.kt` 的 streaming `onAdvance` 回调里，基于 `TextMeasurer` 对 active block 做同宽度、同样式的 pre-measure；如果下一拍 active block 的物理行数增加，就先按实测高度差做一次前馈 `scrollBy(deltaPx)`，再写入新的 streaming content。旧的 bounds -> follow 主链继续保留做后续精修，不再把“下一行提前冒头”继续交给晚一拍的 bounds 回写链
-- streaming follow 对“是否已经回到工作线”的判断当前也已与发送起步 release gate 拆开：原 `isNearStreamingWorkline()` 继续保留给 sendStart 保护释放等宽容差消费者使用，但 `ChatScrollCoordinator.kt` 的 follow suppression 必须改用更严格的 `isAtStreamingWorklineStrict()`。这个严格版上容差只能收在 `BOTTOM_POSITION_TOLERANCE` 量级，不能再继续吃 `assistantLineStepPx` 那种“一整行高度”的上容差，否则代码会主动允许工作线下方先露出一整行才开始 follow
-- `finishStreaming()` 与后台同步完结当前都会在用户未进入 `UserBrowsing` 时按需补一发“回到底部”归位；这不是旧 `pendingFinalBottomSnap` 状态机，完成态收口后若仍离底，必须复用现有 `scrollToBottom(false)` 静态底线主链，不允许再用 `requestScrollToItem(lastIndex)` 把最后一条消息顶到视口顶部
-- 两阶段 finalize 的第一阶段一旦已经把最终 assistant 内容写入 `messages`，本地持久化快照就不能再把这条 assistant 当成“仍在 streaming 的 transient item”过滤掉；否则切后台 / 杀进程后，本地聊天窗口只会剩下用户消息，看起来像“明明生成过但没落进记录”。当前 `persistableMessagesSnapshot()` 必须继续允许 `pendingStreamingFinalizeMessageId` 对应的 assistant 落盘
-- 本地聊天窗口快照当前不再只保存 `List<ChatMessage>`；失败 user / failed assistant 的状态也必须和消息正文一起落盘，并继续兼容旧数组格式缓存。带后端模式下，远端 hydrate 如果还没覆盖这些本地失败尾巴，必须把它们和失败态 metadata 一起并回首屏快照，不能再让远端快照把本地失败消息擦成“只剩历史 / 只剩用户消息”。当前 footer 语义仍是 `重发 / 重试`，不是“继续生成”
-- assistant 失败态当前继续向前补齐到 0 token 场景：如果 assistant 在首 token 前就失败，运行时也必须保留对应的 assistant placeholder item，并写入 failed assistant state；本地快照不能再把这类“空内容但 failed assistant”当成普通空壳过滤掉。这样切后台 / 杀进程 / 重进后，`回复未完成 / 重试` 仍然有稳定锚点，不会再次退化成“只剩用户消息 + 顶部 hint”
+- `ChatRecyclerViewHost.kt` 当前已恢复反向列表底座；如果后续再调整顺序，必须连同当前 `messages` 的真实存储顺序一起检查，不能只改 `reverseLayout` 或只改 `items.asReversed()`
+- `ChatScreen.kt` 当前已回到：
+  - `chatListMessages = messages`
+  - `currentLastMessageContentBottomPx()` 的 fallback 按 reverse-list 使用可见项 index `0`
+  - `currentBottomOverflowPx()` 只关心最新消息是否还低于目标底边，不再对双主人几何做 `abs(...)` 补偿
+- 发送起步当前保留的旧保护只有两样：
+  - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`
+  - `sendStartAnchorActive`
+- 这些保护当前只服务“发送起步短窗口”的 reserve / 放权稳定，**不是**旧 active-zone 时代那种运行时切管门
+- `commitSendMessage()` 当前的真实顺序是：
+  1. 输入框收口
+  2. `upsertUserMessage(...)`
+  3. 插入 assistant placeholder
+  4. `prepareScrollRuntimeForStreamingStart(...)`
+  5. 置 `sendStartAnchorActive = true`
+  6. 按 reverse-list 口径条件式 `requestScrollToItem(0)`
+- `scrollToBottom(false)` 当前已经回到 reverse-list 主链口径；聊天页主调处应继续把“视觉底部最新消息”的 index 按 `0` 传给 coordinator，而不是沿用正向列表的 `lastIndex`
+- 两阶段 finalize 当前必须继续保留，不能为了“看起来简单”回退到同拍 `isStreaming = false` 的旧写法
+- `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态继续保留给 selection / bounds / fallback 使用；后续不要再把它们升格为“第二套消息运行时主人”的真值来源
+- 远端 hydrate、发送事务和本地 snapshot 继续只允许原地增改；不要再把消息替换链改回 `clear() + addAll()`
 
-### 7.4 当前已收口的交互规则记忆
+### 7.4 当前禁改清单
 
-- 历史区浏览：用户进入 `UserBrowsing` 后，主链立即让权；输入框弹起 / 收起不再作为把历史区一起推着走的理由
-- 底部态生成：waiting 小球、streaming 首行、正文增长、completed 收口都围绕同一条工作线和同一条底边宿主进行，不再允许等待态、首字态、完成态各走一套壳子
-- 自动跟随：当前只有 `Idle / AutoFollow / UserBrowsing` 这一套控制权真相；不再允许背后并存第二条 `scrollBy` 补偿链
-- 完成态：当前统一走两阶段 finalize，不再允许 `isStreaming` 同拍切换、短超时硬切、旧 `pendingFinalBottomSnap`、旧尾帧补滚
-- 生命周期：本地 fake streaming 在切后台时必须直接收口为 completed，不再允许前后台切换把半截 streaming draft 拉回屏幕
-- 底部空白：完成态、切后台恢复、历史 hydrate 当前都不应再制造底部额外空白；若新改动再次出现底部空白，优先检查 finalize 时序和宿主 bounds 上报，而不是先怀疑底座类型
-- 当前主滚动 / 发送抖动 / 首屏贴底 / finalize 体感问题已按最新真机反馈收口。发送微抖已被“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护压住；当前产品口径继续保持：发送瞬间的小球锚点稳定在工作线，避免失败态和短文本收口再次变差。当前唯一仍需继续真机观察的 Android 聊天 UI 主要体感问题，仍是 streaming 长段落换行时“工作线下面下一行提前冒头 / 一闪一消失”；但当前主修法已切到 `ChatScreen.kt` 的 `onAdvance` 前馈预滚 + `ChatScrollCoordinator.kt` 的 strict follow gate 精修。后续若继续处理，只围绕 active block pre-measure 的宽度/样式对齐、pre-scroll 高度差和 bounds refine 时序排查，不要重新把整条滚动链翻回未收口状态，也不要回到旧 release gate / follow delta 假根因
+- 不要重新引入 mixed active-zone / overlay 运行时，不要再恢复：
+  - `StreamingLocation`
+  - `BottomActiveZoneSlice`
+  - `renderBottomActiveZone()`
+  - active-zone 拖动接管 / Overlay 恢复门
+  - `requestSendStartBottomSnap()`
+- 不要在没有明确拍板的前提下，再切回“正向列表 + overlay/placeholder/追滚补偿”那套旧主链
+- 不要恢复 visual offset catch-up、overlay height follow、history-only send-start snap、placeholder/twin-tree finalize、clip/mask 这类已废弃路线
+- 不要删除 `sendStartAnchorActive` 或发送期 reserve 锁，除非有同等级保护替代；发送瞬间抖动之前就是靠这条短窗口保护压住的
+- 不要把两阶段 finalize 改回“同拍直接切 settled”；这会把尾部收口抖动和底部空白再带回来
 
-### 7.5 已修复问题的成因与禁改清单
+### 7.5 当前回归重点
 
-以下条目属于“已经收口的旧问题”。后续改聊天 UI 前，必须先对照这里，避免为了修新问题把旧问题重新带回来。
-
-1. 历史区输入框联动
-- 旧现象：停在历史区时，点击输入框或收起输入框，整段历史消息会跟着上下走
-- 已确认根因：列表底部保留高度和工作线在普通 idle / 历史浏览状态下也继续追实时 `composerTop`
-- 当前修法：普通 idle / 历史浏览状态下不再让消息区实时跟随输入框；只有 streaming 主链需要的窗口才允许参考实时 composer 几何
-- 禁止回退：不要再把“输入框弹起 / 收起”直接当成推动历史区列表的理由
-
-2. 小球掉线 / 先悬空再掉回工作线
-- 旧现象：发送后 waiting 小球有时悬空一拍，有时直接掉到工作线下方
-- 已确认根因：发送当拍如果不显式把 assistant placeholder 的可见底边请求回工作线，`LazyColumn` 会优先保护旧可见项位置，新插入的 waiting 宿主就可能先悬空或掉线
-- 当前修法：发送事件在插入用户消息和 assistant placeholder 后，同一发送事务里立即切入底部活跃区，并用现有 `scrollToBottom(false)` 把更早历史列表压回底部；不再让 assistant placeholder 在列表内单独承担发送起步锚点
-- 禁止回退：不要再恢复“发送死区”“只在离底较远时才回底”“用 spacer item 占底”这些方案
-
-3. streaming 过程中往下掉一下再弹回
-- 旧现象：正文往上长时，偶发先往下掉一下再弹回；新段落诞生时更明显
-- 已确认根因：streaming block 外壳把块间距挂成外部 `padding(top)`，再叠加 active / committed 中途切换的测量树差异，导致新区块诞生或块级交接时出现帧级高度塌陷
-- 当前修法：streaming block 改为 unified host；非首块间距改成独立 `Spacer(height = MARKDOWN_BLOCK_SPACING)`；streaming 期间 completed / active blocks 统一复用同一套 active 测量实现
-- 禁止回退：不要再把 `MARKDOWN_BLOCK_SPACING` 重新挂回 block 外壳 `padding(top)`；不要再让流式中途 completed / active blocks 走两套不同外壳
-
-4. fresh line 锁导致的行级塌陷
-- 旧现象：有些行在 reveal / 换行那一拍会明显一缩一放，像内容被锁空了一帧
-- 已确认根因：`rememberRendererLockedStreamingRenderedLinesImpl()` / `buildLockedStreamingActivePreview()` 会把 `activeLine` 锁成预览串甚至空串，直接把原本有高度的 active line 压成更矮的临时节点
-- 当前修法：删除 fresh line 锁预览层，stable / active 行直接用原始 `StreamingRenderedLines` 渲染
-- 禁止回退：不要再引入“锁新字”“锁空串”“等几帧再放行”的旧 preview 链
-
-4.1 streaming 新行提前冒头 / 一闪一消失
-- 旧现象：工作线这一行还没真正上推完成时，工作线下面的新一行会提前冒头；随后上一行升格，新一行像“一闪一消失”
-- 已确认根因：主因是 active block 涨行那一拍，内容宿主会先增高，而旧链路要等 bounds 回调把 `streamingContentBottomPx` 写回后，下一拍 follow 才会补滚；在正向 `LazyColumn` 下，这个 bounds -> follow 的异步 lag 就会把工作线下面的新一行短暂露出来。旧 `isNearStreamingWorkline()` 的上容差曾直接吃 `assistantLineStepPx`（一整行高度），如果 streaming follow suppression 继续共用它，又会把这类闪露进一步放大
-- 当前修法：移除叶子 renderer 的 `rememberGatedStreamingRenderedLines(...)` 显示门闩，改为在 `ChatScreen.kt` 的 streaming `onAdvance` 回调里，先用 `measureStreamingActiveBlockLayout(...)` 对当前 active block 与下一拍 active block 做同宽度、同样式的 pre-measure；若下一拍物理行数增加，则在写入 `streamingMessageContent` 前先按实测高度差做一次前馈 `scrollBy(deltaPx)`。`ChatScrollCoordinator.kt` 里的 streaming follow suppression 继续使用更严格的 `isAtStreamingWorklineStrict()`，作为 bounds 主链的后续精修
-- 禁止回退：不要再把“行提交时机”堆回叶子 renderer；不要恢复 `rememberGatedStreamingRenderedLines(...)`、旧 fresh-line preview、锁空串/锁预览串，也不要用拍脑袋的固定 `lineHeight` 常量替代同一次 `TextMeasurer` 量出来的真实高度差
-
-5. 生成完成瞬间轻微重新排版 / 微调
-- 旧现象：正文生成完成那一瞬间，整体像又重新排版一次；行与行之间会轻微重排
-- 已确认根因：streaming / settled 不仅内容不同，最外层宿主、块级宿主、行级测量路径也不同，`isStreaming` 切换那一拍会换树重测
-- 当前修法：streaming / settled 共用最外层 `Column` 宿主；committed 段落正文向 active 的逐行测量口径靠齐
-- 禁止回退：不要再把 streaming / settled 切回 `Box` 与 `Column` 两套最外壳；不要再让 committed 正文直接自由换行、完全脱离 streaming 的逐行测量口径
-
-6. 完成后上跳与底部空白
-- 旧现象：生成完成后偶尔整体往上跳，底部留一大块空白；切后台再回来更容易触发
-- 已确认根因：旧 finalize 会在 completed 宿主 fresh bounds 尚未就绪时就切掉 `isStreaming`，导致工作线口径、底部判定源、内容宿主同时换挡；后台场景下又会放大这个竞态
-- 当前修法：统一走两阶段 finalize。先把 completed 内容写进去并清 streaming bounds，等同一条消息的 settled fresh bounds 真正有效后，再切 streaming 状态；后台期间暂停等待，回前台继续
-- 禁止回退：不要再用短超时硬切 finalize；不要再恢复 `pendingFinalBottomSnap`、`alignChatListBottom()`、多帧 `scrollBy` 补偿
-
-7. 历史 hydrate / 列表整表震荡
-- 旧现象：冷启动或恢复历史后，列表会整体重排，底部锚点和缓存容易丢
-- 已确认根因：`replaceMessages(clear + addAll)`、发送时 `messages.clear() + addAll()` 会把整表重建，破坏当前列表的 item 缓存与稳定锚点
-- 当前修法：发送与 hydrate 都改成按消息 `id` 原地增改 / move / remove，尽量保留现有 item
-- 禁止回退：不要再把消息替换链改回 `clear() + addAll()`
-
-8. 首屏白屏 / 有历史却不显示
-- 旧现象：首次进入聊天页时整页白底；即使本地已有历史消息，也会因为列表没 reveal 看起来像“什么都没加载出来”
-- 已确认根因：首屏白屏最终是四类问题叠加。第一类是启动门槛曾把 `composerMeasured` 也当成首屏显示前置，导致列表/欢迎语明明该显示却被几何迟到卡住；第二类是后续又把 reveal / splash 放行重新绑到了 `messageViewportMeasured`，让“能不能先显示文字”和“视口是否已测量可做首次贴底”再次混在一起；第三类是 `rememberSaveable` 恢复出的 stale streaming runtime（`isStreaming`、`streamingMessageId` 等）在冷启动 reset 前先参与了首屏判定，造成 `hasStreamingItem = true`、欢迎语被关掉，但 `messages` 实际为空，于是 reveal 出来的只是一张空列表白页；第四类是共享 measure 宿主在 `SubcomposeLayout` 里测 composer 时把父级整屏 `minHeight` 原样传了下去，导致 composer 被量成接近整屏高，列表 / 欢迎语底部 reserve 失真后，欢迎语和历史文本会一起被挤没
-- 当前修法：首屏显示链当前只看 hydration barrier。`shouldRevealMessageList`、`showWelcomePlaceholder`、`LaunchUiGate.chatReady` 都不再等待 `initialBottomSnapDone`、`composerMeasured` 或 `messageViewportMeasured`；首次贴底继续作为独立 effect，但它现在只在 `startupLayoutReady` 后启动，并且只有已经命中底部容差才把 `initialBottomSnapDone` 置真，避免“首屏滚过一次就关门、后续几何稳定了却不再补底”。与此同时，冷启动 reset 会主动清空 streaming runtime，`hasStreamingItem` 也收紧成“既要 streaming 状态存在，也要 `messages` 里真的有对应 item”；共享 measure 宿主在测 composer slot 时额外放松 `minHeight = 0`，只保留精确宽度，避免 reserve 被整屏高误伤
-- 禁止回退：不要再把 `shouldRevealMessageList` 重新绑回 `initialBottomSnapDone`；不要再把 `showWelcomePlaceholder`、`LaunchUiGate.chatReady`、首屏 reveal 重新绑回 `composerMeasured` / `onInputBoundsChanged` / `messageViewportMeasured`；不要再把 `hasStreamingItem` 简化回只看 `isStreaming && streamingMessageId != null`；不要再让共享 measure 宿主把父级整屏 `minHeight` 直接传给 composer slot
-
-9. 首次进入有历史时不贴底
-- 旧现象：冷启动进入聊天页后，历史消息会先停在离底一大段的位置，或者只差几像素却始终压不到工作线
-- 已确认根因：首屏首次贴底 effect 曾在目标线或 bounds 还没稳定时过早记账完成；同时正向列表里“最后一条已可见”的判断过宽，只要 last item 顶部露头就会跳过那次真正需要的到底重定位
-- 当前修法：首次贴底 effect 只在 `startupLayoutReady` 后启动，并且只有命中 `isWithinBottomTolerance()` 才把 `initialBottomSnapDone` 置真；启动窗口允许临时参考一次 realtime composer geometry；`scrollToBottom(false)` 的非动画路径若发现最后一条底边仍在可视区外，会先做一次正向 hard bottom reposition，再交给 `alignChatListBottom()` 精修
-- 禁止回退：不要再把首屏贴底改回“一次 `scrollToBottom(false)` 就记完成”；不要再把 `messageViewportMeasured` / `composerMeasured` 重新绑回 reveal；不要再把到底重定位改回 `scrollToItem(lastIndex)` 这类 top-anchor
-
-10. 发送瞬间的小球上抬，不等于底部空白
-- 旧现象：早期多次把 waiting 小球 / 发送首发锚点抬到中部以上时，经常又伴随底部空白、完成后上跳或整段消息抖动，所以很容易形成“只要小球上抬，就会带来底部空白”的误判
-- 已确认根因：历史上的“上抬出事”并不是小球位置本身导致的，而是发送起步抖动、共享 measure 宿主的 `conversationBottomPaddingPx` 连续变化，以及 finalize 切换时几何口径没稳这几条问题同时存在。那时把小球抬高，只是把它离底部拉远，视觉上稀释了抖动，但没有修掉底层几何；真正的底部空白来自 finalize / 底部几何链，而不是来自小球首发位置本身
-- 当前结论：当前发送微抖已经由“只锁 `LazyColumn` `bottomPaddingPx` 消费点”的发送期保护压住；底部空白与完成后上跳已经由两阶段 finalize 收口。也就是说，理论上“小球首发位置”和“底部空白”已经可以拆开看，不是同一个问题。只是产品上，按最新真机反馈，小球一旦抬到中部以上，失败态和短文本收口又会变差，所以当前仍把小球锚点固定回工作线；而 `streamingWorklineBottomPx`、`currentUnifiedBottomTargetPx()`、两阶段 finalize 和静态贴底主链继续保持不动
-- 禁止回退：不要再把“发送瞬间小球首发位置”和“完成态 / 静态贴底 / 底部空白”绑成同一个开关；也不要因为已经证明两者可拆，就再次默认恢复中部上抬。当前产品口径仍是工作线锚点；若以后要重开中部上抬，必须单独评估失败态和短文本收口
-
-当前排查顺序：
-1. assistant 真实内容底边是否仍由同一宿主上报
-2. 工作线与静态贴底线是否仍共用同一物理锚点
-3. `Idle / AutoFollow / UserBrowsing` 是否仍是唯一滚动状态真相
-4. 回到底部按钮是否仍只读主链派生
+- 首屏进入且本地有历史时，是否仍稳定贴底
+- 发送瞬间小球和历史文本是否仍抖动
+- streaming 过程中上下拖动是否不再乱窜、重叠、抢手
+- finalize 收口是否仍保持前几轮压下去的稳定度
+- 输入框上方和静态文本底部是否不再出现额外白块
 
 ## 8. 其他聊天 UI 基线
 

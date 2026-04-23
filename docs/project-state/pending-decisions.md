@@ -1,6 +1,6 @@
 # 待决策事项
 
-最后更新：2026-04-22
+最后更新：2026-04-24
 
 ## D1 运维入口优先固化到什么形式
 
@@ -25,9 +25,3 @@
 - 当前选项：直接采购 SAE + PolarDB + 域名/HTTPS 跑最小生产链，或先上一套测试/预发环境再买正式规格
 - 现状：仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也新补了 `docs/runbooks/infra-readiness.md` 作为采购前检查单；但真实云资源、Region、环境命名和实例规格都还没定
 - 待定原因：你现在还没买服务器，正式环境资源一旦落地，就会影响后续部署、日志、数据库、域名、环境变量和 runbook 的真实入口
-
-## D5 Android streaming Overlay 后续是否继续精修
-
-- 当前选项：在 Overlay 第一刀真机验证后，继续做完成态交接精修 / 切层条件修正；或如果体感已经达标，冻结当前 UI 基线转后端
-- 现状：外部会诊和本地排查已收敛，局部补丁路线（clip / renderer gate / 32ms hold / requestScrollToItem 行锚定 / hard bounds wait / dispatchRawDelta 调参）都已试过或排除。`ChatScreen.kt` 当前已按 [ADR-0002](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md) 实施 Overlay 第一刀：底部观看 streaming 正文进 Overlay，用户浏览交回 `LazyColumn`，回到底部且仍在 streaming 时恢复 Overlay；旧 wrap guard/raw delta/follow 只保留给 `LAZY_COLUMN` fallback
-- 待定原因：第一刀已编译通过但尚未真机验证。是否需要第二刀，取决于真机上“下一行残影 / 每行轻抖 / 尾部轻抖 / 上滑回底切层 / 复制选择”这几项反馈
