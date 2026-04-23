@@ -2049,7 +2049,16 @@ fun ChatScreen() {
     fun currentHistoryListBottomTargetPx(): Int {
         val viewportEnd = chatListState.layoutInfo.viewportEndOffset.takeIf { it > 0 } ?: return -1
         return if (bottomActiveZoneVisible) {
-            (viewportEnd - measuredBottomActiveZoneHeightPx).coerceAtLeast(0)
+            val effectiveConversationBottomPaddingPx =
+                lockedConversationBottomPaddingPx
+                    .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
+                    ?: latestConversationBottomPaddingPx.takeIf { it >= 0 }
+                    ?: 0
+            (
+                viewportEnd -
+                    effectiveConversationBottomPaddingPx -
+                    measuredBottomActiveZoneHeightPx
+                ).coerceAtLeast(0)
         } else {
             viewportEnd
         }
@@ -4344,6 +4353,11 @@ fun ChatScreen() {
             val effectiveBottomPaddingPx =
                 lockedConversationBottomPaddingPx
                     .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
+                    ?.let { lockedPaddingPx ->
+                        val synchronousActiveZoneHeightPx =
+                            (listBottomPaddingPx - conversationBottomPaddingPx).coerceAtLeast(0)
+                        lockedPaddingPx + synchronousActiveZoneHeightPx
+                    }
                     ?: listBottomPaddingPx
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
@@ -4643,8 +4657,6 @@ fun ChatScreen() {
                                 )
                             } + streamVisibleBottomGapPx
                             ).coerceAtLeast(0)
-                    val conversationBodyHeightPx =
-                        (constraints.maxHeight - conversationBottomPaddingPx).coerceAtLeast(0)
                     val bottomActiveZonePlaceables = subcompose("conversation_bottom_active_zone") {
                         renderBottomActiveZone()
                     }.map { measurable ->
@@ -4662,10 +4674,10 @@ fun ChatScreen() {
                     if (measuredBottomActiveZoneHeightPx != bottomActiveZoneHeightPx) {
                         measuredBottomActiveZoneHeightPx = bottomActiveZoneHeightPx
                     }
-                    val listAvailableHeightPx = conversationBodyHeightPx
+                    val listAvailableHeightPx = constraints.maxHeight
                     val listBottomPaddingPx =
                         if (bottomActiveZoneVisible) {
-                            bottomActiveZoneHeightPx
+                            conversationBottomPaddingPx + bottomActiveZoneHeightPx
                         } else {
                             conversationBottomPaddingPx
                         }
@@ -4696,7 +4708,7 @@ fun ChatScreen() {
                         bottomActiveZonePlaceables.forEach { placeable ->
                             placeable.placeRelative(
                                 x = 0,
-                                y = conversationBodyHeightPx - placeable.height
+                                y = constraints.maxHeight - conversationBottomPaddingPx - placeable.height
                             )
                         }
                         composerPlaceables.forEach { placeable ->
