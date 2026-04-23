@@ -4422,20 +4422,6 @@ fun ChatScreen() {
                 }
             }
         }
-        val streamingOverlayVisualListOffsetPx =
-            if (
-                isStreaming &&
-                streamingLocation == StreamingLocation.OVERLAY &&
-                streamingOverlayVisible &&
-                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
-                scrollMode != ScrollMode.UserBrowsing &&
-                !chatListUserDragging &&
-                !programmaticScroll
-            ) {
-                streamingOverlayPendingFollowDeltaPx.coerceAtLeast(0)
-            } else {
-                0
-            }
         val renderComposerBar: @Composable (Modifier) -> Unit = { hostModifier ->
             ChatComposerBottomBar(
                 inputValue = input.value,
@@ -4657,9 +4643,8 @@ fun ChatScreen() {
                     }
 
                     layout(constraints.maxWidth, constraints.maxHeight) {
-                        val listVisualOffsetYPx = -streamingOverlayVisualListOffsetPx
-                        listPlaceables.forEach { it.placeRelative(0, listVisualOffsetYPx) }
-                        welcomePlaceables.forEach { it.placeRelative(0, listVisualOffsetYPx) }
+                        listPlaceables.forEach { it.placeRelative(0, 0) }
+                        welcomePlaceables.forEach { it.placeRelative(0, 0) }
                         val overlayBottomPx =
                             constraints.maxHeight -
                                 measuredComposerHeightPx -
