@@ -2661,6 +2661,7 @@ fun ChatScreen() {
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
+        anchoredUserMessageId = null
         inputLimitHintVisible = false
         composerStatusHintVisible = false
         composerStatusHintText = ""
@@ -2962,6 +2963,7 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
+            anchoredUserMessageId = null
             sendUiSettling = false
             sendStartViewportHeightPx = 0
             sendStartAnchorActive = false
@@ -3350,6 +3352,8 @@ fun ChatScreen() {
         shouldRestoreBottomAnchor: Boolean
     ) {
         isStreaming = false
+        streamingLocation = StreamingLocation.LAZY_COLUMN
+        anchoredUserMessageId = null
         sendUiSettling = false
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
@@ -3665,7 +3669,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
-        streamingLocation = StreamingLocation.OVERLAY
+        streamingLocation = StreamingLocation.LAZY_COLUMN
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3766,6 +3770,12 @@ fun ChatScreen() {
             withFrameNanos { }
             try {
                 scrollToBottom(false)
+                if (isStreaming && bottomActiveZoneAvailable && scrollMode != ScrollMode.UserBrowsing) {
+                    streamingLocation = StreamingLocation.OVERLAY
+                    streamingWrapGuardTargetLineCount = -1
+                    streamingContentBottomPx = -1
+                    streamingMessageId?.let { messageContentBoundsById.remove(it) }
+                }
             } finally {
                 sendUiSettling = false
                 lockedConversationBottomPaddingPx = -1
