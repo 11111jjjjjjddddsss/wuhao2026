@@ -32,6 +32,7 @@ import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -2047,6 +2048,12 @@ fun ChatScreen() {
     fun currentHistoryListBottomTargetPx(): Int {
         return chatListState.layoutInfo.viewportEndOffset.takeIf { it > 0 } ?: -1
     }
+    fun currentHistoryListBottomAlignDeltaPx(): Int {
+        val historyContentBottom = currentHistoryListContentBottomPx()
+        val historyBottomTarget = currentHistoryListBottomTargetPx()
+        if (historyContentBottom <= 0 || historyBottomTarget <= 0) return 0
+        return historyBottomTarget - historyContentBottom
+    }
     fun currentHistoryListBottomOverflowPx(): Int {
         if (chatListMessages.isEmpty()) return 0
         val historyContentBottom = currentHistoryListContentBottomPx()
@@ -3628,6 +3635,22 @@ fun ChatScreen() {
         )
         trimMessagesInPlace()
         anchoredUserMessageId = userId
+        lockedConversationBottomPaddingPx =
+            when {
+                !collapseComposer && latestConversationBottomPaddingPx > 0 -> {
+                    latestConversationBottomPaddingPx
+                }
+                collapseComposer && observedCollapsedBottomReservePx > 0 -> {
+                    observedCollapsedBottomReservePx + streamVisibleBottomGapPx
+                }
+                latestConversationBottomPaddingPx > 0 -> {
+                    latestConversationBottomPaddingPx
+                }
+                stableComposerBottomBarHeightPx > 0 -> {
+                    stableComposerBottomBarHeightPx + streamVisibleBottomGapPx
+                }
+                else -> -1
+            }
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
@@ -3659,13 +3682,7 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        lockedConversationBottomPaddingPx = -1
         sendStartAnchorActive = false
-        // The send-settling lock only protects the synchronous send-start window.
-        // Once the composer has collapsed and the first anchor request is queued,
-        // keep streaming ownership on the list side instead of pinning the
-        // composer at the expanded multi-line height for the whole stream.
-        sendUiSettling = false
         requestSendStartBottomSnap()
         persistTick++
         snackbarScope.launch {
@@ -3709,6 +3726,19 @@ fun ChatScreen() {
             refreshChatListMetrics = ::refreshChatListMetrics
         )
     }
+    fun beginBottomActiveZoneUserBrowsing() {
+        scrollRuntime.userInteracting.value = true
+        scrollRuntime.streamBottomFollowActive.value = false
+        if (scrollMode != ScrollMode.UserBrowsing) {
+            scrollMode = ScrollMode.UserBrowsing
+        }
+        if (streamingLocation == StreamingLocation.OVERLAY) {
+            streamingLocation = StreamingLocation.LAZY_COLUMN
+            streamingWrapGuardTargetLineCount = -1
+            streamingContentBottomPx = -1
+            streamingMessageId?.let { messageContentBoundsById.remove(it) }
+        }
+    }
 
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
         com.nongjiqianwen.scrollChatListToBottom(
@@ -3723,7 +3753,7 @@ fun ChatScreen() {
                 },
             currentBottomAlignDeltaPx =
                 if (bottomActiveZoneVisible) {
-                    { 0 }
+                    ::currentHistoryListBottomAlignDeltaPx
                 } else {
                     ::currentBottomAlignDeltaPx
                 },
@@ -3734,7 +3764,12 @@ fun ChatScreen() {
     requestSendStartBottomSnap = {
         snackbarScope.launch {
             withFrameNanos { }
-            scrollToBottom(false)
+            try {
+                scrollToBottom(false)
+            } finally {
+                sendUiSettling = false
+                lockedConversationBottomPaddingPx = -1
+            }
         }
     }
     val followStreamingByDelta: suspend (Int) -> Unit = followStreamingByDelta@{ deltaPx ->
@@ -4297,11 +4332,9 @@ fun ChatScreen() {
                 }
             }
             val effectiveBottomPaddingPx =
-                if (bottomActiveZoneVisible) {
-                    listBottomPaddingPx
-                } else {
-                    lockedConversationBottomPaddingPx.takeIf { it >= 0 } ?: listBottomPaddingPx
-                }
+                lockedConversationBottomPaddingPx
+                    .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
+                    ?: listBottomPaddingPx
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
             ) {
@@ -4374,6 +4407,24 @@ fun ChatScreen() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .pointerInput(bottomActiveZoneVisible, streamingLocation) {
+                            detectVerticalDragGestures(
+                                onDragStart = {
+                                    beginBottomActiveZoneUserBrowsing()
+                                },
+                                onVerticalDrag = { change, dragAmount ->
+                                    beginBottomActiveZoneUserBrowsing()
+                                    change.consume()
+                                    chatListState.dispatchRawDelta(-dragAmount)
+                                },
+                                onDragEnd = {
+                                    scrollRuntime.userInteracting.value = false
+                                },
+                                onDragCancel = {
+                                    scrollRuntime.userInteracting.value = false
+                                }
+                            )
+                        }
                 ) {
                     Column(
                         modifier = Modifier
