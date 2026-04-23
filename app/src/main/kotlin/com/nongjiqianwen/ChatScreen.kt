@@ -1651,6 +1651,7 @@ fun ChatScreen() {
     }
     var streamingOverlayMeasuredHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var streamingOverlayFollowLastHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var streamingOverlayPendingFollowDeltaPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val streamingAdvanceMeasureCache = remember(uiRuntimeResetKey) {
         LinkedHashMap<StreamingAdvanceMeasureCacheKey, StreamingActiveBlockLayout?>()
     }
@@ -3127,6 +3128,7 @@ fun ChatScreen() {
             streamingLocation = StreamingLocation.LAZY_COLUMN
             streamingOverlayMeasuredHeightPx = 0
             streamingOverlayFollowLastHeightPx = 0
+            streamingOverlayPendingFollowDeltaPx = 0
             return@LaunchedEffect
         }
         if (
@@ -3154,6 +3156,7 @@ fun ChatScreen() {
             streamingLocation = StreamingLocation.OVERLAY
             streamingOverlayFollowLastHeightPx =
                 streamingOverlayMeasuredHeightPx.coerceAtLeast(assistantLineStepPx)
+            streamingOverlayPendingFollowDeltaPx = 0
             streamingWrapGuardTargetLineCount = -1
             streamingContentBottomPx = -1
             streamingMessageId?.let { messageContentBoundsById.remove(it) }
@@ -3252,6 +3255,7 @@ fun ChatScreen() {
         messageContentBoundsById.remove(anchorMessageId)
         messageSelectionBoundsCacheById.remove(anchorMessageId)
         messageSelectionBoundsById.remove(anchorMessageId)
+        streamingOverlayPendingFollowDeltaPx = 0
         pendingStreamingFinalizeMessageId = anchorMessageId
         pendingStreamingFinalizeShouldRestoreBottomAnchor = shouldRestoreBottomAnchor
     }
@@ -3383,6 +3387,7 @@ fun ChatScreen() {
             streamingLocation = StreamingLocation.OVERLAY
             streamingOverlayFollowLastHeightPx = assistantLineStepPx
             streamingOverlayMeasuredHeightPx = 0
+            streamingOverlayPendingFollowDeltaPx = 0
             streamingWrapGuardTargetLineCount = -1
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
@@ -3602,6 +3607,7 @@ fun ChatScreen() {
         streamingLocation = StreamingLocation.OVERLAY
         streamingOverlayFollowLastHeightPx = assistantLineStepPx
         streamingOverlayMeasuredHeightPx = 0
+        streamingOverlayPendingFollowDeltaPx = 0
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3701,30 +3707,28 @@ fun ChatScreen() {
             endProgrammaticChatListScroll()
         }
     }
-    LaunchedEffect(
-        isStreaming,
-        streamingLocation,
-        streamingOverlayVisible,
-        streamingOverlayMeasuredHeightPx,
-        scrollMode,
-        chatListUserDragging
-    ) {
-        if (!isStreaming || streamingLocation != StreamingLocation.OVERLAY || !streamingOverlayVisible) {
-            streamingOverlayFollowLastHeightPx = 0
-            return@LaunchedEffect
-        }
-        val currentOverlayHeightPx = streamingOverlayMeasuredHeightPx.coerceAtLeast(0)
-        if (currentOverlayHeightPx <= 0) return@LaunchedEffect
-        if (scrollMode == ScrollMode.UserBrowsing || chatListUserDragging) {
-            streamingOverlayFollowLastHeightPx = currentOverlayHeightPx
-            return@LaunchedEffect
-        }
-        val previousOverlayHeightPx =
-            streamingOverlayFollowLastHeightPx.takeIf { it > 0 } ?: assistantLineStepPx
-        streamingOverlayFollowLastHeightPx = currentOverlayHeightPx
-        val overlayGrowthDeltaPx = (currentOverlayHeightPx - previousOverlayHeightPx).coerceAtLeast(0)
-        if (overlayGrowthDeltaPx > 0) {
-            followStreamingByDelta(overlayGrowthDeltaPx)
+    SideEffect {
+        val pendingOverlayFollowDeltaPx = streamingOverlayPendingFollowDeltaPx
+        val canFollowOverlayGrowth =
+            isStreaming &&
+                streamingLocation == StreamingLocation.OVERLAY &&
+                streamingOverlayVisible &&
+                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                scrollMode != ScrollMode.UserBrowsing &&
+                !chatListUserDragging &&
+                !programmaticScroll
+        if (!canFollowOverlayGrowth) {
+            streamingOverlayPendingFollowDeltaPx = 0
+        } else if (pendingOverlayFollowDeltaPx > 0) {
+            beginProgrammaticChatListScroll()
+            try {
+                val consumedDeltaPx =
+                    chatListState.dispatchRawDelta(pendingOverlayFollowDeltaPx.toFloat())
+                streamingOverlayPendingFollowDeltaPx =
+                    (pendingOverlayFollowDeltaPx - consumedDeltaPx.roundToInt()).coerceAtLeast(0)
+            } finally {
+                endProgrammaticChatListScroll()
+            }
         }
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
@@ -4378,8 +4382,20 @@ fun ChatScreen() {
                         .fillMaxWidth()
                         .padding(horizontal = listHorizontalPadding)
                         .onSizeChanged { size ->
-                            if (streamingOverlayMeasuredHeightPx != size.height) {
-                                streamingOverlayMeasuredHeightPx = size.height
+                            val nextOverlayHeightPx = size.height.coerceAtLeast(0)
+                            if (streamingOverlayMeasuredHeightPx != nextOverlayHeightPx) {
+                                val previousOverlayHeightPx =
+                                    streamingOverlayFollowLastHeightPx.takeIf { it > 0 }
+                                        ?: assistantLineStepPx
+                                if (
+                                    pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                                    nextOverlayHeightPx > previousOverlayHeightPx
+                                ) {
+                                    streamingOverlayPendingFollowDeltaPx +=
+                                        nextOverlayHeightPx - previousOverlayHeightPx
+                                }
+                                streamingOverlayMeasuredHeightPx = nextOverlayHeightPx
+                                streamingOverlayFollowLastHeightPx = nextOverlayHeightPx
                             }
                         }
                 ) {
