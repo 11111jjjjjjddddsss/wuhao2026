@@ -304,6 +304,7 @@ internal fun BindChatListScrollEffects(
                     contentBottom > 0 &&
                         legalBottom > 0 &&
                         isNearStreamingWorkline() &&
+                        !listScrollInProgress &&
                         !isComposerSettling
                 if (shouldReleaseStartAnchorProtection) {
                     if (sendStartAnchorReleaseArmedState.value) {

@@ -1808,6 +1808,7 @@ fun ChatScreen() {
     var lockedConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var observedCollapsedBottomReservePx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var measuredBottomActiveZoneHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var bottomActiveZoneOverlayRestoreArmed by remember(uiRuntimeResetKey) { mutableStateOf(true) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -3247,7 +3248,7 @@ fun ChatScreen() {
             streamingWrapGuardTargetLineCount = -1
             return@LaunchedEffect
         }
-        val canRestoreOverlay =
+        val overlayRestoreReady =
             streamingLocation == StreamingLocation.LAZY_COLUMN &&
                 bottomActiveZoneAvailable &&
                 scrollMode == ScrollMode.AutoFollow &&
@@ -3258,11 +3259,15 @@ fun ChatScreen() {
                 !isComposerSettling &&
                 selectionInactive &&
                 isAtStreamingWorklineStrict()
-        if (canRestoreOverlay) {
-            streamingLocation = StreamingLocation.OVERLAY
-            streamingWrapGuardTargetLineCount = -1
-            streamingContentBottomPx = -1
-            streamingMessageId?.let { messageContentBoundsById.remove(it) }
+        if (overlayRestoreReady) {
+            if (bottomActiveZoneOverlayRestoreArmed) {
+                streamingLocation = StreamingLocation.OVERLAY
+                streamingWrapGuardTargetLineCount = -1
+                streamingContentBottomPx = -1
+                streamingMessageId?.let { messageContentBoundsById.remove(it) }
+            } else {
+                bottomActiveZoneOverlayRestoreArmed = true
+            }
         }
     }
 
@@ -3368,6 +3373,7 @@ fun ChatScreen() {
     ) {
         isStreaming = false
         streamingLocation = StreamingLocation.LAZY_COLUMN
+        bottomActiveZoneOverlayRestoreArmed = true
         anchoredUserMessageId = null
         sendUiSettling = false
         sendStartViewportHeightPx = 0
@@ -3491,6 +3497,7 @@ fun ChatScreen() {
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             if (hasRemoteHistorySource) return@post
             resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
+            bottomActiveZoneOverlayRestoreArmed = true
             streamingLocation = StreamingLocation.OVERLAY
             streamingWrapGuardTargetLineCount = -1
             if (streamRevealJob?.isActive == true) {
@@ -3701,7 +3708,8 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        sendStartAnchorActive = false
+        bottomActiveZoneOverlayRestoreArmed = true
+        sendStartAnchorActive = true
         requestSendStartBottomSnap()
         persistTick++
         snackbarScope.launch {
@@ -3748,6 +3756,7 @@ fun ChatScreen() {
     fun beginBottomActiveZoneUserBrowsing() {
         scrollRuntime.userInteracting.value = true
         scrollRuntime.streamBottomFollowActive.value = false
+        bottomActiveZoneOverlayRestoreArmed = false
         if (scrollMode != ScrollMode.UserBrowsing) {
             scrollMode = ScrollMode.UserBrowsing
         }
@@ -3962,6 +3971,7 @@ fun ChatScreen() {
 
     fun jumpToBottom() {
         snackbarScope.launch {
+            bottomActiveZoneOverlayRestoreArmed = true
             performJumpToBottom(
                 messagesCount = messages.size,
                 hasStreamingItem = hasStreamingItem,
