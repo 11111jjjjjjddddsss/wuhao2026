@@ -2044,6 +2044,16 @@ fun ChatScreen() {
                 ?: return -1
         return fallbackItem.offset + fallbackItem.size
     }
+    fun currentHistoryListBottomTargetPx(): Int {
+        return chatListState.layoutInfo.viewportEndOffset.takeIf { it > 0 } ?: -1
+    }
+    fun currentHistoryListBottomOverflowPx(): Int {
+        if (chatListMessages.isEmpty()) return 0
+        val historyContentBottom = currentHistoryListContentBottomPx()
+        val historyBottomTarget = currentHistoryListBottomTargetPx()
+        if (historyContentBottom <= 0 || historyBottomTarget <= 0) return Int.MAX_VALUE
+        return abs(historyBottomTarget - historyContentBottom)
+    }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
         val lastMessageId = lastMessage.id
@@ -2075,6 +2085,9 @@ fun ChatScreen() {
         }
     }
     fun currentBottomOverflowPx(): Int {
+        if (bottomActiveZoneVisible) {
+            return currentHistoryListBottomOverflowPx()
+        }
         val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return Int.MAX_VALUE
@@ -2098,6 +2111,7 @@ fun ChatScreen() {
     }
     fun isNearStreamingWorkline(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
+        if (streamingLocation == StreamingLocation.OVERLAY && bottomActiveZoneVisible) return true
         val worklineBottom = streamingWorklineBottomPx
         if (worklineBottom <= 0) return atBottom
         val contentBottom = currentStreamingContentBottomPx()
@@ -2109,6 +2123,7 @@ fun ChatScreen() {
     }
     fun isAtStreamingWorklineStrict(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
+        if (streamingLocation == StreamingLocation.OVERLAY && bottomActiveZoneVisible) return true
         val worklineBottom = streamingWorklineBottomPx
         if (worklineBottom <= 0) return atBottom
         val contentBottom = currentStreamingContentBottomPx()
