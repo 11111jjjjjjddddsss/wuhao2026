@@ -106,6 +106,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -1042,15 +1043,6 @@ private fun trimMessageWindow(source: List<ChatMessage>): List<ChatMessage> {
     return source.drop(startIndex)
 }
 
-private fun resolveSendStartAnchorScrollOffsetPx(
-    chatListTopPaddingPx: Int,
-    sendStartAnchorBottomInsetPx: Int,
-    worklineBottomPx: Int
-): Int {
-    if (worklineBottomPx <= 0) return Int.MIN_VALUE
-    return chatListTopPaddingPx + sendStartAnchorBottomInsetPx - worklineBottomPx
-}
-
 private fun dedupeAdjacentMessages(source: List<ChatMessage>): List<ChatMessage> {
     if (source.size < 2) return source
     val deduped = ArrayList<ChatMessage>(source.size)
@@ -1338,6 +1330,102 @@ private fun recoverStreamingDraftAsCompletedSnapshot(
 
 private fun assistantMessageIdForSourceUser(sourceUserMessageId: String): String =
     "assistant_$sourceUserMessageId"
+
+private const val BOTTOM_ACTIVE_ZONE_LEADING_HISTORY_MESSAGES = 1
+
+private data class BottomActiveZoneSlice(
+    val historyMessages: List<ChatMessage>,
+    val activeMessages: List<ChatMessage>,
+    val activeAssistantMessageId: String?
+)
+
+private fun resolveBottomActiveZoneSlice(
+    messages: List<ChatMessage>,
+    anchoredUserMessageId: String?,
+    streamingMessageId: String?,
+    pendingStreamingFinalizeMessageId: String?,
+    failedAssistantMessageStates: Map<String, FailedAssistantMessageState>
+): BottomActiveZoneSlice {
+    if (messages.isEmpty()) {
+        return BottomActiveZoneSlice(
+            historyMessages = emptyList(),
+            activeMessages = emptyList(),
+            activeAssistantMessageId = null
+        )
+    }
+
+    fun indexOfMessage(messageId: String?): Int {
+        if (messageId.isNullOrBlank()) return -1
+        return messages.indexOfFirst { it.id == messageId }
+    }
+
+    val anchoredAssistantMessageId =
+        anchoredUserMessageId
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::assistantMessageIdForSourceUser)
+    val candidateAssistantMessageId =
+        listOf(
+            pendingStreamingFinalizeMessageId,
+            streamingMessageId,
+            anchoredAssistantMessageId
+        ).firstOrNull { candidateId ->
+            !candidateId.isNullOrBlank() && messages.any { it.id == candidateId }
+        }
+    val assistantIndex = indexOfMessage(candidateAssistantMessageId)
+    val anchoredUserIndex = indexOfMessage(anchoredUserMessageId)
+    val roundUserIndex =
+        when {
+            anchoredUserIndex >= 0 &&
+                !candidateAssistantMessageId.isNullOrBlank() &&
+                !anchoredUserMessageId.isNullOrBlank() &&
+                assistantMessageIdForSourceUser(anchoredUserMessageId) == candidateAssistantMessageId -> {
+                anchoredUserIndex
+            }
+
+            assistantIndex >= 0 -> {
+                val failedSourceUserMessageId =
+                    failedAssistantMessageStates[candidateAssistantMessageId]
+                        ?.sourceUserMessageId
+                val failedSourceUserIndex = indexOfMessage(failedSourceUserMessageId)
+                if (failedSourceUserIndex >= 0) {
+                    failedSourceUserIndex
+                } else {
+                    messages
+                        .subList(0, assistantIndex)
+                        .indexOfLast { message ->
+                            message.role == ChatRole.USER &&
+                                assistantMessageIdForSourceUser(message.id) == candidateAssistantMessageId
+                        }
+                        .takeIf { it >= 0 }
+                }
+            }
+
+            else -> anchoredUserIndex.takeIf { it >= 0 }
+        }
+
+    val roundStartIndex =
+        when {
+            roundUserIndex != null && roundUserIndex >= 0 -> roundUserIndex
+            assistantIndex >= 0 -> assistantIndex
+            else -> -1
+        }
+
+    if (roundStartIndex < 0) {
+        return BottomActiveZoneSlice(
+            historyMessages = messages,
+            activeMessages = emptyList(),
+            activeAssistantMessageId = candidateAssistantMessageId
+        )
+    }
+
+    val activeZoneStartIndex =
+        (roundStartIndex - BOTTOM_ACTIVE_ZONE_LEADING_HISTORY_MESSAGES).coerceAtLeast(0)
+    return BottomActiveZoneSlice(
+        historyMessages = messages.take(activeZoneStartIndex),
+        activeMessages = messages.drop(activeZoneStartIndex),
+        activeAssistantMessageId = candidateAssistantMessageId
+    )
+}
 
 private suspend fun awaitRemoteSnapshot(): SessionSnapshot? =
     suspendCancellableCoroutine { continuation ->
@@ -1649,9 +1737,6 @@ fun ChatScreen() {
     var streamingLocation by remember(uiRuntimeResetKey) {
         mutableStateOf(StreamingLocation.LAZY_COLUMN)
     }
-    var streamingOverlayMeasuredHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var streamingOverlayFollowLastHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var streamingOverlayPendingFollowDeltaPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val streamingAdvanceMeasureCache = remember(uiRuntimeResetKey) {
         LinkedHashMap<StreamingAdvanceMeasureCacheKey, StreamingActiveBlockLayout?>()
     }
@@ -1734,6 +1819,23 @@ fun ChatScreen() {
             putAll(initialLocalSnapshot.failedAssistantMessageStates)
         }
     }
+    val bottomActiveZoneSlice by remember(uiRuntimeResetKey) {
+        derivedStateOf {
+            resolveBottomActiveZoneSlice(
+                messages = messages,
+                anchoredUserMessageId = anchoredUserMessageId,
+                streamingMessageId = streamingMessageId,
+                pendingStreamingFinalizeMessageId = pendingStreamingFinalizeMessageId,
+                failedAssistantMessageStates = failedAssistantMessageStates
+            )
+        }
+    }
+    val bottomActiveZoneAvailable = bottomActiveZoneSlice.activeMessages.isNotEmpty()
+    val bottomActiveZoneVisible =
+        streamingLocation == StreamingLocation.OVERLAY && bottomActiveZoneAvailable
+    val bottomActiveZoneAssistantMessageId = bottomActiveZoneSlice.activeAssistantMessageId
+    val chatListMessages =
+        if (bottomActiveZoneVisible) bottomActiveZoneSlice.historyMessages else messages
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -1923,35 +2025,29 @@ fun ChatScreen() {
             }
         }
     }
-    val streamingOverlayVisible =
-        isStreaming &&
-            streamingLocation == StreamingLocation.OVERLAY &&
-            streamingMessageContent.isNotBlank()
-    val streamingBodyOwnedByOverlay =
-        streamingOverlayVisible &&
-            pendingStreamingFinalizeMessageId.isNullOrBlank()
-    val streamingBodyFollowEnabled = !streamingOverlayVisible
+    val streamingBodyFollowEnabled = streamingLocation == StreamingLocation.LAZY_COLUMN
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
+    fun currentHistoryListContentBottomPx(): Int {
+        val lastHistoryMessage = chatListMessages.lastOrNull() ?: return -1
+        val bounds = if (lastHistoryMessage.role == ChatRole.ASSISTANT) {
+            messageContentBoundsById[lastHistoryMessage.id]
+        } else {
+            messageContentBoundsById[lastHistoryMessage.id] ?: messageSelectionBoundsById[lastHistoryMessage.id]
+        }
+        if (bounds != null) {
+            return (bounds.bottom - messageViewportTopPx).roundToInt()
+        }
+        val fallbackItem =
+            chatListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == chatListMessages.lastIndex }
+                ?: return -1
+        return fallbackItem.offset + fallbackItem.size
+    }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
-        if (
-            lastMessage.role == ChatRole.ASSISTANT &&
-            hasStreamingItem &&
-            !streamingBodyOwnedByOverlay &&
-            currentStreamingContentBottomPx() > 0
-        ) {
-            return currentStreamingContentBottomPx()
-        }
         val lastMessageId = lastMessage.id
-        val shouldIgnoreOverlayAssistantBounds =
-            lastMessage.role == ChatRole.ASSISTANT &&
-                lastMessage.id == streamingMessageId &&
-                streamingOverlayVisible
-        val bounds = if (shouldIgnoreOverlayAssistantBounds) {
-            null
-        } else if (lastMessage.role == ChatRole.ASSISTANT) {
+        val bounds = if (lastMessage.role == ChatRole.ASSISTANT) {
             messageContentBoundsById[lastMessageId]
         } else {
             messageContentBoundsById[lastMessageId] ?: messageSelectionBoundsById[lastMessageId]
@@ -1959,7 +2055,7 @@ fun ChatScreen() {
         if (bounds != null) {
             return (bounds.bottom - messageViewportTopPx).roundToInt()
         }
-        val newestDisplayIndex = messages.lastIndex
+        val newestDisplayIndex = chatListMessages.lastIndex
         val fallbackItem =
             chatListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == newestDisplayIndex }
                 ?: return -1
@@ -2109,37 +2205,6 @@ fun ChatScreen() {
         .only(WindowInsetsSides.Top)
         .asPaddingValues()
         .calculateTopPadding()
-    val sendStartAnchorBottomInsetPx = with(density) {
-        CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() +
-            assistantStreamingParagraphTextStyle().lineHeight.roundToPx()
-    }
-    val sendStartWorklineBottomPx by remember(
-        lockedMessageViewportHeightPx,
-        stableComposerBottomBarHeightPx,
-        bottomBarHeightPx,
-        composerTopInViewportPx,
-        streamVisibleBottomGapPx
-    ) {
-        derivedStateOf {
-            val effectiveViewportHeightPx = lockedMessageViewportHeightPx
-            val stableBottomBarHeight = when {
-                stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
-                bottomBarHeightPx > 0 -> bottomBarHeightPx
-                else -> 0
-            }
-            if (effectiveViewportHeightPx > 0 && stableBottomBarHeight > 0) {
-                (
-                    effectiveViewportHeightPx -
-                        stableBottomBarHeight -
-                        streamVisibleBottomGapPx
-                    ).coerceAtLeast(0)
-            } else if (composerTopInViewportPx > 0) {
-                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
-            } else {
-                0
-            }
-        }
-    }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -3125,10 +3190,13 @@ fun ChatScreen() {
                 inputSelectionToolbarState == null &&
                 pendingInputSelectionToolbarState == null
         if (!isStreaming) {
-            streamingLocation = StreamingLocation.LAZY_COLUMN
-            streamingOverlayMeasuredHeightPx = 0
-            streamingOverlayFollowLastHeightPx = 0
-            streamingOverlayPendingFollowDeltaPx = 0
+            if (
+                streamingLocation == StreamingLocation.OVERLAY &&
+                scrollMode == ScrollMode.UserBrowsing &&
+                selectionInactive
+            ) {
+                streamingLocation = StreamingLocation.LAZY_COLUMN
+            }
             return@LaunchedEffect
         }
         if (
@@ -3142,8 +3210,7 @@ fun ChatScreen() {
         }
         val canRestoreOverlay =
             streamingLocation == StreamingLocation.LAZY_COLUMN &&
-                streamingMessageContent.isNotBlank() &&
-                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                bottomActiveZoneAvailable &&
                 scrollMode == ScrollMode.AutoFollow &&
                 !recyclerScrollInProgress &&
                 !chatListUserDragging &&
@@ -3154,9 +3221,6 @@ fun ChatScreen() {
                 isAtStreamingWorklineStrict()
         if (canRestoreOverlay) {
             streamingLocation = StreamingLocation.OVERLAY
-            streamingOverlayFollowLastHeightPx =
-                streamingOverlayMeasuredHeightPx.coerceAtLeast(assistantLineStepPx)
-            streamingOverlayPendingFollowDeltaPx = 0
             streamingWrapGuardTargetLineCount = -1
             streamingContentBottomPx = -1
             streamingMessageId?.let { messageContentBoundsById.remove(it) }
@@ -3255,7 +3319,6 @@ fun ChatScreen() {
         messageContentBoundsById.remove(anchorMessageId)
         messageSelectionBoundsCacheById.remove(anchorMessageId)
         messageSelectionBoundsById.remove(anchorMessageId)
-        streamingOverlayPendingFollowDeltaPx = 0
         pendingStreamingFinalizeMessageId = anchorMessageId
         pendingStreamingFinalizeShouldRestoreBottomAnchor = shouldRestoreBottomAnchor
     }
@@ -3274,7 +3337,6 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
-        streamingLocation = StreamingLocation.LAZY_COLUMN
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         fakeStreamJob = null
@@ -3312,10 +3374,14 @@ fun ChatScreen() {
                     messageId = finalId.orEmpty(),
                     content = finalContent
                 )
-                beginPendingStreamingFinalize(
-                    anchorMessageId = finalId.orEmpty(),
-                    shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
-                )
+                if (streamingLocation == StreamingLocation.OVERLAY) {
+                    finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
+                } else {
+                    beginPendingStreamingFinalize(
+                        anchorMessageId = finalId.orEmpty(),
+                        shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
+                    )
+                }
                 persistTick++
                 val persistedSnapshot = persistableLocalChatWindowSnapshot()
                 val persistedMessages = persistedSnapshot.messages
@@ -3385,9 +3451,6 @@ fun ChatScreen() {
             if (hasRemoteHistorySource) return@post
             resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
             streamingLocation = StreamingLocation.OVERLAY
-            streamingOverlayFollowLastHeightPx = assistantLineStepPx
-            streamingOverlayMeasuredHeightPx = 0
-            streamingOverlayPendingFollowDeltaPx = 0
             streamingWrapGuardTargetLineCount = -1
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
@@ -3506,53 +3569,13 @@ fun ChatScreen() {
         }
     }
 
+    var requestSendStartBottomSnap: () -> Unit = {}
     fun commitSendMessage(
         text: String,
         existingUserMessageId: String? = null,
-        collapseComposer: Boolean = true,
-        startAnchorScrollOffsetPx: Int,
-        startAnchorTopPaddingPx: Int,
-        startAnchorBottomInsetPx: Int
+        collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        val currentConversationBottomPaddingSnapshotPx =
-            latestConversationBottomPaddingPx.takeIf { it >= 0 }
-                ?: (
-                    resolveBottomContentReservedHeightPx(
-                        overlayVisible = composerCollapseOverlayVisible,
-                        overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                        effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
-                        extraReservedHeightPx = streamingExtraReservedHeightPx
-                    ) + streamVisibleBottomGapPx
-                    ).coerceAtLeast(0)
-        val sendStartBottomReservePx = when {
-            collapseComposer && observedCollapsedBottomReservePx > 0 -> observedCollapsedBottomReservePx
-            stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
-            bottomBarHeightPx > 0 -> bottomBarHeightPx
-            else -> 0
-        }
-        val conversationBottomPaddingLockPx =
-            if (collapseComposer && sendStartBottomReservePx > 0) {
-                (sendStartBottomReservePx + streamVisibleBottomGapPx).coerceAtLeast(0)
-            } else {
-                currentConversationBottomPaddingSnapshotPx
-            }
-        val lockedSendStartWorklineBottomPx =
-            if (conversationBottomPaddingLockPx > 0 && messageViewportHeightPx > 0) {
-                (messageViewportHeightPx - conversationBottomPaddingLockPx).coerceAtLeast(0)
-            } else {
-                0
-            }
-        val resolvedStartAnchorScrollOffsetPx =
-            if (lockedSendStartWorklineBottomPx > 0) {
-                resolveSendStartAnchorScrollOffsetPx(
-                    chatListTopPaddingPx = startAnchorTopPaddingPx,
-                    sendStartAnchorBottomInsetPx = startAnchorBottomInsetPx,
-                    worklineBottomPx = lockedSendStartWorklineBottomPx
-                )
-            } else {
-                startAnchorScrollOffsetPx
-            }
         composerCollapseOverlayVisible = false
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
@@ -3605,9 +3628,6 @@ fun ChatScreen() {
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
         streamingLocation = StreamingLocation.OVERLAY
-        streamingOverlayFollowLastHeightPx = assistantLineStepPx
-        streamingOverlayMeasuredHeightPx = 0
-        streamingOverlayPendingFollowDeltaPx = 0
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3624,26 +3644,14 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        val pendingStartAnchorPosition = messages.indexOfFirst { it.id == assistantId }
-        if (
-            pendingStartAnchorPosition >= 0 &&
-            resolvedStartAnchorScrollOffsetPx != Int.MIN_VALUE
-        ) {
-            lockedConversationBottomPaddingPx = conversationBottomPaddingLockPx
-            sendStartAnchorActive = true
-            chatListState.requestScrollToItem(
-                index = pendingStartAnchorPosition,
-                scrollOffset = resolvedStartAnchorScrollOffsetPx
-            )
-        } else {
-            lockedConversationBottomPaddingPx = -1
-            sendStartAnchorActive = false
-        }
+        lockedConversationBottomPaddingPx = -1
+        sendStartAnchorActive = false
         // The send-settling lock only protects the synchronous send-start window.
         // Once the composer has collapsed and the first anchor request is queued,
         // keep streaming ownership on the list side instead of pinning the
         // composer at the expanded multi-line height for the whole stream.
         sendUiSettling = false
+        requestSendStartBottomSnap()
         persistTick++
         snackbarScope.launch {
             context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
@@ -3690,13 +3698,29 @@ fun ChatScreen() {
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
-            lastIndex = messages.lastIndex,
+            lastIndex = chatListMessages.lastIndex,
             animated = animated,
-            currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+            currentLastMessageContentBottomPx =
+                if (bottomActiveZoneVisible) {
+                    ::currentHistoryListContentBottomPx
+                } else {
+                    ::currentLastMessageContentBottomPx
+                },
+            currentBottomAlignDeltaPx =
+                if (bottomActiveZoneVisible) {
+                    { 0 }
+                } else {
+                    ::currentBottomAlignDeltaPx
+                },
             beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
             endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
+    }
+    requestSendStartBottomSnap = {
+        snackbarScope.launch {
+            withFrameNanos { }
+            scrollToBottom(false)
+        }
     }
     val followStreamingByDelta: suspend (Int) -> Unit = followStreamingByDelta@{ deltaPx ->
         if (deltaPx == 0) return@followStreamingByDelta
@@ -3705,30 +3729,6 @@ fun ChatScreen() {
             chatListState.scrollBy(deltaPx.toFloat())
         } finally {
             endProgrammaticChatListScroll()
-        }
-    }
-    SideEffect {
-        val pendingOverlayFollowDeltaPx = streamingOverlayPendingFollowDeltaPx
-        val canFollowOverlayGrowth =
-            isStreaming &&
-                streamingLocation == StreamingLocation.OVERLAY &&
-                streamingOverlayVisible &&
-                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
-                scrollMode != ScrollMode.UserBrowsing &&
-                !chatListUserDragging &&
-                !programmaticScroll
-        if (!canFollowOverlayGrowth) {
-            streamingOverlayPendingFollowDeltaPx = 0
-        } else if (pendingOverlayFollowDeltaPx > 0) {
-            beginProgrammaticChatListScroll()
-            try {
-                val consumedDeltaPx =
-                    chatListState.dispatchRawDelta(pendingOverlayFollowDeltaPx.toFloat())
-                streamingOverlayPendingFollowDeltaPx =
-                    (pendingOverlayFollowDeltaPx - consumedDeltaPx.roundToInt()).coerceAtLeast(0)
-            } finally {
-                endProgrammaticChatListScroll()
-            }
         }
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
@@ -3830,10 +3830,14 @@ fun ChatScreen() {
                     messageId = finalId,
                     content = finalContent
                 )
-                beginPendingStreamingFinalize(
-                    anchorMessageId = finalId,
-                    shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
-                )
+                if (streamingLocation == StreamingLocation.OVERLAY) {
+                    finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
+                } else {
+                    beginPendingStreamingFinalize(
+                        anchorMessageId = finalId,
+                        shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
+                    )
+                }
                 persistTick++
                 context.saveLocalChatWindowSync(
                     chatScopeId = chatScopeId,
@@ -3975,19 +3979,6 @@ fun ChatScreen() {
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
-        val pendingStartAnchorScrollOffsetPx by remember(
-            chatListTopPaddingPx,
-            sendStartAnchorBottomInsetPx,
-            sendStartWorklineBottomPx
-        ) {
-            derivedStateOf {
-                resolveSendStartAnchorScrollOffsetPx(
-                    chatListTopPaddingPx = chatListTopPaddingPx,
-                    sendStartAnchorBottomInsetPx = sendStartAnchorBottomInsetPx,
-                    worklineBottomPx = sendStartWorklineBottomPx
-                )
-            }
-        }
         fun retryFailedUserMessage(messageId: String) {
             val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
@@ -3997,10 +3988,7 @@ fun ChatScreen() {
             commitSendMessage(
                 text = failedMessage.content,
                 existingUserMessageId = failedMessage.id,
-                collapseComposer = false,
-                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
-                startAnchorTopPaddingPx = chatListTopPaddingPx,
-                startAnchorBottomInsetPx = sendStartAnchorBottomInsetPx
+                collapseComposer = false
             )
         }
         fun retryFailedAssistantMessage(assistantMessageId: String) {
@@ -4018,10 +4006,7 @@ fun ChatScreen() {
             commitSendMessage(
                 text = sourceUserMessage.content,
                 existingUserMessageId = sourceUserMessage.id,
-                collapseComposer = false,
-                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
-                startAnchorTopPaddingPx = chatListTopPaddingPx,
-                startAnchorBottomInsetPx = sendStartAnchorBottomInsetPx
+                collapseComposer = false
             )
         }
         fun sendMessage() {
@@ -4038,10 +4023,7 @@ fun ChatScreen() {
                 return
             }
             commitSendMessage(
-                text = trimmedText,
-                startAnchorScrollOffsetPx = pendingStartAnchorScrollOffsetPx,
-                startAnchorTopPaddingPx = chatListTopPaddingPx,
-                startAnchorBottomInsetPx = sendStartAnchorBottomInsetPx
+                text = trimmedText
             )
         }
         val pageSurface = chatPageSurface
@@ -4079,9 +4061,212 @@ fun ChatScreen() {
         val inputTextToolbar = remember(uiRuntimeResetKey) {
             buildInputSelectionTextToolbar()
         }
-        val renderChatList: @Composable (Int, Int) -> Unit = { bottomPaddingPx, overlayPlaceholderHeightPx ->
+        val renderConversationMessage: @Composable (ChatMessage, Boolean) -> Unit = { msg, inBottomActiveZone ->
+            DisposableEffect(msg.id) {
+                onDispose {
+                    messageSelectionBoundsById.remove(msg.id)
+                    messageContentBoundsById.remove(msg.id)
+                    if (pendingMessageSelectionToolbarState?.messageId == msg.id) {
+                        pendingMessageSelectionToolbarState = null
+                    }
+                    if (messageSelectionToolbarState?.messageId == msg.id) {
+                        messageSelectionToolbarState = null
+                    }
+                }
+            }
+            val isActiveStreamingAssistant =
+                msg.role == ChatRole.ASSISTANT &&
+                    msg.id == streamingMessageId &&
+                    (isStreaming || streamingMessageContent.isNotBlank())
+            val isPendingStreamingFinalizeAssistant =
+                msg.role == ChatRole.ASSISTANT &&
+                    msg.id == pendingStreamingFinalizeMessageId
+            val isBottomActiveAssistant =
+                inBottomActiveZone &&
+                    msg.role == ChatRole.ASSISTANT &&
+                    msg.id == bottomActiveZoneAssistantMessageId
+            val assistantDisplayContent =
+                if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
+                    streamingMessageContent
+                } else {
+                    msg.content
+                }
+            val copySourceContent =
+                if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
+            val fullCopyText = remember(msg.role, copySourceContent) {
+                buildRenderedMessageCopyText(msg.role, copySourceContent)
+            }
+            val messageTextToolbar = remember(msg.id, msg.role, fullCopyText) {
+                buildMessageSelectionTextToolbar(
+                    messageId = msg.id,
+                    role = msg.role,
+                    fullCopyText = fullCopyText
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = listHorizontalPadding,
+                        vertical = CHAT_MESSAGE_ITEM_VERTICAL_PADDING
+                    )
+                    .then(
+                        if (
+                            hasActiveMessageSelection &&
+                            activeMessageSelectionMessageId != msg.id
+                        ) {
+                            selectionDismissTapModifier(
+                                activeMessageSelectionMessageId ?: "selection",
+                                msg.id
+                            )
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .widthIn(max = chromeMaxWidth)
+                        .fillMaxWidth()
+                        .onGloballyPositioned { coordinates ->
+                            if (msg.role == ChatRole.ASSISTANT) {
+                                val bounds = coordinates.boundsInWindow()
+                                updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
+                                applyPendingMessageSelectionToolbarIfReady(
+                                    messageId = msg.id,
+                                    bounds = bounds
+                                )
+                            }
+                        }
+                ) {
+                    val failedUserState = failedUserMessageStates[msg.id]
+                    val failedAssistantState = failedAssistantMessageStates[msg.id]
+                    if (msg.role == ChatRole.ASSISTANT) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (isActiveStreamingAssistant || isBottomActiveAssistant) {
+                                CompositionLocalProvider(
+                                    LocalTextSelectionColors provides messageSelectionColors,
+                                    LocalTextToolbar provides messageTextToolbar
+                                ) {
+                                    key(messageSelectionResetEpoch) {
+                                        val renderMode = when {
+                                            isPendingStreamingFinalizeAssistant -> StreamingRenderMode.Settled
+                                            isActiveStreamingAssistant &&
+                                                isStreaming &&
+                                                assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
+                                            isActiveStreamingAssistant && isStreaming -> StreamingRenderMode.Streaming
+                                            else -> StreamingRenderMode.Settled
+                                        }
+                                        ChatStreamingRenderer(
+                                            content = assistantDisplayContent,
+                                            renderMode = renderMode,
+                                            freshSuffixEnabled =
+                                                isActiveStreamingAssistant &&
+                                                    isStreaming &&
+                                                    !isPendingStreamingFinalizeAssistant,
+                                            showWaitingBall = renderMode == StreamingRenderMode.Waiting,
+                                            streamingFreshStart = streamingFreshStart,
+                                            streamingFreshEnd = streamingFreshEnd,
+                                            streamingFreshTick = streamingFreshTick,
+                                            selectionEnabled =
+                                                !isStreaming ||
+                                                    isPendingStreamingFinalizeAssistant ||
+                                                    !isActiveStreamingAssistant,
+                                            showDisclaimer = true,
+                                            onStreamingContentBoundsChanged = { bounds ->
+                                                if (bounds != null) {
+                                                    updateMessageContentBounds(msg.id, bounds)
+                                                    if (
+                                                        msg.id == bottomActiveZoneAssistantMessageId ||
+                                                        isActiveStreamingAssistant
+                                                    ) {
+                                                        val nextStreamingContentBottomPx =
+                                                            (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                        if (streamingContentBottomPx != nextStreamingContentBottomPx) {
+                                                            streamingContentBottomPx = nextStreamingContentBottomPx
+                                                        }
+                                                    }
+                                                } else {
+                                                    updateMessageContentBounds(msg.id, null)
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                            } else {
+                                SelectableRenderedStaticMessageContent(
+                                    content = msg.content,
+                                    textSelectionColors = messageSelectionColors,
+                                    textToolbar = messageTextToolbar,
+                                    selectionResetKey = messageSelectionResetEpoch,
+                                    showDisclaimer = true,
+                                    onContentBoundsChanged = { bounds ->
+                                        updateMessageContentBounds(msg.id, bounds)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            if (failedAssistantState != null) {
+                                MessageStatusFooter(
+                                    statusText = "回复未完成",
+                                    actionText = "重试",
+                                    alignEnd = false,
+                                    onActionClick = {
+                                        retryFailedAssistantMessage(msg.id)
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            SelectableRenderedUserMessageBubble(
+                                content = msg.content,
+                                textSelectionColors = messageSelectionColors,
+                                textToolbar = messageTextToolbar,
+                                selectionResetKey = messageSelectionResetEpoch,
+                                userBubbleMaxWidth = userBubbleMaxWidth,
+                                userBubbleColor = userBubbleColor,
+                                userBubbleBorderColor = userBubbleBorderColor,
+                                onBubbleBoundsChanged = { bounds ->
+                                    if (bounds != null) {
+                                        updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
+                                    }
+                                    updateMessageContentBounds(msg.id, bounds)
+                                    if (bounds != null) {
+                                        applyPendingMessageSelectionToolbarIfReady(
+                                            messageId = msg.id,
+                                            bounds = bounds
+                                        )
+                                    }
+                                }
+                            )
+                            if (failedUserState != null) {
+                                MessageStatusFooter(
+                                    statusText = "未发送",
+                                    actionText = "重发",
+                                    alignEnd = true,
+                                    onActionClick = {
+                                        retryFailedUserMessage(msg.id)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
             SideEffect {
-                latestConversationBottomPaddingPx = bottomPaddingPx
+                latestConversationBottomPaddingPx = conversationBottomPaddingPx
                 val collapsedStable =
                     !sendStartBottomPaddingLockActive &&
                         !isComposerSettling &&
@@ -4090,23 +4275,24 @@ fun ChatScreen() {
                         input.value.text.isEmpty()
                 if (collapsedStable && observedCollapsedBottomReservePx <= 0) {
                     val prewarmedCollapsedBottomReservePx =
-                        (bottomPaddingPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+                        (conversationBottomPaddingPx - streamVisibleBottomGapPx).coerceAtLeast(0)
                     if (prewarmedCollapsedBottomReservePx > 0) {
                         observedCollapsedBottomReservePx = prewarmedCollapsedBottomReservePx
                     }
                 }
             }
             val effectiveBottomPaddingPx =
-                lockedConversationBottomPaddingPx.takeIf { it >= 0 } ?: bottomPaddingPx
+                if (bottomActiveZoneVisible) {
+                    listBottomPaddingPx
+                } else {
+                    lockedConversationBottomPaddingPx.takeIf { it >= 0 } ?: listBottomPaddingPx
+                }
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
             ) {
-                val overlayPlaceholderHeight = with(density) {
-                    overlayPlaceholderHeightPx.coerceAtLeast(0).toDp()
-                }
                 ChatRecyclerViewHost(
                     listState = chatListState,
-                    items = messages,
+                    items = chatListMessages,
                     itemKey = { it.id },
                     itemContentType = { it.role },
                     topPaddingPx = chatListTopPaddingPx,
@@ -4128,208 +4314,7 @@ fun ChatScreen() {
                             }
                         )
                 ) { msg ->
-                    DisposableEffect(msg.id) {
-                        onDispose {
-                            messageSelectionBoundsById.remove(msg.id)
-                            messageContentBoundsById.remove(msg.id)
-                            if (pendingMessageSelectionToolbarState?.messageId == msg.id) {
-                                pendingMessageSelectionToolbarState = null
-                            }
-                            if (messageSelectionToolbarState?.messageId == msg.id) {
-                                messageSelectionToolbarState = null
-                            }
-                        }
-                    }
-                    val isActiveStreamingAssistant =
-                        msg.role == ChatRole.ASSISTANT &&
-                            msg.id == streamingMessageId &&
-                            (isStreaming || streamingMessageContent.isNotBlank())
-                    val isPendingStreamingFinalizeAssistant =
-                        msg.role == ChatRole.ASSISTANT &&
-                            msg.id == pendingStreamingFinalizeMessageId
-                    val suppressStreamingBodyInList =
-                        isActiveStreamingAssistant &&
-                            streamingBodyOwnedByOverlay
-                    val hideFinalizedBodyUnderOverlay =
-                        isPendingStreamingFinalizeAssistant &&
-                            streamingOverlayVisible
-                    val assistantDisplayContent =
-                        if (isActiveStreamingAssistant && (isStreaming || streamingMessageContent.isNotBlank())) {
-                            streamingMessageContent
-                        } else {
-                            msg.content
-                        }
-                    val copySourceContent =
-                        if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
-                    val fullCopyText = remember(msg.role, copySourceContent) {
-                        buildRenderedMessageCopyText(msg.role, copySourceContent)
-                    }
-                    val messageTextToolbar = remember(msg.id, msg.role, fullCopyText) {
-                        buildMessageSelectionTextToolbar(
-                            messageId = msg.id,
-                            role = msg.role,
-                            fullCopyText = fullCopyText
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(
-                                horizontal = listHorizontalPadding,
-                                vertical = CHAT_MESSAGE_ITEM_VERTICAL_PADDING
-                            )
-                            .then(
-                                if (
-                                    hasActiveMessageSelection &&
-                                    activeMessageSelectionMessageId != msg.id
-                                ) {
-                                    selectionDismissTapModifier(
-                                        activeMessageSelectionMessageId ?: "selection",
-                                        msg.id
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .widthIn(max = chromeMaxWidth)
-                                .fillMaxWidth()
-                                .onGloballyPositioned { coordinates ->
-                                    if (msg.role == ChatRole.ASSISTANT) {
-                                        val bounds = coordinates.boundsInWindow()
-                                        updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
-                                        applyPendingMessageSelectionToolbarIfReady(
-                                            messageId = msg.id,
-                                            bounds = bounds
-                                        )
-                                    }
-                                }
-                        ) {
-                            val failedUserState = failedUserMessageStates[msg.id]
-                            val failedAssistantState = failedAssistantMessageStates[msg.id]
-                            if (msg.role == ChatRole.ASSISTANT) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    if (suppressStreamingBodyInList) {
-                                        Spacer(
-                                            modifier = Modifier.height(
-                                                overlayPlaceholderHeight
-                                            )
-                                        )
-                                    } else if (isActiveStreamingAssistant) {
-                                        CompositionLocalProvider(
-                                            LocalTextSelectionColors provides messageSelectionColors,
-                                            LocalTextToolbar provides messageTextToolbar
-                                        ) {
-                                            key(messageSelectionResetEpoch) {
-                                                val renderMode = when {
-                                                    isPendingStreamingFinalizeAssistant -> StreamingRenderMode.Settled
-                                                    isStreaming && assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
-                                                    isStreaming -> StreamingRenderMode.Streaming
-                                                    else -> StreamingRenderMode.Settled
-                                                }
-                                                ChatStreamingRenderer(
-                                                    content = assistantDisplayContent,
-                                                    renderMode = renderMode,
-                                                    freshSuffixEnabled = isStreaming &&
-                                                        !isPendingStreamingFinalizeAssistant,
-                                                    showWaitingBall = renderMode == StreamingRenderMode.Waiting,
-                                                    streamingFreshStart = streamingFreshStart,
-                                                    streamingFreshEnd = streamingFreshEnd,
-                                                    streamingFreshTick = streamingFreshTick,
-                                                    selectionEnabled = !isStreaming ||
-                                                        isPendingStreamingFinalizeAssistant,
-                                                    showDisclaimer = true,
-                                                    onStreamingContentBoundsChanged = { bounds ->
-                                                        if (bounds != null) {
-                                                            updateMessageContentBounds(msg.id, bounds)
-                                                            val nextStreamingContentBottomPx =
-                                                                (bounds.bottom - messageViewportTopPx).roundToInt()
-                                                            if (streamingContentBottomPx != nextStreamingContentBottomPx) {
-                                                                streamingContentBottomPx = nextStreamingContentBottomPx
-                                                            }
-                                                        } else {
-                                                            updateMessageContentBounds(msg.id, null)
-                                                        }
-                                                    },
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .alpha(
-                                                            if (hideFinalizedBodyUnderOverlay) 0f else 1f
-                                                        )
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        SelectableRenderedStaticMessageContent(
-                                            content = msg.content,
-                                            textSelectionColors = messageSelectionColors,
-                                            textToolbar = messageTextToolbar,
-                                            selectionResetKey = messageSelectionResetEpoch,
-                                            showDisclaimer = true,
-                                            onContentBoundsChanged = { bounds ->
-                                                updateMessageContentBounds(msg.id, bounds)
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                    }
-                                    if (failedAssistantState != null) {
-                                        MessageStatusFooter(
-                                            statusText = "回复未完成",
-                                            actionText = "重试",
-                                            alignEnd = false,
-                                            onActionClick = {
-                                                retryFailedAssistantMessage(msg.id)
-                                            }
-                                        )
-                                    }
-                                }
-                            } else {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.End,
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    SelectableRenderedUserMessageBubble(
-                                        content = msg.content,
-                                        textSelectionColors = messageSelectionColors,
-                                        textToolbar = messageTextToolbar,
-                                        selectionResetKey = messageSelectionResetEpoch,
-                                        userBubbleMaxWidth = userBubbleMaxWidth,
-                                        userBubbleColor = userBubbleColor,
-                                        userBubbleBorderColor = userBubbleBorderColor,
-                                        onBubbleBoundsChanged = { bounds ->
-                                            if (bounds != null) {
-                                                updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
-                                            }
-                                            updateMessageContentBounds(msg.id, bounds)
-                                            if (bounds != null) {
-                                                applyPendingMessageSelectionToolbarIfReady(
-                                                    messageId = msg.id,
-                                                    bounds = bounds
-                                                )
-                                            }
-                                        }
-                                    )
-                                    if (failedUserState != null) {
-                                        MessageStatusFooter(
-                                            statusText = "未发送",
-                                            actionText = "重发",
-                                            alignEnd = true,
-                                            onActionClick = {
-                                                retryFailedUserMessage(msg.id)
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    renderConversationMessage(msg, false)
                 }
             }
         }
@@ -4369,55 +4354,20 @@ fun ChatScreen() {
                 }
             }
         }
-        val renderStreamingOverlay: @Composable () -> Unit = {
-            if (streamingOverlayVisible) {
-                val overlayPendingFinalize = !pendingStreamingFinalizeMessageId.isNullOrBlank()
-                val overlayRenderMode = if (overlayPendingFinalize) {
-                    StreamingRenderMode.Settled
-                } else {
-                    StreamingRenderMode.Streaming
-                }
+        val renderBottomActiveZone: @Composable () -> Unit = {
+            if (bottomActiveZoneVisible) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = listHorizontalPadding)
-                        .onSizeChanged { size ->
-                            val nextOverlayHeightPx = size.height.coerceAtLeast(0)
-                            if (streamingOverlayMeasuredHeightPx != nextOverlayHeightPx) {
-                                val previousOverlayHeightPx =
-                                    streamingOverlayFollowLastHeightPx.takeIf { it > 0 }
-                                        ?: assistantLineStepPx
-                                if (
-                                    pendingStreamingFinalizeMessageId.isNullOrBlank() &&
-                                    nextOverlayHeightPx > previousOverlayHeightPx
-                                ) {
-                                    streamingOverlayPendingFollowDeltaPx +=
-                                        nextOverlayHeightPx - previousOverlayHeightPx
-                                }
-                                streamingOverlayMeasuredHeightPx = nextOverlayHeightPx
-                                streamingOverlayFollowLastHeightPx = nextOverlayHeightPx
-                            }
-                        }
                 ) {
-                    Box(
+                    Column(
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .widthIn(max = chromeMaxWidth)
+                            .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                     ) {
-                        ChatStreamingRenderer(
-                            content = streamingMessageContent,
-                            renderMode = overlayRenderMode,
-                            freshSuffixEnabled = !overlayPendingFinalize,
-                            showWaitingBall = false,
-                            streamingFreshStart = streamingFreshStart,
-                            streamingFreshEnd = streamingFreshEnd,
-                            streamingFreshTick = streamingFreshTick,
-                            selectionEnabled = false,
-                            showDisclaimer = overlayPendingFinalize,
-                            onStreamingContentBoundsChanged = null,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        bottomActiveZoneSlice.activeMessages.forEach { msg ->
+                            renderConversationMessage(msg, true)
+                        }
                     }
                 }
             }
@@ -4617,8 +4567,10 @@ fun ChatScreen() {
                                 )
                             } + streamVisibleBottomGapPx
                             ).coerceAtLeast(0)
-                    val streamingOverlayPlaceables = subcompose("conversation_streaming_overlay") {
-                        renderStreamingOverlay()
+                    val conversationBodyHeightPx =
+                        (constraints.maxHeight - conversationBottomPaddingPx).coerceAtLeast(0)
+                    val bottomActiveZonePlaceables = subcompose("conversation_bottom_active_zone") {
+                        renderBottomActiveZone()
                     }.map { measurable ->
                         measurable.measure(
                             constraints.copy(
@@ -4629,30 +4581,48 @@ fun ChatScreen() {
                             )
                         )
                     }
-                    val overlayPlaceholderHeightPx =
-                        streamingOverlayPlaceables.maxOfOrNull { it.height } ?: 0
+                    val bottomActiveZoneHeightPx =
+                        bottomActiveZonePlaceables.maxOfOrNull { it.height } ?: 0
+                    val listAvailableHeightPx =
+                        if (bottomActiveZoneVisible) {
+                            (conversationBodyHeightPx - bottomActiveZoneHeightPx).coerceAtLeast(0)
+                        } else {
+                            conversationBodyHeightPx
+                        }
+                    val listBottomPaddingPx =
+                        if (bottomActiveZoneVisible) {
+                            0
+                        } else {
+                            conversationBottomPaddingPx
+                        }
                     val listPlaceables = subcompose("conversation_list") {
-                        renderChatList(conversationBottomPaddingPx, overlayPlaceholderHeightPx)
+                        renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)
                     }.map { measurable ->
-                        measurable.measure(constraints)
+                        measurable.measure(
+                            constraints.copy(
+                                minHeight = 0,
+                                maxHeight = listAvailableHeightPx
+                            )
+                        )
                     }
                     val welcomePlaceables = subcompose("conversation_welcome") {
-                        renderWelcomePlaceholder(conversationBottomPaddingPx)
+                        renderWelcomePlaceholder(listBottomPaddingPx)
                     }.map { measurable ->
-                        measurable.measure(constraints)
+                        measurable.measure(
+                            constraints.copy(
+                                minHeight = 0,
+                                maxHeight = listAvailableHeightPx
+                            )
+                        )
                     }
 
                     layout(constraints.maxWidth, constraints.maxHeight) {
                         listPlaceables.forEach { it.placeRelative(0, 0) }
                         welcomePlaceables.forEach { it.placeRelative(0, 0) }
-                        val overlayBottomPx =
-                            constraints.maxHeight -
-                                measuredComposerHeightPx -
-                                streamVisibleBottomGapPx
-                        streamingOverlayPlaceables.forEach { placeable ->
+                        bottomActiveZonePlaceables.forEach { placeable ->
                             placeable.placeRelative(
                                 x = 0,
-                                y = overlayBottomPx - placeable.height
+                                y = conversationBodyHeightPx - placeable.height
                             )
                         }
                         composerPlaceables.forEach { placeable ->
