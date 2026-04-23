@@ -4380,14 +4380,7 @@ fun ChatScreen() {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(
-                            horizontal = listHorizontalPadding,
-                            vertical = if (overlayPendingFinalize) {
-                                CHAT_MESSAGE_ITEM_VERTICAL_PADDING
-                            } else {
-                                0.dp
-                            }
-                        )
+                        .padding(horizontal = listHorizontalPadding)
                         .onSizeChanged { size ->
                             val nextOverlayHeightPx = size.height.coerceAtLeast(0)
                             if (streamingOverlayMeasuredHeightPx != nextOverlayHeightPx) {
@@ -4420,7 +4413,7 @@ fun ChatScreen() {
                             streamingFreshStart = streamingFreshStart,
                             streamingFreshEnd = streamingFreshEnd,
                             streamingFreshTick = streamingFreshTick,
-                            selectionEnabled = overlayPendingFinalize,
+                            selectionEnabled = false,
                             showDisclaimer = overlayPendingFinalize,
                             onStreamingContentBoundsChanged = null,
                             modifier = Modifier.fillMaxWidth()
@@ -4656,22 +4649,10 @@ fun ChatScreen() {
                             constraints.maxHeight -
                                 measuredComposerHeightPx -
                                 streamVisibleBottomGapPx
-                        val overlayFinalizePlacementCompensationPx =
-                            if (
-                                streamingOverlayVisible &&
-                                !pendingStreamingFinalizeMessageId.isNullOrBlank()
-                            ) {
-                                with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
-                            } else {
-                                0
-                            }
                         streamingOverlayPlaceables.forEach { placeable ->
                             placeable.placeRelative(
                                 x = 0,
-                                y =
-                                    overlayBottomPx +
-                                        overlayFinalizePlacementCompensationPx -
-                                        placeable.height
+                                y = overlayBottomPx - placeable.height
                             )
                         }
                         composerPlaceables.forEach { placeable ->
