@@ -1807,6 +1807,7 @@ fun ChatScreen() {
     var latestConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var lockedConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var observedCollapsedBottomReservePx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var measuredBottomActiveZoneHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -2046,7 +2047,12 @@ fun ChatScreen() {
         return fallbackItem.offset + fallbackItem.size
     }
     fun currentHistoryListBottomTargetPx(): Int {
-        return chatListState.layoutInfo.viewportEndOffset.takeIf { it > 0 } ?: -1
+        val viewportEnd = chatListState.layoutInfo.viewportEndOffset.takeIf { it > 0 } ?: return -1
+        return if (bottomActiveZoneVisible) {
+            (viewportEnd - measuredBottomActiveZoneHeightPx).coerceAtLeast(0)
+        } else {
+            viewportEnd
+        }
     }
     fun currentHistoryListBottomAlignDeltaPx(): Int {
         val historyContentBottom = currentHistoryListContentBottomPx()
@@ -3669,7 +3675,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
-        streamingLocation = StreamingLocation.LAZY_COLUMN
+        streamingLocation = StreamingLocation.OVERLAY
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3770,12 +3776,6 @@ fun ChatScreen() {
             withFrameNanos { }
             try {
                 scrollToBottom(false)
-                if (isStreaming && bottomActiveZoneAvailable && scrollMode != ScrollMode.UserBrowsing) {
-                    streamingLocation = StreamingLocation.OVERLAY
-                    streamingWrapGuardTargetLineCount = -1
-                    streamingContentBottomPx = -1
-                    streamingMessageId?.let { messageContentBoundsById.remove(it) }
-                }
             } finally {
                 sendUiSettling = false
                 lockedConversationBottomPaddingPx = -1
@@ -4659,15 +4659,13 @@ fun ChatScreen() {
                     }
                     val bottomActiveZoneHeightPx =
                         bottomActiveZonePlaceables.maxOfOrNull { it.height } ?: 0
-                    val listAvailableHeightPx =
-                        if (bottomActiveZoneVisible) {
-                            (conversationBodyHeightPx - bottomActiveZoneHeightPx).coerceAtLeast(0)
-                        } else {
-                            conversationBodyHeightPx
-                        }
+                    if (measuredBottomActiveZoneHeightPx != bottomActiveZoneHeightPx) {
+                        measuredBottomActiveZoneHeightPx = bottomActiveZoneHeightPx
+                    }
+                    val listAvailableHeightPx = conversationBodyHeightPx
                     val listBottomPaddingPx =
                         if (bottomActiveZoneVisible) {
-                            0
+                            bottomActiveZoneHeightPx
                         } else {
                             conversationBottomPaddingPx
                         }
