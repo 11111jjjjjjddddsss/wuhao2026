@@ -1649,6 +1649,8 @@ fun ChatScreen() {
     var streamingLocation by remember(uiRuntimeResetKey) {
         mutableStateOf(StreamingLocation.LAZY_COLUMN)
     }
+    var streamingOverlayMeasuredHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var streamingOverlayFollowLastHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val streamingAdvanceMeasureCache = remember(uiRuntimeResetKey) {
         LinkedHashMap<StreamingAdvanceMeasureCacheKey, StreamingActiveBlockLayout?>()
     }
@@ -3123,6 +3125,8 @@ fun ChatScreen() {
                 pendingInputSelectionToolbarState == null
         if (!isStreaming) {
             streamingLocation = StreamingLocation.LAZY_COLUMN
+            streamingOverlayMeasuredHeightPx = 0
+            streamingOverlayFollowLastHeightPx = 0
             return@LaunchedEffect
         }
         if (
@@ -3148,6 +3152,8 @@ fun ChatScreen() {
                 isAtStreamingWorklineStrict()
         if (canRestoreOverlay) {
             streamingLocation = StreamingLocation.OVERLAY
+            streamingOverlayFollowLastHeightPx =
+                streamingOverlayMeasuredHeightPx.coerceAtLeast(assistantLineStepPx)
             streamingWrapGuardTargetLineCount = -1
             streamingContentBottomPx = -1
             streamingMessageId?.let { messageContentBoundsById.remove(it) }
@@ -3375,6 +3381,8 @@ fun ChatScreen() {
             if (hasRemoteHistorySource) return@post
             resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
             streamingLocation = StreamingLocation.OVERLAY
+            streamingOverlayFollowLastHeightPx = assistantLineStepPx
+            streamingOverlayMeasuredHeightPx = 0
             streamingWrapGuardTargetLineCount = -1
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
@@ -3592,6 +3600,8 @@ fun ChatScreen() {
         streamingFreshEnd = -1
         streamingWrapGuardTargetLineCount = -1
         streamingLocation = StreamingLocation.OVERLAY
+        streamingOverlayFollowLastHeightPx = assistantLineStepPx
+        streamingOverlayMeasuredHeightPx = 0
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3689,6 +3699,32 @@ fun ChatScreen() {
             chatListState.scrollBy(deltaPx.toFloat())
         } finally {
             endProgrammaticChatListScroll()
+        }
+    }
+    LaunchedEffect(
+        isStreaming,
+        streamingLocation,
+        streamingOverlayVisible,
+        streamingOverlayMeasuredHeightPx,
+        scrollMode,
+        chatListUserDragging
+    ) {
+        if (!isStreaming || streamingLocation != StreamingLocation.OVERLAY || !streamingOverlayVisible) {
+            streamingOverlayFollowLastHeightPx = 0
+            return@LaunchedEffect
+        }
+        val currentOverlayHeightPx = streamingOverlayMeasuredHeightPx.coerceAtLeast(0)
+        if (currentOverlayHeightPx <= 0) return@LaunchedEffect
+        if (scrollMode == ScrollMode.UserBrowsing || chatListUserDragging) {
+            streamingOverlayFollowLastHeightPx = currentOverlayHeightPx
+            return@LaunchedEffect
+        }
+        val previousOverlayHeightPx =
+            streamingOverlayFollowLastHeightPx.takeIf { it > 0 } ?: assistantLineStepPx
+        streamingOverlayFollowLastHeightPx = currentOverlayHeightPx
+        val overlayGrowthDeltaPx = (currentOverlayHeightPx - previousOverlayHeightPx).coerceAtLeast(0)
+        if (overlayGrowthDeltaPx > 0) {
+            followStreamingByDelta(overlayGrowthDeltaPx)
         }
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
@@ -4341,6 +4377,11 @@ fun ChatScreen() {
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = listHorizontalPadding)
+                        .onSizeChanged { size ->
+                            if (streamingOverlayMeasuredHeightPx != size.height) {
+                                streamingOverlayMeasuredHeightPx = size.height
+                            }
+                        }
                 ) {
                     Box(
                         modifier = Modifier
