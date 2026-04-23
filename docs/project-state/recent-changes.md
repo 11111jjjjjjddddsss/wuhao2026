@@ -3,8 +3,11 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
-## 2026-04-22
+## 2026-04-23
 
+- `ChatScreen.kt` 继续把 Overlay 第一刀的收尾交接补成更接近 completed 同构：`pendingStreamingFinalizeMessageId` 非空但 Overlay 仍在场时，Overlay 已不再固定走 `StreamingRenderMode.Streaming + showDisclaimer = false`，而是切到 `StreamingRenderMode.Settled + showDisclaimer = true`。这刀不重写 Overlay 主结构、不动发送起步小球链、不重开 `dispatchRawDelta` / wrap guard，只专门压“Overlay 消失、列表 completed alpha 恢复那一拍”因为 renderMode / disclaimer 高度差带来的尾部轻微抖动风险。`./gradlew.bat :app:compileDebugKotlin` 已通过，真机尾抖是否继续减轻待回归。
+
+## 2026-04-22
 - `ChatScreen.kt` 按 ADR-0002 落地 Bottom-Anchored Streaming Overlay 第一刀。新增 `StreamingLocation.OVERLAY / LAZY_COLUMN`：发送起步仍走原 `LazyColumn` 小球锚点链；streaming 正文有内容且用户停留底部时，正文由 `SubcomposeLayout` 同层 Overlay 承接，底边锚在 composer 上方工作线，`LazyColumn` 内 active assistant item 不再双画同一份正文。Overlay 模式下 `onAdvance` 跳过 `resolveStreamingWrapGuardDecision(...)` / `dispatchRawDelta(...)` / wrap guard hold，`BindChatListScrollEffects(...)` 也不再对 streaming 正文做 follow delta。用户进入 `UserBrowsing` 时交回 `LazyColumn`；回到底部且仍 streaming、无文字选择/输入选择/拖动/fling/程序滚动/发送锚点保护/composer settling 时恢复 Overlay。`./gradlew.bat :app:compileDebugKotlin` 已通过，真机体感待验证。
 - 新增 [ADR-0002](D:/wuhao/docs/adr/ADR-0002-streaming-overlay-for-active-assistant.md)，正式把下一轮 Android 生成态 UI 方向从局部补丁收敛到 Bottom-Anchored Streaming Overlay。当前判断：streaming 下一行残影、每行上推轻微发抖、完成态尾部轻微抖动共同来自“生成态 assistant 正文在正向 `LazyColumn` item 内动态长高”。已排除并禁止继续盲试的方向包括 clip/mask、renderer gate、32ms hold、requestScrollToItem 行锚定、hard bounds wait 和继续调 `dispatchRawDelta`。下一窗口若继续 Android UI，应直接按 ADR-0002 写实施计划并开 Overlay 第一刀：底部 AutoFollow 态 streaming 正文进 Overlay，小球锚点和当前发送起步链不重写。
 - ADR-0002 随最新产品目标补充：用户上滑时可以把当前 streaming 正文交回 `LazyColumn`，避免 overlay 遮挡历史；但只要用户回到底部且仍在 streaming，就必须恢复 Overlay。也就是说“本轮不再回 Overlay”只能作为临时降级，不是最终方案。切回条件必须避开文字选择、输入选择、手指拖动和惯性滚动中途，其他滚动链仍不重写。

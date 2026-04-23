@@ -4331,6 +4331,12 @@ fun ChatScreen() {
         }
         val renderStreamingOverlay: @Composable () -> Unit = {
             if (streamingOverlayVisible) {
+                val overlayPendingFinalize = !pendingStreamingFinalizeMessageId.isNullOrBlank()
+                val overlayRenderMode = if (overlayPendingFinalize) {
+                    StreamingRenderMode.Settled
+                } else {
+                    StreamingRenderMode.Streaming
+                }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -4344,14 +4350,14 @@ fun ChatScreen() {
                     ) {
                         ChatStreamingRenderer(
                             content = streamingMessageContent,
-                            renderMode = StreamingRenderMode.Streaming,
-                            freshSuffixEnabled = pendingStreamingFinalizeMessageId.isNullOrBlank(),
+                            renderMode = overlayRenderMode,
+                            freshSuffixEnabled = !overlayPendingFinalize,
                             showWaitingBall = false,
                             streamingFreshStart = streamingFreshStart,
                             streamingFreshEnd = streamingFreshEnd,
                             streamingFreshTick = streamingFreshTick,
                             selectionEnabled = false,
-                            showDisclaimer = false,
+                            showDisclaimer = overlayPendingFinalize,
                             onStreamingContentBoundsChanged = null,
                             modifier = Modifier.fillMaxWidth()
                         )
