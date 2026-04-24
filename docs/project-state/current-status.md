@@ -47,7 +47,8 @@
   - `scrollToBottom(false)` 重新按 reverse-list 走 `scrollToItem(lastIndex)`，其中当前 `lastIndex` 在聊天页主调处按 `0` 传入
   - active-zone 时代专用的 `streamingBodyFollowEnabled` 开关已经从 coordinator 主链里移除
   - 旧正向 / overlay 时代的 streaming raw follow 链已移除：反向列表不再在 streaming 正文高度变化时额外调用 `followStreamingByDelta(...)` / `scrollBy(...)` 追滚，`streamBottomFollowActive` 空壳状态也已删除，避免和用户拖动、reverse-layout 自身底部锚定打架
-  - streaming 期间任何非程序性的列表滚动都会立即进入 `UserBrowsing`，不再只等 `collectIsDraggedAsState()` 命中；只有列表停稳且重新回到工作线后，才允许恢复 `AutoFollow`
+  - streaming 期间任何非程序性的列表滚动都会立即进入 `UserBrowsing`，不再只等 `collectIsDraggedAsState()` 命中；只有列表停稳且最新内容底边进入 4dp 级工作线命中带后，才允许恢复 `AutoFollow`
+  - streaming 中用户主动点开输入框 / IME 时，会释放发送起步锚点锁并允许键盘外部几何接管工作线；这只跟随键盘 / 外部底部抬升，不允许输入框内部文字或图片内容高度顶起聊天列表
 
 ## 当前调试焦点
 

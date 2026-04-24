@@ -293,6 +293,7 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 80.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
+private val STREAMING_AUTOFOLLOW_REJOIN_TOLERANCE = 4.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
@@ -1664,6 +1665,9 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val streamingAutoFollowRejoinTolerancePx = with(density) {
+        STREAMING_AUTOFOLLOW_REJOIN_TOLERANCE.roundToPx()
+    }
     val staticBottomPositionTolerancePx = with(density) { STATIC_BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -1715,11 +1719,18 @@ fun ChatScreen() {
     val shouldUseRealtimeComposerGeometry by remember(
         listShouldTrackRealtimeComposerGeometry,
         isComposerSettling,
-        sendUiSettling
+        sendUiSettling,
+        isStreaming,
+        inputFieldFocused,
+        imeVisible
     ) {
         derivedStateOf {
             listShouldTrackRealtimeComposerGeometry &&
-                (!isComposerSettling || sendUiSettling)
+                (
+                    !isComposerSettling ||
+                        sendUiSettling ||
+                        (isStreaming && (inputFieldFocused || imeVisible))
+                    )
         }
     }
     val sendStartBottomPaddingLockActive by remember(
@@ -1946,8 +1957,8 @@ fun ChatScreen() {
         val contentBottom = currentStreamingContentBottomPx()
         if (contentBottom <= 0) return false
         val deltaPx = contentBottom - worklineBottom
-        val lowerTolerancePx = bottomPositionTolerancePx
-        val upperTolerancePx = bottomPositionTolerancePx
+        val lowerTolerancePx = streamingAutoFollowRejoinTolerancePx
+        val upperTolerancePx = streamingAutoFollowRejoinTolerancePx
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
 
@@ -3484,6 +3495,19 @@ fun ChatScreen() {
     ) {
         if (!sendStartAnchorActive && !sendUiSettling) {
             lockedConversationBottomPaddingPx = -1
+        }
+    }
+    LaunchedEffect(
+        isStreaming,
+        sendStartAnchorActive,
+        inputFieldFocused,
+        imeVisible
+    ) {
+        if (isStreaming && sendStartAnchorActive && (inputFieldFocused || imeVisible)) {
+            sendStartAnchorActive = false
+            if (!sendUiSettling) {
+                lockedConversationBottomPaddingPx = -1
+            }
         }
     }
     LaunchedEffect(

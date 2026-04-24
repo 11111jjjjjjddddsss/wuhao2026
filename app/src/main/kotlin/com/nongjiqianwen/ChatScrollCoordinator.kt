@@ -184,8 +184,7 @@ internal fun handleChatListScrollStateChanged(
         userDragging -> {
             userInteractingState.value = true
             if (
-                isStreaming &&
-                hasStreamingItem &&
+                (isStreaming || hasStreamingItem) &&
                 scrollModeState.value != ScrollMode.UserBrowsing
             ) {
                 scrollModeState.value = ScrollMode.UserBrowsing
@@ -193,7 +192,7 @@ internal fun handleChatListScrollStateChanged(
         }
 
         scrollInProgress -> {
-            if (isStreaming && hasStreamingItem) {
+            if (isStreaming || hasStreamingItem) {
                 userInteractingState.value = true
                 if (scrollModeState.value != ScrollMode.UserBrowsing) {
                     scrollModeState.value = ScrollMode.UserBrowsing
