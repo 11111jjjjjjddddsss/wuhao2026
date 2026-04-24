@@ -34,6 +34,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
@@ -193,6 +194,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedHashMap
+import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
@@ -3506,7 +3508,7 @@ fun ChatScreen() {
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             return@LaunchedEffect
         }
-        snapshotFlow {
+        val freshSettledBounds = snapshotFlow {
             messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
                 bounds.bottom > bounds.top && bounds.bottom > 0f
             }
@@ -3519,8 +3521,38 @@ fun ChatScreen() {
                     scrollMode != ScrollMode.UserBrowsing &&
                     !scrollRuntime.userInteracting.value &&
                     !chatListUserDragging
+            if (shouldRestoreAfterFreshBounds) {
+                val freshContentBottomPx =
+                    (freshSettledBounds.bottom - messageViewportTopPx).roundToInt()
+                if (freshContentBottomPx > 0 && streamingWorklineBottomPx > 0) {
+                    streamingContentBottomPx = freshContentBottomPx
+                    val alignDeltaPx = streamingWorklineBottomPx - freshContentBottomPx
+                    val tolerancePx = (bottomPositionTolerancePx / 4).coerceAtLeast(1)
+                    if (abs(alignDeltaPx) > tolerancePx) {
+                        val maxFinalizeAlignDeltaPx =
+                            (messageViewportHeightPx / 2)
+                                .coerceAtLeast(assistantLineStepPx * 8)
+                                .coerceAtLeast(bottomPositionTolerancePx)
+                        val boundedAlignDeltaPx =
+                            alignDeltaPx.coerceIn(
+                                -maxFinalizeAlignDeltaPx,
+                                maxFinalizeAlignDeltaPx
+                            )
+                        beginProgrammaticChatListScroll()
+                        try {
+                            // Keep the handoff inside the pending-finalize window:
+                            // use fresh LayoutCoordinates bounds only, never the
+                            // LazyList visible-item fallback that can be transient.
+                            chatListState.scrollBy(boundedAlignDeltaPx.toFloat())
+                            withFrameNanos { }
+                        } finally {
+                            endProgrammaticChatListScroll()
+                        }
+                    }
+                }
+            }
             finalizeStreamingStop(
-                shouldRestoreBottomAnchor = shouldRestoreAfterFreshBounds
+                shouldRestoreBottomAnchor = false
             )
         }
     }
