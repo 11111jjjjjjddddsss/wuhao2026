@@ -1831,6 +1831,7 @@ fun ChatScreen() {
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
+        latestConversationBottomPaddingPx,
         streamVisibleBottomGapPx,
         shouldUseRealtimeComposerGeometry
     ) {
@@ -1860,9 +1861,9 @@ fun ChatScreen() {
             if (
                 shouldUseRealtimeComposerGeometry &&
                 effectiveViewportHeightPx > 0 &&
-                composerTopInViewportPx > 0
+                latestConversationBottomPaddingPx > 0
             ) {
-                (composerTopInViewportPx - streamVisibleBottomGapPx).coerceAtLeast(0)
+                (effectiveViewportHeightPx - latestConversationBottomPaddingPx).coerceAtLeast(0)
             } else {
                 collapsedStableWorklineBottomPx
             }
@@ -4241,18 +4242,34 @@ fun ChatScreen() {
                     }
                     val measuredComposerHeightPx =
                         composerPlaceables.maxOfOrNull { it.height } ?: 0
+                    val collapsedConversationReservePx =
+                        observedCollapsedBottomReservePx
+                            .takeIf { it > 0 }
+                            ?: startupBottomBarHeightEstimatePx
                     val stableConversationBottomPaddingPx =
                         (
                             resolveBottomContentReservedHeightPx(
                                 overlayVisible = composerCollapseOverlayVisible,
                                 overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
+                                effectiveBottomBarHeightPx = collapsedConversationReservePx,
                                 extraReservedHeightPx = streamingExtraReservedHeightPx
                             ) + streamVisibleBottomGapPx
                             ).coerceAtLeast(0)
+                    val currentExternalBottomInsetPx =
+                        (measuredComposerHeightPx - inputChromeRowHeightPx)
+                            .coerceAtLeast(0)
+                    val realtimeExternalLiftPx =
+                        (currentExternalBottomInsetPx - safeBottomInsetPx)
+                            .coerceAtLeast(0)
+                    val realtimeConversationBottomPaddingPx =
+                        (
+                            collapsedConversationReservePx +
+                                realtimeExternalLiftPx +
+                                streamVisibleBottomGapPx
+                            ).coerceAtLeast(0)
                     val conversationBottomPaddingPx =
-                        if (listShouldTrackRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
-                            (measuredComposerHeightPx + streamVisibleBottomGapPx).coerceAtLeast(0)
+                        if (shouldUseRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
+                            realtimeConversationBottomPaddingPx
                         } else {
                             stableConversationBottomPaddingPx
                         }

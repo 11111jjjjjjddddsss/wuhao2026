@@ -229,8 +229,17 @@ internal fun BindComposerRuntimeEffects(
     composerCollapseOverlayPrewarmedState: MutableState<Boolean>,
     startupLayoutReady: Boolean
 ) {
-    LaunchedEffect(inputChromeMeasured, inputChromeRowHeightPx) {
+    LaunchedEffect(
+        inputChromeMeasured,
+        inputChromeRowHeightPx,
+        inputText,
+        inputFieldFocused,
+        sendUiSettling
+    ) {
         if (!inputChromeMeasured) return@LaunchedEffect
+        if (inputText.isNotEmpty() || inputFieldFocused || sendUiSettling) {
+            return@LaunchedEffect
+        }
         if (
             shouldApplyComposerBottomBarHeight(
                 currentBottomBarHeightPx = bottomBarHeightPxState.intValue,
