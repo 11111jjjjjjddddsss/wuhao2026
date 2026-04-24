@@ -107,7 +107,7 @@ private suspend fun alignChatListBottom(
         if (currentLastMessageContentBottomPx() <= 0) return@repeat
         val alignDeltaPx = currentBottomAlignDeltaPx()
         if (alignDeltaPx == 0) return
-        listState.scrollBy(alignDeltaPx.toFloat())
+        listState.scrollBy((-alignDeltaPx).toFloat())
     }
 }
 
