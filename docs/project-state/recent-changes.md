@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-04-25
+
+- 文档同步补充 composer 内容高度边界：输入框里的多行文字、未来图片预览、附件缩略图、图文混排都只属于 composer 内部内容高度，不能进入聊天列表 bottom reserve，也不能影响小球工作线 / 历史消息贴底。聊天列表只认折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve 和工作线 gap；若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计，不能复用输入内容高度。
+
 ## 2026-04-24
 
 - `ChatScreen.kt` / `ChatComposerCoordinator.kt` 修正输入长文本误抬消息区的问题。根因是 `onChromeMeasured` 会把输入框展开后的 chrome 高度写进 `inputChromeRowHeightPx`，随后 `bottomBarHeightPx / effectiveBottomBarHeightPx` 或 realtime composer 高度被当成列表 reserve，导致输入框内文字行数也能把外部消息区顶上去。当前 `bottomBarHeightPx` 只允许在输入为空、未聚焦、非发送收口窗口时吸收新的 chrome 实测值；静态列表 bottom padding 只吃 `observedCollapsedBottomReservePx`（折叠态 reserve）或启动估值；streaming 需要跟随键盘/底部宿主时，也会从实测 composer 高度里剥掉当前输入框内容高度，只保留相对 safe bottom 的外部抬升量。原则是：输入框里的文本内容不影响外部消息高度，只有键盘/底部宿主外部几何能影响工作线。

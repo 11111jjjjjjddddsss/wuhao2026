@@ -197,6 +197,7 @@ Clean-State 必做回归的范围：
   - `items.asReversed()`
   - 原因是仓库里的 `messages` 仍按“旧在前、新在后”存储，反向列表需要用反转后的显示序列把最新消息放到视觉底部
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
+- composer 内部内容高度不属于聊天列表 bottom reserve。长文本、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve、工作线 gap。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
 - waiting 小球、streaming 正文、settled 完成态当前继续共用同一条 assistant item 渲染主线；不再允许在运行时从列表摘出去交给第二个消息宿主
 - mixed active-zone / overlay 运行时当前已退出主链：
   - `StreamingLocation`
@@ -247,6 +248,7 @@ Clean-State 必做回归的范围：
   - `sendStartAnchorActive`
 - 这些保护当前只服务“发送起步短窗口”的 reserve / 放权稳定，**不是**旧 active-zone 时代那种运行时切管门
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
+- `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`

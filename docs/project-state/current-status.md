@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-24
+最后更新：2026-04-25
 
 ## 项目概况
 
@@ -13,6 +13,7 @@
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
 - Android Auto Backup 当前已关闭；本地聊天窗口快照、流式草稿等都只作为本机运行时缓存，不允许被系统云备份在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
 - 底部 composer 仍是页面底部的独立 UI 宿主，继续负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
+- composer 内部内容高度不再作为聊天列表 reserve 真值。多行文字、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度；聊天列表 bottom padding 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve 和工作线 gap
 - 聊天消息运行时当前已切回**单一列表主人**
 - 当前主线代码已删除 mixed active-zone 运行时的核心切管结构：
   - `StreamingLocation`
@@ -33,6 +34,7 @@
   - 仍保留 `lockedConversationBottomPaddingPx` / `sendStartBottomPaddingLockActive`
   - 仍保留 `sendStartAnchorActive` 作为发送起步保护窗口
   - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线共用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`，避免长文本输入框的实时高度把小球锚点顶高
+  - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等 reserve 值不能从输入框内容扩展中学习；后续图片预览如果进入 composer，也按输入内容处理，不允许偷渡成聊天列表外部 reserve
   - 不再通过 active zone 切层后再 `scrollToBottom(false)`
   - 当前是在 `commitSendMessage()` 内同步插入 user + assistant placeholder 后，按 reverse-list 口径同步 `requestScrollToItem(0)`，让新 assistant placeholder 稳定占住视觉底部
   - `prepareScrollRuntimeForStreamingStart(...)` 会同步把滚动模式置为 `AutoFollow`，避免用户浏览态发送后还残留 `UserBrowsing` 语义
