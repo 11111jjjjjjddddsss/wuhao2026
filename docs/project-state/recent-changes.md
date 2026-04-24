@@ -5,6 +5,7 @@
 
 ## 2026-04-24
 
+- `ChatScreen.kt` / `ChatScrollCoordinator.kt` 又把 finalize handoff 从完整 `scrollToBottom(false)` 收回成“只精修当前可见底边”的 `alignVisibleChatListBottom(...)`。上一轮 pending finalize 里复用完整回底链会先执行 `scrollToItem(0)`，长回复完成态收口时容易被重新锚定整条 item，表现为文本瞬间上跳、底部出现大块空白；当前只在 fresh Settled bounds 仍有效的 pending 窗口内按 bottom delta 精修，不再在 finalize 窗口重跑 index 定位。该 helper 复用已修正的 reverse-list `scrollBy(-alignDelta)` 方向，不恢复 overlay / active-zone / raw follow 旧方案。
 - `ChatScrollCoordinator.kt` 修正反向列表底部对齐的 `scrollBy` 符号，恢复到反向列表刚落地时的 `scrollBy(-alignDelta)` 口径。当前 `alignDelta = 目标工作线 - 最新消息底边`，在 `LazyColumn(reverseLayout = true)` 下若继续用正号，finalize/回底发现底部空白时会把内容越推越高，8 次对齐循环会放大成“大块空白”。这刀只改 reverse-list bottom align 方向，不动小球工作线、发送期 reserve 锁、两阶段 finalize 或 overlay/active-zone 已废弃链。
 - `AndroidManifest.xml` 已关闭 Android Auto Backup（`android:allowBackup="false"`），避免 `chat_ui_cache` 这类本地 UI / 聊天窗口快照在“清除数据 / 重装 / 系统恢复”后又被系统云备份悄悄恢复成旧状态。`ChatScreen.kt` 同时给清空本地快照的 clean-state 启动清掉文件级 markdown 缓存，并给恢复草稿写回盘加了“草稿仍真实存在”检查，防止内存旧草稿在清缓存后重新固化回本地。
 - `ChatScreen.kt` 已撤掉上一刀的输入区 reserve 持久化读取 / 写入。真机反馈开机直接出现一大片底部空白，根因是本机曾写入过偏大的 `chat_ui_metrics.collapsed_bottom_reserve_px`，启动时把它当 bottom bar 估值会直接撑大列表底部 padding。当前恢复为启动只用代码内固定估值，折叠态 reserve 仍只在本次运行内由稳定实测值写入内存，不再信任磁盘 UI 高度。

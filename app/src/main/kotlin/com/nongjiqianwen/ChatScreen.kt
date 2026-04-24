@@ -3529,7 +3529,16 @@ fun ChatScreen() {
                 // finalized item is still tracked as the streaming item. This keeps
                 // currentLastMessageContentBottomPx() on fresh LayoutCoordinates
                 // instead of the post-finalize LazyList visible-item fallback.
-                scrollToBottom(false)
+                // Do not run the full scrollToBottom path here: its scrollToItem(0)
+                // step can re-anchor a long finalized item and expose a large
+                // blank below it. Finalize only needs a visible bottom refinement.
+                com.nongjiqianwen.alignVisibleChatListBottom(
+                    listState = chatListState,
+                    currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
+                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+                    beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
+                    endProgrammaticScroll = ::endProgrammaticChatListScroll
+                )
             }
             finalizeStreamingStop(
                 shouldRestoreBottomAnchor = false
