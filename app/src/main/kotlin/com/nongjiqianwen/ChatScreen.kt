@@ -194,7 +194,6 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedHashMap
 import kotlin.random.Random
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -1922,10 +1921,6 @@ fun ChatScreen() {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= tolerancePx
     }
-    fun isWithinBottomAlignTolerance(tolerancePx: Int): Boolean {
-        if (currentLastMessageContentBottomPx() <= 0) return false
-        return abs(currentBottomAlignDeltaPx()) <= tolerancePx
-    }
     fun isWithinStaticBottomTolerance(): Boolean {
         return isWithinBottomTolerance(staticBottomPositionTolerancePx)
     }
@@ -3449,28 +3444,12 @@ fun ChatScreen() {
         )
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
-        restoreBottomAnchorIfNeededAfterStreamingStop@{ shouldRestoreBottomAnchor ->
-            if (!shouldRestoreBottomAnchor) return@restoreBottomAnchorIfNeededAfterStreamingStop
-            if (messages.isEmpty()) return@restoreBottomAnchorIfNeededAfterStreamingStop
-            val finalizeRestoreTolerancePx = bottomPositionTolerancePx.coerceAtLeast(1)
-            if (isWithinBottomAlignTolerance(finalizeRestoreTolerancePx)) {
-                return@restoreBottomAnchorIfNeededAfterStreamingStop
-            }
-            snackbarScope.launch {
-                // Wait for the finalized settled tree to land before reading
-                // bottom geometry; pending-finalize bounds can be one frame stale.
-                withFrameNanos { }
-                if (isWithinBottomAlignTolerance(finalizeRestoreTolerancePx)) {
-                    return@launch
-                }
-                com.nongjiqianwen.alignVisibleChatListBottom(
-                    listState = chatListState,
-                    currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
-                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-                    beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
-                    endProgrammaticScroll = ::endProgrammaticChatListScroll
-                )
-            }
+        restoreBottomAnchorIfNeededAfterStreamingStop@{ _ ->
+            // Pending finalize already waits for a fresh settled bound. Running
+            // another bottom restore in the same handoff window can read cleared
+            // bounds and fall back to transient LazyList item geometry, causing
+            // the completed message to jump upward with a large blank below.
+            return@restoreBottomAnchorIfNeededAfterStreamingStop
         }
     LaunchedEffect(
         startupHydrationBarrierSatisfied,
