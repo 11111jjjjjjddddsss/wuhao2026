@@ -3301,6 +3301,13 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
+        val preSendStableCollapsedReservePx =
+            if (!listShouldTrackRealtimeComposerGeometry) {
+                (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
+                    .takeIf { it > 0 }
+            } else {
+                null
+            }
         composerCollapseOverlayVisible = false
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
@@ -3342,6 +3349,7 @@ fun ChatScreen() {
             (
                 observedCollapsedBottomReservePx
                     .takeIf { it > 0 }
+                    ?: preSendStableCollapsedReservePx
                     ?: startupBottomBarHeightEstimatePx
                 ) + streamVisibleBottomGapPx
         lockedConversationBottomPaddingPx =
