@@ -26,13 +26,14 @@
 - `ChatScreen.kt` 当前已经按单主人口径收平：
   - `chatListMessages = messages`
   - `currentLastMessageContentBottomPx()` 的 fallback 已改回 reverse-list 口径，底部最新显示项按 index `0` 取值
-  - `currentBottomOverflowPx()` 不再走 active-zone / history list 分支；现在按 reverse-list 单主人口径比较最新消息可见底边和统一底部目标的绝对距离，避免只识别“低于目标”而漏掉“高于目标”的未贴底状态
+  - `currentBottomOverflowPx()` 不再走 active-zone / history list 分支；现在按 reverse-list 单主人口径只计算“最新消息可见底边低于统一底部目标”的欠滚距离，内容底边已经高于目标时视作已到底，避免过滚误触发补滚
   - `isNearStreamingWorkline()` / `isAtStreamingWorklineStrict()` 已不再包含 Overlay 快捷分支
 - 发送起步当前重新回到 list-side 单主人口径：
   - 仍保留 `lockedConversationBottomPaddingPx` / `sendStartBottomPaddingLockActive`
   - 仍保留 `sendStartAnchorActive` 作为发送起步保护窗口
   - 不再通过 active zone 切层后再 `scrollToBottom(false)`
   - 当前是在 `commitSendMessage()` 内同步插入 user + assistant placeholder 后，按 reverse-list 口径同步 `requestScrollToItem(0)`，让新 assistant placeholder 稳定占住视觉底部
+  - `prepareScrollRuntimeForStreamingStart(...)` 会同步把滚动模式置为 `AutoFollow`，避免用户浏览态发送后还残留 `UserBrowsing` 语义
 - 完成态收口当前**保留**两阶段 finalize：
   - `beginPendingStreamingFinalize(...)`
   - fresh bounds 到位后 `finalizeStreamingStop(...)`

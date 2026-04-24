@@ -241,7 +241,7 @@ Clean-State 必做回归的范围：
 - `ChatScreen.kt` 当前已回到：
   - `chatListMessages = messages`
   - `currentLastMessageContentBottomPx()` 的 fallback 按 reverse-list 使用可见项 index `0`
-  - `currentBottomOverflowPx()` 按 reverse-list 单主人口径比较“最新消息可见底边”和统一底部目标的绝对距离，用于同时识别低于目标和高于目标这两类未贴底状态
+  - `currentBottomOverflowPx()` 按 reverse-list 单主人口径只计算“最新消息可见底边低于统一底部目标”的欠滚距离；如果内容底边已经高于目标，视作已到底，避免过滚误触发补滚
 - 发送起步当前保留的旧保护只有两样：
   - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`
   - `sendStartAnchorActive`
@@ -255,6 +255,7 @@ Clean-State 必做回归的范围：
   6. 按 reverse-list 口径同步 `requestScrollToItem(0)`，让新插入的底部 assistant placeholder 成为视觉底部锚点
 - `scrollToBottom(false)` 当前已经回到 reverse-list 主链口径；聊天页主调处应继续把“视觉底部最新消息”的 index 按 `0` 传给 coordinator，而不是沿用正向列表的 `lastIndex`
 - 反向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)` 或直接 `scrollBy(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机与发送起步保护
+- `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
 - 两阶段 finalize 当前必须继续保留，不能为了“看起来简单”回退到同拍 `isStreaming = false` 的旧写法
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态继续保留给 selection / bounds / fallback 使用；后续不要再把它们升格为“第二套消息运行时主人”的真值来源
 - 远端 hydrate、发送事务和本地 snapshot 继续只允许原地增改；不要再把消息替换链改回 `clear() + addAll()`

@@ -193,7 +193,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedHashMap
-import kotlin.math.abs
 import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
@@ -1882,7 +1881,8 @@ fun ChatScreen() {
         val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return Int.MAX_VALUE
-        return abs(desiredBottomPx - lastContentBottom)
+        val deltaPx = desiredBottomPx - lastContentBottom
+        return deltaPx.coerceAtLeast(0)
     }
     fun currentBottomAlignDeltaPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()

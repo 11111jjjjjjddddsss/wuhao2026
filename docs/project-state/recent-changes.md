@@ -5,6 +5,7 @@
 
 ## 2026-04-24
 
+- Claude 复审稿指出两处可继续收紧的 reverse-list 口径：`currentBottomOverflowPx()` 不应再用 `abs(...)` 把“内容底边高于目标”也当成未贴底，现在已改成只返回正向欠滚距离；`prepareScrollRuntimeForStreamingStart(...)` 也从 `Idle` 改为直接进入 `AutoFollow`，确保用户按发送后不会残留 `UserBrowsing` 语义。另一个复审提到的 `currentLastMessageContentBottomPx()` fallback index 问题当前代码已是 `visibleItemsInfo.index == 0`，不再指向最旧消息。
 - 代理复审后继续收口反向列表单主人主链的旧残留：`ChatScreen.kt` 已移除不再生效的 `streamingWrapGuardTargetLineCount`，发送起步在插入 user + assistant placeholder 后始终同步 `requestScrollToItem(0)`，startup 首次回底后会立即标记 `initialBottomSnapDone`，pending finalize 在 fresh bounds 到位后会重新确认用户没有进入 `UserBrowsing` 再决定是否补 `scrollToBottom(false)`。`ChatScrollCoordinator.kt` 同步移除了旧正向 / overlay 时代的 `followStreamingByDelta(...)` 追滚链和 `streamBottomFollowActive` 空壳状态，UserBrowsing 只在严格命中工作线后才自动恢复 AutoFollow，发送起步保护遇到用户接管会立即释放。
 - `ChatRecyclerViewHost.kt` / `ChatScreen.kt` / `ChatScrollCoordinator.kt` 已停止继续修 mixed active-zone / overlay 运行时，正式切回“单一运行时主人 + 反向列表”主线。当前 `ChatRecyclerViewHost.kt` 已改为 `LazyColumn(reverseLayout = true)` + `items.asReversed()`；`chatListMessages` 重新收平到 `messages`；`currentLastMessageContentBottomPx()` 的 fallback 与 `scrollToBottom(false)` 也同步回到 reverse-list 口径，底部最新显示项按 index `0` 处理。
 - `ChatScreen.kt` 当前已删除 mixed active-zone 主链的核心切管结构：`StreamingLocation`、`BottomActiveZoneSlice / resolveBottomActiveZoneSlice(...)`、`renderBottomActiveZone()`、Overlay 恢复门、active-zone 拖动接管和 `requestSendStartBottomSnap()` 都已退出运行时主路径。聊天消息重新只由列表承接；底部 composer 继续保留为输入 UI 宿主，但不再承担消息运行时所有权。

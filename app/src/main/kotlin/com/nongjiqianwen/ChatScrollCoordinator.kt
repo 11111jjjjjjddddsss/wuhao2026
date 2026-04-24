@@ -210,7 +210,7 @@ internal fun prepareScrollRuntimeForStreamingStart(
     runtime: ChatScrollRuntimeState
 ) {
     runtime.streamingContentBottomPx.intValue = -1
-    runtime.scrollMode.value = ScrollMode.Idle
+    runtime.scrollMode.value = ScrollMode.AutoFollow
     runtime.userInteracting.value = false
 }
 
