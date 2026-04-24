@@ -267,6 +267,8 @@ private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
+private const val CHAT_UI_METRICS_PREFS = "chat_ui_metrics"
+private const val CHAT_UI_METRIC_COLLAPSED_BOTTOM_RESERVE_PX = "collapsed_bottom_reserve_px"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
@@ -1211,6 +1213,12 @@ private fun Context.loadLocalStreamingDraftSync(chatScopeId: String): LocalStrea
     }.getOrNull()
 }
 
+private fun Context.hasLocalStreamingDraft(chatScopeId: String): Boolean {
+    return !getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .getString("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId", null)
+        .isNullOrBlank()
+}
+
 private suspend fun Context.saveLocalStreamingDraft(chatScopeId: String, draft: LocalStreamingDraft) = withContext(Dispatchers.IO) {
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
@@ -1237,6 +1245,26 @@ private suspend fun Context.clearLocalStreamingDraft(chatScopeId: String) = with
         .edit()
         .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
         .commit()
+}
+
+private fun sanitizeCachedUiMetricPx(value: Int): Int {
+    return value.takeIf { it in 1..2000 } ?: -1
+}
+
+private fun Context.loadChatUiMetricPx(key: String): Int {
+    return sanitizeCachedUiMetricPx(
+        getSharedPreferences(CHAT_UI_METRICS_PREFS, Context.MODE_PRIVATE)
+            .getInt(key, -1)
+    )
+}
+
+private fun Context.saveChatUiMetricPx(key: String, value: Int) {
+    val sanitizedValue = sanitizeCachedUiMetricPx(value)
+    if (sanitizedValue <= 0) return
+    getSharedPreferences(CHAT_UI_METRICS_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putInt(key, sanitizedValue)
+        .apply()
 }
 
 private fun Context.hasActiveNetworkConnection(): Boolean {
@@ -1562,7 +1590,13 @@ fun ChatScreen() {
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
-    val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
+    val cachedCollapsedBottomReservePx = remember(chatScopeId) {
+        context.loadChatUiMetricPx(CHAT_UI_METRIC_COLLAPSED_BOTTOM_RESERVE_PX)
+    }
+    val startupBottomBarHeightEstimatePx =
+        cachedCollapsedBottomReservePx
+            .takeIf { it > 0 }
+            ?: with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
     val streamingRuntime = rememberChatStreamingRuntimeState(uiRuntimeResetKey)
@@ -1613,6 +1647,7 @@ fun ChatScreen() {
     var composerSettlingMinHeightPx by composerRuntime.composerSettlingMinHeightPx
     var composerSettlingChromeHeightPx by composerRuntime.composerSettlingChromeHeightPx
     var sendUiSettling by composerRuntime.sendUiSettling
+    var composerCollapseOverlayVisible by composerRuntime.composerCollapseOverlayVisible
     var persistTick by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var chatRootWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var chatRootHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -1637,7 +1672,9 @@ fun ChatScreen() {
     var sendStartAnchorActive by sendStartAnchorActiveState
     var latestConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var lockedConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
-    var observedCollapsedBottomReservePx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var observedCollapsedBottomReservePx by remember(uiRuntimeResetKey, cachedCollapsedBottomReservePx) {
+        mutableIntStateOf(cachedCollapsedBottomReservePx)
+    }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -1767,6 +1804,10 @@ fun ChatScreen() {
         val collapsedStable =
             !sendStartBottomPaddingLockActive &&
                 !isComposerSettling &&
+                !composerCollapseOverlayVisible &&
+                !isStreaming &&
+                !hasStreamingItem &&
+                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
                 !inputFieldFocused &&
                 !imeVisible &&
                 input.value.text.isEmpty()
@@ -1778,6 +1819,10 @@ fun ChatScreen() {
             prewarmedCollapsedBottomReservePx != observedCollapsedBottomReservePx
         ) {
             observedCollapsedBottomReservePx = prewarmedCollapsedBottomReservePx
+            context.saveChatUiMetricPx(
+                CHAT_UI_METRIC_COLLAPSED_BOTTOM_RESERVE_PX,
+                prewarmedCollapsedBottomReservePx
+            )
         }
     }
     LaunchedEffect(
@@ -1793,6 +1838,10 @@ fun ChatScreen() {
         val collapsedStable =
             !sendStartBottomPaddingLockActive &&
             !isComposerSettling &&
+                !composerCollapseOverlayVisible &&
+                !isStreaming &&
+                !hasStreamingItem &&
+                pendingStreamingFinalizeMessageId.isNullOrBlank() &&
                 !inputFieldFocused &&
                 !imeVisible &&
                 input.value.text.isEmpty() &&
@@ -1807,6 +1856,10 @@ fun ChatScreen() {
             currentCollapsedBottomReservePx != observedCollapsedBottomReservePx
         ) {
             observedCollapsedBottomReservePx = currentCollapsedBottomReservePx
+            context.saveChatUiMetricPx(
+                CHAT_UI_METRIC_COLLAPSED_BOTTOM_RESERVE_PX,
+                currentCollapsedBottomReservePx
+            )
         }
     }
     val streamingWorklineBottomPx by remember(
@@ -2022,7 +2075,6 @@ fun ChatScreen() {
     var inputFieldBoundsInWindow by composerRuntime.inputFieldBoundsInWindow
     var composerHostBoundsInWindow by composerRuntime.composerHostBoundsInWindow
     var composerChromeBoundsInWindow by composerRuntime.composerChromeBoundsInWindow
-    var composerCollapseOverlayVisible by composerRuntime.composerCollapseOverlayVisible
     var composerCollapseOverlayHostBoundsSnapshot by composerRuntime.composerCollapseOverlayHostBoundsSnapshot
     var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
     var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
@@ -2765,6 +2817,14 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(uiRuntimeResetKey) {
+        if (initialLocalMessages.isEmpty() && initialStreamingDraft == null) {
+            synchronized(inlineMarkdownCache) {
+                inlineMarkdownCache.clear()
+            }
+            synchronized(blockMarkdownCache) {
+                blockMarkdownCache.clear()
+            }
+        }
         if (initialLocalMessages.isNotEmpty()) {
             snackbarScope.launch {
                 prewarmAssistantMarkdown(initialLocalMessages)
@@ -2813,6 +2873,7 @@ fun ChatScreen() {
 
     LaunchedEffect(uiRuntimeResetKey, initialStreamingDraft) {
         if (initialStreamingDraft == null) return@LaunchedEffect
+        if (!context.hasLocalStreamingDraft(chatScopeId)) return@LaunchedEffect
         context.saveLocalChatWindow(chatScopeId, initialLocalSnapshot)
         context.clearLocalStreamingDraft(chatScopeId)
     }
@@ -3404,7 +3465,7 @@ fun ChatScreen() {
         restoreBottomAnchorIfNeededAfterStreamingStop@{ shouldRestoreBottomAnchor ->
             if (!shouldRestoreBottomAnchor) return@restoreBottomAnchorIfNeededAfterStreamingStop
             if (messages.isEmpty()) return@restoreBottomAnchorIfNeededAfterStreamingStop
-            val finalizeRestoreTolerancePx = (bottomPositionTolerancePx / 4).coerceAtLeast(1)
+            val finalizeRestoreTolerancePx = bottomPositionTolerancePx.coerceAtLeast(1)
             if (isWithinBottomTolerance(finalizeRestoreTolerancePx)) {
                 return@restoreBottomAnchorIfNeededAfterStreamingStop
             }
@@ -3912,6 +3973,10 @@ fun ChatScreen() {
                 val collapsedStable =
                     !sendStartBottomPaddingLockActive &&
                         !isComposerSettling &&
+                        !composerCollapseOverlayVisible &&
+                        !isStreaming &&
+                        !hasStreamingItem &&
+                        pendingStreamingFinalizeMessageId.isNullOrBlank() &&
                         !inputFieldFocused &&
                         !imeVisible &&
                         input.value.text.isEmpty()
@@ -3920,6 +3985,10 @@ fun ChatScreen() {
                         (conversationBottomPaddingPx - streamVisibleBottomGapPx).coerceAtLeast(0)
                     if (prewarmedCollapsedBottomReservePx > 0) {
                         observedCollapsedBottomReservePx = prewarmedCollapsedBottomReservePx
+                        context.saveChatUiMetricPx(
+                            CHAT_UI_METRIC_COLLAPSED_BOTTOM_RESERVE_PX,
+                            prewarmedCollapsedBottomReservePx
+                        )
                     }
                 }
             }
