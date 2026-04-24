@@ -1827,6 +1827,8 @@ fun ChatScreen() {
     }
     val streamingWorklineBottomPx by remember(
         lockedMessageViewportHeightPx,
+        lockedConversationBottomPaddingPx,
+        sendStartBottomPaddingLockActive,
         stableComposerBottomBarHeightPx,
         bottomBarHeightPx,
         composerTopInViewportPx,
@@ -1835,6 +1837,16 @@ fun ChatScreen() {
     ) {
         derivedStateOf {
             val effectiveViewportHeightPx = lockedMessageViewportHeightPx
+            if (
+                sendStartBottomPaddingLockActive &&
+                lockedConversationBottomPaddingPx > 0 &&
+                effectiveViewportHeightPx > 0
+            ) {
+                return@derivedStateOf (
+                    effectiveViewportHeightPx -
+                        lockedConversationBottomPaddingPx
+                    ).coerceAtLeast(0)
+            }
             val stableBottomBarHeightPx = when {
                 stableComposerBottomBarHeightPx > 0 -> stableComposerBottomBarHeightPx
                 bottomBarHeightPx > 0 -> bottomBarHeightPx

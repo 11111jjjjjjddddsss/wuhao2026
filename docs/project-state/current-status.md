@@ -32,6 +32,7 @@
 - 发送起步当前重新回到 list-side 单主人口径：
   - 仍保留 `lockedConversationBottomPaddingPx` / `sendStartBottomPaddingLockActive`
   - 仍保留 `sendStartAnchorActive` 作为发送起步保护窗口
+  - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线共用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`，避免长文本输入框的实时高度把小球锚点顶高
   - 不再通过 active zone 切层后再 `scrollToBottom(false)`
   - 当前是在 `commitSendMessage()` 内同步插入 user + assistant placeholder 后，按 reverse-list 口径同步 `requestScrollToItem(0)`，让新 assistant placeholder 稳定占住视觉底部
   - `prepareScrollRuntimeForStreamingStart(...)` 会同步把滚动模式置为 `AutoFollow`，避免用户浏览态发送后还残留 `UserBrowsing` 语义

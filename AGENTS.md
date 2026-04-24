@@ -246,6 +246,7 @@ Clean-State 必做回归的范围：
   - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`
   - `sendStartAnchorActive`
 - 这些保护当前只服务“发送起步短窗口”的 reserve / 放权稳定，**不是**旧 active-zone 时代那种运行时切管门
+- `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`
