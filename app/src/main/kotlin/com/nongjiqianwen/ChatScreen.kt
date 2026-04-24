@@ -194,6 +194,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.LinkedHashMap
 import kotlin.random.Random
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -1947,6 +1948,10 @@ fun ChatScreen() {
         val overflowPx = currentBottomOverflowPx()
         return overflowPx != Int.MAX_VALUE && overflowPx <= tolerancePx
     }
+    fun isWithinBottomAlignTolerance(tolerancePx: Int): Boolean {
+        if (currentLastMessageContentBottomPx() <= 0) return false
+        return abs(currentBottomAlignDeltaPx()) <= tolerancePx
+    }
     fun isWithinStaticBottomTolerance(): Boolean {
         return isWithinBottomTolerance(staticBottomPositionTolerancePx)
     }
@@ -3466,10 +3471,16 @@ fun ChatScreen() {
             if (!shouldRestoreBottomAnchor) return@restoreBottomAnchorIfNeededAfterStreamingStop
             if (messages.isEmpty()) return@restoreBottomAnchorIfNeededAfterStreamingStop
             val finalizeRestoreTolerancePx = bottomPositionTolerancePx.coerceAtLeast(1)
-            if (isWithinBottomTolerance(finalizeRestoreTolerancePx)) {
+            if (isWithinBottomAlignTolerance(finalizeRestoreTolerancePx)) {
                 return@restoreBottomAnchorIfNeededAfterStreamingStop
             }
             snackbarScope.launch {
+                // Wait for the finalized settled tree to land before reading
+                // bottom geometry; pending-finalize bounds can be one frame stale.
+                withFrameNanos { }
+                if (isWithinBottomAlignTolerance(finalizeRestoreTolerancePx)) {
+                    return@launch
+                }
                 scrollToBottom(false)
             }
         }
