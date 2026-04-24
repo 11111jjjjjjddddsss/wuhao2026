@@ -5,6 +5,8 @@
 
 ## 2026-04-24
 
+- `ChatScreen.kt` 修正了静态态键盘弹起时消息区整体跟着上抬的问题：`SubcomposeLayout` 里列表 bottom padding 不再无条件使用带 `imePadding()` 的 `measuredComposerHeightPx`。现在只有 streaming / hasStreamingItem / 首次贴底这类需要实时工作线的场景才把 composer 实时高度纳入消息列表 reserve；普通静态输入聚焦时，列表只保留稳定的输入框底部高度，不再把 IME 高度也当成消息区底部 padding。
+- 真机反馈反向列表单主人主链已基本稳定后，尾部收口只剩轻微抖动；本轮只在 `restoreBottomAnchorIfNeededAfterStreamingStop(...)` 加了一个极小 finalize restore 容差。原因是静态贴底容差仍为 `0.dp`，finish 后 fresh bounds 若只差 1-2px 也会触发一次 `scrollToBottom(false)` 精修，容易表现为收口那一下轻抖。现在 finalize restore 仅在超出 `BOTTOM_POSITION_TOLERANCE / 4` 时才补回底，启动、发送、拖动、反向列表主链不动。
 - Claude 复审稿指出两处可继续收紧的 reverse-list 口径：`currentBottomOverflowPx()` 不应再用 `abs(...)` 把“内容底边高于目标”也当成未贴底，现在已改成只返回正向欠滚距离；`prepareScrollRuntimeForStreamingStart(...)` 也从 `Idle` 改为直接进入 `AutoFollow`，确保用户按发送后不会残留 `UserBrowsing` 语义。另一个复审提到的 `currentLastMessageContentBottomPx()` fallback index 问题当前代码已是 `visibleItemsInfo.index == 0`，不再指向最旧消息。
 - 代理复审后继续收口反向列表单主人主链的旧残留：`ChatScreen.kt` 已移除不再生效的 `streamingWrapGuardTargetLineCount`，发送起步在插入 user + assistant placeholder 后始终同步 `requestScrollToItem(0)`，startup 首次回底后会立即标记 `initialBottomSnapDone`，pending finalize 在 fresh bounds 到位后会重新确认用户没有进入 `UserBrowsing` 再决定是否补 `scrollToBottom(false)`。`ChatScrollCoordinator.kt` 同步移除了旧正向 / overlay 时代的 `followStreamingByDelta(...)` 追滚链和 `streamBottomFollowActive` 空壳状态，UserBrowsing 只在严格命中工作线后才自动恢复 AutoFollow，发送起步保护遇到用户接管会立即释放。
 - `ChatRecyclerViewHost.kt` / `ChatScreen.kt` / `ChatScrollCoordinator.kt` 已停止继续修 mixed active-zone / overlay 运行时，正式切回“单一运行时主人 + 反向列表”主线。当前 `ChatRecyclerViewHost.kt` 已改为 `LazyColumn(reverseLayout = true)` + `items.asReversed()`；`chatListMessages` 重新收平到 `messages`；`currentLastMessageContentBottomPx()` 的 fallback 与 `scrollToBottom(false)` 也同步回到 reverse-list 口径，底部最新显示项按 index `0` 处理。

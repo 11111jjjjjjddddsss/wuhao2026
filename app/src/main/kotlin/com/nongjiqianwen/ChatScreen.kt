@@ -3401,7 +3401,10 @@ fun ChatScreen() {
         restoreBottomAnchorIfNeededAfterStreamingStop@{ shouldRestoreBottomAnchor ->
             if (!shouldRestoreBottomAnchor) return@restoreBottomAnchorIfNeededAfterStreamingStop
             if (messages.isEmpty()) return@restoreBottomAnchorIfNeededAfterStreamingStop
-            if (isWithinStaticBottomTolerance()) return@restoreBottomAnchorIfNeededAfterStreamingStop
+            val finalizeRestoreTolerancePx = (bottomPositionTolerancePx / 4).coerceAtLeast(1)
+            if (isWithinBottomTolerance(finalizeRestoreTolerancePx)) {
+                return@restoreBottomAnchorIfNeededAfterStreamingStop
+            }
             snackbarScope.launch {
                 scrollToBottom(false)
             }
@@ -4184,19 +4187,21 @@ fun ChatScreen() {
                     }
                     val measuredComposerHeightPx =
                         composerPlaceables.maxOfOrNull { it.height } ?: 0
-                    val conversationBottomPaddingPx =
+                    val stableConversationBottomPaddingPx =
                         (
-                            if (measuredComposerHeightPx > 0) {
-                                measuredComposerHeightPx
-                            } else {
-                                resolveBottomContentReservedHeightPx(
-                                    overlayVisible = composerCollapseOverlayVisible,
-                                    overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                                    effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
-                                    extraReservedHeightPx = streamingExtraReservedHeightPx
-                                )
-                            } + streamVisibleBottomGapPx
+                            resolveBottomContentReservedHeightPx(
+                                overlayVisible = composerCollapseOverlayVisible,
+                                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+                                effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
+                                extraReservedHeightPx = streamingExtraReservedHeightPx
+                            ) + streamVisibleBottomGapPx
                             ).coerceAtLeast(0)
+                    val conversationBottomPaddingPx =
+                        if (listShouldTrackRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
+                            (measuredComposerHeightPx + streamVisibleBottomGapPx).coerceAtLeast(0)
+                        } else {
+                            stableConversationBottomPaddingPx
+                        }
                     val listAvailableHeightPx = constraints.maxHeight
                     val listBottomPaddingPx = conversationBottomPaddingPx
                     val listPlaceables = subcompose("conversation_list") {
