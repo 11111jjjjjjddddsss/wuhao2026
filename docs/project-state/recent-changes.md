@@ -5,6 +5,7 @@
 
 ## 2026-04-24
 
+- `ChatScreen.kt` 继续收紧尾部收口：assistant 消息不再在 pending finalize 与 finalized 后从“active streaming 分支”切到 `SelectableRenderedStaticMessageContent(...)` 另一棵 Composable 树，而是统一走同一个 `CompositionLocalProvider -> key -> ChatStreamingRenderer` 渲染路径。pending finalize 时会把 renderMode / fresh 参数收敛成 settled 口径，`finishStreaming()` 也会先把 `streamingMessageContent` 归一化到和最终 `msg.content` 一致，避免收口瞬间因为 Composable 身份、fresh 参数和尾部空白归一化同时变化导致轻微抖动。
 - `ChatScreen.kt` 修正了静态态键盘弹起时消息区整体跟着上抬的问题：`SubcomposeLayout` 里列表 bottom padding 不再无条件使用带 `imePadding()` 的 `measuredComposerHeightPx`。现在只有 streaming / hasStreamingItem / 首次贴底这类需要实时工作线的场景才把 composer 实时高度纳入消息列表 reserve；普通静态输入聚焦时，列表只保留稳定的输入框底部高度，不再把 IME 高度也当成消息区底部 padding。
 - 真机反馈反向列表单主人主链已基本稳定后，尾部收口只剩轻微抖动；本轮只在 `restoreBottomAnchorIfNeededAfterStreamingStop(...)` 加了一个极小 finalize restore 容差。原因是静态贴底容差仍为 `0.dp`，finish 后 fresh bounds 若只差 1-2px 也会触发一次 `scrollToBottom(false)` 精修，容易表现为收口那一下轻抖。现在 finalize restore 仅在超出 `BOTTOM_POSITION_TOLERANCE / 4` 时才补回底，启动、发送、拖动、反向列表主链不动。
 - Claude 复审稿指出两处可继续收紧的 reverse-list 口径：`currentBottomOverflowPx()` 不应再用 `abs(...)` 把“内容底边高于目标”也当成未贴底，现在已改成只返回正向欠滚距离；`prepareScrollRuntimeForStreamingStart(...)` 也从 `Idle` 改为直接进入 `AutoFollow`，确保用户按发送后不会残留 `UserBrowsing` 语义。另一个复审提到的 `currentLastMessageContentBottomPx()` fallback index 问题当前代码已是 `visibleItemsInfo.index == 0`，不再指向最旧消息。

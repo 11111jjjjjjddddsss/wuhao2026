@@ -3053,7 +3053,10 @@ fun ChatScreen() {
                 streamingMessageContent = flushed.content
                 streamingRevealBuffer = ""
             }
-            val finalContent = streamingMessageContent
+            val finalContent = normalizeAssistantText(streamingMessageContent)
+            if (streamingMessageContent != finalContent) {
+                streamingMessageContent = finalContent
+            }
             val finalId = streamingMessageId
             fakeStreamJob = null
             streamingRevealBuffer = ""
@@ -3802,66 +3805,53 @@ fun ChatScreen() {
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (isActiveStreamingAssistant) {
-                                CompositionLocalProvider(
-                                    LocalTextSelectionColors provides messageSelectionColors,
-                                    LocalTextToolbar provides messageTextToolbar
-                                ) {
-                                    key(messageSelectionResetEpoch) {
-                                        val renderMode = when {
-                                            isPendingStreamingFinalizeAssistant -> StreamingRenderMode.Settled
-                                            isActiveStreamingAssistant &&
-                                                isStreaming &&
-                                                assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
-                                            isActiveStreamingAssistant && isStreaming -> StreamingRenderMode.Streaming
-                                            else -> StreamingRenderMode.Settled
-                                        }
-                                        ChatStreamingRenderer(
-                                            content = assistantDisplayContent,
-                                            renderMode = renderMode,
-                                            freshSuffixEnabled =
-                                                isActiveStreamingAssistant &&
-                                                    isStreaming &&
-                                                    !isPendingStreamingFinalizeAssistant,
-                                            showWaitingBall = renderMode == StreamingRenderMode.Waiting,
-                                            streamingFreshStart = streamingFreshStart,
-                                            streamingFreshEnd = streamingFreshEnd,
-                                            streamingFreshTick = streamingFreshTick,
-                                            selectionEnabled =
-                                                !isStreaming ||
-                                                    isPendingStreamingFinalizeAssistant ||
-                                                    !isActiveStreamingAssistant,
-                                            showDisclaimer = true,
-                                            onStreamingContentBoundsChanged = { bounds ->
-                                                if (bounds != null) {
-                                                    updateMessageContentBounds(msg.id, bounds)
-                                                    if (isActiveStreamingAssistant) {
-                                                        val nextStreamingContentBottomPx =
-                                                            (bounds.bottom - messageViewportTopPx).roundToInt()
-                                                        if (streamingContentBottomPx != nextStreamingContentBottomPx) {
-                                                            streamingContentBottomPx = nextStreamingContentBottomPx
-                                                        }
-                                                    }
-                                                } else {
-                                                    updateMessageContentBounds(msg.id, null)
-                                                }
-                                            },
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
+                            CompositionLocalProvider(
+                                LocalTextSelectionColors provides messageSelectionColors,
+                                LocalTextToolbar provides messageTextToolbar
+                            ) {
+                                key(messageSelectionResetEpoch) {
+                                    val renderMode = when {
+                                        isPendingStreamingFinalizeAssistant -> StreamingRenderMode.Settled
+                                        isActiveStreamingAssistant &&
+                                            isStreaming &&
+                                            assistantDisplayContent.isBlank() -> StreamingRenderMode.Waiting
+                                        isActiveStreamingAssistant && isStreaming -> StreamingRenderMode.Streaming
+                                        else -> StreamingRenderMode.Settled
                                     }
+                                    val freshSuffixEnabled =
+                                        isActiveStreamingAssistant &&
+                                            isStreaming &&
+                                            !isPendingStreamingFinalizeAssistant
+                                    ChatStreamingRenderer(
+                                        content = assistantDisplayContent,
+                                        renderMode = renderMode,
+                                        freshSuffixEnabled = freshSuffixEnabled,
+                                        showWaitingBall = renderMode == StreamingRenderMode.Waiting,
+                                        streamingFreshStart = if (freshSuffixEnabled) streamingFreshStart else -1,
+                                        streamingFreshEnd = if (freshSuffixEnabled) streamingFreshEnd else -1,
+                                        streamingFreshTick = if (freshSuffixEnabled) streamingFreshTick else 0,
+                                        selectionEnabled =
+                                            !isStreaming ||
+                                                isPendingStreamingFinalizeAssistant ||
+                                                !isActiveStreamingAssistant,
+                                        showDisclaimer = true,
+                                        onStreamingContentBoundsChanged = { bounds ->
+                                            if (bounds != null) {
+                                                updateMessageContentBounds(msg.id, bounds)
+                                                if (isActiveStreamingAssistant) {
+                                                    val nextStreamingContentBottomPx =
+                                                        (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                    if (streamingContentBottomPx != nextStreamingContentBottomPx) {
+                                                        streamingContentBottomPx = nextStreamingContentBottomPx
+                                                    }
+                                                }
+                                            } else {
+                                                updateMessageContentBounds(msg.id, null)
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
                                 }
-                            } else {
-                                SelectableRenderedStaticMessageContent(
-                                    content = msg.content,
-                                    textSelectionColors = messageSelectionColors,
-                                    textToolbar = messageTextToolbar,
-                                    selectionResetKey = messageSelectionResetEpoch,
-                                    showDisclaimer = true,
-                                    onContentBoundsChanged = { bounds ->
-                                        updateMessageContentBounds(msg.id, bounds)
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
                             }
                             if (failedAssistantState != null) {
                                 MessageStatusFooter(
@@ -4648,41 +4638,6 @@ private fun MessageActionMenuPopup(
                 }
         ) {
             MessageActionMenuCardContent(onCopy = onCopy, onCopyFull = onCopyFull)
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalFoundationApi::class)
-private fun SelectableRenderedStaticMessageContent(
-    content: String,
-    textSelectionColors: TextSelectionColors,
-    textToolbar: TextToolbar,
-    selectionResetKey: Int,
-    showDisclaimer: Boolean,
-    onContentBoundsChanged: (Rect?) -> Unit = {},
-    expandToFullWidth: Boolean = true,
-    modifier: Modifier = Modifier
-) {
-    CompositionLocalProvider(
-        LocalTextSelectionColors provides textSelectionColors,
-        LocalTextToolbar provides textToolbar
-    ) {
-        key(selectionResetKey) {
-            ChatStreamingRenderer(
-                content = content,
-                renderMode = StreamingRenderMode.Settled,
-                freshSuffixEnabled = false,
-                showWaitingBall = false,
-                streamingFreshStart = -1,
-                streamingFreshEnd = -1,
-                streamingFreshTick = 0,
-                selectionEnabled = true,
-                showDisclaimer = showDisclaimer,
-                onStreamingContentBoundsChanged = onContentBoundsChanged,
-                expandToFullWidth = expandToFullWidth,
-                modifier = modifier
-            )
         }
     }
 }
