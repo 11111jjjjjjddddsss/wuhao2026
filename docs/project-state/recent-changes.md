@@ -5,6 +5,7 @@
 
 ## 2026-04-25
 
+- `ChatScreen.kt` 将统一工作线视觉 gap 从 `64.dp` 调整为 `80.dp`。这是单点设计参数变更，会同时上移小球首发锚点、streaming 正文底边、静态完成态贴底目标和回到底部目标；目的只是让输入框上方预留给免责声明 / 极端说明 / 底部呼吸区的空间更舒展，不改变反向列表单主人、发送期 reserve 锁、两阶段 finalize 或输入框内容高度隔离规则。
 - `ChatScrollCoordinator.kt` 收紧 streaming 手势优先级：此前只有 `collectIsDraggedAsState()` 判定为拖动时才切 `UserBrowsing`，真机上可能出现反向列表已进入 `isScrollInProgress`、但 drag state 还没同步命中的窗口，AutoFollow 继续贴底导致用户感觉“上滑被往下带”。现在 streaming 中任何非程序性的列表滚动都会立即进入 `UserBrowsing`，直到列表停稳且严格回到工作线才恢复 `AutoFollow`，专门压“上滑/下滑不要抢手”的问题。
 - 文档同步补充 composer 内容高度边界：输入框里的多行文字、未来图片预览、附件缩略图、图文混排都只属于 composer 内部内容高度，不能进入聊天列表 bottom reserve，也不能影响小球工作线 / 历史消息贴底。聊天列表只认折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve 和工作线 gap；若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计，不能复用输入内容高度。
 

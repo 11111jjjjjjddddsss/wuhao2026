@@ -30,6 +30,7 @@
   - `currentLastMessageContentBottomPx()` 的 fallback 已改回 reverse-list 口径，底部最新显示项按 index `0` 取值
   - `currentBottomOverflowPx()` 不再走 active-zone / history list 分支；现在按 reverse-list 单主人口径只计算“最新消息可见底边低于统一底部目标”的欠滚距离，内容底边已经高于目标时视作已到底，避免过滚误触发补滚
   - `isNearStreamingWorkline()` / `isAtStreamingWorklineStrict()` 已不再包含 Overlay 快捷分支
+- 当前工作线视觉 gap 为 `80.dp`：也就是最新消息 / 小球 / streaming 底边会落在 composer 折叠外壳上方约 80dp 的位置；这个 gap 是产品预留给免责声明 / 极端说明 / 底部呼吸区的固定设计值，不从输入框内部文字或图片内容高度派生
 - 发送起步当前重新回到 list-side 单主人口径：
   - 仍保留 `lockedConversationBottomPaddingPx` / `sendStartBottomPaddingLockActive`
   - 仍保留 `sendStartAnchorActive` 作为发送起步保护窗口
