@@ -34,7 +34,6 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
@@ -1577,7 +1576,6 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    var streamingWrapGuardTargetLineCount by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     val initialChatListIndex = remember(uiRuntimeResetKey) { 0 }
     val chatListState = remember(uiRuntimeResetKey) {
         LazyListState(initialChatListIndex, 0)
@@ -1884,7 +1882,7 @@ fun ChatScreen() {
         val lastContentBottom = currentLastMessageContentBottomPx()
         val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return Int.MAX_VALUE
-        return (desiredBottomPx - lastContentBottom).coerceAtLeast(0)
+        return abs(desiredBottomPx - lastContentBottom)
     }
     fun currentBottomAlignDeltaPx(): Int {
         val lastContentBottom = currentLastMessageContentBottomPx()
@@ -2439,7 +2437,6 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
@@ -2754,7 +2751,6 @@ fun ChatScreen() {
             streamingRevealBuffer = ""
             streamingFreshStart = -1
             streamingFreshEnd = -1
-            streamingWrapGuardTargetLineCount = -1
             lastStreamingFreshRevealMs = 0L
             resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             composerSettlingMinHeightPx = 0
@@ -2935,7 +2931,6 @@ fun ChatScreen() {
             hasStreamingItem = hasStreamingItem,
             scrollModeState = scrollRuntime.scrollMode,
             userInteractingState = scrollRuntime.userInteracting,
-            streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
             endProgrammaticScroll = {
                 com.nongjiqianwen.endProgrammaticChatListScroll(
                     programmaticScrollState = scrollRuntime.programmaticScroll,
@@ -2971,7 +2966,6 @@ fun ChatScreen() {
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
                 streamingMessageId = advance.messageId
-                streamingWrapGuardTargetLineCount = -1
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
                 streamingMessageContent = advance.content
@@ -3032,7 +3026,6 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         fakeStreamJob = null
@@ -3142,7 +3135,6 @@ fun ChatScreen() {
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             if (hasRemoteHistorySource) return@post
             resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
-            streamingWrapGuardTargetLineCount = -1
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
                 streamRevealJob = null
@@ -3321,7 +3313,6 @@ fun ChatScreen() {
             }
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         isStreaming = true
         streamingMessageId = assistantId
@@ -3332,7 +3323,6 @@ fun ChatScreen() {
         streamingRevealBuffer = ""
         streamingFreshStart = -1
         streamingFreshEnd = -1
-        streamingWrapGuardTargetLineCount = -1
         lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
@@ -3350,12 +3340,7 @@ fun ChatScreen() {
         streamRevealJob?.cancel()
         streamRevealJob = null
         sendStartAnchorActive = true
-        val shouldReturnToBottomForSend =
-            !atBottom ||
-                scrollMode == ScrollMode.UserBrowsing ||
-                recyclerFirstVisibleItemIndex > 0 ||
-                recyclerFirstVisibleItemScrollOffset > 0
-        if (messages.isNotEmpty() && shouldReturnToBottomForSend) {
+        if (messages.isNotEmpty()) {
             chatListState.requestScrollToItem(index = 0)
         }
         sendUiSettling = false
@@ -3412,15 +3397,6 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticChatListScroll
         )
     }
-    val followStreamingByDelta: suspend (Int) -> Unit = followStreamingByDelta@{ deltaPx ->
-        if (deltaPx == 0) return@followStreamingByDelta
-        beginProgrammaticChatListScroll()
-        try {
-            chatListState.scrollBy(deltaPx.toFloat())
-        } finally {
-            endProgrammaticChatListScroll()
-        }
-    }
     restoreBottomAnchorIfNeededAfterStreamingStop =
         restoreBottomAnchorIfNeededAfterStreamingStop@{ shouldRestoreBottomAnchor ->
             if (!shouldRestoreBottomAnchor) return@restoreBottomAnchorIfNeededAfterStreamingStop
@@ -3453,6 +3429,7 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         scrollToBottom(false)
+        initialBottomSnapDone = true
     }
 
     LaunchedEffect(
@@ -3492,8 +3469,13 @@ fun ChatScreen() {
             .filterNotNull()
             .first()
         if (pendingStreamingFinalizeMessageId == pendingMessageId && isStreaming) {
+            val shouldRestoreAfterFreshBounds =
+                pendingStreamingFinalizeShouldRestoreBottomAnchor &&
+                    scrollMode != ScrollMode.UserBrowsing &&
+                    !scrollRuntime.userInteracting.value &&
+                    !chatListUserDragging
             finalizeStreamingStop(
-                shouldRestoreBottomAnchor = pendingStreamingFinalizeShouldRestoreBottomAnchor
+                shouldRestoreBottomAnchor = shouldRestoreAfterFreshBounds
             )
         }
     }
@@ -3600,12 +3582,10 @@ fun ChatScreen() {
         sendStartAnchorActiveState = sendStartAnchorActiveState,
         scrollModeState = scrollRuntime.scrollMode,
         userInteractingState = scrollRuntime.userInteracting,
-        streamBottomFollowActiveState = scrollRuntime.streamBottomFollowActive,
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         isNearStreamingWorkline = ::isNearStreamingWorkline,
-        isAtStreamingWorklineStrict = ::isAtStreamingWorklineStrict,
-        followStreamingByDelta = followStreamingByDelta
+        isAtStreamingWorklineStrict = ::isAtStreamingWorklineStrict
     )
 
     BoxWithConstraints(

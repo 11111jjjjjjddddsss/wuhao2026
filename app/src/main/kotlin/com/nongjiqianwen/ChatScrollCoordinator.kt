@@ -23,7 +23,6 @@ internal data class ChatScrollRuntimeState(
     val userInteracting: MutableState<Boolean>,
     val programmaticScroll: MutableState<Boolean>,
     val streamingContentBottomPx: MutableIntState,
-    val streamBottomFollowActive: MutableState<Boolean>,
     val jumpButtonPulseVisible: MutableState<Boolean>,
     val suppressJumpButtonForImeTransition: MutableState<Boolean>,
     val suppressJumpButtonForLifecycleResume: MutableState<Boolean>,
@@ -41,7 +40,6 @@ internal fun rememberChatScrollRuntimeState(
     val userInteracting = remember(chatScopeId) { mutableStateOf(false) }
     val programmaticScroll = remember(chatScopeId) { mutableStateOf(false) }
     val streamingContentBottomPx = remember(chatScopeId) { mutableIntStateOf(-1) }
-    val streamBottomFollowActive = remember(chatScopeId) { mutableStateOf(false) }
     val jumpButtonPulseVisible = remember(chatScopeId) { mutableStateOf(false) }
     val suppressJumpButtonForImeTransition = remember(chatScopeId) { mutableStateOf(false) }
     val suppressJumpButtonForLifecycleResume = remember(chatScopeId) { mutableStateOf(false) }
@@ -61,7 +59,6 @@ internal fun rememberChatScrollRuntimeState(
             userInteracting = userInteracting,
             programmaticScroll = programmaticScroll,
             streamingContentBottomPx = streamingContentBottomPx,
-            streamBottomFollowActive = streamBottomFollowActive,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
             suppressJumpButtonForImeTransition = suppressJumpButtonForImeTransition,
             suppressJumpButtonForLifecycleResume = suppressJumpButtonForLifecycleResume,
@@ -110,7 +107,7 @@ private suspend fun alignChatListBottom(
         if (currentLastMessageContentBottomPx() <= 0) return@repeat
         val alignDeltaPx = currentBottomAlignDeltaPx()
         if (alignDeltaPx == 0) return
-        listState.scrollBy((-alignDeltaPx).toFloat())
+        listState.scrollBy(alignDeltaPx.toFloat())
     }
 }
 
@@ -152,7 +149,6 @@ internal fun handleChatListScrollStateChanged(
     hasStreamingItem: Boolean,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
-    streamBottomFollowActiveState: MutableState<Boolean>,
     endProgrammaticScroll: () -> Unit
 ) {
     if (programmaticScroll) {
@@ -170,7 +166,6 @@ internal fun handleChatListScrollStateChanged(
                 scrollModeState.value != ScrollMode.UserBrowsing
             ) {
                 scrollModeState.value = ScrollMode.UserBrowsing
-                streamBottomFollowActiveState.value = false
             }
         }
 
@@ -179,7 +174,6 @@ internal fun handleChatListScrollStateChanged(
                 userInteractingState.value || scrollModeState.value == ScrollMode.UserBrowsing
             if (userOwnedScrollInProgress) {
                 userInteractingState.value = true
-                streamBottomFollowActiveState.value = false
             } else {
                 userInteractingState.value = false
             }
@@ -216,7 +210,6 @@ internal fun prepareScrollRuntimeForStreamingStart(
     runtime: ChatScrollRuntimeState
 ) {
     runtime.streamingContentBottomPx.intValue = -1
-    runtime.streamBottomFollowActive.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
 }
@@ -225,7 +218,6 @@ internal fun resetScrollRuntimeAfterStreamingStop(
     runtime: ChatScrollRuntimeState
 ) {
     runtime.streamingContentBottomPx.intValue = -1
-    runtime.streamBottomFollowActive.value = false
     runtime.scrollMode.value = ScrollMode.Idle
     runtime.userInteracting.value = false
 }
@@ -247,12 +239,10 @@ internal fun BindChatListScrollEffects(
     sendStartAnchorActiveState: MutableState<Boolean>,
     scrollModeState: MutableState<ScrollMode>,
     userInteractingState: MutableState<Boolean>,
-    streamBottomFollowActiveState: MutableState<Boolean>,
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
     isNearStreamingWorkline: () -> Boolean,
-    isAtStreamingWorklineStrict: () -> Boolean,
-    followStreamingByDelta: suspend (Int) -> Unit
+    isAtStreamingWorklineStrict: () -> Boolean
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
@@ -277,7 +267,6 @@ internal fun BindChatListScrollEffects(
         if (!isStreaming || !hasStreamingItem) {
             sendStartAnchorActiveState.value = false
             sendStartAnchorReleaseArmedState.value = false
-            streamBottomFollowActiveState.value = false
             return@LaunchedEffect
         }
         while (isActive && isStreaming && hasStreamingItem) {
@@ -286,6 +275,11 @@ internal fun BindChatListScrollEffects(
             val contentBottom = currentStreamingContentBottomPx()
             val legalBottom = currentStreamingLegalBottomPx()
             if (sendStartAnchorActiveState.value) {
+                if (activeScrollMode == ScrollMode.UserBrowsing || userInteractingState.value) {
+                    sendStartAnchorActiveState.value = false
+                    sendStartAnchorReleaseArmedState.value = false
+                    continue
+                }
                 val shouldReleaseStartAnchorProtection =
                     contentBottom > 0 &&
                         legalBottom > 0 &&
@@ -302,7 +296,6 @@ internal fun BindChatListScrollEffects(
                 } else {
                     sendStartAnchorReleaseArmedState.value = false
                 }
-                streamBottomFollowActiveState.value = false
                 continue
             }
             sendStartAnchorReleaseArmedState.value = false
@@ -310,38 +303,23 @@ internal fun BindChatListScrollEffects(
                 if (
                     !listScrollInProgress &&
                     !userInteractingState.value &&
-                    isNearStreamingWorkline()
+                    isAtStreamingWorklineStrict()
                 ) {
                     scrollModeState.value = ScrollMode.AutoFollow
                     continue
                 }
-                streamBottomFollowActiveState.value = false
                 continue
             }
             if (listScrollInProgress || userInteractingState.value) {
-                streamBottomFollowActiveState.value = false
                 continue
             }
             if (contentBottom <= 0 || legalBottom <= 0 || streamingMessageContent.isBlank()) {
-                streamBottomFollowActiveState.value = false
                 continue
             }
             if (activeScrollMode != ScrollMode.AutoFollow) {
                 scrollModeState.value = ScrollMode.AutoFollow
             }
-            if (isAtStreamingWorklineStrict()) {
-                streamBottomFollowActiveState.value = false
-                continue
-            }
-            streamBottomFollowActiveState.value = true
-            try {
-                val followDeltaPx = contentBottom - legalBottom
-                if (followDeltaPx != 0) {
-                    followStreamingByDelta(followDeltaPx)
-                }
-            } finally {
-                streamBottomFollowActiveState.value = false
-            }
+            continue
         }
     }
 }

@@ -5,9 +5,10 @@
 
 ## 2026-04-24
 
+- 代理复审后继续收口反向列表单主人主链的旧残留：`ChatScreen.kt` 已移除不再生效的 `streamingWrapGuardTargetLineCount`，发送起步在插入 user + assistant placeholder 后始终同步 `requestScrollToItem(0)`，startup 首次回底后会立即标记 `initialBottomSnapDone`，pending finalize 在 fresh bounds 到位后会重新确认用户没有进入 `UserBrowsing` 再决定是否补 `scrollToBottom(false)`。`ChatScrollCoordinator.kt` 同步移除了旧正向 / overlay 时代的 `followStreamingByDelta(...)` 追滚链和 `streamBottomFollowActive` 空壳状态，UserBrowsing 只在严格命中工作线后才自动恢复 AutoFollow，发送起步保护遇到用户接管会立即释放。
 - `ChatRecyclerViewHost.kt` / `ChatScreen.kt` / `ChatScrollCoordinator.kt` 已停止继续修 mixed active-zone / overlay 运行时，正式切回“单一运行时主人 + 反向列表”主线。当前 `ChatRecyclerViewHost.kt` 已改为 `LazyColumn(reverseLayout = true)` + `items.asReversed()`；`chatListMessages` 重新收平到 `messages`；`currentLastMessageContentBottomPx()` 的 fallback 与 `scrollToBottom(false)` 也同步回到 reverse-list 口径，底部最新显示项按 index `0` 处理。
 - `ChatScreen.kt` 当前已删除 mixed active-zone 主链的核心切管结构：`StreamingLocation`、`BottomActiveZoneSlice / resolveBottomActiveZoneSlice(...)`、`renderBottomActiveZone()`、Overlay 恢复门、active-zone 拖动接管和 `requestSendStartBottomSnap()` 都已退出运行时主路径。聊天消息重新只由列表承接；底部 composer 继续保留为输入 UI 宿主，但不再承担消息运行时所有权。
-- 发送起步当前也已回到 list-side 单主人口径：`commitSendMessage()` 在同一事务里继续完成输入框收口、user + assistant placeholder 插入、`prepareScrollRuntimeForStreamingStart(...)`、`sendStartAnchorActive = true` 和发送期 reserve 锁；同时按 reverse-list 语义条件式 `requestScrollToItem(0)` 回到底部。旧 active-zone 时代那种“先切层、再只滚 historyMessages”的发送起步链已经删除。
+- 发送起步当前也已回到 list-side 单主人口径：`commitSendMessage()` 在同一事务里继续完成输入框收口、user + assistant placeholder 插入、`prepareScrollRuntimeForStreamingStart(...)`、`sendStartAnchorActive = true` 和发送期 reserve 锁；同时按 reverse-list 语义同步 `requestScrollToItem(0)` 回到底部。旧 active-zone 时代那种“先切层、再只滚 historyMessages”的发送起步链已经删除。
 - 完成态收口这轮没有回退。`beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize 继续保留；本次重构只移除了 mixed active-zone / overlay 的运行时切管，不把尾部收口稳定性重新换掉。
 - 项目记忆同步切换：`current-status.md`、`open-risks.md` 和根 `AGENTS.md` 已把当前真相收口到“反向列表单主人”；旧的 active-zone / overlay 路线保留在 git 历史与 ADR 中，只作为历史归档，不再冒充当前运行时真相。
 

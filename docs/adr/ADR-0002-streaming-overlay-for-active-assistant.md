@@ -55,7 +55,7 @@
 
 ## 历史第一刀实施边界（仅归档，不再执行）
 
-第一刀目标原本是“用户停留底部看 AI 生成”场景的 assistant-only overlay。当前实现已继续演进：底部不再只渲染 assistant body，而是由 `BottomActiveZoneSlice` 切出当前轮 user / assistant 与 1 条前置历史尾巴，统一交给底部活跃区宿主。真机体感仍待验证；文档真相不能再把“列表 placeholder + overlay 追滚桥”写成现行实现。
+第一刀目标原本是“用户停留底部看 AI 生成”场景的 assistant-only overlay。随后曾继续演进为由 `BottomActiveZoneSlice` 切出当前轮 user / assistant 与 1 条前置历史尾巴，统一交给底部活跃区宿主。该路线已被 2026-04-24 的“单一运行时主人 + 反向列表”主线替代；文档真相不能再把“列表 placeholder + overlay 追滚桥”或 bottom active zone 写成现行实现。
 
 当时建议新增状态（当前代码已删除）：
 
