@@ -3455,7 +3455,13 @@ fun ChatScreen() {
                 if (isWithinBottomAlignTolerance(finalizeRestoreTolerancePx)) {
                     return@launch
                 }
-                scrollToBottom(false)
+                com.nongjiqianwen.alignVisibleChatListBottom(
+                    listState = chatListState,
+                    currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
+                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+                    beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
+                    endProgrammaticScroll = ::endProgrammaticChatListScroll
+                )
             }
         }
     LaunchedEffect(
