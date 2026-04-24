@@ -3506,7 +3506,7 @@ fun ChatScreen() {
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             return@LaunchedEffect
         }
-        snapshotFlow {
+        val freshSettledBounds = snapshotFlow {
             messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
                 bounds.bottom > bounds.top && bounds.bottom > 0f
             }
@@ -3520,11 +3520,16 @@ fun ChatScreen() {
                     !scrollRuntime.userInteracting.value &&
                     !chatListUserDragging
             if (shouldRestoreAfterFreshBounds) {
-                // Settled bounds are now present; ask the reverse list to pin the
-                // newest item (index 0) to its bottom-padding baseline during the
-                // same handoff remeasure. This avoids relative scrollBy sign/
-                // timing issues while keeping a single LazyColumn owner.
-                chatListState.requestScrollToItem(index = 0)
+                val freshContentBottomPx =
+                    (freshSettledBounds.bottom - messageViewportTopPx).roundToInt()
+                if (freshContentBottomPx > 0) {
+                    streamingContentBottomPx = freshContentBottomPx
+                }
+                // Run the established reverse-list bottom align while the pending
+                // finalized item is still tracked as the streaming item. This keeps
+                // currentLastMessageContentBottomPx() on fresh LayoutCoordinates
+                // instead of the post-finalize LazyList visible-item fallback.
+                scrollToBottom(false)
             }
             finalizeStreamingStop(
                 shouldRestoreBottomAnchor = false
