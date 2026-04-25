@@ -257,7 +257,9 @@ Clean-State 必做回归的范围：
   5. 置 `sendStartAnchorActive = true`
   6. 按 reverse-list 口径同步 `requestScrollToItem(0)`，让新插入的底部 assistant placeholder 成为视觉底部锚点
 - `scrollToBottom(false)` 当前已经回到 reverse-list 主链口径；聊天页主调处应继续把“视觉底部最新消息”的 index 按 `0` 传给 coordinator，而不是沿用正向列表的 `lastIndex`
-- 反向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)` 或直接 `scrollBy(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机与发送起步保护
+- 反向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)` 或直接 `scrollBy(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机、发送起步保护和用户手势意图 latch
+- streaming 期间用户只要产生滚动意图，即使反向列表在底部边界没有明显消费 offset，也必须立即进入 `UserBrowsing` 并启动短冷却；冷却内禁止自动恢复 `AutoFollow`，避免“轻微上滑被吸回”。用户主动点“回到底部”可清掉冷却并恢复跟随
+- streaming 期间输入框聚焦 / IME 可见属于外部几何变化，可以触发受控的底边精修，但前提必须是 `AutoFollow`、用户没有拖动 / 浏览 / 冷却、且仍在单一反向列表主人内；这不是旧 streaming 高度追滚，也不能复用为每字符追滚
 - `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
 - 两阶段 finalize 当前必须继续保留，不能为了“看起来简单”回退到同拍 `isStreaming = false` 的旧写法
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态继续保留给 selection / bounds / fallback 使用；后续不要再把它们升格为“第二套消息运行时主人”的真值来源

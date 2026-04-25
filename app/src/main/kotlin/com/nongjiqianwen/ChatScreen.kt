@@ -98,10 +98,12 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.snapshotFlow
@@ -128,6 +130,9 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
@@ -288,6 +293,7 @@ private const val INPUT_MAX_CHARS = 6000
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
+private const val STREAMING_USER_SCROLL_REJOIN_COOLDOWN_MS = 900L
 internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
@@ -1604,6 +1610,7 @@ fun ChatScreen() {
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
     var inputChromeRowHeightPx by scrollRuntime.inputChromeRowHeightPx
     val chatListUserDragging by chatListState.interactionSource.collectIsDraggedAsState()
+    var lastStreamingUserScrollIntentMs by remember(uiRuntimeResetKey) { mutableLongStateOf(0L) }
 
     val composerRuntime = rememberChatComposerRuntimeState(
         chatScopeId = uiRuntimeResetKey,
@@ -1954,8 +1961,14 @@ fun ChatScreen() {
         return chatListState.firstVisibleItemIndex == 0 &&
             chatListState.firstVisibleItemScrollOffset == 0
     }
+    fun streamingUserScrollCooldownActive(): Boolean {
+        val lastIntentMs = lastStreamingUserScrollIntentMs
+        return lastIntentMs > 0L &&
+            SystemClock.uptimeMillis() - lastIntentMs < STREAMING_USER_SCROLL_REJOIN_COOLDOWN_MS
+    }
     fun isAtStreamingWorklineStrict(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
+        if (streamingUserScrollCooldownActive()) return false
         if (!isReverseListAtExactBottom()) return false
         val worklineBottom = streamingWorklineBottomPx
         if (worklineBottom <= 0) return atBottom
@@ -2960,6 +2973,22 @@ fun ChatScreen() {
                 scrollOffsetBucket * SCROLL_OFFSET_METRIC_BUCKET_PX
         }
     }
+    fun markStreamingUserScrollIntent() {
+        if (!isStreaming && !hasStreamingItem) return
+        lastStreamingUserScrollIntentMs = SystemClock.uptimeMillis()
+        sendStartAnchorActive = false
+        if (programmaticScroll) {
+            com.nongjiqianwen.endProgrammaticChatListScroll(
+                programmaticScrollState = scrollRuntime.programmaticScroll,
+                listState = chatListState,
+                refreshChatListMetrics = { listState ->
+                    updateChatListMetrics(readChatListMetrics(listState))
+                }
+            )
+        }
+        scrollMode = ScrollMode.UserBrowsing
+        scrollRuntime.userInteracting.value = true
+    }
 
     LaunchedEffect(chatListState) {
         snapshotFlow { readChatListMetrics(chatListState) }
@@ -2975,6 +3004,9 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem
     ) {
+        if (chatListUserDragging && !programmaticScroll) {
+            markStreamingUserScrollIntent()
+        }
         handleChatListScrollStateChanged(
             scrollInProgress = recyclerScrollInProgress,
             userDragging = chatListUserDragging,
@@ -2995,8 +3027,14 @@ fun ChatScreen() {
         )
     }
 
-    LaunchedEffect(chatListUserDragging, programmaticScroll, imeVisible) {
-        if (!programmaticScroll && chatListUserDragging && imeVisible) {
+    LaunchedEffect(chatListUserDragging, programmaticScroll, imeVisible, isStreaming, hasStreamingItem) {
+        if (
+            !programmaticScroll &&
+            chatListUserDragging &&
+            imeVisible &&
+            !isStreaming &&
+            !hasStreamingItem
+        ) {
             keyboardController?.hide()
             focusManager.clearFocus(force = true)
         }
@@ -3379,6 +3417,7 @@ fun ChatScreen() {
         lastStreamingFreshRevealMs = 0L
         isStreaming = true
         streamingMessageId = assistantId
+        lastStreamingUserScrollIntentMs = 0L
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
@@ -3451,6 +3490,7 @@ fun ChatScreen() {
     }
     fun shouldContinueProgrammaticChatListScroll(): Boolean {
         if (!isStreaming && !hasStreamingItem) return true
+        if (streamingUserScrollCooldownActive()) return false
         return scrollMode != ScrollMode.UserBrowsing &&
             !scrollRuntime.userInteracting.value &&
             !chatListUserDragging
@@ -3520,6 +3560,39 @@ fun ChatScreen() {
             sendUiSettling = false
             lockedConversationBottomPaddingPx = -1
         }
+    }
+    LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        inputFieldFocused,
+        imeVisible,
+        latestConversationBottomPaddingPx,
+        streamingWorklineBottomPx,
+        scrollMode,
+        lastStreamingUserScrollIntentMs
+    ) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        if (!inputFieldFocused && !imeVisible) return@LaunchedEffect
+        if (scrollMode != ScrollMode.AutoFollow) return@LaunchedEffect
+        if (streamingUserScrollCooldownActive()) return@LaunchedEffect
+        if (scrollRuntime.userInteracting.value || chatListUserDragging || programmaticScroll) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        if (scrollMode != ScrollMode.AutoFollow) return@LaunchedEffect
+        if (streamingUserScrollCooldownActive()) return@LaunchedEffect
+        if (scrollRuntime.userInteracting.value || chatListUserDragging || programmaticScroll) {
+            return@LaunchedEffect
+        }
+        if (currentBottomAlignDeltaPx() == 0) return@LaunchedEffect
+        com.nongjiqianwen.alignVisibleChatListBottom(
+            listState = chatListState,
+            currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
+            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
+            beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
+            endProgrammaticScroll = ::endProgrammaticChatListScroll,
+            shouldContinue = ::shouldContinueProgrammaticChatListScroll
+        )
     }
     LaunchedEffect(
         pendingStreamingFinalizeMessageId,
@@ -3664,6 +3737,7 @@ fun ChatScreen() {
 
     fun jumpToBottom() {
         snackbarScope.launch {
+            lastStreamingUserScrollIntentMs = 0L
             performJumpToBottom(
                 messagesCount = messages.size,
                 hasStreamingItem = hasStreamingItem,
@@ -4003,6 +4077,19 @@ fun ChatScreen() {
                 }
             }
         }
+        val currentMarkStreamingUserScrollIntent = rememberUpdatedState(
+            newValue = { markStreamingUserScrollIntent() }
+        )
+        val streamingUserScrollIntentConnection = remember {
+            object : NestedScrollConnection {
+                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                    if (source == NestedScrollSource.UserInput && available.y != 0f) {
+                        currentMarkStreamingUserScrollIntent.value()
+                    }
+                    return Offset.Zero
+                }
+            }
+        }
         val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
             SideEffect {
                 latestConversationBottomPaddingPx = conversationBottomPaddingPx
@@ -4040,6 +4127,7 @@ fun ChatScreen() {
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = effectiveBottomPaddingPx,
                     modifier = Modifier
+                        .nestedScroll(streamingUserScrollIntentConnection)
                         .then(
                             if (hasActiveMessageSelection) {
                                 selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
@@ -4165,6 +4253,11 @@ fun ChatScreen() {
                 onInputFocused = { focused ->
                     inputFieldFocused = focused
                     if (focused) {
+                        if (isStreaming || hasStreamingItem) {
+                            sendStartAnchorActive = false
+                            sendUiSettling = false
+                            lockedConversationBottomPaddingPx = -1
+                        }
                         suppressInputCursor = false
                         inputContentHeightPx = inputContentHeightPx.coerceAtLeast(
                             startupInputContentHeightEstimatePx
