@@ -100,13 +100,17 @@ internal fun endProgrammaticChatListScroll(
 private suspend fun alignChatListBottom(
     listState: LazyListState,
     currentLastMessageContentBottomPx: () -> Int,
-    currentBottomAlignDeltaPx: () -> Int
+    currentBottomAlignDeltaPx: () -> Int,
+    shouldContinue: () -> Boolean = { true }
 ) {
     repeat(8) {
+        if (!shouldContinue()) return
         withFrameNanos { }
+        if (!shouldContinue()) return
         if (currentLastMessageContentBottomPx() <= 0) return@repeat
         val alignDeltaPx = currentBottomAlignDeltaPx()
         if (alignDeltaPx == 0) return
+        if (!shouldContinue()) return
         listState.scrollBy((-alignDeltaPx).toFloat())
     }
 }
@@ -116,22 +120,24 @@ internal suspend fun alignVisibleChatListBottom(
     currentLastMessageContentBottomPx: () -> Int,
     currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit
+    endProgrammaticScroll: () -> Unit,
+    shouldContinue: () -> Boolean = { true }
 ) {
     val activeListState = listState ?: return
     if (currentLastMessageContentBottomPx() <= 0) return
+    if (!shouldContinue()) return
     beginProgrammaticScroll()
     try {
         alignChatListBottom(
             listState = activeListState,
             currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = currentBottomAlignDeltaPx
+            currentBottomAlignDeltaPx = currentBottomAlignDeltaPx,
+            shouldContinue = shouldContinue
         )
     } catch (_: Throwable) {
+    } finally {
         endProgrammaticScroll()
-        return
     }
-    endProgrammaticScroll()
 }
 
 internal suspend fun scrollChatListToBottom(
@@ -141,27 +147,33 @@ internal suspend fun scrollChatListToBottom(
     currentLastMessageContentBottomPx: () -> Int,
     currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit
+    endProgrammaticScroll: () -> Unit,
+    shouldContinue: () -> Boolean = { true }
 ) {
     val activeListState = listState ?: return
     if (lastIndex < 0) return
+    if (!shouldContinue()) return
     beginProgrammaticScroll()
     try {
-        if (animated) {
-            activeListState.animateScrollToItem(lastIndex)
-        } else {
-            activeListState.scrollToItem(lastIndex)
+        if (shouldContinue()) {
+            if (animated) {
+                activeListState.animateScrollToItem(lastIndex)
+            } else {
+                activeListState.scrollToItem(lastIndex)
+            }
         }
-        alignChatListBottom(
-            listState = activeListState,
-            currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = currentBottomAlignDeltaPx
-        )
+        if (shouldContinue()) {
+            alignChatListBottom(
+                listState = activeListState,
+                currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
+                currentBottomAlignDeltaPx = currentBottomAlignDeltaPx,
+                shouldContinue = shouldContinue
+            )
+        }
     } catch (_: Throwable) {
+    } finally {
         endProgrammaticScroll()
-        return
     }
-    endProgrammaticScroll()
 }
 
 internal fun handleChatListScrollStateChanged(
@@ -174,6 +186,14 @@ internal fun handleChatListScrollStateChanged(
     userInteractingState: MutableState<Boolean>,
     endProgrammaticScroll: () -> Unit
 ) {
+    if (userDragging && (isStreaming || hasStreamingItem)) {
+        endProgrammaticScroll()
+        userInteractingState.value = true
+        if (scrollModeState.value != ScrollMode.UserBrowsing) {
+            scrollModeState.value = ScrollMode.UserBrowsing
+        }
+        return
+    }
     if (programmaticScroll) {
         if (!scrollInProgress) {
             endProgrammaticScroll()
