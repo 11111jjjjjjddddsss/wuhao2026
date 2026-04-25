@@ -1950,8 +1950,13 @@ fun ChatScreen() {
         val upperTolerancePx = assistantLineStepPx.coerceAtLeast(bottomPositionTolerancePx)
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
+    fun isReverseListAtExactBottom(): Boolean {
+        return chatListState.firstVisibleItemIndex == 0 &&
+            chatListState.firstVisibleItemScrollOffset == 0
+    }
     fun isAtStreamingWorklineStrict(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
+        if (!isReverseListAtExactBottom()) return false
         val worklineBottom = streamingWorklineBottomPx
         if (worklineBottom <= 0) return atBottom
         val contentBottom = currentStreamingContentBottomPx()
@@ -3506,15 +3511,14 @@ fun ChatScreen() {
     }
     LaunchedEffect(
         isStreaming,
-        sendStartAnchorActive,
+        hasStreamingItem,
         inputFieldFocused,
         imeVisible
     ) {
-        if (isStreaming && sendStartAnchorActive && (inputFieldFocused || imeVisible)) {
+        if ((isStreaming || hasStreamingItem) && (inputFieldFocused || imeVisible)) {
             sendStartAnchorActive = false
-            if (!sendUiSettling) {
-                lockedConversationBottomPaddingPx = -1
-            }
+            sendUiSettling = false
+            lockedConversationBottomPaddingPx = -1
         }
     }
     LaunchedEffect(
