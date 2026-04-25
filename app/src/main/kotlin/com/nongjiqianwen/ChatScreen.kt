@@ -3518,35 +3518,6 @@ fun ChatScreen() {
         }
     }
     LaunchedEffect(
-        isStreaming,
-        hasStreamingItem,
-        inputFieldFocused,
-        imeVisible,
-        latestConversationBottomPaddingPx,
-        scrollMode,
-        chatListUserDragging
-    ) {
-        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
-        if (!inputFieldFocused && !imeVisible) return@LaunchedEffect
-        if (scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
-        if (scrollRuntime.userInteracting.value || chatListUserDragging || programmaticScroll) {
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        if (scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
-        if (scrollRuntime.userInteracting.value || chatListUserDragging || programmaticScroll) {
-            return@LaunchedEffect
-        }
-        com.nongjiqianwen.alignVisibleChatListBottom(
-            listState = chatListState,
-            currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-            beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
-            endProgrammaticScroll = ::endProgrammaticChatListScroll,
-            shouldContinue = ::shouldContinueProgrammaticChatListScroll
-        )
-    }
-    LaunchedEffect(
         pendingStreamingFinalizeMessageId,
         isStreaming,
         messages.size,

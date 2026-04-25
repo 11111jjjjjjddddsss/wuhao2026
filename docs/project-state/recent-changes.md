@@ -5,7 +5,7 @@
 
 ## 2026-04-25
 
-- `ChatScreen.kt` / `ChatScrollCoordinator.kt` 再次收紧“用户手指优先”：`handleChatListScrollStateChanged(...)` 现在会先处理用户拖动，再处理 `programmaticScroll`，避免程序滚动保护窗口吞掉真机拖动事件，造成“我已经上滑但还被往下带”。同时 `scrollToBottom(...)` / `alignVisibleChatListBottom(...)` 的程序对齐循环新增 `shouldContinue` 刹车，用户一旦进入 `UserBrowsing` 或正在拖动，正在跑的对齐循环也会停。streaming 中输入框聚焦 / IME 可见时，AutoFollow 态会在键盘外部几何更新后执行一次 `alignVisibleChatListBottom(...)`，让正文跟随键盘工作线上抬；若已进入 `UserBrowsing` 或用户正在拖动，则不做这次精修。
+- `ChatScreen.kt` / `ChatScrollCoordinator.kt` 再次收紧“用户手指优先”：`handleChatListScrollStateChanged(...)` 现在会先处理用户拖动，再处理 `programmaticScroll`，避免程序滚动保护窗口吞掉真机拖动事件，造成“我已经上滑但还被往下带”。同时 `scrollToBottom(...)` / `alignVisibleChatListBottom(...)` 的程序对齐循环新增 `shouldContinue` 刹车，用户一旦进入 `UserBrowsing` 或正在拖动，正在跑的对齐循环也会停。随后撤掉 streaming 输入框聚焦 / IME 可见时额外发起的 `alignVisibleChatListBottom(...)` 主动精修，键盘抬升改回依赖 reverse-list + `contentPadding.bottom` 的自然重排，避免 IME / 手势边界又多一脚程序滚动抢手。
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 继续压 streaming 期间“上滑被吸回 / 抢手”和点输入框不跟键盘抬升的问题：用户拖动或任何非程序滚动现在只要处在 `isStreaming || hasStreamingItem` 窗口就会进入 `UserBrowsing`；从 `UserBrowsing` 恢复 `AutoFollow` 的工作线命中带从原 16dp 收到 4dp，避免停在工作线附近就被吸回去。同时，streaming 中用户主动聚焦输入框 / IME 可见时会释放发送起步锚点锁，并允许 realtime composer 几何跟随键盘外部抬升；输入框内部文字 / 图片内容高度仍不允许进入聊天列表 reserve。
 - `ChatScreen.kt` 将统一工作线视觉 gap 从 `64.dp` 调整为 `80.dp`。这是单点设计参数变更，会同时上移小球首发锚点、streaming 正文底边、静态完成态贴底目标和回到底部目标；目的只是让输入框上方预留给免责声明 / 极端说明 / 底部呼吸区的空间更舒展，不改变反向列表单主人、发送期 reserve 锁、两阶段 finalize 或输入框内容高度隔离规则。
 - `ChatScrollCoordinator.kt` 收紧 streaming 手势优先级：此前只有 `collectIsDraggedAsState()` 判定为拖动时才切 `UserBrowsing`，真机上可能出现反向列表已进入 `isScrollInProgress`、但 drag state 还没同步命中的窗口，AutoFollow 继续贴底导致用户感觉“上滑被往下带”。现在 streaming 中任何非程序性的列表滚动都会立即进入 `UserBrowsing`，直到列表停稳且严格回到工作线才恢复 `AutoFollow`，专门压“上滑/下滑不要抢手”的问题。
