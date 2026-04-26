@@ -355,7 +355,7 @@ private fun splitStreamingTextIntoBlocks(
     }
 
     val activeContent = text.substring(blockStart)
-    if (activeContent.isNotEmpty() || blocks.isEmpty() || !forceAllStable) {
+    if (activeContent.isNotEmpty() || blocks.isEmpty()) {
         blocks.add(
             StreamingTextBlock(
                 blockIndex = blocks.size,
@@ -3762,12 +3762,22 @@ fun ChatScreen() {
     ) {
         val browseEpochAtLaunch = streamingUserBrowseEpoch
         val previousBlockIndex = lastAutoFollowStreamingBlockIndex
-        lastAutoFollowStreamingBlockIndex = activeStreamingBlockIndex
         if (
             !isStreaming ||
-            !hasStreamingItem ||
+            !hasStreamingItem
+        ) {
+            lastAutoFollowStreamingBlockIndex = activeStreamingBlockIndex
+            return@LaunchedEffect
+        }
+        if (activeStreamingBlockIndex < 0) {
+            return@LaunchedEffect
+        }
+        if (previousBlockIndex < 0) {
+            lastAutoFollowStreamingBlockIndex = activeStreamingBlockIndex
+            return@LaunchedEffect
+        }
+        if (
             activeStreamingBlockIndex <= previousBlockIndex ||
-            previousBlockIndex < 0 ||
             scrollMode != ScrollMode.AutoFollow ||
             scrollRuntime.userInteracting.value ||
             chatListUserDragging ||
@@ -3787,6 +3797,7 @@ fun ChatScreen() {
         ) {
             return@LaunchedEffect
         }
+        lastAutoFollowStreamingBlockIndex = activeStreamingBlockIndex
         chatListState.requestScrollToItem(index = 0)
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
