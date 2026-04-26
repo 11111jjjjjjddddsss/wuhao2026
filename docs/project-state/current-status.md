@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-25
+最后更新：2026-04-26
 
 ## 项目概况
 
@@ -48,6 +48,7 @@
   - active-zone 时代专用的 `streamingBodyFollowEnabled` 开关已经从 coordinator 主链里移除
   - 旧正向 / overlay 时代的 streaming raw follow 链已移除：反向列表不再在 streaming 正文高度变化时额外调用 `followStreamingByDelta(...)` / `scrollBy(...)` 追滚，`streamBottomFollowActive` 空壳状态也已删除，避免和用户拖动、reverse-layout 自身底部锚定打架
   - streaming 期间用户触碰 / 拖动优先级高于程序滚动；一旦检测到用户接管，会先结束程序滚动标记并立即进入 `UserBrowsing`，不再让 `programmaticScroll` 分支吞掉用户手势。`scrollToBottom(...)` / `alignVisibleChatListBottom(...)` 这类程序对齐循环也会逐帧检查用户是否已接管，接管后立即停止。本轮不会自动恢复 `AutoFollow`；回到底部恢复跟随只走显式按钮 / 显式跳底链
+  - streaming 用户接管后，若仍停留在最新 assistant item 内，`ChatScreen.kt` 会冻结该 active streaming item 的测量高度，防止 index `0` item 继续长高时把小幅上滑重新锚回工作线；这不恢复旧 `scrollBy(...)` / `dispatchRawDelta(...)` 高度追滚
   - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线。输入框内部文字或图片内容高度仍不允许顶起聊天列表
 - 回到底部按钮当前不再用消息 bounds / 工作线 `atBottom` 判断按钮资格。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制，并且反向列表真实离底 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 0`，或 streaming 态用户触碰消息列表进入 `UserBrowsing`。开机 / 程序贴底 / bounds 初次上报不会点亮按钮；发送后 IME 过渡伪锁已删除，避免发过消息后按钮长期被压死；继续滚动会续亮，停止滚动后自动隐藏；点击按钮直接 `scrollToItem(0)` 回到反向列表真实底部并恢复对应滚动模式
 

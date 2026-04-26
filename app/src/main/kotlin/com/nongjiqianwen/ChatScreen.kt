@@ -113,6 +113,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
@@ -1663,6 +1664,8 @@ fun ChatScreen() {
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
+    var streamingBrowseFrozenMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var streamingBrowseFrozenHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val streamingAutoFollowRejoinTolerancePx = with(density) {
@@ -1679,6 +1682,28 @@ fun ChatScreen() {
             isStreaming &&
                 !messageId.isNullOrBlank() &&
                 messages.any { it.id == messageId }
+        }
+    }
+    LaunchedEffect(
+        scrollMode,
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageId,
+        pendingStreamingFinalizeMessageId,
+        messages.size
+    ) {
+        val frozenId = streamingBrowseFrozenMessageId
+        val shouldKeepFrozenHeight =
+            scrollMode == ScrollMode.UserBrowsing &&
+                !frozenId.isNullOrBlank() &&
+                messages.any { it.id == frozenId } &&
+                (
+                    (isStreaming && streamingMessageId == frozenId) ||
+                        pendingStreamingFinalizeMessageId == frozenId
+                    )
+        if (!shouldKeepFrozenHeight) {
+            streamingBrowseFrozenMessageId = null
+            streamingBrowseFrozenHeightPx = -1
         }
     }
     val isComposerSettling by remember(
@@ -3440,6 +3465,21 @@ fun ChatScreen() {
         if (scrollMode != ScrollMode.UserBrowsing) {
             scrollMode = ScrollMode.UserBrowsing
         }
+        val activeStreamingMessageId = streamingMessageId
+        if (!activeStreamingMessageId.isNullOrBlank()) {
+            if (streamingBrowseFrozenMessageId != activeStreamingMessageId) {
+                streamingBrowseFrozenMessageId = activeStreamingMessageId
+                streamingBrowseFrozenHeightPx = -1
+            }
+            val currentStreamingHeightPx =
+                messageContentBoundsById[activeStreamingMessageId]
+                    ?.takeIf { it.bottom > it.top }
+                    ?.let { (it.bottom - it.top).roundToInt() }
+                    ?: -1
+            if (currentStreamingHeightPx > 0 && streamingBrowseFrozenHeightPx <= 0) {
+                streamingBrowseFrozenHeightPx = currentStreamingHeightPx
+            }
+        }
         if (startupLayoutReady && shouldRevealMessageList && messages.isNotEmpty()) {
             jumpButtonUserScrollSignal++
         }
@@ -3922,6 +3962,27 @@ fun ChatScreen() {
                                         isActiveStreamingAssistant &&
                                             isStreaming &&
                                             !isPendingStreamingFinalizeAssistant
+                                    val streamingBrowseFrozenHeightDp =
+                                        streamingBrowseFrozenHeightPx
+                                            .takeIf {
+                                                it > 0 &&
+                                                    msg.id == streamingBrowseFrozenMessageId &&
+                                                    scrollMode == ScrollMode.UserBrowsing &&
+                                                    (isActiveStreamingAssistant || isPendingStreamingFinalizeAssistant)
+                                            }
+                                            ?.let { with(density) { it.toDp() } }
+                                    val streamingRendererModifier =
+                                        if (streamingBrowseFrozenHeightDp != null) {
+                                            // While the user is reading inside the growing latest item,
+                                            // keep its measured height stable so reverse LazyColumn does
+                                            // not re-anchor index 0 back toward the workline.
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = streamingBrowseFrozenHeightDp)
+                                                .clipToBounds()
+                                        } else {
+                                            Modifier.fillMaxWidth()
+                                        }
                                     ChatStreamingRenderer(
                                         content = assistantDisplayContent,
                                         renderMode = renderMode,
@@ -3944,12 +4005,23 @@ fun ChatScreen() {
                                                     if (streamingContentBottomPx != nextStreamingContentBottomPx) {
                                                         streamingContentBottomPx = nextStreamingContentBottomPx
                                                     }
+                                                    if (
+                                                        scrollMode == ScrollMode.UserBrowsing &&
+                                                        streamingBrowseFrozenMessageId == msg.id &&
+                                                        streamingBrowseFrozenHeightPx <= 0
+                                                    ) {
+                                                        val currentStreamingHeightPx =
+                                                            (bounds.bottom - bounds.top).roundToInt()
+                                                        if (currentStreamingHeightPx > 0) {
+                                                            streamingBrowseFrozenHeightPx = currentStreamingHeightPx
+                                                        }
+                                                    }
                                                 }
                                             } else {
                                                 updateMessageContentBounds(msg.id, null)
                                             }
                                         },
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = streamingRendererModifier
                                     )
                                 }
                             }

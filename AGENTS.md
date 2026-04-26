@@ -250,6 +250,7 @@ Clean-State 必做回归的范围：
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
 - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`，本轮不再自动恢复 `AutoFollow`，回到底部恢复跟随后续单独走显式按钮 / 显式跳底链
+- streaming 过程中用户进入 `UserBrowsing` 后，如果仍停留在最新 assistant item 内，`ChatScreen.kt` 会临时冻结该 active streaming item 的测量高度，避免 `LazyColumn(reverseLayout = true)` 因 index `0` item 继续长高而把用户轻微上滑带回工作线；这只是用户浏览态的测量高度保护，不是旧 `scrollBy(...)` / `dispatchRawDelta(...)` 高度追滚
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`
