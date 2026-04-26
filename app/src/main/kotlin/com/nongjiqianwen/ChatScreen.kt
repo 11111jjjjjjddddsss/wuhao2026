@@ -2331,6 +2331,7 @@ fun ChatScreen() {
         }
     }
     var jumpButtonUserScrollSignal by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var jumpButtonSawUserListMotion by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val userDrivenListMotionForJumpButton =
         !programmaticScroll && (chatListUserDragging || recyclerScrollInProgress)
     val userAwayFromBottomForJumpButton by remember(
@@ -2353,13 +2354,24 @@ fun ChatScreen() {
         shouldRevealMessageList,
         userDrivenListMotionForJumpButton,
         userAwayFromBottomForJumpButton,
+        keyboardVisibleForJumpButton,
+        suppressJumpButtonForLifecycleResume,
         recyclerFirstVisibleItemIndex,
         recyclerFirstVisibleItemScrollOffset
     ) {
+        if (userDrivenListMotionForJumpButton) {
+            jumpButtonSawUserListMotion = true
+            jumpButtonPulseVisible = false
+            return@LaunchedEffect
+        }
+        if (!jumpButtonSawUserListMotion) return@LaunchedEffect
+        jumpButtonSawUserListMotion = false
+        withFrameNanos { }
         if (
             startupLayoutReady &&
             shouldRevealMessageList &&
-            userDrivenListMotionForJumpButton &&
+            !keyboardVisibleForJumpButton &&
+            !suppressJumpButtonForLifecycleResume &&
             userAwayFromBottomForJumpButton
         ) {
             jumpButtonUserScrollSignal++
@@ -2371,6 +2383,7 @@ fun ChatScreen() {
         hasStreamingItem,
         scrollMode,
         reverseListAwayFromExactBottom,
+        userDrivenListMotionForJumpButton,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForLifecycleResume,
         messages.size
@@ -2378,6 +2391,7 @@ fun ChatScreen() {
         derivedStateOf {
             startupLayoutReady &&
                 !keyboardVisibleForJumpButton &&
+                !userDrivenListMotionForJumpButton &&
                 !suppressJumpButtonForLifecycleResume &&
                 userAwayFromBottomForJumpButton
         }
@@ -3706,9 +3720,6 @@ fun ChatScreen() {
         scrollRuntime.userInteracting.value = true
         if (scrollMode != ScrollMode.UserBrowsing) {
             scrollMode = ScrollMode.UserBrowsing
-        }
-        if (startupLayoutReady && shouldRevealMessageList && messages.isNotEmpty()) {
-            jumpButtonUserScrollSignal++
         }
     }
     fun shouldContinueProgrammaticChatListScroll(): Boolean {
