@@ -3457,6 +3457,9 @@ fun ChatScreen() {
         if (scrollMode != ScrollMode.UserBrowsing) {
             scrollMode = ScrollMode.UserBrowsing
         }
+        if (startupLayoutReady && shouldRevealMessageList && messages.isNotEmpty()) {
+            jumpButtonUserScrollSignal++
+        }
     }
     fun shouldContinueProgrammaticChatListScroll(): Boolean {
         if (!isStreaming && !hasStreamingItem) return true
