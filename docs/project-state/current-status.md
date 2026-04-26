@@ -47,8 +47,8 @@
   - `scrollToBottom(false)` 重新按 reverse-list 走 `scrollToItem(lastIndex)`，其中当前 `lastIndex` 在聊天页主调处按 `0` 传入
   - active-zone 时代专用的 `streamingBodyFollowEnabled` 开关已经从 coordinator 主链里移除
   - 旧正向 / overlay 时代的 streaming raw follow 链已移除：反向列表不再在 streaming 正文高度变化时额外调用 `followStreamingByDelta(...)` / `scrollBy(...)` 追滚，`streamBottomFollowActive` 空壳状态也已删除，避免和用户拖动、reverse-layout 自身底部锚定打架
-  - streaming 期间用户拖动优先级高于程序滚动；一旦检测到用户拖动或 nested scroll 用户输入意图，会先结束程序滚动标记并立即进入 `UserBrowsing`，不再让 `programmaticScroll` 分支吞掉用户手势。`scrollToBottom(...)` / `alignVisibleChatListBottom(...)` 这类程序对齐循环也会逐帧检查用户是否已接管，接管后立即停止。恢复 `AutoFollow` 必须同时满足用户意图冷却结束、反向列表真实底部 `firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0` 和工作线命中，避免轻微上滑后被自动吸回
-  - streaming 中用户主动点开输入框 / IME 时，会立即释放发送起步锚点锁、结束 `sendUiSettling` 并清掉 locked bottom padding，让键盘外部几何接管工作线；AutoFollow 且无用户冷却时允许执行一次受控 `alignVisibleChatListBottom(...)`，专门消费 IME 外部几何导致的工作线上移。输入框内部文字或图片内容高度仍不允许顶起聊天列表
+  - streaming 期间用户拖动优先级高于程序滚动；一旦检测到用户拖动，会先结束程序滚动标记并立即进入 `UserBrowsing`，不再让 `programmaticScroll` 分支吞掉用户手势。`scrollToBottom(...)` / `alignVisibleChatListBottom(...)` 这类程序对齐循环也会逐帧检查用户是否已接管，接管后立即停止。恢复 `AutoFollow` 必须同时满足反向列表真实底部 `firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0` 和工作线命中，避免轻微上滑后被自动吸回
+  - streaming 中用户主动点开输入框 / IME 时，会立即释放发送起步锚点锁、结束 `sendUiSettling` 并清掉 locked bottom padding，让键盘外部几何接管工作线；正文跟随键盘上抬依赖 reverse-list + `contentPadding.bottom` 的同一主人自然重排，不再额外发起 `alignVisibleChatListBottom(...)` 主动滚动，避免 IME / 手势边界抢手。输入框内部文字或图片内容高度仍不允许顶起聊天列表
 
 ## 当前调试焦点
 
