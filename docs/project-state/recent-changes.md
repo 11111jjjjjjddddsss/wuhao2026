@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-04-26
+
+- `ChatScreen.kt` / `ChatScrollCoordinator.kt` 撤掉 pending finalize 阶段的主动底部精修：完成态仍保留 `beginPendingStreamingFinalize(...) -> fresh settled bounds -> finalizeStreamingStop(...)` 两阶段，但不再在 fresh bounds 到位后调用 `alignVisibleChatListBottom(...)`。真机反馈吐完后可视窗口会掉头跑到长回复上方，定位到这条完成瞬间主动滚动链风险高于收益；当前让 settled 渲染树自然落地，不恢复完整 `scrollToBottom(false)`、不恢复 `requestScrollToItem(0)` finalize pin，也不恢复旧 overlay / height follow 链。
+
 ## 2026-04-25
 
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 删除发送后没人解锁的 `suppressJumpButtonForImeTransition` 伪门，并把回到底部按钮资格统一成“消息非空 + 键盘不可见 + 生命周期未抑制 +（反向列表真实离底或 streaming 已进入 UserBrowsing）”。此前发送路径会把 `suppressJumpButtonForImeTransition` 设为 true，但正常 chat 流程没有恢复 false，导致发过一条消息后按钮长期被压死；同时按钮离底判断已直接读取 `chatListState.firstVisibleItemIndex / firstVisibleItemScrollOffset`，不再吃 24px metrics bucket。

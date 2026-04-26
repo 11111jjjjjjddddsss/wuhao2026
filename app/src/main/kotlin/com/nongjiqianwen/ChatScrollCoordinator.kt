@@ -112,31 +112,6 @@ private suspend fun alignChatListBottom(
     }
 }
 
-internal suspend fun alignVisibleChatListBottom(
-    listState: LazyListState?,
-    currentLastMessageContentBottomPx: () -> Int,
-    currentBottomAlignDeltaPx: () -> Int,
-    beginProgrammaticScroll: () -> Unit,
-    endProgrammaticScroll: () -> Unit,
-    shouldContinue: () -> Boolean = { true }
-) {
-    val activeListState = listState ?: return
-    if (currentLastMessageContentBottomPx() <= 0) return
-    if (!shouldContinue()) return
-    beginProgrammaticScroll()
-    try {
-        alignChatListBottom(
-            listState = activeListState,
-            currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = currentBottomAlignDeltaPx,
-            shouldContinue = shouldContinue
-        )
-    } catch (_: Throwable) {
-    } finally {
-        endProgrammaticScroll()
-    }
-}
-
 internal suspend fun scrollChatListToBottom(
     listState: LazyListState?,
     lastIndex: Int,

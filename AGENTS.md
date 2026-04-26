@@ -225,7 +225,7 @@ Clean-State 必做回归的范围：
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
-- 作用：streaming -> settled 继续在同一个列表 item 内完成；当前仍保留 `beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize，不允许回退成“同拍直接切 settled”的简化版
+- 作用：streaming -> settled 继续在同一个列表 item 内完成；当前仍保留 `beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize，不允许回退成“同拍直接切 settled”的简化版；pending finalize 只等待 fresh settled bounds，不再额外调用 bottom align 精修，避免完成瞬间把长回复重新锚到上方
 
 5. 用户浏览与首次进入
 - 主人：用户手指 / [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
@@ -261,6 +261,7 @@ Clean-State 必做回归的范围：
 - 反向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)` 或直接 `scrollBy(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机与发送起步保护
 - `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
 - 回到底部按钮不允许开机、程序回底、bounds 初次上报自己冒出来。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制，并且反向列表真实离底 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 0`，或 streaming 态用户触碰消息列表进入 `UserBrowsing`。按钮不要再用消息 bounds / 工作线 `atBottom` 口径决定资格，也不要再加发送后 IME 过渡伪锁。按钮显示是短 pulse：用户继续滚动可续亮，停止滚动后自动隐藏；点击按钮必须直接回到反向列表真实底部 `scrollToItem(0)` 并清掉 pulse
+- pending finalize 不再运行 `alignVisibleChatListBottom(...)` 或完整 `scrollToBottom(false)`；吐完后的渲染树切换只等 fresh bounds 到位，再清 streaming 状态，避免完成瞬间主动滚动把可视窗口带到长回复上方
 - 两阶段 finalize 当前必须继续保留，不能为了“看起来简单”回退到同拍 `isStreaming = false` 的旧写法
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态继续保留给 selection / bounds / fallback 使用；后续不要再把它们升格为“第二套消息运行时主人”的真值来源
 - 远端 hydrate、发送事务和本地 snapshot 继续只允许原地增改；不要再把消息替换链改回 `clear() + addAll()`

@@ -3537,7 +3537,7 @@ fun ChatScreen() {
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             return@LaunchedEffect
         }
-        val freshSettledBounds = snapshotFlow {
+        snapshotFlow {
             messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
                 bounds.bottom > bounds.top && bounds.bottom > 0f
             }
@@ -3545,33 +3545,6 @@ fun ChatScreen() {
             .filterNotNull()
             .first()
         if (pendingStreamingFinalizeMessageId == pendingMessageId && isStreaming) {
-            val shouldRestoreAfterFreshBounds =
-                pendingStreamingFinalizeShouldRestoreBottomAnchor &&
-                    scrollMode != ScrollMode.UserBrowsing &&
-                    !scrollRuntime.userInteracting.value &&
-                    !chatListUserDragging
-            if (shouldRestoreAfterFreshBounds) {
-                val freshContentBottomPx =
-                    (freshSettledBounds.bottom - messageViewportTopPx).roundToInt()
-                if (freshContentBottomPx > 0) {
-                    streamingContentBottomPx = freshContentBottomPx
-                }
-                // Run the established reverse-list bottom align while the pending
-                // finalized item is still tracked as the streaming item. This keeps
-                // currentLastMessageContentBottomPx() on fresh LayoutCoordinates
-                // instead of the post-finalize LazyList visible-item fallback.
-                // Do not run the full scrollToBottom path here: its scrollToItem(0)
-                // step can re-anchor a long finalized item and expose a large
-                // blank below it. Finalize only needs a visible bottom refinement.
-                com.nongjiqianwen.alignVisibleChatListBottom(
-                    listState = chatListState,
-                    currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
-                    currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
-                    beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
-                    endProgrammaticScroll = ::endProgrammaticChatListScroll,
-                    shouldContinue = ::shouldContinueProgrammaticChatListScroll
-                )
-            }
             finalizeStreamingStop(
                 shouldRestoreBottomAnchor = false
             )

@@ -1,6 +1,6 @@
 # 当前未关闭风险
 
-最后更新：2026-04-24
+最后更新：2026-04-26
 
 ## R1 运维入口仍以文档骨架为主
 
@@ -29,6 +29,7 @@
 - 说明：当前聊天消息运行时已经从 mixed active-zone / overlay 架构切回单一列表主人：`ChatRecyclerViewHost.kt` 使用 `LazyColumn(reverseLayout = true)` + `items.asReversed()`，`ChatScreen.kt` 中的 `StreamingLocation`、`BottomActiveZoneSlice`、`renderBottomActiveZone()`、Overlay 恢复门和 `requestSendStartBottomSnap()` 已退出主链；发送起步回到 list-side 口径，继续保留 `sendStartBottomPaddingLockActive` / `lockedConversationBottomPaddingPx` 与 `sendStartAnchorActive`，同时完成态继续保留两阶段 finalize
 - 风险：这次反向列表单主人重构已经完成编译和静态自查，但还没有用户真机回归。当前最需要确认的是：1) 首屏进入有历史时是否仍稳定贴底；2) 发送瞬间的小球 / 历史文本是否仍抖动；3) streaming 过程中上下拖动是否不再乱窜、重叠、抢手；4) finalize 收口是否仍保持前几轮压下去的稳定度；5) 输入框上方和静态文本底部是否不再出现额外白块
 - 风险补充：上一次 reverse-layout 尝试（`8730933` / `a6996b9` / `b9aee22`）后来被 `93ce82f` 切回正向，不代表反向物理模型本身错误，而是当时还背着旧 streaming follow、旧 startup/finalize 链和旧发送起步包袱。本轮已继续清理旧包袱：移除 streaming raw follow 追滚、发送起步始终 `requestScrollToItem(0)`、UserBrowsing 恢复改为严格命中工作线、pending finalize 前复核用户是否已接管。若真机上仍出现问题，下一刀应继续优先排查旧正向列表假设是否残留，而不是恢复 mixed active-zone runtime
+- 风险补充：针对“吐完后窗口掉头跑到长回复上方”的反馈，当前已撤掉 pending finalize 主动底部精修；后续仍需真机确认完成态底部是否自然稳定，如果只是差少量底部误差，优先接受或单独设计更小的完成态策略，不再恢复大幅滚动精修
 - 后续动作：先让用户真机回归这轮反向列表单主人主线；若 send-start 仍抖，优先对照 reverse-layout 旧稳定期的 list-side 锚点释放条件继续收紧；若拖动仍乱窜或重叠，先检查是否还有 forward-list / active-zone 口径残留，而不是恢复 overlay 切管
 
 ## R5 外部会诊仍依赖人工转发上下文
