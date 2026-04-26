@@ -1888,6 +1888,7 @@ fun ChatScreen() {
     var streamingBrowseBlockSnapshot by remember(uiRuntimeResetKey) {
         mutableStateOf<StreamingBrowseBlockSnapshot?>(null)
     }
+    var streamingUserBrowseEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val chatListItems by remember(
         messages,
         streamingMessageId,
@@ -3727,6 +3728,7 @@ fun ChatScreen() {
         if (!isStreaming && !hasStreamingItem) return
         endProgrammaticChatListScroll()
         scrollRuntime.userInteracting.value = true
+        streamingUserBrowseEpoch++
         if (scrollMode != ScrollMode.UserBrowsing) {
             scrollMode = ScrollMode.UserBrowsing
         }
@@ -3758,6 +3760,7 @@ fun ChatScreen() {
         sendStartAnchorActive,
         startupLayoutReady
     ) {
+        val browseEpochAtLaunch = streamingUserBrowseEpoch
         val previousBlockIndex = lastAutoFollowStreamingBlockIndex
         lastAutoFollowStreamingBlockIndex = activeStreamingBlockIndex
         if (
@@ -3765,6 +3768,17 @@ fun ChatScreen() {
             !hasStreamingItem ||
             activeStreamingBlockIndex <= previousBlockIndex ||
             previousBlockIndex < 0 ||
+            scrollMode != ScrollMode.AutoFollow ||
+            scrollRuntime.userInteracting.value ||
+            chatListUserDragging ||
+            sendStartAnchorActive ||
+            !startupLayoutReady
+        ) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        if (
+            browseEpochAtLaunch != streamingUserBrowseEpoch ||
             scrollMode != ScrollMode.AutoFollow ||
             scrollRuntime.userInteracting.value ||
             chatListUserDragging ||
