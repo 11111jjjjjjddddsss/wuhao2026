@@ -198,7 +198,7 @@ Clean-State 必做回归的范围：
   - 原因是仓库里的 `messages` 仍按“旧在前、新在后”存储，反向列表需要用反转后的显示序列把最新消息放到视觉底部
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - composer 内部内容高度不属于聊天列表 bottom reserve。长文本、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve、工作线 gap。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
-- waiting 小球、streaming 正文、settled 完成态默认共用同一条 assistant 消息主线；但 streaming 生成期间，允许把当前 assistant 在同一个 `LazyColumn`、同一个 `LazyListState` 内持续派生成“多个稳定 block item + 一个 active block item”。这只是单一列表内的展示层分块，不是 overlay / active-zone / 第二滚动宿主；回到底部或下一轮发送会清掉完成后浏览态保留的 block 快照并恢复完整消息 item
+- waiting 小球、streaming 正文、settled 完成态默认共用同一条 assistant 消息主线；但 streaming 生成期间，允许把当前 assistant 在同一个 `LazyColumn`、同一个 `LazyListState` 内持续派生成“多个稳定 block item + 一个 active block item”。这只是单一列表内的展示层分块，不是 overlay / active-zone / 第二滚动宿主；streaming 完成后可继续保留已完成 block 快照，回到底部或下一轮发送再清掉快照并恢复完整消息 item
 - mixed active-zone / overlay 运行时当前已退出主链：
   - `StreamingLocation`
   - `BottomActiveZoneSlice / resolveBottomActiveZoneSlice(...)`
@@ -225,7 +225,7 @@ Clean-State 必做回归的范围：
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
-- 作用：streaming -> settled 默认在同一个消息主线内完成；若用户浏览态已经处在 block item 化视图里，则完成时浏览态可暂时保留已完成 block 快照以避免重锚跳动，回到底部或下一轮发送再合回完整 item。当前仍保留 `beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize，不允许回退成“同拍直接切 settled”的简化版；pending finalize 只等待 fresh settled bounds，不再额外调用 bottom align 精修，避免完成瞬间把长回复重新锚到上方
+- 作用：streaming -> settled 默认在同一个消息主线内完成；完成时暂时保留已完成 block 快照，避免从多 block streaming 树立刻合回单条巨型 settled item 造成完成瞬间重排闪动；回到底部或下一轮发送再合回完整 item。当前仍保留 `beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize，不允许回退成“同拍直接切 settled”的简化版；pending finalize 只等待 fresh settled bounds，不再额外调用 bottom align 精修，避免完成瞬间把长回复重新锚到上方
 
 5. 用户浏览与首次进入
 - 主人：用户手指 / [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
@@ -250,7 +250,7 @@ Clean-State 必做回归的范围：
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
 - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`，本轮不再自动恢复 `AutoFollow`，回到底部恢复跟随后续单独走显式按钮 / 显式跳底链
-- streaming 期间 `ChatScreen.kt` 会按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，避免视觉底部 index `0` 的 active block 重新长成巨型 item。稳定 block 使用 `messageId:streaming_block:<index>` key，active block 使用固定 `messageId:streaming_tail` key，以兼顾浏览锚点稳定和贴底 AutoFollow。这个方案不裁剪内容、不补 streaming `scrollBy`、不恢复 overlay；点击回到底部时清掉完成后浏览态保留的 block 快照，重新回到完整 assistant item 并恢复跟随
+- streaming 期间 `ChatScreen.kt` 会按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，当前 active block 上限为 180 字，避免视觉底部 index `0` 的 active block 重新长成巨型 item。稳定 block 使用 `messageId:streaming_block:<index>` key；AutoFollow 贴底时 active block 使用固定 `messageId:streaming_tail` key 保持最新尾巴贴底，进入 `UserBrowsing` 后 active block 改用自身 block key，让当前可见 block 完成切分后能随 key 迁移到稳定 item，避免继续锚住新 tail。这个方案不裁剪内容、不补 streaming `scrollBy`、不恢复 overlay；点击回到底部时清掉完成后保留的 block 快照，重新回到完整 assistant item 并恢复跟随
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`

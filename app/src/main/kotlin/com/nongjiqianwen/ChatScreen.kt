@@ -221,12 +221,17 @@ private data class StreamingBlockChatListItem(
     val startOffset: Int,
     val isActive: Boolean,
     val isFirstBlock: Boolean,
-    val isLastBlock: Boolean
+    val isLastBlock: Boolean,
+    val useTailKey: Boolean
 ) : ChatListItem {
     override val itemKey: String =
-        if (isActive) "${message.id}:streaming_tail" else "${message.id}:streaming_block:$blockIndex"
+        if (useTailKey) "${message.id}:streaming_tail" else "${message.id}:streaming_block:$blockIndex"
     override val contentType: Any? =
-        if (isActive) "assistant_streaming_active_block" else "assistant_streaming_stable_block"
+        when {
+            useTailKey -> "assistant_streaming_tail_block"
+            isActive -> "assistant_streaming_active_block"
+            else -> "assistant_streaming_stable_block"
+        }
 }
 @Immutable
 private data class StreamingTextBlock(
@@ -238,7 +243,8 @@ private data class StreamingTextBlock(
 @Immutable
 private data class StreamingBrowseBlockSnapshot(
     val messageId: String,
-    val blocks: List<StreamingTextBlock>
+    val blocks: List<StreamingTextBlock>,
+    val keepLastBlockTailKey: Boolean = false
 )
 @Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
@@ -263,8 +269,8 @@ private data class LocalStreamingDraft(
     val savedAtMs: Long
 )
 
-private const val STREAMING_ACTIVE_BLOCK_MAX_CHARS = 360
-private const val STREAMING_ACTIVE_BLOCK_MIN_CHARS = 120
+private const val STREAMING_ACTIVE_BLOCK_MAX_CHARS = 180
+private const val STREAMING_ACTIVE_BLOCK_MIN_CHARS = 60
 
 private fun findStreamingFallbackBlockEnd(
     text: String,
@@ -275,7 +281,7 @@ private fun findStreamingFallbackBlockEnd(
     if (safeMax <= start) return safeMax
     val min = (start + STREAMING_ACTIVE_BLOCK_MIN_CHARS).coerceAtMost(safeMax)
     for (index in safeMax - 1 downTo min) {
-        if (text[index] in "。！？；.!?;\n") {
+        if (text[index] in "。！？；，、：.!?;,:\n") {
             return index + 1
         }
     }
@@ -377,14 +383,17 @@ private fun buildChatListItems(
     streamingMessageContent: String,
     isStreaming: Boolean,
     pendingStreamingFinalizeMessageId: String?,
-    streamingBrowseBlockSnapshot: StreamingBrowseBlockSnapshot?
+    streamingBrowseBlockSnapshot: StreamingBrowseBlockSnapshot?,
+    keepStreamingTailKey: Boolean
 ): List<ChatListItem> {
     return buildList {
         messages.forEach { message ->
             val snapshot = streamingBrowseBlockSnapshot
-            val blocks = when {
+            val usesSnapshotBlocks =
                 message.role == ChatRole.ASSISTANT &&
-                    snapshot?.messageId == message.id -> snapshot.blocks
+                    snapshot?.messageId == message.id
+            val blocks = when {
+                usesSnapshotBlocks -> snapshot?.blocks.orEmpty()
 
                 message.role == ChatRole.ASSISTANT &&
                     message.id == streamingMessageId &&
@@ -404,7 +413,13 @@ private fun buildChatListItems(
                             startOffset = block.startOffset,
                             isActive = block.isActive,
                             isFirstBlock = index == 0,
-                            isLastBlock = index == blocks.lastIndex
+                            isLastBlock = index == blocks.lastIndex,
+                            useTailKey =
+                                if (usesSnapshotBlocks) {
+                                    snapshot?.keepLastBlockTailKey == true && index == blocks.lastIndex
+                                } else {
+                                    block.isActive && keepStreamingTailKey
+                                }
                         )
                     )
                 }
@@ -1859,7 +1874,8 @@ fun ChatScreen() {
         streamingMessageContent,
         isStreaming,
         pendingStreamingFinalizeMessageId,
-        streamingBrowseBlockSnapshot
+        streamingBrowseBlockSnapshot,
+        scrollMode
     ) {
         derivedStateOf {
             buildChatListItems(
@@ -1868,7 +1884,8 @@ fun ChatScreen() {
                 streamingMessageContent = streamingMessageContent,
                 isStreaming = isStreaming,
                 pendingStreamingFinalizeMessageId = pendingStreamingFinalizeMessageId,
-                streamingBrowseBlockSnapshot = streamingBrowseBlockSnapshot
+                streamingBrowseBlockSnapshot = streamingBrowseBlockSnapshot,
+                keepStreamingTailKey = scrollMode != ScrollMode.UserBrowsing
             )
         }
     }
@@ -3287,10 +3304,10 @@ fun ChatScreen() {
     ) {
         val finalizingStreamingMessageId = streamingMessageId
         val finalizingStreamingContent = streamingMessageContent
-        val shouldKeepBrowseBlocks =
-            scrollMode == ScrollMode.UserBrowsing &&
-                !finalizingStreamingMessageId.isNullOrBlank() &&
+        val shouldKeepFinalBlocks =
+            !finalizingStreamingMessageId.isNullOrBlank() &&
                 finalizingStreamingContent.isNotBlank()
+        val shouldKeepFinalTailKey = scrollMode != ScrollMode.UserBrowsing
         isStreaming = false
         anchoredUserMessageId = null
         sendUiSettling = false
@@ -3306,13 +3323,14 @@ fun ChatScreen() {
         fakeStreamJob = null
         streamRevealJob = null
         resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
-        streamingBrowseBlockSnapshot = if (shouldKeepBrowseBlocks) {
+        streamingBrowseBlockSnapshot = if (shouldKeepFinalBlocks) {
             StreamingBrowseBlockSnapshot(
                 messageId = finalizingStreamingMessageId.orEmpty(),
                 blocks = splitStreamingTextIntoBlocks(
                     text = finalizingStreamingContent,
                     forceAllStable = true
-                )
+                ),
+                keepLastBlockTailKey = shouldKeepFinalTailKey
             )
         } else {
             null
