@@ -36,11 +36,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -716,6 +718,7 @@ private fun RendererAssistantMessageContentImpl(
     val shouldRenderDisclaimer = remember(content, showDisclaimer) {
         showDisclaimer && shouldShowAiDisclaimerRefined(content)
     }
+    val disclaimerStyle = remember { assistantDisclaimerTextStyle() }
     val boundsReportingModifier = if (onStreamingContentBoundsChanged != null) {
         Modifier.onGloballyPositioned { coordinates ->
             onStreamingContentBoundsChanged.invoke(coordinates.boundsInWindow())
@@ -749,6 +752,17 @@ private fun RendererAssistantMessageContentImpl(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
+            if (shouldRenderDisclaimer) {
+                Text(
+                    text = AI_DISCLAIMER_TEXT,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(0f)
+                        .clearAndSetSemantics { },
+                    style = disclaimerStyle,
+                    textAlign = TextAlign.Start
+                )
+            }
         } else {
             if (selectionEnabled) {
                 SelectionContainer {
@@ -767,7 +781,7 @@ private fun RendererAssistantMessageContentImpl(
                 Text(
                     text = AI_DISCLAIMER_TEXT,
                     modifier = Modifier.fillMaxWidth(),
-                    style = assistantDisclaimerTextStyle(),
+                    style = disclaimerStyle,
                     textAlign = TextAlign.Start
                 )
             }

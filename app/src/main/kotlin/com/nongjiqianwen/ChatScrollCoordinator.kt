@@ -1,6 +1,5 @@
 package com.nongjiqianwen
 
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -94,53 +93,32 @@ internal fun endProgrammaticChatListScroll(
     listState?.let(refreshChatListMetrics)
 }
 
-private suspend fun alignChatListBottom(
-    listState: LazyListState,
-    currentLastMessageContentBottomPx: () -> Int,
-    currentBottomAlignDeltaPx: () -> Int,
-    shouldContinue: () -> Boolean = { true }
-) {
-    repeat(8) {
-        if (!shouldContinue()) return
-        withFrameNanos { }
-        if (!shouldContinue()) return
-        if (currentLastMessageContentBottomPx() <= 0) return@repeat
-        val alignDeltaPx = currentBottomAlignDeltaPx()
-        if (alignDeltaPx == 0) return
-        if (!shouldContinue()) return
-        listState.scrollBy((-alignDeltaPx).toFloat())
-    }
-}
-
 internal suspend fun scrollChatListToBottom(
     listState: LazyListState?,
-    lastIndex: Int,
+    targetBottomIndex: Int,
+    targetBottomScrollOffset: Int,
     animated: Boolean,
-    currentLastMessageContentBottomPx: () -> Int,
-    currentBottomAlignDeltaPx: () -> Int,
     beginProgrammaticScroll: () -> Unit,
     endProgrammaticScroll: () -> Unit,
     shouldContinue: () -> Boolean = { true }
 ) {
     val activeListState = listState ?: return
-    if (lastIndex < 0) return
+    if (targetBottomIndex < 0) return
     if (!shouldContinue()) return
     beginProgrammaticScroll()
     try {
         if (shouldContinue()) {
             if (animated) {
-                activeListState.animateScrollToItem(lastIndex)
+                activeListState.animateScrollToItem(
+                    index = targetBottomIndex,
+                    scrollOffset = targetBottomScrollOffset
+                )
             } else {
-                activeListState.scrollToItem(lastIndex)
+                activeListState.scrollToItem(
+                    index = targetBottomIndex,
+                    scrollOffset = targetBottomScrollOffset
+                )
             }
-        }
-        if (shouldContinue()) {
-            alignChatListBottom(
-                listState = activeListState,
-                currentLastMessageContentBottomPx = currentLastMessageContentBottomPx,
-                currentBottomAlignDeltaPx = currentBottomAlignDeltaPx,
-                shouldContinue = shouldContinue
-            )
         }
     } catch (_: Throwable) {
     } finally {

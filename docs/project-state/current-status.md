@@ -12,63 +12,53 @@
 
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
 - Android Auto Backup 当前已关闭；本地聊天窗口快照、流式草稿等都只作为本机运行时缓存，不允许被系统云备份在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
+- 聊天消息运行时当前是**单一正向列表主人**：`ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，`messages` 仍按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`
 - 底部 composer 仍是页面底部的独立 UI 宿主，继续负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
-- composer 内部内容高度不再作为聊天列表 reserve 真值。多行文字、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度；聊天列表 bottom padding 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve 和工作线 gap
-- 聊天消息运行时当前已切回**单一列表主人**
-- 当前主线代码已删除 mixed active-zone 运行时的核心切管结构：
+- composer 内部内容高度不作为聊天列表 reserve 真值。多行文字、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度；聊天列表 bottom padding 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve 和工作线 gap
+- 当前工作线视觉 gap 仍为 `80.dp`，也就是小球、streaming 正文底边和完成态尾部都应落在 composer 折叠外壳上方约 80dp 的位置；这个 gap 是产品预留给免责声明 / 极端说明 / 底部呼吸区的固定设计值，不从输入框内部内容高度派生
+
+## 聊天 UI 主链
+
+- `ChatRecyclerViewHost.kt` 当前是正向 `LazyColumn`，没有 `reverseLayout`，没有 `items.asReversed()`
+- `ChatRecyclerViewHost.kt` 使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，而不是停在顶部 padding
+- `ChatScreen.kt` 当前直接使用 `messages` 作为列表数据源，不再通过 `chatListItems` 派生 streaming block item
+- streaming 小分割 / block item 化已撤掉：`StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex / streaming_tail` 等符号在主链无残留
+- mixed active-zone / overlay 运行时已退出主链：
   - `StreamingLocation`
   - `BottomActiveZoneSlice / resolveBottomActiveZoneSlice(...)`
   - `renderBottomActiveZone()`
   - active-zone 拖动接管 / Overlay 恢复门
-  - `requestSendStartBottomSnap()` 这条“只滚 historyMessages”的发送起步链
-- `ChatRecyclerViewHost.kt` 当前已重新切回反向列表底座：
-  - `LazyColumn(reverseLayout = true)`
-  - `items.asReversed()`
-  - 列表成为当前轮 user / assistant / streaming / settled 的唯一消息主人
-- streaming 小分割 / block item 化当前已撤掉：`ChatScreen.kt` 不再把当前 assistant 派生成多个稳定 block item 和 active tail，也不再保留 `StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex` 这套派生。当前列表重新直接使用 `messages`，waiting 小球、streaming 正文、settled 完成态回到同一个 assistant item 内完成；这是为了先恢复渲染树稳定，避免小分割带来的 active/stable block 重锚、行宽重排和上滑时文本重新找位置
-- `ChatStreamingRenderer.kt` 当前对 active streaming 内容使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再显示新字尾部 fresh suffix 灰色高亮动画；settled Markdown 也走同一套 soft-wrap block renderer，并复用现有 inline Markdown cache 保留加粗 / 链接 / code。旧 committed 物理行预切 / TextMeasurer 渲染链已经从文件中移除，避免 streaming -> settled 收口时换渲染模型导致行高 / 行宽微动
-- `ChatScreen.kt` 当前已经按单主人口径收平：
-  - `messages` 仍是 oldest -> newest 的唯一消息数据源；列表显示层直接使用 `messages`，不再通过 `chatListItems` 派生 streaming block item
-  - `currentLastMessageContentBottomPx()` 的 fallback 已改回 reverse-list 口径，底部最新显示项按 index `0` 取值
-  - `currentBottomOverflowPx()` 不再走 active-zone / history list 分支；现在按 reverse-list 单主人口径只计算“最新消息可见底边低于统一底部目标”的欠滚距离，内容底边已经高于目标时视作已到底，避免过滚误触发补滚
-  - `isNearStreamingWorkline()` / `isAtStreamingWorklineStrict()` 已不再包含 Overlay 快捷分支
-- 当前工作线视觉 gap 为 `80.dp`：也就是最新消息 / 小球 / streaming 底边会落在 composer 折叠外壳上方约 80dp 的位置；这个 gap 是产品预留给免责声明 / 极端说明 / 底部呼吸区的固定设计值，不从输入框内部文字或图片内容高度派生
-- 发送起步当前重新回到 list-side 单主人口径：
-  - 仍保留 `lockedConversationBottomPaddingPx` / `sendStartBottomPaddingLockActive`
-  - 仍保留 `sendStartAnchorActive` 作为发送起步保护窗口
-  - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线共用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`，避免长文本输入框的实时高度把小球锚点顶高
-  - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等 reserve 值不能从输入框内容扩展中学习；后续图片预览如果进入 composer，也按输入内容处理，不允许偷渡成聊天列表外部 reserve
-  - 不再通过 active zone 切层后再 `scrollToBottom(false)`
-  - 当前是在 `commitSendMessage()` 内同步插入 user + assistant placeholder 后，按 reverse-list 口径同步 `requestScrollToItem(0)`，让新 assistant placeholder 稳定占住视觉底部
-  - `prepareScrollRuntimeForStreamingStart(...)` 会同步把滚动模式置为 `AutoFollow`，避免用户浏览态发送后还残留 `UserBrowsing` 语义
-- 完成态收口当前**保留**两阶段 finalize：
+  - `requestSendStartBottomSnap()`
+- 当前禁止恢复 streaming 高度追滚补偿：`followStreamingByDelta(...)`、`scrollBy(...)`、`dispatchRawDelta(...)`、`streamBottomFollowActive` 不在主链运行
+- 回到底部 / AutoFollow 使用最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`；该 offset 依赖 Compose 正向列表 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义
+- 正向列表传给 `LazyColumn` 的 bottom padding 会扣掉 `CHAT_MESSAGE_ITEM_VERTICAL_PADDING`，只补偿消息 item 外层 padding，不改变工作线本身
+- 每次 reveal 提交前，AutoFollow 会先请求一次最新消息底部锚点，再提交新的 `streamingMessageContent`，专门压正向列表下一行先从工作线下方冒头的一帧
+- 高频 reveal 底部锚点请求带 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
+- 回到底部按钮仍保留 56dp 安全区：用户滑动过程中不显示，停止滑动后如果正向列表仍可向前滚动且最新消息底边离工作线超过安全区，才短暂出现；点击后滚到最新消息 `lastIndex` 并恢复对应滚动模式
+
+## 渲染与收口
+
+- waiting 小球、streaming 正文、settled 完成态共用同一条 assistant 消息 item，不再切第二滚动主人
+- `ChatStreamingRenderer.kt` 当前 active streaming 和 settled Markdown 都走 soft-wrap block renderer，并复用 inline Markdown cache 保留加粗 / 链接 / code；旧 committed 物理行预切 / TextMeasurer 渲染链已移除，避免 streaming -> settled 收口时换渲染模型导致行高 / 行宽微动
+- active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排
+- streaming 期间不提前显示免责声明文字；如果内容已满足免责声明触发条件，只预留同等几何高度，settled 后才显示真实文案，避免尾部收口当拍突然增高
+- 完成态收口继续保留两阶段 finalize：
   - `beginPendingStreamingFinalize(...)`
   - fresh bounds 到位后 `finalizeStreamingStop(...)`
-  - 没有回退到 old reverse 那种“直接切 settled 不等 fresh bounds”的简化版
-  - pending finalize 当前不再主动调用 `alignVisibleChatListBottom(...)` 或完整 `scrollToBottom(false)` 做完成瞬间底部精修；吐完后只等 settled fresh bounds 到位再清 streaming 状态，避免长回复完成时窗口被重新锚到上方
-  - 小分割撤掉后不再存在“完成时保留已完成 block 快照再合回完整 item”的路径；完成态稳定性主要依赖两阶段 finalize + streaming / settled 共用 soft-wrap block 渲染结构
-- `ChatScrollCoordinator.kt` 当前也已回到单主人口径：
-  - `scrollToBottom(false)` 重新按 reverse-list 走 `scrollToItem(lastIndex)`，其中当前 `lastIndex` 在聊天页主调处按 `0` 传入
-  - `alignVisibleChatListBottom(...)` 这条只服务 finalize 的主动底部精修 helper 已移除，避免与完成态渲染树切换打架
-  - active-zone 时代专用的 `streamingBodyFollowEnabled` 开关已经从 coordinator 主链里移除
-  - 旧正向 / overlay 时代的 streaming raw follow 链已移除：反向列表不再在 streaming 正文高度变化时额外调用 `followStreamingByDelta(...)` / `scrollBy(...)` 追滚，`streamBottomFollowActive` 空壳状态也已删除，避免和用户拖动、reverse-layout 自身底部锚定打架
-  - streaming 期间用户触碰 / 拖动优先级高于程序滚动；一旦检测到用户接管，会先结束程序滚动标记并立即进入 `UserBrowsing`，不再让 `programmaticScroll` 分支吞掉用户手势。`scrollToBottom(...)` 这类程序对齐循环也会逐帧检查用户是否已接管，接管后立即停止。用户手动滑回反向列表真实底部 `index=0 / offset=0` 后，可以恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
-  - 小分割撤掉后，不再存在“新 active block 产生后额外 `requestScrollToItem(0)` 接尾巴”的 AutoFollow 分支；streaming 期间仍只保留单一 `Idle / AutoFollow / UserBrowsing` 状态机、发送起步保护和显式回到底部链
-  - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线。输入框内部文字或图片内容高度仍不允许顶起聊天列表
-- 回到底部按钮当前不再用消息 bounds / 工作线 `atBottom` 判断按钮资格。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制，并且反向列表离底超过安全区 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 56.dp`。开机 / 程序贴底 / bounds 初次上报不会点亮按钮；发送后 IME 过渡伪锁已删除，避免发过消息后按钮长期被压死；用户滑动过程中按钮强制不显示，停止滑动后一帧再按动态 / 静态同一套离底资格判断，离底才短暂出现并自动隐藏；点击按钮直接 `scrollToItem(0)` 回到反向列表真实底部并恢复对应滚动模式
-- active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等到后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排；小分割撤掉后，不再有跨 LazyColumn block 的分割线状态
+  - 不回退成同拍直接切 settled
+  - 不在 finalize 当拍恢复旧 bottom align 精修，避免长回复完成时窗口被重新锚到上方
 
 ## 当前调试焦点
 
-- 这轮“反向列表单主人”重构的目标，是同时保住两件事：
-  - 不再出现 mixed owner 带来的发送瞬间抖动、拖动乱窜、与用户消息重叠
-  - 不直接回退到 overlay 之前那套正向单列表主链，以免把 streaming 冒头/闪烁和 finalize 收口抖动原样带回
+- 这轮正向列表的目标，是牺牲反向列表那套“最新 item 天然视觉底部”的物理模型，换回用户上滑浏览时更稳定的正向滚动体感
 - 当前最需要真机验证的是：
   1. 首屏进入有历史时是否稳定贴底
-  2. 发送瞬间的小球 / 历史文本是否仍抖动
-  3. streaming 过程中上下拖动是否不再乱窜、重叠、抢手
-  4. finalize 收口是否仍保持前几轮好不容易压下去的稳定度
-  5. 输入框上方和静态文本底部是否不再出现额外白块
+  2. 发送瞬间小球是否第一时间出现在工作线，历史文本是否不抖
+  3. streaming 工作线下一行是否还有冒头闪
+  4. 用户上滑 / 下滑是否不抢手，想停哪里能停哪里
+  5. 用户点击回到底部后是否恢复 AutoFollow
+  6. finalize 收口是否稳定，尤其含免责声明答案是否不再尾部增高微跳
+  7. 输入框上方和静态文本底部是否不再出现额外白块
 
 ## 当前交接入口
 
@@ -84,9 +74,10 @@
 ## 当前阶段判断
 
 - mixed active-zone / overlay 架构经过多轮补丁后，已经证明不适合作为最终方案；继续补只会在“发送抖、拖动乱窜、消息重叠”和“闪烁 / 收口抖”之间来回换问题
-- 直接回到 overlay 之前的正向单列表主链，也大概率会把 streaming 冒头/闪烁和 finalize 收口问题重新放大
-- 当前仓库已正式转向“**单一运行时主人 + 反向列表**”这条路线；这不是回滚到旧 reverse 的全部历史实现，而是：
-  - 恢复 reverse-list 的物理模型
+- 反向列表单主人虽然压住了大部分底部冒头闪，但在最新 assistant item 内小幅上滑时仍会被动态长高锚点带一下，用户体感不可接受
+- 当前仓库已按用户拍板切回“**单一运行时主人 + 正向列表**”路线；这不是恢复旧正向 overlay / placeholder / 追滚补偿，而是：
+  - 正向 `LazyColumn`
   - 保留 send-start 保护窗口
   - 保留两阶段 finalize
-  - 删除 mixed active-zone 的切管桥
+  - 保留 unified soft-wrap renderer
+  - 删除 mixed active-zone、小分割 itemization、streaming raw delta / scrollBy 追滚

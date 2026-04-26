@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -33,12 +34,12 @@ internal fun <T> ChatRecyclerViewHost(
     LazyColumn(
         modifier = modifier,
         state = listState,
-        reverseLayout = true,
         contentPadding = contentPadding,
+        verticalArrangement = Arrangement.Bottom,
         userScrollEnabled = true
     ) {
         items(
-            items = items.asReversed(),
+            items = items,
             key = itemKey,
             contentType = itemContentType
         ) { item ->

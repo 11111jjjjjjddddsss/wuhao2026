@@ -197,6 +197,7 @@ import java.util.LinkedHashMap
 import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.coroutines.resume
 
 private enum class ChatRole { USER, ASSISTANT }
@@ -285,7 +286,7 @@ internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
-private const val STREAM_BOTTOM_FOLLOW_STEP_PX = 16
+private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
 private const val INPUT_MAX_CHARS = 6000
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
@@ -1584,9 +1585,14 @@ fun ChatScreen() {
     var streamingFreshEnd by streamingRuntime.streamingFreshEnd
     var streamingFreshTick by streamingRuntime.streamingFreshTick
     var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
-    val initialChatListIndex = remember(uiRuntimeResetKey) { 0 }
+    val initialChatListIndex = remember(uiRuntimeResetKey) {
+        (initialLocalMessages.size - 1).coerceAtLeast(0)
+    }
+    val initialChatListScrollOffset = remember(uiRuntimeResetKey) {
+        if (initialLocalMessages.isNotEmpty()) FORWARD_LIST_BOTTOM_SCROLL_OFFSET else 0
+    }
     val chatListState = remember(uiRuntimeResetKey) {
-        LazyListState(initialChatListIndex, 0)
+        LazyListState(initialChatListIndex, initialChatListScrollOffset)
     }
     var recyclerScrollInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var recyclerFirstVisibleItemIndex by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -1599,6 +1605,7 @@ fun ChatScreen() {
     var scrollMode by scrollRuntime.scrollMode
     var programmaticScroll by scrollRuntime.programmaticScroll
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
+    var programmaticBottomAnchorGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
@@ -1667,9 +1674,7 @@ fun ChatScreen() {
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val staticBottomPositionTolerancePx = with(density) { STATIC_BOTTOM_POSITION_TOLERANCE.roundToPx() }
-    val assistantLineStepPx = with(density) {
-        assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
-    }
+    val chatMessageItemVerticalPaddingPx = with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
     val imeVisible = WindowInsets.isImeVisible
     val hasStreamingItem by remember(isStreaming, streamingMessageId, messages.size) {
         derivedStateOf {
@@ -1871,6 +1876,21 @@ fun ChatScreen() {
     fun currentStreamingContentBottomPx(): Int {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
+    fun latestMessageIndex(): Int {
+        return chatListMessages.lastIndex
+    }
+    fun latestMessageIndexOrMinusOne(): Int {
+        return latestMessageIndex()
+    }
+    fun requestForwardListBottomAnchor() {
+        val targetIndex = latestMessageIndexOrMinusOne()
+        if (targetIndex >= 0) {
+            chatListState.requestScrollToItem(
+                index = targetIndex,
+                scrollOffset = FORWARD_LIST_BOTTOM_SCROLL_OFFSET
+            )
+        }
+    }
     fun currentLastMessageContentBottomPx(): Int {
         val lastMessage = messages.lastOrNull() ?: return -1
         if (lastMessage.role == ChatRole.ASSISTANT && hasStreamingItem && currentStreamingContentBottomPx() > 0) {
@@ -1885,7 +1905,8 @@ fun ChatScreen() {
         if (bounds != null) {
             return (bounds.bottom - messageViewportTopPx).roundToInt()
         }
-        val newestDisplayIndex = 0
+        val newestDisplayIndex = latestMessageIndexOrMinusOne()
+        if (newestDisplayIndex < 0) return -1
         val fallbackItem =
             chatListState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == newestDisplayIndex }
                 ?: return -1
@@ -1909,13 +1930,7 @@ fun ChatScreen() {
         val desiredBottomPx = currentUnifiedBottomTargetPx()
         if (lastContentBottom <= 0) return Int.MAX_VALUE
         val deltaPx = desiredBottomPx - lastContentBottom
-        return deltaPx.coerceAtLeast(0)
-    }
-    fun currentBottomAlignDeltaPx(): Int {
-        val lastContentBottom = currentLastMessageContentBottomPx()
-        val desiredBottomPx = currentUnifiedBottomTargetPx()
-        if (lastContentBottom <= 0) return 0
-        return desiredBottomPx - lastContentBottom
+        return abs(deltaPx)
     }
     fun isWithinBottomTolerance(tolerancePx: Int): Boolean {
         val overflowPx = currentBottomOverflowPx()
@@ -1935,16 +1950,17 @@ fun ChatScreen() {
         if (contentBottom <= 0) return false
         val deltaPx = contentBottom - worklineBottom
         val lowerTolerancePx = bottomPositionTolerancePx
-        val upperTolerancePx = assistantLineStepPx.coerceAtLeast(bottomPositionTolerancePx)
+        val upperTolerancePx = bottomPositionTolerancePx
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
-    fun isReverseListAtExactBottom(): Boolean {
-        return chatListState.firstVisibleItemIndex == 0 &&
-            chatListState.firstVisibleItemScrollOffset == 0
+    fun isForwardListAtExactBottom(): Boolean {
+        if (messages.isEmpty()) return true
+        return !chatListState.canScrollForward &&
+            isWithinBottomTolerance(bottomPositionTolerancePx)
     }
     fun isAtStreamingWorklineStrict(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
-        return isReverseListAtExactBottom()
+        return isForwardListAtExactBottom()
     }
     val chatPageSurface = Color(0xFFF6F7F8)
     val appCenterTint = chatPageSurface
@@ -2079,13 +2095,22 @@ fun ChatScreen() {
         JUMP_BUTTON_BOTTOM_SAFETY_ZONE.roundToPx()
     }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
-    val reverseListAwayFromJumpButtonBottom by remember(
+    val forwardListAwayFromJumpButtonBottom by remember(
         chatListState,
         jumpButtonBottomSafetyZonePx
     ) {
         derivedStateOf {
-            chatListState.firstVisibleItemIndex != 0 ||
-                chatListState.firstVisibleItemScrollOffset > jumpButtonBottomSafetyZonePx
+            if (!chatListState.canScrollForward) {
+                false
+            } else {
+                val targetBottomPx = currentUnifiedBottomTargetPx()
+                val latestItem = chatListState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { it.index == latestMessageIndexOrMinusOne() }
+                val distanceFromBottomPx = latestItem
+                    ?.let { (it.offset + it.size - targetBottomPx).coerceAtLeast(0) }
+                    ?: Int.MAX_VALUE
+                distanceFromBottomPx > jumpButtonBottomSafetyZonePx
+            }
         }
     }
     var jumpButtonUserScrollSignal by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -2093,11 +2118,11 @@ fun ChatScreen() {
     val userDrivenListMotionForJumpButton =
         !programmaticScroll && (chatListUserDragging || recyclerScrollInProgress)
     val userAwayFromBottomForJumpButton by remember(
-        reverseListAwayFromJumpButtonBottom,
+        forwardListAwayFromJumpButtonBottom,
         messages.size
     ) {
         derivedStateOf {
-            messages.isNotEmpty() && reverseListAwayFromJumpButtonBottom
+            messages.isNotEmpty() && forwardListAwayFromJumpButtonBottom
         }
     }
     LaunchedEffect(
@@ -2130,7 +2155,7 @@ fun ChatScreen() {
     }
     val showJumpButton by remember(
         startupLayoutReady,
-        reverseListAwayFromJumpButtonBottom,
+        forwardListAwayFromJumpButtonBottom,
         userDrivenListMotionForJumpButton,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForLifecycleResume,
@@ -2950,6 +2975,21 @@ fun ChatScreen() {
         }
     }
 
+    fun requestProgrammaticForwardListBottomAnchor() {
+        if (latestMessageIndexOrMinusOne() < 0) return
+        programmaticBottomAnchorGeneration += 1
+        val requestGeneration = programmaticBottomAnchorGeneration
+        scrollRuntime.programmaticScroll.value = true
+        requestForwardListBottomAnchor()
+        snackbarScope.launch {
+            withFrameNanos { }
+            if (programmaticBottomAnchorGeneration == requestGeneration) {
+                scrollRuntime.programmaticScroll.value = false
+                updateChatListMetrics(readChatListMetrics(chatListState))
+            }
+        }
+    }
+
     LaunchedEffect(chatListState) {
         snapshotFlow { readChatListMetrics(chatListState) }
             .collect { metrics ->
@@ -3006,6 +3046,14 @@ fun ChatScreen() {
             assistantIdProvider = ::assistantMessageIdForSourceUser,
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
+                val shouldPreAnchorBottom =
+                    scrollMode == ScrollMode.AutoFollow &&
+                        !scrollRuntime.userInteracting.value &&
+                        !chatListUserDragging &&
+                        latestMessageIndexOrMinusOne() >= 0
+                if (shouldPreAnchorBottom) {
+                    requestProgrammaticForwardListBottomAnchor()
+                }
                 streamingMessageId = advance.messageId
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart
@@ -3082,6 +3130,9 @@ fun ChatScreen() {
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             streamRevealJob?.cancel()
             streamRevealJob = null
+            if (shouldRestoreBottomAnchor) {
+                requestProgrammaticForwardListBottomAnchor()
+            }
             flushStreamingRevealBuffer(
                 currentMessageId = streamingMessageId,
                 currentContent = streamingMessageContent,
@@ -3096,6 +3147,9 @@ fun ChatScreen() {
             }
             val finalContent = normalizeAssistantText(streamingMessageContent)
             if (streamingMessageContent != finalContent) {
+                if (shouldRestoreBottomAnchor) {
+                    requestProgrammaticForwardListBottomAnchor()
+                }
                 streamingMessageContent = finalContent
             }
             val finalId = streamingMessageId
@@ -3385,8 +3439,8 @@ fun ChatScreen() {
         streamRevealJob?.cancel()
         streamRevealJob = null
         sendStartAnchorActive = true
-        if (messages.isNotEmpty()) {
-            chatListState.requestScrollToItem(index = 0)
+        if (latestMessageIndexOrMinusOne() >= 0) {
+            requestProgrammaticForwardListBottomAnchor()
         }
         sendUiSettling = false
         persistTick++
@@ -3421,15 +3475,31 @@ fun ChatScreen() {
     }
 
     fun beginProgrammaticChatListScroll() {
+        programmaticBottomAnchorGeneration += 1
         com.nongjiqianwen.beginProgrammaticChatListScroll(scrollRuntime.programmaticScroll)
     }
 
     fun endProgrammaticChatListScroll() {
+        programmaticBottomAnchorGeneration += 1
         com.nongjiqianwen.endProgrammaticChatListScroll(
             programmaticScrollState = scrollRuntime.programmaticScroll,
             listState = chatListState,
             refreshChatListMetrics = ::refreshChatListMetrics
         )
+    }
+    suspend fun scrollForwardListToBottom() {
+        val targetIndex = latestMessageIndexOrMinusOne()
+        if (targetIndex < 0) return
+        beginProgrammaticChatListScroll()
+        try {
+            chatListState.scrollToItem(
+                index = targetIndex,
+                scrollOffset = FORWARD_LIST_BOTTOM_SCROLL_OFFSET
+            )
+            withFrameNanos { }
+        } finally {
+            endProgrammaticChatListScroll()
+        }
     }
     fun markStreamingUserBrowsingFromPointer() {
         if (!isStreaming && !hasStreamingItem) return
@@ -3448,10 +3518,9 @@ fun ChatScreen() {
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
-            lastIndex = if (chatListMessages.isEmpty()) -1 else 0,
+            targetBottomIndex = latestMessageIndexOrMinusOne(),
+            targetBottomScrollOffset = FORWARD_LIST_BOTTOM_SCROLL_OFFSET,
             animated = animated,
-            currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
-            currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
             beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
             endProgrammaticScroll = ::endProgrammaticChatListScroll,
             shouldContinue = ::shouldContinueProgrammaticChatListScroll
@@ -3636,13 +3705,7 @@ fun ChatScreen() {
                 userInteractingState = scrollRuntime.userInteracting,
                 jumpButtonPulseVisibleState = scrollRuntime.jumpButtonPulseVisible,
                 scrollToBottom = {
-                    beginProgrammaticChatListScroll()
-                    try {
-                        chatListState.scrollToItem(0)
-                        withFrameNanos { }
-                    } finally {
-                        endProgrammaticChatListScroll()
-                    }
+                    scrollForwardListToBottom()
                 }
             )
         }
@@ -4001,6 +4064,8 @@ fun ChatScreen() {
                     .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
                     ?.let { lockedPaddingPx -> lockedPaddingPx }
                     ?: listBottomPaddingPx
+            val forwardListBottomPaddingPx =
+                (effectiveBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
             ) {
@@ -4010,7 +4075,7 @@ fun ChatScreen() {
                     itemKey = { it.id },
                     itemContentType = { it.role },
                     topPaddingPx = chatListTopPaddingPx,
-                    bottomPaddingPx = effectiveBottomPaddingPx,
+                    bottomPaddingPx = forwardListBottomPaddingPx,
                     modifier = Modifier
                         .then(
                             if (hasActiveMessageSelection) {
