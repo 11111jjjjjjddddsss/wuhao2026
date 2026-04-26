@@ -5,6 +5,7 @@
 
 ## 2026-04-25
 
+- `ChatScrollCoordinator.kt` 修正回到底部按钮 pulse 信号被提前消费的竞态：此前 `BindJumpButtonPulseEffect(...)` 在 `showJumpButton=false` 时也会把新的 `userScrollSignal` 标记为已处理，streaming 态触碰列表切 `UserBrowsing` 后如果 show 条件晚一拍才变 true，按钮信号已经被吃掉，表现为动态生成中按钮不出。现在只有 `showJumpButton=true` 时才消费信号；show 条件未满足时只隐藏按钮、不吞本次触发。
 - `ChatScreen.kt` 修正 streaming 态回到底部按钮“状态已进 UserBrowsing 但按钮不出”的漏触发：此前按钮 pulse 只靠 `chatListUserDragging / recyclerScrollInProgress` 这类滚动状态点火，真机上流式生成时用户触碰列表先由 pointer hook 切到 `UserBrowsing`，但 drag / scroll 状态可能没在同一拍命中，导致 `showJumpButton` 有资格却没有 pulse。现在 `markStreamingUserBrowsingFromPointer()` 在确认用户触碰 streaming 列表后同步递增 `jumpButtonUserScrollSignal`，只补按钮点火，不新增 scroll 调用，不恢复旧 overlay / active-zone / streaming follow 链。
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 收口回到底部按钮显示和点击语义：按钮不再只因为 `!atBottom` / `!nearWorkline` 就自动 pulse。静态态离底资格看反向列表真实位置 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 0`；streaming 态由用户触碰 / 拖动消息列表进入 `UserBrowsing` 后触发 pulse，避免生成中 `index/offset` 尚未变化导致按钮不出。点击按钮也改为直接 `scrollToItem(0)` 回到反向列表真实底部，避免复用通用 bottom bounds 精修链后没有真正回到 `index 0 / offset 0`。
 - `ChatScreen.kt` 继续收紧 streaming 手势与键盘边界：`isAtStreamingWorklineStrict()` 现在除了工作线 bounds 命中，还要求反向列表真实处在底部 `firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0`，防止轻微上滑后因旧 bounds 仍在容差内立刻恢复 `AutoFollow`。同时 streaming 中输入框聚焦 / IME 可见会直接解除 `sendStartAnchorActive`、结束 `sendUiSettling` 并清掉 `lockedConversationBottomPaddingPx`，让键盘外部几何立刻进入 bottom padding / 工作线计算；仍不恢复 IME 主动滚动。

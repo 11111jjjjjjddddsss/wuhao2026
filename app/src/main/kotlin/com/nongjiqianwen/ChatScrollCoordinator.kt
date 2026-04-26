@@ -379,17 +379,14 @@ internal fun BindJumpButtonPulseEffect(
         showJumpButton,
         userScrollSignal
     ) {
-        if (userScrollSignal <= lastHandledUserScrollSignal.intValue) {
-            if (!showJumpButton) {
-                jumpButtonPulseVisibleState.value = false
-            }
-            return@LaunchedEffect
-        }
-        lastHandledUserScrollSignal.intValue = userScrollSignal
         if (!showJumpButton) {
             jumpButtonPulseVisibleState.value = false
             return@LaunchedEffect
         }
+        if (userScrollSignal <= lastHandledUserScrollSignal.intValue) {
+            return@LaunchedEffect
+        }
+        lastHandledUserScrollSignal.intValue = userScrollSignal
         jumpButtonPulseVisibleState.value = true
         kotlinx.coroutines.delay(autoHideMs)
         if (showJumpButton) {
