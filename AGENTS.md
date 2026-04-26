@@ -198,7 +198,7 @@ Clean-State 必做回归的范围：
   - 原因是仓库里的 `messages` 仍按“旧在前、新在后”存储，反向列表需要用反转后的显示序列把最新消息放到视觉底部
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - composer 内部内容高度不属于聊天列表 bottom reserve。长文本、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve、工作线 gap。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
-- waiting 小球、streaming 正文、settled 完成态默认共用同一条 assistant item 渲染主线；但用户在 streaming 中接管浏览后，允许把当前 assistant 在同一个 `LazyColumn`、同一个 `LazyListState` 内派生成“已冻结稳定前缀 item + 继续增长 tail item”。这只是单一列表内的展示层拆分，不是 overlay / active-zone / 第二滚动宿主；回到底部会清掉拆分并恢复完整 streaming item 继续跟随
+- waiting 小球、streaming 正文、settled 完成态默认共用同一条 assistant 消息主线；但 streaming 生成期间，允许把当前 assistant 在同一个 `LazyColumn`、同一个 `LazyListState` 内持续派生成“多个稳定 block item + 一个 active block item”。这只是单一列表内的展示层分块，不是 overlay / active-zone / 第二滚动宿主；回到底部或下一轮发送会清掉完成后浏览态保留的 block 快照并恢复完整消息 item
 - mixed active-zone / overlay 运行时当前已退出主链：
   - `StreamingLocation`
   - `BottomActiveZoneSlice / resolveBottomActiveZoneSlice(...)`
@@ -225,7 +225,7 @@ Clean-State 必做回归的范围：
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
-- 作用：streaming -> settled 默认在同一个列表 item 内完成；若用户浏览态已经触发 prefix/tail 展示层拆分，则完成时浏览态可暂时保留拆分以避免重锚跳动，回到底部或下一轮发送再合回完整 item。当前仍保留 `beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize，不允许回退成“同拍直接切 settled”的简化版；pending finalize 只等待 fresh settled bounds，不再额外调用 bottom align 精修，避免完成瞬间把长回复重新锚到上方
+- 作用：streaming -> settled 默认在同一个消息主线内完成；若用户浏览态已经处在 block item 化视图里，则完成时浏览态可暂时保留已完成 block 快照以避免重锚跳动，回到底部或下一轮发送再合回完整 item。当前仍保留 `beginPendingStreamingFinalize(...) -> fresh bounds -> finalizeStreamingStop(...)` 这条两阶段 finalize，不允许回退成“同拍直接切 settled”的简化版；pending finalize 只等待 fresh settled bounds，不再额外调用 bottom align 精修，避免完成瞬间把长回复重新锚到上方
 
 5. 用户浏览与首次进入
 - 主人：用户手指 / [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
@@ -240,7 +240,7 @@ Clean-State 必做回归的范围：
 
 - `ChatRecyclerViewHost.kt` 当前已恢复反向列表底座；如果后续再调整顺序，必须连同当前 `messages` 的真实存储顺序一起检查，不能只改 `reverseLayout` 或只改 `items.asReversed()`
 - `ChatScreen.kt` 当前已回到：
-  - `messages` 作为 oldest -> newest 的唯一消息数据源；列表显示层通过 `chatListItems` 派生普通消息 item，以及 streaming 用户浏览态下的稳定前缀 / 活跃 tail item
+  - `messages` 作为 oldest -> newest 的唯一消息数据源；列表显示层通过 `chatListItems` 派生普通消息 item，以及 streaming 期间的稳定 block / active block item
   - `currentLastMessageContentBottomPx()` 的 fallback 按 reverse-list 使用可见项 index `0`
   - `currentBottomOverflowPx()` 按 reverse-list 单主人口径只计算“最新消息可见底边低于统一底部目标”的欠滚距离；如果内容底边已经高于目标，视作已到底，避免过滚误触发补滚
 - 发送起步当前保留的旧保护只有两样：
@@ -250,7 +250,7 @@ Clean-State 必做回归的范围：
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
 - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`，本轮不再自动恢复 `AutoFollow`，回到底部恢复跟随后续单独走显式按钮 / 显式跳底链
-- streaming 中用户接管浏览时，`ChatScreen.kt` 会冻结当时已经渲染的 assistant 前缀，并把后续新增 token 放进同一个 `LazyColumn` 的 tail item。原 assistant key 保留在稳定前缀上，让 Compose 的可见锚点脱离正在长高的 index `0`；tail item 继续作为视觉底部 index `0` 生成新内容。这个方案不裁剪内容、不补 `scrollBy`、不恢复 overlay，点击回到底部时清掉拆分，重新回到完整 assistant item 并恢复跟随
+- streaming 期间 `ChatScreen.kt` 会按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，避免视觉底部 index `0` 的 active block 重新长成巨型 item。稳定 block 使用 `messageId:streaming_block:<index>` key，active block 使用固定 `messageId:streaming_tail` key，以兼顾浏览锚点稳定和贴底 AutoFollow。这个方案不裁剪内容、不补 streaming `scrollBy`、不恢复 overlay；点击回到底部时清掉完成后浏览态保留的 block 快照，重新回到完整 assistant item 并恢复跟随
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`

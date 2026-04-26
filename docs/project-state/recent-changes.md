@@ -5,7 +5,7 @@
 
 ## 2026-04-26
 
-- `ChatScreen.kt` 针对 streaming 中“小幅上滑仍被 index 0 长高带回工作线”的抢手问题，新增同一 `LazyColumn` 内的 prefix/tail 展示层拆分：用户接管浏览后冻结当时已渲染的 assistant 前缀，后续 token 进入底部 tail item，原 assistant key 保留给稳定前缀以让 Compose 可见锚点迁出正在长高的 index `0`。这不改 `ChatScrollCoordinator.kt`，不新增 overlay / active-zone / `scrollBy` / `dispatchRawDelta`，tail 继续正常生成；点击回到底部会清掉拆分，恢复完整 streaming item 并继续跟随。
+- `ChatScreen.kt` 针对 streaming 中“小幅上滑仍被 index 0 长高带回工作线”的抢手问题，把上一版用户触发的单刀 prefix/tail 拆分改成持续 block item 化：生成过程中按段落边界派生多个稳定 block item 和一个 active block item，代码块内不切分，超长无空行内容按句子 / 空白边界兜底切分，避免视觉底部 index `0` 的 active block 重新长成巨型 item。稳定 block 使用 `messageId:streaming_block:<index>` key，active block 使用固定 `messageId:streaming_tail` key，以兼顾浏览锚点稳定和贴底 AutoFollow。这不改 `ChatScrollCoordinator.kt`，不新增 overlay / active-zone / streaming `scrollBy` / `dispatchRawDelta`；点击回到底部会清掉完成后浏览态 block 快照，恢复完整 streaming item 并继续跟随。
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 撤掉 pending finalize 阶段的主动底部精修：完成态仍保留 `beginPendingStreamingFinalize(...) -> fresh settled bounds -> finalizeStreamingStop(...)` 两阶段，但不再在 fresh bounds 到位后调用 `alignVisibleChatListBottom(...)`。真机反馈吐完后可视窗口会掉头跑到长回复上方，定位到这条完成瞬间主动滚动链风险高于收益；当前让 settled 渲染树自然落地，不恢复完整 `scrollToBottom(false)`、不恢复 `requestScrollToItem(0)` finalize pin，也不恢复旧 overlay / height follow 链。
 
 ## 2026-04-25
