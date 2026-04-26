@@ -3773,20 +3773,6 @@ fun ChatScreen() {
         ) {
             return@LaunchedEffect
         }
-        withFrameNanos { }
-        if (
-            !isStreaming ||
-            !hasStreamingItem ||
-            scrollMode != ScrollMode.AutoFollow ||
-            scrollRuntime.userInteracting.value ||
-            chatListUserDragging ||
-            sendStartAnchorActive ||
-            !startupLayoutReady ||
-            chatListState.firstVisibleItemIndex != 0 ||
-            chatListState.firstVisibleItemScrollOffset != 0
-        ) {
-            return@LaunchedEffect
-        }
         chatListState.requestScrollToItem(index = 0)
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
