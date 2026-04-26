@@ -259,7 +259,7 @@ Clean-State 必做回归的范围：
   6. 按 reverse-list 口径同步 `requestScrollToItem(0)`，让新插入的底部 assistant placeholder 成为视觉底部锚点
 - `scrollToBottom(false)` 当前已经回到 reverse-list 主链口径；聊天页主调处应继续把“视觉底部最新消息”的 index 按 `0` 传给 coordinator，而不是沿用正向列表的 `lastIndex`
 - 反向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)` 或在 `AutoFollow` 中直接 `scrollBy(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机与发送起步保护
-- `UserBrowsing` 期间允许一条极窄的 reverse-list 视口锚点补偿：仅当当前 streaming 消息仍是可见锚点 `firstVisibleItemIndex == 0` 且用户已经离开真实底部 `firstVisibleItemScrollOffset > 0` 时，若该消息 bounds 高度继续增长，按增长量做反向 `scrollBy(-growthPx)` 抵消它把历史内容顶走的位移。该补偿只服务用户浏览态的视口稳定，不属于 AutoFollow、工作线追滚或旧 overlay/raw-delta 链
+- `UserBrowsing` 期间允许一条极窄的 reverse-list 视口锚点补偿：仅当当前 streaming 消息仍是可见锚点 `firstVisibleItemIndex == 0` 且用户已经离开真实底部 `firstVisibleItemScrollOffset > 0` 时，若该消息 bounds 高度继续增长，按增长量做反向 `dispatchRawDelta(-growthPx)` 抵消它把历史内容顶走的位移。该补偿只服务用户浏览态的视口稳定，不属于 AutoFollow、工作线追滚或旧 overlay/raw-delta 链；这里不用 `scrollBy`，避免补偿滚动和用户手势争抢 Compose 滚动仲裁
 - `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
 - 两阶段 finalize 当前必须继续保留，不能为了“看起来简单”回退到同拍 `isStreaming = false` 的旧写法
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态继续保留给 selection / bounds / fallback 使用；后续不要再把它们升格为“第二套消息运行时主人”的真值来源
