@@ -429,7 +429,7 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     val headingMarker = trimmed.takeWhile { it == '#' }
     if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
         val remainder = trimmed.drop(headingMarker.length)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+        if (remainder.firstOrNull()?.isWhitespace() == true && remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Heading(
                 level = headingMarker.length,
                 text = remainder.trimStart()
@@ -438,20 +438,20 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     }
     if (trimmed.startsWith(">")) {
         val remainder = trimmed.drop(1)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+        if (remainder.firstOrNull()?.isWhitespace() == true && remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Quote(remainder.trimStart())
         }
     }
     if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
         val remainder = trimmed.drop(1)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+        if (remainder.firstOrNull()?.isWhitespace() == true && remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Bullet(remainder.trimStart())
         }
     }
     val numberedPrefix = trimmed.takeWhile { it.isDigit() }
     if (numberedPrefix.isNotEmpty() && trimmed.drop(numberedPrefix.length).startsWith(".")) {
         val remainder = trimmed.drop(numberedPrefix.length + 1)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+        if (remainder.firstOrNull()?.isWhitespace() == true && remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Numbered(
                 number = numberedPrefix,
                 text = remainder.trimStart()
