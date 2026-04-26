@@ -34,6 +34,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
@@ -3506,7 +3507,12 @@ fun ChatScreen() {
                     return@collect
                 }
                 val growthPx = currentStreamingHeightPx - previousHeightPx
-                chatListState.dispatchRawDelta(-growthPx.toFloat())
+                beginProgrammaticChatListScroll()
+                try {
+                    chatListState.scrollBy(-growthPx.toFloat())
+                } finally {
+                    endProgrammaticChatListScroll()
+                }
             }
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
