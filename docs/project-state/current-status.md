@@ -25,7 +25,7 @@
   - `LazyColumn(reverseLayout = true)`
   - `items.asReversed()`
   - 列表成为当前轮 user / assistant / streaming / settled 的唯一消息主人
-- streaming 当前新增同一列表内的展示层 block item 化：`ChatScreen.kt` 会在生成过程中按段落边界持续把当前 assistant 派生成多个稳定 block item 和至多一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，当前 active block 上限为 180 字，避免视觉底部 index `0` 的 active block 重新长成巨型 item。所有 streaming block 都使用稳定的 `messageId:streaming_block:<index>` key，避免 `scrollMode` 变化时同一可见块换 key 造成上下窜；段落边界尾部为空时不再向 `chatListItems` 插入空 active block，只有整条 assistant 尚无内容时才保留初始 waiting item。AutoFollow 贴底状态下如果新 active block 产生，才在非用户接管窗口用 `requestScrollToItem(0)` 让下一次 remeasure 接住新尾巴。这个分块共享同一个 `LazyListState`，不属于 overlay / active-zone / 第二消息主人；点击回到底部会清掉完成后保留的 block 快照，恢复完整 item 并继续跟随
+- streaming 当前新增同一列表内的展示层 block item 化：`ChatScreen.kt` 会在生成过程中按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，当前 active block 上限为 180 字，避免视觉底部 index `0` 的 active block 重新长成巨型 item。所有 streaming block 都使用稳定的 `messageId:streaming_block:<index>` key，避免 `scrollMode` 变化时同一可见块换 key 造成上下窜；AutoFollow 贴底状态下如果新 active block 产生，才在非用户接管窗口用 `requestScrollToItem(0)` 让下一次 remeasure 接住新尾巴。这个分块共享同一个 `LazyListState`，不属于 overlay / active-zone / 第二消息主人；点击回到底部会清掉完成后保留的 block 快照，恢复完整 item 并继续跟随
 - `ChatStreamingRenderer.kt` 当前对 active streaming block 使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再显示新字尾部 fresh suffix 灰色高亮动画；已完成 block / settled Markdown 仍走现有静态渲染路径
 - `ChatScreen.kt` 当前已经按单主人口径收平：
   - `messages` 仍是 oldest -> newest 的唯一消息数据源；列表显示层通过 `chatListItems` 派生普通消息 item，以及 streaming 期间的稳定 block / active block item
@@ -53,10 +53,10 @@
   - active-zone 时代专用的 `streamingBodyFollowEnabled` 开关已经从 coordinator 主链里移除
   - 旧正向 / overlay 时代的 streaming raw follow 链已移除：反向列表不再在 streaming 正文高度变化时额外调用 `followStreamingByDelta(...)` / `scrollBy(...)` 追滚，`streamBottomFollowActive` 空壳状态也已删除，避免和用户拖动、reverse-layout 自身底部锚定打架
   - streaming 期间用户触碰 / 拖动优先级高于程序滚动；一旦检测到用户接管，会先结束程序滚动标记并立即进入 `UserBrowsing`，不再让 `programmaticScroll` 分支吞掉用户手势。`scrollToBottom(...)` 这类程序对齐循环也会逐帧检查用户是否已接管，接管后立即停止。用户手动滑回反向列表真实底部 `index=0 / offset=0` 后，可以恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
-  - AutoFollow 贴底期间新 active block 产生时，`requestScrollToItem(0)` 仍保留用于接住新尾巴，但执行前会等一帧并检查用户浏览 epoch；如果用户已在同帧或上一帧触碰列表接管，本次旧贴底请求会失效。这里不再用 `firstVisibleItemIndex / firstVisibleItemScrollOffset` 做严格 position 复核，避免误杀手动回到底部后的正常跟随；`lastAutoFollowStreamingBlockIndex` 只在实际发出贴底请求或新流 reset 时更新，避免被取消的旧请求污染后续跟随
+  - AutoFollow 贴底期间新 active block 产生时，`requestScrollToItem(0)` 仍保留用于接住新尾巴，但执行前会等一帧并检查用户浏览 epoch；如果用户已在同帧或上一帧触碰列表接管，本次旧贴底请求会失效。这里不再用 `firstVisibleItemIndex / firstVisibleItemScrollOffset` 做严格 position 复核，避免误杀手动回到底部后的正常跟随
   - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线。输入框内部文字或图片内容高度仍不允许顶起聊天列表
 - 回到底部按钮当前不再用消息 bounds / 工作线 `atBottom` 判断按钮资格。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制，并且反向列表离底超过安全区 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 56.dp`。开机 / 程序贴底 / bounds 初次上报不会点亮按钮；发送后 IME 过渡伪锁已删除，避免发过消息后按钮长期被压死；用户滑动过程中按钮强制不显示，停止滑动后一帧再按动态 / 静态同一套离底资格判断，离底才短暂出现并自动隐藏；点击按钮直接 `scrollToItem(0)` 回到反向列表真实底部并恢复对应滚动模式
-- streaming 渲染当前不再让段落切换时的新空尾巴进入列表数据或显示 waiting 小球：小球只在整条 assistant 还没有任何内容时显示。active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等到后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排；跨 block 的一级 / 二级标题分割线由 `ChatScreen.kt` 全局计算后传给 `ChatStreamingRenderer.kt`，避免标题落在新 LazyColumn item 开头时分割线丢失
+- streaming 渲染当前不再让段落切换时的新空 active block 显示 waiting 小球：小球只在整条 assistant 还没有任何内容时显示，后续空 active block 为零高度占位。active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等到后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排；跨 block 的一级 / 二级标题分割线由 `ChatScreen.kt` 全局计算后传给 `ChatStreamingRenderer.kt`，避免标题落在新 LazyColumn item 开头时分割线丢失
 
 ## 当前调试焦点
 
