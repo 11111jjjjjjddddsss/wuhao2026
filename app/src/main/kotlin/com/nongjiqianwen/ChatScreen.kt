@@ -1600,7 +1600,6 @@ fun ChatScreen() {
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
-    var suppressJumpButtonForImeTransition by scrollRuntime.suppressJumpButtonForImeTransition
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
     var inputChromeRowHeightPx by scrollRuntime.inputChromeRowHeightPx
@@ -2088,12 +2087,11 @@ fun ChatScreen() {
     }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
     val reverseListAwayFromExactBottom by remember(
-        recyclerFirstVisibleItemIndex,
-        recyclerFirstVisibleItemScrollOffset
+        chatListState
     ) {
         derivedStateOf {
-            recyclerFirstVisibleItemIndex != 0 ||
-                recyclerFirstVisibleItemScrollOffset > 0
+            chatListState.firstVisibleItemIndex != 0 ||
+                chatListState.firstVisibleItemScrollOffset > 0
         }
     }
     var jumpButtonUserScrollSignal by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -2107,11 +2105,11 @@ fun ChatScreen() {
         messages.size
     ) {
         derivedStateOf {
-            if (isStreaming || hasStreamingItem) {
-                scrollMode == ScrollMode.UserBrowsing
-            } else {
-                messages.isNotEmpty() && reverseListAwayFromExactBottom
-            }
+            messages.isNotEmpty() &&
+                (
+                    reverseListAwayFromExactBottom ||
+                        ((isStreaming || hasStreamingItem) && scrollMode == ScrollMode.UserBrowsing)
+                    )
         }
     }
     LaunchedEffect(
@@ -2138,21 +2136,14 @@ fun ChatScreen() {
         scrollMode,
         reverseListAwayFromExactBottom,
         keyboardVisibleForJumpButton,
-        suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume,
         messages.size
     ) {
         derivedStateOf {
             startupLayoutReady &&
                 !keyboardVisibleForJumpButton &&
-                !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
-                messages.isNotEmpty() &&
-                if (isStreaming || hasStreamingItem) {
-                    scrollMode == ScrollMode.UserBrowsing
-                } else {
-                    reverseListAwayFromExactBottom
-                }
+                userAwayFromBottomForJumpButton
         }
     }
     val effectiveJumpButtonVisible by remember(
@@ -2507,7 +2498,6 @@ fun ChatScreen() {
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
         initialBottomSnapDone = false
-        suppressJumpButtonForImeTransition = false
         suppressJumpButtonForLifecycleResume = false
         clearInputSelectionToolbar()
         focusManager.clearFocus(force = true)
@@ -3275,8 +3265,7 @@ fun ChatScreen() {
 
     fun markUserMessageSendFailed(
         text: String,
-        existingUserMessageId: String? = null,
-        collapseComposer: Boolean = true
+        existingUserMessageId: String? = null
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
         composerCollapseOverlayVisible = false
@@ -3286,9 +3275,6 @@ fun ChatScreen() {
                 hasStartedConversation = true
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
-                if (collapseComposer) {
-                    suppressJumpButtonForImeTransition = true
-                }
                 val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
                 upsertUserMessage(userId, text)
                 failedUserMessageStates[userId] = "network"
@@ -3327,9 +3313,6 @@ fun ChatScreen() {
         hasStartedConversation = true
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
-        if (collapseComposer) {
-            suppressJumpButtonForImeTransition = true
-        }
         if (collapseComposer) {
             val collapsePreparation = prepareComposerCollapse(
                 inputContentHeightPx = inputContentHeightPx,

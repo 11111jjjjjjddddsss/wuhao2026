@@ -5,6 +5,7 @@
 
 ## 2026-04-25
 
+- `ChatScreen.kt` / `ChatScrollCoordinator.kt` 删除发送后没人解锁的 `suppressJumpButtonForImeTransition` 伪门，并把回到底部按钮资格统一成“消息非空 + 键盘不可见 + 生命周期未抑制 +（反向列表真实离底或 streaming 已进入 UserBrowsing）”。此前发送路径会把 `suppressJumpButtonForImeTransition` 设为 true，但正常 chat 流程没有恢复 false，导致发过一条消息后按钮长期被压死；同时按钮离底判断已直接读取 `chatListState.firstVisibleItemIndex / firstVisibleItemScrollOffset`，不再吃 24px metrics bucket。
 - `ChatScrollCoordinator.kt` 修正回到底部按钮 pulse 信号被提前消费的竞态：此前 `BindJumpButtonPulseEffect(...)` 在 `showJumpButton=false` 时也会把新的 `userScrollSignal` 标记为已处理，streaming 态触碰列表切 `UserBrowsing` 后如果 show 条件晚一拍才变 true，按钮信号已经被吃掉，表现为动态生成中按钮不出。现在只有 `showJumpButton=true` 时才消费信号；show 条件未满足时只隐藏按钮、不吞本次触发。
 - `ChatScreen.kt` 修正 streaming 态回到底部按钮“状态已进 UserBrowsing 但按钮不出”的漏触发：此前按钮 pulse 只靠 `chatListUserDragging / recyclerScrollInProgress` 这类滚动状态点火，真机上流式生成时用户触碰列表先由 pointer hook 切到 `UserBrowsing`，但 drag / scroll 状态可能没在同一拍命中，导致 `showJumpButton` 有资格却没有 pulse。现在 `markStreamingUserBrowsingFromPointer()` 在确认用户触碰 streaming 列表后同步递增 `jumpButtonUserScrollSignal`，只补按钮点火，不新增 scroll 调用，不恢复旧 overlay / active-zone / streaming follow 链。
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 收口回到底部按钮显示和点击语义：按钮不再只因为 `!atBottom` / `!nearWorkline` 就自动 pulse。静态态离底资格看反向列表真实位置 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 0`；streaming 态由用户触碰 / 拖动消息列表进入 `UserBrowsing` 后触发 pulse，避免生成中 `index/offset` 尚未变化导致按钮不出。点击按钮也改为直接 `scrollToItem(0)` 回到反向列表真实底部，避免复用通用 bottom bounds 精修链后没有真正回到 `index 0 / offset 0`。

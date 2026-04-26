@@ -24,7 +24,6 @@ internal data class ChatScrollRuntimeState(
     val programmaticScroll: MutableState<Boolean>,
     val streamingContentBottomPx: MutableIntState,
     val jumpButtonPulseVisible: MutableState<Boolean>,
-    val suppressJumpButtonForImeTransition: MutableState<Boolean>,
     val suppressJumpButtonForLifecycleResume: MutableState<Boolean>,
     val bottomBarHeightPx: MutableIntState,
     val inputChromeRowHeightPx: MutableIntState
@@ -41,7 +40,6 @@ internal fun rememberChatScrollRuntimeState(
     val programmaticScroll = remember(chatScopeId) { mutableStateOf(false) }
     val streamingContentBottomPx = remember(chatScopeId) { mutableIntStateOf(-1) }
     val jumpButtonPulseVisible = remember(chatScopeId) { mutableStateOf(false) }
-    val suppressJumpButtonForImeTransition = remember(chatScopeId) { mutableStateOf(false) }
     val suppressJumpButtonForLifecycleResume = remember(chatScopeId) { mutableStateOf(false) }
     val bottomBarHeightPx = remember(chatScopeId, startupBottomBarHeightEstimatePx) {
         mutableIntStateOf(startupBottomBarHeightEstimatePx)
@@ -60,7 +58,6 @@ internal fun rememberChatScrollRuntimeState(
             programmaticScroll = programmaticScroll,
             streamingContentBottomPx = streamingContentBottomPx,
             jumpButtonPulseVisible = jumpButtonPulseVisible,
-            suppressJumpButtonForImeTransition = suppressJumpButtonForImeTransition,
             suppressJumpButtonForLifecycleResume = suppressJumpButtonForLifecycleResume,
             bottomBarHeightPx = bottomBarHeightPx,
             inputChromeRowHeightPx = inputChromeRowHeightPx
