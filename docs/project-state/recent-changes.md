@@ -3,10 +3,6 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
-## 2026-04-26
-
-- `ChatScreen.kt` 收口 streaming 小幅上滑仍被带回工作线的问题：确认旧 `scrollBy(...)` / `dispatchRawDelta(...)` 高度补偿已被回退且不应恢复后，改为在用户触碰 streaming 列表进入 `UserBrowsing` 时记录 active assistant item 的当前实测高度，并用 `heightIn(max = ...).clipToBounds()` 临时冻结它的测量高度。这样用户仍在 index `0` 最新消息内轻微上滑时，后续吐字不会继续改变该 item 的测量高度把列表锚回底部；点击回到底部 / 恢复 AutoFollow 后再释放冻结。当前仍保持单一反向列表主人，不恢复 overlay / active-zone / streaming height follow。
-
 ## 2026-04-25
 
 - `ChatScreen.kt` / `ChatScrollCoordinator.kt` 删除发送后没人解锁的 `suppressJumpButtonForImeTransition` 伪门，并把回到底部按钮资格统一成“消息非空 + 键盘不可见 + 生命周期未抑制 +（反向列表真实离底或 streaming 已进入 UserBrowsing）”。此前发送路径会把 `suppressJumpButtonForImeTransition` 设为 true，但正常 chat 流程没有恢复 false，导致发过一条消息后按钮长期被压死；同时按钮离底判断已直接读取 `chatListState.firstVisibleItemIndex / firstVisibleItemScrollOffset`，不再吃 24px metrics bucket。
