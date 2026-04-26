@@ -202,6 +202,39 @@ import kotlin.coroutines.resume
 private enum class ChatRole { USER, ASSISTANT }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
+private sealed interface ChatListItem {
+    val itemKey: String
+    val contentType: Any?
+}
+@Immutable
+private data class RegularChatListItem(
+    val message: ChatMessage
+) : ChatListItem {
+    override val itemKey: String = message.id
+    override val contentType: Any? = message.role
+}
+@Immutable
+private data class StreamingStablePrefixChatListItem(
+    val message: ChatMessage,
+    val content: String
+) : ChatListItem {
+    override val itemKey: String = message.id
+    override val contentType: Any? = "assistant_streaming_stable_prefix"
+}
+@Immutable
+private data class StreamingActiveTailChatListItem(
+    val message: ChatMessage,
+    val content: String,
+    val stablePrefixLength: Int
+) : ChatListItem {
+    override val itemKey: String = "${message.id}:streaming_tail"
+    override val contentType: Any? = "assistant_streaming_active_tail"
+}
+@Immutable
+private data class StreamingBrowseSplit(
+    val messageId: String,
+    val stablePrefix: String
+)
 @Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
 @Immutable
@@ -224,6 +257,65 @@ private data class LocalStreamingDraft(
     val anchoredUserMessageId: String?,
     val savedAtMs: Long
 )
+
+private fun resolveStreamingBrowseStablePrefix(
+    capturedPrefix: String,
+    currentContent: String
+): String {
+    if (capturedPrefix.isBlank() || currentContent.isBlank()) return ""
+    if (currentContent.startsWith(capturedPrefix)) return capturedPrefix
+    return currentContent.take(capturedPrefix.length.coerceAtMost(currentContent.length))
+}
+
+private fun buildChatListItems(
+    messages: List<ChatMessage>,
+    streamingMessageId: String?,
+    streamingMessageContent: String,
+    isStreaming: Boolean,
+    streamingBrowseSplit: StreamingBrowseSplit?
+): List<ChatListItem> {
+    return buildList {
+        messages.forEach { message ->
+            val split = streamingBrowseSplit
+            if (message.role == ChatRole.ASSISTANT && split?.messageId == message.id) {
+                val currentContent =
+                    if (
+                        message.id == streamingMessageId &&
+                        (isStreaming || streamingMessageContent.isNotBlank())
+                    ) {
+                        streamingMessageContent
+                    } else {
+                        message.content
+                    }
+                val stablePrefix = resolveStreamingBrowseStablePrefix(
+                    capturedPrefix = split.stablePrefix,
+                    currentContent = currentContent
+                )
+                val tailContent = currentContent.drop(stablePrefix.length)
+                if (stablePrefix.isNotBlank() && (isStreaming || tailContent.isNotBlank())) {
+                    add(
+                        StreamingStablePrefixChatListItem(
+                            message = message,
+                            content = stablePrefix
+                        )
+                    )
+                    add(
+                        StreamingActiveTailChatListItem(
+                            message = message,
+                            content = tailContent,
+                            stablePrefixLength = stablePrefix.length
+                        )
+                    )
+                } else {
+                    add(RegularChatListItem(message))
+                }
+            } else {
+                add(RegularChatListItem(message))
+            }
+        }
+    }
+}
+
 private data class MessageSelectionToolbarState(
     val messageId: String,
     val anchorX: Int,
@@ -1659,7 +1751,24 @@ fun ChatScreen() {
             putAll(initialLocalSnapshot.failedAssistantMessageStates)
         }
     }
-    val chatListMessages = messages
+    var streamingBrowseSplit by remember(uiRuntimeResetKey) { mutableStateOf<StreamingBrowseSplit?>(null) }
+    val chatListItems by remember(
+        messages,
+        streamingMessageId,
+        streamingMessageContent,
+        isStreaming,
+        streamingBrowseSplit
+    ) {
+        derivedStateOf {
+            buildChatListItems(
+                messages = messages,
+                streamingMessageId = streamingMessageId,
+                streamingMessageContent = streamingMessageContent,
+                isStreaming = isStreaming,
+                streamingBrowseSplit = streamingBrowseSplit
+            )
+        }
+    }
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2473,6 +2582,7 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         lastStreamingFreshRevealMs = 0L
+        streamingBrowseSplit = null
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
@@ -2604,6 +2714,9 @@ fun ChatScreen() {
         val index = messages.indexOfFirst { it.id == messageId }
         if (index >= 0) {
             messages.removeAt(index)
+        }
+        if (streamingBrowseSplit?.messageId == messageId) {
+            streamingBrowseSplit = null
         }
     }
 
@@ -2960,6 +3073,35 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        streamingMessageId,
+        streamingMessageContent.length
+    ) {
+        val activeStreamingMessageId = streamingMessageId
+        if (
+            (isStreaming || hasStreamingItem) &&
+            scrollMode == ScrollMode.UserBrowsing &&
+            !activeStreamingMessageId.isNullOrBlank() &&
+            streamingBrowseSplit?.messageId != activeStreamingMessageId &&
+            streamingMessageContent.isNotBlank()
+        ) {
+            streamingBrowseSplit = StreamingBrowseSplit(
+                messageId = activeStreamingMessageId,
+                stablePrefix = streamingMessageContent
+            )
+        }
+    }
+
+    LaunchedEffect(streamingBrowseSplit?.messageId, messages.size) {
+        val splitMessageId = streamingBrowseSplit?.messageId ?: return@LaunchedEffect
+        if (messages.none { it.id == splitMessageId }) {
+            streamingBrowseSplit = null
+        }
+    }
+
+    LaunchedEffect(
         recyclerScrollInProgress,
         chatListUserDragging,
         programmaticScroll,
@@ -3046,6 +3188,9 @@ fun ChatScreen() {
         anchorMessageId: String,
         shouldRestoreBottomAnchor: Boolean
     ) {
+        if (shouldRestoreBottomAnchor && streamingBrowseSplit?.messageId == anchorMessageId) {
+            streamingBrowseSplit = null
+        }
         // Drop stale streaming bounds so the finalized settled host must report
         // a fresh bottom before we hand geometry ownership away from streaming.
         messageContentBoundsById.remove(anchorMessageId)
@@ -3059,6 +3204,10 @@ fun ChatScreen() {
     fun finalizeStreamingStop(
         shouldRestoreBottomAnchor: Boolean
     ) {
+        val finalizingStreamingMessageId = streamingMessageId
+        val shouldKeepBrowseSplit =
+            scrollMode == ScrollMode.UserBrowsing &&
+                streamingBrowseSplit?.messageId == finalizingStreamingMessageId
         isStreaming = false
         anchoredUserMessageId = null
         sendUiSettling = false
@@ -3074,6 +3223,9 @@ fun ChatScreen() {
         fakeStreamJob = null
         streamRevealJob = null
         resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
+        if (!shouldKeepBrowseSplit) {
+            streamingBrowseSplit = null
+        }
         restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor)
         clearPendingStreamingFinalize()
     }
@@ -3300,6 +3452,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
+        streamingBrowseSplit = null
         val preSendStableCollapsedReservePx =
             if (!listShouldTrackRealtimeComposerGeometry) {
                 (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
@@ -3435,6 +3588,19 @@ fun ChatScreen() {
     }
     fun markStreamingUserBrowsingFromPointer() {
         if (!isStreaming && !hasStreamingItem) return
+        val activeStreamingMessageId = streamingMessageId
+        if (
+            !activeStreamingMessageId.isNullOrBlank() &&
+            streamingBrowseSplit?.messageId != activeStreamingMessageId &&
+            streamingMessageContent.isNotBlank()
+        ) {
+            // Freeze what was already rendered when the user's finger takes over;
+            // future chunks move into a separate tail item under the same LazyColumn.
+            streamingBrowseSplit = StreamingBrowseSplit(
+                messageId = activeStreamingMessageId,
+                stablePrefix = streamingMessageContent
+            )
+        }
         endProgrammaticChatListScroll()
         scrollRuntime.userInteracting.value = true
         if (scrollMode != ScrollMode.UserBrowsing) {
@@ -3453,7 +3619,7 @@ fun ChatScreen() {
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
-            lastIndex = if (chatListMessages.isEmpty()) -1 else 0,
+            lastIndex = if (chatListItems.isEmpty()) -1 else 0,
             animated = animated,
             currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
             currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
@@ -3632,6 +3798,7 @@ fun ChatScreen() {
 
     fun jumpToBottom() {
         snackbarScope.launch {
+            streamingBrowseSplit = null
             performJumpToBottom(
                 messagesCount = messages.size,
                 hasStreamingItem = hasStreamingItem,
@@ -3979,6 +4146,124 @@ fun ChatScreen() {
                 }
             }
         }
+        val renderStreamingAssistantSegment: @Composable (ChatListItem) -> Unit = { item ->
+            val msg = when (item) {
+                is StreamingStablePrefixChatListItem -> item.message
+                is StreamingActiveTailChatListItem -> item.message
+                is RegularChatListItem -> item.message
+            }
+            val isTail = item is StreamingActiveTailChatListItem
+            val isActiveTail =
+                isTail &&
+                    msg.id == streamingMessageId &&
+                    isStreaming
+            val segmentContent = when (item) {
+                is StreamingStablePrefixChatListItem -> item.content
+                is StreamingActiveTailChatListItem -> item.content
+                is RegularChatListItem -> msg.content
+            }
+            val stablePrefixLength = (item as? StreamingActiveTailChatListItem)?.stablePrefixLength ?: 0
+            val localFreshStart =
+                if (isActiveTail) {
+                    (streamingFreshStart - stablePrefixLength)
+                        .coerceAtLeast(0)
+                        .coerceAtMost(segmentContent.length)
+                } else {
+                    -1
+                }
+            val localFreshEnd =
+                if (isActiveTail) {
+                    (streamingFreshEnd - stablePrefixLength)
+                        .coerceAtLeast(localFreshStart)
+                        .coerceAtMost(segmentContent.length)
+                } else {
+                    -1
+                }
+            val renderMode = when {
+                item is StreamingStablePrefixChatListItem -> StreamingRenderMode.Streaming
+                isActiveTail && segmentContent.isBlank() -> StreamingRenderMode.Waiting
+                isActiveTail -> StreamingRenderMode.Streaming
+                else -> StreamingRenderMode.Settled
+            }
+            val topPadding =
+                if (isTail) 0.dp else CHAT_MESSAGE_ITEM_VERTICAL_PADDING
+            val bottomPadding =
+                if (isTail) CHAT_MESSAGE_ITEM_VERTICAL_PADDING else 0.dp
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = listHorizontalPadding,
+                        top = topPadding,
+                        end = listHorizontalPadding,
+                        bottom = bottomPadding
+                    )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .widthIn(max = chromeMaxWidth)
+                        .fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ChatStreamingRenderer(
+                            content = segmentContent,
+                            renderMode = renderMode,
+                            freshSuffixEnabled = isActiveTail,
+                            showWaitingBall = renderMode == StreamingRenderMode.Waiting,
+                            streamingFreshStart = localFreshStart,
+                            streamingFreshEnd = localFreshEnd,
+                            streamingFreshTick = if (isActiveTail) streamingFreshTick else 0,
+                            selectionEnabled = false,
+                            showDisclaimer = false,
+                            onStreamingContentBoundsChanged = if (isTail) {
+                                { bounds ->
+                                    if (bounds != null) {
+                                        updateMessageContentBounds(msg.id, bounds)
+                                        if (isActiveTail) {
+                                            val nextStreamingContentBottomPx =
+                                                (bounds.bottom - messageViewportTopPx).roundToInt()
+                                            if (streamingContentBottomPx != nextStreamingContentBottomPx) {
+                                                streamingContentBottomPx = nextStreamingContentBottomPx
+                                            }
+                                        }
+                                    } else {
+                                        updateMessageContentBounds(msg.id, null)
+                                    }
+                                }
+                            } else {
+                                null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (isTail && !isActiveTail && shouldShowAiDisclaimerRefined(msg.content)) {
+                            Text(
+                                text = AI_DISCLAIMER_TEXT,
+                                modifier = Modifier.fillMaxWidth(),
+                                style = assistantDisclaimerTextStyle(),
+                                textAlign = TextAlign.Start
+                            )
+                        }
+                        if (isTail) {
+                            val failedAssistantState = failedAssistantMessageStates[msg.id]
+                            if (failedAssistantState != null) {
+                                MessageStatusFooter(
+                                    statusText = "回复未完成",
+                                    actionText = "重试",
+                                    alignEnd = false,
+                                    onActionClick = {
+                                        retryFailedAssistantMessage(msg.id)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
         val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
             SideEffect {
                 latestConversationBottomPaddingPx = conversationBottomPaddingPx
@@ -4010,9 +4295,9 @@ fun ChatScreen() {
             ) {
                 ChatRecyclerViewHost(
                     listState = chatListState,
-                    items = chatListMessages,
-                    itemKey = { it.id },
-                    itemContentType = { it.role },
+                    items = chatListItems,
+                    itemKey = { it.itemKey },
+                    itemContentType = { it.contentType },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = effectiveBottomPaddingPx,
                     modifier = Modifier
@@ -4046,8 +4331,12 @@ fun ChatScreen() {
                                 Modifier.graphicsLayer(alpha = 0f)
                             }
                         )
-                ) { msg ->
-                    renderConversationMessage(msg)
+                ) { item ->
+                    when (item) {
+                        is RegularChatListItem -> renderConversationMessage(item.message)
+                        is StreamingStablePrefixChatListItem -> renderStreamingAssistantSegment(item)
+                        is StreamingActiveTailChatListItem -> renderStreamingAssistantSegment(item)
+                    }
                 }
             }
         }

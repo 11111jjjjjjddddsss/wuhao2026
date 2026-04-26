@@ -25,8 +25,9 @@
   - `LazyColumn(reverseLayout = true)`
   - `items.asReversed()`
   - 列表成为当前轮 user / assistant / streaming / settled 的唯一消息主人
+- streaming 用户浏览态当前新增同一列表内的展示层拆分：用户触碰/上滑接管后，`ChatScreen.kt` 会把当时已经渲染的 assistant 内容冻结成稳定前缀 item，并把后续新 token 放入同一个 `LazyColumn` 的 tail item。原 assistant key 保留给稳定前缀，使 Compose 的可见锚点迁到不再长高的 item；tail 仍是视觉底部 index `0`，继续正常吐字。这个拆分共享同一个 `LazyListState`，不属于 overlay / active-zone / 第二消息主人；点击回到底部会清掉拆分，恢复完整 streaming item 并继续跟随
 - `ChatScreen.kt` 当前已经按单主人口径收平：
-  - `chatListMessages = messages`
+  - `messages` 仍是 oldest -> newest 的唯一消息数据源；列表显示层通过 `chatListItems` 派生普通消息 item，以及 streaming 用户浏览态下的稳定前缀 / 活跃 tail item
   - `currentLastMessageContentBottomPx()` 的 fallback 已改回 reverse-list 口径，底部最新显示项按 index `0` 取值
   - `currentBottomOverflowPx()` 不再走 active-zone / history list 分支；现在按 reverse-list 单主人口径只计算“最新消息可见底边低于统一底部目标”的欠滚距离，内容底边已经高于目标时视作已到底，避免过滚误触发补滚
   - `isNearStreamingWorkline()` / `isAtStreamingWorklineStrict()` 已不再包含 Overlay 快捷分支
@@ -44,6 +45,7 @@
   - fresh bounds 到位后 `finalizeStreamingStop(...)`
   - 没有回退到 old reverse 那种“直接切 settled 不等 fresh bounds”的简化版
   - pending finalize 当前不再主动调用 `alignVisibleChatListBottom(...)` 或完整 `scrollToBottom(false)` 做完成瞬间底部精修；吐完后只等 settled fresh bounds 到位再清 streaming 状态，避免长回复完成时窗口被重新锚到上方
+  - 若用户浏览态已经触发 streaming prefix/tail 拆分，完成时会在浏览态暂时保留拆分，避免把正在看的稳定前缀重新合回巨型 item 造成重锚；回到底部或下一轮发送会清掉拆分
 - `ChatScrollCoordinator.kt` 当前也已回到单主人口径：
   - `scrollToBottom(false)` 重新按 reverse-list 走 `scrollToItem(lastIndex)`，其中当前 `lastIndex` 在聊天页主调处按 `0` 传入
   - `alignVisibleChatListBottom(...)` 这条只服务 finalize 的主动底部精修 helper 已移除，避免与完成态渲染树切换打架
