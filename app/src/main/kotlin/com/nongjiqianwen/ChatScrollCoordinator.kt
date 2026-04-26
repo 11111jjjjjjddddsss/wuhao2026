@@ -367,8 +367,7 @@ internal fun BindChatListScrollEffects(
 
 @Composable
 internal fun BindJumpButtonPulseEffect(
-    showStreamingJumpButton: Boolean,
-    showStaticJumpButton: Boolean,
+    showJumpButton: Boolean,
     userScrollSignal: Int,
     jumpButtonPulseVisibleState: MutableState<Boolean>,
     autoHideMs: Long
@@ -377,25 +376,23 @@ internal fun BindJumpButtonPulseEffect(
         mutableIntStateOf(0)
     }
     LaunchedEffect(
-        showStreamingJumpButton,
-        showStaticJumpButton,
+        showJumpButton,
         userScrollSignal
     ) {
-        val shouldOfferJumpButton = showStreamingJumpButton || showStaticJumpButton
         if (userScrollSignal <= lastHandledUserScrollSignal.intValue) {
-            if (!shouldOfferJumpButton) {
+            if (!showJumpButton) {
                 jumpButtonPulseVisibleState.value = false
             }
             return@LaunchedEffect
         }
         lastHandledUserScrollSignal.intValue = userScrollSignal
-        if (!shouldOfferJumpButton) {
+        if (!showJumpButton) {
             jumpButtonPulseVisibleState.value = false
             return@LaunchedEffect
         }
         jumpButtonPulseVisibleState.value = true
         kotlinx.coroutines.delay(autoHideMs)
-        if (showStreamingJumpButton || showStaticJumpButton) {
+        if (showJumpButton) {
             jumpButtonPulseVisibleState.value = false
         }
     }
