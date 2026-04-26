@@ -61,6 +61,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
@@ -1717,20 +1718,30 @@ fun ChatScreen() {
         }
     }
     val shouldUseRealtimeComposerGeometry by remember(
-        listShouldTrackRealtimeComposerGeometry,
-        isComposerSettling,
-        sendUiSettling,
+        startupShouldTrackRealtimeComposerGeometry,
         isStreaming,
+        hasStreamingItem,
         inputFieldFocused,
-        imeVisible
+        imeVisible,
+        scrollMode,
+        programmaticScroll,
+        recyclerScrollInProgress,
+        recyclerFirstVisibleItemIndex,
+        recyclerFirstVisibleItemScrollOffset,
+        chatListUserDragging
     ) {
         derivedStateOf {
-            listShouldTrackRealtimeComposerGeometry &&
-                (
-                    !isComposerSettling ||
-                        sendUiSettling ||
-                        (isStreaming && (inputFieldFocused || imeVisible))
-                    )
+            val streamingImeLiftAllowed =
+                (isStreaming || hasStreamingItem) &&
+                    inputFieldFocused &&
+                    imeVisible &&
+                    scrollMode == ScrollMode.AutoFollow &&
+                    !programmaticScroll &&
+                    !recyclerScrollInProgress &&
+                    !chatListUserDragging &&
+                    recyclerFirstVisibleItemIndex == 0 &&
+                    recyclerFirstVisibleItemScrollOffset == 0
+            startupShouldTrackRealtimeComposerGeometry || streamingImeLiftAllowed
         }
     }
     val sendStartBottomPaddingLockActive by remember(
@@ -1755,7 +1766,7 @@ fun ChatScreen() {
         }
     }
     val safeBottomInsetPx = with(density) {
-        WindowInsets.safeDrawing
+        WindowInsets.navigationBars
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding()
@@ -1966,7 +1977,6 @@ fun ChatScreen() {
         val upperTolerancePx = streamingAutoFollowRejoinTolerancePx
         return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
-
     val chatPageSurface = Color(0xFFF6F7F8)
     val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
@@ -3786,7 +3796,7 @@ fun ChatScreen() {
             )
         }
         val pageSurface = chatPageSurface
-        val navigationBottomInset: Dp = WindowInsets.safeDrawing
+        val navigationBottomInset: Dp = WindowInsets.navigationBars
             .only(WindowInsetsSides.Bottom)
             .asPaddingValues()
             .calculateBottomPadding()
