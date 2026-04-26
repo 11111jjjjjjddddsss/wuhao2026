@@ -321,6 +321,13 @@ internal fun BindChatListScrollEffects(
             }
             sendStartAnchorReleaseArmedState.value = false
             if (activeScrollMode == ScrollMode.UserBrowsing) {
+                if (
+                    !listScrollInProgress &&
+                    !userInteractingState.value &&
+                    isAtStreamingWorklineStrict()
+                ) {
+                    scrollModeState.value = ScrollMode.AutoFollow
+                }
                 continue
             }
             if (listScrollInProgress || userInteractingState.value) {

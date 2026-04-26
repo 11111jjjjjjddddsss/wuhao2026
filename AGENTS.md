@@ -249,8 +249,8 @@ Clean-State 必做回归的范围：
 - 这些保护当前只服务“发送起步短窗口”的 reserve / 放权稳定，**不是**旧 active-zone 时代那种运行时切管门
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
-- 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`，本轮不再自动恢复 `AutoFollow`，回到底部恢复跟随后续单独走显式按钮 / 显式跳底链
-- streaming 期间 `ChatScreen.kt` 会按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，当前 active block 上限为 180 字，避免视觉底部 index `0` 的 active block 重新长成巨型 item。稳定 block 使用 `messageId:streaming_block:<index>` key；AutoFollow 贴底时 active block 使用固定 `messageId:streaming_tail` key 保持最新尾巴贴底，进入 `UserBrowsing` 后 active block 改用自身 block key，让当前可见 block 完成切分后能随 key 迁移到稳定 item，避免继续锚住新 tail。这个方案不裁剪内容、不补 streaming `scrollBy`、不恢复 overlay；点击回到底部时清掉完成后保留的 block 快照，重新回到完整 assistant item 并恢复跟随
+- 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`。用户手动滑回反向列表真实底部 `index=0 / offset=0` 且严格命中 streaming 工作线后，可以恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
+- streaming 期间 `ChatScreen.kt` 会按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，当前 active block 上限为 180 字，避免视觉底部 index `0` 的 active block 重新长成巨型 item。所有 streaming block 都使用稳定的 `messageId:streaming_block:<index>` key，避免 `scrollMode` 变化时同一可见块换 key 造成上下窜；AutoFollow 贴底状态下如果新 active block 产生，才在非用户接管窗口同步回 `scrollToItem(0)` 继续跟随新尾巴。这个方案不裁剪内容、不补 streaming 高度 `scrollBy`、不恢复 overlay；点击回到底部时清掉完成后保留的 block 快照，重新回到完整 assistant item 并恢复跟随
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`
