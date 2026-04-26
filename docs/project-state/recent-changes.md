@@ -5,6 +5,7 @@
 
 ## 2026-04-26
 
+- `ChatScreen.kt` 撤掉 streaming 小分割 / block item 化主线：列表显示重新直接使用 `messages`，不再派生 `StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex`，也不再在新 active block 产生时额外 `requestScrollToItem(0)` 接尾巴。当前 waiting 小球、streaming 正文、settled 完成态回到同一个 assistant item 内完成；这是按真机反馈优先恢复整体渲染树稳定，接受后续需要重新评估“小幅上滑仍在本条消息内”的原始抢手问题。
 - `ChatScreen.kt` 按会诊结论给 AutoFollow 新 active block 贴底请求加用户浏览 epoch 软取消：用户触碰 streaming 列表进入 `UserBrowsing` 时递增 epoch；新 block 产生后如果需要 `requestScrollToItem(0)` 接尾巴，会先等一帧让同帧 pointer 事件有机会落地，再只按 epoch / `scrollMode` / `userInteracting` 复核，用户已接管则取消本次旧 AutoFollow 请求。此前尝试用 `firstVisibleItemIndex == 0 && offset == 0` 做严格 position 复核会误杀正常回底跟随，已回撤；这次不改 block 拆分、不删 `requestScrollToItem(0)`、不恢复 `scrollBy` / overlay。
 - `ChatScreen.kt` / `ChatStreamingRenderer.kt` 针对视频里“下一行先冒黑点、半截 Markdown 憋字换身份、分割线时有时无”的反馈收口 streaming 渲染判定：waiting 小球改为只在整条 assistant 完全没内容时显示，段落切换产生的空 active block 改成零高度；active Markdown 仍实时吐字，但只有结构前缀后已有非空正文时才切成标题 / 列表 / 引用，避免 `# `、`- `、`1. ` 这类半成品先撑出结构样式；跨 block 的一级 / 二级标题分割线改由 `ChatScreen.kt` 全局派生后传给 renderer，避免每个 block 只看自己内部 previous 导致分割线丢失。本次不改 block 拆分、AutoFollow、回到底部按钮安全区，也不恢复 overlay / scrollBy 补偿。
 - `ChatStreamingRenderer.kt` 针对“吐字那一行本身有点跳 / 闪、下一行有时冒头闪”的反馈，收窄 active streaming 显示层：active 段落 / 标题 / 列表正文改为单个 soft-wrap `Text` 自己换行，不再在 streaming 态按物理行拆成多颗 `Text`，也不再给新字尾部做 fresh suffix 灰色高亮动画。这样换行时不会发生“上一行变 stable Text + 新建下一行 active Text”的局部树切换，滚动状态机、block item 化、完成态 Markdown 渲染和选择链不动。

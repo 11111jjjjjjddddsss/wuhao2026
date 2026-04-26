@@ -202,45 +202,6 @@ import kotlin.coroutines.resume
 private enum class ChatRole { USER, ASSISTANT }
 @Immutable
 private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
-private sealed interface ChatListItem {
-    val itemKey: String
-    val contentType: Any?
-}
-@Immutable
-private data class RegularChatListItem(
-    val message: ChatMessage
-) : ChatListItem {
-    override val itemKey: String = message.id
-    override val contentType: Any? = message.role
-}
-@Immutable
-private data class StreamingBlockChatListItem(
-    val message: ChatMessage,
-    val content: String,
-    val blockIndex: Int,
-    val startOffset: Int,
-    val isActive: Boolean,
-    val isFirstBlock: Boolean,
-    val isLastBlock: Boolean,
-    val showWaitingBall: Boolean,
-    val showLeadingSectionDivider: Boolean
-) : ChatListItem {
-    override val itemKey: String = "${message.id}:streaming_block:$blockIndex"
-    override val contentType: Any? =
-        if (isActive) "assistant_streaming_active_block" else "assistant_streaming_stable_block"
-}
-@Immutable
-private data class StreamingTextBlock(
-    val blockIndex: Int,
-    val content: String,
-    val startOffset: Int,
-    val isActive: Boolean
-)
-@Immutable
-private data class StreamingBrowseBlockSnapshot(
-    val messageId: String,
-    val blocks: List<StreamingTextBlock>
-)
 @Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
 @Immutable
@@ -263,192 +224,6 @@ private data class LocalStreamingDraft(
     val anchoredUserMessageId: String?,
     val savedAtMs: Long
 )
-
-private const val STREAMING_ACTIVE_BLOCK_MAX_CHARS = 180
-private const val STREAMING_ACTIVE_BLOCK_MIN_CHARS = 60
-
-private fun findStreamingFallbackBlockEnd(
-    text: String,
-    start: Int,
-    maxExclusive: Int
-): Int {
-    val safeMax = maxExclusive.coerceAtMost(text.length)
-    if (safeMax <= start) return safeMax
-    val min = (start + STREAMING_ACTIVE_BLOCK_MIN_CHARS).coerceAtMost(safeMax)
-    for (index in safeMax - 1 downTo min) {
-        if (text[index] in "。！？；，、：.!?;,:\n") {
-            return index + 1
-        }
-    }
-    for (index in safeMax - 1 downTo min) {
-        if (text[index].isWhitespace()) {
-            return index + 1
-        }
-    }
-    return safeMax
-}
-
-private fun splitStreamingTextIntoBlocks(
-    text: String,
-    forceAllStable: Boolean = false
-): List<StreamingTextBlock> {
-    if (text.isEmpty()) {
-        return listOf(
-            StreamingTextBlock(
-                blockIndex = 0,
-                content = "",
-                startOffset = 0,
-                isActive = !forceAllStable
-            )
-        )
-    }
-
-    val blocks = mutableListOf<StreamingTextBlock>()
-    var blockStart = 0
-    var lineStart = 0
-    var inCodeFence = false
-
-    fun addStableBlock(start: Int, end: Int) {
-        val content = text.substring(start, end.coerceAtLeast(start)).trimEnd()
-        if (content.isNotEmpty()) {
-            blocks.add(
-                StreamingTextBlock(
-                    blockIndex = blocks.size,
-                    content = content,
-                    startOffset = start,
-                    isActive = false
-                )
-            )
-        }
-    }
-
-    while (lineStart < text.length) {
-        val lineEnd = text.indexOf('\n', lineStart).let { index ->
-            if (index >= 0) index else text.length
-        }
-        val rawLine = text.substring(lineStart, lineEnd)
-        if (rawLine.trimStart().startsWith("```")) {
-            inCodeFence = !inCodeFence
-        }
-        val nextLineStart = if (lineEnd < text.length) lineEnd + 1 else lineEnd
-        if (!inCodeFence && rawLine.isBlank()) {
-            if (lineStart > blockStart) {
-                addStableBlock(blockStart, lineStart)
-            }
-            blockStart = nextLineStart
-        }
-        if (lineEnd >= text.length) break
-        lineStart = nextLineStart
-    }
-
-    if (!inCodeFence) {
-        while (text.length - blockStart > STREAMING_ACTIVE_BLOCK_MAX_CHARS) {
-            val splitEnd = findStreamingFallbackBlockEnd(
-                text = text,
-                start = blockStart,
-                maxExclusive = blockStart + STREAMING_ACTIVE_BLOCK_MAX_CHARS
-            )
-            if (splitEnd <= blockStart || splitEnd >= text.length) break
-            addStableBlock(blockStart, splitEnd)
-            blockStart = splitEnd
-        }
-    }
-
-    val activeContent = text.substring(blockStart)
-    if (activeContent.isNotEmpty() || blocks.isEmpty() || !forceAllStable) {
-        blocks.add(
-            StreamingTextBlock(
-                blockIndex = blocks.size,
-                content = activeContent,
-                startOffset = blockStart,
-                isActive = !forceAllStable
-            )
-        )
-    }
-    return if (forceAllStable) {
-        blocks.map { it.copy(isActive = false) }
-    } else {
-        blocks
-    }
-}
-
-private fun shouldShowLeadingStreamingBlockDivider(
-    blocks: List<StreamingTextBlock>,
-    blockIndex: Int
-): Boolean {
-    if (blockIndex <= 0) return false
-    val firstLine = blocks
-        .getOrNull(blockIndex)
-        ?.content
-        ?.lineSequence()
-        ?.firstOrNull { it.isNotBlank() }
-        ?: return false
-    val trimmed = firstLine.trimStart()
-    val marker = trimmed.takeWhile { it == '#' }
-    if (marker.isEmpty() || marker.length > 2) return false
-    val remainder = trimmed.drop(marker.length)
-    return remainder.startsWith(" ") && remainder.trim().isNotEmpty()
-}
-
-private fun buildChatListItems(
-    messages: List<ChatMessage>,
-    streamingMessageId: String?,
-    streamingMessageContent: String,
-    isStreaming: Boolean,
-    pendingStreamingFinalizeMessageId: String?,
-    streamingBrowseBlockSnapshot: StreamingBrowseBlockSnapshot?
-): List<ChatListItem> {
-    return buildList {
-        messages.forEach { message ->
-            val snapshot = streamingBrowseBlockSnapshot
-            val usesSnapshotBlocks =
-                message.role == ChatRole.ASSISTANT &&
-                    snapshot?.messageId == message.id
-            val blocks = when {
-                usesSnapshotBlocks -> snapshot?.blocks.orEmpty()
-
-                message.role == ChatRole.ASSISTANT &&
-                    message.id == pendingStreamingFinalizeMessageId &&
-                    streamingMessageContent.isNotBlank() ->
-                    splitStreamingTextIntoBlocks(
-                        text = streamingMessageContent,
-                        forceAllStable = true
-                    )
-
-                message.role == ChatRole.ASSISTANT &&
-                    message.id == streamingMessageId &&
-                    message.id != pendingStreamingFinalizeMessageId &&
-                    (isStreaming || streamingMessageContent.isNotBlank()) ->
-                    splitStreamingTextIntoBlocks(streamingMessageContent)
-
-                else -> null
-            }
-            if (blocks != null) {
-                val hasAnyBlockContent = blocks.any { it.content.isNotBlank() }
-                blocks.forEachIndexed { index, block ->
-                    add(
-                        StreamingBlockChatListItem(
-                            message = message,
-                            content = block.content,
-                            blockIndex = block.blockIndex,
-                            startOffset = block.startOffset,
-                            isActive = block.isActive,
-                            isFirstBlock = index == 0,
-                            isLastBlock = index == blocks.lastIndex,
-                            showWaitingBall = block.isActive && !hasAnyBlockContent,
-                            showLeadingSectionDivider = shouldShowLeadingStreamingBlockDivider(
-                                blocks = blocks,
-                                blockIndex = index
-                            )
-                        )
-                    )
-                }
-            } else {
-                add(RegularChatListItem(message))
-            }
-        }
-    }
-}
 
 private data class MessageSelectionToolbarState(
     val messageId: String,
@@ -1885,44 +1660,7 @@ fun ChatScreen() {
             putAll(initialLocalSnapshot.failedAssistantMessageStates)
         }
     }
-    var streamingBrowseBlockSnapshot by remember(uiRuntimeResetKey) {
-        mutableStateOf<StreamingBrowseBlockSnapshot?>(null)
-    }
-    var streamingUserBrowseEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    val chatListItems by remember(
-        messages,
-        streamingMessageId,
-        streamingMessageContent,
-        isStreaming,
-        pendingStreamingFinalizeMessageId,
-        streamingBrowseBlockSnapshot
-    ) {
-        derivedStateOf {
-            buildChatListItems(
-                messages = messages,
-                streamingMessageId = streamingMessageId,
-                streamingMessageContent = streamingMessageContent,
-                isStreaming = isStreaming,
-                pendingStreamingFinalizeMessageId = pendingStreamingFinalizeMessageId,
-                streamingBrowseBlockSnapshot = streamingBrowseBlockSnapshot
-            )
-        }
-    }
-    val activeStreamingBlockIndex by remember(chatListItems, streamingMessageId, isStreaming) {
-        derivedStateOf {
-            (chatListItems.lastOrNull() as? StreamingBlockChatListItem)
-                ?.takeIf { item ->
-                    isStreaming &&
-                        item.isActive &&
-                        item.message.id == streamingMessageId
-                }
-                ?.blockIndex
-                ?: -1
-        }
-    }
-    var lastAutoFollowStreamingBlockIndex by remember(uiRuntimeResetKey) {
-        mutableIntStateOf(activeStreamingBlockIndex)
-    }
+    val chatListMessages = messages
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2733,7 +2471,6 @@ fun ChatScreen() {
         streamingFreshStart = -1
         streamingFreshEnd = -1
         lastStreamingFreshRevealMs = 0L
-        streamingBrowseBlockSnapshot = null
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
@@ -2865,9 +2602,6 @@ fun ChatScreen() {
         val index = messages.indexOfFirst { it.id == messageId }
         if (index >= 0) {
             messages.removeAt(index)
-        }
-        if (streamingBrowseBlockSnapshot?.messageId == messageId) {
-            streamingBrowseBlockSnapshot = null
         }
     }
 
@@ -3223,13 +2957,6 @@ fun ChatScreen() {
             }
     }
 
-    LaunchedEffect(streamingBrowseBlockSnapshot?.messageId, messages.size) {
-        val snapshotMessageId = streamingBrowseBlockSnapshot?.messageId ?: return@LaunchedEffect
-        if (messages.none { it.id == snapshotMessageId }) {
-            streamingBrowseBlockSnapshot = null
-        }
-    }
-
     LaunchedEffect(
         recyclerScrollInProgress,
         chatListUserDragging,
@@ -3317,9 +3044,6 @@ fun ChatScreen() {
         anchorMessageId: String,
         shouldRestoreBottomAnchor: Boolean
     ) {
-        if (shouldRestoreBottomAnchor && streamingBrowseBlockSnapshot?.messageId == anchorMessageId) {
-            streamingBrowseBlockSnapshot = null
-        }
         // Drop stale streaming bounds so the finalized settled host must report
         // a fresh bottom before we hand geometry ownership away from streaming.
         messageContentBoundsById.remove(anchorMessageId)
@@ -3333,11 +3057,6 @@ fun ChatScreen() {
     fun finalizeStreamingStop(
         shouldRestoreBottomAnchor: Boolean
     ) {
-        val finalizingStreamingMessageId = streamingMessageId
-        val finalizingStreamingContent = streamingMessageContent
-        val shouldKeepFinalBlocks =
-            !finalizingStreamingMessageId.isNullOrBlank() &&
-                finalizingStreamingContent.isNotBlank()
         isStreaming = false
         anchoredUserMessageId = null
         sendUiSettling = false
@@ -3353,17 +3072,6 @@ fun ChatScreen() {
         fakeStreamJob = null
         streamRevealJob = null
         resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
-        streamingBrowseBlockSnapshot = if (shouldKeepFinalBlocks) {
-            StreamingBrowseBlockSnapshot(
-                messageId = finalizingStreamingMessageId.orEmpty(),
-                blocks = splitStreamingTextIntoBlocks(
-                    text = finalizingStreamingContent,
-                    forceAllStable = true
-                )
-            )
-        } else {
-            null
-        }
         restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor)
         clearPendingStreamingFinalize()
     }
@@ -3590,7 +3298,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if (text.isEmpty() || isStreaming || sendUiSettling) return
-        streamingBrowseBlockSnapshot = null
         val preSendStableCollapsedReservePx =
             if (!listShouldTrackRealtimeComposerGeometry) {
                 (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
@@ -3728,7 +3435,6 @@ fun ChatScreen() {
         if (!isStreaming && !hasStreamingItem) return
         endProgrammaticChatListScroll()
         scrollRuntime.userInteracting.value = true
-        streamingUserBrowseEpoch++
         if (scrollMode != ScrollMode.UserBrowsing) {
             scrollMode = ScrollMode.UserBrowsing
         }
@@ -3742,7 +3448,7 @@ fun ChatScreen() {
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
-            lastIndex = if (chatListItems.isEmpty()) -1 else 0,
+            lastIndex = if (chatListMessages.isEmpty()) -1 else 0,
             animated = animated,
             currentLastMessageContentBottomPx = ::currentLastMessageContentBottomPx,
             currentBottomAlignDeltaPx = ::currentBottomAlignDeltaPx,
@@ -3752,43 +3458,6 @@ fun ChatScreen() {
         )
     }
 
-    LaunchedEffect(
-        activeStreamingBlockIndex,
-        isStreaming,
-        hasStreamingItem,
-        scrollMode,
-        sendStartAnchorActive,
-        startupLayoutReady
-    ) {
-        val browseEpochAtLaunch = streamingUserBrowseEpoch
-        val previousBlockIndex = lastAutoFollowStreamingBlockIndex
-        lastAutoFollowStreamingBlockIndex = activeStreamingBlockIndex
-        if (
-            !isStreaming ||
-            !hasStreamingItem ||
-            activeStreamingBlockIndex <= previousBlockIndex ||
-            previousBlockIndex < 0 ||
-            scrollMode != ScrollMode.AutoFollow ||
-            scrollRuntime.userInteracting.value ||
-            chatListUserDragging ||
-            sendStartAnchorActive ||
-            !startupLayoutReady
-        ) {
-            return@LaunchedEffect
-        }
-        withFrameNanos { }
-        if (
-            browseEpochAtLaunch != streamingUserBrowseEpoch ||
-            scrollMode != ScrollMode.AutoFollow ||
-            scrollRuntime.userInteracting.value ||
-            chatListUserDragging ||
-            sendStartAnchorActive ||
-            !startupLayoutReady
-        ) {
-            return@LaunchedEffect
-        }
-        chatListState.requestScrollToItem(index = 0)
-    }
     restoreBottomAnchorIfNeededAfterStreamingStop =
         restoreBottomAnchorIfNeededAfterStreamingStop@{ _ ->
             // Pending finalize already waits for a fresh settled bound. Running
@@ -3959,7 +3628,6 @@ fun ChatScreen() {
 
     fun jumpToBottom() {
         snackbarScope.launch {
-            streamingBrowseBlockSnapshot = null
             performJumpToBottom(
                 messagesCount = messages.size,
                 hasStreamingItem = hasStreamingItem,
@@ -4307,119 +3975,6 @@ fun ChatScreen() {
                 }
             }
         }
-        val renderStreamingAssistantBlock: @Composable (StreamingBlockChatListItem) -> Unit = { item ->
-            val msg = item.message
-            val isActiveBlock =
-                item.isActive &&
-                    msg.id == streamingMessageId &&
-                    isStreaming
-            val localFreshStart =
-                if (isActiveBlock) {
-                    (streamingFreshStart - item.startOffset)
-                        .coerceAtLeast(0)
-                        .coerceAtMost(item.content.length)
-                } else {
-                    -1
-                }
-            val localFreshEnd =
-                if (isActiveBlock) {
-                    (streamingFreshEnd - item.startOffset)
-                        .coerceAtLeast(localFreshStart)
-                        .coerceAtMost(item.content.length)
-                } else {
-                    -1
-                }
-            val renderMode = when {
-                isActiveBlock && item.content.isBlank() && item.showWaitingBall -> StreamingRenderMode.Waiting
-                isActiveBlock -> StreamingRenderMode.Streaming
-                else -> StreamingRenderMode.Settled
-            }
-            val blankActivePlaceholder =
-                isActiveBlock && item.content.isBlank() && !item.showWaitingBall
-            val topPadding =
-                when {
-                    blankActivePlaceholder -> 0.dp
-                    item.isFirstBlock -> CHAT_MESSAGE_ITEM_VERTICAL_PADDING
-                    else -> MARKDOWN_BLOCK_SPACING
-                }
-            val bottomPadding =
-                if (item.isLastBlock && !blankActivePlaceholder) CHAT_MESSAGE_ITEM_VERTICAL_PADDING else 0.dp
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = listHorizontalPadding,
-                        top = topPadding,
-                        end = listHorizontalPadding,
-                        bottom = bottomPadding
-                    )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .widthIn(max = chromeMaxWidth)
-                        .fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        ChatStreamingRenderer(
-                            content = item.content,
-                            renderMode = renderMode,
-                            freshSuffixEnabled = isActiveBlock,
-                            showWaitingBall = item.showWaitingBall,
-                            streamingFreshStart = localFreshStart,
-                            streamingFreshEnd = localFreshEnd,
-                            streamingFreshTick = if (isActiveBlock) streamingFreshTick else 0,
-                            selectionEnabled = false,
-                            showDisclaimer = false,
-                            showLeadingSectionDivider = item.showLeadingSectionDivider,
-                            onStreamingContentBoundsChanged = if (item.isLastBlock) {
-                                { bounds ->
-                                    if (bounds != null) {
-                                        updateMessageContentBounds(msg.id, bounds)
-                                        if (isActiveBlock) {
-                                            val nextStreamingContentBottomPx =
-                                                (bounds.bottom - messageViewportTopPx).roundToInt()
-                                            if (streamingContentBottomPx != nextStreamingContentBottomPx) {
-                                                streamingContentBottomPx = nextStreamingContentBottomPx
-                                            }
-                                        }
-                                    } else {
-                                        updateMessageContentBounds(msg.id, null)
-                                    }
-                                }
-                            } else {
-                                null
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        if (item.isLastBlock && !isActiveBlock && shouldShowAiDisclaimerRefined(msg.content)) {
-                            Text(
-                                text = AI_DISCLAIMER_TEXT,
-                                modifier = Modifier.fillMaxWidth(),
-                                style = assistantDisclaimerTextStyle(),
-                                textAlign = TextAlign.Start
-                            )
-                        }
-                        if (item.isLastBlock) {
-                            val failedAssistantState = failedAssistantMessageStates[msg.id]
-                            if (failedAssistantState != null) {
-                                MessageStatusFooter(
-                                    statusText = "回复未完成",
-                                    actionText = "重试",
-                                    alignEnd = false,
-                                    onActionClick = {
-                                        retryFailedAssistantMessage(msg.id)
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
         val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
             SideEffect {
                 latestConversationBottomPaddingPx = conversationBottomPaddingPx
@@ -4451,9 +4006,9 @@ fun ChatScreen() {
             ) {
                 ChatRecyclerViewHost(
                     listState = chatListState,
-                    items = chatListItems,
-                    itemKey = { it.itemKey },
-                    itemContentType = { it.contentType },
+                    items = chatListMessages,
+                    itemKey = { it.id },
+                    itemContentType = { it.role },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = effectiveBottomPaddingPx,
                     modifier = Modifier
@@ -4487,11 +4042,8 @@ fun ChatScreen() {
                                 Modifier.graphicsLayer(alpha = 0f)
                             }
                         )
-                ) { item ->
-                    when (item) {
-                        is RegularChatListItem -> renderConversationMessage(item.message)
-                        is StreamingBlockChatListItem -> renderStreamingAssistantBlock(item)
-                    }
+                ) { msg ->
+                    renderConversationMessage(msg)
                 }
             }
         }
