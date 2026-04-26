@@ -2100,11 +2100,18 @@ fun ChatScreen() {
     val userDrivenListMotionForJumpButton =
         !programmaticScroll && (chatListUserDragging || recyclerScrollInProgress)
     val userAwayFromBottomForJumpButton by remember(
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
         reverseListAwayFromExactBottom,
         messages.size
     ) {
         derivedStateOf {
-            messages.isNotEmpty() && reverseListAwayFromExactBottom
+            if (isStreaming || hasStreamingItem) {
+                scrollMode == ScrollMode.UserBrowsing
+            } else {
+                messages.isNotEmpty() && reverseListAwayFromExactBottom
+            }
         }
     }
     LaunchedEffect(
@@ -2126,6 +2133,9 @@ fun ChatScreen() {
     }
     val showJumpButton by remember(
         startupLayoutReady,
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
         reverseListAwayFromExactBottom,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
@@ -2138,7 +2148,11 @@ fun ChatScreen() {
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
                 messages.isNotEmpty() &&
-                reverseListAwayFromExactBottom
+                if (isStreaming || hasStreamingItem) {
+                    scrollMode == ScrollMode.UserBrowsing
+                } else {
+                    reverseListAwayFromExactBottom
+                }
         }
     }
     val effectiveJumpButtonVisible by remember(
