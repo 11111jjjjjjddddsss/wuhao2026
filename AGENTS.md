@@ -249,7 +249,7 @@ Clean-State 必做回归的范围：
 - 这些保护当前只服务“发送起步短窗口”的 reserve / 放权稳定，**不是**旧 active-zone 时代那种运行时切管门
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
-- streaming 过程中，键盘 / 输入框实时几何只允许在 `AutoFollow` 且反向列表真实停在底部（index 0、offset 0）时抬升工作线；用户已进入 `UserBrowsing`、发送后键盘收起、非底部浏览、程序滚动或手指拖动期间，都必须使用稳定折叠 reserve，避免键盘动画把历史区重新拽动
+- 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`，本轮不再自动恢复 `AutoFollow`，回到底部恢复跟随后续单独走显式按钮 / 显式跳底链
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`

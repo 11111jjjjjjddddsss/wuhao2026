@@ -1718,30 +1718,10 @@ fun ChatScreen() {
         }
     }
     val shouldUseRealtimeComposerGeometry by remember(
-        startupShouldTrackRealtimeComposerGeometry,
-        isStreaming,
-        hasStreamingItem,
-        inputFieldFocused,
-        imeVisible,
-        scrollMode,
-        programmaticScroll,
-        recyclerScrollInProgress,
-        recyclerFirstVisibleItemIndex,
-        recyclerFirstVisibleItemScrollOffset,
-        chatListUserDragging
+        startupShouldTrackRealtimeComposerGeometry
     ) {
         derivedStateOf {
-            val streamingImeLiftAllowed =
-                (isStreaming || hasStreamingItem) &&
-                    inputFieldFocused &&
-                    imeVisible &&
-                    scrollMode == ScrollMode.AutoFollow &&
-                    !programmaticScroll &&
-                    !recyclerScrollInProgress &&
-                    !chatListUserDragging &&
-                    recyclerFirstVisibleItemIndex == 0 &&
-                    recyclerFirstVisibleItemScrollOffset == 0
-            startupShouldTrackRealtimeComposerGeometry || streamingImeLiftAllowed
+            startupShouldTrackRealtimeComposerGeometry
         }
     }
     val sendStartBottomPaddingLockActive by remember(
@@ -3459,6 +3439,14 @@ fun ChatScreen() {
             refreshChatListMetrics = ::refreshChatListMetrics
         )
     }
+    fun markStreamingUserBrowsingFromPointer() {
+        if (!isStreaming && !hasStreamingItem) return
+        endProgrammaticChatListScroll()
+        scrollRuntime.userInteracting.value = true
+        if (scrollMode != ScrollMode.UserBrowsing) {
+            scrollMode = ScrollMode.UserBrowsing
+        }
+    }
     fun shouldContinueProgrammaticChatListScroll(): Boolean {
         if (!isStreaming && !hasStreamingItem) return true
         return scrollMode != ScrollMode.UserBrowsing &&
@@ -4053,6 +4041,21 @@ fun ChatScreen() {
                         .then(
                             if (hasActiveMessageSelection) {
                                 selectionDismissTapModifier(activeMessageSelectionMessageId ?: "selection")
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .then(
+                            if (isStreaming || hasStreamingItem) {
+                                Modifier.pointerInput(isStreaming, hasStreamingItem) {
+                                    awaitEachGesture {
+                                        awaitFirstDown(
+                                            requireUnconsumed = false,
+                                            pass = PointerEventPass.Initial
+                                        )
+                                        markStreamingUserBrowsingFromPointer()
+                                    }
+                                }
                             } else {
                                 Modifier
                             }
