@@ -26,7 +26,7 @@
   - `items.asReversed()`
   - 列表成为当前轮 user / assistant / streaming / settled 的唯一消息主人
 - streaming 小分割 / block item 化当前已撤掉：`ChatScreen.kt` 不再把当前 assistant 派生成多个稳定 block item 和 active tail，也不再保留 `StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex` 这套派生。当前列表重新直接使用 `messages`，waiting 小球、streaming 正文、settled 完成态回到同一个 assistant item 内完成；这是为了先恢复渲染树稳定，避免小分割带来的 active/stable block 重锚、行宽重排和上滑时文本重新找位置
-- `ChatStreamingRenderer.kt` 当前对 active streaming 内容使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再显示新字尾部 fresh suffix 灰色高亮动画；settled Markdown 仍走现有静态渲染路径
+- `ChatStreamingRenderer.kt` 当前对 active streaming 内容使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再显示新字尾部 fresh suffix 灰色高亮动画；settled Markdown 也走同一套 soft-wrap block renderer，并复用现有 inline Markdown cache 保留加粗 / 链接 / code。旧 committed 物理行预切 / TextMeasurer 渲染链已经从文件中移除，避免 streaming -> settled 收口时换渲染模型导致行高 / 行宽微动
 - `ChatScreen.kt` 当前已经按单主人口径收平：
   - `messages` 仍是 oldest -> newest 的唯一消息数据源；列表显示层直接使用 `messages`，不再通过 `chatListItems` 派生 streaming block item
   - `currentLastMessageContentBottomPx()` 的 fallback 已改回 reverse-list 口径，底部最新显示项按 index `0` 取值
@@ -46,7 +46,7 @@
   - fresh bounds 到位后 `finalizeStreamingStop(...)`
   - 没有回退到 old reverse 那种“直接切 settled 不等 fresh bounds”的简化版
   - pending finalize 当前不再主动调用 `alignVisibleChatListBottom(...)` 或完整 `scrollToBottom(false)` 做完成瞬间底部精修；吐完后只等 settled fresh bounds 到位再清 streaming 状态，避免长回复完成时窗口被重新锚到上方
-  - 完成时会暂时保留已完成 block 快照，避免把多 block streaming 树立刻合回巨型 settled item 造成重排闪动；回到底部或下一轮发送会清掉快照
+  - 小分割撤掉后不再存在“完成时保留已完成 block 快照再合回完整 item”的路径；完成态稳定性主要依赖两阶段 finalize + streaming / settled 共用 soft-wrap block 渲染结构
 - `ChatScrollCoordinator.kt` 当前也已回到单主人口径：
   - `scrollToBottom(false)` 重新按 reverse-list 走 `scrollToItem(lastIndex)`，其中当前 `lastIndex` 在聊天页主调处按 `0` 传入
   - `alignVisibleChatListBottom(...)` 这条只服务 finalize 的主动底部精修 helper 已移除，避免与完成态渲染树切换打架
