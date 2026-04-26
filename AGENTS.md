@@ -249,9 +249,8 @@ Clean-State 必做回归的范围：
 - 这些保护当前只服务“发送起步短窗口”的 reserve / 放权稳定，**不是**旧 active-zone 时代那种运行时切管门
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
-- 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`。用户手动滑回反向列表真实底部 `index=0 / offset=0` 后，可以恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
-- streaming 期间 `ChatScreen.kt` 会按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，当前 active block 上限为 180 字，避免视觉底部 index `0` 的 active block 重新长成巨型 item。所有 streaming block 都使用稳定的 `messageId:streaming_block:<index>` key，避免 `scrollMode` 变化时同一可见块换 key 造成上下窜；AutoFollow 贴底状态下如果新 active block 产生，才在非用户接管窗口用 `requestScrollToItem(0)` 让下一次 remeasure 接住新尾巴。这个方案不裁剪内容、不补 streaming 高度 `scrollBy`、不恢复 overlay；点击回到底部时清掉完成后保留的 block 快照，重新回到完整 assistant item 并恢复跟随
-- `ChatStreamingRenderer.kt` 的 active streaming block 当前使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再对新字尾部做 fresh suffix 灰色高亮动画；目的是减少“吐字行本身跳 / 下一行冒头闪”的显示层抖动。已完成 block / settled Markdown 仍可按现有静态渲染路径拆行和选择
+- 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`。用户手动滑回反向列表真实底部 `index=0 / offset=0` 且严格命中 streaming 工作线后，可以恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
+- streaming 期间 `ChatScreen.kt` 会按段落边界持续把当前 assistant 派生成多个稳定 block item 和一个 active block item；代码块内不切分，超长无空行内容会在句子 / 空白边界兜底切分，当前 active block 上限为 180 字，避免视觉底部 index `0` 的 active block 重新长成巨型 item。所有 streaming block 都使用稳定的 `messageId:streaming_block:<index>` key，避免 `scrollMode` 变化时同一可见块换 key 造成上下窜；AutoFollow 贴底状态下如果新 active block 产生，才在非用户接管窗口同步回 `scrollToItem(0)` 继续跟随新尾巴。这个方案不裁剪内容、不补 streaming 高度 `scrollBy`、不恢复 overlay；点击回到底部时清掉完成后保留的 block 快照，重新回到完整 assistant item 并恢复跟随
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
   2. `upsertUserMessage(...)`
@@ -262,7 +261,7 @@ Clean-State 必做回归的范围：
 - `scrollToBottom(false)` 当前已经回到 reverse-list 主链口径；聊天页主调处应继续把“视觉底部最新消息”的 index 按 `0` 传给 coordinator，而不是沿用正向列表的 `lastIndex`
 - 反向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)` 或直接 `scrollBy(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机与发送起步保护
 - `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
-- 回到底部按钮不允许开机、程序回底、bounds 初次上报自己冒出来。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制，并且反向列表离底超过安全区：`firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 56.dp`。按钮不要再用消息 bounds / 工作线 `atBottom` 口径决定资格，也不要再加发送后 IME 过渡伪锁。按钮显示是短 pulse：用户滑动过程中强制不显示；用户停止滑动后，再统一按动态 / 静态同一套离底资格判断，离底才出现一小会儿并自动隐藏；点击按钮必须直接回到反向列表真实底部 `scrollToItem(0)` 并清掉 pulse
+- 回到底部按钮不允许开机、程序回底、bounds 初次上报自己冒出来。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制，并且反向列表真实离底 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 0`，或 streaming 态用户触碰消息列表进入 `UserBrowsing`。按钮不要再用消息 bounds / 工作线 `atBottom` 口径决定资格，也不要再加发送后 IME 过渡伪锁。按钮显示是短 pulse：用户滑动过程中强制不显示；用户停止滑动后，再统一按动态 / 静态同一套离底资格判断，离底才出现一小会儿并自动隐藏；点击按钮必须直接回到反向列表真实底部 `scrollToItem(0)` 并清掉 pulse
 - pending finalize 不再运行 `alignVisibleChatListBottom(...)` 或完整 `scrollToBottom(false)`；吐完后的渲染树切换只等 fresh bounds 到位，再清 streaming 状态，避免完成瞬间主动滚动把可视窗口带到长回复上方
 - 两阶段 finalize 当前必须继续保留，不能为了“看起来简单”回退到同拍 `isStreaming = false` 的旧写法
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态继续保留给 selection / bounds / fallback 使用；后续不要再把它们升格为“第二套消息运行时主人”的真值来源

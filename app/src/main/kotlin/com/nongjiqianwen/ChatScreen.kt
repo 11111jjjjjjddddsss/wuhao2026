@@ -494,6 +494,7 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 80.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
+private val STREAMING_AUTOFOLLOW_REJOIN_TOLERANCE = 4.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
@@ -504,7 +505,6 @@ private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
 private val MESSAGE_ACTION_MENU_SWITCH_THRESHOLD = 28.dp
 private val JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE = 32.dp
-private val JUMP_BUTTON_BOTTOM_SAFETY_ZONE = 56.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 12.dp
 internal val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
@@ -1901,6 +1901,9 @@ fun ChatScreen() {
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val streamingAutoFollowRejoinTolerancePx = with(density) {
+        STREAMING_AUTOFOLLOW_REJOIN_TOLERANCE.roundToPx()
+    }
     val staticBottomPositionTolerancePx = with(density) { STATIC_BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val assistantLineStepPx = with(density) {
         assistantParagraphTextStyle().lineHeight.toPx().roundToInt().coerceAtLeast(STREAM_BOTTOM_FOLLOW_STEP_PX)
@@ -2179,7 +2182,15 @@ fun ChatScreen() {
     }
     fun isAtStreamingWorklineStrict(): Boolean {
         if (!isStreaming || !hasStreamingItem) return atBottom
-        return isReverseListAtExactBottom()
+        if (!isReverseListAtExactBottom()) return false
+        val worklineBottom = streamingWorklineBottomPx
+        if (worklineBottom <= 0) return atBottom
+        val contentBottom = currentStreamingContentBottomPx()
+        if (contentBottom <= 0) return false
+        val deltaPx = contentBottom - worklineBottom
+        val lowerTolerancePx = streamingAutoFollowRejoinTolerancePx
+        val upperTolerancePx = streamingAutoFollowRejoinTolerancePx
+        return deltaPx in -lowerTolerancePx..upperTolerancePx
     }
     val chatPageSurface = Color(0xFFF6F7F8)
     val appCenterTint = chatPageSurface
@@ -2310,17 +2321,13 @@ fun ChatScreen() {
     val jumpButtonBottomPadding = with(density) {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
-    val jumpButtonBottomSafetyZonePx = with(density) {
-        JUMP_BUTTON_BOTTOM_SAFETY_ZONE.roundToPx()
-    }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
-    val reverseListAwayFromJumpButtonBottom by remember(
-        chatListState,
-        jumpButtonBottomSafetyZonePx
+    val reverseListAwayFromExactBottom by remember(
+        chatListState
     ) {
         derivedStateOf {
             chatListState.firstVisibleItemIndex != 0 ||
-                chatListState.firstVisibleItemScrollOffset > jumpButtonBottomSafetyZonePx
+                chatListState.firstVisibleItemScrollOffset > 0
         }
     }
     var jumpButtonUserScrollSignal by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -2328,11 +2335,18 @@ fun ChatScreen() {
     val userDrivenListMotionForJumpButton =
         !programmaticScroll && (chatListUserDragging || recyclerScrollInProgress)
     val userAwayFromBottomForJumpButton by remember(
-        reverseListAwayFromJumpButtonBottom,
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        reverseListAwayFromExactBottom,
         messages.size
     ) {
         derivedStateOf {
-            messages.isNotEmpty() && reverseListAwayFromJumpButtonBottom
+            messages.isNotEmpty() &&
+                (
+                    reverseListAwayFromExactBottom ||
+                        ((isStreaming || hasStreamingItem) && scrollMode == ScrollMode.UserBrowsing)
+                    )
         }
     }
     LaunchedEffect(
@@ -2365,7 +2379,10 @@ fun ChatScreen() {
     }
     val showJumpButton by remember(
         startupLayoutReady,
-        reverseListAwayFromJumpButtonBottom,
+        isStreaming,
+        hasStreamingItem,
+        scrollMode,
+        reverseListAwayFromExactBottom,
         userDrivenListMotionForJumpButton,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForLifecycleResume,
@@ -3747,7 +3764,13 @@ fun ChatScreen() {
         ) {
             return@LaunchedEffect
         }
-        chatListState.requestScrollToItem(index = 0)
+        beginProgrammaticChatListScroll()
+        try {
+            chatListState.scrollToItem(0)
+            withFrameNanos { }
+        } finally {
+            endProgrammaticChatListScroll()
+        }
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
         restoreBottomAnchorIfNeededAfterStreamingStop@{ _ ->
