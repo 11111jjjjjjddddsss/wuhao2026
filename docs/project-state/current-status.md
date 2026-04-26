@@ -55,6 +55,7 @@
   - streaming 期间用户触碰 / 拖动优先级高于程序滚动；一旦检测到用户接管，会先结束程序滚动标记并立即进入 `UserBrowsing`，不再让 `programmaticScroll` 分支吞掉用户手势。`scrollToBottom(...)` 这类程序对齐循环也会逐帧检查用户是否已接管，接管后立即停止。用户手动滑回反向列表真实底部 `index=0 / offset=0` 后，可以恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
   - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线。输入框内部文字或图片内容高度仍不允许顶起聊天列表
 - 回到底部按钮当前不再用消息 bounds / 工作线 `atBottom` 判断按钮资格。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制，并且反向列表离底超过安全区 `firstVisibleItemIndex != 0 || firstVisibleItemScrollOffset > 56.dp`。开机 / 程序贴底 / bounds 初次上报不会点亮按钮；发送后 IME 过渡伪锁已删除，避免发过消息后按钮长期被压死；用户滑动过程中按钮强制不显示，停止滑动后一帧再按动态 / 静态同一套离底资格判断，离底才短暂出现并自动隐藏；点击按钮直接 `scrollToItem(0)` 回到反向列表真实底部并恢复对应滚动模式
+- streaming 渲染当前不再让段落切换时的新空 active block 显示 waiting 小球：小球只在整条 assistant 还没有任何内容时显示，后续空 active block 为零高度占位。active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等到后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排；跨 block 的一级 / 二级标题分割线由 `ChatScreen.kt` 全局计算后传给 `ChatStreamingRenderer.kt`，避免标题落在新 LazyColumn item 开头时分割线丢失
 
 ## 当前调试焦点
 

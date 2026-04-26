@@ -221,7 +221,9 @@ private data class StreamingBlockChatListItem(
     val startOffset: Int,
     val isActive: Boolean,
     val isFirstBlock: Boolean,
-    val isLastBlock: Boolean
+    val isLastBlock: Boolean,
+    val showWaitingBall: Boolean,
+    val showLeadingSectionDivider: Boolean
 ) : ChatListItem {
     override val itemKey: String = "${message.id}:streaming_block:$blockIndex"
     override val contentType: Any? =
@@ -370,6 +372,24 @@ private fun splitStreamingTextIntoBlocks(
     }
 }
 
+private fun shouldShowLeadingStreamingBlockDivider(
+    blocks: List<StreamingTextBlock>,
+    blockIndex: Int
+): Boolean {
+    if (blockIndex <= 0) return false
+    val firstLine = blocks
+        .getOrNull(blockIndex)
+        ?.content
+        ?.lineSequence()
+        ?.firstOrNull { it.isNotBlank() }
+        ?: return false
+    val trimmed = firstLine.trimStart()
+    val marker = trimmed.takeWhile { it == '#' }
+    if (marker.isEmpty() || marker.length > 2) return false
+    val remainder = trimmed.drop(marker.length)
+    return remainder.startsWith(" ") && remainder.trim().isNotEmpty()
+}
+
 private fun buildChatListItems(
     messages: List<ChatMessage>,
     streamingMessageId: String?,
@@ -404,6 +424,7 @@ private fun buildChatListItems(
                 else -> null
             }
             if (blocks != null) {
+                val hasAnyBlockContent = blocks.any { it.content.isNotBlank() }
                 blocks.forEachIndexed { index, block ->
                     add(
                         StreamingBlockChatListItem(
@@ -413,7 +434,12 @@ private fun buildChatListItems(
                             startOffset = block.startOffset,
                             isActive = block.isActive,
                             isFirstBlock = index == 0,
-                            isLastBlock = index == blocks.lastIndex
+                            isLastBlock = index == blocks.lastIndex,
+                            showWaitingBall = block.isActive && !hasAnyBlockContent,
+                            showLeadingSectionDivider = shouldShowLeadingStreamingBlockDivider(
+                                blocks = blocks,
+                                blockIndex = index
+                            )
                         )
                     )
                 }
@@ -4290,14 +4316,20 @@ fun ChatScreen() {
                     -1
                 }
             val renderMode = when {
-                isActiveBlock && item.content.isBlank() -> StreamingRenderMode.Waiting
+                isActiveBlock && item.content.isBlank() && item.showWaitingBall -> StreamingRenderMode.Waiting
                 isActiveBlock -> StreamingRenderMode.Streaming
                 else -> StreamingRenderMode.Settled
             }
+            val blankActivePlaceholder =
+                isActiveBlock && item.content.isBlank() && !item.showWaitingBall
             val topPadding =
-                if (item.isFirstBlock) CHAT_MESSAGE_ITEM_VERTICAL_PADDING else MARKDOWN_BLOCK_SPACING
+                when {
+                    blankActivePlaceholder -> 0.dp
+                    item.isFirstBlock -> CHAT_MESSAGE_ITEM_VERTICAL_PADDING
+                    else -> MARKDOWN_BLOCK_SPACING
+                }
             val bottomPadding =
-                if (item.isLastBlock) CHAT_MESSAGE_ITEM_VERTICAL_PADDING else 0.dp
+                if (item.isLastBlock && !blankActivePlaceholder) CHAT_MESSAGE_ITEM_VERTICAL_PADDING else 0.dp
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -4322,12 +4354,13 @@ fun ChatScreen() {
                             content = item.content,
                             renderMode = renderMode,
                             freshSuffixEnabled = isActiveBlock,
-                            showWaitingBall = renderMode == StreamingRenderMode.Waiting,
+                            showWaitingBall = item.showWaitingBall,
                             streamingFreshStart = localFreshStart,
                             streamingFreshEnd = localFreshEnd,
                             streamingFreshTick = if (isActiveBlock) streamingFreshTick else 0,
                             selectionEnabled = false,
                             showDisclaimer = false,
+                            showLeadingSectionDivider = item.showLeadingSectionDivider,
                             onStreamingContentBoundsChanged = if (item.isLastBlock) {
                                 { bounds ->
                                     if (bounds != null) {

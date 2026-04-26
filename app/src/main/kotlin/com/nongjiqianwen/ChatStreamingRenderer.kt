@@ -429,29 +429,32 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     val headingMarker = trimmed.takeWhile { it == '#' }
     if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
         val remainder = trimmed.drop(headingMarker.length)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+        if (remainder.startsWith(" ") && remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Heading(
                 level = headingMarker.length,
                 text = remainder.trimStart()
             )
         }
     }
-    if (trimmed.startsWith(">")) {
-        val remainder = trimmed.drop(1)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+    if (trimmed.startsWith("> ")) {
+        val remainder = trimmed.drop(2)
+        if (remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Quote(remainder.trimStart())
         }
     }
-    if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
-        val remainder = trimmed.drop(1)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        val remainder = trimmed.drop(2)
+        if (remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Bullet(remainder.trimStart())
         }
     }
     val numberedPrefix = trimmed.takeWhile { it.isDigit() }
-    if (numberedPrefix.isNotEmpty() && trimmed.drop(numberedPrefix.length).startsWith(".")) {
-        val remainder = trimmed.drop(numberedPrefix.length + 1)
-        if (remainder.isEmpty() || remainder.first().isWhitespace()) {
+    if (
+        numberedPrefix.isNotEmpty() &&
+        trimmed.drop(numberedPrefix.length).startsWith(". ")
+    ) {
+        val remainder = trimmed.drop(numberedPrefix.length + 2)
+        if (remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Numbered(
                 number = numberedPrefix,
                 text = remainder.trimStart()
@@ -829,6 +832,7 @@ internal fun ChatStreamingRenderer(
     streamingFreshTick: Int,
     selectionEnabled: Boolean,
     showDisclaimer: Boolean,
+    showLeadingSectionDivider: Boolean = false,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)?,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
@@ -842,6 +846,7 @@ internal fun ChatStreamingRenderer(
         showWaitingBall = showWaitingBall,
         selectionEnabled = selectionEnabled,
         showDisclaimer = showDisclaimer,
+        showLeadingSectionDivider = showLeadingSectionDivider,
         onStreamingContentBoundsChanged = onStreamingContentBoundsChanged,
         expandToFullWidth = expandToFullWidth,
         modifier = modifier
@@ -858,6 +863,7 @@ private fun RendererAssistantMessageContentImpl(
     showWaitingBall: Boolean = false,
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
+    showLeadingSectionDivider: Boolean = false,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
     expandToFullWidth: Boolean = true,
     modifier: Modifier = Modifier
@@ -893,17 +899,24 @@ private fun RendererAssistantMessageContentImpl(
                     streamingFreshStart = streamingFreshStart,
                     streamingFreshEnd = streamingFreshEnd,
                     streamingFreshTick = streamingFreshTick,
-                    showWaitingBall = showWaitingBall || content.isBlank(),
+                    showWaitingBall = showWaitingBall,
+                    showLeadingSectionDivider = showLeadingSectionDivider,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         } else {
             if (selectionEnabled) {
                 SelectionContainer {
-                    RendererAssistantMarkdownContentImpl(content = content)
+                    RendererAssistantMarkdownContentImpl(
+                        content = content,
+                        showLeadingSectionDivider = showLeadingSectionDivider
+                    )
                 }
             } else {
-                RendererAssistantMarkdownContentImpl(content = content)
+                RendererAssistantMarkdownContentImpl(
+                    content = content,
+                    showLeadingSectionDivider = showLeadingSectionDivider
+                )
             }
             if (shouldRenderDisclaimer) {
                 Text(
@@ -963,6 +976,7 @@ private fun RendererAssistantStreamingContentImpl(
     streamingFreshEnd: Int,
     streamingFreshTick: Int,
     showWaitingBall: Boolean,
+    showLeadingSectionDivider: Boolean,
     modifier: Modifier = Modifier
 ) {
     val blockState = remember(content) { splitStreamingBlockState(content) }
@@ -981,6 +995,9 @@ private fun RendererAssistantStreamingContentImpl(
     Column(
         modifier = modifier.fillMaxWidth()
     ) {
+        if (showLeadingSectionDivider) {
+            RendererMarkdownSectionDividerImpl()
+        }
         if (showWaitingBall && unifiedModels.isEmpty()) {
             RendererAssistantStreamingWaitingIndicatorImpl(
                 modifier = Modifier.fillMaxWidth()
@@ -994,13 +1011,13 @@ private fun RendererAssistantStreamingContentImpl(
             // block index is the stable shell key we want to preserve across
             // active -> committed transitions.
             key("streaming_unified_block_$index") {
-                val showLeadingSectionDivider = shouldShowStreamingSectionDivider(
+                val blockLeadingDivider = shouldShowStreamingSectionDivider(
                     previous = unifiedModels.getOrNull(index - 1),
                     current = model
                 )
                 RendererAssistantStreamingUnifiedBlockHost(
                     model = model,
-                    showLeadingSectionDivider = showLeadingSectionDivider,
+                    showLeadingSectionDivider = blockLeadingDivider,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1427,7 +1444,11 @@ private fun RendererStreamingBulletOrNumberedBlockImpl(
 }
 
 @Composable
-private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modifier = Modifier) {
+private fun RendererAssistantMarkdownContentImpl(
+    content: String,
+    modifier: Modifier = Modifier,
+    showLeadingSectionDivider: Boolean = false
+) {
     val blockState = remember(content) { splitStreamingBlockState(content) }
     val completedModels = remember(blockState) {
         buildList {
@@ -1440,9 +1461,12 @@ private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modi
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val availableWidthPx = with(density) { maxWidth.roundToPx() }
         Column(modifier = Modifier.fillMaxWidth()) {
+            if (showLeadingSectionDivider) {
+                RendererMarkdownSectionDividerImpl()
+            }
             completedModels.forEachIndexed { index, model ->
                 key("markdown_completed_$index") {
-                    val showLeadingSectionDivider = shouldShowStreamingSectionDivider(
+                    val blockLeadingDivider = shouldShowStreamingSectionDivider(
                         previous = completedModels.getOrNull(index - 1),
                         current = model
                     )
@@ -1453,7 +1477,7 @@ private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modi
                     if (index == completedModels.lastIndex) {
                         RendererAssistantStreamingActiveBlockImpl(
                             model = model,
-                            showLeadingSectionDivider = showLeadingSectionDivider,
+                            showLeadingSectionDivider = blockLeadingDivider,
                             modifier = blockModifier
                         )
                     } else {
@@ -1461,7 +1485,7 @@ private fun RendererAssistantMarkdownContentImpl(content: String, modifier: Modi
                             model = model,
                             availableWidthPx = availableWidthPx,
                             textMeasurer = textMeasurer,
-                            showLeadingSectionDivider = showLeadingSectionDivider,
+                            showLeadingSectionDivider = blockLeadingDivider,
                             modifier = blockModifier
                         )
                     }
