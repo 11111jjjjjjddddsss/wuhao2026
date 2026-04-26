@@ -349,14 +349,9 @@ internal fun BindChatListScrollEffects(
             }
             sendStartAnchorReleaseArmedState.value = false
             if (activeScrollMode == ScrollMode.UserBrowsing) {
-                if (
-                    !listScrollInProgress &&
-                    !userInteractingState.value &&
-                    isAtStreamingWorklineStrict()
-                ) {
-                    scrollModeState.value = ScrollMode.AutoFollow
-                    continue
-                }
+                // Streaming browsing is user-owned until the user explicitly jumps
+                // back to bottom. Auto-rejoining here makes small upward drags feel
+                // like the list is being pulled back by the typewriter.
                 continue
             }
             if (listScrollInProgress || userInteractingState.value) {

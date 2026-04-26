@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-04-26
+
+- 已回退 `0e56f53 Latch streaming user scroll intent`，不再保留 nested scroll latch / 受控 IME align 那套复杂方案。随后按 Claude 会诊改成三处减法：`ChatScrollCoordinator.kt` 删除 streaming `UserBrowsing` 自动恢复 `AutoFollow` 的 bounds 判定，用户浏览后只能点“回到底部”或下一轮发送恢复；`ChatScreen.kt` 的 IME 外部高度改为直接读 `WindowInsets.ime.getBottom(density)`，不再从 composer 实测高度反推；streaming 中用户拖动列表时不再自动 hide keyboard / clear focus。
+
 ## 2026-04-25
 
 - `ChatScreen.kt` 继续收紧 streaming 手势与键盘边界：`isAtStreamingWorklineStrict()` 现在除了工作线 bounds 命中，还要求反向列表真实处在底部 `firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0`，防止轻微上滑后因旧 bounds 仍在容差内立刻恢复 `AutoFollow`。同时 streaming 中输入框聚焦 / IME 可见会直接解除 `sendStartAnchorActive`、结束 `sendUiSettling` 并清掉 `lockedConversationBottomPaddingPx`，让键盘外部几何立刻进入 bottom padding / 工作线计算；仍不恢复 IME 主动滚动。
