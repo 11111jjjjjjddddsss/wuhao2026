@@ -34,6 +34,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
@@ -3464,6 +3465,55 @@ fun ChatScreen() {
             endProgrammaticScroll = ::endProgrammaticChatListScroll,
             shouldContinue = ::shouldContinueProgrammaticChatListScroll
         )
+    }
+    LaunchedEffect(
+        scrollMode,
+        isStreaming,
+        hasStreamingItem,
+        streamingMessageId,
+        pendingStreamingFinalizeMessageId
+    ) {
+        val activeStreamingMessageId = streamingMessageId
+        if (
+            scrollMode != ScrollMode.UserBrowsing ||
+            !isStreaming ||
+            !hasStreamingItem ||
+            activeStreamingMessageId.isNullOrBlank() ||
+            !pendingStreamingFinalizeMessageId.isNullOrBlank()
+        ) {
+            return@LaunchedEffect
+        }
+        var previousStreamingHeightPx = -1
+        snapshotFlow {
+            messageContentBoundsById[activeStreamingMessageId]
+                ?.takeIf { bounds -> bounds.bottom > bounds.top }
+                ?.let { bounds -> (bounds.bottom - bounds.top).roundToInt() }
+                ?: -1
+        }
+            .distinctUntilChanged()
+            .collect { currentStreamingHeightPx ->
+                if (currentStreamingHeightPx <= 0) return@collect
+                val previousHeightPx = previousStreamingHeightPx
+                previousStreamingHeightPx = currentStreamingHeightPx
+                if (previousHeightPx <= 0 || currentStreamingHeightPx <= previousHeightPx) {
+                    return@collect
+                }
+                if (
+                    scrollMode != ScrollMode.UserBrowsing ||
+                    !pendingStreamingFinalizeMessageId.isNullOrBlank() ||
+                    chatListState.firstVisibleItemIndex != 0 ||
+                    chatListState.firstVisibleItemScrollOffset <= 0
+                ) {
+                    return@collect
+                }
+                val growthPx = currentStreamingHeightPx - previousHeightPx
+                beginProgrammaticChatListScroll()
+                try {
+                    chatListState.scrollBy(-growthPx.toFloat())
+                } finally {
+                    endProgrammaticChatListScroll()
+                }
+            }
     }
     restoreBottomAnchorIfNeededAfterStreamingStop =
         restoreBottomAnchorIfNeededAfterStreamingStop@{ _ ->
