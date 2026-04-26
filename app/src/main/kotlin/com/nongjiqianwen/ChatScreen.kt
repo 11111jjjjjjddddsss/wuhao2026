@@ -1761,7 +1761,6 @@ fun ChatScreen() {
             .calculateBottomPadding()
             .roundToPx()
     }
-    val imeBottomInsetPx = WindowInsets.ime.getBottom(density)
     val stableComposerBottomBarHeightPx by remember(
         inputChromeRowHeightPx,
         safeBottomInsetPx,
@@ -2996,14 +2995,8 @@ fun ChatScreen() {
         )
     }
 
-    LaunchedEffect(chatListUserDragging, programmaticScroll, imeVisible, isStreaming, hasStreamingItem) {
-        if (
-            !programmaticScroll &&
-            chatListUserDragging &&
-            imeVisible &&
-            !isStreaming &&
-            !hasStreamingItem
-        ) {
+    LaunchedEffect(chatListUserDragging, programmaticScroll, imeVisible) {
+        if (!programmaticScroll && chatListUserDragging && imeVisible) {
             keyboardController?.hide()
             focusManager.clearFocus(force = true)
         }
@@ -4298,8 +4291,11 @@ fun ChatScreen() {
                                 extraReservedHeightPx = streamingExtraReservedHeightPx
                             ) + streamVisibleBottomGapPx
                             ).coerceAtLeast(0)
+                    val currentExternalBottomInsetPx =
+                        (measuredComposerHeightPx - inputChromeRowHeightPx)
+                            .coerceAtLeast(0)
                     val realtimeExternalLiftPx =
-                        (imeBottomInsetPx - safeBottomInsetPx)
+                        (currentExternalBottomInsetPx - safeBottomInsetPx)
                             .coerceAtLeast(0)
                     val realtimeConversationBottomPaddingPx =
                         (
