@@ -2087,16 +2087,48 @@ fun ChatScreen() {
         effectiveBottomBarHeightPx.toDp() + JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE
     }
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
-    val streamingAwayFromWorkline by remember(
+    val reverseListAwayFromExactBottom by remember(
+        recyclerFirstVisibleItemIndex,
+        recyclerFirstVisibleItemScrollOffset
+    ) {
+        derivedStateOf {
+            recyclerFirstVisibleItemIndex != 0 ||
+                recyclerFirstVisibleItemScrollOffset > 0
+        }
+    }
+    var jumpButtonUserScrollSignal by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    val userDrivenListMotionForJumpButton =
+        !programmaticScroll && (chatListUserDragging || recyclerScrollInProgress)
+    val userAwayFromBottomForJumpButton by remember(
         isStreaming,
         hasStreamingItem,
         scrollMode,
-        streamingContentBottomPx,
-        streamingWorklineBottomPx,
-        composerTopInViewportPx
+        reverseListAwayFromExactBottom,
+        messages.size
     ) {
         derivedStateOf {
-            !isNearStreamingWorkline()
+            if (isStreaming || hasStreamingItem) {
+                scrollMode == ScrollMode.UserBrowsing && reverseListAwayFromExactBottom
+            } else {
+                messages.isNotEmpty() && reverseListAwayFromExactBottom
+            }
+        }
+    }
+    LaunchedEffect(
+        startupLayoutReady,
+        shouldRevealMessageList,
+        userDrivenListMotionForJumpButton,
+        userAwayFromBottomForJumpButton,
+        recyclerFirstVisibleItemIndex,
+        recyclerFirstVisibleItemScrollOffset
+    ) {
+        if (
+            startupLayoutReady &&
+            shouldRevealMessageList &&
+            userDrivenListMotionForJumpButton &&
+            userAwayFromBottomForJumpButton
+        ) {
+            jumpButtonUserScrollSignal++
         }
     }
     val showStreamingJumpButton by remember(
@@ -2104,7 +2136,7 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         scrollMode,
-        streamingAwayFromWorkline,
+        reverseListAwayFromExactBottom,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume,
@@ -2114,18 +2146,16 @@ fun ChatScreen() {
                 !keyboardVisibleForJumpButton &&
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
-                shouldShowStreamingScrollToBottomButton(
-                    isStreaming = isStreaming,
-                    hasStreamingItem = hasStreamingItem,
-                    scrollMode = scrollMode,
-                    nearWorkline = !streamingAwayFromWorkline
-                )
+                isStreaming &&
+                hasStreamingItem &&
+                scrollMode == ScrollMode.UserBrowsing &&
+                reverseListAwayFromExactBottom
         }
     }
     val showStaticJumpButton by remember(
         startupLayoutReady,
         isStreaming,
-        atBottom,
+        reverseListAwayFromExactBottom,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForImeTransition,
         suppressJumpButtonForLifecycleResume,
@@ -2138,7 +2168,7 @@ fun ChatScreen() {
                 !suppressJumpButtonForImeTransition &&
                 !suppressJumpButtonForLifecycleResume &&
                 messages.isNotEmpty() &&
-                !atBottom
+                reverseListAwayFromExactBottom
         }
     }
     val effectiveJumpButtonVisible by remember(
@@ -2153,8 +2183,7 @@ fun ChatScreen() {
     BindJumpButtonPulseEffect(
         showStreamingJumpButton = showStreamingJumpButton,
         showStaticJumpButton = showStaticJumpButton,
-        firstVisibleItemIndex = recyclerFirstVisibleItemIndex,
-        firstVisibleItemScrollOffset = recyclerFirstVisibleItemScrollOffset,
+        userScrollSignal = jumpButtonUserScrollSignal,
         jumpButtonPulseVisibleState = scrollRuntime.jumpButtonPulseVisible,
         autoHideMs = JUMP_BUTTON_AUTO_HIDE_MS
     )

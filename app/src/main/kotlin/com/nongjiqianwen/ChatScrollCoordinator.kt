@@ -365,34 +365,30 @@ internal fun BindChatListScrollEffects(
     }
 }
 
-internal fun shouldShowStreamingScrollToBottomButton(
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    scrollMode: ScrollMode,
-    nearWorkline: Boolean
-): Boolean {
-    return isStreaming &&
-        hasStreamingItem &&
-        scrollMode == ScrollMode.UserBrowsing &&
-        !nearWorkline
-}
-
 @Composable
 internal fun BindJumpButtonPulseEffect(
     showStreamingJumpButton: Boolean,
     showStaticJumpButton: Boolean,
-    firstVisibleItemIndex: Int,
-    firstVisibleItemScrollOffset: Int,
+    userScrollSignal: Int,
     jumpButtonPulseVisibleState: MutableState<Boolean>,
     autoHideMs: Long
 ) {
+    val lastHandledUserScrollSignal = remember {
+        mutableIntStateOf(0)
+    }
     LaunchedEffect(
         showStreamingJumpButton,
         showStaticJumpButton,
-        firstVisibleItemIndex,
-        firstVisibleItemScrollOffset
+        userScrollSignal
     ) {
         val shouldOfferJumpButton = showStreamingJumpButton || showStaticJumpButton
+        if (userScrollSignal <= lastHandledUserScrollSignal.intValue) {
+            if (!shouldOfferJumpButton) {
+                jumpButtonPulseVisibleState.value = false
+            }
+            return@LaunchedEffect
+        }
+        lastHandledUserScrollSignal.intValue = userScrollSignal
         if (!shouldOfferJumpButton) {
             jumpButtonPulseVisibleState.value = false
             return@LaunchedEffect
