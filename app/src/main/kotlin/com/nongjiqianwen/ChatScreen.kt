@@ -143,7 +143,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -1974,6 +1973,7 @@ fun ChatScreen() {
     var inputChromeMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var messageViewportMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var composerMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var measuredComposerHostHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var historyHydrationComplete by remember(uiRuntimeResetKey) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
     }
@@ -4212,6 +4212,21 @@ fun ChatScreen() {
                     .imePadding()
                     .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
                     .zIndex(55f)
+                    .onSizeChanged { size ->
+                        val canRecordCollapsedComposerHeight =
+                            !sendStartBottomPaddingLockActive &&
+                                !isComposerSettling &&
+                                !composerCollapseOverlayVisible &&
+                                !inputFieldFocused &&
+                                !imeVisible &&
+                                input.value.text.isEmpty()
+                        if (
+                            canRecordCollapsedComposerHeight &&
+                            measuredComposerHostHeightPx != size.height
+                        ) {
+                            measuredComposerHostHeightPx = size.height
+                        }
+                    }
                     .onGloballyPositioned { coordinates ->
                         val bounds = coordinates.boundsInWindow()
                         if (composerHostBoundsInWindow != bounds) {
@@ -4273,6 +4288,47 @@ fun ChatScreen() {
                 }
             )
         }
+        val measuredComposerHeightPx = measuredComposerHostHeightPx
+        val canUseMeasuredCollapsedComposerReserve =
+            !sendStartBottomPaddingLockActive &&
+                !isComposerSettling &&
+                !composerCollapseOverlayVisible &&
+                !inputFieldFocused &&
+                !imeVisible &&
+                input.value.text.isEmpty() &&
+                measuredComposerHeightPx > 0
+        val collapsedConversationReservePx =
+            if (canUseMeasuredCollapsedComposerReserve) {
+                measuredComposerHeightPx
+            } else {
+                observedCollapsedBottomReservePx
+                    .takeIf { it > 0 }
+                    ?: startupBottomBarHeightEstimatePx
+            }
+        val stableBottomReservePx =
+            resolveBottomContentReservedHeightPx(
+                overlayVisible = composerCollapseOverlayVisible,
+                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+                effectiveBottomBarHeightPx = collapsedConversationReservePx,
+                extraReservedHeightPx = streamingExtraReservedHeightPx
+            ).coerceAtLeast(0)
+        val stableStreamingBottomPaddingPx =
+            (stableBottomReservePx + streamVisibleBottomGapPx).coerceAtLeast(0)
+        val currentExternalBottomInsetPx =
+            (measuredComposerHeightPx - inputChromeRowHeightPx).coerceAtLeast(0)
+        val realtimeExternalLiftPx =
+            (currentExternalBottomInsetPx - safeBottomInsetPx).coerceAtLeast(0)
+        val realtimeStaticBottomPaddingPx =
+            (collapsedConversationReservePx + realtimeExternalLiftPx).coerceAtLeast(0)
+        val realtimeStreamingBottomPaddingPx =
+            (realtimeStaticBottomPaddingPx + streamVisibleBottomGapPx).coerceAtLeast(0)
+        val conversationBottomPaddingPx =
+            if (shouldUseRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
+                realtimeStreamingBottomPaddingPx
+            } else {
+                stableStreamingBottomPaddingPx
+            }
+        val listBottomPaddingPx = conversationBottomPaddingPx
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = pageSurface,
@@ -4345,97 +4401,9 @@ fun ChatScreen() {
                         }
                     }
             ) {
-                SubcomposeLayout(
-                    modifier = Modifier.fillMaxSize()
-                ) { constraints ->
-                    val composerPlaceables = subcompose("conversation_composer") {
-                        renderComposerBar(Modifier)
-                    }.map { measurable ->
-                        measurable.measure(
-                            constraints.copy(
-                                minHeight = 0,
-                                minWidth = constraints.maxWidth,
-                                maxWidth = constraints.maxWidth
-                            )
-                        )
-                    }
-                    val measuredComposerHeightPx =
-                        composerPlaceables.maxOfOrNull { it.height } ?: 0
-                    val canUseMeasuredCollapsedComposerReserve =
-                        !sendStartBottomPaddingLockActive &&
-                            !isComposerSettling &&
-                            !composerCollapseOverlayVisible &&
-                            !inputFieldFocused &&
-                            !imeVisible &&
-                            input.value.text.isEmpty() &&
-                            measuredComposerHeightPx > 0
-                    val collapsedConversationReservePx =
-                        if (canUseMeasuredCollapsedComposerReserve) {
-                            measuredComposerHeightPx
-                        } else {
-                            observedCollapsedBottomReservePx
-                                .takeIf { it > 0 }
-                                ?: startupBottomBarHeightEstimatePx
-                        }
-                    val stableBottomReservePx =
-                        resolveBottomContentReservedHeightPx(
-                            overlayVisible = composerCollapseOverlayVisible,
-                            overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                            effectiveBottomBarHeightPx = collapsedConversationReservePx,
-                            extraReservedHeightPx = streamingExtraReservedHeightPx
-                        ).coerceAtLeast(0)
-                    val stableStreamingBottomPaddingPx =
-                        (stableBottomReservePx + streamVisibleBottomGapPx).coerceAtLeast(0)
-                    val currentExternalBottomInsetPx =
-                        (measuredComposerHeightPx - inputChromeRowHeightPx)
-                            .coerceAtLeast(0)
-                    val realtimeExternalLiftPx =
-                        (currentExternalBottomInsetPx - safeBottomInsetPx)
-                            .coerceAtLeast(0)
-                    val realtimeStaticBottomPaddingPx =
-                        (
-                            collapsedConversationReservePx +
-                                realtimeExternalLiftPx
-                            ).coerceAtLeast(0)
-                    val realtimeStreamingBottomPaddingPx =
-                        (realtimeStaticBottomPaddingPx + streamVisibleBottomGapPx).coerceAtLeast(0)
-                    val conversationBottomPaddingPx =
-                        if (shouldUseRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
-                            realtimeStreamingBottomPaddingPx
-                        } else {
-                            stableStreamingBottomPaddingPx
-                        }
-                    val listBottomPaddingPx = conversationBottomPaddingPx
-                    val listAvailableHeightPx = constraints.maxHeight
-                    val listPlaceables = subcompose("conversation_list") {
-                        renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)
-                    }.map { measurable ->
-                        measurable.measure(
-                            constraints.copy(
-                                minHeight = 0,
-                                maxHeight = listAvailableHeightPx
-                            )
-                        )
-                    }
-                    val welcomePlaceables = subcompose("conversation_welcome") {
-                        renderWelcomePlaceholder(listBottomPaddingPx)
-                    }.map { measurable ->
-                        measurable.measure(
-                            constraints.copy(
-                                minHeight = 0,
-                                maxHeight = listAvailableHeightPx
-                            )
-                        )
-                    }
-
-                    layout(constraints.maxWidth, constraints.maxHeight) {
-                        listPlaceables.forEach { it.placeRelative(0, 0) }
-                        welcomePlaceables.forEach { it.placeRelative(0, 0) }
-                        composerPlaceables.forEach { placeable ->
-                            placeable.placeRelative(0, constraints.maxHeight - placeable.height)
-                        }
-                    }
-                }
+                renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)
+                renderWelcomePlaceholder(listBottomPaddingPx)
+                renderComposerBar(Modifier.align(Alignment.BottomCenter))
 
                 ChatComposerCollapseOverlay(
                     visible = composerCollapseOverlayVisible,

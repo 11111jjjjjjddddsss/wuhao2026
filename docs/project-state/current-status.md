@@ -14,7 +14,8 @@
 - Android Auto Backup 当前已关闭；本地聊天窗口快照、流式草稿等都只作为本机运行时缓存，不允许被系统云备份在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
 - 聊天消息运行时当前是**单一正向列表主人**：`ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，`messages` 仍按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`
 - 底部 composer 仍是页面底部的独立 UI 宿主，继续负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
-- composer 内部内容高度不作为聊天列表 reserve 真值。多行文字、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度；聊天列表 bottom padding 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve 和工作线 gap
+- `ChatScreen.kt` 当前把消息列表和 composer 作为页面 `Box` 内的兄弟层渲染：列表铺满消息区，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 已从旧 `SubcomposeLayout` 测量链里拆出，键盘动画不再每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”
+- composer 内部内容高度不作为聊天列表 reserve 真值。多行文字、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度；聊天列表 bottom padding 只允许吃折叠态 composer 外壳、safe area / navigation bar、发送期锁定 reserve 和工作线 gap。IME 动画只移动 composer，不进入列表 reserve
 - 当前工作线视觉 gap 为 `96.dp`，也就是小球、streaming 正文底边、开机历史态和完成态尾部都应落在 composer 折叠外壳上方约 96dp 的位置；工作线以下的空白必须露出来，用于免责声明 / 极端说明 / 底部呼吸区，不能把尾部文字压到输入框后面
 
 ## 聊天 UI 主链
@@ -38,7 +39,7 @@
 - 启动显示门不再把本地已有消息 / 首次欢迎空态硬等到 hydrate barrier 后才显示；有本地消息、已有 streaming item 或尚未开始过对话时，列表/欢迎壳可以先显示，减少开机白屏时间。历史消息贴底仍走正向列表最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET` 主链
 - 静态 / 开机 / 完成态到底必须同时满足文本底边命中 96dp 工作线以及 `chatListState.canScrollForward == false`，避免“文本看似贴线，但工作线以下空白还没完整露出、还能继续往上扒”的状态被误判为到底
 - 首屏历史贴底恢复成多帧确认：等 `startupLayoutReady` 后最多连续重试 6 帧，只有文本底边命中 96dp 工作线且 `canScrollForward == false` 时才把 `initialBottomSnapDone` 记完成，避免一次 `scrollToBottom(false)` 尚未真正露出底部空白就关门
-- 开机历史态 / 完成态在输入为空、无 focus、IME 收起、composer 非 settling、非发送锁的折叠稳定窗口中，列表 bottom padding 优先吃同拍实测的 composer 高度再加 96dp 工作线 gap，不再只靠启动估值 / 旧观察值；这是为了保证工作线以下空白完整露出来
+- 开机历史态 / 完成态在输入为空、无 focus、IME 收起、composer 非 settling、非发送锁的折叠稳定窗口中，列表 bottom padding 优先吃底部固定 composer 宿主的稳定实测高度再加 96dp 工作线 gap，不再只靠启动估值 / 旧观察值；这是为了保证工作线以下空白完整露出来，同时避免 IME 动画帧进入列表测量链
 - 用户进入 `UserBrowsing` 后，必须连续 2 帧稳定命中底部才允许恢复 `AutoFollow`，避免正向 pre-anchor 造成的瞬态到底把用户小幅上滑重新吸回，同时让手动往下滑回底部后的自动跟随恢复更利索
 - 回到底部按钮仍保留 56dp 安全区：用户滑动过程中不显示，停止滑动后如果正向列表仍可向前滚动且最新消息底边离 96dp 工作线超过安全区，才短暂出现；点击后滚到最新消息 `lastIndex` 并恢复对应滚动模式
 
@@ -65,6 +66,7 @@
   5. 用户点击回到底部后是否恢复 AutoFollow
   6. finalize 收口是否稳定，尤其含免责声明答案是否不再尾部增高微跳
   7. 输入框上方和静态文本底部是否不再出现额外白块
+  8. 冷启动首次点输入框、键盘弹起 / 回缩是否比旧 `SubcomposeLayout` 版本更利索；如果仍有残影，再单独评估 composer collapse overlay / focus-hide 时序，不先动消息列表主链
 
 ## 当前交接入口
 

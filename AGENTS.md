@@ -199,7 +199,8 @@ Clean-State 必做回归的范围：
   - `messages` 仍按 oldest -> newest 存储，视觉底部最新消息是 `lastIndex`
   - 回到底部 / AutoFollow 使用最新消息 index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义，把最新消息底部压到工作线附近
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
-- composer 内部内容高度不属于聊天列表 bottom reserve。长文本、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / IME / 底部外部几何、发送期锁定 reserve、工作线 gap。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
+- `ChatScreen.kt` 当前把消息列表和 composer 作为同一个页面 `Box` 下的兄弟层渲染：列表先铺满消息区域，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 不再作为 `SubcomposeLayout` 的 child 参与列表同拍测量，避免 IME 动画每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”
+- composer 内部内容高度不属于聊天列表 bottom reserve。长文本、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / navigation bar、发送期锁定 reserve、工作线 gap。IME 动画只移动 composer，不允许重新进入列表 reserve。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
 - waiting 小球、streaming 正文、settled 完成态共用同一条 assistant 消息 item。`ChatScreen.kt` 当前已撤掉 streaming 小分割 / block item 化，不再把一条 assistant 在 `LazyColumn` 内派生成多个稳定 block item 和 active tail；`ChatStreamingRenderer.kt` 也不再保留完成态预切物理行 / committed TextMeasurer 渲染链，settled Markdown 和 streaming 使用同一套 soft-wrap block 渲染结构，优先恢复渲染树稳定。仍禁止恢复 overlay / active-zone / 第二滚动宿主
 - mixed active-zone / overlay 运行时当前已退出主链：
   - `StreamingLocation`
@@ -223,8 +224,8 @@ Clean-State 必做回归的范围：
 - 作用：继续只维护一套 `Idle / AutoFollow / UserBrowsing` 滚动状态机；`scrollToBottom(false)`、jump button 和 follow 都只围绕正向列表主链派生，不允许并存第二条补滚链
 
 3. 发送期几何稳定
-- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的“消息列表 + composer 共享 measure 宿主”
-- 作用：发送当拍允许即时清空输入框并立即插入消息，但列表实际吃到的底部 reserve 仍必须和 composer 在同一轮 measure 里产出；旧 `composerTopInViewportPx` 只保留为辅助几何 / fallback，不再重新升回唯一真相
+- 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的正向列表主链、底部固定 composer 宿主与稳定折叠 reserve
+- 作用：发送当拍允许即时清空输入框并立即插入消息，但列表实际吃到的底部 reserve 必须来自稳定折叠态 composer 外壳实测值 / 发送期锁定值，而不是 IME 动画帧或输入框内容高度；旧 `composerTopInViewportPx` 只保留为辅助几何 / fallback，不再重新升回唯一真相
 
 4. 完成态收口
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt) 的两阶段 finalize
@@ -251,7 +252,7 @@ Clean-State 必做回归的范围：
   - `sendStartAnchorActive`
 - 这些保护当前只服务“发送起步短窗口”的 reserve / 放权稳定，**不是**旧 active-zone 时代那种运行时切管门
 - `sendStartBottomPaddingLockActive` 期间，列表 bottom padding 与 streaming 工作线必须使用同一份锁定几何：`streamingWorklineBottomPx = lockedMessageViewportHeightPx - lockedConversationBottomPaddingPx`。不允许列表吃 locked padding、工作线却继续吃当前长文本输入框或实时 composer 高度，否则小球锚点会被长输入框顶高
-- `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有键盘 / navigation bar / composer 外壳这类外部几何变化能进入聊天列表 bottom padding
+- `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有稳定折叠态 composer 外壳、navigation bar / safe bottom、发送期锁定 reserve 和工作线 gap 能进入聊天列表 bottom padding。IME 动画期间不更新列表 reserve，只移动 composer 自己
 - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`。用户手动滑回正向列表底部（`canScrollForward == false` 且底边命中工作线容差）后，可以恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
 - streaming 期间当前不再做段落级 LazyColumn item 小分割，也不再保留 `StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex` 这套派生和新 active block `requestScrollToItem(0)` 接尾巴链。生成中的 assistant 仍是 `messages` 里的单个 item，`ChatStreamingRenderer.kt` 在这个 item 内负责 waiting / streaming / settled 显示；当前抢手问题改回正向列表上继续磨，优先保证用户上滑浏览时不被正在长高的最新 assistant 反向锚点拖回
 - `ChatStreamingRenderer.kt` 的 active streaming 内容当前使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再对新字尾部做 fresh suffix 灰色高亮动画。active Markdown 仍实时吐字，但只有 `# ` / `- ` / `1. ` 等结构前缀后已经出现非空正文时才切成标题 / 列表 / 引用，不能把只有符号的半成品立刻结构化；已完成 / settled Markdown 也走同一套 soft-wrap block renderer，并复用现有 inline Markdown cache 保留加粗 / 链接 / code，不再走旧 committed 物理行预切 / TextMeasurer 路径
@@ -269,8 +270,8 @@ Clean-State 必做回归的范围：
 - 高频 reveal 底部锚点请求使用一份 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
 - 静态 / 开机 / 完成态到底不只看“文本 bottom 命中工作线”，还必须满足正向列表 `canScrollForward == false`，确保工作线以下完整 96dp 空白已经真正滚出来，不能出现看似贴线但还能继续往上扒出底部空白
 - 首屏历史贴底不能“一次 scroll 后就关门”；必须等 `startupLayoutReady` 后多帧重试，并且只有文本 bottom 命中 96dp 工作线、`canScrollForward == false` 同时成立时，才允许把 `initialBottomSnapDone` 记为完成
-- 开机历史态 / 完成态的底部 reserve 在“输入为空、无 focus、IME 收起、composer 非 settling、非发送锁”的折叠稳定窗口中，必须优先使用同拍实测的 `measuredComposerHeightPx + STREAM_VISIBLE_BOTTOM_GAP`，不能只吃启动估值或旧观察值；否则真机输入框真实高度大于估值时，工作线以下空白露不全，用户还能继续往上扒
-- 用户进入 `UserBrowsing` 后，即使底部判定瞬间变回 true，也必须连续 5 帧稳定命中底部才恢复 `AutoFollow`，避免 pre-anchor 的瞬态到底把用户小幅上滑重新吸回
+- 开机历史态 / 完成态的底部 reserve 在“输入为空、无 focus、IME 收起、composer 非 settling、非发送锁”的折叠稳定窗口中，必须优先使用底部固定 composer 宿主的稳定实测高度 + `STREAM_VISIBLE_BOTTOM_GAP`，不能只吃启动估值或旧观察值；否则真机输入框真实高度大于估值时，工作线以下空白露不全，用户还能继续往上扒
+- 用户进入 `UserBrowsing` 后，即使底部判定瞬间变回 true，也必须连续 2 帧稳定命中底部才恢复 `AutoFollow`，避免 pre-anchor 的瞬态到底把用户小幅上滑重新吸回，同时让手动往下滑回底部后的自动跟随恢复更利索
 - `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
 - 回到底部按钮不允许开机、程序回底、bounds 初次上报自己冒出来。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制、用户滑动已经停下，并且正向列表仍可向前滚动且最新消息底边离 96dp 工作线超过 56dp 安全区。按钮不要再用旧反向 `firstVisibleItemIndex == 0` 口径，也不要再加发送后 IME 过渡伪锁。按钮显示是短 pulse：用户滑动过程中强制不显示；用户停止滑动后，再统一按动态 / 静态同一套离底资格判断，离底才出现一小会儿并自动隐藏；点击按钮必须直接滚到正向列表最新消息 `lastIndex` 并清掉 pulse
 - pending finalize 不再运行 `alignVisibleChatListBottom(...)` 或完整 `scrollToBottom(false)`；吐完后的渲染树切换只等 fresh bounds 到位。若用户仍处于 AutoFollow，fresh bounds 到位后只请求一次正向底部锚点，再清 streaming 状态，避免完成瞬间主动滚动把可视窗口带到长回复上方

@@ -5,6 +5,7 @@
 
 ## 2026-04-27
 
+- `ChatScreen.kt` 按输入框 IME 丝滑度会诊先落 P0 保守刀：composer 从旧 `SubcomposeLayout` 的列表同测量链里拆出，改成页面 `Box` 底部固定兄弟层，列表继续铺满消息区并只吃稳定折叠态 composer reserve + 96dp 工作线 gap。composer 自己仍保留 `imePadding()`，根容器不吃 IME padding，所以键盘弹起 / 回缩只移动输入框，不再让列表和工作线每帧跟着 remeasure。这刀暂不删除 `ChatComposerCollapseOverlay` / prewarm，避免一次性改动发送收口；若真机仍有残影，再围绕 overlay / focus-hide 时序单独处理。
 - `ChatScrollCoordinator.kt` 将 `UserBrowsing -> AutoFollow` 的手动回底确认从连续 5 帧收短到 2 帧。原因是真机反馈“手动往下滑回到底部后，自动跟随不够利索”，而 streaming 正在继续长高时 5 帧确认容易被新内容打断；2 帧仍保留防瞬态误吸回缓冲，但能更快恢复 AutoFollow。不改 SideEffect 同帧锚定、不改 renderer、不恢复 `scrollBy` / overlay / 小分割。
 - 用户真机初测确认 `901df5a` 的 SideEffect 同帧锚定已经压住正向列表 streaming 工作线下方“下一行冒头闪”：内容变更触发重组后，`SideEffect` 在 apply changes 后、layout 前请求最新消息底部锚点，使 soft-wrap 增高和列表底部 clamp 在同一帧内完成。当前结论是这条方案有效，不需要恢复小分割、overlay、raw delta / `scrollBy` 或旧物理行 renderer；后续只继续观察长回复 / 不同机型是否复现。
 - `ChatScreen.kt` 按会诊结论把正向列表 AutoFollow 的 streaming 底部锚定从“内容更新后同回调再补一次 `requestScrollToItem(...)`”改成顶层 `SideEffect` 同帧锚定：`streamingMessageContent` 触发重组后，SideEffect 在 apply changes 后、layout 前请求最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让 soft-wrap 新行增高和底部锚定尽量落在同一帧，专门压工作线下方下一行冒头闪。本次不改 renderer、不恢复小分割、不恢复 overlay / active-zone，也不使用 `scrollBy` / `dispatchRawDelta`。
