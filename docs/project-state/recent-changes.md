@@ -5,6 +5,7 @@
 
 ## 2026-04-27
 
+- `AndroidManifest.xml` 继续加固 clean-state / 清数据后不回灌旧 UI：在已有 `android:allowBackup="false"` 基础上，新增 `dataExtractionRules` 和 `fullBackupContent`，显式排除 cloud backup、device transfer、shared preferences、files、databases 和 external 数据。目的不是改变聊天 UI，而是防止 `chat_ui_cache`、`app_ids`、旧 UI metrics / snapshot 这类本地状态在清数据、重装或设备迁移后被系统 / 厂商备份链恢复回来。
 - `ChatScreen.kt` 对发送路径再收一刀输入框回缩时序：发送清空输入后只调用 `focusManager.clearFocus(force = true)`，不再在同一帧额外调用 `keyboardController?.hide()`。这只影响点击发送后的键盘回缩，目的是避免部分 IME 在 `clearFocus + hide` 双触发下多抖一拍；点空白收键盘、拖列表收键盘、生命周期暂停收键盘等其他入口保持不变，滚动链 / 96dp 工作线 / SideEffect 同帧锚定不动。
 - `ChatComposerCoordinator.kt` 按会诊核验后的最小安全刀取消发送收口旧高度锁：`prepareComposerCollapse(...)` 现在不再把发送前的输入内容高度 / chrome 高度写进 `composerSettlingMinHeightPx` 和 `composerSettlingChromeHeightPx`，也不再 suppress cursor。发送时清空输入后 composer 可直接回到空态高度，避免“文字已经没了但旧高度还撑几帧”的残影；本次不删 overlay 死链、不改 `clearFocus + keyboardController.hide()` 时序、不动滚动链 / 96dp 工作线。
 - `ChatScrollCoordinator.kt` 按小米 / MiMo 会诊修正手动下滑回底后的 AutoFollow 恢复：`UserBrowsing` 中如果正向列表已经到物理底部（`canScrollForward == false`）、手指已抬起且列表停止，会先请求一次 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET` 底部锚点，再切回 `AutoFollow`。旧的连续 2 帧工作线命中仍保留为兜底；这避免 streaming 持续吐字反复打断工作线容差，导致用户明明滑到底但过一会儿才继续跟随。不改 SideEffect 同帧锚定、不恢复 `scrollBy` / overlay / 小分割。
