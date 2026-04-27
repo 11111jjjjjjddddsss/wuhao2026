@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-04-27
+
+- `ChatScreen.kt` 将 streaming 工作线视觉 gap 从 `80.dp` 抬到 `96.dp`，小球首发锚点和 streaming 正文底边继续围绕这条工作线；开机历史态和 streaming 完成后的 settled 消息则改用不含 96dp 工作线 gap 的静态列表底部，让消息内的免责声明 / 尾部提示作为真实内容自然占位，不再把完成态尾部悬在工作线上。同次，启动显示门不再让本地已有消息 / 首次欢迎空态硬等 hydrate barrier，减少开机白屏时间；AutoFollow reveal 在提交 `streamingMessageContent` 后同回调再补一次正向底部锚点，继续压工作线下方下一行冒头闪。没有恢复小分割、overlay / active-zone、`scrollBy` / `dispatchRawDelta` 或旧 reverse-list 链。
+
 ## 2026-04-26
 
 - `ChatRecyclerViewHost.kt` / `ChatScreen.kt` / `ChatScrollCoordinator.kt` 按用户最终拍板把聊天主链切回正向 `LazyColumn`：`messages` 仍按 oldest -> newest 直接显示，短内容不满一屏时由 `verticalArrangement = Arrangement.Bottom` 贴底，回到底部 / AutoFollow 改用最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，并删除回底链里旧 `scrollBy` bottom-align 精修。发送起步仍保留 `sendStartAnchorActive` 与 bottom padding lock，小球 / streaming 正文 / 完成态尾部继续落在 80dp 工作线；列表 bottom padding 只扣除消息 item 外层 8dp padding 来补偿正向 item 外壳，不改变工作线本身。streaming reveal 提交前会先请求底部锚点，专门压正向列表下一行从工作线下方冒头的一帧；高频请求用 generation 守护，避免旧的一帧后取消任务误关新的 `programmaticScroll`；用户进入 `UserBrowsing` 后必须连续 5 帧稳定到底才恢复 `AutoFollow`，避免 pre-anchor 瞬态到底造成吸回。`ChatStreamingRenderer.kt` 在 streaming 期间用同一个免责声明 `Text` 透明占位、不提前显示文字，fresh settled bounds 到位后 AutoFollow 只请求一次正向底部锚点，降低 finalize 尾部增高闪动风险。代码层面已复查无 `reverseLayout/asReversed`、小分割 list itemization、overlay/active-zone、`scrollBy/dispatchRawDelta` streaming 高度补偿残留。

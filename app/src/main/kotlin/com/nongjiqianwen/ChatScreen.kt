@@ -296,7 +296,7 @@ private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
 internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
-private val STREAM_VISIBLE_BOTTOM_GAP = 80.dp
+private val STREAM_VISIBLE_BOTTOM_GAP = 96.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
@@ -1654,6 +1654,7 @@ fun ChatScreen() {
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
     var latestConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
+    var latestListContentBottomTargetPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var lockedConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var observedCollapsedBottomReservePx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -1918,7 +1919,9 @@ fun ChatScreen() {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentStaticBottomTargetPx(): Int {
-        return streamingWorklineBottomPx.takeIf { it > 0 } ?: 0
+        latestListContentBottomTargetPx.takeIf { it > 0 }?.let { return it }
+        val staticBottomPx = streamingWorklineBottomPx + streamVisibleBottomGapPx
+        return staticBottomPx.takeIf { it > 0 }?.coerceAtMost(messageViewportHeightPx) ?: 0
     }
     fun currentUnifiedBottomTargetPx(): Int {
         return if (isStreaming || hasStreamingItem) {
@@ -2026,13 +2029,15 @@ fun ChatScreen() {
     val shouldRevealMessageList by remember(
         startupHydrationBarrierSatisfied,
         messages.size,
-        hasStreamingItem
+        hasStreamingItem,
+        hasStartedConversation
     ) {
         derivedStateOf {
             when {
-                !startupHydrationBarrierSatisfied -> false
                 messages.isNotEmpty() -> true
                 hasStreamingItem -> true
+                !hasStartedConversation -> true
+                startupHydrationBarrierSatisfied -> true
                 else -> false
             }
         }
@@ -2040,10 +2045,11 @@ fun ChatScreen() {
     val showWelcomePlaceholder by remember(
         startupHydrationBarrierSatisfied,
         messages.size,
-        hasStreamingItem
+        hasStreamingItem,
+        hasStartedConversation
     ) {
         derivedStateOf {
-            startupHydrationBarrierSatisfied && messages.isEmpty() && !hasStreamingItem
+            messages.isEmpty() && !hasStreamingItem && (startupHydrationBarrierSatisfied || !hasStartedConversation)
         }
     }
     val topInset = WindowInsets.safeDrawing
@@ -3063,6 +3069,9 @@ fun ChatScreen() {
                 streamingFreshEnd = advance.freshEnd
                 streamingFreshTick = advance.freshTick
                 lastStreamingFreshRevealMs = advance.lastFreshRevealMs
+                if (shouldPreAnchorBottom) {
+                    requestForwardListBottomAnchor()
+                }
             }
         )
     }
@@ -4045,8 +4054,18 @@ fun ChatScreen() {
             }
         }
         val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
+            val effectiveBottomPaddingPx =
+                lockedConversationBottomPaddingPx
+                    .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
+                    ?.let { lockedPaddingPx -> lockedPaddingPx }
+                    ?: listBottomPaddingPx
+            val forwardListBottomPaddingPx =
+                (effectiveBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
+            val listContentBottomTargetPx =
+                (messageViewportHeightPx - effectiveBottomPaddingPx).coerceAtLeast(0)
             SideEffect {
                 latestConversationBottomPaddingPx = conversationBottomPaddingPx
+                latestListContentBottomTargetPx = listContentBottomTargetPx
                 val collapsedStable =
                     !sendStartBottomPaddingLockActive &&
                         !isComposerSettling &&
@@ -4065,13 +4084,6 @@ fun ChatScreen() {
                     }
                 }
             }
-            val effectiveBottomPaddingPx =
-                lockedConversationBottomPaddingPx
-                    .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
-                    ?.let { lockedPaddingPx -> lockedPaddingPx }
-                    ?: listBottomPaddingPx
-            val forwardListBottomPaddingPx =
-                (effectiveBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
             CompositionLocalProvider(
                 LocalBringIntoViewSpec provides StaticMessageSelectionBringIntoViewSpec
             ) {
@@ -4340,35 +4352,48 @@ fun ChatScreen() {
                         observedCollapsedBottomReservePx
                             .takeIf { it > 0 }
                             ?: startupBottomBarHeightEstimatePx
-                    val stableConversationBottomPaddingPx =
-                        (
-                            resolveBottomContentReservedHeightPx(
-                                overlayVisible = composerCollapseOverlayVisible,
-                                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-                                effectiveBottomBarHeightPx = collapsedConversationReservePx,
-                                extraReservedHeightPx = streamingExtraReservedHeightPx
-                            ) + streamVisibleBottomGapPx
-                            ).coerceAtLeast(0)
+                    val stableBottomReservePx =
+                        resolveBottomContentReservedHeightPx(
+                            overlayVisible = composerCollapseOverlayVisible,
+                            overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
+                            effectiveBottomBarHeightPx = collapsedConversationReservePx,
+                            extraReservedHeightPx = streamingExtraReservedHeightPx
+                        ).coerceAtLeast(0)
+                    val stableStreamingBottomPaddingPx =
+                        (stableBottomReservePx + streamVisibleBottomGapPx).coerceAtLeast(0)
+                    val stableStaticBottomPaddingPx = stableBottomReservePx
                     val currentExternalBottomInsetPx =
                         (measuredComposerHeightPx - inputChromeRowHeightPx)
                             .coerceAtLeast(0)
                     val realtimeExternalLiftPx =
                         (currentExternalBottomInsetPx - safeBottomInsetPx)
                             .coerceAtLeast(0)
-                    val realtimeConversationBottomPaddingPx =
+                    val realtimeStaticBottomPaddingPx =
                         (
                             collapsedConversationReservePx +
-                                realtimeExternalLiftPx +
-                                streamVisibleBottomGapPx
+                                realtimeExternalLiftPx
                             ).coerceAtLeast(0)
+                    val realtimeStreamingBottomPaddingPx =
+                        (realtimeStaticBottomPaddingPx + streamVisibleBottomGapPx).coerceAtLeast(0)
                     val conversationBottomPaddingPx =
                         if (shouldUseRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
-                            realtimeConversationBottomPaddingPx
+                            realtimeStreamingBottomPaddingPx
                         } else {
-                            stableConversationBottomPaddingPx
+                            stableStreamingBottomPaddingPx
+                        }
+                    val staticBottomPaddingPx =
+                        if (shouldUseRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
+                            realtimeStaticBottomPaddingPx
+                        } else {
+                            stableStaticBottomPaddingPx
+                        }
+                    val listBottomPaddingPx =
+                        if (isStreaming || hasStreamingItem || sendStartBottomPaddingLockActive) {
+                            conversationBottomPaddingPx
+                        } else {
+                            staticBottomPaddingPx
                         }
                     val listAvailableHeightPx = constraints.maxHeight
-                    val listBottomPaddingPx = conversationBottomPaddingPx
                     val listPlaceables = subcompose("conversation_list") {
                         renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)
                     }.map { measurable ->

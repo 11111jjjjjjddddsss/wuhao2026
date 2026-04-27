@@ -207,8 +207,8 @@ Clean-State 必做回归的范围：
   - `renderBottomActiveZone()`
   - active-zone 拖动接管 / Overlay 恢复门
   - `requestSendStartBottomSnap()` 那条“只滚 historyMessages”的发送起步链
-- 工作线和静态贴底线继续共用同一个物理锚点；当前口径是“列表里最新消息的可见底边 + 共享 measure 宿主同拍产出的 composer reserve”
-- 正向列表会把 `CHAT_MESSAGE_ITEM_VERTICAL_PADDING` 从传给 `LazyColumn` 的 bottom padding 里扣掉，只补偿 item 外层 padding，不改变工作线本身；小球、streaming 正文、完成态尾部仍应落在同一条 80dp 工作线
+- streaming 工作线和静态贴底线不再共用同一个视觉高度：生成中的小球 / streaming 正文底边使用 composer 折叠外壳上方 `96.dp` 工作线；开机历史态和 streaming 完成后的 settled 消息贴到静态列表底部，让消息内的免责声明 / 尾部提示作为真实内容自然占位
+- 正向列表会把 `CHAT_MESSAGE_ITEM_VERTICAL_PADDING` 从传给 `LazyColumn` 的 bottom padding 里扣掉，只补偿 item 外层 padding，不改变工作线本身；小球、streaming 正文仍应落在同一条 96dp 工作线，静态历史和完成态尾部不再围绕工作线悬停
 - 底部不应再出现额外可见空白；历史区浏览时，输入框弹起 / 收起也不应再带着消息区整体联动
 
 ### 7.2 五环节铁律
@@ -265,11 +265,11 @@ Clean-State 必做回归的范围：
   6. 按正向列表口径同步请求最新消息 `lastIndex` + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让新插入的底部 assistant placeholder 成为视觉底部锚点
 - `scrollToBottom(false)` 当前是正向列表主链口径；聊天页主调处应把“视觉底部最新消息”的 index 按 `lastIndex` 传给 coordinator，并使用 `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，不要回到 `scrollToItem(0)`
 - 正向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)`、`scrollBy(...)` 或 `dispatchRawDelta(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机、发送起步保护和正向底部锚点请求
-- AutoFollow 中每次 reveal 提交前会先请求一次最新消息底部锚点，随后同拍提交 `streamingMessageContent`，减少“新换行先进树、下一帧才贴底”造成的工作线下方冒头闪
+- AutoFollow 中每次 reveal 提交前会先请求一次最新消息底部锚点，提交 `streamingMessageContent` 后同一回调里再补一次最新消息底部锚点，减少“新换行先进树、下一帧才贴底”造成的工作线下方冒头闪；这只作用于生成态工作线，不把静态历史 / 完成态尾部重新悬到工作线
 - 高频 reveal 底部锚点请求使用一份 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
 - 用户进入 `UserBrowsing` 后，即使底部判定瞬间变回 true，也必须连续 5 帧稳定命中底部才恢复 `AutoFollow`，避免 pre-anchor 的瞬态到底把用户小幅上滑重新吸回
 - `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
-- 回到底部按钮不允许开机、程序回底、bounds 初次上报自己冒出来。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制、用户滑动已经停下，并且正向列表仍可向前滚动且最新消息底边离工作线超过 56dp 安全区。按钮不要再用旧反向 `firstVisibleItemIndex == 0` 口径，也不要再加发送后 IME 过渡伪锁。按钮显示是短 pulse：用户滑动过程中强制不显示；用户停止滑动后，再统一按动态 / 静态同一套离底资格判断，离底才出现一小会儿并自动隐藏；点击按钮必须直接滚到正向列表最新消息 `lastIndex` 并清掉 pulse
+- 回到底部按钮不允许开机、程序回底、bounds 初次上报自己冒出来。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制、用户滑动已经停下，并且正向列表仍可向前滚动且最新消息底边离当前底部目标超过 56dp 安全区。当前底部目标在 streaming 中是 96dp 工作线，在静态 / 完成态是静态列表底部。按钮不要再用旧反向 `firstVisibleItemIndex == 0` 口径，也不要再加发送后 IME 过渡伪锁。按钮显示是短 pulse：用户滑动过程中强制不显示；用户停止滑动后，再统一按动态 / 静态同一套离底资格判断，离底才出现一小会儿并自动隐藏；点击按钮必须直接滚到正向列表最新消息 `lastIndex` 并清掉 pulse
 - pending finalize 不再运行 `alignVisibleChatListBottom(...)` 或完整 `scrollToBottom(false)`；吐完后的渲染树切换只等 fresh bounds 到位。若用户仍处于 AutoFollow，fresh bounds 到位后只请求一次正向底部锚点，再清 streaming 状态，避免完成瞬间主动滚动把可视窗口带到长回复上方
 - 两阶段 finalize 当前必须继续保留，不能为了“看起来简单”回退到同拍 `isStreaming = false` 的旧写法
 - `composerTopInViewportPx`、`messageViewportTopPx`、`inputFieldBoundsInWindow` 等旧几何状态继续保留给 selection / bounds / fallback 使用；后续不要再把它们升格为“第二套消息运行时主人”的真值来源
