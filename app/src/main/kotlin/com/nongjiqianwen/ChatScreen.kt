@@ -8,6 +8,7 @@ import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -269,6 +270,7 @@ private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
+private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
@@ -1568,6 +1570,21 @@ fun ChatScreen() {
     val messages = remember(uiRuntimeResetKey) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
     }
+    LaunchedEffect(uiRuntimeResetKey) {
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                CHAT_STARTUP_DIAG_TAG,
+                buildString {
+                    append("scopeSuffix=").append(chatScopeId.takeLast(8))
+                    append(", localMessages=").append(initialLocalSnapshot.messages.size)
+                    append(", localFailedUsers=").append(initialLocalSnapshot.failedUserMessageStates.size)
+                    append(", localFailedAssistants=").append(initialLocalSnapshot.failedAssistantMessageStates.size)
+                    append(", localDraft=").append(initialStreamingDraft != null)
+                    append(", hasRemoteSource=").append(hasRemoteHistorySource)
+                }
+            )
+        }
+    }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
@@ -2859,15 +2876,32 @@ fun ChatScreen() {
                 }
                 mainHandler.post {
                         if (remoteMessages.isNotEmpty()) {
+                            val shouldApplyHydratedSnapshot = shouldApplyHydratedSnapshot(
+                                currentMessages = messages,
+                                currentFailedUserMessageStates = failedUserMessageStates,
+                                currentFailedAssistantMessageStates = failedAssistantMessageStates,
+                                hydratedSnapshot = hydratedSnapshot
+                            )
+                            if (BuildConfig.DEBUG) {
+                                Log.d(
+                                    CHAT_STARTUP_DIAG_TAG,
+                                    buildString {
+                                        append("remoteMessages=").append(remoteMessages.size)
+                                        append(", hydratedMessages=").append(hydratedSnapshot.messages.size)
+                                        append(", applied=").append(
+                                            !hasStartedConversation &&
+                                                !isStreaming &&
+                                                shouldApplyHydratedSnapshot
+                                        )
+                                        append(", hasStarted=").append(hasStartedConversation)
+                                        append(", isStreaming=").append(isStreaming)
+                                    }
+                                )
+                            }
                             if (
                                 !hasStartedConversation &&
                                 !isStreaming &&
-                                shouldApplyHydratedSnapshot(
-                                    currentMessages = messages,
-                                    currentFailedUserMessageStates = failedUserMessageStates,
-                                    currentFailedAssistantMessageStates = failedAssistantMessageStates,
-                                    hydratedSnapshot = hydratedSnapshot
-                                )
+                                shouldApplyHydratedSnapshot
                             ) {
                                 replaceMessages(hydratedSnapshot.messages)
                                 failedUserMessageStates.clear()
