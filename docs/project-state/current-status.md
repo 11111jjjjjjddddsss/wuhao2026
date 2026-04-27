@@ -34,6 +34,7 @@
 - 正向列表传给 `LazyColumn` 的 bottom padding 会扣掉 `CHAT_MESSAGE_ITEM_VERTICAL_PADDING`，只补偿消息 item 外层 padding，不改变工作线本身
 - 每次 reveal 提交前，AutoFollow 会先请求一次最新消息底部锚点，再提交新的 `streamingMessageContent`，专门压正向列表下一行先从工作线下方冒头的一帧
 - 高频 reveal 底部锚点请求带 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
+- 用户进入 `UserBrowsing` 后，必须连续 5 帧稳定命中底部才允许恢复 `AutoFollow`，避免正向 pre-anchor 造成的瞬态到底把用户小幅上滑重新吸回
 - 回到底部按钮仍保留 56dp 安全区：用户滑动过程中不显示，停止滑动后如果正向列表仍可向前滚动且最新消息底边离工作线超过安全区，才短暂出现；点击后滚到最新消息 `lastIndex` 并恢复对应滚动模式
 
 ## 渲染与收口
@@ -46,7 +47,7 @@
   - `beginPendingStreamingFinalize(...)`
   - fresh bounds 到位后 `finalizeStreamingStop(...)`
   - 不回退成同拍直接切 settled
-  - 不在 finalize 当拍恢复旧 bottom align 精修，避免长回复完成时窗口被重新锚到上方
+  - 不在 finalize 当拍恢复旧 bottom align 精修；若仍处于 AutoFollow，只在 fresh bounds 到位后请求一次正向底部锚点，避免长回复完成时窗口被重新锚到上方
 
 ## 当前调试焦点
 

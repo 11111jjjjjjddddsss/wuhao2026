@@ -17,6 +17,8 @@ internal enum class ScrollMode {
     UserBrowsing
 }
 
+private const val USER_BROWSING_BOTTOM_RESTORE_STABLE_FRAMES = 5
+
 internal data class ChatScrollRuntimeState(
     val scrollMode: MutableState<ScrollMode>,
     val userInteracting: MutableState<Boolean>,
@@ -248,6 +250,9 @@ internal fun BindChatListScrollEffects(
     val sendStartAnchorReleaseArmedState = remember(sendStartAnchorActiveState) {
         mutableStateOf(false)
     }
+    val userBrowsingBottomStableFramesState = remember {
+        mutableIntStateOf(0)
+    }
 
     LaunchedEffect(
         isStreaming,
@@ -299,15 +304,22 @@ internal fun BindChatListScrollEffects(
             }
             sendStartAnchorReleaseArmedState.value = false
             if (activeScrollMode == ScrollMode.UserBrowsing) {
-                if (
+                val stableAtBottom =
                     !listScrollInProgress &&
                     !userInteractingState.value &&
                     isAtStreamingWorklineStrict()
-                ) {
+                if (stableAtBottom) {
+                    userBrowsingBottomStableFramesState.intValue += 1
+                } else {
+                    userBrowsingBottomStableFramesState.intValue = 0
+                }
+                if (userBrowsingBottomStableFramesState.intValue >= USER_BROWSING_BOTTOM_RESTORE_STABLE_FRAMES) {
+                    userBrowsingBottomStableFramesState.intValue = 0
                     scrollModeState.value = ScrollMode.AutoFollow
                 }
                 continue
             }
+            userBrowsingBottomStableFramesState.intValue = 0
             if (listScrollInProgress || userInteractingState.value) {
                 continue
             }

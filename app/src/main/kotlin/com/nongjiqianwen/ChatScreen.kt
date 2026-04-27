@@ -286,6 +286,8 @@ internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
+// Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
+// large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
 private const val INPUT_MAX_CHARS = 6000
 private const val INPUT_LIMIT_HINT_MS = 1600L
@@ -3130,9 +3132,6 @@ fun ChatScreen() {
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             streamRevealJob?.cancel()
             streamRevealJob = null
-            if (shouldRestoreBottomAnchor) {
-                requestProgrammaticForwardListBottomAnchor()
-            }
             flushStreamingRevealBuffer(
                 currentMessageId = streamingMessageId,
                 currentContent = streamingMessageContent,
@@ -3147,15 +3146,15 @@ fun ChatScreen() {
             }
             val finalContent = normalizeAssistantText(streamingMessageContent)
             if (streamingMessageContent != finalContent) {
-                if (shouldRestoreBottomAnchor) {
-                    requestProgrammaticForwardListBottomAnchor()
-                }
                 streamingMessageContent = finalContent
             }
             val finalId = streamingMessageId
             fakeStreamJob = null
             streamingRevealBuffer = ""
             if (finalContent.isNotBlank()) {
+                if (shouldRestoreBottomAnchor) {
+                    requestProgrammaticForwardListBottomAnchor()
+                }
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
                     messageId = finalId.orEmpty(),
@@ -3610,6 +3609,13 @@ fun ChatScreen() {
             .filterNotNull()
             .first()
         if (pendingStreamingFinalizeMessageId == pendingMessageId && isStreaming) {
+            if (
+                scrollMode != ScrollMode.UserBrowsing &&
+                !scrollRuntime.userInteracting.value &&
+                !chatListUserDragging
+            ) {
+                requestProgrammaticForwardListBottomAnchor()
+            }
             finalizeStreamingStop(
                 shouldRestoreBottomAnchor = false
             )
