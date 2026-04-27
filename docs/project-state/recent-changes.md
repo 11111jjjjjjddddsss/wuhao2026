@@ -5,6 +5,7 @@
 
 ## 2026-04-27
 
+- 用户真机初测确认 `901df5a` 的 SideEffect 同帧锚定已经压住正向列表 streaming 工作线下方“下一行冒头闪”：内容变更触发重组后，`SideEffect` 在 apply changes 后、layout 前请求最新消息底部锚点，使 soft-wrap 增高和列表底部 clamp 在同一帧内完成。当前结论是这条方案有效，不需要恢复小分割、overlay、raw delta / `scrollBy` 或旧物理行 renderer；后续只继续观察长回复 / 不同机型是否复现。
 - `ChatScreen.kt` 按会诊结论把正向列表 AutoFollow 的 streaming 底部锚定从“内容更新后同回调再补一次 `requestScrollToItem(...)`”改成顶层 `SideEffect` 同帧锚定：`streamingMessageContent` 触发重组后，SideEffect 在 apply changes 后、layout 前请求最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让 soft-wrap 新行增高和底部锚定尽量落在同一帧，专门压工作线下方下一行冒头闪。本次不改 renderer、不恢复小分割、不恢复 overlay / active-zone，也不使用 `scrollBy` / `dispatchRawDelta`。
 - `ChatScreen.kt` 将统一工作线视觉 gap 从 `80.dp` 抬到 `96.dp`，小球首发锚点、streaming 正文底边、开机历史态和完成态尾部都继续围绕这条工作线，工作线以下空白保持可见，用于免责声明 / 极端说明 / 底部呼吸区。同次，启动显示门不再让本地已有消息 / 首次欢迎空态硬等 hydrate barrier，减少开机白屏时间；AutoFollow reveal 继续围绕正向底部锚点压工作线下方下一行冒头闪，后续已从同回调补锚收敛为顶层 `SideEffect` 同帧锚定。没有恢复小分割、overlay / active-zone、`scrollBy` / `dispatchRawDelta` 或旧 reverse-list 链。
 - `ChatScreen.kt` 随后收紧静态到底判定：开机历史态 / 完成态不再只看文本 bottom 是否命中 96dp 工作线，还必须满足正向列表 `canScrollForward == false`。这样只有工作线以下完整 96dp 空白已经真正露出来时，才认为已贴底，避免“还能继续往上扒出底部空白”的假贴底。
