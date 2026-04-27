@@ -1939,7 +1939,8 @@ fun ChatScreen() {
         return overflowPx != Int.MAX_VALUE && overflowPx <= tolerancePx
     }
     fun isWithinStaticBottomTolerance(): Boolean {
-        return isWithinBottomTolerance(staticBottomPositionTolerancePx)
+        return !chatListState.canScrollForward &&
+            isWithinBottomTolerance(staticBottomPositionTolerancePx)
     }
     val atBottom by remember(staticBottomPositionTolerancePx) {
         derivedStateOf { isWithinStaticBottomTolerance() }
@@ -3547,7 +3548,8 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         initialBottomSnapDone,
-        currentBottomOverflowPx()
+        currentBottomOverflowPx(),
+        chatListState.canScrollForward
     ) {
         if (initialBottomSnapDone) return@LaunchedEffect
         if (!startupHydrationBarrierSatisfied || !startupLayoutReady) {
@@ -3562,8 +3564,14 @@ fun ChatScreen() {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        scrollToBottom(false)
-        initialBottomSnapDone = true
+        repeat(6) {
+            scrollToBottom(false)
+            withFrameNanos { }
+            if (isWithinStaticBottomTolerance()) {
+                initialBottomSnapDone = true
+                return@LaunchedEffect
+            }
+        }
     }
 
     LaunchedEffect(
