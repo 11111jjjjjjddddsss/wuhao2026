@@ -5,6 +5,8 @@
 
 ## 2026-04-27
 
+- `ChatScreen.kt` 按小米 / MiMo 会诊继续补开机贴底完成条件：首屏历史贴底现在必须等底部固定 composer 宿主的稳定实测高度到位后才允许把 `initialBottomSnapDone` 关门；同时增加一次仅限冷启动历史态、用户未开始新对话且未触碰滚动的 post-snap 修正，stable bottom reserve 晚一拍变大时会再做一次非动画回底，确保 96dp 工作线以下空白完整露出。pending finalize 需要恢复底部锚点时也会等 bottom reserve ready 后再请求正向底部锚点。这刀不恢复 `SubcomposeLayout`，不让 IME 动画进入列表 reserve。
+- 根 `AGENTS.md`、`app/AGENTS.md`、`server-go/AGENTS.md` 同步调整外部会诊默认口径：本项目后续如需外部会诊，默认优先整理成发给小米 / MiMo 的自包含短稿，不再默认 Claude，也继续不建议 Gemini。因为小米 / MiMo 免费版通常不能直接读取仓库，外发内容必须直接贴当前真实代码结构、关键片段、状态名、调用顺序、已排除方案和限制条件；收到建议后仍由 Codex 对照仓库核验再落地。
 - `ChatScreen.kt` 按输入框 IME 丝滑度会诊先落 P0 保守刀：composer 从旧 `SubcomposeLayout` 的列表同测量链里拆出，改成页面 `Box` 底部固定兄弟层，列表继续铺满消息区并只吃稳定折叠态 composer reserve + 96dp 工作线 gap。composer 自己仍保留 `imePadding()`，根容器不吃 IME padding，所以键盘弹起 / 回缩只移动输入框，不再让列表和工作线每帧跟着 remeasure。这刀暂不删除 `ChatComposerCollapseOverlay` / prewarm，避免一次性改动发送收口；若真机仍有残影，再围绕 overlay / focus-hide 时序单独处理。
 - `ChatScrollCoordinator.kt` 将 `UserBrowsing -> AutoFollow` 的手动回底确认从连续 5 帧收短到 2 帧。原因是真机反馈“手动往下滑回到底部后，自动跟随不够利索”，而 streaming 正在继续长高时 5 帧确认容易被新内容打断；2 帧仍保留防瞬态误吸回缓冲，但能更快恢复 AutoFollow。不改 SideEffect 同帧锚定、不改 renderer、不恢复 `scrollBy` / overlay / 小分割。
 - 用户真机初测确认 `901df5a` 的 SideEffect 同帧锚定已经压住正向列表 streaming 工作线下方“下一行冒头闪”：内容变更触发重组后，`SideEffect` 在 apply changes 后、layout 前请求最新消息底部锚点，使 soft-wrap 增高和列表底部 clamp 在同一帧内完成。当前结论是这条方案有效，不需要恢复小分割、overlay、raw delta / `scrollBy` 或旧物理行 renderer；后续只继续观察长回复 / 不同机型是否复现。
@@ -144,7 +146,7 @@
 - 继续收口“发送瞬间先上再下”的微抖：`ChatScrollCoordinator.kt` 的发送起步保护释放条件已从“命中工作线容差就放行”收紧成“命中工作线且 composer 已稳定后，再连续一帧命中才放行”。当前不改发送顺序、不改几何计算，只延后 `sendStartAnchorActive` 的真正 release，避免 `requestScrollToItem(index, offset)` 首次命中后，composer 仍在 settling 或刚稳定的边界帧就过早让 follow delta 接管
 - 按最新真机反馈，首次进入聊天页且本地有历史时的贴底已确认收口：`ChatScreen.kt` 的 `startupLayoutReady + isWithinBottomTolerance()` 首屏重试链、启动窗口临时 realtime composer geometry，以及 `ChatScrollCoordinator.kt` 里 `scrollToBottom(false)` 非动画路径的正向 hard bottom reposition 这三处修正继续作为当前真相保留
 - 文档口径继续收平：根 `AGENTS.md`、`docs/project-state/current-status.md`、`docs/project-state/open-risks.md` 与 `docs/runbooks/chat-ui-regression.md` 已统一把当前主问题收敛为“发送瞬间整块消息区轻微上下抖一下”；首屏贴底改为已收口事项，完成态跳到长文本开头和发送后输入框回缩改为回归观察项
-- 会诊规则按最新用户偏好收口：本项目后续如需外部会诊，默认整理成发给 Claude 的自包含短稿，不再继续把 Gemini 当成 Android UI 默认会诊对象
+- 历史记录：当时会诊规则曾按用户偏好收口为默认整理给 Claude 的自包含短稿，不再继续把 Gemini 当成 Android UI 默认会诊对象；该口径已在 2026-04-27 后续条目中被“小米 / MiMo 优先”替代
 - 基础设施记忆继续补齐：新增 `docs/runbooks/infra-readiness.md`，把“服务器还没买”这一现状对应到正式云资源采购前检查单；`pending-decisions.md` 与 `open-risks.md` 也同步补上“正式云资源首版怎么落 / 正式云资源尚未采购”两项，避免后续第一次上云时再靠聊天记录回忆
 
 ## 2026-04-18

@@ -38,7 +38,7 @@
 - 高频 reveal 底部锚点请求带 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
 - 启动显示门不再把本地已有消息 / 首次欢迎空态硬等到 hydrate barrier 后才显示；有本地消息、已有 streaming item 或尚未开始过对话时，列表/欢迎壳可以先显示，减少开机白屏时间。历史消息贴底仍走正向列表最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET` 主链
 - 静态 / 开机 / 完成态到底必须同时满足文本底边命中 96dp 工作线以及 `chatListState.canScrollForward == false`，避免“文本看似贴线，但工作线以下空白还没完整露出、还能继续往上扒”的状态被误判为到底
-- 首屏历史贴底恢复成多帧确认：等 `startupLayoutReady` 后最多连续重试 6 帧，只有文本底边命中 96dp 工作线且 `canScrollForward == false` 时才把 `initialBottomSnapDone` 记完成，避免一次 `scrollToBottom(false)` 尚未真正露出底部空白就关门
+- 首屏历史贴底恢复成多帧确认：等 `startupLayoutReady` 和底部固定 composer 宿主稳定实测高度都到位后最多连续重试 6 帧，只有文本底边命中 96dp 工作线且 `canScrollForward == false` 时才把 `initialBottomSnapDone` 记完成；贴底刚完成后如果 stable bottom reserve 又更新，且用户还没开始新对话 / 没触碰滚动，会再做一次非动画回底修正，避免一次 `scrollToBottom(false)` 尚未真正露出底部空白就关门
 - 开机历史态 / 完成态在输入为空、无 focus、IME 收起、composer 非 settling、非发送锁的折叠稳定窗口中，列表 bottom padding 优先吃底部固定 composer 宿主的稳定实测高度再加 96dp 工作线 gap，不再只靠启动估值 / 旧观察值；这是为了保证工作线以下空白完整露出来，同时避免 IME 动画帧进入列表测量链
 - 用户进入 `UserBrowsing` 后，必须连续 2 帧稳定命中底部才允许恢复 `AutoFollow`，避免正向 pre-anchor 造成的瞬态到底把用户小幅上滑重新吸回，同时让手动往下滑回底部后的自动跟随恢复更利索
 - 回到底部按钮仍保留 56dp 安全区：用户滑动过程中不显示，停止滑动后如果正向列表仍可向前滚动且最新消息底边离 96dp 工作线超过安全区，才短暂出现；点击后滚到最新消息 `lastIndex` 并恢复对应滚动模式

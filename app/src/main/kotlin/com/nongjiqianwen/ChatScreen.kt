@@ -1608,6 +1608,7 @@ fun ChatScreen() {
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var programmaticBottomAnchorGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var postInitialSnapCorrectionDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
@@ -1974,6 +1975,9 @@ fun ChatScreen() {
     var messageViewportMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var composerMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var measuredComposerHostHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    val startupBottomReserveReady by remember {
+        derivedStateOf { measuredComposerHostHeightPx > 0 }
+    }
     var historyHydrationComplete by remember(uiRuntimeResetKey) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
     }
@@ -3555,6 +3559,7 @@ fun ChatScreen() {
     LaunchedEffect(
         startupHydrationBarrierSatisfied,
         startupLayoutReady,
+        startupBottomReserveReady,
         messages.size,
         isStreaming,
         hasStreamingItem,
@@ -3571,6 +3576,7 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
+        if (!startupBottomReserveReady) return@LaunchedEffect
         if (isWithinStaticBottomTolerance()) {
             initialBottomSnapDone = true
             return@LaunchedEffect
@@ -3583,6 +3589,40 @@ fun ChatScreen() {
                 return@LaunchedEffect
             }
         }
+    }
+
+    LaunchedEffect(initialBottomSnapDone) {
+        if (!initialBottomSnapDone) {
+            postInitialSnapCorrectionDone = false
+        }
+    }
+
+    LaunchedEffect(
+        initialBottomSnapDone,
+        postInitialSnapCorrectionDone,
+        startupBottomReserveReady,
+        latestConversationBottomPaddingPx,
+        messages.size,
+        hasStartedConversation,
+        isStreaming,
+        hasStreamingItem,
+        chatListUserDragging,
+        recyclerScrollInProgress
+    ) {
+        if (!initialBottomSnapDone) return@LaunchedEffect
+        if (postInitialSnapCorrectionDone) return@LaunchedEffect
+        if (!startupBottomReserveReady) return@LaunchedEffect
+        if (hasStartedConversation) return@LaunchedEffect
+        if (messages.isEmpty() || isStreaming || hasStreamingItem) return@LaunchedEffect
+        if (chatListUserDragging || recyclerScrollInProgress || scrollRuntime.userInteracting.value) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        if (chatListUserDragging || recyclerScrollInProgress || scrollRuntime.userInteracting.value) {
+            return@LaunchedEffect
+        }
+        scrollToBottom(false)
+        postInitialSnapCorrectionDone = true
     }
 
     LaunchedEffect(
@@ -3609,6 +3649,7 @@ fun ChatScreen() {
         pendingStreamingFinalizeMessageId,
         isStreaming,
         messages.size,
+        startupBottomReserveReady,
         streamingBackgrounded
     ) {
         val pendingMessageId = pendingStreamingFinalizeMessageId
@@ -3626,6 +3667,7 @@ fun ChatScreen() {
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             return@LaunchedEffect
         }
+        if (!startupBottomReserveReady) return@LaunchedEffect
         snapshotFlow {
             messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
                 bounds.bottom > bounds.top && bounds.bottom > 0f
