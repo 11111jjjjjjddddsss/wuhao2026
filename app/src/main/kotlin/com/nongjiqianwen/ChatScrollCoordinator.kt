@@ -17,7 +17,7 @@ internal enum class ScrollMode {
     UserBrowsing
 }
 
-private const val USER_BROWSING_BOTTOM_RESTORE_STABLE_FRAMES = 5
+private const val USER_BROWSING_BOTTOM_RESTORE_STABLE_FRAMES = 2
 
 internal data class ChatScrollRuntimeState(
     val scrollMode: MutableState<ScrollMode>,
