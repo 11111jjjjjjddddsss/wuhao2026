@@ -33,6 +33,7 @@
 - 回到底部 / AutoFollow 使用最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`；该 offset 依赖 Compose 正向列表 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义
 - 正向列表传给 `LazyColumn` 的 bottom padding 会扣掉 `CHAT_MESSAGE_ITEM_VERTICAL_PADDING`，只补偿消息 item 外层 padding，不改变工作线本身
 - 每次 reveal 提交前，AutoFollow 会先请求一次最新消息底部锚点；提交新的 `streamingMessageContent` 后，`ChatScreen.kt` 顶层通过 `SideEffect` 在同帧 apply changes 后、layout 前再次请求最新消息底部锚点，专门压正向列表下一行先从工作线下方冒头的一帧
+- 大白话口径：以前是“新字 / 新行先长出来，列表下一拍才把它拉回工作线”，所以用户能看见下面冒一下；现在是“新字 / 新行要长出来的同一拍，先把列表底部钉在工作线”，画到屏幕时已经归位，所以冒头闪被压住
 - 高频 reveal 底部锚点请求带 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
 - 启动显示门不再把本地已有消息 / 首次欢迎空态硬等到 hydrate barrier 后才显示；有本地消息、已有 streaming item 或尚未开始过对话时，列表/欢迎壳可以先显示，减少开机白屏时间。历史消息贴底仍走正向列表最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET` 主链
 - 静态 / 开机 / 完成态到底必须同时满足文本底边命中 96dp 工作线以及 `chatListState.canScrollForward == false`，避免“文本看似贴线，但工作线以下空白还没完整露出、还能继续往上扒”的状态被误判为到底
