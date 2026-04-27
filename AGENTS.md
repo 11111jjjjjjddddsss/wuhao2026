@@ -269,6 +269,7 @@ Clean-State 必做回归的范围：
 - 高频 reveal 底部锚点请求使用一份 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
 - 静态 / 开机 / 完成态到底不只看“文本 bottom 命中工作线”，还必须满足正向列表 `canScrollForward == false`，确保工作线以下完整 96dp 空白已经真正滚出来，不能出现看似贴线但还能继续往上扒出底部空白
 - 首屏历史贴底不能“一次 scroll 后就关门”；必须等 `startupLayoutReady` 后多帧重试，并且只有文本 bottom 命中 96dp 工作线、`canScrollForward == false` 同时成立时，才允许把 `initialBottomSnapDone` 记为完成
+- 开机历史态 / 完成态的底部 reserve 在“输入为空、无 focus、IME 收起、composer 非 settling、非发送锁”的折叠稳定窗口中，必须优先使用同拍实测的 `measuredComposerHeightPx + STREAM_VISIBLE_BOTTOM_GAP`，不能只吃启动估值或旧观察值；否则真机输入框真实高度大于估值时，工作线以下空白露不全，用户还能继续往上扒
 - 用户进入 `UserBrowsing` 后，即使底部判定瞬间变回 true，也必须连续 5 帧稳定命中底部才恢复 `AutoFollow`，避免 pre-anchor 的瞬态到底把用户小幅上滑重新吸回
 - `prepareScrollRuntimeForStreamingStart(...)` 当前会把 `scrollMode` 直接置为 `AutoFollow`，因为用户按发送本身就是回到底部看新回复的明确意图；不要在发送后继续保留 `UserBrowsing`
 - 回到底部按钮不允许开机、程序回底、bounds 初次上报自己冒出来。按钮资格统一为：消息非空、键盘不可见、生命周期未抑制、用户滑动已经停下，并且正向列表仍可向前滚动且最新消息底边离 96dp 工作线超过 56dp 安全区。按钮不要再用旧反向 `firstVisibleItemIndex == 0` 口径，也不要再加发送后 IME 过渡伪锁。按钮显示是短 pulse：用户滑动过程中强制不显示；用户停止滑动后，再统一按动态 / 静态同一套离底资格判断，离底才出现一小会儿并自动隐藏；点击按钮必须直接滚到正向列表最新消息 `lastIndex` 并清掉 pulse

@@ -4350,10 +4350,22 @@ fun ChatScreen() {
                     }
                     val measuredComposerHeightPx =
                         composerPlaceables.maxOfOrNull { it.height } ?: 0
+                    val canUseMeasuredCollapsedComposerReserve =
+                        !sendStartBottomPaddingLockActive &&
+                            !isComposerSettling &&
+                            !composerCollapseOverlayVisible &&
+                            !inputFieldFocused &&
+                            !imeVisible &&
+                            input.value.text.isEmpty() &&
+                            measuredComposerHeightPx > 0
                     val collapsedConversationReservePx =
-                        observedCollapsedBottomReservePx
-                            .takeIf { it > 0 }
-                            ?: startupBottomBarHeightEstimatePx
+                        if (canUseMeasuredCollapsedComposerReserve) {
+                            measuredComposerHeightPx
+                        } else {
+                            observedCollapsedBottomReservePx
+                                .takeIf { it > 0 }
+                                ?: startupBottomBarHeightEstimatePx
+                        }
                     val stableBottomReservePx =
                         resolveBottomContentReservedHeightPx(
                             overlayVisible = composerCollapseOverlayVisible,

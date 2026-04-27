@@ -8,6 +8,7 @@
 - `ChatScreen.kt` 将统一工作线视觉 gap 从 `80.dp` 抬到 `96.dp`，小球首发锚点、streaming 正文底边、开机历史态和完成态尾部都继续围绕这条工作线，工作线以下空白保持可见，用于免责声明 / 极端说明 / 底部呼吸区。同次，启动显示门不再让本地已有消息 / 首次欢迎空态硬等 hydrate barrier，减少开机白屏时间；AutoFollow reveal 在提交 `streamingMessageContent` 后同回调再补一次正向底部锚点，继续压工作线下方下一行冒头闪。没有恢复小分割、overlay / active-zone、`scrollBy` / `dispatchRawDelta` 或旧 reverse-list 链。
 - `ChatScreen.kt` 随后收紧静态到底判定：开机历史态 / 完成态不再只看文本 bottom 是否命中 96dp 工作线，还必须满足正向列表 `canScrollForward == false`。这样只有工作线以下完整 96dp 空白已经真正露出来时，才认为已贴底，避免“还能继续往上扒出底部空白”的假贴底。
 - `ChatScreen.kt` 对照反向列表贴底稳定时期的记录，把首屏历史贴底恢复成“多帧确认后再关门”：`startupLayoutReady` 后最多重试 6 帧 `scrollToBottom(false)`，只有文本 bottom 命中 96dp 工作线且 `canScrollForward == false` 同时成立，才设置 `initialBottomSnapDone = true`。这专门修“一次 scroll 后还没真正露出工作线以下空白，却已经关门”的假贴底。
+- `ChatScreen.kt` 继续恢复当时贴底成功的 realtime composer 几何口径：开机历史态 / 完成态在输入为空、无 focus、IME 收起、composer 非 settling、非发送锁时，底部 reserve 优先使用同拍实测 `measuredComposerHeightPx + 96dp`，不再只依赖启动估值或旧观察值。这样真机输入框真实高度大于估值时，工作线以下空白也能完整露出来。
 
 ## 2026-04-26
 
