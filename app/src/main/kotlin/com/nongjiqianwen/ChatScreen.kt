@@ -2996,6 +2996,20 @@ fun ChatScreen() {
         }
     }
 
+    val shouldAnchorStreamingBottomThisFrame =
+        (isStreaming || hasStreamingItem) &&
+            scrollMode == ScrollMode.AutoFollow &&
+            !scrollRuntime.userInteracting.value &&
+            !chatListUserDragging &&
+            latestMessageIndexOrMinusOne() >= 0
+    if (shouldAnchorStreamingBottomThisFrame) {
+        // Run after this composition commits but before layout, so a streaming wrap and bottom
+        // anchor can land in the same frame instead of flashing below the workline for one draw.
+        SideEffect {
+            requestForwardListBottomAnchor()
+        }
+    }
+
     LaunchedEffect(chatListState) {
         snapshotFlow { readChatListMetrics(chatListState) }
             .collect { metrics ->
@@ -3067,9 +3081,6 @@ fun ChatScreen() {
                 streamingFreshEnd = advance.freshEnd
                 streamingFreshTick = advance.freshTick
                 lastStreamingFreshRevealMs = advance.lastFreshRevealMs
-                if (shouldPreAnchorBottom) {
-                    requestForwardListBottomAnchor()
-                }
             }
         )
     }

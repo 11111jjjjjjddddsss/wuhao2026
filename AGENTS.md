@@ -265,7 +265,7 @@ Clean-State 必做回归的范围：
   6. 按正向列表口径同步请求最新消息 `lastIndex` + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让新插入的底部 assistant placeholder 成为视觉底部锚点
 - `scrollToBottom(false)` 当前是正向列表主链口径；聊天页主调处应把“视觉底部最新消息”的 index 按 `lastIndex` 传给 coordinator，并使用 `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，不要回到 `scrollToItem(0)`
 - 正向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)`、`scrollBy(...)` 或 `dispatchRawDelta(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机、发送起步保护和正向底部锚点请求
-- AutoFollow 中每次 reveal 提交前会先请求一次最新消息底部锚点，提交 `streamingMessageContent` 后同一回调里再补一次最新消息底部锚点，减少“新换行先进树、下一帧才贴底”造成的工作线下方冒头闪
+- AutoFollow 中每次 reveal 提交前会先请求一次最新消息底部锚点；提交 `streamingMessageContent` 后，`ChatScreen.kt` 顶层通过 `SideEffect` 在同帧 apply changes 后、layout 前再次请求最新消息底部锚点，减少“新换行先进树、下一帧才贴底”造成的工作线下方冒头闪
 - 高频 reveal 底部锚点请求使用一份 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
 - 静态 / 开机 / 完成态到底不只看“文本 bottom 命中工作线”，还必须满足正向列表 `canScrollForward == false`，确保工作线以下完整 96dp 空白已经真正滚出来，不能出现看似贴线但还能继续往上扒出底部空白
 - 首屏历史贴底不能“一次 scroll 后就关门”；必须等 `startupLayoutReady` 后多帧重试，并且只有文本 bottom 命中 96dp 工作线、`canScrollForward == false` 同时成立时，才允许把 `initialBottomSnapDone` 记为完成
