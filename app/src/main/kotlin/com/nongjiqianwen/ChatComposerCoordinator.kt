@@ -117,14 +117,14 @@ internal fun shouldApplyComposerBottomBarHeight(
 }
 
 internal fun prepareComposerCollapse(
-    inputContentHeightPx: Int,
-    startupInputContentHeightEstimatePx: Int,
-    inputChromeRowHeightPx: Int
+    @Suppress("UNUSED_PARAMETER") inputContentHeightPx: Int,
+    @Suppress("UNUSED_PARAMETER") startupInputContentHeightEstimatePx: Int,
+    @Suppress("UNUSED_PARAMETER") inputChromeRowHeightPx: Int
 ): ComposerCollapsePreparation {
     return ComposerCollapsePreparation(
-        settlingMinHeightPx = inputContentHeightPx.coerceAtLeast(startupInputContentHeightEstimatePx),
-        settlingChromeHeightPx = inputChromeRowHeightPx,
-        shouldSuppressCursor = true,
+        settlingMinHeightPx = 0,
+        settlingChromeHeightPx = 0,
+        shouldSuppressCursor = false,
         shouldClearFocus = true
     )
 }

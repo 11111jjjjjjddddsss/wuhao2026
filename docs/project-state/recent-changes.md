@@ -5,6 +5,7 @@
 
 ## 2026-04-27
 
+- `ChatComposerCoordinator.kt` 按会诊核验后的最小安全刀取消发送收口旧高度锁：`prepareComposerCollapse(...)` 现在不再把发送前的输入内容高度 / chrome 高度写进 `composerSettlingMinHeightPx` 和 `composerSettlingChromeHeightPx`，也不再 suppress cursor。发送时清空输入后 composer 可直接回到空态高度，避免“文字已经没了但旧高度还撑几帧”的残影；本次不删 overlay 死链、不改 `clearFocus + keyboardController.hide()` 时序、不动滚动链 / 96dp 工作线。
 - `ChatScrollCoordinator.kt` 按小米 / MiMo 会诊修正手动下滑回底后的 AutoFollow 恢复：`UserBrowsing` 中如果正向列表已经到物理底部（`canScrollForward == false`）、手指已抬起且列表停止，会先请求一次 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET` 底部锚点，再切回 `AutoFollow`。旧的连续 2 帧工作线命中仍保留为兜底；这避免 streaming 持续吐字反复打断工作线容差，导致用户明明滑到底但过一会儿才继续跟随。不改 SideEffect 同帧锚定、不恢复 `scrollBy` / overlay / 小分割。
 - `ChatScreen.kt` 按小米 / MiMo 会诊继续补开机贴底完成条件：首屏历史贴底现在必须等底部固定 composer 宿主的稳定实测高度到位后才允许把 `initialBottomSnapDone` 关门；同时增加一次仅限冷启动历史态、用户未开始新对话且未触碰滚动的 post-snap 修正，stable bottom reserve 晚一拍变大时会再做一次非动画回底，确保 96dp 工作线以下空白完整露出。pending finalize 需要恢复底部锚点时也会等 bottom reserve ready 后再请求正向底部锚点。这刀不恢复 `SubcomposeLayout`，不让 IME 动画进入列表 reserve。
 - 根 `AGENTS.md`、`app/AGENTS.md`、`server-go/AGENTS.md` 同步调整外部会诊默认口径：本项目后续如需外部会诊，默认优先整理成发给小米 / MiMo 的自包含短稿，不再默认 Claude，也继续不建议 Gemini。因为小米 / MiMo 免费版通常不能直接读取仓库，外发内容必须直接贴当前真实代码结构、关键片段、状态名、调用顺序、已排除方案和限制条件；收到建议后仍由 Codex 对照仓库核验再落地。

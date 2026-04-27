@@ -58,6 +58,7 @@
 ## 当前调试焦点
 
 - 这轮正向列表的目标，是牺牲反向列表那套“最新 item 天然视觉底部”的物理模型，换回用户上滑浏览时更稳定的正向滚动体感
+- 输入框发送收口当前已取消旧高度锁：发送时不再用发送前的输入内容高度 / chrome 高度撑住 `composerSettlingMinHeightPx` / `composerSettlingChromeHeightPx`，优先让 composer 随输入清空直接回到空态高度；若仍有残影，下一步再单独会诊 `clearFocus + keyboardController.hide()` 时序或清理 overlay 死链
 - 当前最需要真机验证的是：
   1. 首屏进入有历史时是否稳定贴底
   2. 发送瞬间小球是否第一时间出现在工作线，历史文本是否不抖
