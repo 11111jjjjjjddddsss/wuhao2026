@@ -1654,7 +1654,6 @@ fun ChatScreen() {
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
     var latestConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
-    var latestListContentBottomTargetPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var lockedConversationBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var observedCollapsedBottomReservePx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
@@ -1919,9 +1918,7 @@ fun ChatScreen() {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
     }
     fun currentStaticBottomTargetPx(): Int {
-        latestListContentBottomTargetPx.takeIf { it > 0 }?.let { return it }
-        val staticBottomPx = streamingWorklineBottomPx + streamVisibleBottomGapPx
-        return staticBottomPx.takeIf { it > 0 }?.coerceAtMost(messageViewportHeightPx) ?: 0
+        return streamingWorklineBottomPx.takeIf { it > 0 } ?: 0
     }
     fun currentUnifiedBottomTargetPx(): Int {
         return if (isStreaming || hasStreamingItem) {
@@ -4061,11 +4058,8 @@ fun ChatScreen() {
                     ?: listBottomPaddingPx
             val forwardListBottomPaddingPx =
                 (effectiveBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
-            val listContentBottomTargetPx =
-                (messageViewportHeightPx - effectiveBottomPaddingPx).coerceAtLeast(0)
             SideEffect {
                 latestConversationBottomPaddingPx = conversationBottomPaddingPx
-                latestListContentBottomTargetPx = listContentBottomTargetPx
                 val collapsedStable =
                     !sendStartBottomPaddingLockActive &&
                         !isComposerSettling &&
@@ -4361,7 +4355,6 @@ fun ChatScreen() {
                         ).coerceAtLeast(0)
                     val stableStreamingBottomPaddingPx =
                         (stableBottomReservePx + streamVisibleBottomGapPx).coerceAtLeast(0)
-                    val stableStaticBottomPaddingPx = stableBottomReservePx
                     val currentExternalBottomInsetPx =
                         (measuredComposerHeightPx - inputChromeRowHeightPx)
                             .coerceAtLeast(0)
@@ -4381,18 +4374,7 @@ fun ChatScreen() {
                         } else {
                             stableStreamingBottomPaddingPx
                         }
-                    val staticBottomPaddingPx =
-                        if (shouldUseRealtimeComposerGeometry && measuredComposerHeightPx > 0) {
-                            realtimeStaticBottomPaddingPx
-                        } else {
-                            stableStaticBottomPaddingPx
-                        }
-                    val listBottomPaddingPx =
-                        if (isStreaming || hasStreamingItem || sendStartBottomPaddingLockActive) {
-                            conversationBottomPaddingPx
-                        } else {
-                            staticBottomPaddingPx
-                        }
+                    val listBottomPaddingPx = conversationBottomPaddingPx
                     val listAvailableHeightPx = constraints.maxHeight
                     val listPlaceables = subcompose("conversation_list") {
                         renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)

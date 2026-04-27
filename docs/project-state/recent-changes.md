@@ -5,7 +5,7 @@
 
 ## 2026-04-27
 
-- `ChatScreen.kt` 将 streaming 工作线视觉 gap 从 `80.dp` 抬到 `96.dp`，小球首发锚点和 streaming 正文底边继续围绕这条工作线；开机历史态和 streaming 完成后的 settled 消息则改用不含 96dp 工作线 gap 的静态列表底部，让消息内的免责声明 / 尾部提示作为真实内容自然占位，不再把完成态尾部悬在工作线上。同次，启动显示门不再让本地已有消息 / 首次欢迎空态硬等 hydrate barrier，减少开机白屏时间；AutoFollow reveal 在提交 `streamingMessageContent` 后同回调再补一次正向底部锚点，继续压工作线下方下一行冒头闪。没有恢复小分割、overlay / active-zone、`scrollBy` / `dispatchRawDelta` 或旧 reverse-list 链。
+- `ChatScreen.kt` 将统一工作线视觉 gap 从 `80.dp` 抬到 `96.dp`，小球首发锚点、streaming 正文底边、开机历史态和完成态尾部都继续围绕这条工作线，工作线以下空白保持可见，用于免责声明 / 极端说明 / 底部呼吸区。同次，启动显示门不再让本地已有消息 / 首次欢迎空态硬等 hydrate barrier，减少开机白屏时间；AutoFollow reveal 在提交 `streamingMessageContent` 后同回调再补一次正向底部锚点，继续压工作线下方下一行冒头闪。没有恢复小分割、overlay / active-zone、`scrollBy` / `dispatchRawDelta` 或旧 reverse-list 链。
 
 ## 2026-04-26
 
