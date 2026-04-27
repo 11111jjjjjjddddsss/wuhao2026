@@ -40,7 +40,7 @@
 - 静态 / 开机 / 完成态到底必须同时满足文本底边命中 96dp 工作线以及 `chatListState.canScrollForward == false`，避免“文本看似贴线，但工作线以下空白还没完整露出、还能继续往上扒”的状态被误判为到底
 - 首屏历史贴底恢复成多帧确认：等 `startupLayoutReady` 和底部固定 composer 宿主稳定实测高度都到位后最多连续重试 6 帧，只有文本底边命中 96dp 工作线且 `canScrollForward == false` 时才把 `initialBottomSnapDone` 记完成；贴底刚完成后如果 stable bottom reserve 又更新，且用户还没开始新对话 / 没触碰滚动，会再做一次非动画回底修正，避免一次 `scrollToBottom(false)` 尚未真正露出底部空白就关门
 - 开机历史态 / 完成态在输入为空、无 focus、IME 收起、composer 非 settling、非发送锁的折叠稳定窗口中，列表 bottom padding 优先吃底部固定 composer 宿主的稳定实测高度再加 96dp 工作线 gap，不再只靠启动估值 / 旧观察值；这是为了保证工作线以下空白完整露出来，同时避免 IME 动画帧进入列表测量链
-- 用户进入 `UserBrowsing` 后，必须连续 2 帧稳定命中底部才允许恢复 `AutoFollow`，避免正向 pre-anchor 造成的瞬态到底把用户小幅上滑重新吸回，同时让手动往下滑回底部后的自动跟随恢复更利索
+- 用户进入 `UserBrowsing` 后，如果用户明确滑回正向列表物理底部（`canScrollForward == false`、手指已抬起、列表已停止），会先请求一次正向底部锚点再恢复 `AutoFollow`；连续 2 帧工作线稳定命中只保留为兜底，避免 streaming 持续吐字打断容差导致手动回底后长时间不跟随
 - 回到底部按钮仍保留 56dp 安全区：用户滑动过程中不显示，停止滑动后如果正向列表仍可向前滚动且最新消息底边离 96dp 工作线超过安全区，才短暂出现；点击后滚到最新消息 `lastIndex` 并恢复对应滚动模式
 
 ## 渲染与收口
@@ -63,7 +63,7 @@
   2. 发送瞬间小球是否第一时间出现在工作线，历史文本是否不抖
   3. streaming 工作线下一行冒头闪已由用户初测确认被 `SideEffect` 同帧锚定压住，后续只需继续观察长回复 / 不同机型是否复现
   4. 用户上滑 / 下滑是否不抢手，想停哪里能停哪里
-  5. 用户点击回到底部后是否恢复 AutoFollow
+  5. 用户点击回到底部、或手动下滑到物理底部后是否恢复 AutoFollow
   6. finalize 收口是否稳定，尤其含免责声明答案是否不再尾部增高微跳
   7. 输入框上方和静态文本底部是否不再出现额外白块
   8. 冷启动首次点输入框、键盘弹起 / 回缩是否比旧 `SubcomposeLayout` 版本更利索；如果仍有残影，再单独评估 composer collapse overlay / focus-hide 时序，不先动消息列表主链

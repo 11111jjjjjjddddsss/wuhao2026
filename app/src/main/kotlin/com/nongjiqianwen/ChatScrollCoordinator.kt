@@ -243,7 +243,9 @@ internal fun BindChatListScrollEffects(
     currentStreamingContentBottomPx: () -> Int,
     currentStreamingLegalBottomPx: () -> Int,
     isNearStreamingWorkline: () -> Boolean,
-    isAtStreamingWorklineStrict: () -> Boolean
+    isAtStreamingWorklineStrict: () -> Boolean,
+    isAtPhysicalBottom: () -> Boolean,
+    requestBottomAnchor: () -> Unit
 ) {
     val scrollMode = scrollModeState.value
     val userInteracting = userInteractingState.value
@@ -266,7 +268,8 @@ internal fun BindChatListScrollEffects(
         currentStreamingContentBottomPx(),
         currentStreamingLegalBottomPx(),
         isNearStreamingWorkline(),
-        isAtStreamingWorklineStrict()
+        isAtStreamingWorklineStrict(),
+        isAtPhysicalBottom()
     ) {
         if (!isStreaming || !hasStreamingItem) {
             sendStartAnchorActiveState.value = false
@@ -304,6 +307,16 @@ internal fun BindChatListScrollEffects(
             }
             sendStartAnchorReleaseArmedState.value = false
             if (activeScrollMode == ScrollMode.UserBrowsing) {
+                val userReturnedToPhysicalBottom =
+                    !listScrollInProgress &&
+                        !userInteractingState.value &&
+                        isAtPhysicalBottom()
+                if (userReturnedToPhysicalBottom) {
+                    userBrowsingBottomStableFramesState.intValue = 0
+                    requestBottomAnchor()
+                    scrollModeState.value = ScrollMode.AutoFollow
+                    continue
+                }
                 val stableAtBottom =
                     !listScrollInProgress &&
                     !userInteractingState.value &&
@@ -315,6 +328,7 @@ internal fun BindChatListScrollEffects(
                 }
                 if (userBrowsingBottomStableFramesState.intValue >= USER_BROWSING_BOTTOM_RESTORE_STABLE_FRAMES) {
                     userBrowsingBottomStableFramesState.intValue = 0
+                    requestBottomAnchor()
                     scrollModeState.value = ScrollMode.AutoFollow
                 }
                 continue

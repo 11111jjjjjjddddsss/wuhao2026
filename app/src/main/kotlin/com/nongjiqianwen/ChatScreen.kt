@@ -3796,7 +3796,9 @@ fun ChatScreen() {
         currentStreamingContentBottomPx = ::currentStreamingContentBottomPx,
         currentStreamingLegalBottomPx = ::currentStreamingLegalBottomPx,
         isNearStreamingWorkline = ::isNearStreamingWorkline,
-        isAtStreamingWorklineStrict = ::isAtStreamingWorklineStrict
+        isAtStreamingWorklineStrict = ::isAtStreamingWorklineStrict,
+        isAtPhysicalBottom = { !chatListState.canScrollForward },
+        requestBottomAnchor = ::requestProgrammaticForwardListBottomAnchor
     )
 
     BoxWithConstraints(
