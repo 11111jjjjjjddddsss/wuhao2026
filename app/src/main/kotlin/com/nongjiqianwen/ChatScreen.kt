@@ -3400,7 +3400,6 @@ fun ChatScreen() {
             input.value = TextFieldValue("")
             if (collapsePreparation.shouldClearFocus) {
                 focusManager.clearFocus(force = true)
-                keyboardController?.hide()
             }
         }
         val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
