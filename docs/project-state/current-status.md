@@ -14,6 +14,7 @@
 - Android Auto Backup / Data Extraction 当前已关闭并显式排除：`allowBackup=false`，同时通过 `backup_rules.xml` / `data_extraction_rules.xml` 排除 cloud backup、device transfer、shared preferences、files、databases 和 external 数据。本地聊天窗口快照、流式草稿、`app_ids`、旧 UI metrics 等都只作为本机运行时缓存，不允许被系统云备份 / 设备迁移在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
 - Go 后端当前只保存 A/B/C 上下文资产：`session_ab.a_json` 是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` / `c_summary` 是摘要文本；`session_round_ledger` 只做 `client_msg_id` 幂等，不保存用户问题和 AI 回复。当前尚未实现全量原始问诊归档表，也尚未实现 C+ 的用户农业画像 / 用户农业档案字段
 - 当前产品策略倾向已记录为待决策：C 层后续可能升级为 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并评估改用 `Qwen3.5-Flash` 做 C+ 抽取；在代码落地前，当前真实实现仍是现有 `c_summary`
+- 基础设施首版采购倾向已调整为 `SAE + RDS MySQL`：SAE 继续适合当前无运维团队阶段，数据库首版倾向使用阿里云 RDS MySQL 以降低成本和运维复杂度；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
 - 聊天消息运行时当前是**单一正向列表主人**：`ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，`messages` 仍按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`
 - 底部 composer 仍是页面底部的独立 UI 宿主，继续负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - `ChatScreen.kt` 当前把消息列表和 composer 作为页面 `Box` 内的兄弟层渲染：列表铺满消息区，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 已从旧 `SubcomposeLayout` 测量链里拆出，键盘动画不再每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”

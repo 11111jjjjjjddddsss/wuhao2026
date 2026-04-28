@@ -22,9 +22,9 @@
 
 ## D4 正式云资源首版怎么落
 
-- 当前选项：直接采购 SAE + PolarDB + 域名/HTTPS 跑最小生产链，或先上一套测试/预发环境再买正式规格
+- 当前选项：首版倾向 `SAE + RDS MySQL + 域名/HTTPS` 跑最小生产链；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；仍可选择先上一套测试/预发环境再买正式规格
 - 现状：仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也新补了 `docs/runbooks/infra-readiness.md` 作为采购前检查单；但真实云资源、Region、环境命名和实例规格都还没定
-- 待定原因：你现在还没买服务器，正式环境资源一旦落地，就会影响后续部署、日志、数据库、域名、环境变量和 runbook 的真实入口
+- 待定原因：你现在还没买服务器，正式环境资源一旦落地，就会影响后续部署、日志、数据库、域名、环境变量和 runbook 的真实入口；RDS 规格、备份策略、白名单和是否拆测试 / 生产仍需采购前确认
 
 ## D5 C+ 长期记忆怎么落地
 
@@ -42,4 +42,5 @@
 - 当前倾向：先做。原因是当前 A/B/C 只服务上下文，不等于长期资产；没有原始问诊日志，后续再谈批量抽取、用户农业画像、农业档案、相似案例或质检复盘都会缺材料
 - 当前代码现状：`session_ab.a_json` 只保留 A 层滑窗，Free / Plus 6 轮、Pro 9 轮；`session_round_ledger` 只存 `user_id + client_msg_id + created_at` 做幂等；`quota_ledger` 只存扣费流水；没有 append-only 的长期原始对话表
 - 最小落点建议：新增 `session_round_archive` 或同名长期归档表，先只保存成功完成轮次的 `user_id / client_msg_id / user_text / user_images_json / assistant_text / source / created_at`，唯一键 `(user_id, client_msg_id)`；写入点优先放在 `Store.AppendSessionRoundComplete(...)`，因为 `/api/chat/stream` 和 `/api/session/round_complete` 都汇到这里
+- 保留周期倾向：原始问诊归档只保留 30 天，30 天后滚动删除，降低个人创业阶段的数据库和隐私压力；C+ 这类提炼后的长期摘要 / 农业画像 / 农业档案可按更长周期保存
 - 暂不做：不在第一刀里做大模型实时抽取、不改变 A/B/C prompt、不把归档内容每轮喂回模型、不加向量库
