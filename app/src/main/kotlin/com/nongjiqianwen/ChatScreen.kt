@@ -276,8 +276,8 @@ private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
-internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
-internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 4
+internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
+internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 2
 private const val STREAM_DELAY_MULTIPLIER = 1.18
 internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
 internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
@@ -611,8 +611,21 @@ private fun normalizeMarkdownTables(content: String): String {
     if (lines.isEmpty()) return normalized
     val result = mutableListOf<String>()
     var index = 0
+    var inCodeFence = false
     while (index < lines.size) {
         val current = lines[index]
+        val trimmed = current.trimStart()
+        if (trimmed.startsWith("```")) {
+            inCodeFence = !inCodeFence
+            result += current
+            index++
+            continue
+        }
+        if (inCodeFence) {
+            result += current
+            index++
+            continue
+        }
         if (
             index + 1 < lines.size &&
             looksLikeMarkdownTableRow(current) &&
@@ -3867,9 +3880,9 @@ fun ChatScreen() {
             else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 12.dp
-            maxWidth < 600.dp -> 14.dp
-            else -> 22.dp
+            maxWidth < 360.dp -> 14.dp
+            maxWidth < 600.dp -> 18.dp
+            else -> 24.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 92.dp else 96.dp
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp

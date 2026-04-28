@@ -182,6 +182,92 @@ private val rendererBulletRegex = Regex("^[*-]\\s+.*$")
 private val rendererNumberedRegex = Regex("^\\d+\\.\\s+.*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
 
+private fun splitRendererMarkdownTableCells(line: String): List<String> {
+    val trimmed = line.trim().removePrefix("|").removeSuffix("|")
+    if (trimmed.isBlank()) return emptyList()
+    return trimmed.split('|').map { it.trim() }
+}
+
+private fun isRendererMarkdownTableSeparatorLine(line: String): Boolean {
+    val trimmed = line.trim()
+    if (!trimmed.contains('|')) return false
+    val normalized = trimmed.replace("|", "").replace(" ", "")
+    return normalized.isNotEmpty() && normalized.all { it == '-' || it == ':' }
+}
+
+private fun looksLikeRendererMarkdownTableRow(line: String): Boolean {
+    val trimmed = line.trim()
+    if (trimmed.isBlank() || !trimmed.contains('|')) return false
+    if (isRendererMarkdownTableSeparatorLine(trimmed)) return false
+    return splitRendererMarkdownTableCells(trimmed).size >= 2
+}
+
+private fun convertRendererMarkdownTableBlock(headerLine: String, rowLines: List<String>): List<String> {
+    val headers = splitRendererMarkdownTableCells(headerLine)
+        .mapIndexed { index, cell -> cell.ifBlank { "列${index + 1}" } }
+    if (headers.isEmpty()) return emptyList()
+    return rowLines.mapNotNull { rowLine ->
+        val values = splitRendererMarkdownTableCells(rowLine)
+        if (values.isEmpty()) {
+            null
+        } else {
+            val pairs = headers.mapIndexedNotNull { index, header ->
+                val value = values.getOrNull(index)?.trim().orEmpty()
+                if (value.isBlank()) null else "$header：$value"
+            }
+            when {
+                pairs.isNotEmpty() -> "- ${pairs.joinToString("；")}"
+                else -> "- ${values.joinToString(" | ").trim()}"
+            }
+        }
+    }
+}
+
+private fun normalizeRendererMarkdownTables(content: String): String {
+    val normalized = content.replace("\r\n", "\n")
+    if (!normalized.contains('|')) return normalized
+    val lines = normalized.lines()
+    if (lines.isEmpty()) return normalized
+    val result = mutableListOf<String>()
+    var index = 0
+    var inCodeFence = false
+    while (index < lines.size) {
+        val current = lines[index]
+        val trimmed = current.trimStart()
+        if (trimmed.startsWith("```")) {
+            inCodeFence = !inCodeFence
+            result += current
+            index++
+            continue
+        }
+        if (inCodeFence) {
+            result += current
+            index++
+            continue
+        }
+        if (
+            index + 1 < lines.size &&
+            looksLikeRendererMarkdownTableRow(current) &&
+            isRendererMarkdownTableSeparatorLine(lines[index + 1])
+        ) {
+            val rowLines = mutableListOf<String>()
+            var cursor = index + 2
+            while (cursor < lines.size && looksLikeRendererMarkdownTableRow(lines[cursor])) {
+                rowLines += lines[cursor]
+                cursor++
+            }
+            if (rowLines.isNotEmpty()) {
+                result += convertRendererMarkdownTableBlock(current, rowLines)
+                index = cursor
+                continue
+            }
+        }
+        result += current
+        index++
+    }
+    return result.joinToString("\n")
+}
+
 internal data class StreamingTypewriterStep(
     val text: String,
     val delayMs: Long
@@ -333,7 +419,7 @@ internal fun flushStreamingRevealBuffer(
 }
 
 internal fun splitStreamingBlockState(content: String): StreamingBlockState {
-    val logicalLines = splitRendererStreamingLogicalLines(content)
+    val logicalLines = splitRendererStreamingLogicalLines(normalizeRendererMarkdownTables(content))
     val completedBlocks = mutableListOf<String>()
     val paragraph = StringBuilder()
 

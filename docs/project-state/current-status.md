@@ -14,6 +14,7 @@
 - Android Auto Backup / Data Extraction 当前已关闭并显式排除：`allowBackup=false`，同时通过 `backup_rules.xml` / `data_extraction_rules.xml` 排除 cloud backup、device transfer、shared preferences、files、databases 和 external 数据。本地聊天窗口快照、流式草稿、`app_ids`、旧 UI metrics 等都只作为本机运行时缓存，不允许被系统云备份 / 设备迁移在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
 - Go 后端当前同时保存两类资产：`session_ab.a_json` 仍是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` / `c_summary` 仍是摘要文本；成功完成的问答轮次会额外写入 `session_round_archive`，按 30 天滚动保留，用于 UI 历史恢复和后续批量抽取。当前尚未实现 C+ 的用户农业画像 / 用户农业档案字段
 - `/api/session/snapshot` 当前继续返回 `a_json` / `a_rounds_full` 作为 A 层窗口，同时 `a_rounds_for_ui` 会优先返回 30 天内最近 30 轮 `session_round_archive`。前端本地仍会用 `LOCAL_RENDER_ROUND_LIMIT = 30` 裁 UI 窗口；换机 / 重装后只要用户身份能对上后端 `user_id`，UI 可拉到最近 30 轮业务聊天记录。当前项目还没有手机号 / 账号登录体系，实际主要依赖本机 `user_id`；若清数据后本机 `user_id` 丢失并生成新身份，则不会恢复旧记录
+- 主对话每轮都会由后端注入当前时间和地点：`chat.go` 组装 `当前时间：yyyy-MM-dd HH:mm:ss（Asia/Shanghai）；用户地点：...；地点可信度：...`。历史轮次当前也会携带 `created_at / region / region_source / region_reliability`，进入模型上下文时以前缀“历史轮次时间：...”和“历史轮次地点：...”注入，让模型知道这轮距离当前大概多久、当时大概在哪里；前端暂不显示每条消息时间戳或地点条。当前 Android 还没有定位权限 / 地区选择主链，若请求里未带 `X-User-Region`，后端只能用 IP / 未知兜底，因此“地点详细点”需要后续单独做用户地区采集。天气 API 暂不接入，后续只在确有强需求和成本预算时再评估
 - 当前产品策略倾向已记录为待决策：C 层后续可能升级为 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并评估改用 `Qwen3.5-Flash` 做 C+ 抽取；在代码落地前，当前真实实现仍是现有 `c_summary`
 - 基础设施首版采购倾向已调整为 `SAE + RDS MySQL`：SAE 继续适合当前无运维团队阶段，数据库首版倾向使用阿里云 RDS MySQL 以降低成本和运维复杂度；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
 - 聊天消息运行时当前是**单一正向列表主人**：`ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，`messages` 仍按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`
@@ -53,6 +54,8 @@
 - waiting 小球、streaming 正文、settled 完成态共用同一条 assistant 消息 item，不再切第二滚动主人
 - `ChatStreamingRenderer.kt` 当前 active streaming 和 settled Markdown 都走 soft-wrap block renderer，并复用 inline Markdown cache 保留加粗 / 链接 / code；旧 committed 物理行预切 / TextMeasurer 渲染链已移除，避免 streaming -> settled 收口时换渲染模型导致行高 / 行宽微动
 - active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排
+- streaming reveal 当前对中文通常 1 到 2 个字一拍，英文 / 数字仍按词块吐出，减少“几个中文字一坨蹦出来”的体感；仍不恢复新字尾部灰色高亮动画，也不把吐字频率推到每个汉字都单独重组
+- 标准 Markdown 表格当前不做真表格控件，renderer 会把表格行降级成普通项目行文本，保证模型偶发输出表格时至少可读、不撑乱聊天布局；代码块内的 `|` 不做表格降级。emoji / 表情若偶发输出，继续按普通文本由 Compose `Text` 承接
 - streaming 期间不提前显示免责声明文字；如果内容已满足免责声明触发条件，只预留同等几何高度，settled 后才显示真实文案，避免尾部收口当拍突然增高
 - 完成态收口继续保留两阶段 finalize：
   - `beginPendingStreamingFinalize(...)`

@@ -77,6 +77,7 @@
 - 锚点信息：约 1000 tokens，每轮必注入
 - 待评估方向：后续可能把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并评估使用 `Qwen3.5-Flash` 做 C+ 抽取；在代码落地前，当前真实实现仍以 `server-go` 的 `session_ab.c_summary` 为准
 - 原始问诊归档：成功完成的问答轮次会写入 `session_round_archive`，先按 30 天滚动保留；`/api/session/snapshot` 给 UI 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档。该归档只服务换机 / 重装后的 UI 历史恢复和后续批量抽取，不进入每轮主模型上下文，不替代 A/B/C
+- 时间 / 地点：后端每轮主对话必须注入当前时间、用户地点和地点可信度；历史轮次如果有后端 `created_at / region / region_source / region_reliability`，进入模型上下文时也要带轻量时间 / 地点前缀。时间以后端服务器时间为准，不用前端手机时间当业务真相；前端暂不显示每条消息时间戳或地点条。当前 Android 尚未接定位权限 / 地区选择，真实地点需要后续单独做；未传地点时后端只能走 IP / 未知兜底
 
 图片规则：
 - 单轮最多 4 张
@@ -259,7 +260,7 @@ Clean-State 必做回归的范围：
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有稳定折叠态 composer 外壳、navigation bar / safe bottom、发送期锁定 reserve 和工作线 gap 能进入聊天列表 bottom padding。IME 动画期间不更新列表 reserve，只移动 composer 自己
 - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户只要在生成中触碰消息列表，就立即进入 `UserBrowsing`。用户手动滑回正向列表物理底部（`canScrollForward == false`、手指已抬起、列表已停止）后，应先请求一次正向底部锚点再恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
 - streaming 期间当前不再做段落级 LazyColumn item 小分割，也不再保留 `StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex` 这套派生和新 active block `requestScrollToItem(0)` 接尾巴链。生成中的 assistant 仍是 `messages` 里的单个 item，`ChatStreamingRenderer.kt` 在这个 item 内负责 waiting / streaming / settled 显示；当前抢手问题改回正向列表上继续磨，优先保证用户上滑浏览时不被正在长高的最新 assistant 反向锚点拖回
-- `ChatStreamingRenderer.kt` 的 active streaming 内容当前使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再对新字尾部做 fresh suffix 灰色高亮动画。active Markdown 仍实时吐字，但只有 `# ` / `- ` / `1. ` 等结构前缀后已经出现非空正文时才切成标题 / 列表 / 引用，不能把只有符号的半成品立刻结构化；已完成 / settled Markdown 也走同一套 soft-wrap block renderer，并复用现有 inline Markdown cache 保留加粗 / 链接 / code，不再走旧 committed 物理行预切 / TextMeasurer 路径
+- `ChatStreamingRenderer.kt` 的 active streaming 内容当前使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再对新字尾部做 fresh suffix 灰色高亮动画。active Markdown 仍实时吐字，但只有 `# ` / `- ` / `1. ` 等结构前缀后已经出现非空正文时才切成标题 / 列表 / 引用，不能把只有符号的半成品立刻结构化；已完成 / settled Markdown 也走同一套 soft-wrap block renderer，并复用现有 inline Markdown cache 保留加粗 / 链接 / code，不再走旧 committed 物理行预切 / TextMeasurer 路径。当前吐字节奏对中文通常 1 到 2 个字一拍，英文 / 数字仍按词块吐出，避免 3 到 4 个中文字一坨一坨跳出来，同时不过度抬高重组频率
 - `ChatStreamingRenderer.kt` streaming 期间如果内容已经满足免责声明触发条件，只预留 `assistantDisclaimerTextStyle()` 对应高度，不显示免责声明文字；settled 后才显示真实文案，避免尾部收口当拍突然增高
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
@@ -328,7 +329,8 @@ Clean-State 必做回归的范围：
 
 Markdown 表格：
 - 当前不做真表格渲染
-- 模型若输出 Markdown 表格，完成态自动降级成普通可读文本块
+- 模型若输出标准 Markdown 表格，streaming / 完成态都会在 renderer 内降级成普通可读的项目行文本；代码块内的 `|` 不参与表格降级
+- emoji / 表情若偶发输出，按普通文本交给 Compose `Text` 渲染；提示词仍应尽量压住不要主动使用表情
 
 消息链接：
 - 当前只支持 assistant 完成态正文点击链接

@@ -321,15 +321,27 @@ func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Reque
 
 	aWindowRounds := getAWindowByTier(tier)
 	bEveryRounds, cEveryRounds := GetSummaryIntervals(tier)
+	clientIP := GetClientIP(r)
+	region := ParseRegionFromHeaders(r.Header)
+	if region == nil {
+		resolved := ResolveRegionByIP(clientIP)
+		region = &resolved
+	}
+	if err := s.store.TouchSessionContext(ctx, auth.UserID, region.Region, region.Source, region.Reliability, time.Now().UnixMilli()); err != nil {
+		s.logger.Warn("touch session context failed", "userId", auth.UserID, "error", err)
+	}
 	replay, snapshot, err := s.store.AppendSessionRoundComplete(
 		ctx,
 		auth.UserID,
 		clientMsgID,
 		SessionRound{
-			ClientMsgID: clientMsgID,
-			User:        userText,
-			UserImages:  userImages,
-			Assistant:   assistantText,
+			ClientMsgID:       clientMsgID,
+			User:              userText,
+			UserImages:        userImages,
+			Assistant:         assistantText,
+			Region:            region.Region,
+			RegionSource:      region.Source,
+			RegionReliability: region.Reliability,
 		},
 		aWindowRounds,
 		bEveryRounds,

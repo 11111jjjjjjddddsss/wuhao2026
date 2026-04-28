@@ -1,10 +1,14 @@
 # 近期重要变更
 
-说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
+说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
 ## 2026-04-28
 
+- `server-go` 为历史轮次补入模型可用时间 / 地点上下文：`SessionRound` 新增 `created_at / region / region_source / region_reliability`，成功完成轮次写入 A 层滑窗和 30 天归档时使用后端服务器时间与当前轮地点；`/api/session/snapshot` 返回的 A 层 / UI 归档轮次也会携带这些字段。主对话本来已经每轮注入当前时间 + 用户地点，本次新增的是历史轮次进入模型上下文时附加“历史轮次时间：...（Asia/Shanghai）”和“历史轮次地点：...；地点可信度：...”前缀，让模型能判断这次问诊和上一轮隔了多久、当时大概在哪里。前端 `ARound` 只做兼容解析，不把每条消息时间戳 / 地点显示给用户。
+- 新增 `docs/adr/ADR-0003-forward-chat-ui-stable-main-chain.md`，把当前已稳定的正向聊天 UI 主链正式沉淀：单一正向 `LazyColumn` 主人、96dp 工作线、小球锚点依赖稳定折叠 reserve + 发送锁 + 底部锚定、`SideEffect` 同帧锚定、两阶段 finalize、composer/IME 与列表解耦，以及禁止恢复反向列表 / overlay / active-zone / 小分割 / raw delta 的原因。
+- `ChatScreen.kt` / `ChatStreamingRenderer.kt` 对 streaming 渲染做小范围体验收口：把 reveal batch 从 4 个 token / 40ms 收到 2 个 token / 28ms，让中文通常 1 到 2 个字一拍，减少“几个字一坨蹦出来”的呆感，同时避免每个汉字都单独重组导致长回复压力过大；聊天列表左右 padding 小幅加大，让不同宽度手机上正文边缘有更多呼吸感；同时在 renderer 内增加标准 Markdown 表格兜底降级，把 `| header |` 这类表格转成普通项目行文本，避免模型偶发输出表格时撑乱布局。滚动链、96dp 工作线、SideEffect 同帧锚定、两阶段 finalize 均未改动。
+- `docs/runbooks/chat-ui-regression.md` 从 4 月 19 日旧热点文档更新为当前正向列表基线回归入口：补齐禁改旧链、首屏 / streaming / 用户滚动 / IME / Markdown 表格 / clean-state 回归项，以及后续模拟器跨机型矩阵（小屏、常规屏、大屏、字体缩放、导航模式、Android 版本、输入法）。外部会诊默认对象也同步改为小米 / MiMo。
 - `server-go` 新增 `session_round_archive` 归档表：成功完成的问答轮次会在 `Store.AppendSessionRoundComplete(...)` 同事务写入归档，按 30 天滚动保留；`/api/session/snapshot` 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档，A/B/C 主上下文仍保持原来的短窗口和摘要，不把归档内容每轮喂给模型。
 - 同步明确“清数据”和“换机恢复”的边界：本地 UI 缓存 / 草稿 / 旧视口不允许通过 Android 备份恢复；但如果用户有稳定账号 / 后端身份，后端返回最近 30 轮业务聊天记录属于账号级恢复，不是 UI 回退。匿名本机 UUID 清数据后仍是 clean-state，新身份不会拿到旧记录。
 - 基础设施首版采购口径从“SAE + PolarDB”调整为“SAE + RDS MySQL 优先”。RDS MySQL 更符合当前个人创业、无专职运维、成本敏感阶段；PolarDB 暂作为后续高并发 / 更高规格升级选项。`infra-readiness.md`、`pending-decisions.md` 和 `open-risks.md` 已同步改口径，避免采购时沿用旧默认。

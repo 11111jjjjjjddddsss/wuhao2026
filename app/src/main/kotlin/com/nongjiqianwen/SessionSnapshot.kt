@@ -5,7 +5,7 @@ package com.nongjiqianwen
  * A/B 真相在后端 DB；UI 裁剪（如 RENDER_WINDOW、hardTrimMessages）仅展示层，不得用于回写或推导 A/B。
  */
 
-/** GET /api/session/snapshot 响应：B/C 摘要 + A 全量（供摘要提取）+ 最近 24 轮（仅 UI 展示） */
+/** GET /api/session/snapshot 响应：B/C 摘要 + A 全量（供摘要提取）+ 最近 30 轮（仅 UI 展示） */
 data class SessionSnapshot(
     val b_summary: String,
     val c_summary: String,
@@ -22,7 +22,11 @@ data class ARound(
     val client_msg_id: String? = null,
     val user: String,
     val user_images: List<String> = emptyList(),
-    val assistant: String
+    val assistant: String,
+    val created_at: Long = 0L,
+    val region: String? = null,
+    val region_source: String? = null,
+    val region_reliability: String? = null
 )
 
 /** POST /api/session/append-a 请求体：仅 onComplete 后追加一轮 A */

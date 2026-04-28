@@ -64,6 +64,7 @@ func (s *Store) AppendSessionRoundComplete(
 	}
 
 	nowMs := time.Now().UnixMilli()
+	round.CreatedAt = nowMs
 	if _, err := tx.ExecContext(
 		ctx,
 		"INSERT INTO session_round_ledger(user_id, client_msg_id, created_at) VALUES (?, ?, ?)",
@@ -222,7 +223,7 @@ func (s *Store) GetSessionRoundsForUI(ctx context.Context, userID string) ([]Ses
 	cutoffMs := time.Now().Add(-sessionRoundArchiveRetention).UnixMilli()
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT client_msg_id, user_text, user_images_json, assistant_text
+		`SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
 		 FROM session_round_archive
 		 WHERE user_id = ? AND created_at >= ?
 		 ORDER BY created_at DESC, id DESC
@@ -243,8 +244,12 @@ func (s *Store) GetSessionRoundsForUI(ctx context.Context, userID string) ([]Ses
 			userText      string
 			userImagesRaw sql.NullString
 			assistantText string
+			createdAt     int64
+			region        sql.NullString
+			regionSource  sql.NullString
+			regionReliab  sql.NullString
 		)
-		if err := rows.Scan(&clientMsgID, &userText, &userImagesRaw, &assistantText); err != nil {
+		if err := rows.Scan(&clientMsgID, &userText, &userImagesRaw, &assistantText, &createdAt, &region, &regionSource, &regionReliab); err != nil {
 			return nil, err
 		}
 
@@ -255,10 +260,14 @@ func (s *Store) GetSessionRoundsForUI(ctx context.Context, userID string) ([]Ses
 			}
 		}
 		rounds = append(rounds, SessionRound{
-			ClientMsgID: clientMsgID,
-			User:        userText,
-			UserImages:  userImages,
-			Assistant:   assistantText,
+			ClientMsgID:       clientMsgID,
+			User:              userText,
+			UserImages:        userImages,
+			Assistant:         assistantText,
+			CreatedAt:         createdAt,
+			Region:            region.String,
+			RegionSource:      RegionSource(regionSource.String),
+			RegionReliability: RegionReliability(regionReliab.String),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -378,15 +387,21 @@ func (s *Store) archiveSessionRoundTx(
 		   user_images_json,
 		   assistant_text,
 		   source,
+		   region,
+		   region_source,
+		   region_reliability,
 		   created_at,
 		   updated_at
 		 )
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE
 		   user_text = VALUES(user_text),
 		   user_images_json = VALUES(user_images_json),
 		   assistant_text = VALUES(assistant_text),
 		   source = VALUES(source),
+		   region = VALUES(region),
+		   region_source = VALUES(region_source),
+		   region_reliability = VALUES(region_reliability),
 		   updated_at = VALUES(updated_at)`,
 		userID,
 		clientMsgID,
@@ -394,6 +409,9 @@ func (s *Store) archiveSessionRoundTx(
 		string(userImagesJSON),
 		round.Assistant,
 		normalizeArchiveSource(source),
+		nullString(strings.TrimSpace(round.Region)),
+		nullString(string(round.RegionSource)),
+		nullString(string(round.RegionReliability)),
 		nowMs,
 		nowMs,
 	); err != nil {
@@ -504,6 +522,14 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func nullString(value string) sql.NullString {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: normalized, Valid: true}
 }
 
 func normalizeArchiveSource(source string) string {

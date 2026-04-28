@@ -181,7 +181,11 @@ object SessionApi {
                                     client_msg_id = r.client_msg_id,
                                     user = r.user ?: "",
                                     user_images = r.user_images ?: emptyList(),
-                                    assistant = r.assistant ?: ""
+                                    assistant = r.assistant ?: "",
+                                    created_at = r.created_at ?: 0L,
+                                    region = r.region,
+                                    region_source = r.region_source,
+                                    region_reliability = r.region_reliability
                                 )
                             }
                             val forUi = forUiList.map { r ->
@@ -189,7 +193,11 @@ object SessionApi {
                                     client_msg_id = r.client_msg_id,
                                     user = r.user ?: "",
                                     user_images = r.user_images ?: emptyList(),
-                                    assistant = r.assistant ?: ""
+                                    assistant = r.assistant ?: "",
+                                    created_at = r.created_at ?: 0L,
+                                    region = r.region,
+                                    region_source = r.region_source,
+                                    region_reliability = r.region_reliability
                                 )
                             }
                             onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi))
@@ -517,6 +525,10 @@ object SessionApi {
         @SerializedName("client_msg_id") val client_msg_id: String? = null,
         @SerializedName("user") val user: String?,
         @SerializedName("user_images") val user_images: List<String>? = null,
-        @SerializedName("assistant") val assistant: String?
+        @SerializedName("assistant") val assistant: String?,
+        @SerializedName("created_at") val created_at: Long? = null,
+        @SerializedName("region") val region: String? = null,
+        @SerializedName("region_source") val region_source: String? = null,
+        @SerializedName("region_reliability") val region_reliability: String? = null
     )
 }

@@ -53,6 +53,13 @@ func FormatShanghaiNowToSecond(loc *time.Location, date time.Time) string {
 	return date.In(loc).Format("2006-01-02 15:04:05")
 }
 
+func FormatShanghaiUnixMilliToSecond(loc *time.Location, ts int64) string {
+	if ts <= 0 {
+		return ""
+	}
+	return FormatShanghaiNowToSecond(loc, time.UnixMilli(ts))
+}
+
 func normalizeRegion(raw string) string {
 	var builder strings.Builder
 	builder.Grow(len(raw))

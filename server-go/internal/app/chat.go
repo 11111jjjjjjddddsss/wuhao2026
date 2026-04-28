@@ -313,10 +313,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				auth.UserID,
 				clientMsgID,
 				SessionRound{
-					ClientMsgID: clientMsgID,
-					User:        text,
-					UserImages:  images,
-					Assistant:   replyText,
+					ClientMsgID:       clientMsgID,
+					User:              text,
+					UserImages:        images,
+					Assistant:         replyText,
+					Region:            region.Region,
+					RegionSource:      region.Source,
+					RegionReliability: region.Reliability,
 				},
 				aWindowRounds,
 				bEveryRounds,
@@ -517,7 +520,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 
 	previousRoundIndex := len(rounds) - 1
 	for index, round := range rounds {
-		messages = append(messages, BailianMessage{Role: "user", Content: roundToUserContent(round, index == previousRoundIndex)})
+		messages = append(messages, BailianMessage{Role: "user", Content: s.roundToUserContent(round, index == previousRoundIndex)})
 		messages = append(messages, BailianMessage{Role: "assistant", Content: round.Assistant})
 	}
 	messages = append(messages, BailianMessage{Role: "user", Content: buildVisionUserContent(currentText, currentImages)})
@@ -548,11 +551,34 @@ func buildVisionUserContent(text string, images []string) any {
 	return content
 }
 
-func roundToUserContent(round SessionRound, includeImages bool) any {
+func (s *Server) roundToUserContent(round SessionRound, includeImages bool) any {
+	userText := round.userTextWithContextTime(s.shanghai)
 	if !includeImages {
+		return userText
+	}
+	return buildVisionUserContent(userText, round.UserImages)
+}
+
+func (round SessionRound) userTextWithContextTime(loc *time.Location) string {
+	contextLines := []string{}
+	if timestamp := FormatShanghaiUnixMilliToSecond(loc, round.CreatedAt); timestamp != "" {
+		contextLines = append(contextLines, "历史轮次时间："+timestamp+"（Asia/Shanghai）")
+	}
+	if region := strings.TrimSpace(round.Region); region != "" && region != "未知" {
+		reliability := strings.TrimSpace(string(round.RegionReliability))
+		if reliability == "" {
+			reliability = string(RegionUnreliable)
+		}
+		contextLines = append(contextLines, "历史轮次地点："+region+"；地点可信度："+reliability)
+	}
+	if len(contextLines) == 0 {
 		return round.User
 	}
-	return buildVisionUserContent(round.User, round.UserImages)
+	text := strings.TrimSpace(round.User)
+	if text == "" {
+		return strings.Join(contextLines, "\n")
+	}
+	return strings.Join(contextLines, "\n") + "\n" + text
 }
 
 func validateChatStreamInput(clientMsgID string, text string, images []string) string {

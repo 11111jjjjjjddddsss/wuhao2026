@@ -43,10 +43,14 @@ type ConsumeResult struct {
 }
 
 type SessionRound struct {
-	ClientMsgID string   `json:"client_msg_id,omitempty"`
-	User        string   `json:"user"`
-	UserImages  []string `json:"user_images,omitempty"`
-	Assistant   string   `json:"assistant"`
+	ClientMsgID       string            `json:"client_msg_id,omitempty"`
+	User              string            `json:"user"`
+	UserImages        []string          `json:"user_images,omitempty"`
+	Assistant         string            `json:"assistant"`
+	CreatedAt         int64             `json:"created_at,omitempty"`
+	Region            string            `json:"region,omitempty"`
+	RegionSource      RegionSource      `json:"region_source,omitempty"`
+	RegionReliability RegionReliability `json:"region_reliability,omitempty"`
 }
 
 type SessionSnapshot struct {

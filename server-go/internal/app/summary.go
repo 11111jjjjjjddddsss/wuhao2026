@@ -137,7 +137,22 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 func buildDialogueText(rounds []SessionRound) string {
 	parts := make([]string, 0, len(rounds))
 	for _, round := range rounds {
-		parts = append(parts, "user: "+round.User+"\nassistant: "+round.Assistant)
+		contextLines := []string{}
+		if timestamp := FormatShanghaiUnixMilliToSecond(nil, round.CreatedAt); timestamp != "" {
+			contextLines = append(contextLines, "time: "+timestamp+"（Asia/Shanghai）")
+		}
+		if region := strings.TrimSpace(round.Region); region != "" && region != "未知" {
+			reliability := strings.TrimSpace(string(round.RegionReliability))
+			if reliability == "" {
+				reliability = string(RegionUnreliable)
+			}
+			contextLines = append(contextLines, "region: "+region+"; reliability: "+reliability)
+		}
+		prefix := ""
+		if len(contextLines) > 0 {
+			prefix = strings.Join(contextLines, "\n") + "\n"
+		}
+		parts = append(parts, prefix+"user: "+round.User+"\nassistant: "+round.Assistant)
 	}
 	return strings.TrimSpace(strings.Join(parts, "\n\n"))
 }

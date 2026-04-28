@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *testing.T) {
 	server := &Server{
@@ -107,6 +111,55 @@ func TestBuildPromptMessagesAddsBCSummariesWhenPresent(t *testing.T) {
 	}
 	if messages[4].Content != "hello" {
 		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
+	}
+}
+
+func TestBuildPromptMessagesIncludesHistoricalRoundTimeWhenAvailable(t *testing.T) {
+	shanghai := time.FixedZone("Asia/Shanghai", 8*60*60)
+	server := &Server{
+		systemAnchor: "anchor",
+		shanghai:     shanghai,
+	}
+	createdAt := time.Date(2026, 4, 28, 21, 34, 10, 0, shanghai).UnixMilli()
+
+	snapshot := &SessionSnapshot{
+		UserID: "u1",
+		ARoundsFull: []SessionRound{
+			{
+				ClientMsgID:       "r1",
+				User:              "番茄叶子发黄",
+				Assistant:         "先看新叶老叶差异",
+				CreatedAt:         createdAt,
+				Region:            "山东寿光",
+				RegionSource:      RegionSourceGPS,
+				RegionReliability: RegionReliable,
+			},
+		},
+	}
+
+	messages, usedCount, _, _ := server.buildPromptMessages(
+		snapshot,
+		6,
+		"今天又黄了",
+		nil,
+		"context",
+	)
+
+	if usedCount != 1 {
+		t.Fatalf("expected 1 historical round, got %d", usedCount)
+	}
+	historicalUser, ok := messages[2].Content.(string)
+	if !ok {
+		t.Fatalf("expected historical user message to be text, got %#v", messages[2].Content)
+	}
+	if !strings.Contains(historicalUser, "历史轮次时间：2026-04-28 21:34:10（Asia/Shanghai）") {
+		t.Fatalf("expected historical time prefix, got %q", historicalUser)
+	}
+	if !strings.Contains(historicalUser, "历史轮次地点：山东寿光；地点可信度：reliable") {
+		t.Fatalf("expected historical region prefix, got %q", historicalUser)
+	}
+	if !strings.Contains(historicalUser, "番茄叶子发黄") {
+		t.Fatalf("expected original user text preserved, got %q", historicalUser)
 	}
 }
 
