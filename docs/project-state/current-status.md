@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-27
+最后更新：2026-04-28
 
 ## 项目概况
 
@@ -12,6 +12,8 @@
 
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
 - Android Auto Backup / Data Extraction 当前已关闭并显式排除：`allowBackup=false`，同时通过 `backup_rules.xml` / `data_extraction_rules.xml` 排除 cloud backup、device transfer、shared preferences、files、databases 和 external 数据。本地聊天窗口快照、流式草稿、`app_ids`、旧 UI metrics 等都只作为本机运行时缓存，不允许被系统云备份 / 设备迁移在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
+- Go 后端当前只保存 A/B/C 上下文资产：`session_ab.a_json` 是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` / `c_summary` 是摘要文本；`session_round_ledger` 只做 `client_msg_id` 幂等，不保存用户问题和 AI 回复。当前尚未实现全量原始问诊归档表，也尚未实现 C+ 的用户农业画像 / 用户农业档案字段
+- 当前产品策略倾向已记录为待决策：C 层后续可能升级为 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并评估改用 `Qwen3.5-Flash` 做 C+ 抽取；在代码落地前，当前真实实现仍是现有 `c_summary`
 - 聊天消息运行时当前是**单一正向列表主人**：`ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，`messages` 仍按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`
 - 底部 composer 仍是页面底部的独立 UI 宿主，继续负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - `ChatScreen.kt` 当前把消息列表和 composer 作为页面 `Box` 内的兄弟层渲染：列表铺满消息区，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 已从旧 `SubcomposeLayout` 测量链里拆出，键盘动画不再每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”
@@ -42,6 +44,7 @@
 - 开机历史态 / 完成态在输入为空、无 focus、IME 收起、composer 非 settling、非发送锁的折叠稳定窗口中，列表 bottom padding 优先吃底部固定 composer 宿主的稳定实测高度再加 96dp 工作线 gap，不再只靠启动估值 / 旧观察值；这是为了保证工作线以下空白完整露出来，同时避免 IME 动画帧进入列表测量链
 - 用户进入 `UserBrowsing` 后，如果用户明确滑回正向列表物理底部（`canScrollForward == false`、手指已抬起、列表已停止），会先请求一次正向底部锚点再恢复 `AutoFollow`；连续 2 帧工作线稳定命中只保留为兜底，避免 streaming 持续吐字打断容差导致手动回底后长时间不跟随
 - 回到底部按钮仍保留 56dp 安全区：用户滑动过程中不显示，停止滑动后如果正向列表仍可向前滚动且最新消息底边离 96dp 工作线超过安全区，才短暂出现；点击后滚到最新消息 `lastIndex` 并恢复对应滚动模式
+- 2026-04-28 用户真机反馈：当前正向列表滚动链整体“确实很稳”，小米 / MiMo 会诊后落地的 SideEffect 同帧锚定、物理底部恢复 AutoFollow、96dp 工作线贴底等主链规则继续作为当前稳定基线保留；后续不要再恢复反向列表、小分割、overlay 或 raw delta
 
 ## 渲染与收口
 

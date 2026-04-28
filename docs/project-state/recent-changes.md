@@ -3,6 +3,11 @@
 说明：本文件默认只保留最近 20 条重要变更；更早内容以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-04-28
+
+- 项目记忆补充了后端长期资产和 C+ 方向：当前代码尚未保存全量原始问诊日志，`session_ab.a_json` 只保留 A 层滑窗，`b_summary / c_summary` 只是摘要；后续倾向先新增长期原始问诊归档表，再评估把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并考虑用 `Qwen3.5-Flash` 做 C+ 抽取。当前没有改后端代码，也没有改变 A/B/C prompt 或模型调用链。
+- 用户真机反馈当前正向列表滚动链“确实很稳”。项目记忆已把 `SideEffect` 同帧底部锚定、物理底部恢复 AutoFollow、96dp 工作线贴底、禁止恢复反向列表 / 小分割 / overlay / raw delta 等规则继续固化为稳定基线；`open-risks.md` 中对应风险从“主链待验证”降为“核心已稳定，继续观察边角场景”。
+
 ## 2026-04-27
 
 - `ChatScreen.kt` 新增 debug-only 启动诊断日志 `ChatStartup`，用于复查“清数据后 UI 是否从旧状态恢复”的老问题。启动时记录本地 `chat_ui_cache` 读取到的消息数、failed state 数、streaming draft 是否存在、是否启用后端 hydrate；后端 `SessionApi.getSnapshot()` 返回后记录 remote / hydrated 消息数以及是否应用到当前列表。日志只在 `BuildConfig.DEBUG` 输出，且只打印 `chatScopeId` 后 8 位，不改变本地 snapshot、后端 hydrate、滚动链或 UI 行为。
