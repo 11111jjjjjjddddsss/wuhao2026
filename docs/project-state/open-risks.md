@@ -47,9 +47,9 @@
 - 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，容易因为真实环境参数缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节
 - 后续动作：采购前先按 `docs/runbooks/infra-readiness.md` 把 Region、环境命名、RDS MySQL 规格 / 备份 / 白名单、SAE、域名/HTTPS、OSS/SLS/Redis 是否首版接入这些问题拍板；第一套真实环境落地后，同次回填 deploy / rollback / logs / db-readonly runbook
 
-## R7 后端尚未沉淀长期原始问诊资产
+## R7 C+ 长期资产抽取尚未落地
 
 - 状态：未关闭
-- 说明：当前 `server-go` 只把成功轮次写入 `session_ab.a_json` 作为 A 层滑窗，并按会员等级裁到 6 / 9 轮；B/C 只是摘要文本；`session_round_ledger` 和 `quota_ledger` 都不保存完整问答正文。也就是说，当前还没有 append-only 的长期原始问诊日志 / 资产池
-- 风险：如果继续只依赖 A/B/C，旧原始对话滑出 A 层后就丢失；后续想做 C+ 用户农业画像、用户农业档案、相似案例、质检复盘或批量抽取时会缺少历史原料
-- 后续动作：优先评估新增 `session_round_archive` 这类长期归档表，最小字段先覆盖成功完成轮次的 `user_id / client_msg_id / user_text / user_images_json / assistant_text / source / created_at`；原始归档先按 30 天保留，30 天后滚动删除；第一刀只存，不实时抽取、不改 prompt、不把归档内容每轮喂给模型
+- 说明：`server-go` 已新增 `session_round_archive` 保存成功完成轮次，并按 30 天滚动保留；`/api/session/snapshot` 的 `a_rounds_for_ui` 可优先返回 30 天内最近 30 轮归档。但这些原始记录当前只是“可恢复 / 可批处理”的材料，尚未抽取成 C+ 用户农业画像 / 用户农业档案
+- 风险：如果后续迟迟不做批量抽取，30 天外原始问答会被滚动删除；长期护城河仍主要停留在现有 B/C 摘要，无法形成更稳定的用户农业画像和农业档案
+- 后续动作：后续评估 C+ schema、更新频率和抽取模型，优先用归档记录做离线 / 低频批处理，不在当前第一刀里实时抽取、不改 prompt、不把归档内容每轮喂给模型；图片文件本身的 OSS / 本地 uploads 生命周期还需单独按成本和隐私策略配置

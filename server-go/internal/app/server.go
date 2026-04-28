@@ -266,11 +266,17 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	safe := safeSnapshot(auth.UserID, snapshot)
+	uiRounds := safe.ARoundsFull
+	if archivedRounds, err := s.store.GetSessionRoundsForUI(r.Context(), auth.UserID); err != nil {
+		s.logger.Warn("get session ui archive failed", "userId", auth.UserID, "error", err)
+	} else if len(archivedRounds) > 0 {
+		uiRounds = mergeSessionRoundsForUI(safe.ARoundsFull, archivedRounds)
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":         safe.UserID,
 		"a_json":          safe.ARoundsFull,
 		"a_rounds_full":   safe.ARoundsFull,
-		"a_rounds_for_ui": safe.ARoundsFull,
+		"a_rounds_for_ui": uiRounds,
 		"b_summary":       safe.BSummary,
 		"c_summary":       safe.CSummary,
 		"round_total":     safe.RoundTotal,
@@ -328,6 +334,7 @@ func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Reque
 		aWindowRounds,
 		bEveryRounds,
 		cEveryRounds,
+		"round_complete",
 	)
 	if err != nil {
 		s.logger.Error("append session round failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
@@ -420,6 +427,38 @@ func validateRoundCompleteInput(clientMsgID string, userText string, userImages 
 		return "assistant_text required"
 	}
 	return ""
+}
+
+func mergeSessionRoundsForUI(fallbackRounds []SessionRound, archivedRounds []SessionRound) []SessionRound {
+	if len(archivedRounds) == 0 {
+		return fallbackRounds
+	}
+
+	archivedKeys := make(map[string]struct{}, len(archivedRounds))
+	for _, round := range archivedRounds {
+		key := strings.TrimSpace(round.ClientMsgID)
+		if key != "" {
+			archivedKeys[key] = struct{}{}
+		}
+	}
+
+	merged := make([]SessionRound, 0, len(fallbackRounds)+len(archivedRounds))
+	for _, round := range fallbackRounds {
+		key := strings.TrimSpace(round.ClientMsgID)
+		if key == "" {
+			merged = append(merged, round)
+			continue
+		}
+		if _, archived := archivedKeys[key]; !archived {
+			merged = append(merged, round)
+		}
+	}
+	merged = append(merged, archivedRounds...)
+
+	if len(merged) > sessionRoundArchiveUILimit {
+		return merged[len(merged)-sessionRoundArchiveUILimit:]
+	}
+	return merged
 }
 
 func (s *Server) handleRenewPlus(w http.ResponseWriter, r *http.Request) {

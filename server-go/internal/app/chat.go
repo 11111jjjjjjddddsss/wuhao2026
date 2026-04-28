@@ -321,6 +321,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				aWindowRounds,
 				bEveryRounds,
 				cEveryRounds,
+				"stream_done",
 			)
 			if appendErr != nil {
 				s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)

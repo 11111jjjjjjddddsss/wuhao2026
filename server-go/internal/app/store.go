@@ -14,6 +14,11 @@ type Store struct {
 	shanghai *time.Location
 }
 
+const (
+	sessionRoundArchiveRetention = 30 * 24 * time.Hour
+	sessionRoundArchiveUILimit   = 30
+)
+
 func NewStore(db *sql.DB, shanghai *time.Location) *Store {
 	return &Store{
 		db:       db,
@@ -29,6 +34,7 @@ func (s *Store) AppendSessionRoundComplete(
 	aWindowRounds int,
 	bEveryRounds int,
 	cEveryRounds int,
+	archiveSource string,
 ) (bool, *SessionSnapshot, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -57,13 +63,21 @@ func (s *Store) AppendSessionRoundComplete(
 		return false, nil, err
 	}
 
+	nowMs := time.Now().UnixMilli()
 	if _, err := tx.ExecContext(
 		ctx,
 		"INSERT INTO session_round_ledger(user_id, client_msg_id, created_at) VALUES (?, ?, ?)",
 		userID,
 		clientMsgID,
-		time.Now().UnixMilli(),
+		nowMs,
 	); err != nil {
+		return false, nil, err
+	}
+
+	if err := s.archiveSessionRoundTx(ctx, tx, userID, clientMsgID, round, archiveSource, nowMs); err != nil {
+		return false, nil, err
+	}
+	if err := s.pruneExpiredSessionRoundArchiveTx(ctx, tx, nowMs); err != nil {
 		return false, nil, err
 	}
 
@@ -204,6 +218,59 @@ func (s *Store) TouchSessionContext(
 	return err
 }
 
+func (s *Store) GetSessionRoundsForUI(ctx context.Context, userID string) ([]SessionRound, error) {
+	cutoffMs := time.Now().Add(-sessionRoundArchiveRetention).UnixMilli()
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT client_msg_id, user_text, user_images_json, assistant_text
+		 FROM session_round_archive
+		 WHERE user_id = ? AND created_at >= ?
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT ?`,
+		userID,
+		cutoffMs,
+		sessionRoundArchiveUILimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	rounds := []SessionRound{}
+	for rows.Next() {
+		var (
+			clientMsgID   string
+			userText      string
+			userImagesRaw sql.NullString
+			assistantText string
+		)
+		if err := rows.Scan(&clientMsgID, &userText, &userImagesRaw, &assistantText); err != nil {
+			return nil, err
+		}
+
+		userImages := []string{}
+		if userImagesRaw.Valid && strings.TrimSpace(userImagesRaw.String) != "" {
+			if err := json.Unmarshal([]byte(userImagesRaw.String), &userImages); err != nil {
+				return nil, err
+			}
+		}
+		rounds = append(rounds, SessionRound{
+			ClientMsgID: clientMsgID,
+			User:        userText,
+			UserImages:  userImages,
+			Assistant:   assistantText,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i, j := 0, len(rounds)-1; i < j; i, j = i+1, j-1 {
+		rounds[i], rounds[j] = rounds[j], rounds[i]
+	}
+	return rounds, nil
+}
+
 func (s *Store) appendRoundAndUpsertSnapshotTx(
 	ctx context.Context,
 	tx *sql.Tx,
@@ -287,6 +354,62 @@ func (s *Store) appendRoundAndUpsertSnapshotTx(
 		RoundTotal:    nextRoundTotal,
 		UpdatedAt:     nextUpdatedAt,
 	}, nil
+}
+
+func (s *Store) archiveSessionRoundTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	userID string,
+	clientMsgID string,
+	round SessionRound,
+	source string,
+	nowMs int64,
+) error {
+	userImagesJSON, err := json.Marshal(round.UserImages)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO session_round_archive(
+		   user_id,
+		   client_msg_id,
+		   user_text,
+		   user_images_json,
+		   assistant_text,
+		   source,
+		   created_at,
+		   updated_at
+		 )
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE
+		   user_text = VALUES(user_text),
+		   user_images_json = VALUES(user_images_json),
+		   assistant_text = VALUES(assistant_text),
+		   source = VALUES(source),
+		   updated_at = VALUES(updated_at)`,
+		userID,
+		clientMsgID,
+		round.User,
+		string(userImagesJSON),
+		round.Assistant,
+		normalizeArchiveSource(source),
+		nowMs,
+		nowMs,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Store) pruneExpiredSessionRoundArchiveTx(ctx context.Context, tx *sql.Tx, nowMs int64) error {
+	cutoffMs := nowMs - int64(sessionRoundArchiveRetention/time.Millisecond)
+	_, err := tx.ExecContext(
+		ctx,
+		"DELETE FROM session_round_archive WHERE created_at < ? LIMIT 1000",
+		cutoffMs,
+	)
+	return err
 }
 
 func (s *Store) readSnapshotForUpdateTx(ctx context.Context, tx *sql.Tx, userID string) (*SessionSnapshot, error) {
@@ -381,4 +504,15 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func normalizeArchiveSource(source string) string {
+	normalized := strings.TrimSpace(source)
+	if normalized == "" {
+		return "round_complete"
+	}
+	if len(normalized) > 32 {
+		return normalized[:32]
+	}
+	return normalized
 }
