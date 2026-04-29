@@ -5311,8 +5311,10 @@ private fun MessageStatusFooter(
     ) {
         Surface(
             shape = RoundedCornerShape(999.dp),
-            color = Color(0xFFF5F6F8),
-            border = BorderStroke(0.7.dp, Color(0xFFE1E4EA)),
+            color = Color(0xEE111111),
+            contentColor = Color.White,
+            border = BorderStroke(0.8.dp, Color.Black),
+            shadowElevation = 1.2.dp,
             modifier = Modifier
                 .clickable(
                     interactionSource = interactionSource,
@@ -5322,25 +5324,25 @@ private fun MessageStatusFooter(
         ) {
             Row(
                 modifier = Modifier
-                    .heightIn(min = 34.dp)
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                    .heightIn(min = 38.dp)
+                    .padding(horizontal = 18.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = statusText,
-                    fontSize = 13.sp,
-                    color = Color(0xFF737780)
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.84f)
                 )
                 Text(
                     text = " · ",
-                    fontSize = 13.sp,
-                    color = Color(0xFFB0B4BC)
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.42f)
                 )
                 Text(
-                    text = actionText,
-                    fontSize = 13.sp,
+                    text = "点击$actionText",
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF111111)
+                    color = Color.White
                 )
             }
         }
