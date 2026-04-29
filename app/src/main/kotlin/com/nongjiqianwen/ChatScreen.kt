@@ -4916,27 +4916,29 @@ private fun UiCopyPreviewOverlay(
 ) {
     val copyItems = remember {
         listOf(
-            "主界面标题：农技千查",
-            "欢迎空态：欢迎咨询种植 / 病虫害防治、施肥等问题 / 必要时可上传图片",
-            "输入框：描述种植问题",
-            "AI尾部：本回答由AI生成，内容仅供参考。",
-            "AI异常：回复未完成 / 重试",
-            "用户异常：发送失败 / 重发",
-            "网络：当前网络不可用",
-            "额度：今日额度已用完，请明天再试",
-            "限流：当前请求较多，请稍后重试",
-            "中断：网络波动，回复未完成",
-            "中断兜底：本次回复未完成，请重试",
-            "输入超长：已超过6000字，暂时不能发送",
-            "消息菜单：复制 / 全文复制",
-            "输入菜单：复制 / 粘贴 / 剪切 / 全选",
-            "图片格式：仅支持 JPEG / PNG 格式",
-            "图片超限：图片压缩后仍超过 1MB，请更换更清晰主体、减少无关背景后重试",
-            "图片上传：未配置上传服务 / 上传失败：响应格式错误 / 上传异常",
-            "图片数量：图片数量超过限制：最多4张",
-            "有图无文字：有图片时必须带文字描述"
+            UiCopyPreviewItem("主界面标题", "顶部标题", UiCopyPreviewKind.AppTitle),
+            UiCopyPreviewItem("欢迎空态", "空列表欢迎文案", UiCopyPreviewKind.Welcome),
+            UiCopyPreviewItem("输入框", "底部 placeholder", UiCopyPreviewKind.ComposerPlaceholder),
+            UiCopyPreviewItem("AI尾部", "免责声明", UiCopyPreviewKind.Disclaimer),
+            UiCopyPreviewItem("AI异常", "回复未完成 / 重试", UiCopyPreviewKind.AssistantRetry),
+            UiCopyPreviewItem("用户异常", "发送失败 / 重发", UiCopyPreviewKind.UserRetry),
+            UiCopyPreviewItem("网络", "当前网络不可用", UiCopyPreviewKind.Network),
+            UiCopyPreviewItem("额度", "今日额度已用完，请明天再试", UiCopyPreviewKind.Quota),
+            UiCopyPreviewItem("限流", "当前请求较多，请稍后重试", UiCopyPreviewKind.RateLimit),
+            UiCopyPreviewItem("中断", "网络波动，回复未完成", UiCopyPreviewKind.Interrupted),
+            UiCopyPreviewItem("中断兜底", "本次回复未完成，请重试", UiCopyPreviewKind.InterruptedFallback),
+            UiCopyPreviewItem("输入超长", "已超过6000字，暂时不能发送", UiCopyPreviewKind.InputTooLong),
+            UiCopyPreviewItem("消息菜单", "复制 / 全文复制", UiCopyPreviewKind.MessageMenu),
+            UiCopyPreviewItem("输入菜单", "复制 / 粘贴 / 剪切 / 全选", UiCopyPreviewKind.InputMenu),
+            UiCopyPreviewItem("图片格式", "仅支持 JPEG / PNG 格式", UiCopyPreviewKind.ImageFormat),
+            UiCopyPreviewItem("图片超限", "图片压缩后仍超过 1MB", UiCopyPreviewKind.ImageOversize),
+            UiCopyPreviewItem("图片上传", "未配置上传服务 / 上传失败", UiCopyPreviewKind.ImageUpload),
+            UiCopyPreviewItem("图片数量", "最多4张", UiCopyPreviewKind.ImageCount),
+            UiCopyPreviewItem("有图无文字", "有图片时必须带文字描述", UiCopyPreviewKind.ImageNeedsText)
         )
     }
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    val selectedItem = copyItems[selectedIndex.coerceIn(0, copyItems.lastIndex)]
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -4963,27 +4965,277 @@ private fun UiCopyPreviewOverlay(
                 modifier = Modifier
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "UI文案预览",
+                    text = "UI文案样式预览",
                     color = Color(0xFF111111),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "点空白关闭。仅 debug 包显示。",
+                    text = "点下面任意一条，查看它在 App 里的实际样式。点空白关闭，仅 debug 包显示。",
                     color = Color(0xFF6D7178),
                     style = MaterialTheme.typography.bodySmall
                 )
-                copyItems.forEach { item ->
-                    Text(
-                        text = item,
-                        color = Color(0xFF202124),
-                        style = MaterialTheme.typography.bodyMedium,
-                        lineHeight = 22.sp
+                copyItems.forEachIndexed { index, item ->
+                    UiCopyPreviewListRow(
+                        item = item,
+                        selected = index == selectedIndex,
+                        onClick = { selectedIndex = index }
                     )
                 }
+                HorizontalDivider(
+                    thickness = 0.7.dp,
+                    color = Color(0xFFE4E6EA),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                Text(
+                    text = "样式预览",
+                    color = Color(0xFF111111),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                UiCopyPreviewSample(selectedItem)
+            }
+        }
+    }
+}
+
+private data class UiCopyPreviewItem(
+    val title: String,
+    val subtitle: String,
+    val kind: UiCopyPreviewKind
+)
+
+private enum class UiCopyPreviewKind {
+    AppTitle,
+    Welcome,
+    ComposerPlaceholder,
+    Disclaimer,
+    AssistantRetry,
+    UserRetry,
+    Network,
+    Quota,
+    RateLimit,
+    Interrupted,
+    InterruptedFallback,
+    InputTooLong,
+    MessageMenu,
+    InputMenu,
+    ImageFormat,
+    ImageOversize,
+    ImageUpload,
+    ImageCount,
+    ImageNeedsText
+}
+
+@Composable
+private fun UiCopyPreviewListRow(
+    item: UiCopyPreviewItem,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (selected) Color(0xFFF1F3F6) else Color.White,
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(
+            width = 0.8.dp,
+            color = if (selected) Color(0xFFBFC5CE) else Color(0xFFE8EAEE)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    color = Color(0xFF17191C),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                )
+                Text(
+                    text = item.subtitle,
+                    color = Color(0xFF70747B),
+                    style = MaterialTheme.typography.bodySmall,
+                    lineHeight = 17.sp
+                )
+            }
+            Text(
+                text = if (selected) "预览中" else "查看",
+                color = if (selected) Color(0xFF111111) else Color(0xFF8A8E96),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
+    Surface(
+        color = Color(0xFFF7F8FA),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = item.title,
+                color = Color(0xFF70747B),
+                style = MaterialTheme.typography.labelMedium
+            )
+            when (item.kind) {
+                UiCopyPreviewKind.AppTitle -> {
+                    Text(
+                        text = "农技千查",
+                        color = Color(0xFF111111),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Center
+                    )
+                }
+                UiCopyPreviewKind.Welcome -> {
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
+                            color = Color(0xFF202124),
+                            style = MaterialTheme.typography.bodyMedium,
+                            lineHeight = 23.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 18.dp)
+                        )
+                    }
+                }
+                UiCopyPreviewKind.ComposerPlaceholder -> {
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(30.dp),
+                        shadowElevation = 6.dp,
+                        border = BorderStroke(0.6.dp, Color(0xFFE6E8EC)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "描述种植问题",
+                            color = Color(0xFFB7BAC1),
+                            fontSize = 18.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp)
+                        )
+                    }
+                }
+                UiCopyPreviewKind.Disclaimer -> {
+                    Text(
+                        text = AI_DISCLAIMER_TEXT,
+                        style = assistantDisclaimerTextStyle(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                UiCopyPreviewKind.AssistantRetry -> {
+                    MessageStatusFooter(
+                        statusText = "回复未完成",
+                        actionText = "重试",
+                        alignEnd = false,
+                        onActionClick = {}
+                    )
+                }
+                UiCopyPreviewKind.UserRetry -> {
+                    MessageStatusFooter(
+                        statusText = "发送失败",
+                        actionText = "重发",
+                        alignEnd = true,
+                        onActionClick = {}
+                    )
+                }
+                UiCopyPreviewKind.Network -> UiCopyPreviewHint("当前网络不可用")
+                UiCopyPreviewKind.Quota -> UiCopyPreviewHint("今日额度已用完，请明天再试")
+                UiCopyPreviewKind.RateLimit -> UiCopyPreviewHint("当前请求较多，请稍后重试")
+                UiCopyPreviewKind.Interrupted -> UiCopyPreviewHint("网络波动，回复未完成")
+                UiCopyPreviewKind.InterruptedFallback -> UiCopyPreviewHint("本次回复未完成，请重试")
+                UiCopyPreviewKind.InputTooLong -> UiCopyPreviewHint("已超过6000字，暂时不能发送")
+                UiCopyPreviewKind.MessageMenu -> {
+                    MessageActionMenuCardContent(onCopy = {}, onCopyFull = {})
+                }
+                UiCopyPreviewKind.InputMenu -> {
+                    UiCopyPreviewInputActionMenu()
+                }
+                UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint("仅支持 JPEG / PNG 格式")
+                UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint("图片压缩后仍超过 1MB，请更换更清晰主体、减少无关背景后重试")
+                UiCopyPreviewKind.ImageUpload -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        UiCopyPreviewHint("未配置上传服务")
+                        UiCopyPreviewHint("上传失败：响应格式错误")
+                        UiCopyPreviewHint("上传异常")
+                    }
+                }
+                UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint("图片数量超过限制：最多4张")
+                UiCopyPreviewKind.ImageNeedsText -> UiCopyPreviewHint("有图片时必须带文字描述")
+            }
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewHint(text: String) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xEE111111),
+        contentColor = Color.White,
+        border = BorderStroke(0.8.dp, Color.Black),
+        shadowElevation = 1.2.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = text,
+            color = Color.White,
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+        )
+    }
+}
+
+@Composable
+private fun UiCopyPreviewInputActionMenu() {
+    Surface(
+        color = Color(0xFF111111),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            listOf("复制", "粘贴", "剪切", "全选").forEachIndexed { index, label ->
+                if (index > 0) {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(16.dp)
+                            .background(Color.White.copy(alpha = 0.16f))
+                    )
+                }
+                MessageActionMenuButton(
+                    label = label,
+                    minWidth = 0.dp,
+                    horizontalPadding = 13.dp,
+                    onClick = {}
+                )
             }
         }
     }
