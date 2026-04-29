@@ -5331,7 +5331,7 @@ private fun MessageStatusFooter(
                 Text(
                     text = statusText,
                     fontSize = 14.sp,
-                    color = Color.White.copy(alpha = 0.84f)
+                    color = Color.White
                 )
                 Text(
                     text = " · ",
