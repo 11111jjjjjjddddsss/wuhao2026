@@ -1,6 +1,6 @@
 # 当前未关闭风险
 
-最后更新：2026-04-28
+最后更新：2026-04-29
 
 ## R1 运维入口仍以文档骨架为主
 
@@ -31,6 +31,7 @@
 - 剩余风险：仍需在更长回复、不同输入法 / 设备、含免责声明答案、冷启动首次点输入框等边角场景继续观察；如果再次出现冒头闪、尾部收口微动或手动回底不跟随，下一刀优先检查当前正向列表底部锚点、reveal 提交节奏、工作线 bounds、contentPadding 与 item padding 的几何关系，不恢复 overlay、小分割或 raw delta
 - 风险补充：pending finalize 仍不主动 bottom align，主要依赖两阶段 fresh bounds、unified soft-wrap renderer 和 streaming 免责声明几何占位。若含免责声明答案收口仍微跳，优先在同一消息主人内复核高度来源，不恢复完整 `scrollToBottom(false)` 精修
 - 风险补充：composer 当前已完成 P0 拆链、取消发送旧高度锁、统一收键盘路径为 `clearFocus(force = true)`，并删除死链 overlay prewarm snapshot 协程。若真机仍有输入框残影或冷启动首点迟钝，下一步才评估是否需要 `WindowInsetsAnimationCompat`；不要把 IME padding 挪到根容器去抬升消息列表，也不要动滚动主链
+- 风险补充：极端恢复链已做低风险兜底：断网连续发送同文复用已有失败用户消息；远端 streaming 重启恢复失败会补 assistant 重试入口；切后台会清消息 / 输入选择菜单；`SessionApi` 保留 active SSE call 引用直到读循环退出，方便 reset / cancel。剩余观察点是：弱网下 OkHttp `readTimeout(60s)` 仍可能让小球等待较久；额度用完前端锁当前是本地会话级，App 被系统杀掉后仍以第一次后端 quota 返回为准；正式图片入口接入前需避免在 UI 线程调用同步上传等待
 - 后续动作：把当前正向列表滚动链作为稳定基线保留；短期只做边角验证和低风险清理，不再主动重构滚动主链
 
 ## R5 外部会诊仍依赖人工转发上下文

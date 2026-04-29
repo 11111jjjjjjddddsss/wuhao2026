@@ -403,106 +403,109 @@ object SessionApi {
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        currentStreamCall.compareAndSet(call, null)
-                        response.use { res ->
-                            if (isRuntimeStale()) return@use
-                            if (res.code == 401) {
-                                if (!hasRetried) {
-                                    start(hasRetried = true, networkRetry = networkRetry)
-                                } else {
-                                    deliverInterrupted("auth")
-                                }
-                                return
-                            }
-                            if (!res.isSuccessful) {
-                                if (!deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX && (res.code == 502 || res.code == 503 || res.code == 504)) {
-                                    val retryDelayMs = 350L * (networkRetry + 1)
-                                    mainHandler.postDelayed({
-                                        if (isRuntimeStale()) return@postDelayed
-                                        start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
-                                    }, retryDelayMs)
+                        try {
+                            response.use { res ->
+                                if (isRuntimeStale()) return@use
+                                if (res.code == 401) {
+                                    if (!hasRetried) {
+                                        start(hasRetried = true, networkRetry = networkRetry)
+                                    } else {
+                                        deliverInterrupted("auth")
+                                    }
                                     return
                                 }
-                                val reason = when (res.code) {
-                                    503 -> "model_unavailable"
-                                    429 -> "rate_limit"
-                                    402 -> "quota"
-                                    else -> "server"
-                                }
-                                deliverInterrupted(reason)
-                                return
-                            }
-                            val contentType = res.header("Content-Type").orEmpty().lowercase()
-                            if (!contentType.contains("text/event-stream")) {
-                                val bodyText = res.body?.string().orEmpty()
-                                val replay = try {
-                                    gson.fromJson(bodyText, JsonObject::class.java)?.get("replay")?.asBoolean == true
-                                } catch (_: Exception) {
-                                    false
-                                }
-                                deliverInterrupted(if (replay) "replay" else "server")
-                                return
-                            }
-
-                            val source = res.body?.source()
-                            if (source == null) {
-                                deliverInterrupted("server")
-                                return
-                            }
-
-                            try {
-                                while (!source.exhausted()) {
-                                    if (isRuntimeStale()) return
-                                    if (call.isCanceled()) {
-                                        deliverInterrupted("canceled")
+                                if (!res.isSuccessful) {
+                                    if (!deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX && (res.code == 502 || res.code == 503 || res.code == 504)) {
+                                        val retryDelayMs = 350L * (networkRetry + 1)
+                                        mainHandler.postDelayed({
+                                            if (isRuntimeStale()) return@postDelayed
+                                            start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                        }, retryDelayMs)
                                         return
                                     }
-                                    val line = source.readUtf8Line() ?: continue
-                                    val normalized = line.trimStart()
-                                    if (normalized.isBlank() || normalized.startsWith(":") || normalized.startsWith("event:")) continue
-                                    if (!normalized.startsWith("data:")) continue
-                                    val data = normalized.removePrefix("data:").trimStart()
-                                    if (data == "[DONE]") {
-                                        deliverComplete()
-                                        return
+                                    val reason = when (res.code) {
+                                        503 -> "model_unavailable"
+                                        429 -> "rate_limit"
+                                        402 -> "quota"
+                                        else -> "server"
                                     }
-                                    try {
-                                        val obj = gson.fromJson(data, JsonObject::class.java) ?: continue
-                                        val choices = obj.getAsJsonArray("choices") ?: continue
-                                        if (choices.size() == 0) continue
-                                        val choice0 = choices[0].asJsonObject
-                                        val piece =
-                                            choice0.getAsJsonObject("delta")
-                                                ?.get("content")
-                                                ?.takeIf { it.isJsonPrimitive }
-                                                ?.asString
-                                                ?.takeIf { it.isNotEmpty() }
-                                                ?: choice0.getAsJsonObject("message")
+                                    deliverInterrupted(reason)
+                                    return
+                                }
+                                val contentType = res.header("Content-Type").orEmpty().lowercase()
+                                if (!contentType.contains("text/event-stream")) {
+                                    val bodyText = res.body?.string().orEmpty()
+                                    val replay = try {
+                                        gson.fromJson(bodyText, JsonObject::class.java)?.get("replay")?.asBoolean == true
+                                    } catch (_: Exception) {
+                                        false
+                                    }
+                                    deliverInterrupted(if (replay) "replay" else "server")
+                                    return
+                                }
+
+                                val source = res.body?.source()
+                                if (source == null) {
+                                    deliverInterrupted("server")
+                                    return
+                                }
+
+                                try {
+                                    while (!source.exhausted()) {
+                                        if (isRuntimeStale()) return
+                                        if (call.isCanceled()) {
+                                            deliverInterrupted("canceled")
+                                            return
+                                        }
+                                        val line = source.readUtf8Line() ?: continue
+                                        val normalized = line.trimStart()
+                                        if (normalized.isBlank() || normalized.startsWith(":") || normalized.startsWith("event:")) continue
+                                        if (!normalized.startsWith("data:")) continue
+                                        val data = normalized.removePrefix("data:").trimStart()
+                                        if (data == "[DONE]") {
+                                            deliverComplete()
+                                            return
+                                        }
+                                        try {
+                                            val obj = gson.fromJson(data, JsonObject::class.java) ?: continue
+                                            val choices = obj.getAsJsonArray("choices") ?: continue
+                                            if (choices.size() == 0) continue
+                                            val choice0 = choices[0].asJsonObject
+                                            val piece =
+                                                choice0.getAsJsonObject("delta")
                                                     ?.get("content")
                                                     ?.takeIf { it.isJsonPrimitive }
                                                     ?.asString
                                                     ?.takeIf { it.isNotEmpty() }
-                                        if (!piece.isNullOrEmpty()) {
-                                            deliveredAnyChunk = true
-                                            deliverChunk(piece)
+                                                    ?: choice0.getAsJsonObject("message")
+                                                        ?.get("content")
+                                                        ?.takeIf { it.isJsonPrimitive }
+                                                        ?.asString
+                                                        ?.takeIf { it.isNotEmpty() }
+                                            if (!piece.isNullOrEmpty()) {
+                                                deliveredAnyChunk = true
+                                                deliverChunk(piece)
+                                            }
+                                        } catch (_: Exception) {
+                                            // skip malformed chunk and continue
                                         }
-                                    } catch (_: Exception) {
-                                        // skip malformed chunk and continue
                                     }
+                                    deliverInterrupted("server")
+                                } catch (_: Exception) {
+                                    if (isRuntimeStale()) return
+                                    if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
+                                        val retryDelayMs = 350L * (networkRetry + 1)
+                                        mainHandler.postDelayed({
+                                            if (isRuntimeStale()) return@postDelayed
+                                            start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                        }, retryDelayMs)
+                                        return
+                                    }
+                                    deliverInterrupted(if (call.isCanceled()) "canceled" else "server")
                                 }
-                                deliverInterrupted("server")
-                            } catch (_: Exception) {
-                                if (isRuntimeStale()) return
-                                if (!call.isCanceled() && !deliveredAnyChunk && networkRetry < STREAM_NETWORK_RETRY_MAX) {
-                                    val retryDelayMs = 350L * (networkRetry + 1)
-                                    mainHandler.postDelayed({
-                                        if (isRuntimeStale()) return@postDelayed
-                                        start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
-                                    }, retryDelayMs)
-                                    return
-                                }
-                                deliverInterrupted(if (call.isCanceled()) "canceled" else "server")
                             }
+                        } finally {
+                            currentStreamCall.compareAndSet(call, null)
                         }
                     }
                 })

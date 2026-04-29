@@ -2687,6 +2687,15 @@ fun ChatScreen() {
             messages.any { it.id == assistantMessageId && it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
     }
 
+    fun findFailedUserMessageIdByText(text: String): String? =
+        messages.lastOrNull()
+            ?.takeIf { message ->
+                message.role == ChatRole.USER &&
+                    message.content == text &&
+                    failedUserMessageStates.containsKey(message.id)
+            }
+            ?.id
+
     fun interruptedHintText(reason: String): String =
         when (reason) {
             "network" -> "\u7f51\u7edc\u6ce2\u52a8\uff0c\u56de\u590d\u672a\u5b8c\u6210"
@@ -2702,7 +2711,8 @@ fun ChatScreen() {
         sourceUserMessageId: String,
         assistantMessageId: String,
         finalContent: String,
-        reason: String
+        reason: String,
+        showHint: Boolean = true
     ) {
         if (reason == "quota") {
             quotaExhaustedDayKey = currentQuotaDayKey()
@@ -2718,7 +2728,9 @@ fun ChatScreen() {
                 messageId = assistantMessageId,
                 sourceUserMessageId = sourceUserMessageId
             )
-            showComposerStatusHint(interruptedHintText(reason))
+            if (showHint) {
+                showComposerStatusHint(interruptedHintText(reason))
+            }
         }
         failedAssistantMessageStates[assistantMessageId] = FailedAssistantMessageState(
             sourceUserMessageId = sourceUserMessageId
@@ -2965,6 +2977,16 @@ fun ChatScreen() {
             if (attempt < 2) {
                 delay(1100L * (attempt + 1))
             }
+        }
+        if (!hasSettledAssistantMessageForUser(sourceUserMessageId)) {
+            finalizeInterruptedAssistant(
+                sourceUserMessageId = sourceUserMessageId,
+                assistantMessageId = assistantMessageIdForSourceUser(sourceUserMessageId),
+                finalContent = "",
+                reason = "network",
+                showHint = false
+            )
+            initialBottomSnapDone = false
         }
     }
 
@@ -3404,7 +3426,9 @@ fun ChatScreen() {
                 hasStartedConversation = true
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
-                val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
+                val userId = existingUserMessageId
+                    ?: findFailedUserMessageIdByText(text)
+                    ?: "user_${UUID.randomUUID()}"
                 upsertUserMessage(userId, text)
                 failedUserMessageStates[userId] = "network"
                 clearFailedAssistantStateForUser(userId)
@@ -3803,6 +3827,8 @@ fun ChatScreen() {
                         completeStreamingImmediatelyFromBackground()
                     }
                 }
+                clearMessageSelection()
+                clearInputSelectionToolbar()
                 focusManager.clearFocus(force = true)
             } else if (event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
@@ -4957,7 +4983,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem("欢迎空态", "空列表欢迎文案", UiCopyPreviewKind.Welcome),
             UiCopyPreviewItem("输入框", "底部 placeholder", UiCopyPreviewKind.ComposerPlaceholder),
             UiCopyPreviewItem("AI尾部", "免责声明", UiCopyPreviewKind.Disclaimer),
-            UiCopyPreviewItem("回复中断", "回复未完成 / 重试", UiCopyPreviewKind.AssistantRetry),
+            UiCopyPreviewItem("回复中断", "回复未完成 · 点击重试", UiCopyPreviewKind.AssistantRetry),
             UiCopyPreviewItem("发送失败", "发送失败 / 重发", UiCopyPreviewKind.UserRetry),
             UiCopyPreviewItem("网络", "当前网络不可用", UiCopyPreviewKind.Network),
             UiCopyPreviewItem("额度", "今日额度已用完，请明天再试", UiCopyPreviewKind.Quota),

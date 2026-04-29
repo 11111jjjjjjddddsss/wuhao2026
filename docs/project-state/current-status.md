@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-04-28
+最后更新：2026-04-29
 
 ## 项目概况
 
@@ -68,6 +68,7 @@
 - 这轮正向列表的目标，是牺牲反向列表那套“最新 item 天然视觉底部”的物理模型，换回用户上滑浏览时更稳定的正向滚动体感
 - 输入框发送收口当前已取消旧高度锁：发送时不再用发送前的输入内容高度 / chrome 高度撑住 `composerSettlingMinHeightPx` / `composerSettlingChromeHeightPx`，优先让 composer 随输入清空直接回到空态高度；所有主动收键盘路径统一只调用 `focusManager.clearFocus(force = true)`，不再同帧额外调用 `keyboardController.hide()`，避免部分输入法在双触发下出现多一拍残影。已经没有显示入口的 composer collapse overlay prewarm snapshot 协程也已删除，后续若仍有明显迟钝，再单独评估 `WindowInsetsAnimationCompat`，不先动消息列表主链
 - DEBUG 包新增 `ChatStartup` 诊断日志，用来区分清数据 / 重装后看到旧内容时到底来自本地 `chat_ui_cache`、本地 streaming draft，还是后端 `SessionApi.getSnapshot()` hydrate。日志不参与 release 行为，不改变 UI 逻辑；真机排查时可用 `adb logcat -s ChatStartup`
+- 异常与生命周期兜底当前继续围绕“不中断主滚动链”小范围加固：日额度耗尽后，当前本地会话当天会把发送键置灰但保留点击提示；断网连续点同一段输入时复用已有失败用户消息，不再刷出多条相同失败消息；后端 streaming 进程被杀后若远端 snapshot 追不回答案，会在用户消息下方补一个 `回复未完成 · 点击重试` 的 assistant 失败入口；切后台 / 锁屏时会收起输入焦点并清掉消息 / 输入选择菜单，避免回来还挂着复制黑卡片；`SessionApi` 的当前 SSE call 会等响应读循环退出后再清空引用，保证 reset / cancel 能尽量取消正在读的远端流
 - 当前最需要真机验证的是：
   1. 首屏进入有历史时是否稳定贴底
   2. 发送瞬间小球是否第一时间出现在工作线，历史文本是否不抖
