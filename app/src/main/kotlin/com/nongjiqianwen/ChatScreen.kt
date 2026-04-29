@@ -901,8 +901,8 @@ internal fun assistantStreamingParagraphTextStyle(): TextStyle =
     )
 
 internal fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
-    fontSize = 12.sp,
-    lineHeight = 17.sp,
+    fontSize = 13.sp,
+    lineHeight = 18.sp,
     color = Color(0xFF8D929A),
     letterSpacing = 0.sp,
     fontFamily = FontFamily.SansSerif,
@@ -5190,19 +5190,11 @@ private fun UiCopyPreviewDisclaimer() {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
     ) {
-        Surface(
-            shape = RoundedCornerShape(999.dp),
-            color = Color(0xFFF4F5F7),
-            contentColor = Color(0xFF8D929A),
-            border = BorderStroke(0.6.dp, Color(0xFFE3E6EB))
-        ) {
-            Text(
-                text = AI_DISCLAIMER_TEXT,
-                style = assistantDisclaimerTextStyle(),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-            )
-        }
+        Text(
+            text = AI_DISCLAIMER_TEXT,
+            style = assistantDisclaimerTextStyle(),
+            textAlign = TextAlign.Start
+        )
     }
 }
 
