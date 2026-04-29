@@ -3947,8 +3947,8 @@ fun ChatScreen() {
             .asPaddingValues()
             .calculateBottomPadding()
         val inputChromeHorizontalPadding = when {
-            maxWidth < 360.dp -> 8.dp
-            maxWidth < 600.dp -> 10.dp
+            maxWidth < 360.dp -> 12.dp
+            maxWidth < 600.dp -> 16.dp
             else -> chromeHorizontalPadding
         }
         val inputChromeBottomPadding = 8.dp
