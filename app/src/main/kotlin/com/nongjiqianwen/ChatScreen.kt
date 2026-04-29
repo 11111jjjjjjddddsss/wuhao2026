@@ -3356,7 +3356,7 @@ fun ChatScreen() {
                 showComposerStatusHint(
                     when (reason) {
                         "network" -> "网络波动，回复未完成"
-                        "quota" -> "当前次数不足，请稍后再试"
+                        "quota" -> "今日额度已用完，请明天再试"
                         "rate_limit" -> "当前请求较多，请稍后重试"
                         else -> "本次回复未完成，请重试"
                     }
