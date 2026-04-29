@@ -685,7 +685,7 @@ private fun ComposerInputShell(
     sendButtonTint: Color,
     onSendClick: () -> Unit
 ) {
-    val shellShape = RoundedCornerShape(28.dp)
+    val shellShape = RoundedCornerShape(24.dp)
     val actionDockHeight = if (addButtonSize > sendButtonSize) addButtonSize else sendButtonSize
     Surface(
         shape = shellShape,
