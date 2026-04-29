@@ -4920,8 +4920,8 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem("欢迎空态", "空列表欢迎文案", UiCopyPreviewKind.Welcome),
             UiCopyPreviewItem("输入框", "底部 placeholder", UiCopyPreviewKind.ComposerPlaceholder),
             UiCopyPreviewItem("AI尾部", "免责声明", UiCopyPreviewKind.Disclaimer),
-            UiCopyPreviewItem("AI异常", "回复未完成 / 重试", UiCopyPreviewKind.AssistantRetry),
-            UiCopyPreviewItem("用户异常", "发送失败 / 重发", UiCopyPreviewKind.UserRetry),
+            UiCopyPreviewItem("回复中断", "回复未完成 / 重试", UiCopyPreviewKind.AssistantRetry),
+            UiCopyPreviewItem("发送失败", "发送失败 / 重发", UiCopyPreviewKind.UserRetry),
             UiCopyPreviewItem("网络", "当前网络不可用", UiCopyPreviewKind.Network),
             UiCopyPreviewItem("额度", "今日额度已用完，请明天再试", UiCopyPreviewKind.Quota),
             UiCopyPreviewItem("限流", "当前请求较多，请稍后重试", UiCopyPreviewKind.RateLimit),
@@ -5309,25 +5309,39 @@ private fun MessageStatusFooter(
         horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = statusText,
-            fontSize = 13.sp,
-            color = Color(0xFF7F8083)
-        )
-        Text(
-            text = "  $actionText",
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = Color(0xFFF5F6F8),
+            border = BorderStroke(0.7.dp, Color(0xFFE1E4EA)),
             modifier = Modifier
-                .padding(start = 2.dp)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
                     onClick = onActionClick
                 )
-                .padding(horizontal = 4.dp, vertical = 6.dp),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF111111)
-        )
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = statusText,
+                    fontSize = 12.sp,
+                    color = Color(0xFF737780)
+                )
+                Text(
+                    text = " · ",
+                    fontSize = 12.sp,
+                    color = Color(0xFFB0B4BC)
+                )
+                Text(
+                    text = actionText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF111111)
+                )
+            }
+        }
     }
 }
 
