@@ -38,10 +38,12 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -2102,6 +2104,7 @@ fun ChatScreen() {
     var composerCollapseOverlayHostBoundsSnapshot by composerRuntime.composerCollapseOverlayHostBoundsSnapshot
     var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
     var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
+    var uiCopyPreviewVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     BindComposerRuntimeEffects(
         inputChromeMeasured = inputChromeMeasured,
         inputText = input.value.text,
@@ -4587,7 +4590,11 @@ fun ChatScreen() {
                         )
                     }
                     IconButton(
-                        onClick = {},
+                        onClick = {
+                            if (BuildConfig.DEBUG) {
+                                uiCopyPreviewVisible = true
+                            }
+                        },
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
                         DiamondOutlineIcon(
@@ -4596,6 +4603,12 @@ fun ChatScreen() {
                         )
                     }
                 }
+            }
+
+            if (BuildConfig.DEBUG && uiCopyPreviewVisible) {
+                UiCopyPreviewOverlay(
+                    onDismiss = { uiCopyPreviewVisible = false }
+                )
             }
 
             inputSelectionToolbarState?.let { state ->
@@ -4893,6 +4906,85 @@ private fun MessageActionMenuPopup(
                 }
         ) {
             MessageActionMenuCardContent(onCopy = onCopy, onCopyFull = onCopyFull)
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewOverlay(
+    onDismiss: () -> Unit
+) {
+    val copyItems = remember {
+        listOf(
+            "主界面标题：农技千查",
+            "欢迎空态：欢迎咨询种植 / 病虫害防治、施肥等问题 / 必要时可上传图片",
+            "输入框：描述种植问题",
+            "AI尾部：本回答由AI生成，内容仅供参考。",
+            "AI异常：回复未完成 / 重试",
+            "用户异常：发送失败 / 重发",
+            "网络：当前网络不可用",
+            "额度：今日额度已用完，请明天再试",
+            "限流：当前请求较多，请稍后重试",
+            "中断：网络波动，回复未完成",
+            "中断兜底：本次回复未完成，请重试",
+            "输入超长：已超过6000字，暂时不能发送",
+            "消息菜单：复制 / 全文复制",
+            "输入菜单：复制 / 粘贴 / 剪切 / 全选",
+            "图片格式：仅支持 JPEG / PNG 格式",
+            "图片超限：图片压缩后仍超过 1MB，请更换更清晰主体、减少无关背景后重试",
+            "图片上传：未配置上传服务 / 上传失败：响应格式错误 / 上传异常",
+            "图片数量：图片数量超过限制：最多4张",
+            "有图无文字：有图片时必须带文字描述"
+        )
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.18f))
+            .zIndex(80f)
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { onDismiss() })
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(18.dp),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .padding(horizontal = 22.dp)
+                .widthIn(max = 420.dp)
+                .heightIn(max = 560.dp)
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = {})
+                }
+        ) {
+            Column(
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "UI文案预览",
+                    color = Color(0xFF111111),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "点空白关闭。仅 debug 包显示。",
+                    color = Color(0xFF6D7178),
+                    style = MaterialTheme.typography.bodySmall
+                )
+                copyItems.forEach { item ->
+                    Text(
+                        text = item,
+                        color = Color(0xFF202124),
+                        style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 22.sp
+                    )
+                }
+            }
         }
     }
 }
