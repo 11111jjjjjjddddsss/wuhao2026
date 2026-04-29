@@ -901,8 +901,8 @@ internal fun assistantStreamingParagraphTextStyle(): TextStyle =
     )
 
 internal fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
-    fontSize = 13.sp,
-    lineHeight = 18.sp,
+    fontSize = 14.sp,
+    lineHeight = 20.sp,
     color = Color(0xFF8D929A),
     letterSpacing = 0.sp,
     fontFamily = FontFamily.SansSerif,
