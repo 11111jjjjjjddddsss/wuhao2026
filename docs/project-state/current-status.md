@@ -66,7 +66,7 @@
 ## 当前调试焦点
 
 - 这轮正向列表的目标，是牺牲反向列表那套“最新 item 天然视觉底部”的物理模型，换回用户上滑浏览时更稳定的正向滚动体感
-- 输入框发送收口当前已取消旧高度锁：发送时不再用发送前的输入内容高度 / chrome 高度撑住 `composerSettlingMinHeightPx` / `composerSettlingChromeHeightPx`，优先让 composer 随输入清空直接回到空态高度；发送路径收键盘只调用 `focusManager.clearFocus(force = true)`，不再同帧额外调用 `keyboardController.hide()`，避免部分输入法在发送回缩时出现多一拍残影。其他点空白 / 拖列表 / 生命周期等收键盘入口暂不改
+- 输入框发送收口当前已取消旧高度锁：发送时不再用发送前的输入内容高度 / chrome 高度撑住 `composerSettlingMinHeightPx` / `composerSettlingChromeHeightPx`，优先让 composer 随输入清空直接回到空态高度；所有主动收键盘路径统一只调用 `focusManager.clearFocus(force = true)`，不再同帧额外调用 `keyboardController.hide()`，避免部分输入法在双触发下出现多一拍残影。已经没有显示入口的 composer collapse overlay prewarm snapshot 协程也已删除，后续若仍有明显迟钝，再单独评估 `WindowInsetsAnimationCompat`，不先动消息列表主链
 - DEBUG 包新增 `ChatStartup` 诊断日志，用来区分清数据 / 重装后看到旧内容时到底来自本地 `chat_ui_cache`、本地 streaming draft，还是后端 `SessionApi.getSnapshot()` hydrate。日志不参与 release 行为，不改变 UI 逻辑；真机排查时可用 `adb logcat -s ChatStartup`
 - 当前最需要真机验证的是：
   1. 首屏进入有历史时是否稳定贴底
@@ -76,7 +76,7 @@
   5. 用户点击回到底部、或手动下滑到物理底部后是否恢复 AutoFollow
   6. finalize 收口是否稳定，尤其含免责声明答案是否不再尾部增高微跳
   7. 输入框上方和静态文本底部是否不再出现额外白块
-  8. 冷启动首次点输入框、键盘弹起 / 回缩是否比旧 `SubcomposeLayout` 版本更利索；如果仍有残影，再单独评估 composer collapse overlay / focus-hide 时序，不先动消息列表主链
+  8. 冷启动首次点输入框、键盘弹起 / 回缩是否比旧 `SubcomposeLayout` 版本更利索；如果仍有残影，下一步只评估 `WindowInsetsAnimationCompat` 或输入法平台差异，不先动消息列表主链
 
 ## 当前交接入口
 

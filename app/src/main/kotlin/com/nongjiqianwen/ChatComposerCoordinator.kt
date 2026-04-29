@@ -90,12 +90,6 @@ internal data class ComposerCollapsePreparation(
     val shouldClearFocus: Boolean
 )
 
-internal data class ComposerOverlaySnapshot(
-    val hostBoundsInWindow: Rect,
-    val chromeBoundsInWindow: Rect,
-    val bottomHeightPx: Int
-)
-
 internal fun deriveComposerStableBottomBarHeightPx(
     inputChromeRowHeightPx: Int,
     safeBottomInsetPx: Int,
@@ -191,23 +185,8 @@ internal fun resolveComposerOverlayHintText(
     }
 }
 
-internal fun captureComposerOverlaySnapshot(
-    hostBoundsInWindow: Rect?,
-    chromeBoundsInWindow: Rect?,
-    bottomHeightPx: Int
-): ComposerOverlaySnapshot? {
-    val hostBounds = hostBoundsInWindow ?: return null
-    val chromeBounds = chromeBoundsInWindow ?: return null
-    return ComposerOverlaySnapshot(
-        hostBoundsInWindow = hostBounds,
-        chromeBoundsInWindow = chromeBounds,
-        bottomHeightPx = bottomHeightPx
-    )
-}
-
 @Composable
 internal fun BindComposerRuntimeEffects(
-    chatScopeId: String,
     inputChromeMeasured: Boolean,
     inputText: String,
     inputFieldFocused: Boolean,
@@ -219,15 +198,7 @@ internal fun BindComposerRuntimeEffects(
     inputChromeRowHeightPx: Int,
     stableBottomBarHeightPx: Int,
     jitterTolerancePx: Int,
-    composerCollapseOverlayVisibleState: MutableState<Boolean>,
-    composerHostBoundsInWindow: Rect?,
-    composerChromeBoundsInWindow: Rect?,
-    effectiveBottomBarHeightPx: Int,
-    composerCollapseOverlayHostBoundsSnapshotState: MutableState<Rect?>,
-    composerCollapseOverlayChromeBoundsSnapshotState: MutableState<Rect?>,
-    composerCollapseOverlayBottomHeightPxState: MutableIntState,
-    composerCollapseOverlayPrewarmedState: MutableState<Boolean>,
-    startupLayoutReady: Boolean
+    composerCollapseOverlayVisibleState: MutableState<Boolean>
 ) {
     LaunchedEffect(
         inputChromeMeasured,
@@ -355,66 +326,6 @@ internal fun BindComposerRuntimeEffects(
             ) {
                 composerCollapseOverlayVisibleState.value = false
             }
-        }
-    }
-
-    LaunchedEffect(
-        composerCollapseOverlayVisibleState.value,
-        composerHostBoundsInWindow,
-        composerChromeBoundsInWindow,
-        effectiveBottomBarHeightPx,
-        composerCollapseOverlayPrewarmedState.value
-    ) {
-        if (composerCollapseOverlayVisibleState.value) return@LaunchedEffect
-        if (composerCollapseOverlayPrewarmedState.value) return@LaunchedEffect
-        captureComposerOverlaySnapshot(
-            hostBoundsInWindow = composerHostBoundsInWindow,
-            chromeBoundsInWindow = composerChromeBoundsInWindow,
-            bottomHeightPx = effectiveBottomBarHeightPx
-        )?.let { snapshot ->
-            composerCollapseOverlayHostBoundsSnapshotState.value = snapshot.hostBoundsInWindow
-            composerCollapseOverlayChromeBoundsSnapshotState.value = snapshot.chromeBoundsInWindow
-            composerCollapseOverlayBottomHeightPxState.intValue = snapshot.bottomHeightPx
-            composerCollapseOverlayPrewarmedState.value = true
-        }
-    }
-
-    LaunchedEffect(
-        imeVisible,
-        inputFieldFocused,
-        composerCollapseOverlayVisibleState.value,
-        composerHostBoundsInWindow,
-        composerChromeBoundsInWindow,
-        effectiveBottomBarHeightPx
-    ) {
-        if (composerCollapseOverlayVisibleState.value) return@LaunchedEffect
-        if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
-        if (composerHostBoundsInWindow == null || composerChromeBoundsInWindow == null) return@LaunchedEffect
-        repeat(2) { withFrameNanos { } }
-        if (composerCollapseOverlayVisibleState.value) return@LaunchedEffect
-        if (!imeVisible && !inputFieldFocused) return@LaunchedEffect
-        captureComposerOverlaySnapshot(
-            hostBoundsInWindow = composerHostBoundsInWindow,
-            chromeBoundsInWindow = composerChromeBoundsInWindow,
-            bottomHeightPx = effectiveBottomBarHeightPx
-        )?.let { snapshot ->
-            composerCollapseOverlayHostBoundsSnapshotState.value = snapshot.hostBoundsInWindow
-            composerCollapseOverlayChromeBoundsSnapshotState.value = snapshot.chromeBoundsInWindow
-            composerCollapseOverlayBottomHeightPxState.intValue = snapshot.bottomHeightPx
-            composerCollapseOverlayPrewarmedState.value = true
-        }
-    }
-
-    LaunchedEffect(chatScopeId) {
-        composerCollapseOverlayBottomHeightPxState.intValue = 0
-        composerCollapseOverlayHostBoundsSnapshotState.value = null
-        composerCollapseOverlayChromeBoundsSnapshotState.value = null
-        composerCollapseOverlayPrewarmedState.value = false
-    }
-
-    LaunchedEffect(startupLayoutReady) {
-        if (!startupLayoutReady) {
-            composerCollapseOverlayPrewarmedState.value = false
         }
     }
 }

@@ -136,7 +136,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalTextToolbar
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalView
@@ -2089,7 +2088,6 @@ fun ChatScreen() {
         .asPaddingValues()
         .calculateTopPadding()
     val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var inputSelectionToolbarState by remember(uiRuntimeResetKey) {
         mutableStateOf<InputSelectionToolbarState?>(null)
@@ -2105,7 +2103,6 @@ fun ChatScreen() {
     var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
     var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
     BindComposerRuntimeEffects(
-        chatScopeId = uiRuntimeResetKey,
         inputChromeMeasured = inputChromeMeasured,
         inputText = input.value.text,
         inputFieldFocused = inputFieldFocused,
@@ -2117,15 +2114,7 @@ fun ChatScreen() {
         inputChromeRowHeightPx = inputChromeRowHeightPx,
         stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
         jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX,
-        composerCollapseOverlayVisibleState = composerRuntime.composerCollapseOverlayVisible,
-        composerHostBoundsInWindow = composerHostBoundsInWindow,
-        composerChromeBoundsInWindow = composerChromeBoundsInWindow,
-        effectiveBottomBarHeightPx = effectiveBottomBarHeightPx,
-        composerCollapseOverlayHostBoundsSnapshotState = composerRuntime.composerCollapseOverlayHostBoundsSnapshot,
-        composerCollapseOverlayChromeBoundsSnapshotState = composerRuntime.composerCollapseOverlayChromeBoundsSnapshot,
-        composerCollapseOverlayBottomHeightPxState = composerRuntime.composerCollapseOverlayBottomHeightPx,
-        composerCollapseOverlayPrewarmedState = composerRuntime.composerCollapseOverlayPrewarmed,
-        startupLayoutReady = startupLayoutReady
+        composerCollapseOverlayVisibleState = composerRuntime.composerCollapseOverlayVisible
     )
     val streamingExtraReservedHeightPx = 0
     val jumpButtonBottomPadding = with(density) {
@@ -2506,7 +2495,6 @@ fun ChatScreen() {
             inputSelectionToolbarState != null -> {
                 clearInputSelectionToolbar()
                 focusManager.clearFocus(force = true)
-                keyboardController?.hide()
             }
             messageSelectionToolbarState != null -> clearMessageSelection()
         }
@@ -2564,7 +2552,6 @@ fun ChatScreen() {
         suppressJumpButtonForLifecycleResume = false
         clearInputSelectionToolbar()
         focusManager.clearFocus(force = true)
-        keyboardController?.hide()
         LaunchUiGate.chatReady = false
     }
 
@@ -3097,7 +3084,6 @@ fun ChatScreen() {
 
     LaunchedEffect(chatListUserDragging, programmaticScroll, imeVisible) {
         if (!programmaticScroll && chatListUserDragging && imeVisible) {
-            keyboardController?.hide()
             focusManager.clearFocus(force = true)
         }
     }
@@ -3784,7 +3770,7 @@ fun ChatScreen() {
         }
     }
 
-    DisposableEffect(lifecycleOwner, focusManager, keyboardController) {
+    DisposableEffect(lifecycleOwner, focusManager) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
                 suppressJumpButtonForLifecycleResume = false
@@ -3795,7 +3781,6 @@ fun ChatScreen() {
                     }
                 }
                 focusManager.clearFocus(force = true)
-                keyboardController?.hide()
             } else if (event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
                 if (
@@ -4466,7 +4451,6 @@ fun ChatScreen() {
                             }
                             if (imeVisible && isTapGesture && !startedInsideInputField && !tappedInsideInputField) {
                                 focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
                             }
                         }
                     }
