@@ -3887,9 +3887,9 @@ fun ChatScreen() {
         val inputBarHeight = if (maxWidth < 360.dp) 100.dp else 104.dp
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
-        val actionCircleSize = if (maxWidth < 360.dp) 44.dp else 46.dp
+        val actionCircleSize = if (maxWidth < 360.dp) 48.dp else 50.dp
         val addButtonSize = actionCircleSize
-        val addIconSize = if (maxWidth < 360.dp) 28.dp else 30.dp
+        val addIconSize = if (maxWidth < 360.dp) 36.dp else 38.dp
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA

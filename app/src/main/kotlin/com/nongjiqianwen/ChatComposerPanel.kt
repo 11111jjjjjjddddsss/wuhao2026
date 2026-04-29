@@ -546,9 +546,9 @@ private fun ComposerSendArrowIcon(
     Canvas(modifier = modifier) {
         val stroke = size.minDimension * 0.12f
         val centerX = size.width / 2f
-        val headY = size.height * 0.14f
-        val tailY = size.height * 0.9f
-        val wingY = size.height * 0.48f
+        val headY = size.height * 0.1f
+        val tailY = size.height * 0.92f
+        val wingY = size.height * 0.44f
         drawLine(
             color = tint,
             start = Offset(centerX, tailY),
@@ -559,14 +559,14 @@ private fun ComposerSendArrowIcon(
         drawLine(
             color = tint,
             start = Offset(centerX, headY),
-            end = Offset(size.width * 0.16f, wingY),
+            end = Offset(size.width * 0.2f, wingY),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = tint,
             start = Offset(centerX, headY),
-            end = Offset(size.width * 0.84f, wingY),
+            end = Offset(size.width * 0.8f, wingY),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
@@ -579,7 +579,7 @@ private fun ComposerPlusCrossIcon(
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.14f
+        val stroke = size.minDimension * 0.105f
         val centerX = size.width / 2f
         val centerY = size.height / 2f
         drawLine(
@@ -631,7 +631,7 @@ private fun ComposerSendActionButton(
     ) {
         ComposerSendArrowIcon(
             tint = tint,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(28.dp)
         )
     }
 }
@@ -650,7 +650,7 @@ private fun ComposerInlineAddButton(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(surfaceColor.copy(alpha = 0.7f))
+            .background(surfaceColor.copy(alpha = 0f))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -660,7 +660,7 @@ private fun ComposerInlineAddButton(
         contentAlignment = Alignment.Center
     ) {
         ComposerPlusCrossIcon(
-            tint = borderColor.copy(alpha = 0.76f),
+            tint = borderColor,
             modifier = Modifier.size(iconSize)
         )
     }
@@ -743,7 +743,7 @@ private fun ComposerInputShell(
                     size = addButtonSize,
                     iconSize = addIconSize,
                     surfaceColor = inputChromeSurface,
-                    borderColor = inputChromeBorder,
+                    borderColor = Color(0xFF111111),
                     onClick = onAddClick
                 )
                 Spacer(modifier = Modifier.weight(1f))
