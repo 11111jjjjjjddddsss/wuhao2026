@@ -326,6 +326,7 @@ internal val MARKDOWN_BLOCK_SPACING = 12.dp
 internal val SECTION_DIVIDER_GAP = 28.dp
 internal val SECTION_DIVIDER_TOP_EXTRA_GAP = 16.dp
 internal const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
+private const val QUOTA_EXHAUSTED_HINT_TEXT = "今日额度已用完，请明天再试"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -344,6 +345,13 @@ private val blockMarkdownCache = object : LinkedHashMap<String, List<MarkdownUiB
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<MarkdownUiBlock>>?): Boolean {
         return size > BLOCK_MARKDOWN_CACHE_LIMIT
     }
+}
+
+private fun currentQuotaDayKey(): String {
+    val calendar = java.util.Calendar.getInstance(
+        java.util.TimeZone.getTimeZone("Asia/Shanghai")
+    )
+    return "${calendar.get(java.util.Calendar.YEAR)}-${calendar.get(java.util.Calendar.DAY_OF_YEAR)}"
 }
 
 private fun normalizeAssistantText(content: String): String {
@@ -1699,6 +1707,8 @@ fun ChatScreen() {
             putAll(initialLocalSnapshot.failedAssistantMessageStates)
         }
     }
+    var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
     val chatListMessages = messages
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2573,6 +2583,11 @@ fun ChatScreen() {
         composerStatusHintTick++
     }
 
+    fun showQuotaExhaustedHint() {
+        quotaExhaustedDayKey = currentQuotaDayKey()
+        showComposerStatusHint(QUOTA_EXHAUSTED_HINT_TEXT)
+    }
+
     fun pruneFailedMessageStates() {
         val currentMessageIds = messages.mapTo(mutableSetOf()) { it.id }
         failedUserMessageStates.keys
@@ -2689,6 +2704,9 @@ fun ChatScreen() {
         finalContent: String,
         reason: String
     ) {
+        if (reason == "quota") {
+            quotaExhaustedDayKey = currentQuotaDayKey()
+        }
         if (finalContent.isNotBlank()) {
             applyCompletedAssistantMessageInPlace(
                 target = messages,
@@ -3317,6 +3335,9 @@ fun ChatScreen() {
 
     fun handleAssistantInterrupted(sourceUserMessageId: String, reason: String) {
         mainHandler.post {
+            if (reason == "quota") {
+                quotaExhaustedDayKey = currentQuotaDayKey()
+            }
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
             clearPendingStreamingFinalize()
@@ -3358,7 +3379,7 @@ fun ChatScreen() {
                 showComposerStatusHint(
                     when (reason) {
                         "network" -> "网络波动，回复未完成"
-                        "quota" -> "今日额度已用完，请明天再试"
+                        "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
                         "rate_limit" -> "当前请求较多，请稍后重试"
                         else -> "本次回复未完成，请重试"
                     }
@@ -3883,6 +3904,10 @@ fun ChatScreen() {
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
         fun retryFailedUserMessage(messageId: String) {
             val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
+            if (isQuotaExhaustedToday()) {
+                showQuotaExhaustedHint()
+                return
+            }
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
                 showComposerStatusHint("当前网络不可用")
                 return
@@ -3896,6 +3921,10 @@ fun ChatScreen() {
         fun retryFailedAssistantMessage(assistantMessageId: String) {
             val failedState = failedAssistantMessageStates[assistantMessageId] ?: return
             val sourceUserMessage = messages.firstOrNull { it.id == failedState.sourceUserMessageId } ?: return
+            if (isQuotaExhaustedToday()) {
+                showQuotaExhaustedHint()
+                return
+            }
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
                 showComposerStatusHint("当前网络不可用")
                 return
@@ -3916,8 +3945,13 @@ fun ChatScreen() {
             val sendGate = buildSendGateState(
                 rawInput = text,
                 isStreaming = isStreaming || sendUiSettling,
-                exceedsInputLimit = text.length > INPUT_MAX_CHARS
+                exceedsInputLimit = text.length > INPUT_MAX_CHARS,
+                quotaExhausted = isQuotaExhaustedToday()
             )
+            if (sendGate.blockReason == SendBlockReason.QuotaExhausted) {
+                showQuotaExhaustedHint()
+                return
+            }
             if (!sendGate.canSubmit) return
             val trimmedText = text.trim()
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
@@ -4283,6 +4317,7 @@ fun ChatScreen() {
                 inputFieldSurface = inputFieldSurface,
                 inputFieldBorder = inputFieldBorder,
                 overlayHintText = composerOverlayHintText,
+                quotaExhausted = isQuotaExhaustedToday(),
                 hostModifier = hostModifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
@@ -4357,6 +4392,9 @@ fun ChatScreen() {
                 },
                 onInputLimitExceeded = {
                     inputLimitHintTick++
+                },
+                onQuotaExceeded = {
+                    showQuotaExhaustedHint()
                 },
                 onAddClick = { performButtonHaptic() },
                 onSendClick = {

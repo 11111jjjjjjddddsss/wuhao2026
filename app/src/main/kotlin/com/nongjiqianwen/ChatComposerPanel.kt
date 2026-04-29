@@ -79,31 +79,42 @@ internal enum class SendBlockReason {
     None,
     EmptyInput,
     Streaming,
-    InputTooLong
+    InputTooLong,
+    QuotaExhausted
 }
 
 internal data class SendGateState(
     val canPress: Boolean,
     val canSubmit: Boolean,
-    val blockReason: SendBlockReason
+    val blockReason: SendBlockReason,
+    val activeAppearance: Boolean = canPress
 )
 
 internal fun buildSendGateState(
     rawInput: String,
     isStreaming: Boolean,
-    exceedsInputLimit: Boolean
+    exceedsInputLimit: Boolean,
+    quotaExhausted: Boolean = false
 ): SendGateState {
     val hasText = rawInput.trim().isNotEmpty()
     return when {
         !hasText -> SendGateState(
             canPress = false,
             canSubmit = false,
-            blockReason = SendBlockReason.EmptyInput
+            blockReason = SendBlockReason.EmptyInput,
+            activeAppearance = false
         )
         isStreaming -> SendGateState(
             canPress = false,
             canSubmit = false,
-            blockReason = SendBlockReason.Streaming
+            blockReason = SendBlockReason.Streaming,
+            activeAppearance = false
+        )
+        quotaExhausted -> SendGateState(
+            canPress = true,
+            canSubmit = false,
+            blockReason = SendBlockReason.QuotaExhausted,
+            activeAppearance = false
         )
         exceedsInputLimit -> SendGateState(
             canPress = true,
@@ -145,6 +156,7 @@ internal fun ChatComposerBottomBar(
     inputFieldSurface: Color,
     inputFieldBorder: Color,
     overlayHintText: String?,
+    quotaExhausted: Boolean,
     hostModifier: Modifier = Modifier,
     onChromeMeasured: (Int) -> Unit,
     onChromeBoundsChanged: (Rect) -> Unit,
@@ -153,6 +165,7 @@ internal fun ChatComposerBottomBar(
     onInputContentHeightChanged: (Int) -> Unit,
     onInputValueChange: (TextFieldValue) -> Unit,
     onInputLimitExceeded: () -> Unit,
+    onQuotaExceeded: () -> Unit,
     onAddClick: () -> Unit,
     onSendClick: () -> Unit
 ) {
@@ -164,12 +177,13 @@ internal fun ChatComposerBottomBar(
     val sendGate = buildSendGateState(
         rawInput = inputValue.text,
         isStreaming = isStreamingOrSettling,
-        exceedsInputLimit = inputValue.text.length > inputMaxChars
+        exceedsInputLimit = inputValue.text.length > inputMaxChars,
+        quotaExhausted = quotaExhausted
     )
     val canPressSend = sendGate.canPress
     val canSend = sendGate.canSubmit
-    val actionBg = if (canPressSend) Color(0xFF111111) else Color(0xFFD3D4D6)
-    val actionTint = if (canPressSend) Color.White else Color(0xFF7F8083)
+    val actionBg = if (sendGate.activeAppearance) Color(0xFF111111) else Color(0xFFD3D4D6)
+    val actionTint = if (sendGate.activeAppearance) Color.White else Color(0xFF7F8083)
 
     Box(modifier = hostModifier.background(Color.Transparent)) {
         if (overlayHintText != null) {
@@ -288,10 +302,12 @@ internal fun ChatComposerBottomBar(
             sendButtonBackgroundColor = actionBg,
             sendButtonTint = actionTint,
             onSendClick = {
-                if (sendGate.blockReason == SendBlockReason.InputTooLong) {
-                    onInputLimitExceeded()
-                } else if (canSend) {
-                    onSendClick()
+                when (sendGate.blockReason) {
+                    SendBlockReason.InputTooLong -> onInputLimitExceeded()
+                    SendBlockReason.QuotaExhausted -> onQuotaExceeded()
+                    else -> if (canSend) {
+                        onSendClick()
+                    }
                 }
             }
         )
