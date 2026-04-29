@@ -4131,7 +4131,7 @@ fun ChatScreen() {
                             )
                             if (failedUserState != null) {
                                 MessageStatusFooter(
-                                    statusText = "未发送",
+                                    statusText = "发送失败",
                                     actionText = "重发",
                                     alignEnd = true,
                                     onActionClick = {
