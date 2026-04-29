@@ -12,7 +12,7 @@
 - 新增 `docs/runbooks/android-edge-case-regression.md`，把用户关心但难以口述的极端条件拆成可执行手测项：无网络发送、生成中断网、弱网 / 高延迟、限流、额度耗尽、streaming 中切后台、键盘打开切后台、锁屏、上滑 / 回底 / finalize、超长输入、图片异常、清数据 / 重装、debug 文案预览入口等。该清单不改变 App 行为，用于后续真机回归和定位问题。
 - `ChatScreen.kt` 临时新增 debug-only UI 文案样式预览面板：debug 包中点击右上角菱形按钮会弹出主界面、消息状态、额度 / 网络 / 图片等用户可能看到的条目；点任意条目后，下方用对应真实 UI 样式预览黑色浮层、消息尾部、免责声明、复制菜单等效果，点空白关闭。该入口由 `BuildConfig.DEBUG` 限制，正式 release 包不可见；核对完成后应删除，避免长期保留调试 UI。
 - 新增 `docs/runbooks/android-ui-copy-inventory.md`，把 Android 端用户可能看到的主界面、消息状态、输入框菜单、额度 / 网络 / 中断、图片相关隐藏态文案做成台账，方便后续逐条核对，不再靠真机撞异常才知道文案长什么样。该文档只服务产品文案核对，不改变 App 行为。
-- `ChatScreen.kt` 将额度不足的用户提示从“当前次数不足，请稍后再试”改为“今日额度已用完，请明天再试”，避免“稍后再试”在日额度耗尽场景下误导用户；只改文案，不改会员 / 额度判断逻辑。
+- `ChatScreen.kt` 将额度不足的用户提示从“当前次数不足，请稍后再试”统一为“今日额度已用完，请明天再试”，包括常规中断浮层和隐藏的 interrupted retry 兜底路径，避免“稍后再试”在日额度耗尽场景下误导用户；只改文案，不改会员 / 额度判断逻辑。
 - `ChatScreen.kt` 小范围收口主界面失败态文案：用户消息发送失败时，尾部状态从“未发送 / 重发”改为“发送失败 / 重发”，让含义更直接；只改可见文案，不改发送重试逻辑、滚动链、输入框或渲染结构。
 - `ChatScreen.kt` / `ChatComposerCoordinator.kt` 按输入框回缩残影会诊先落两刀低风险优化：所有主动收键盘路径统一只调用 `focusManager.clearFocus(force = true)`，不再同帧叠加 `keyboardController?.hide()`，避免部分 IME 在双触发下出现“先收又弹 / 慢一拍”的回缩感；同时删除已经没有显示入口的 composer collapse overlay prewarm snapshot 协程，避免 focus / IME 变化时仍无意义地延迟两帧抓取旧 bounds。发送收口旧高度锁已保持为 0，滚动链、96dp 工作线、SideEffect 同帧锚定、composer 外观尺寸和按钮样式均未改动。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` 对底部输入框做外观微调：输入框外壳高度略增、四角圆角略收、左右外边距加大；`+` 按钮改为裸黑加号，发送键保持黑色圆底白色箭头，并按真机反馈把两个按钮从偏大的 48dp/50dp 收到小屏 34dp、常规屏 36dp，避免按钮视觉压过输入框。此次只调整 composer 外观参数，不改正向列表滚动链、96dp 工作线、SideEffect 同帧锚定、两阶段 finalize 或输入框 / IME 与列表解耦规则。

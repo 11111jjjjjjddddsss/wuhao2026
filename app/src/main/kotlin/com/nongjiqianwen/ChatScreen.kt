@@ -2675,7 +2675,7 @@ fun ChatScreen() {
     fun interruptedHintText(reason: String): String =
         when (reason) {
             "network" -> "\u7f51\u7edc\u6ce2\u52a8\uff0c\u56de\u590d\u672a\u5b8c\u6210"
-            "quota" -> "\u5f53\u524d\u6b21\u6570\u4e0d\u8db3\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5"
+            "quota" -> "\u4eca\u65e5\u989d\u5ea6\u5df2\u7528\u5b8c\uff0c\u8bf7\u660e\u5929\u518d\u8bd5"
             "rate_limit" -> "\u5f53\u524d\u8bf7\u6c42\u8f83\u591a\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"
             else -> "\u672c\u6b21\u56de\u590d\u672a\u5b8c\u6210\uff0c\u8bf7\u91cd\u8bd5"
         }
