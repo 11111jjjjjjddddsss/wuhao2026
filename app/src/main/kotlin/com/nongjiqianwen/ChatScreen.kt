@@ -901,13 +901,12 @@ internal fun assistantStreamingParagraphTextStyle(): TextStyle =
     )
 
 internal fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
-    fontSize = 14.sp,
-    lineHeight = 20.sp,
-    color = Color(0xFF94979D),
-    letterSpacing = 0.1.sp,
-    fontStyle = FontStyle.Italic,
+    fontSize = 12.sp,
+    lineHeight = 17.sp,
+    color = Color(0xFF8D929A),
+    letterSpacing = 0.sp,
     fontFamily = FontFamily.SansSerif,
-    fontWeight = FontWeight.Normal,
+    fontWeight = FontWeight.Medium,
     textMotion = TextMotion.Static
 )
 
@@ -5140,11 +5139,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     }
                 }
                 UiCopyPreviewKind.Disclaimer -> {
-                    Text(
-                        text = AI_DISCLAIMER_TEXT,
-                        style = assistantDisclaimerTextStyle(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    UiCopyPreviewDisclaimer()
                 }
                 UiCopyPreviewKind.AssistantRetry -> {
                     MessageStatusFooter(
@@ -5185,6 +5180,28 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint("图片数量超过限制：最多4张")
             }
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewDisclaimer() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = Color(0xFFF4F5F7),
+            contentColor = Color(0xFF8D929A),
+            border = BorderStroke(0.6.dp, Color(0xFFE3E6EB))
+        ) {
+            Text(
+                text = AI_DISCLAIMER_TEXT,
+                style = assistantDisclaimerTextStyle(),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            )
         }
     }
 }

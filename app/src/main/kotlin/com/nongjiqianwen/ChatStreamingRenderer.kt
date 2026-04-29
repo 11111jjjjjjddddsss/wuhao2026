@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +49,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.max
@@ -839,14 +842,9 @@ private fun RendererAssistantMessageContentImpl(
                 )
             }
             if (shouldRenderDisclaimer) {
-                Text(
-                    text = AI_DISCLAIMER_TEXT,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .alpha(0f)
-                        .clearAndSetSemantics { },
+                AssistantDisclaimerFooter(
                     style = disclaimerStyle,
-                    textAlign = TextAlign.Start
+                    visible = false
                 )
             }
         } else {
@@ -864,13 +862,45 @@ private fun RendererAssistantMessageContentImpl(
                 )
             }
             if (shouldRenderDisclaimer) {
-                Text(
-                    text = AI_DISCLAIMER_TEXT,
-                    modifier = Modifier.fillMaxWidth(),
+                AssistantDisclaimerFooter(
                     style = disclaimerStyle,
-                    textAlign = TextAlign.Start
+                    visible = true
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AssistantDisclaimerFooter(
+    style: TextStyle,
+    visible: Boolean
+) {
+    val visibilityModifier = if (visible) {
+        Modifier
+    } else {
+        Modifier
+            .alpha(0f)
+            .clearAndSetSemantics { }
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(visibilityModifier),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = Color(0xFFF4F5F7),
+            contentColor = Color(0xFF8D929A),
+            border = BorderStroke(0.6.dp, Color(0xFFE3E6EB))
+        ) {
+            Text(
+                text = AI_DISCLAIMER_TEXT,
+                style = style,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+            )
         }
     }
 }
