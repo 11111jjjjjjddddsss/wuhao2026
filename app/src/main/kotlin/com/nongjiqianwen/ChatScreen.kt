@@ -4954,9 +4954,9 @@ private fun UiCopyPreviewOverlay(
             shape = RoundedCornerShape(18.dp),
             shadowElevation = 12.dp,
             modifier = Modifier
-                .padding(horizontal = 22.dp)
-                .widthIn(max = 420.dp)
-                .heightIn(max = 560.dp)
+                .padding(horizontal = 12.dp, vertical = 28.dp)
+                .widthIn(max = 480.dp)
+                .heightIn(max = 760.dp)
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = {})
                 }
@@ -5084,7 +5084,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
         color = Color(0xFFF7F8FA),
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 150.dp)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -5180,7 +5182,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         UiCopyPreviewHint("未配置上传服务")
                         UiCopyPreviewHint("上传失败：响应格式错误")
-                        UiCopyPreviewHint("上传异常")
+                        UiCopyPreviewHint("上传异常: 网络连接超时")
                     }
                 }
                 UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint("图片数量超过限制：最多4张")
@@ -5192,21 +5194,26 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
 
 @Composable
 private fun UiCopyPreviewHint(text: String) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xEE111111),
-        contentColor = Color.White,
-        border = BorderStroke(0.8.dp, Color.Black),
-        shadowElevation = 1.2.dp,
-        modifier = Modifier.fillMaxWidth()
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = text,
-            color = Color.White,
-            fontSize = 12.sp,
-            lineHeight = 17.sp,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-        )
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xEE111111),
+            contentColor = Color.White,
+            border = BorderStroke(0.8.dp, Color.Black),
+            shadowElevation = 1.2.dp,
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 12.sp,
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+            )
+        }
     }
 }
 
