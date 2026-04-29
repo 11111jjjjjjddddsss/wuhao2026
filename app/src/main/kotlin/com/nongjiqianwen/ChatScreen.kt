@@ -5321,22 +5321,24 @@ private fun MessageStatusFooter(
                 )
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                modifier = Modifier
+                    .heightIn(min = 34.dp)
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = statusText,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     color = Color(0xFF737780)
                 )
                 Text(
                     text = " · ",
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     color = Color(0xFFB0B4BC)
                 )
                 Text(
                     text = actionText,
-                    fontSize = 12.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color(0xFF111111)
                 )
