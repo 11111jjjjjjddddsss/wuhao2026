@@ -631,7 +631,7 @@ private fun ComposerSendActionButton(
     ) {
         ComposerSendArrowIcon(
             tint = tint,
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier.size(21.dp)
         )
     }
 }
