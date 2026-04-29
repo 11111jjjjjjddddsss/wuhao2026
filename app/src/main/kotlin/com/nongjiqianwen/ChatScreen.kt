@@ -4933,8 +4933,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem("图片格式", "仅支持 JPEG / PNG 格式", UiCopyPreviewKind.ImageFormat),
             UiCopyPreviewItem("图片超限", "图片压缩后仍超过 1MB", UiCopyPreviewKind.ImageOversize),
             UiCopyPreviewItem("图片上传", "未配置上传服务 / 上传失败", UiCopyPreviewKind.ImageUpload),
-            UiCopyPreviewItem("图片数量", "最多4张", UiCopyPreviewKind.ImageCount),
-            UiCopyPreviewItem("有图无文字", "有图片时必须带文字描述", UiCopyPreviewKind.ImageNeedsText)
+            UiCopyPreviewItem("图片数量", "最多4张", UiCopyPreviewKind.ImageCount)
         )
     }
     var selectedIndex by remember { mutableIntStateOf(0) }
@@ -5026,8 +5025,7 @@ private enum class UiCopyPreviewKind {
     ImageFormat,
     ImageOversize,
     ImageUpload,
-    ImageCount,
-    ImageNeedsText
+    ImageCount
 }
 
 @Composable
@@ -5186,7 +5184,6 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     }
                 }
                 UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint("图片数量超过限制：最多4张")
-                UiCopyPreviewKind.ImageNeedsText -> UiCopyPreviewHint("有图片时必须带文字描述")
             }
         }
     }

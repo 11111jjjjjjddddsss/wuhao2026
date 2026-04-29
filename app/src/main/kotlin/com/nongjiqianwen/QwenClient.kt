@@ -384,7 +384,15 @@ object QwenClient {
     /** 构建主对话 messages：历史/摘要/锚点以后端注入为准。 */
     private fun buildMainDialogueMessages(userMessage: String, imageUrlList: List<String>): JsonArray {
         val messagesArray = JsonArray()
-        val userTextContent = "【当前优先处理的问题】\n${userMessage.ifBlank { "" }}".trim()
+        val hasValidImages = imageUrlList.any { imageUrl ->
+            imageUrl.isNotBlank() && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))
+        }
+        val effectiveUserText = when {
+            userMessage.isNotBlank() -> userMessage
+            hasValidImages -> "用户本轮只上传了图片，未补充文字描述。请先基于图片可见信息给出参考判断，并追问必要信息。"
+            else -> ""
+        }
+        val userTextContent = "【当前优先处理的问题】\n$effectiveUserText".trim()
         val userMessageObj = JsonObject().apply {
             addProperty("role", "user")
             val contentArray = JsonArray()
@@ -450,7 +458,6 @@ object QwenClient {
             try {
                 if (isRuntimeStale()) return@Thread
                 if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
-                if (imgCount > 0 && userMessage.isBlank()) throw Exception("有图片时必须带文字描述")
 
                 val messages = buildMainDialogueMessages(userMessage, imageUrlList)
                 val requestBody = JsonObject().apply {
