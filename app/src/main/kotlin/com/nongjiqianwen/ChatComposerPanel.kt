@@ -894,12 +894,16 @@ private fun ComposerCameraIcon(
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.085f
-        val corner = size.minDimension * 0.17f
+        val stroke = size.minDimension * 0.078f
+        val corner = size.minDimension * 0.15f
         val bodyLeft = size.width * 0.14f
-        val bodyTop = size.height * 0.28f
+        val bodyTop = size.height * 0.31f
         val bodyRight = size.width * 0.86f
-        val bodyBottom = size.height * 0.78f
+        val bodyBottom = size.height * 0.79f
+        val topLeft = size.width * 0.35f
+        val topTop = size.height * 0.2f
+        val topRight = size.width * 0.59f
+        val topBottom = size.height * 0.33f
         drawRoundRect(
             color = tint,
             topLeft = Offset(bodyLeft, bodyTop),
@@ -907,32 +911,23 @@ private fun ComposerCameraIcon(
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
         )
-        drawLine(
+        drawRoundRect(
             color = tint,
-            start = Offset(size.width * 0.34f, bodyTop),
-            end = Offset(size.width * 0.41f, size.height * 0.17f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(size.width * 0.41f, size.height * 0.17f),
-            end = Offset(size.width * 0.59f, size.height * 0.17f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(size.width * 0.59f, size.height * 0.17f),
-            end = Offset(size.width * 0.66f, bodyTop),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
+            topLeft = Offset(topLeft, topTop),
+            size = androidx.compose.ui.geometry.Size(topRight - topLeft, topBottom - topTop),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(stroke, stroke),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
         )
         drawCircle(
             color = tint,
-            radius = size.minDimension * 0.14f,
-            center = Offset(size.width * 0.5f, size.height * 0.54f),
+            radius = size.minDimension * 0.145f,
+            center = Offset(size.width * 0.5f, size.height * 0.56f),
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
+        )
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.035f,
+            center = Offset(size.width * 0.72f, size.height * 0.43f)
         )
     }
 }
