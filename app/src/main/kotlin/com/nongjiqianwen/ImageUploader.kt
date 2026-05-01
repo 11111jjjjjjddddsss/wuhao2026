@@ -38,7 +38,7 @@ object ImageUploader {
     private const val JPEG_QUALITY_80 = 80
     private const val JPEG_QUALITY_70 = 70
     private const val JPEG_QUALITY_60 = 60
-    private const val MAX_DECODE_LONG_EDGE = 4096
+    private const val MAX_DECODE_LONG_EDGE = 2048
     
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -55,6 +55,7 @@ object ImageUploader {
      * 固定降级序列（直到 ≤1MB）：1024@85 -> 1024@80 -> 896@80 -> 896@70 -> 768@70 -> 640@60 -> 512@60。
      * 若极端图片在 512@60 后仍超过 1MB，继续保持 Q=60 等比缩小，直到 ≤1MB。
      * 全程等比缩放，不拉伸不裁剪，仅输出 JPEG。
+     * 解码中间态控制在约 2048px 长边，降低超大原图在低端机上的内存压力。
      * 能解码则转 JPEG 后上传；解码失败返回 null，由调用方提示 DECODE_FAIL_MESSAGE，不调用模型、不扣费、不计轮次。
      */
     fun compressImage(imageBytes: ByteArray): CompressResult? {
