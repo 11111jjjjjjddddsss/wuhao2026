@@ -26,6 +26,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -141,6 +142,7 @@ import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -312,7 +314,7 @@ private val MESSAGE_ACTION_MENU_SWITCH_THRESHOLD = 28.dp
 private val JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE = 32.dp
 private val JUMP_BUTTON_BOTTOM_SAFETY_ZONE = 56.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
-private val TOP_CHROME_MASK_EXTRA = 12.dp
+private val TOP_CHROME_MASK_EXTRA = 8.dp
 internal val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
@@ -1455,20 +1457,25 @@ private fun MenuBarsIcon(
 }
 
 @Composable
-private fun DiamondOutlineIcon(
-    tint: Color,
+private fun MembershipLeafIcon(
+    circleSize: Dp,
+    imageSize: Dp,
     modifier: Modifier = Modifier
 ) {
-    Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.095f
-        val top = Offset(size.width * 0.5f, size.height * 0.14f)
-        val right = Offset(size.width * 0.82f, size.height * 0.5f)
-        val bottom = Offset(size.width * 0.5f, size.height * 0.86f)
-        val left = Offset(size.width * 0.18f, size.height * 0.5f)
-        drawLine(tint, top, right, strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(tint, right, bottom, strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(tint, bottom, left, strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(tint, left, top, strokeWidth = stroke, cap = StrokeCap.Round)
+    Box(
+        modifier = modifier
+            .size(circleSize)
+            .clip(CircleShape)
+            .background(Color.Black),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier
+                .size(imageSize)
+                .clip(CircleShape)
+        )
     }
 }
 
@@ -3920,7 +3927,12 @@ fun ChatScreen() {
         }
         val inputBarHeight = if (maxWidth < 360.dp) 100.dp else 104.dp
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp
-        val chromeButtonSize = if (maxWidth < 360.dp) 40.dp else 42.dp
+        val chromeButtonSize = if (maxWidth < 360.dp) 42.dp else 44.dp
+        val topMenuIconSize = if (maxWidth < 360.dp) 27.dp else 28.dp
+        val topTitleFontSize = if (maxWidth < 360.dp) 21.sp else 22.sp
+        val topTitleLineHeight = if (maxWidth < 360.dp) 25.sp else 26.sp
+        val membershipCircleSize = if (maxWidth < 360.dp) 30.dp else 32.dp
+        val membershipIconImageSize = if (maxWidth < 360.dp) 36.dp else 38.dp
         val actionCircleSize = if (maxWidth < 360.dp) 34.dp else 36.dp
         val addButtonSize = actionCircleSize
         val addIconSize = if (maxWidth < 360.dp) 24.dp else 26.dp
@@ -4634,7 +4646,7 @@ fun ChatScreen() {
                     ) {
                         MenuBarsIcon(
                             tint = Color(0xFF1E1E1E),
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(topMenuIconSize)
                         )
                     }
                     Box(
@@ -4654,7 +4666,10 @@ fun ChatScreen() {
                             text = "农技千查",
                             modifier = titleModifier,
                             color = Color(0xFF111111),
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = topTitleFontSize,
+                                lineHeight = topTitleLineHeight
+                            ),
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -4665,9 +4680,9 @@ fun ChatScreen() {
                         onClick = {},
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
-                        DiamondOutlineIcon(
-                            tint = Color(0xFF1E1E1E),
-                            modifier = Modifier.size(18.dp)
+                        MembershipLeafIcon(
+                            circleSize = membershipCircleSize,
+                            imageSize = membershipIconImageSize
                         )
                     }
                 }
