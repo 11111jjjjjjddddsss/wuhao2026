@@ -4641,9 +4641,18 @@ fun ChatScreen() {
                         modifier = Modifier.weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
+                        val titleModifier = Modifier
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .then(
+                                if (BuildConfig.DEBUG) {
+                                    Modifier.clickable { uiCopyPreviewVisible = true }
+                                } else {
+                                    Modifier
+                                }
+                            )
                         Text(
                             text = "农技千查",
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = titleModifier,
                             color = Color(0xFF111111),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
@@ -4653,11 +4662,7 @@ fun ChatScreen() {
                         )
                     }
                     IconButton(
-                        onClick = {
-                            if (BuildConfig.DEBUG) {
-                                uiCopyPreviewVisible = true
-                            }
-                        },
+                        onClick = {},
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
                         DiamondOutlineIcon(
