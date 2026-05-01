@@ -48,7 +48,7 @@ object ImageUploader {
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
     const val DECODE_FAIL_MESSAGE = "仅支持 JPEG / PNG 格式"
     /** 极端场景：固定序列后仍超限时提示 */
-    const val SIZE_LIMIT_FAIL_MESSAGE = "图片压缩后仍超过 1MB，请更换更清晰主体、减少无关背景后重试"
+    const val SIZE_LIMIT_FAIL_MESSAGE = "图片压缩后仍超过 1MB"
 
     /**
      * 压缩图片：

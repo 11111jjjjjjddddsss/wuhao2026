@@ -660,6 +660,8 @@ private fun ChatInputField(
 @Composable
 internal fun ComposerAttachmentBottomSheet(
     visible: Boolean,
+    limitReached: Boolean = false,
+    limitHintText: String = "已达4张上限",
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onCameraClick: () -> Unit,
@@ -713,6 +715,16 @@ internal fun ComposerAttachmentBottomSheet(
                         .padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
+                    if (limitReached) {
+                        Text(
+                            text = limitHintText,
+                            color = Color(0xFF34363B),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(14.dp)

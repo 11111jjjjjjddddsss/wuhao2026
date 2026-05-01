@@ -457,7 +457,7 @@ object QwenClient {
             val imgCount = imageUrlList.count { it.isNotBlank() && (it.startsWith("http://") || it.startsWith("https://")) }
             try {
                 if (isRuntimeStale()) return@Thread
-                if (imgCount > 4) throw Exception("图片数量超过限制：$imgCount 张，最多4张")
+                if (imgCount > 4) throw Exception("最多4张图片")
 
                 val messages = buildMainDialogueMessages(userMessage, imageUrlList)
                 val requestBody = JsonObject().apply {

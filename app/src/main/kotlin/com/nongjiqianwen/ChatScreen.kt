@@ -312,6 +312,8 @@ private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
 private const val INPUT_MAX_CHARS = 6000
 private const val COMPOSER_MAX_IMAGE_COUNT = 4
+private const val COMPOSER_IMAGE_COUNT_HINT = "最多4张图片"
+private const val COMPOSER_IMAGE_COUNT_REACHED_HINT = "已达4张上限"
 private const val COMPOSER_MAX_IMAGE_SIZE_BYTES = 1024 * 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
@@ -1376,6 +1378,19 @@ private fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImage
     }.getOrNull()
 }
 
+private fun Context.deleteComposerImageAttachment(attachment: ComposerImageAttachment) {
+    runCatching {
+        val uri = Uri.parse(attachment.uri)
+        if (uri.scheme != "file") return@runCatching
+        val path = uri.path ?: return@runCatching
+        val imageDir = File(filesDir, "composer_images").canonicalFile
+        val imageFile = File(path).canonicalFile
+        if (imageFile.isFile && imageFile.parentFile?.canonicalFile == imageDir) {
+            imageFile.delete()
+        }
+    }
+}
+
 private fun chatPreviewInSampleSize(width: Int, height: Int, targetSize: Int): Int {
     var sampleSize = 1
     if (width > targetSize || height > targetSize) {
@@ -1716,7 +1731,7 @@ fun ChatScreen() {
         mutableStateListOf<ComposerImageAttachment>()
     }
     var attachmentMenuVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
-    var pendingCameraImageUri by remember(uiRuntimeResetKey) { mutableStateOf<Uri?>(null) }
+    var pendingCameraImageUriString by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var imageSendInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
@@ -2705,7 +2720,7 @@ fun ChatScreen() {
         context.clearLocalComposerDraftSync(chatScopeId)
         selectedComposerImages.clear()
         attachmentMenuVisible = false
-        pendingCameraImageUri = null
+        pendingCameraImageUriString = null
         imageSendInProgress = false
         inputContentHeightPx = startupInputContentHeightEstimatePx
         composerSettlingMinHeightPx = 0
@@ -2748,7 +2763,7 @@ fun ChatScreen() {
         if (uris.isEmpty()) return
         val remainingSlots = COMPOSER_MAX_IMAGE_COUNT - selectedComposerImages.size
         if (remainingSlots <= 0) {
-            showComposerStatusHint("最多上传4张图片")
+            showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
             return
         }
         attachmentMenuVisible = false
@@ -2764,11 +2779,26 @@ fun ChatScreen() {
                 showComposerStatusHint(ImageUploader.DECODE_FAIL_MESSAGE)
                 return@launch
             }
-            selectedComposerImages.addAll(importedImages)
-            if (importedImages.size < selectedUris.size) {
+            val latestRemainingSlots = COMPOSER_MAX_IMAGE_COUNT - selectedComposerImages.size
+            if (latestRemainingSlots <= 0) {
+                withContext(Dispatchers.IO) {
+                    importedImages.forEach(context::deleteComposerImageAttachment)
+                }
+                showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
+                return@launch
+            }
+            val imagesToAdd = importedImages.take(latestRemainingSlots)
+            val overflowImages = importedImages.drop(latestRemainingSlots)
+            if (overflowImages.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    overflowImages.forEach(context::deleteComposerImageAttachment)
+                }
+            }
+            selectedComposerImages.addAll(imagesToAdd)
+            if (overflowImages.isNotEmpty() || uris.size > remainingSlots) {
+                showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
+            } else if (importedImages.size < selectedUris.size) {
                 showComposerStatusHint("部分图片无法读取，已跳过")
-            } else if (uris.size > remainingSlots) {
-                showComposerStatusHint("最多上传4张图片")
             }
         }
     }
@@ -2798,8 +2828,8 @@ fun ChatScreen() {
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        val uri = pendingCameraImageUri
-        pendingCameraImageUri = null
+        val uri = pendingCameraImageUriString?.let(Uri::parse)
+        pendingCameraImageUriString = null
         if (success && uri != null) {
             addComposerImageUris(listOf(uri))
         }
@@ -2807,7 +2837,7 @@ fun ChatScreen() {
 
     fun launchComposerCamera() {
         if (selectedComposerImages.size >= COMPOSER_MAX_IMAGE_COUNT) {
-            showComposerStatusHint("最多上传4张图片")
+            showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
             return
         }
         val uri = context.createComposerCameraImageUri()
@@ -2815,7 +2845,7 @@ fun ChatScreen() {
             showComposerStatusHint("相机打开失败，请重试")
             return
         }
-        pendingCameraImageUri = uri
+        pendingCameraImageUriString = uri.toString()
         attachmentMenuVisible = false
         cameraLauncher.launch(uri)
     }
@@ -2823,7 +2853,7 @@ fun ChatScreen() {
     fun launchComposerPhotoPicker() {
         val remainingSlots = COMPOSER_MAX_IMAGE_COUNT - selectedComposerImages.size
         if (remainingSlots <= 0) {
-            showComposerStatusHint("最多上传4张图片")
+            showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
             return
         }
         attachmentMenuVisible = false
@@ -4318,7 +4348,7 @@ fun ChatScreen() {
                 emptyList<String>() to null
             } else {
                 val urls = ImageUploader.uploadImages(compressedImages)
-                if (urls == null) null to "图片上传失败，请重试" else urls to null
+                if (urls == null) null to null else urls to null
             }
         }
         fun retryFailedUserMessage(messageId: String) {
@@ -4340,7 +4370,7 @@ fun ChatScreen() {
                             previewImageUris.map(::ComposerImageAttachment)
                         )
                         if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
-                            showComposerStatusHint(uploadError ?: "图片上传失败，请重试")
+                            uploadError?.let(::showComposerStatusHint)
                             return@launch
                         }
                         failedUserMessageStates.remove(failedMessage.id)
@@ -4376,6 +4406,37 @@ fun ChatScreen() {
                 showComposerStatusHint("当前网络不可用")
                 return
             }
+            val previewImageUris = sourceUserMessage.imageUris.orEmpty()
+            val uploadedImageUrls = sourceUserMessage.imageUrls.orEmpty()
+            if (previewImageUris.isNotEmpty() && uploadedImageUrls.isEmpty()) {
+                imageSendInProgress = true
+                snackbarScope.launch {
+                    try {
+                        val (retryUploadedUrls, uploadError) = uploadComposerImagesForSend(
+                            previewImageUris.map(::ComposerImageAttachment)
+                        )
+                        if (uploadError != null || retryUploadedUrls.isNullOrEmpty()) {
+                            uploadError?.let(::showComposerStatusHint)
+                            return@launch
+                        }
+                        failedAssistantMessageStates.remove(assistantMessageId)
+                        val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
+                        if (existingAssistantIndex >= 0) {
+                            messages.removeAt(existingAssistantIndex)
+                        }
+                        commitSendMessage(
+                            text = sourceUserMessage.content,
+                            uploadedImageUrls = retryUploadedUrls,
+                            previewImageUris = previewImageUris,
+                            existingUserMessageId = sourceUserMessage.id,
+                            collapseComposer = false
+                        )
+                    } finally {
+                        imageSendInProgress = false
+                    }
+                }
+                return
+            }
             failedAssistantMessageStates.remove(assistantMessageId)
             val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
             if (existingAssistantIndex >= 0) {
@@ -4383,15 +4444,15 @@ fun ChatScreen() {
             }
             commitSendMessage(
                 text = sourceUserMessage.content,
-                uploadedImageUrls = sourceUserMessage.imageUrls.orEmpty(),
-                previewImageUris = sourceUserMessage.imageUris.orEmpty(),
+                uploadedImageUrls = uploadedImageUrls,
+                previewImageUris = previewImageUris,
                 existingUserMessageId = sourceUserMessage.id,
                 collapseComposer = false
             )
         }
         fun sendMessage() {
             val text = input.value.text
-            val imageSnapshot = selectedComposerImages.toList()
+            val imageSnapshot = selectedComposerImages.take(COMPOSER_MAX_IMAGE_COUNT)
             val sendGate = buildSendGateState(
                 rawInput = text,
                 isStreaming = isStreaming || sendUiSettling || imageSendInProgress,
@@ -4430,7 +4491,7 @@ fun ChatScreen() {
                         failedUserMessageStates[stagedUserMessageId] = "network"
                         persistTick++
                         context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
-                        showComposerStatusHint(uploadError ?: "图片上传失败，请重试")
+                        uploadError?.let(::showComposerStatusHint)
                     } else {
                         failedUserMessageStates.remove(stagedUserMessageId)
                         commitSendMessage(
@@ -5065,6 +5126,8 @@ fun ChatScreen() {
 
                 ComposerAttachmentBottomSheet(
                     visible = attachmentMenuVisible,
+                    limitReached = selectedComposerImages.size >= COMPOSER_MAX_IMAGE_COUNT,
+                    limitHintText = COMPOSER_IMAGE_COUNT_REACHED_HINT,
                     modifier = Modifier.fillMaxSize(),
                     onDismiss = {
                         attachmentMenuVisible = false
@@ -5526,8 +5589,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem("输入菜单", "复制 / 粘贴 / 剪切 / 全选", UiCopyPreviewKind.InputMenu),
             UiCopyPreviewItem("图片格式", "仅支持 JPEG / PNG 格式", UiCopyPreviewKind.ImageFormat),
             UiCopyPreviewItem("图片超限", "图片压缩后仍超过 1MB", UiCopyPreviewKind.ImageOversize),
-            UiCopyPreviewItem("图片上传", "未配置上传服务 / 上传失败", UiCopyPreviewKind.ImageUpload),
-            UiCopyPreviewItem("图片数量", "最多4张", UiCopyPreviewKind.ImageCount)
+            UiCopyPreviewItem("图片数量", "$COMPOSER_IMAGE_COUNT_HINT / $COMPOSER_IMAGE_COUNT_REACHED_HINT", UiCopyPreviewKind.ImageCount)
         )
     }
     var selectedIndex by remember { mutableIntStateOf(0) }
@@ -5618,7 +5680,6 @@ private enum class UiCopyPreviewKind {
     InputMenu,
     ImageFormat,
     ImageOversize,
-    ImageUpload,
     ImageCount
 }
 
@@ -5765,15 +5826,27 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     UiCopyPreviewInputActionMenu()
                 }
                 UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint("仅支持 JPEG / PNG 格式")
-                UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint("图片压缩后仍超过 1MB，请更换更清晰主体、减少无关背景后重试")
-                UiCopyPreviewKind.ImageUpload -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        UiCopyPreviewHint("未配置上传服务")
-                        UiCopyPreviewHint("上传失败：响应格式错误")
-                        UiCopyPreviewHint("上传异常: 网络连接超时")
+                UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint("图片压缩后仍超过 1MB")
+                UiCopyPreviewKind.ImageCount -> {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = COMPOSER_IMAGE_COUNT_REACHED_HINT,
+                                color = Color(0xFF34363B),
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                            )
+                        }
                     }
                 }
-                UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint("图片数量超过限制：最多4张")
             }
         }
     }
