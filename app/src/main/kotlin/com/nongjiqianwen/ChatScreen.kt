@@ -5397,23 +5397,23 @@ private fun MessageStatusFooter(
         ) {
             Row(
                 modifier = Modifier
-                    .heightIn(min = 38.dp)
-                    .padding(horizontal = 18.dp, vertical = 9.dp),
+                    .heightIn(min = 34.dp)
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = statusText,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     color = Color.White
                 )
                 Text(
                     text = " · ",
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     color = Color.White.copy(alpha = 0.42f)
                 )
                 Text(
                     text = "点击$actionText",
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White
                 )
