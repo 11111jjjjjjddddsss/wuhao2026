@@ -897,14 +897,14 @@ private fun ComposerCameraIcon(
 ) {
     Canvas(modifier = modifier) {
         val stroke = size.minDimension * 0.085f
-        val left = size.width * 0.13f
-        val top = size.height * 0.32f
-        val right = size.width * 0.87f
-        val bottom = size.height * 0.8f
+        val left = size.width * 0.1f
+        val top = size.height * 0.3f
+        val right = size.width * 0.9f
+        val bottom = size.height * 0.84f
         val corner = size.minDimension * 0.13f
-        val bumpLeft = size.width * 0.37f
-        val bumpTop = size.height * 0.245f
-        val bumpRight = size.width * 0.63f
+        val bumpLeft = size.width * 0.34f
+        val bumpTop = size.height * 0.21f
+        val bumpRight = size.width * 0.66f
         val bumpCorner = size.minDimension * 0.06f
         val cameraPath = Path().apply {
             moveTo(left + corner, top)
@@ -937,8 +937,8 @@ private fun ComposerCameraIcon(
         )
         drawCircle(
             color = tint,
-            radius = size.minDimension * 0.15f,
-            center = Offset(size.width * 0.5f, size.height * 0.555f),
+            radius = size.minDimension * 0.16f,
+            center = Offset(size.width * 0.5f, size.height * 0.575f),
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
         )
     }
