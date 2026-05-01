@@ -60,8 +60,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
@@ -894,23 +896,49 @@ private fun ComposerCameraIcon(
     modifier: Modifier = Modifier
 ) {
     Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.08f
-        val corner = size.minDimension * 0.16f
-        val bodyLeft = size.width * 0.14f
-        val bodyTop = size.height * 0.25f
-        val bodyRight = size.width * 0.86f
-        val bodyBottom = size.height * 0.78f
-        drawRoundRect(
+        val stroke = size.minDimension * 0.085f
+        val left = size.width * 0.13f
+        val top = size.height * 0.31f
+        val right = size.width * 0.87f
+        val bottom = size.height * 0.82f
+        val corner = size.minDimension * 0.13f
+        val bumpLeft = size.width * 0.38f
+        val bumpTop = size.height * 0.18f
+        val bumpRight = size.width * 0.62f
+        val bumpCorner = size.minDimension * 0.055f
+        val cameraPath = Path().apply {
+            moveTo(left + corner, top)
+            lineTo(bumpLeft - bumpCorner, top)
+            quadraticTo(bumpLeft, top, bumpLeft, top - bumpCorner)
+            lineTo(bumpLeft, bumpTop + bumpCorner)
+            quadraticTo(bumpLeft, bumpTop, bumpLeft + bumpCorner, bumpTop)
+            lineTo(bumpRight - bumpCorner, bumpTop)
+            quadraticTo(bumpRight, bumpTop, bumpRight, bumpTop + bumpCorner)
+            lineTo(bumpRight, top - bumpCorner)
+            quadraticTo(bumpRight, top, bumpRight + bumpCorner, top)
+            lineTo(right - corner, top)
+            quadraticTo(right, top, right, top + corner)
+            lineTo(right, bottom - corner)
+            quadraticTo(right, bottom, right - corner, bottom)
+            lineTo(left + corner, bottom)
+            quadraticTo(left, bottom, left, bottom - corner)
+            lineTo(left, top + corner)
+            quadraticTo(left, top, left + corner, top)
+            close()
+        }
+        drawPath(
+            path = cameraPath,
             color = tint,
-            topLeft = Offset(bodyLeft, bodyTop),
-            size = androidx.compose.ui.geometry.Size(bodyRight - bodyLeft, bodyBottom - bodyTop),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = stroke,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
         )
         drawCircle(
             color = tint,
             radius = size.minDimension * 0.15f,
-            center = Offset(size.width * 0.5f, size.height * 0.53f),
+            center = Offset(size.width * 0.5f, size.height * 0.56f),
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
         )
     }

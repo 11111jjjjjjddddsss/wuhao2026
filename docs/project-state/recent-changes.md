@@ -6,7 +6,7 @@
 ## 2026-05-01
 
 - 新增项目级 `opencode.json` 和 `docs/opencode-codex-bridge.md`，让 OpenCode 在 `D:\wuhao` 项目中显式加载根 `AGENTS.md`、OpenCode 接手提示词以及 `docs/project-state` 四份项目记忆文件。项目配置不绑定固定模型或 provider，后续可继续在 OpenCode 全局配置 / 客户端下拉中切换 MiMo、Kimi、Claude、OpenRouter 等模型；同时把编辑权限设为需确认，并要求 OpenCode 按“先读真相、排查旧方案、最小改动、改后自查、同步记忆、提交并推送”的仓库流程工作。只改开发工具接入配置和记忆入口，不改 Android / Go 业务代码。
-- `ChatComposerPanel.kt` 微调 `+` 底部附件卡片里的相机图标：旧图标顶部用斜线拼出相机轮廓，真机观感偏笨重；按用户从候选里选定的第 5 个方向，改为更极简的圆角机身 + 镜头圈线框。只改相机图标 Canvas 绘制，不改底部弹卡片结构、照片入口、图片上传 / 压缩 / 发送链、聊天滚动链或 96dp 工作线。
+- `ChatComposerPanel.kt` 微调 `+` 底部附件卡片里的相机图标：旧图标顶部用斜线拼出相机轮廓，真机观感偏笨重；按用户从候选里选定的第 5 个方向，改为带顶部小凸起的一笔相机轮廓，并把相机 / 照片两个入口图标的视觉高度拉齐。只改相机图标 Canvas 绘制，不改底部弹卡片结构、照片入口、图片上传 / 压缩 / 发送链、聊天滚动链或 96dp 工作线。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` 将 `+` 附件入口从输入框上方小面板改为底部弹出的白色圆角卡片：页面背景加轻量遮罩，卡片里只保留“相机 / 照片”两个大入口和一行农业拍摄提示，点击外部可关闭。原输入框内部 `ComposerAttachmentMenu` 已退出，不再和新 bottom sheet 并存；相机 / 相册 launcher、图片压缩上传、输入框缩略图、最多 4 张、上传中锁定等功能链路未改，聊天滚动链和 96dp 工作线不动。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` / `ImageUploader.kt` 接入 `+` 入口的首版图片输入：加号面板只放“相机 / 照片”两项和一行农业拍摄提示，选图后图片进入输入框缩略图预览并按 1-4 编号；发送支持图片-only / 图文混合，先后台压缩到单张 <=1MB，再按用户选择顺序上传并把 URL 传给 `SessionApi.StreamOptions.images`。上传中会锁住本次输入和附件操作，避免用户继续改内容后被误清；本地消息用 `imageUris` 预览，远端 hydrate / 重装后用 `imageUrls` 兜底显示。图片预览只影响 composer 内部和用户消息内容，不进入聊天列表 bottom reserve / 96dp 工作线；baseline profile 脚本本次不更新，因为相机 / 相册是外部系统 picker 路径，不在当前聊天首屏 / 滚动 / 输入框关键预热脚本里。
 - `ChatScreen.kt` 小范围调整顶部 chrome：右上角旧菱形图标替换为圆形黑底叶子 App 图标，作为后续会员中心外露入口占位；左侧菜单图标略放大，标题“农技千查”在真机反馈后回落到 17sp，会员入口改为一张预合成的 `ic_membership_leaf.png`（黑圆 + 绿叶），代码里只按单一尺寸显示且右上图标再轻微收小 1dp，避免直接引用 Android adaptive launcher 图标导致启动崩溃，也避免外层圆 / 内层叶子两套尺寸反复互相打架；顶部遮挡帘子高度略收短。只改顶栏视觉和旧菱形函数清理，不改聊天滚动链、输入框、debug 文案预览或会员业务逻辑。
