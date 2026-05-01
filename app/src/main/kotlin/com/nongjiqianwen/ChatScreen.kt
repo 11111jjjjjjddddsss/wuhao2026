@@ -72,6 +72,7 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -1473,7 +1474,7 @@ private fun MembershipLeafIcon(
             painter = painterResource(id = R.mipmap.ic_launcher_foreground),
             contentDescription = null,
             modifier = Modifier
-                .size(imageSize)
+                .requiredSize(imageSize)
                 .clip(CircleShape)
         )
     }
@@ -3929,8 +3930,8 @@ fun ChatScreen() {
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 42.dp else 44.dp
         val topMenuIconSize = if (maxWidth < 360.dp) 27.dp else 28.dp
-        val topTitleFontSize = if (maxWidth < 360.dp) 18.sp else 19.sp
-        val topTitleLineHeight = if (maxWidth < 360.dp) 22.sp else 23.sp
+        val topTitleFontSize = if (maxWidth < 360.dp) 17.sp else 18.sp
+        val topTitleLineHeight = if (maxWidth < 360.dp) 21.sp else 22.sp
         val membershipCircleSize = if (maxWidth < 360.dp) 26.dp else 28.dp
         val membershipIconImageSize = if (maxWidth < 360.dp) 68.dp else 72.dp
         val actionCircleSize = if (maxWidth < 360.dp) 34.dp else 36.dp
