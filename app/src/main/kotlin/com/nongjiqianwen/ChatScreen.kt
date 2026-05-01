@@ -178,6 +178,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
@@ -1369,7 +1371,10 @@ private fun chatPreviewInSampleSize(width: Int, height: Int, targetSize: Int): I
     return sampleSize.coerceAtLeast(1)
 }
 
-private fun Context.decodeChatImagePreview(source: String): androidx.compose.ui.graphics.ImageBitmap? {
+private fun Context.decodeChatImagePreview(
+    source: String,
+    targetSize: Int = 512
+): androidx.compose.ui.graphics.ImageBitmap? {
     return runCatching {
         val bytes = if (source.startsWith("http://") || source.startsWith("https://")) {
             val connection = URL(source).openConnection().apply {
@@ -1382,8 +1387,11 @@ private fun Context.decodeChatImagePreview(source: String): androidx.compose.ui.
         } ?: return@runCatching null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return@runCatching null
+        }
         val decodeOptions = BitmapFactory.Options().apply {
-            inSampleSize = chatPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = 512)
+            inSampleSize = chatPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = targetSize)
         }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)?.asImageBitmap()
     }.getOrNull()
@@ -5709,6 +5717,9 @@ private fun UserMessageImageStrip(
         (imageUris + imageUrls).distinct().take(COMPOSER_MAX_IMAGE_COUNT)
     }
     if (imageSources.isEmpty()) return
+    var previewSource by remember {
+        mutableStateOf<String?>(null)
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -5722,16 +5733,28 @@ private fun UserMessageImageStrip(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     rowSources.forEach { source ->
-                        UserMessageImageThumb(source = source)
+                        UserMessageImageThumb(
+                            source = source,
+                            onPreviewImage = { previewSource = source }
+                        )
                     }
                 }
             }
         }
     }
+    previewSource?.let { source ->
+        UserMessageImagePreviewDialog(
+            source = source,
+            onDismiss = { previewSource = null }
+        )
+    }
 }
 
 @Composable
-private fun UserMessageImageThumb(source: String) {
+private fun UserMessageImageThumb(
+    source: String,
+    onPreviewImage: () -> Unit
+) {
     val context = LocalContext.current
     var bitmap by remember(source) {
         mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
@@ -5743,9 +5766,13 @@ private fun UserMessageImageThumb(source: String) {
     }
     Box(
         modifier = Modifier
-            .size(86.dp)
+            .size(112.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(Color(0xFFF0F1F3))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onPreviewImage() }
     ) {
         if (bitmap != null) {
             Image(
@@ -5804,6 +5831,145 @@ private fun UserMessageImageThumb(source: String) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun UserMessageImagePreviewDialog(
+    source: String,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var bitmap by remember(source) {
+        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+    }
+    LaunchedEffect(source) {
+        bitmap = withContext(Dispatchers.IO) {
+            context.decodeChatImagePreview(source, targetSize = 1600)
+        }
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xE6000000))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onDismiss() }
+        ) {
+            val previewBitmap = bitmap
+            if (previewBitmap != null) {
+                Image(
+                    bitmap = previewBitmap,
+                    contentDescription = "用户上传图片预览",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(22.dp)
+                )
+            } else {
+                UserMessageImagePlaceholderIcon(
+                    tint = Color.White.copy(alpha = 0.72f),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(44.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 34.dp, end = 22.dp)
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x99111111))
+                    .zIndex(1f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onDismiss() },
+                contentAlignment = Alignment.Center
+            ) {
+                UserMessagePreviewCloseIcon(tint = Color.White, modifier = Modifier.size(14.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserMessageImagePlaceholderIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.085f
+        val left = size.width * 0.16f
+        val top = size.height * 0.18f
+        val right = size.width * 0.84f
+        val bottom = size.height * 0.82f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(left, top),
+            size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                size.minDimension * 0.14f,
+                size.minDimension * 0.14f
+            ),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.065f,
+            center = Offset(size.width * 0.65f, size.height * 0.36f)
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.24f, size.height * 0.72f),
+            end = Offset(size.width * 0.42f, size.height * 0.53f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.42f, size.height * 0.53f),
+            end = Offset(size.width * 0.55f, size.height * 0.66f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.55f, size.height * 0.66f),
+            end = Offset(size.width * 0.78f, size.height * 0.56f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun UserMessagePreviewCloseIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.13f
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.22f, size.height * 0.22f),
+            end = Offset(size.width * 0.78f, size.height * 0.78f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.78f, size.height * 0.22f),
+            end = Offset(size.width * 0.22f, size.height * 0.78f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
     }
 }
 
