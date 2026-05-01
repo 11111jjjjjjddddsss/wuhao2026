@@ -72,7 +72,6 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -1459,25 +1458,14 @@ private fun MenuBarsIcon(
 
 @Composable
 private fun MembershipLeafIcon(
-    circleSize: Dp,
-    imageSize: Dp,
+    size: Dp,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .size(circleSize)
-            .clip(CircleShape)
-            .background(Color.Black),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(id = R.mipmap.ic_launcher_foreground),
-            contentDescription = null,
-            modifier = Modifier
-                .requiredSize(imageSize)
-                .clip(CircleShape)
-        )
-    }
+    Image(
+        painter = painterResource(id = R.drawable.ic_membership_leaf),
+        contentDescription = null,
+        modifier = modifier.size(size)
+    )
 }
 
 @Composable
@@ -3932,8 +3920,7 @@ fun ChatScreen() {
         val topMenuIconSize = if (maxWidth < 360.dp) 27.dp else 28.dp
         val topTitleFontSize = if (maxWidth < 360.dp) 17.sp else 18.sp
         val topTitleLineHeight = if (maxWidth < 360.dp) 21.sp else 22.sp
-        val membershipCircleSize = if (maxWidth < 360.dp) 26.dp else 28.dp
-        val membershipIconImageSize = if (maxWidth < 360.dp) 68.dp else 72.dp
+        val membershipIconSize = if (maxWidth < 360.dp) 30.dp else 32.dp
         val actionCircleSize = if (maxWidth < 360.dp) 34.dp else 36.dp
         val addButtonSize = actionCircleSize
         val addIconSize = if (maxWidth < 360.dp) 24.dp else 26.dp
@@ -4682,8 +4669,7 @@ fun ChatScreen() {
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
                         MembershipLeafIcon(
-                            circleSize = membershipCircleSize,
-                            imageSize = membershipIconImageSize
+                            size = membershipIconSize
                         )
                     }
                 }
