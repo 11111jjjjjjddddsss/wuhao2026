@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "instructions": [
+    "AGENTS.md",
+    "docs/opencode-codex-bridge.md",
+    "docs/project-state/current-status.md",
+    "docs/project-state/open-risks.md",
+    "docs/project-state/pending-decisions.md",
+    "docs/project-state/recent-changes.md"
+  ],
+  "permission": {
+    "edit": "ask",
+    "external_directory": "ask",
+    "doom_loop": "ask",
+    "webfetch": "allow",
+    "websearch": "allow",
+    "bash": {
+      "*": "allow",
+      "git push*": "ask",
+      "git reset --hard*": "deny",
+      "git checkout --*": "deny",
+      "git clean*": "deny",
+      "Remove-Item *": "ask",
+      "rm *": "ask",
+      "del *": "ask"
+    }
+  }
+}
