@@ -14,6 +14,7 @@ import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -2736,8 +2737,25 @@ fun ChatScreen() {
         }
     }
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
+    val singlePhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            addComposerImageUris(listOf(uri))
+        }
+    }
+    val photoPickerTwoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(2)
+    ) { uris ->
+        addComposerImageUris(uris)
+    }
+    val photoPickerThreeLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(3)
+    ) { uris ->
+        addComposerImageUris(uris)
+    }
+    val photoPickerFourLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(COMPOSER_MAX_IMAGE_COUNT)
     ) { uris ->
         addComposerImageUris(uris)
     }
@@ -2767,12 +2785,19 @@ fun ChatScreen() {
     }
 
     fun launchComposerPhotoPicker() {
-        if (selectedComposerImages.size >= COMPOSER_MAX_IMAGE_COUNT) {
+        val remainingSlots = COMPOSER_MAX_IMAGE_COUNT - selectedComposerImages.size
+        if (remainingSlots <= 0) {
             showComposerStatusHint("最多上传4张图片")
             return
         }
         attachmentMenuVisible = false
-        photoPickerLauncher.launch("image/*")
+        val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        when (remainingSlots) {
+            1 -> singlePhotoPickerLauncher.launch(request)
+            2 -> photoPickerTwoLauncher.launch(request)
+            3 -> photoPickerThreeLauncher.launch(request)
+            else -> photoPickerFourLauncher.launch(request)
+        }
     }
 
     fun showQuotaExhaustedHint() {
