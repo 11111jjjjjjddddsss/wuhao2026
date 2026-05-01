@@ -1,7 +1,11 @@
 package com.nongjiqianwen
 
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -9,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +36,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,13 +52,17 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
@@ -65,6 +76,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 internal data class InputSelectionToolbarState(
@@ -74,6 +87,39 @@ internal data class InputSelectionToolbarState(
     val onCutRequested: (() -> Unit)?,
     val onSelectAllRequested: (() -> Unit)?
 )
+
+@Immutable
+internal data class ComposerImageAttachment(
+    val uri: String
+)
+
+private fun composerPreviewInSampleSize(width: Int, height: Int, targetSize: Int): Int {
+    var sampleSize = 1
+    if (height > targetSize || width > targetSize) {
+        var halfHeight = height / 2
+        var halfWidth = width / 2
+        while (halfHeight / sampleSize >= targetSize && halfWidth / sampleSize >= targetSize) {
+            sampleSize *= 2
+        }
+    }
+    return sampleSize.coerceAtLeast(1)
+}
+
+private fun decodeComposerPreviewBitmap(context: Context, uriString: String): ImageBitmap? {
+    return runCatching {
+        val uri = Uri.parse(uriString)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, bounds)
+        }
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = composerPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = 256)
+        }
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, decodeOptions)?.asImageBitmap()
+        }
+    }.getOrNull()
+}
 
 internal enum class SendBlockReason {
     None,
@@ -94,11 +140,13 @@ internal fun buildSendGateState(
     rawInput: String,
     isStreaming: Boolean,
     exceedsInputLimit: Boolean,
-    quotaExhausted: Boolean = false
+    quotaExhausted: Boolean = false,
+    hasImages: Boolean = false
 ): SendGateState {
     val hasText = rawInput.trim().isNotEmpty()
+    val hasContent = hasText || hasImages
     return when {
-        !hasText -> SendGateState(
+        !hasContent -> SendGateState(
             canPress = false,
             canSubmit = false,
             blockReason = SendBlockReason.EmptyInput,
@@ -157,6 +205,8 @@ internal fun ChatComposerBottomBar(
     inputFieldBorder: Color,
     overlayHintText: String?,
     quotaExhausted: Boolean,
+    selectedImages: List<ComposerImageAttachment>,
+    attachmentMenuVisible: Boolean,
     hostModifier: Modifier = Modifier,
     onChromeMeasured: (Int) -> Unit,
     onChromeBoundsChanged: (Rect) -> Unit,
@@ -167,6 +217,9 @@ internal fun ChatComposerBottomBar(
     onInputLimitExceeded: () -> Unit,
     onQuotaExceeded: () -> Unit,
     onAddClick: () -> Unit,
+    onCameraClick: () -> Unit,
+    onPhotoClick: () -> Unit,
+    onRemoveImage: (ComposerImageAttachment) -> Unit,
     onSendClick: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -178,7 +231,8 @@ internal fun ChatComposerBottomBar(
         rawInput = inputValue.text,
         isStreaming = isStreamingOrSettling,
         exceedsInputLimit = inputValue.text.length > inputMaxChars,
-        quotaExhausted = quotaExhausted
+        quotaExhausted = quotaExhausted,
+        hasImages = selectedImages.isNotEmpty()
     )
     val canPressSend = sendGate.canPress
     val canSend = sendGate.canSubmit
@@ -209,11 +263,28 @@ internal fun ChatComposerBottomBar(
                 )
             }
         }
-        ComposerChromeRow(
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .widthIn(max = chromeMaxWidth)
                 .fillMaxWidth()
+        ) {
+            if (attachmentMenuVisible) {
+                ComposerAttachmentMenu(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = inputChromeHorizontalPadding,
+                            end = inputChromeHorizontalPadding,
+                            bottom = 10.dp
+                        ),
+                    onCameraClick = onCameraClick,
+                    onPhotoClick = onPhotoClick
+                )
+            }
+            ComposerChromeRow(
+                modifier = Modifier
+                    .fillMaxWidth()
                 .heightIn(min = composerSettlingChromeMinHeight)
                 .onSizeChanged { onChromeMeasured(it.height) }
                 .onGloballyPositioned { coordinates ->
@@ -235,6 +306,16 @@ internal fun ChatComposerBottomBar(
             inputBarHeight = inputBarHeight,
             inputBarMaxHeight = inputBarMaxHeight,
             onAddClick = onAddClick,
+            attachmentsContent = if (selectedImages.isNotEmpty()) {
+                {
+                    ComposerImagePreviewStrip(
+                        images = selectedImages,
+                        onRemoveImage = onRemoveImage
+                    )
+                }
+            } else {
+                null
+            },
             inputShellModifier = Modifier.onGloballyPositioned { coordinates ->
                 onInputBoundsChanged(coordinates.boundsInWindow())
             },
@@ -260,6 +341,11 @@ internal fun ChatComposerBottomBar(
                             }
                         },
                         onContentHeightChanged = onInputContentHeightChanged,
+                        placeholderText = if (selectedImages.isNotEmpty()) {
+                            "补充作物、部位或症状会更准"
+                        } else {
+                            "描述种植问题"
+                        },
                         onValueChange = {
                             if (it.text.length > inputMaxChars && inputValue.text.length <= inputMaxChars) {
                                 onInputLimitExceeded()
@@ -311,6 +397,7 @@ internal fun ChatComposerBottomBar(
                 }
             }
         )
+        }
     }
 }
 
@@ -496,6 +583,7 @@ private fun ChatInputField(
     onValueChange: (TextFieldValue) -> Unit,
     onFocusChanged: (Boolean) -> Unit,
     onContentHeightChanged: (Int) -> Unit,
+    placeholderText: String = "描述种植问题",
     singleLine: Boolean = false,
     minLines: Int = 1,
     maxLines: Int = 6,
@@ -534,7 +622,7 @@ private fun ChatInputField(
             ) {
                 if (value.text.isEmpty() && !suppressPlaceholder) {
                     Text(
-                        text = "描述种植问题",
+                        text = placeholderText,
                         color = Color(0xFFAEAFB4)
                     )
                 }
@@ -552,6 +640,179 @@ private fun ChatInputField(
             }
         }
     )
+}
+
+@Composable
+private fun ComposerAttachmentMenu(
+    modifier: Modifier = Modifier,
+    onCameraClick: () -> Unit,
+    onPhotoClick: () -> Unit
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        shadowElevation = 10.dp,
+        border = BorderStroke(0.6.dp, Color(0xFFE8EAEE)),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ComposerAttachmentActionTile(
+                    title = "相机",
+                    modifier = Modifier.weight(1f),
+                    onClick = onCameraClick
+                ) {
+                    ComposerCameraIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
+                }
+                ComposerAttachmentActionTile(
+                    title = "照片",
+                    modifier = Modifier.weight(1f),
+                    onClick = onPhotoClick
+                ) {
+                    ComposerPhotoIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
+                }
+            }
+            Text(
+                text = "建议拍清病斑、整株、叶背或果实，最多4张",
+                color = Color(0xFF8B8D93),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.padding(horizontal = 2.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.ComposerAttachmentActionTile(
+    title: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    Column(
+        modifier = modifier
+            .height(96.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xFFF5F6F7))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        icon()
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = title,
+            color = Color(0xFF111111),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun ComposerImagePreviewStrip(
+    images: List<ComposerImageAttachment>,
+    onRemoveImage: (ComposerImageAttachment) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        images.take(4).forEachIndexed { index, image ->
+            ComposerImagePreviewThumb(
+                image = image,
+                index = index,
+                onRemoveImage = onRemoveImage
+            )
+        }
+    }
+}
+
+@Composable
+private fun ComposerImagePreviewThumb(
+    image: ComposerImageAttachment,
+    index: Int,
+    onRemoveImage: (ComposerImageAttachment) -> Unit
+) {
+    val context = LocalContext.current
+    var bitmap by remember(image.uri) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(image.uri) {
+        bitmap = withContext(Dispatchers.IO) {
+            decodeComposerPreviewBitmap(context, image.uri)
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(60.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFF0F1F3))
+    ) {
+        val previewBitmap = bitmap
+        if (previewBitmap != null) {
+            Image(
+                bitmap = previewBitmap,
+                contentDescription = "第${index + 1}张图片",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            ComposerPhotoIcon(
+                tint = Color(0xFF8B8D93),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(26.dp)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(5.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(Color(0xAA111111))
+                .padding(horizontal = 5.dp, vertical = 1.dp)
+        ) {
+            Text(
+                text = "${index + 1}",
+                color = Color.White,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(4.dp)
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(Color(0xCC111111))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onRemoveImage(image) },
+            contentAlignment = Alignment.Center
+        ) {
+            ComposerCloseIcon(tint = Color.White, modifier = Modifier.size(10.dp))
+        }
+    }
 }
 
 @Composable
@@ -583,6 +844,134 @@ private fun ComposerSendArrowIcon(
             color = tint,
             start = Offset(centerX, headY),
             end = Offset(size.width * 0.8f, wingY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun ComposerCameraIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.085f
+        val corner = size.minDimension * 0.17f
+        val bodyLeft = size.width * 0.14f
+        val bodyTop = size.height * 0.28f
+        val bodyRight = size.width * 0.86f
+        val bodyBottom = size.height * 0.78f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(bodyLeft, bodyTop),
+            size = androidx.compose.ui.geometry.Size(bodyRight - bodyLeft, bodyBottom - bodyTop),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.34f, bodyTop),
+            end = Offset(size.width * 0.41f, size.height * 0.17f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.41f, size.height * 0.17f),
+            end = Offset(size.width * 0.59f, size.height * 0.17f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.59f, size.height * 0.17f),
+            end = Offset(size.width * 0.66f, bodyTop),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.14f,
+            center = Offset(size.width * 0.5f, size.height * 0.54f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
+        )
+    }
+}
+
+@Composable
+private fun ComposerPhotoIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.085f
+        val corner = size.minDimension * 0.14f
+        val left = size.width * 0.16f
+        val top = size.height * 0.18f
+        val right = size.width * 0.84f
+        val bottom = size.height * 0.82f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(left, top),
+            size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+        drawCircle(
+            color = tint,
+            radius = size.minDimension * 0.065f,
+            center = Offset(size.width * 0.65f, size.height * 0.36f)
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.24f, size.height * 0.72f),
+            end = Offset(size.width * 0.42f, size.height * 0.53f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.42f, size.height * 0.53f),
+            end = Offset(size.width * 0.55f, size.height * 0.66f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.55f, size.height * 0.66f),
+            end = Offset(size.width * 0.68f, size.height * 0.56f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.68f, size.height * 0.56f),
+            end = Offset(size.width * 0.78f, size.height * 0.72f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun ComposerCloseIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.18f
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.16f, size.height * 0.16f),
+            end = Offset(size.width * 0.84f, size.height * 0.84f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.84f, size.height * 0.16f),
+            end = Offset(size.width * 0.16f, size.height * 0.84f),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
@@ -694,6 +1083,7 @@ private fun ComposerInputShell(
     inputBarHeight: Dp,
     inputBarMaxHeight: Dp,
     onAddClick: () -> Unit,
+    attachmentsContent: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
     sendButtonSize: Dp,
     sendButtonEnabled: Boolean,
@@ -733,7 +1123,7 @@ private fun ComposerInputShell(
                 .fillMaxWidth()
                 .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(
@@ -741,10 +1131,15 @@ private fun ComposerInputShell(
                         end = 16.dp,
                         top = 12.dp,
                         bottom = actionDockHeight + 8.dp
-                    ),
-                verticalAlignment = Alignment.Top
+                    )
             ) {
-                content()
+                attachmentsContent?.invoke()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    content()
+                }
             }
 
             Row(
@@ -792,6 +1187,7 @@ private fun ComposerChromeRow(
     inputBarHeight: Dp,
     inputBarMaxHeight: Dp,
     onAddClick: () -> Unit,
+    attachmentsContent: (@Composable () -> Unit)? = null,
     inputShellModifier: Modifier = Modifier,
     inputContent: @Composable RowScope.() -> Unit,
     sendButtonEnabled: Boolean,
@@ -810,6 +1206,7 @@ private fun ComposerChromeRow(
         inputBarHeight = inputBarHeight,
         inputBarMaxHeight = inputBarMaxHeight,
         onAddClick = onAddClick,
+        attachmentsContent = attachmentsContent,
         content = inputContent,
         sendButtonSize = sendButtonSize,
         sendButtonEnabled = sendButtonEnabled,

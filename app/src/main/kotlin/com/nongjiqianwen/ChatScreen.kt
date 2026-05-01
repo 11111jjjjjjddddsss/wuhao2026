@@ -3,14 +3,18 @@
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -80,9 +84,6 @@ import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -126,6 +127,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -145,6 +147,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.AnnotatedString
@@ -179,6 +182,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.FlowPreview
@@ -196,6 +200,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
+import java.net.URL
 import java.util.LinkedHashMap
 import kotlin.random.Random
 import kotlin.math.roundToInt
@@ -205,7 +211,13 @@ import kotlin.coroutines.resume
 
 private enum class ChatRole { USER, ASSISTANT }
 @Immutable
-private data class ChatMessage(val id: String, val role: ChatRole, val content: String)
+private data class ChatMessage(
+    val id: String,
+    val role: ChatRole,
+    val content: String,
+    val imageUris: List<String>? = null,
+    val imageUrls: List<String>? = null
+)
 @Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
 @Immutable
@@ -294,6 +306,8 @@ private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
 private const val INPUT_MAX_CHARS = 6000
+private const val COMPOSER_MAX_IMAGE_COUNT = 4
+private const val COMPOSER_MAX_IMAGE_SIZE_BYTES = 1024 * 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
@@ -1018,7 +1032,10 @@ private fun dedupeAdjacentMessages(source: List<ChatMessage>): List<ChatMessage>
     source.forEach { message ->
         val previous = deduped.lastOrNull()
         val sameContent = when (message.role) {
-            ChatRole.USER -> previous?.content == message.content
+            ChatRole.USER ->
+                previous?.content == message.content &&
+                    previous.imageUris.orEmpty() == message.imageUris.orEmpty() &&
+                    previous.imageUrls.orEmpty() == message.imageUrls.orEmpty()
             ChatRole.ASSISTANT -> previous?.content?.let(::normalizeAssistantText) == normalizeAssistantText(message.content)
         }
         if (previous?.role == message.role && sameContent) return@forEach
@@ -1287,6 +1304,56 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
             )
 }
 
+private fun Context.createComposerCameraImageUri(): Uri? {
+    return runCatching {
+        val imageDir = File(cacheDir, "composer_camera").apply { mkdirs() }
+        val imageFile = File.createTempFile("camera_", ".jpg", imageDir)
+        FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            imageFile
+        )
+    }.getOrNull()
+}
+
+private fun Context.readImageBytes(uri: Uri): ByteArray? {
+    return runCatching {
+        contentResolver.openInputStream(uri)?.use { it.readBytes() }
+    }.getOrNull()
+}
+
+private fun chatPreviewInSampleSize(width: Int, height: Int, targetSize: Int): Int {
+    var sampleSize = 1
+    if (width > targetSize || height > targetSize) {
+        var halfWidth = width / 2
+        var halfHeight = height / 2
+        while (halfWidth / sampleSize >= targetSize && halfHeight / sampleSize >= targetSize) {
+            sampleSize *= 2
+        }
+    }
+    return sampleSize.coerceAtLeast(1)
+}
+
+private fun Context.decodeChatImagePreview(source: String): androidx.compose.ui.graphics.ImageBitmap? {
+    return runCatching {
+        val bytes = if (source.startsWith("http://") || source.startsWith("https://")) {
+            val connection = URL(source).openConnection().apply {
+                connectTimeout = 5000
+                readTimeout = 5000
+            }
+            connection.getInputStream().use { it.readBytes() }
+        } else {
+            contentResolver.openInputStream(Uri.parse(source))?.use { it.readBytes() }
+        } ?: return@runCatching null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val decodeOptions = BitmapFactory.Options().apply {
+            inSampleSize = chatPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = 512)
+        }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)?.asImageBitmap()
+    }.getOrNull()
+}
+
 private fun recoverStreamingDraftAsCompletedSnapshot(
     localSnapshot: LocalChatWindowSnapshot,
     draft: LocalStreamingDraft?
@@ -1355,7 +1422,16 @@ private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
     return rounds.flatMapIndexed { index, round ->
         buildList {
             val sourceUserMessageId = round.client_msg_id?.takeIf { it.isNotBlank() } ?: "remote_user_$index"
-            if (round.user.isNotBlank()) add(ChatMessage(sourceUserMessageId, ChatRole.USER, round.user))
+            if (round.user.isNotBlank() || round.user_images.isNotEmpty()) {
+                add(
+                    ChatMessage(
+                        id = sourceUserMessageId,
+                        role = ChatRole.USER,
+                        content = round.user,
+                        imageUrls = round.user_images.takeIf { it.isNotEmpty() }
+                    )
+                )
+            }
             if (round.assistant.isNotBlank()) {
                 add(ChatMessage(assistantMessageIdForSourceUser(sourceUserMessageId), ChatRole.ASSISTANT, round.assistant))
             }
@@ -1374,7 +1450,9 @@ private fun shouldReplaceHydratedMessages(
     return trimmedRemote.indices.any { index ->
         val current = trimmedCurrent[index]
         val remote = trimmedRemote[index]
-        current.role != remote.role || current.content != remote.content
+        current.role != remote.role ||
+            current.content != remote.content ||
+            current.imageUrls.orEmpty() != remote.imageUrls.orEmpty()
     }
 }
 
@@ -1571,6 +1649,12 @@ fun ChatScreen() {
     val input = remember(uiRuntimeResetKey) {
         mutableStateOf(TextFieldValue(""))
     }
+    val selectedComposerImages = remember(uiRuntimeResetKey) {
+        mutableStateListOf<ComposerImageAttachment>()
+    }
+    var attachmentMenuVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var pendingCameraImageUri by remember(uiRuntimeResetKey) { mutableStateOf<Uri?>(null) }
+    var imageSendInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
     }
@@ -1811,7 +1895,9 @@ fun ChatScreen() {
         isComposerSettling,
         inputFieldFocused,
         imeVisible,
-        input.value.text
+        input.value.text,
+        selectedComposerImages.size,
+        attachmentMenuVisible
     ) {
         val collapsedStable =
             !sendStartBottomPaddingLockActive &&
@@ -1822,6 +1908,8 @@ fun ChatScreen() {
                 pendingStreamingFinalizeMessageId.isNullOrBlank() &&
                 !inputFieldFocused &&
                 !imeVisible &&
+                selectedComposerImages.isEmpty() &&
+                !attachmentMenuVisible &&
                 input.value.text.isEmpty()
         if (!collapsedStable) return@LaunchedEffect
         val prewarmedCollapsedBottomReservePx =
@@ -1841,7 +1929,9 @@ fun ChatScreen() {
         isComposerSettling,
         inputFieldFocused,
         imeVisible,
-        input.value.text
+        input.value.text,
+        selectedComposerImages.size,
+        attachmentMenuVisible
     ) {
         val collapsedStable =
             !sendStartBottomPaddingLockActive &&
@@ -1852,6 +1942,8 @@ fun ChatScreen() {
                 pendingStreamingFinalizeMessageId.isNullOrBlank() &&
                 !inputFieldFocused &&
                 !imeVisible &&
+                selectedComposerImages.isEmpty() &&
+                !attachmentMenuVisible &&
                 input.value.text.isEmpty() &&
                 composerTopInViewportPx > 0 &&
                 messageViewportHeightPx > 0
@@ -2542,6 +2634,10 @@ fun ChatScreen() {
         inputFieldFocused = false
         suppressInputCursor = false
         input.value = TextFieldValue("")
+        selectedComposerImages.clear()
+        attachmentMenuVisible = false
+        pendingCameraImageUri = null
+        imageSendInProgress = false
         inputContentHeightPx = startupInputContentHeightEstimatePx
         composerSettlingMinHeightPx = 0
         composerSettlingChromeHeightPx = 0
@@ -2577,6 +2673,63 @@ fun ChatScreen() {
     fun showComposerStatusHint(text: String) {
         composerStatusHintText = text
         composerStatusHintTick++
+    }
+
+    fun addComposerImageUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val remainingSlots = COMPOSER_MAX_IMAGE_COUNT - selectedComposerImages.size
+        if (remainingSlots <= 0) {
+            showComposerStatusHint("最多上传4张图片")
+            return
+        }
+        val accepted = uris
+            .take(remainingSlots)
+            .map { ComposerImageAttachment(it.toString()) }
+        selectedComposerImages.addAll(accepted)
+        attachmentMenuVisible = false
+        suppressInputCursor = false
+        if (uris.size > remainingSlots) {
+            showComposerStatusHint("最多上传4张图片")
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        addComposerImageUris(uris)
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val uri = pendingCameraImageUri
+        pendingCameraImageUri = null
+        if (success && uri != null) {
+            addComposerImageUris(listOf(uri))
+        }
+    }
+
+    fun launchComposerCamera() {
+        if (selectedComposerImages.size >= COMPOSER_MAX_IMAGE_COUNT) {
+            showComposerStatusHint("最多上传4张图片")
+            return
+        }
+        val uri = context.createComposerCameraImageUri()
+        if (uri == null) {
+            showComposerStatusHint("相机打开失败，请重试")
+            return
+        }
+        pendingCameraImageUri = uri
+        attachmentMenuVisible = false
+        cameraLauncher.launch(uri)
+    }
+
+    fun launchComposerPhotoPicker() {
+        if (selectedComposerImages.size >= COMPOSER_MAX_IMAGE_COUNT) {
+            showComposerStatusHint("最多上传4张图片")
+            return
+        }
+        attachmentMenuVisible = false
+        photoPickerLauncher.launch("image/*")
     }
 
     fun showQuotaExhaustedHint() {
@@ -2634,8 +2787,19 @@ fun ChatScreen() {
         )
     }
 
-    fun upsertUserMessage(messageId: String, content: String) {
-        val finalMessage = ChatMessage(messageId, ChatRole.USER, content)
+    fun upsertUserMessage(
+        messageId: String,
+        content: String,
+        imageUris: List<String> = emptyList(),
+        imageUrls: List<String> = emptyList()
+    ) {
+        val finalMessage = ChatMessage(
+            id = messageId,
+            role = ChatRole.USER,
+            content = content,
+            imageUris = imageUris.takeIf { it.isNotEmpty() },
+            imageUrls = imageUrls.takeIf { it.isNotEmpty() }
+        )
         val existingIndex = messages.indexOfFirst { it.id == messageId }
         if (existingIndex >= 0) {
             if (messages[existingIndex] != finalMessage) {
@@ -2740,8 +2904,12 @@ fun ChatScreen() {
         remoteRecoverySourceUserMessageId = null
         failedUserMessageStates.remove(sourceUserMessageId)
         clearFailedAssistantStateForUser(sourceUserMessageId)
-        if (recoveredRound.user.isNotBlank()) {
-            upsertUserMessage(sourceUserMessageId, recoveredRound.user)
+        if (recoveredRound.user.isNotBlank() || recoveredRound.user_images.isNotEmpty()) {
+            upsertUserMessage(
+                messageId = sourceUserMessageId,
+                content = recoveredRound.user,
+                imageUrls = recoveredRound.user_images
+            )
         }
         applyCompletedAssistantMessageInPlace(
             target = messages,
@@ -3445,10 +3613,12 @@ fun ChatScreen() {
 
     fun commitSendMessage(
         text: String,
+        uploadedImageUrls: List<String> = emptyList(),
+        previewImageUris: List<String> = emptyList(),
         existingUserMessageId: String? = null,
         collapseComposer: Boolean = true
     ) {
-        if (text.isEmpty() || isStreaming || sendUiSettling) return
+        if ((text.isEmpty() && uploadedImageUrls.isEmpty()) || isStreaming || sendUiSettling) return
         val preSendStableCollapsedReservePx =
             if (!listShouldTrackRealtimeComposerGeometry) {
                 (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
@@ -3474,6 +3644,8 @@ fun ChatScreen() {
             inputFieldFocused = false
             clearInputSelectionToolbar()
             input.value = TextFieldValue("")
+            selectedComposerImages.clear()
+            attachmentMenuVisible = false
             if (collapsePreparation.shouldClearFocus) {
                 focusManager.clearFocus(force = true)
             }
@@ -3482,7 +3654,12 @@ fun ChatScreen() {
         failedUserMessageStates.remove(userId)
         clearFailedAssistantStateForUser(userId)
         val assistantId = assistantMessageIdForSourceUser(userId)
-        upsertUserMessage(userId, text)
+        upsertUserMessage(
+            messageId = userId,
+            content = text,
+            imageUris = previewImageUris,
+            imageUrls = uploadedImageUrls
+        )
         upsertAssistantMessagePlaceholder(
             messageId = assistantId,
             sourceUserMessageId = userId
@@ -3551,7 +3728,7 @@ fun ChatScreen() {
                         options = SessionApi.StreamOptions(
                             clientMsgId = userId,
                             text = text,
-                            images = emptyList()
+                            images = uploadedImageUrls
                         ),
                         onChunk = { piece -> appendAssistantChunk(piece) },
                         onComplete = { finishStreaming() },
@@ -3940,6 +4117,8 @@ fun ChatScreen() {
             }
             commitSendMessage(
                 text = failedMessage.content,
+                uploadedImageUrls = failedMessage.imageUrls.orEmpty(),
+                previewImageUris = failedMessage.imageUris.orEmpty(),
                 existingUserMessageId = failedMessage.id,
                 collapseComposer = false
             )
@@ -3962,17 +4141,42 @@ fun ChatScreen() {
             }
             commitSendMessage(
                 text = sourceUserMessage.content,
+                uploadedImageUrls = sourceUserMessage.imageUrls.orEmpty(),
+                previewImageUris = sourceUserMessage.imageUris.orEmpty(),
                 existingUserMessageId = sourceUserMessage.id,
                 collapseComposer = false
             )
         }
+        suspend fun uploadComposerImagesForSend(
+            images: List<ComposerImageAttachment>
+        ): Pair<List<String>?, String?> = withContext(Dispatchers.IO) {
+            val compressedImages = mutableListOf<ByteArray>()
+            for (image in images) {
+                val originalBytes = context.readImageBytes(Uri.parse(image.uri))
+                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                val compressed = ImageUploader.compressImage(originalBytes)
+                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                if (compressed.compressedSize > COMPOSER_MAX_IMAGE_SIZE_BYTES) {
+                    return@withContext null to ImageUploader.SIZE_LIMIT_FAIL_MESSAGE
+                }
+                compressedImages.add(compressed.bytes)
+            }
+            if (compressedImages.isEmpty()) {
+                emptyList<String>() to null
+            } else {
+                val urls = ImageUploader.uploadImages(compressedImages)
+                if (urls == null) null to "图片上传失败，请重试" else urls to null
+            }
+        }
         fun sendMessage() {
             val text = input.value.text
+            val imageSnapshot = selectedComposerImages.toList()
             val sendGate = buildSendGateState(
                 rawInput = text,
-                isStreaming = isStreaming || sendUiSettling,
+                isStreaming = isStreaming || sendUiSettling || imageSendInProgress,
                 exceedsInputLimit = text.length > INPUT_MAX_CHARS,
-                quotaExhausted = isQuotaExhaustedToday()
+                quotaExhausted = isQuotaExhaustedToday(),
+                hasImages = imageSnapshot.isNotEmpty()
             )
             if (sendGate.blockReason == SendBlockReason.QuotaExhausted) {
                 showQuotaExhaustedHint()
@@ -3981,12 +4185,35 @@ fun ChatScreen() {
             if (!sendGate.canSubmit) return
             val trimmedText = text.trim()
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-                markUserMessageSendFailed(trimmedText)
+                if (imageSnapshot.isEmpty()) {
+                    markUserMessageSendFailed(trimmedText)
+                } else {
+                    showComposerStatusHint("当前网络不可用")
+                }
                 return
             }
-            commitSendMessage(
-                text = trimmedText
-            )
+            if (imageSnapshot.isEmpty()) {
+                commitSendMessage(text = trimmedText)
+                return
+            }
+            imageSendInProgress = true
+            snackbarScope.launch {
+                try {
+                    val (uploadedUrls, uploadError) = uploadComposerImagesForSend(imageSnapshot)
+                    if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
+                        showComposerStatusHint(uploadError ?: "图片上传失败，请重试")
+                    } else {
+                            selectedComposerImages.removeAll(imageSnapshot.toSet())
+                            commitSendMessage(
+                                text = trimmedText,
+                                uploadedImageUrls = uploadedUrls,
+                                previewImageUris = imageSnapshot.map { it.uri }
+                            )
+                    }
+                } finally {
+                    imageSendInProgress = false
+                }
+            }
         }
         val pageSurface = chatPageSurface
         val navigationBottomInset: Dp = WindowInsets.navigationBars
@@ -4170,27 +4397,37 @@ fun ChatScreen() {
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            SelectableRenderedUserMessageBubble(
-                                content = msg.content,
-                                textSelectionColors = messageSelectionColors,
-                                textToolbar = messageTextToolbar,
-                                selectionResetKey = messageSelectionResetEpoch,
-                                userBubbleMaxWidth = userBubbleMaxWidth,
-                                userBubbleColor = userBubbleColor,
-                                userBubbleBorderColor = userBubbleBorderColor,
-                                onBubbleBoundsChanged = { bounds ->
-                                    if (bounds != null) {
-                                        updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
-                                    }
-                                    updateMessageContentBounds(msg.id, bounds)
-                                    if (bounds != null) {
-                                        applyPendingMessageSelectionToolbarIfReady(
-                                            messageId = msg.id,
-                                            bounds = bounds
-                                        )
-                                    }
-                                }
+                            val userImageUris = msg.imageUris.orEmpty()
+                            UserMessageImageStrip(
+                                imageUris = userImageUris,
+                                imageUrls = msg.imageUrls.orEmpty(),
+                                userBubbleMaxWidth = userBubbleMaxWidth
                             )
+                            if (msg.content.isNotBlank()) {
+                                SelectableRenderedUserMessageBubble(
+                                    content = msg.content,
+                                    textSelectionColors = messageSelectionColors,
+                                    textToolbar = messageTextToolbar,
+                                    selectionResetKey = messageSelectionResetEpoch,
+                                    userBubbleMaxWidth = userBubbleMaxWidth,
+                                    userBubbleColor = userBubbleColor,
+                                    userBubbleBorderColor = userBubbleBorderColor,
+                                    onBubbleBoundsChanged = { bounds ->
+                                        if (bounds != null) {
+                                            updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
+                                        }
+                                        updateMessageContentBounds(msg.id, bounds)
+                                        if (bounds != null) {
+                                            applyPendingMessageSelectionToolbarIfReady(
+                                                messageId = msg.id,
+                                                bounds = bounds
+                                            )
+                                        }
+                                    }
+                                )
+                            } else {
+                                updateMessageContentBounds(msg.id, null)
+                            }
                             if (failedUserState != null) {
                                 MessageStatusFooter(
                                     statusText = "发送失败",
@@ -4225,6 +4462,8 @@ fun ChatScreen() {
                         pendingStreamingFinalizeMessageId.isNullOrBlank() &&
                         !inputFieldFocused &&
                         !imeVisible &&
+                        selectedComposerImages.isEmpty() &&
+                        !attachmentMenuVisible &&
                         input.value.text.isEmpty()
                 if (collapsedStable && observedCollapsedBottomReservePx <= 0) {
                     val prewarmedCollapsedBottomReservePx =
@@ -4328,7 +4567,7 @@ fun ChatScreen() {
                 startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
                 inputChromeRowHeightPx = inputChromeRowHeightPx,
                 imeVisible = imeVisible,
-                isStreamingOrSettling = isStreaming || sendUiSettling,
+                isStreamingOrSettling = isStreaming || sendUiSettling || imageSendInProgress,
                 inputMaxChars = INPUT_MAX_CHARS,
                 chromeMaxWidth = chromeMaxWidth,
                 inputChromeHorizontalPadding = inputChromeHorizontalPadding,
@@ -4344,6 +4583,8 @@ fun ChatScreen() {
                 inputFieldBorder = inputFieldBorder,
                 overlayHintText = composerOverlayHintText,
                 quotaExhausted = isQuotaExhaustedToday(),
+                selectedImages = selectedComposerImages,
+                attachmentMenuVisible = attachmentMenuVisible,
                 hostModifier = hostModifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
@@ -4357,6 +4598,8 @@ fun ChatScreen() {
                                 !composerCollapseOverlayVisible &&
                                 !inputFieldFocused &&
                                 !imeVisible &&
+                                selectedComposerImages.isEmpty() &&
+                                !attachmentMenuVisible &&
                                 input.value.text.isEmpty()
                         if (
                             canRecordCollapsedComposerHeight &&
@@ -4372,10 +4615,12 @@ fun ChatScreen() {
                         }
                     },
                 onChromeMeasured = { height ->
-                    if (inputChromeRowHeightPx != height) {
+                    val canRecordChromeHeight =
+                        selectedComposerImages.isEmpty() && !attachmentMenuVisible
+                    if (canRecordChromeHeight && inputChromeRowHeightPx != height) {
                         inputChromeRowHeightPx = height
                     }
-                    if (height > 0 && !inputChromeMeasured) {
+                    if (canRecordChromeHeight && height > 0 && !inputChromeMeasured) {
                         inputChromeMeasured = true
                     }
                 },
@@ -4413,6 +4658,9 @@ fun ChatScreen() {
                     }
                 },
                 onInputValueChange = {
+                    if (imageSendInProgress) {
+                        return@ChatComposerBottomBar
+                    }
                     suppressInputCursor = false
                     input.value = it
                 },
@@ -4422,7 +4670,39 @@ fun ChatScreen() {
                 onQuotaExceeded = {
                     showQuotaExhaustedHint()
                 },
-                onAddClick = { performButtonHaptic() },
+                onAddClick = {
+                    if (imageSendInProgress) {
+                        showComposerStatusHint("图片正在上传，请稍候")
+                        return@ChatComposerBottomBar
+                    }
+                    performButtonHaptic()
+                    attachmentMenuVisible = !attachmentMenuVisible
+                    clearInputSelectionToolbar()
+                },
+                onCameraClick = {
+                    if (imageSendInProgress) {
+                        showComposerStatusHint("图片正在上传，请稍候")
+                        return@ChatComposerBottomBar
+                    }
+                    performButtonHaptic()
+                    launchComposerCamera()
+                },
+                onPhotoClick = {
+                    if (imageSendInProgress) {
+                        showComposerStatusHint("图片正在上传，请稍候")
+                        return@ChatComposerBottomBar
+                    }
+                    performButtonHaptic()
+                    launchComposerPhotoPicker()
+                },
+                onRemoveImage = { image ->
+                    if (imageSendInProgress) {
+                        showComposerStatusHint("图片正在上传，请稍候")
+                        return@ChatComposerBottomBar
+                    }
+                    performButtonHaptic()
+                    selectedComposerImages.remove(image)
+                },
                 onSendClick = {
                     performButtonHaptic()
                     sendMessage()
@@ -4436,6 +4716,8 @@ fun ChatScreen() {
                 !composerCollapseOverlayVisible &&
                 !inputFieldFocused &&
                 !imeVisible &&
+                selectedComposerImages.isEmpty() &&
+                !attachmentMenuVisible &&
                 input.value.text.isEmpty() &&
                 measuredComposerHeightPx > 0
         val collapsedConversationReservePx =
@@ -5320,6 +5602,115 @@ private fun UiCopyPreviewInputActionMenu() {
                     horizontalPadding = 13.dp,
                     onClick = {}
                 )
+            }
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+private fun UserMessageImageStrip(
+    imageUris: List<String>,
+    imageUrls: List<String>,
+    userBubbleMaxWidth: Dp
+) {
+    val imageSources = remember(imageUris, imageUrls) {
+        (imageUris + imageUrls).distinct().take(COMPOSER_MAX_IMAGE_COUNT)
+    }
+    if (imageSources.isEmpty()) return
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
+        Column(
+            modifier = Modifier.widthIn(max = userBubbleMaxWidth),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            imageSources.chunked(2).forEach { rowSources ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    rowSources.forEach { source ->
+                        UserMessageImageThumb(source = source)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserMessageImageThumb(source: String) {
+    val context = LocalContext.current
+    var bitmap by remember(source) {
+        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+    }
+    LaunchedEffect(source) {
+        bitmap = withContext(Dispatchers.IO) {
+            context.decodeChatImagePreview(source)
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(86.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFFF0F1F3))
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap!!,
+                contentDescription = "用户上传图片",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.size(26.dp)) {
+                    val stroke = size.minDimension * 0.085f
+                    val left = size.width * 0.16f
+                    val top = size.height * 0.18f
+                    val right = size.width * 0.84f
+                    val bottom = size.height * 0.82f
+                    drawRoundRect(
+                        color = Color(0xFF8B8D93),
+                        topLeft = Offset(left, top),
+                        size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                            size.minDimension * 0.14f,
+                            size.minDimension * 0.14f
+                        ),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
+                    )
+                    drawCircle(
+                        color = Color(0xFF8B8D93),
+                        radius = size.minDimension * 0.065f,
+                        center = Offset(size.width * 0.65f, size.height * 0.36f)
+                    )
+                    drawLine(
+                        color = Color(0xFF8B8D93),
+                        start = Offset(size.width * 0.24f, size.height * 0.72f),
+                        end = Offset(size.width * 0.42f, size.height * 0.53f),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFF8B8D93),
+                        start = Offset(size.width * 0.42f, size.height * 0.53f),
+                        end = Offset(size.width * 0.55f, size.height * 0.66f),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFF8B8D93),
+                        start = Offset(size.width * 0.55f, size.height * 0.66f),
+                        end = Offset(size.width * 0.78f, size.height * 0.56f),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round
+                    )
+                }
             }
         }
     }

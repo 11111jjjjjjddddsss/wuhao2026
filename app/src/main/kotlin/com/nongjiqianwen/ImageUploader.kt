@@ -352,7 +352,7 @@ object ImageUploader {
             Log.d(TAG, "开始上传 ${imageBytesList.size} 张图片")
         }
         
-        val urls = mutableListOf<String>()
+        val urls = MutableList<String?>(imageBytesList.size) { null }
         val latch = CountDownLatch(imageBytesList.size)
         val errorRef = AtomicReference<String?>(null)
         
@@ -360,17 +360,15 @@ object ImageUploader {
         imageBytesList.forEachIndexed { index, imageBytes ->
             Thread {
                 try {
-                    var uploadSuccess = false
                     uploadImage(
                         imageBytes = imageBytes,
                         onSuccess = { url ->
                             synchronized(urls) {
-                                urls.add(url)
+                                urls[index] = url
                                 if (BuildConfig.DEBUG) {
                                     Log.d(TAG, "图片[$index] 上传成功: $url")
                                 }
                             }
-                            uploadSuccess = true
                             latch.countDown()
                         },
                         onError = { error ->
@@ -390,20 +388,21 @@ object ImageUploader {
         // 等待全部完成
         latch.await()
         
-        if (errorRef.get() != null || urls.size != imageBytesList.size) {
-            Log.e(TAG, "图片上传失败: ${errorRef.get()}, 成功: ${urls.size}/${imageBytesList.size}")
+        val orderedUrls = urls.filterNotNull()
+        if (errorRef.get() != null || orderedUrls.size != imageBytesList.size) {
+            Log.e(TAG, "图片上传失败: ${errorRef.get()}, 成功: ${orderedUrls.size}/${imageBytesList.size}")
             return null
         }
         
         if (BuildConfig.DEBUG) {
-            Log.d(TAG, "所有图片上传成功: ${urls.size} 张")
+            Log.d(TAG, "所有图片上传成功: ${orderedUrls.size} 张")
             Log.d(TAG, "=== UPLOAD_URLS（脱敏）===")
-            urls.forEachIndexed { index, url ->
+            orderedUrls.forEachIndexed { index, url ->
                 val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
                 Log.d(TAG, "UPLOAD_URLS[$index]: $maskedUrl")
             }
         }
         
-        return urls
+        return orderedUrls
     }
 }

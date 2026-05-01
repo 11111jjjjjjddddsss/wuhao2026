@@ -84,6 +84,7 @@
 - 压缩：最长边 <= 1024px，单张 <= 1MB
 - 估算：1 张图约 1000 tokens
 - 图片上下文只保留当前轮和上一轮；更早图片只保留文字结论与摘要
+- Android 端当前 `+` 入口已接入首版图片选择：只开放“相机 / 照片”两个入口，图片会先进入输入框缩略图预览，最多 4 张；发送前由客户端压缩上传并把 URL 通过 `SessionApi.StreamOptions.images` 交给后端，用户消息本地用 `imageUris` 预览，远端 / 恢复态用 `imageUrls` 兜底显示。图片预览只属于 composer / 消息内容内部，不能进入聊天列表 bottom reserve 或工作线计算
 
 联网搜索：
 - 默认能联网就联网，优先官方、正式、权威资料
@@ -206,7 +207,7 @@ Clean-State 必做回归的范围：
   - 回到底部 / AutoFollow 使用最新消息 index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义，把最新消息底部压到工作线附近
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - `ChatScreen.kt` 当前把消息列表和 composer 作为同一个页面 `Box` 下的兄弟层渲染：列表先铺满消息区域，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 不再作为 `SubcomposeLayout` 的 child 参与列表同拍测量，避免 IME 动画每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”
-- composer 内部内容高度不属于聊天列表 bottom reserve。长文本、未来图片预览、附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / navigation bar、发送期锁定 reserve、工作线 gap。IME 动画只移动 composer，不允许重新进入列表 reserve。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
+- composer 内部内容高度不属于聊天列表 bottom reserve。长文本、当前图片缩略图预览、未来附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / navigation bar、发送期锁定 reserve、工作线 gap。IME 动画只移动 composer，不允许重新进入列表 reserve。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
 - waiting 小球、streaming 正文、settled 完成态共用同一条 assistant 消息 item。`ChatScreen.kt` 当前已撤掉 streaming 小分割 / block item 化，不再把一条 assistant 在 `LazyColumn` 内派生成多个稳定 block item 和 active tail；`ChatStreamingRenderer.kt` 也不再保留完成态预切物理行 / committed TextMeasurer 渲染链，settled Markdown 和 streaming 使用同一套 soft-wrap block 渲染结构，优先恢复渲染树稳定。仍禁止恢复 overlay / active-zone / 第二滚动宿主
 - mixed active-zone / overlay 运行时当前已退出主链：
   - `StreamingLocation`
