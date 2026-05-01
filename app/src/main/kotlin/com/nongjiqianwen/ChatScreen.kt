@@ -2590,8 +2590,13 @@ fun ChatScreen() {
             }
         }
     }
-    BackHandler(enabled = messageSelectionToolbarState != null || inputSelectionToolbarState != null) {
+    BackHandler(
+        enabled = attachmentMenuVisible ||
+            messageSelectionToolbarState != null ||
+            inputSelectionToolbarState != null
+    ) {
         when {
+            attachmentMenuVisible -> attachmentMenuVisible = false
             inputSelectionToolbarState != null -> {
                 clearInputSelectionToolbar()
                 focusManager.clearFocus(force = true)
@@ -4002,6 +4007,7 @@ fun ChatScreen() {
                 }
                 clearMessageSelection()
                 clearInputSelectionToolbar()
+                attachmentMenuVisible = false
                 focusManager.clearFocus(force = true)
             } else if (event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
@@ -4584,7 +4590,6 @@ fun ChatScreen() {
                 overlayHintText = composerOverlayHintText,
                 quotaExhausted = isQuotaExhaustedToday(),
                 selectedImages = selectedComposerImages,
-                attachmentMenuVisible = attachmentMenuVisible,
                 hostModifier = hostModifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
@@ -4676,24 +4681,12 @@ fun ChatScreen() {
                         return@ChatComposerBottomBar
                     }
                     performButtonHaptic()
-                    attachmentMenuVisible = !attachmentMenuVisible
+                    val shouldShowAttachmentMenu = !attachmentMenuVisible
+                    attachmentMenuVisible = shouldShowAttachmentMenu
+                    if (shouldShowAttachmentMenu) {
+                        focusManager.clearFocus(force = true)
+                    }
                     clearInputSelectionToolbar()
-                },
-                onCameraClick = {
-                    if (imageSendInProgress) {
-                        showComposerStatusHint("图片正在上传，请稍候")
-                        return@ChatComposerBottomBar
-                    }
-                    performButtonHaptic()
-                    launchComposerCamera()
-                },
-                onPhotoClick = {
-                    if (imageSendInProgress) {
-                        showComposerStatusHint("图片正在上传，请稍候")
-                        return@ChatComposerBottomBar
-                    }
-                    performButtonHaptic()
-                    launchComposerPhotoPicker()
                 },
                 onRemoveImage = { image ->
                     if (imageSendInProgress) {
@@ -4843,6 +4836,30 @@ fun ChatScreen() {
                     inputFieldBorder = inputFieldBorder,
                     inputBarHeight = inputBarHeight,
                     inputBarMaxHeight = inputBarMaxHeight
+                )
+
+                ComposerAttachmentBottomSheet(
+                    visible = attachmentMenuVisible,
+                    modifier = Modifier.fillMaxSize(),
+                    onDismiss = {
+                        attachmentMenuVisible = false
+                    },
+                    onCameraClick = cameraClick@{
+                        if (imageSendInProgress) {
+                            showComposerStatusHint("图片正在上传，请稍候")
+                            return@cameraClick
+                        }
+                        performButtonHaptic()
+                        launchComposerCamera()
+                    },
+                    onPhotoClick = photoClick@{
+                        if (imageSendInProgress) {
+                            showComposerStatusHint("图片正在上传，请稍候")
+                            return@photoClick
+                        }
+                        performButtonHaptic()
+                        launchComposerPhotoPicker()
+                    }
                 )
 
             if (navigationBottomInset > 0.dp) {

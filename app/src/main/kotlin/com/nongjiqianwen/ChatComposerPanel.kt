@@ -3,6 +3,12 @@ package com.nongjiqianwen
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -21,6 +27,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -206,7 +213,6 @@ internal fun ChatComposerBottomBar(
     overlayHintText: String?,
     quotaExhausted: Boolean,
     selectedImages: List<ComposerImageAttachment>,
-    attachmentMenuVisible: Boolean,
     hostModifier: Modifier = Modifier,
     onChromeMeasured: (Int) -> Unit,
     onChromeBoundsChanged: (Rect) -> Unit,
@@ -217,8 +223,6 @@ internal fun ChatComposerBottomBar(
     onInputLimitExceeded: () -> Unit,
     onQuotaExceeded: () -> Unit,
     onAddClick: () -> Unit,
-    onCameraClick: () -> Unit,
-    onPhotoClick: () -> Unit,
     onRemoveImage: (ComposerImageAttachment) -> Unit,
     onSendClick: () -> Unit
 ) {
@@ -269,19 +273,6 @@ internal fun ChatComposerBottomBar(
                 .widthIn(max = chromeMaxWidth)
                 .fillMaxWidth()
         ) {
-            if (attachmentMenuVisible) {
-                ComposerAttachmentMenu(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            start = inputChromeHorizontalPadding,
-                            end = inputChromeHorizontalPadding,
-                            bottom = 10.dp
-                        ),
-                    onCameraClick = onCameraClick,
-                    onPhotoClick = onPhotoClick
-                )
-            }
             ComposerChromeRow(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -643,54 +634,101 @@ private fun ChatInputField(
 }
 
 @Composable
-private fun ComposerAttachmentMenu(
+internal fun ComposerAttachmentBottomSheet(
+    visible: Boolean,
     modifier: Modifier = Modifier,
+    onDismiss: () -> Unit,
     onCameraClick: () -> Unit,
     onPhotoClick: () -> Unit
 ) {
-    Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(22.dp),
-        shadowElevation = 10.dp,
-        border = BorderStroke(0.6.dp, Color(0xFFE8EAEE)),
+    Box(
         modifier = modifier
+            .fillMaxSize()
+            .zIndex(80f)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(animationSpec = tween(durationMillis = 120)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 100))
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.32f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onDismiss
+                    )
+            )
+        }
+        AnimatedVisibility(
+            visible = visible,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = tween(durationMillis = 220)
+            ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = tween(durationMillis = 160)
+            ) + fadeOut(animationSpec = tween(durationMillis = 120)),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+                shadowElevation = 14.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
             ) {
-                ComposerAttachmentActionTile(
-                    title = "相机",
-                    modifier = Modifier.weight(1f),
-                    onClick = onCameraClick
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 292.dp)
+                        .navigationBarsPadding()
+                        .padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
-                    ComposerCameraIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
-                }
-                ComposerAttachmentActionTile(
-                    title = "照片",
-                    modifier = Modifier.weight(1f),
-                    onClick = onPhotoClick
-                ) {
-                    ComposerPhotoIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        ComposerAttachmentBottomSheetTile(
+                            title = "相机",
+                            modifier = Modifier.weight(1f),
+                            onClick = onCameraClick
+                        ) {
+                            ComposerCameraIcon(tint = Color(0xFF111111), modifier = Modifier.size(34.dp))
+                        }
+                        ComposerAttachmentBottomSheetTile(
+                            title = "照片",
+                            modifier = Modifier.weight(1f),
+                            onClick = onPhotoClick
+                        ) {
+                            ComposerPhotoIcon(tint = Color(0xFF111111), modifier = Modifier.size(34.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Color(0xFFEDEEF1))
+                    )
+                    Text(
+                        text = "建议拍清病斑、整株、叶背或果实，最多4张。",
+                        color = Color(0xFF8B8D93),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
                 }
             }
-            Text(
-                text = "建议拍清病斑、整株、叶背或果实，最多4张",
-                color = Color(0xFF8B8D93),
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                modifier = Modifier.padding(horizontal = 2.dp)
-            )
         }
     }
 }
 
 @Composable
-private fun RowScope.ComposerAttachmentActionTile(
+private fun RowScope.ComposerAttachmentBottomSheetTile(
     title: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
@@ -699,24 +737,24 @@ private fun RowScope.ComposerAttachmentActionTile(
     val interactionSource = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .height(96.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .height(118.dp)
+            .clip(RoundedCornerShape(20.dp))
             .background(Color(0xFFF5F6F7))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             )
-            .padding(vertical = 14.dp),
+            .padding(vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         icon()
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Text(
             text = title,
             color = Color(0xFF111111),
-            fontSize = 16.sp,
+            fontSize = 18.sp,
             fontWeight = FontWeight.Medium
         )
     }
