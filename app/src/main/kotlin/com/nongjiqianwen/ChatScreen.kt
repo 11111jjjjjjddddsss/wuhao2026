@@ -1470,7 +1470,7 @@ private fun MembershipLeafIcon(
         contentAlignment = Alignment.Center
     ) {
         Image(
-            painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+            painter = painterResource(id = R.mipmap.ic_launcher),
             contentDescription = null,
             modifier = Modifier
                 .size(imageSize)
@@ -3929,10 +3929,10 @@ fun ChatScreen() {
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 42.dp else 44.dp
         val topMenuIconSize = if (maxWidth < 360.dp) 27.dp else 28.dp
-        val topTitleFontSize = if (maxWidth < 360.dp) 21.sp else 22.sp
-        val topTitleLineHeight = if (maxWidth < 360.dp) 25.sp else 26.sp
-        val membershipCircleSize = if (maxWidth < 360.dp) 30.dp else 32.dp
-        val membershipIconImageSize = if (maxWidth < 360.dp) 36.dp else 38.dp
+        val topTitleFontSize = if (maxWidth < 360.dp) 19.sp else 20.sp
+        val topTitleLineHeight = if (maxWidth < 360.dp) 23.sp else 24.sp
+        val membershipCircleSize = if (maxWidth < 360.dp) 28.dp else 30.dp
+        val membershipIconImageSize = if (maxWidth < 360.dp) 35.dp else 37.dp
         val actionCircleSize = if (maxWidth < 360.dp) 34.dp else 36.dp
         val addButtonSize = actionCircleSize
         val addIconSize = if (maxWidth < 360.dp) 24.dp else 26.dp
