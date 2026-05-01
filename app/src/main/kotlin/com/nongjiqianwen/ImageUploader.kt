@@ -26,16 +26,16 @@ import java.util.concurrent.atomic.AtomicReference
 object ImageUploader {
     private const val TAG = "ImageUploader"
     private const val MAX_IMAGE_COUNT = 4
-    /** 输入规则（最终版·冻结）：最长边 1024px，固定降级序列，目标单张 ≤1MB */
+    /** 输入规则：输出统一 JPEG，优先 1024px，目标单张 ≤1MB */
     private const val MAX_LONG_EDGE = 1024
     private const val FALLBACK_LONG_EDGE_1 = 896
     private const val FALLBACK_LONG_EDGE_2 = 768
     private const val FALLBACK_LONG_EDGE_3 = 640
     private const val FALLBACK_LONG_EDGE_4 = 512
+    private const val EMERGENCY_MIN_LONG_EDGE = 128
     private const val MAX_SIZE_BYTES = 1024 * 1024
-    private const val JPEG_QUALITY_DEFAULT = 82
+    private const val JPEG_QUALITY_DEFAULT = 85
     private const val JPEG_QUALITY_80 = 80
-    private const val JPEG_QUALITY_75 = 75
     private const val JPEG_QUALITY_70 = 70
     private const val JPEG_QUALITY_60 = 60
     private const val MAX_DECODE_LONG_EDGE = 4096
@@ -51,9 +51,10 @@ object ImageUploader {
     const val SIZE_LIMIT_FAIL_MESSAGE = "图片压缩后仍超过 1MB，请更换更清晰主体、减少无关背景后重试"
 
     /**
-     * 压缩图片（输入规则最终版·冻结）：
-     * 固定降级序列（直到 ≤1MB）：1024@82 -> 1024@80 -> 1024@75 -> 1024@70 -> 896@70 -> 768@70 -> 640@70 -> 640@60 -> 512@60。
-     * 等比缩放，不拉伸不裁剪，仅输出 JPEG。
+     * 压缩图片：
+     * 固定降级序列（直到 ≤1MB）：1024@85 -> 1024@80 -> 896@80 -> 896@70 -> 768@70 -> 640@60 -> 512@60。
+     * 若极端图片在 512@60 后仍超过 1MB，继续保持 Q=60 等比缩小，直到 ≤1MB。
+     * 全程等比缩放，不拉伸不裁剪，仅输出 JPEG。
      * 能解码则转 JPEG 后上传；解码失败返回 null，由调用方提示 DECODE_FAIL_MESSAGE，不调用模型、不扣费、不计轮次。
      */
     fun compressImage(imageBytes: ByteArray): CompressResult? {
@@ -119,19 +120,19 @@ object ImageUploader {
             val sequence = listOf(
                 MAX_LONG_EDGE to JPEG_QUALITY_DEFAULT,
                 MAX_LONG_EDGE to JPEG_QUALITY_80,
-                MAX_LONG_EDGE to JPEG_QUALITY_75,
-                MAX_LONG_EDGE to JPEG_QUALITY_70,
+                FALLBACK_LONG_EDGE_1 to JPEG_QUALITY_80,
                 FALLBACK_LONG_EDGE_1 to JPEG_QUALITY_70,
                 FALLBACK_LONG_EDGE_2 to JPEG_QUALITY_70,
-                FALLBACK_LONG_EDGE_3 to JPEG_QUALITY_70,
                 FALLBACK_LONG_EDGE_3 to JPEG_QUALITY_60,
                 FALLBACK_LONG_EDGE_4 to JPEG_QUALITY_60
             )
             for ((targetLongEdge, quality) in sequence) {
                 val candidateBitmap = scaleBitmapByLongEdge(correctedBitmap, targetLongEdge)
                 val candidateBytes = compressToJpeg(candidateBitmap, quality)
-                if (resultBitmap != null && resultBitmap !== correctedBitmap) {
-                    resultBitmap!!.recycle()
+                resultBitmap?.let { previousBitmap ->
+                    if (previousBitmap !== correctedBitmap) {
+                        previousBitmap.recycle()
+                    }
                 }
                 resultBitmap = candidateBitmap
                 compressedBytes = candidateBytes
@@ -141,6 +142,23 @@ object ImageUploader {
                 if (compressedBytes.size <= MAX_SIZE_BYTES) {
                     break
                 }
+            }
+            while (compressedBytes.size > MAX_SIZE_BYTES && maxOf(finalWidth, finalHeight) > EMERGENCY_MIN_LONG_EDGE) {
+                val nextLongEdge = (maxOf(finalWidth, finalHeight) * 0.85f)
+                    .toInt()
+                    .coerceAtLeast(EMERGENCY_MIN_LONG_EDGE)
+                val candidateBitmap = scaleBitmapByLongEdge(correctedBitmap, nextLongEdge)
+                val candidateBytes = compressToJpeg(candidateBitmap, JPEG_QUALITY_60)
+                resultBitmap?.let { previousBitmap ->
+                    if (previousBitmap !== correctedBitmap) {
+                        previousBitmap.recycle()
+                    }
+                }
+                resultBitmap = candidateBitmap
+                compressedBytes = candidateBytes
+                usedQuality = JPEG_QUALITY_60
+                finalWidth = candidateBitmap.width
+                finalHeight = candidateBitmap.height
             }
 
             val longEdge = maxOf(finalWidth, finalHeight)
