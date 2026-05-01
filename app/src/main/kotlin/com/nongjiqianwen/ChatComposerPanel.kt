@@ -75,12 +75,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
@@ -720,22 +717,23 @@ internal fun ComposerAttachmentBottomSheet(
                             .height(1.dp)
                             .background(Color(0xFFEDEEF1))
                     )
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(
-                                SpanStyle(
-                                    color = Color(0xFF34363B),
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            ) {
-                                append("单次最多4张照片")
-                            }
-                            append("，建议拍清病斑、整棵植株、叶背或果实。")
-                        },
-                        color = Color(0xFF8B8D93),
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = "单次最多4张照片",
+                            color = Color(0xFF34363B),
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "建议拍清病斑、整棵植株、叶背或果实",
+                            color = Color(0xFF8B8D93),
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp
+                        )
+                    }
                 }
             }
         }
