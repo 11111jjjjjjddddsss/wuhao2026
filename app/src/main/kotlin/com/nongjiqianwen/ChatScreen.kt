@@ -3665,9 +3665,11 @@ fun ChatScreen() {
 
     fun markUserMessageSendFailed(
         text: String,
+        imageUris: List<String> = emptyList(),
+        imageUrls: List<String> = emptyList(),
         existingUserMessageId: String? = null
     ) {
-        if (text.isEmpty() || isStreaming || sendUiSettling) return
+        if ((text.isEmpty() && imageUris.isEmpty() && imageUrls.isEmpty()) || isStreaming || sendUiSettling) return
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         snackbarScope.launch {
@@ -3678,7 +3680,12 @@ fun ChatScreen() {
                 val userId = existingUserMessageId
                     ?: findFailedUserMessageIdByText(text)
                     ?: "user_${UUID.randomUUID()}"
-                upsertUserMessage(userId, text)
+                upsertUserMessage(
+                    messageId = userId,
+                    content = text,
+                    imageUris = imageUris,
+                    imageUrls = imageUrls
+                )
                 failedUserMessageStates[userId] = "network"
                 clearFailedAssistantStateForUser(userId)
                 anchoredUserMessageId = userId
@@ -3694,6 +3701,72 @@ fun ChatScreen() {
                 sendUiSettling = false
             }
         }
+    }
+
+    fun stageUserMessageForImageUpload(
+        text: String,
+        previewImageUris: List<String>
+    ): String? {
+        if ((text.isEmpty() && previewImageUris.isEmpty()) || isStreaming || sendUiSettling) return null
+        val preSendStableCollapsedReservePx =
+            if (!listShouldTrackRealtimeComposerGeometry) {
+                (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
+                    .takeIf { it > 0 }
+            } else {
+                null
+            }
+        composerCollapseOverlayVisible = false
+        sendStartViewportHeightPx = messageViewportHeightPx
+        sendUiSettling = true
+        hasStartedConversation = true
+        initialBottomSnapDone = true
+        LaunchUiGate.chatReady = true
+
+        val collapsePreparation = prepareComposerCollapse(
+            inputContentHeightPx = inputContentHeightPx,
+            startupInputContentHeightEstimatePx = startupInputContentHeightEstimatePx,
+            inputChromeRowHeightPx = inputChromeRowHeightPx
+        )
+        composerSettlingMinHeightPx = collapsePreparation.settlingMinHeightPx
+        composerSettlingChromeHeightPx = collapsePreparation.settlingChromeHeightPx
+        suppressInputCursor = collapsePreparation.shouldSuppressCursor
+        inputFieldFocused = false
+        clearInputSelectionToolbar()
+        input.value = TextFieldValue("")
+        context.clearLocalComposerDraftSync(chatScopeId)
+        selectedComposerImages.clear()
+        attachmentMenuVisible = false
+        if (collapsePreparation.shouldClearFocus) {
+            focusManager.clearFocus(force = true)
+        }
+
+        val userId = "user_${UUID.randomUUID()}"
+        failedUserMessageStates.remove(userId)
+        clearFailedAssistantStateForUser(userId)
+        upsertUserMessage(
+            messageId = userId,
+            content = text,
+            imageUris = previewImageUris
+        )
+        trimMessagesInPlace()
+        anchoredUserMessageId = userId
+        lockedConversationBottomPaddingPx =
+            (
+                observedCollapsedBottomReservePx
+                    .takeIf { it > 0 }
+                    ?: preSendStableCollapsedReservePx
+                    ?: startupBottomBarHeightEstimatePx
+                ) + streamVisibleBottomGapPx
+        sendStartAnchorActive = true
+        if (latestMessageIndexOrMinusOne() >= 0) {
+            requestProgrammaticForwardListBottomAnchor()
+        }
+        sendUiSettling = false
+        persistTick++
+        snackbarScope.launch {
+            context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
+        }
+        return userId
     }
 
     fun commitSendMessage(
@@ -4193,6 +4266,27 @@ fun ChatScreen() {
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
         val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
+        suspend fun uploadComposerImagesForSend(
+            images: List<ComposerImageAttachment>
+        ): Pair<List<String>?, String?> = withContext(Dispatchers.IO) {
+            val compressedImages = mutableListOf<ByteArray>()
+            for (image in images) {
+                val originalBytes = context.readImageBytes(Uri.parse(image.uri))
+                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                val compressed = ImageUploader.compressImage(originalBytes)
+                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                if (compressed.compressedSize > COMPOSER_MAX_IMAGE_SIZE_BYTES) {
+                    return@withContext null to ImageUploader.SIZE_LIMIT_FAIL_MESSAGE
+                }
+                compressedImages.add(compressed.bytes)
+            }
+            if (compressedImages.isEmpty()) {
+                emptyList<String>() to null
+            } else {
+                val urls = ImageUploader.uploadImages(compressedImages)
+                if (urls == null) null to "图片上传失败，请重试" else urls to null
+            }
+        }
         fun retryFailedUserMessage(messageId: String) {
             val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
             if (isQuotaExhaustedToday()) {
@@ -4203,10 +4297,36 @@ fun ChatScreen() {
                 showComposerStatusHint("当前网络不可用")
                 return
             }
+            val previewImageUris = failedMessage.imageUris.orEmpty()
+            if (previewImageUris.isNotEmpty() && failedMessage.imageUrls.orEmpty().isEmpty()) {
+                imageSendInProgress = true
+                snackbarScope.launch {
+                    try {
+                        val (uploadedUrls, uploadError) = uploadComposerImagesForSend(
+                            previewImageUris.map(::ComposerImageAttachment)
+                        )
+                        if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
+                            showComposerStatusHint(uploadError ?: "图片上传失败，请重试")
+                            return@launch
+                        }
+                        failedUserMessageStates.remove(failedMessage.id)
+                        commitSendMessage(
+                            text = failedMessage.content,
+                            uploadedImageUrls = uploadedUrls,
+                            previewImageUris = previewImageUris,
+                            existingUserMessageId = failedMessage.id,
+                            collapseComposer = false
+                        )
+                    } finally {
+                        imageSendInProgress = false
+                    }
+                }
+                return
+            }
             commitSendMessage(
                 text = failedMessage.content,
                 uploadedImageUrls = failedMessage.imageUrls.orEmpty(),
-                previewImageUris = failedMessage.imageUris.orEmpty(),
+                previewImageUris = previewImageUris,
                 existingUserMessageId = failedMessage.id,
                 collapseComposer = false
             )
@@ -4234,27 +4354,6 @@ fun ChatScreen() {
                 existingUserMessageId = sourceUserMessage.id,
                 collapseComposer = false
             )
-        }
-        suspend fun uploadComposerImagesForSend(
-            images: List<ComposerImageAttachment>
-        ): Pair<List<String>?, String?> = withContext(Dispatchers.IO) {
-            val compressedImages = mutableListOf<ByteArray>()
-            for (image in images) {
-                val originalBytes = context.readImageBytes(Uri.parse(image.uri))
-                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                val compressed = ImageUploader.compressImage(originalBytes)
-                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                if (compressed.compressedSize > COMPOSER_MAX_IMAGE_SIZE_BYTES) {
-                    return@withContext null to ImageUploader.SIZE_LIMIT_FAIL_MESSAGE
-                }
-                compressedImages.add(compressed.bytes)
-            }
-            if (compressedImages.isEmpty()) {
-                emptyList<String>() to null
-            } else {
-                val urls = ImageUploader.uploadImages(compressedImages)
-                if (urls == null) null to "图片上传失败，请重试" else urls to null
-            }
         }
         fun sendMessage() {
             val text = input.value.text
@@ -4284,19 +4383,29 @@ fun ChatScreen() {
                 commitSendMessage(text = trimmedText)
                 return
             }
+            val previewImageUris = imageSnapshot.map { it.uri }
+            val stagedUserMessageId = stageUserMessageForImageUpload(
+                text = trimmedText,
+                previewImageUris = previewImageUris
+            ) ?: return
             imageSendInProgress = true
             snackbarScope.launch {
                 try {
                     val (uploadedUrls, uploadError) = uploadComposerImagesForSend(imageSnapshot)
                     if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
+                        failedUserMessageStates[stagedUserMessageId] = "network"
+                        persistTick++
+                        context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
                         showComposerStatusHint(uploadError ?: "图片上传失败，请重试")
                     } else {
-                            selectedComposerImages.removeAll(imageSnapshot.toSet())
-                            commitSendMessage(
-                                text = trimmedText,
-                                uploadedImageUrls = uploadedUrls,
-                                previewImageUris = imageSnapshot.map { it.uri }
-                            )
+                        failedUserMessageStates.remove(stagedUserMessageId)
+                        commitSendMessage(
+                            text = trimmedText,
+                            uploadedImageUrls = uploadedUrls,
+                            previewImageUris = previewImageUris,
+                            existingUserMessageId = stagedUserMessageId,
+                            collapseComposer = false
+                        )
                     }
                 } finally {
                     imageSendInProgress = false

@@ -358,7 +358,7 @@ internal fun ChatComposerBottomBar(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = if (selectedImages.isNotEmpty()) 78.dp else 0.dp)
+                            .heightIn(min = if (selectedImages.isNotEmpty()) 92.dp else 0.dp)
                             .padding(start = 2.dp),
                         singleLine = false,
                         minLines = 1,
@@ -797,8 +797,8 @@ private fun ComposerImagePreviewStrip(
         modifier = Modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(bottom = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(9.dp),
+            .padding(bottom = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         images.take(4).forEachIndexed { index, image ->
@@ -836,7 +836,7 @@ private fun ComposerImagePreviewThumb(
     }
     Box(
         modifier = Modifier
-            .size(76.dp)
+            .size(100.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFFF0F1F3))
             .clickable(
@@ -857,7 +857,7 @@ private fun ComposerImagePreviewThumb(
                 tint = Color(0xFF8B8D93),
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(30.dp)
+                    .size(36.dp)
             )
         }
         Box(
@@ -1243,7 +1243,7 @@ private fun ComposerInputShell(
 ) {
     val shellShape = RoundedCornerShape(24.dp)
     val actionDockHeight = if (addButtonSize > sendButtonSize) addButtonSize else sendButtonSize
-    val imagePreviewReserveHeight = 88.dp
+    val imagePreviewReserveHeight = 116.dp
     val hasAttachments = attachmentsContent != null
     val shellMinHeight = if (hasAttachments) {
         inputBarHeight + imagePreviewReserveHeight
