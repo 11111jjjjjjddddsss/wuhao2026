@@ -244,7 +244,6 @@ internal fun ChatComposerBottomBar(
     val canSend = sendGate.canSubmit
     val actionBg = if (sendGate.activeAppearance) Color(0xFF111111) else Color(0xFFD3D4D6)
     val actionTint = if (sendGate.activeAppearance) Color.White else Color(0xFF7F8083)
-    val inputSelectionBottomClearance = if (inputValue.selection.collapsed) 0.dp else 34.dp
 
     Box(modifier = hostModifier.background(Color.Transparent)) {
         if (overlayHintText != null) {
@@ -381,7 +380,6 @@ internal fun ChatComposerBottomBar(
             sendButtonEnabled = canPressSend,
             sendButtonBackgroundColor = actionBg,
             sendButtonTint = actionTint,
-            inputSelectionBottomClearance = inputSelectionBottomClearance,
             onSendClick = {
                 when (sendGate.blockReason) {
                     SendBlockReason.InputTooLong -> onInputLimitExceeded()
@@ -1136,7 +1134,6 @@ private fun ComposerInputShell(
     sendButtonEnabled: Boolean,
     sendButtonBackgroundColor: Color,
     sendButtonTint: Color,
-    inputSelectionBottomClearance: Dp = 0.dp,
     onSendClick: () -> Unit
 ) {
     val shellShape = RoundedCornerShape(24.dp)
@@ -1178,7 +1175,7 @@ private fun ComposerInputShell(
                         start = 16.dp,
                         end = 16.dp,
                         top = 12.dp,
-                        bottom = actionDockHeight + 8.dp + inputSelectionBottomClearance
+                        bottom = actionDockHeight + 8.dp
                     )
             ) {
                 attachmentsContent?.invoke()
@@ -1241,7 +1238,6 @@ private fun ComposerChromeRow(
     sendButtonEnabled: Boolean,
     sendButtonBackgroundColor: Color,
     sendButtonTint: Color,
-    inputSelectionBottomClearance: Dp = 0.dp,
     onSendClick: () -> Unit
 ) {
     ComposerInputShell(
@@ -1261,7 +1257,6 @@ private fun ComposerChromeRow(
         sendButtonEnabled = sendButtonEnabled,
         sendButtonBackgroundColor = sendButtonBackgroundColor,
         sendButtonTint = sendButtonTint,
-        inputSelectionBottomClearance = inputSelectionBottomClearance,
         onSendClick = onSendClick
     )
 }
