@@ -15,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
@@ -84,6 +86,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -114,15 +118,22 @@ private fun composerPreviewInSampleSize(width: Int, height: Int, targetSize: Int
     return sampleSize.coerceAtLeast(1)
 }
 
-private fun decodeComposerPreviewBitmap(context: Context, uriString: String): ImageBitmap? {
+private fun decodeComposerPreviewBitmap(
+    context: Context,
+    uriString: String,
+    targetSize: Int = 320
+): ImageBitmap? {
     return runCatching {
         val uri = Uri.parse(uriString)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         context.contentResolver.openInputStream(uri)?.use { input ->
             BitmapFactory.decodeStream(input, null, bounds)
         }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return@runCatching null
+        }
         val decodeOptions = BitmapFactory.Options().apply {
-            inSampleSize = composerPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = 256)
+            inSampleSize = composerPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = targetSize)
         }
         context.contentResolver.openInputStream(uri)?.use { input ->
             BitmapFactory.decodeStream(input, null, decodeOptions)?.asImageBitmap()
@@ -347,6 +358,7 @@ internal fun ChatComposerBottomBar(
                         },
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = if (selectedImages.isNotEmpty()) 78.dp else 0.dp)
                             .padding(start = 2.dp),
                         singleLine = false,
                         minLines = 1,
@@ -778,20 +790,31 @@ private fun ComposerImagePreviewStrip(
     images: List<ComposerImageAttachment>,
     onRemoveImage: (ComposerImageAttachment) -> Unit
 ) {
+    var previewImage by remember {
+        mutableStateOf<ComposerImageAttachment?>(null)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .horizontalScroll(rememberScrollState())
+            .padding(bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         images.take(4).forEachIndexed { index, image ->
             ComposerImagePreviewThumb(
                 image = image,
                 index = index,
+                onPreviewImage = { previewImage = image },
                 onRemoveImage = onRemoveImage
             )
         }
+    }
+    previewImage?.let { image ->
+        ComposerImagePreviewDialog(
+            image = image,
+            onDismiss = { previewImage = null }
+        )
     }
 }
 
@@ -799,6 +822,7 @@ private fun ComposerImagePreviewStrip(
 private fun ComposerImagePreviewThumb(
     image: ComposerImageAttachment,
     index: Int,
+    onPreviewImage: () -> Unit,
     onRemoveImage: (ComposerImageAttachment) -> Unit
 ) {
     val context = LocalContext.current
@@ -812,9 +836,13 @@ private fun ComposerImagePreviewThumb(
     }
     Box(
         modifier = Modifier
-            .size(60.dp)
+            .size(76.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFFF0F1F3))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { onPreviewImage() }
     ) {
         val previewBitmap = bitmap
         if (previewBitmap != null) {
@@ -829,7 +857,7 @@ private fun ComposerImagePreviewThumb(
                 tint = Color(0xFF8B8D93),
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(26.dp)
+                    .size(30.dp)
             )
         }
         Box(
@@ -855,6 +883,7 @@ private fun ComposerImagePreviewThumb(
                 .size(20.dp)
                 .clip(CircleShape)
                 .background(Color(0xCC111111))
+                .zIndex(1f)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
@@ -862,6 +891,71 @@ private fun ComposerImagePreviewThumb(
             contentAlignment = Alignment.Center
         ) {
             ComposerCloseIcon(tint = Color.White, modifier = Modifier.size(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun ComposerImagePreviewDialog(
+    image: ComposerImageAttachment,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var bitmap by remember(image.uri) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(image.uri) {
+        bitmap = withContext(Dispatchers.IO) {
+            decodeComposerPreviewBitmap(context, image.uri, targetSize = 1600)
+        }
+    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xE6000000))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onDismiss() }
+        ) {
+            val previewBitmap = bitmap
+            if (previewBitmap != null) {
+                Image(
+                    bitmap = previewBitmap,
+                    contentDescription = "图片预览",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(22.dp)
+                )
+            } else {
+                ComposerPhotoIcon(
+                    tint = Color.White.copy(alpha = 0.72f),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(44.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 34.dp, end = 22.dp)
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x99111111))
+                    .zIndex(1f)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onDismiss() },
+                contentAlignment = Alignment.Center
+            ) {
+                ComposerCloseIcon(tint = Color.White, modifier = Modifier.size(14.dp))
+            }
         }
     }
 }
@@ -1149,6 +1243,18 @@ private fun ComposerInputShell(
 ) {
     val shellShape = RoundedCornerShape(24.dp)
     val actionDockHeight = if (addButtonSize > sendButtonSize) addButtonSize else sendButtonSize
+    val imagePreviewReserveHeight = 88.dp
+    val hasAttachments = attachmentsContent != null
+    val shellMinHeight = if (hasAttachments) {
+        inputBarHeight + imagePreviewReserveHeight
+    } else {
+        inputBarHeight
+    }
+    val shellMaxHeight = if (hasAttachments) {
+        inputBarMaxHeight + imagePreviewReserveHeight
+    } else {
+        inputBarMaxHeight
+    }
     Surface(
         shape = shellShape,
         color = inputFieldSurface,
@@ -1177,7 +1283,7 @@ private fun ComposerInputShell(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = inputBarHeight, max = inputBarMaxHeight)
+                .heightIn(min = shellMinHeight, max = shellMaxHeight)
         ) {
             Column(
                 modifier = Modifier
