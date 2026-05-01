@@ -39,6 +39,7 @@ import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -1355,7 +1356,23 @@ private fun Context.createComposerCameraImageUri(): Uri? {
 
 private fun Context.readImageBytes(uri: Uri): ByteArray? {
     return runCatching {
-        contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        if (uri.scheme == "file") {
+            val path = uri.path ?: return@runCatching null
+            File(path).takeIf { it.isFile }?.readBytes()
+        } else {
+            contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        }
+    }.getOrNull()
+}
+
+private fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImageAttachment? {
+    return runCatching {
+        val originalBytes = readImageBytes(uri) ?: return@runCatching null
+        val compressed = ImageUploader.compressImage(originalBytes) ?: return@runCatching null
+        val imageDir = File(filesDir, "composer_images").apply { mkdirs() }
+        val imageFile = File(imageDir, "composer_${UUID.randomUUID()}.jpg")
+        imageFile.writeBytes(compressed.bytes)
+        ComposerImageAttachment(imageFile.toURI().toString())
     }.getOrNull()
 }
 
@@ -1383,7 +1400,7 @@ private fun Context.decodeChatImagePreview(
             }
             connection.getInputStream().use { it.readBytes() }
         } else {
-            contentResolver.openInputStream(Uri.parse(source))?.use { it.readBytes() }
+            readImageBytes(Uri.parse(source))
         } ?: return@runCatching null
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -2734,14 +2751,25 @@ fun ChatScreen() {
             showComposerStatusHint("最多上传4张图片")
             return
         }
-        val accepted = uris
-            .take(remainingSlots)
-            .map { ComposerImageAttachment(it.toString()) }
-        selectedComposerImages.addAll(accepted)
         attachmentMenuVisible = false
         suppressInputCursor = false
-        if (uris.size > remainingSlots) {
-            showComposerStatusHint("最多上传4张图片")
+        val selectedUris = uris.take(remainingSlots)
+        snackbarScope.launch {
+            val importedImages = withContext(Dispatchers.IO) {
+                selectedUris.mapNotNull { uri ->
+                    context.importComposerImageToPrivateStorage(uri)
+                }
+            }
+            if (importedImages.isEmpty()) {
+                showComposerStatusHint(ImageUploader.DECODE_FAIL_MESSAGE)
+                return@launch
+            }
+            selectedComposerImages.addAll(importedImages)
+            if (importedImages.size < selectedUris.size) {
+                showComposerStatusHint("部分图片无法读取，已跳过")
+            } else if (uris.size > remainingSlots) {
+                showComposerStatusHint("最多上传4张图片")
+            }
         }
     }
 
@@ -3346,6 +3374,13 @@ fun ChatScreen() {
             }
     }
 
+    LaunchedEffect(chatListUserDragging) {
+        if (chatListUserDragging) {
+            initialBottomSnapDone = true
+            postInitialSnapCorrectionDone = true
+        }
+    }
+
     LaunchedEffect(
         recyclerScrollInProgress,
         chatListUserDragging,
@@ -3757,7 +3792,6 @@ fun ChatScreen() {
                     ?: preSendStableCollapsedReservePx
                     ?: startupBottomBarHeightEstimatePx
                 ) + streamVisibleBottomGapPx
-        sendStartAnchorActive = true
         if (latestMessageIndexOrMinusOne() >= 0) {
             requestProgrammaticForwardListBottomAnchor()
         }
@@ -5823,7 +5857,7 @@ private fun UserMessageImageStrip(
     userBubbleMaxWidth: Dp
 ) {
     val imageSources = remember(imageUris, imageUrls) {
-        (imageUris + imageUrls).distinct().take(COMPOSER_MAX_IMAGE_COUNT)
+        (imageUrls + imageUris).distinct().take(COMPOSER_MAX_IMAGE_COUNT)
     }
     if (imageSources.isEmpty()) return
     var previewSource by remember {
@@ -5972,14 +6006,7 @@ private fun UserMessageImagePreviewDialog(
         ) {
             val previewBitmap = bitmap
             if (previewBitmap != null) {
-                Image(
-                    bitmap = previewBitmap,
-                    contentDescription = "用户上传图片预览",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(22.dp)
-                )
+                ZoomableUserMessagePreviewImage(bitmap = previewBitmap)
             } else {
                 UserMessageImagePlaceholderIcon(
                     tint = Color.White.copy(alpha = 0.72f),
@@ -6006,6 +6033,37 @@ private fun UserMessageImagePreviewDialog(
             }
         }
     }
+}
+
+@Composable
+private fun ZoomableUserMessagePreviewImage(bitmap: androidx.compose.ui.graphics.ImageBitmap) {
+    var scale by remember(bitmap) {
+        mutableStateOf(1f)
+    }
+    var offset by remember(bitmap) {
+        mutableStateOf(Offset.Zero)
+    }
+    Image(
+        bitmap = bitmap,
+        contentDescription = "用户上传图片预览",
+        contentScale = ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(22.dp)
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+            .pointerInput(bitmap) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                    scale = nextScale
+                    offset = if (nextScale <= 1.01f) Offset.Zero else offset + pan
+                }
+            }
+    )
 }
 
 @Composable

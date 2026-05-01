@@ -14,6 +14,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -67,6 +68,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
@@ -91,6 +93,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 import kotlin.math.roundToInt
 
 internal data class InputSelectionToolbarState(
@@ -118,6 +121,13 @@ private fun composerPreviewInSampleSize(width: Int, height: Int, targetSize: Int
     return sampleSize.coerceAtLeast(1)
 }
 
+private fun Context.openComposerPreviewInput(uri: Uri) =
+    if (uri.scheme == "file") {
+        uri.path?.let { path -> File(path).takeIf { it.isFile }?.inputStream() }
+    } else {
+        contentResolver.openInputStream(uri)
+    }
+
 private fun decodeComposerPreviewBitmap(
     context: Context,
     uriString: String,
@@ -126,7 +136,7 @@ private fun decodeComposerPreviewBitmap(
     return runCatching {
         val uri = Uri.parse(uriString)
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use { input ->
+        context.openComposerPreviewInput(uri)?.use { input ->
             BitmapFactory.decodeStream(input, null, bounds)
         }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
@@ -135,7 +145,7 @@ private fun decodeComposerPreviewBitmap(
         val decodeOptions = BitmapFactory.Options().apply {
             inSampleSize = composerPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = targetSize)
         }
-        context.contentResolver.openInputStream(uri)?.use { input ->
+        context.openComposerPreviewInput(uri)?.use { input ->
             BitmapFactory.decodeStream(input, null, decodeOptions)?.asImageBitmap()
         }
     }.getOrNull()
@@ -924,14 +934,7 @@ private fun ComposerImagePreviewDialog(
         ) {
             val previewBitmap = bitmap
             if (previewBitmap != null) {
-                Image(
-                    bitmap = previewBitmap,
-                    contentDescription = "图片预览",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(22.dp)
-                )
+                ZoomableComposerPreviewImage(bitmap = previewBitmap)
             } else {
                 ComposerPhotoIcon(
                     tint = Color.White.copy(alpha = 0.72f),
@@ -958,6 +961,37 @@ private fun ComposerImagePreviewDialog(
             }
         }
     }
+}
+
+@Composable
+private fun ZoomableComposerPreviewImage(bitmap: ImageBitmap) {
+    var scale by remember(bitmap) {
+        mutableStateOf(1f)
+    }
+    var offset by remember(bitmap) {
+        mutableStateOf(Offset.Zero)
+    }
+    Image(
+        bitmap = bitmap,
+        contentDescription = "图片预览",
+        contentScale = ContentScale.Fit,
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(22.dp)
+            .graphicsLayer(
+                scaleX = scale,
+                scaleY = scale,
+                translationX = offset.x,
+                translationY = offset.y
+            )
+            .pointerInput(bitmap) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                    scale = nextScale
+                    offset = if (nextScale <= 1.01f) Offset.Zero else offset + pan
+                }
+            }
+    )
 }
 
 @Composable
