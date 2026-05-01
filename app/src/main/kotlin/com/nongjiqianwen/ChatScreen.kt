@@ -285,6 +285,7 @@ private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
+private const val CHAT_COMPOSER_DRAFT_KEY_PREFIX = "composer_draft_"
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
@@ -1292,6 +1293,39 @@ private suspend fun Context.clearLocalStreamingDraft(chatScopeId: String) = with
         .commit()
 }
 
+private fun Context.loadLocalComposerDraftSync(chatScopeId: String): String {
+    return getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .getString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", null)
+        .orEmpty()
+}
+
+private suspend fun Context.saveLocalComposerDraft(chatScopeId: String, text: String) = withContext(Dispatchers.IO) {
+    val editor = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE).edit()
+    if (text.isBlank()) {
+        editor.remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+    } else {
+        editor.putString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", text)
+    }
+    editor.commit()
+}
+
+private fun Context.saveLocalComposerDraftSync(chatScopeId: String, text: String) {
+    val editor = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE).edit()
+    if (text.isBlank()) {
+        editor.remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+    } else {
+        editor.putString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", text)
+    }
+    editor.commit()
+}
+
+private fun Context.clearLocalComposerDraftSync(chatScopeId: String) {
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+        .commit()
+}
+
 private fun Context.hasActiveNetworkConnection(): Boolean {
     val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
     val network = connectivityManager.activeNetwork ?: return false
@@ -1638,6 +1672,9 @@ fun ChatScreen() {
         )
     }
     val initialLocalMessages = remember(initialLocalSnapshot) { initialLocalSnapshot.messages }
+    val initialComposerDraftText = remember(chatScopeId) {
+        context.loadLocalComposerDraftSync(chatScopeId)
+    }
     val uiRuntimeResetKey = remember(chatScopeId, initialLocalSnapshot, initialStreamingDraft, hasRemoteHistorySource) {
         buildString {
             append(chatScopeId)
@@ -1646,8 +1683,8 @@ fun ChatScreen() {
             append("|backend=").append(if (hasRemoteHistorySource) 1 else 0)
         }
     }
-    val input = remember(uiRuntimeResetKey) {
-        mutableStateOf(TextFieldValue(""))
+    val input = remember(uiRuntimeResetKey, initialComposerDraftText) {
+        mutableStateOf(TextFieldValue(initialComposerDraftText))
     }
     val selectedComposerImages = remember(uiRuntimeResetKey) {
         mutableStateListOf<ComposerImageAttachment>()
@@ -2639,6 +2676,7 @@ fun ChatScreen() {
         inputFieldFocused = false
         suppressInputCursor = false
         input.value = TextFieldValue("")
+        context.clearLocalComposerDraftSync(chatScopeId)
         selectedComposerImages.clear()
         attachmentMenuVisible = false
         pendingCameraImageUri = null
@@ -3165,6 +3203,15 @@ fun ChatScreen() {
         context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
     }
 
+    LaunchedEffect(uiRuntimeResetKey) {
+        snapshotFlow { input.value.text }
+            .debounce(250)
+            .distinctUntilChanged()
+            .collect { draftText ->
+                context.saveLocalComposerDraft(chatScopeId, draftText)
+            }
+    }
+
     LaunchedEffect(inputLimitHintTick) {
         if (inputLimitHintTick == 0) return@LaunchedEffect
         val currentTick = inputLimitHintTick
@@ -3649,6 +3696,7 @@ fun ChatScreen() {
             inputFieldFocused = false
             clearInputSelectionToolbar()
             input.value = TextFieldValue("")
+            context.clearLocalComposerDraftSync(chatScopeId)
             selectedComposerImages.clear()
             attachmentMenuVisible = false
             if (collapsePreparation.shouldClearFocus) {
@@ -3998,6 +4046,7 @@ fun ChatScreen() {
     DisposableEffect(lifecycleOwner, focusManager) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) {
+                context.saveLocalComposerDraftSync(chatScopeId, input.value.text)
                 suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true

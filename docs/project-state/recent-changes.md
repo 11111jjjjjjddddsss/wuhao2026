@@ -5,6 +5,7 @@
 
 ## 2026-05-01
 
+- `ChatScreen.kt` 为普通输入框补本机草稿持久化：未发送文字会在输入变化后轻量写入 `chat_ui_cache`，切后台 / 锁屏时同步落盘；再次进入同一 `chatScopeId` 会回填，发送成功或清空运行时会清掉。该草稿只保存文字，不保存待上传图片 URI，避免临时图片权限 / 文件生命周期污染聊天 UI；滚动链、图片上传链和后端归档不变。同次，`server-go` 会员有效等级改为按 `tier_expire_at` 实时计算，Plus / Pro 到期后接口和额度消费按 Free 处理，避免过期 tier 继续享受付费额度或购买加油包。
 - 新增项目级 `opencode.json` 和 `docs/opencode-codex-bridge.md`，让 OpenCode 在 `D:\wuhao` 项目中显式加载根 `AGENTS.md`、OpenCode 接手提示词以及 `docs/project-state` 四份项目记忆文件。项目配置不绑定固定模型或 provider，后续可继续在 OpenCode 全局配置 / 客户端下拉中切换 MiMo、Kimi、Claude、OpenRouter 等模型；同时把编辑权限设为需确认，并要求 OpenCode 按“先读真相、排查旧方案、最小改动、改后自查、同步记忆、提交并推送”的仓库流程工作。只改开发工具接入配置和记忆入口，不改 Android / Go 业务代码。
 - `ChatComposerPanel.kt` 微调 `+` 底部附件卡片里的相机图标：旧图标顶部用斜线拼出相机轮廓，真机观感偏笨重；按用户从候选里选定的第 5 个方向，改为带顶部小凸起的一笔相机轮廓，并把相机 / 照片两个入口图标的视觉高度拉齐。只改相机图标 Canvas 绘制，不改底部弹卡片结构、照片入口、图片上传 / 压缩 / 发送链、聊天滚动链或 96dp 工作线。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` 将 `+` 附件入口从输入框上方小面板改为底部弹出的白色圆角卡片：页面背景加轻量遮罩，卡片里只保留“相机 / 照片”两个大入口和一行农业拍摄提示，点击外部可关闭。原输入框内部 `ComposerAttachmentMenu` 已退出，不再和新 bottom sheet 并存；相机 / 相册 launcher、图片压缩上传、输入框缩略图、最多 4 张、上传中锁定等功能链路未改，聊天滚动链和 96dp 工作线不动。

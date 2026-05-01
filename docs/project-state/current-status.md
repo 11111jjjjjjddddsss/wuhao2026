@@ -14,9 +14,11 @@
 - Android Auto Backup / Data Extraction 当前已关闭并显式排除：`allowBackup=false`，同时通过 `backup_rules.xml` / `data_extraction_rules.xml` 排除 cloud backup、device transfer、shared preferences、files、databases 和 external 数据。本地聊天窗口快照、流式草稿、`app_ids`、旧 UI metrics 等都只作为本机运行时缓存，不允许被系统云备份 / 设备迁移在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
 - Go 后端当前同时保存两类资产：`session_ab.a_json` 仍是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` / `c_summary` 仍是摘要文本；成功完成的问答轮次会额外写入 `session_round_archive`，按 30 天滚动保留，用于 UI 历史恢复和后续批量抽取。当前尚未实现 C+ 的用户农业画像 / 用户农业档案字段
 - `/api/session/snapshot` 当前继续返回 `a_json` / `a_rounds_full` 作为 A 层窗口，同时 `a_rounds_for_ui` 会优先返回 30 天内最近 30 轮 `session_round_archive`。前端本地仍会用 `LOCAL_RENDER_ROUND_LIMIT = 30` 裁 UI 窗口；换机 / 重装后只要用户身份能对上后端 `user_id`，UI 可拉到最近 30 轮业务聊天记录。当前项目还没有手机号 / 账号登录体系，实际主要依赖本机 `user_id`；若清数据后本机 `user_id` 丢失并生成新身份，则不会恢复旧记录
+- Android 普通输入框草稿当前会写入本机 `chat_ui_cache` 的 `composer_draft_*` 键：用户切 App、锁屏或后台被系统回收后，未发送文字下次进入仍会回填；发送成功 / 清空运行时会清掉该草稿。图片缩略图暂不做跨进程草稿恢复，避免本地 URI 权限和临时文件生命周期带来脏状态
 - 主对话每轮都会由后端注入当前时间和地点：`chat.go` 组装 `当前时间：yyyy-MM-dd HH:mm:ss（Asia/Shanghai）；用户地点：...；地点可信度：...`。历史轮次当前也会携带 `created_at / region / region_source / region_reliability`，进入模型上下文时以前缀“历史轮次时间：...”和“历史轮次地点：...”注入，让模型知道这轮距离当前大概多久、当时大概在哪里；前端暂不显示每条消息时间戳或地点条。当前 Android 还没有定位权限 / 地区选择主链，若请求里未带 `X-User-Region`，后端只能用 IP / 未知兜底，因此“地点详细点”需要后续单独做用户地区采集。天气 API 暂不接入，后续只在确有强需求和成本预算时再评估
 - 当前产品策略倾向已记录为待决策：C 层后续可能升级为 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并评估改用 `Qwen3.5-Flash` 做 C+ 抽取；在代码落地前，当前真实实现仍是现有 `c_summary`
 - 基础设施首版采购倾向已调整为 `SAE + RDS MySQL`：SAE 继续适合当前无运维团队阶段，数据库首版倾向使用阿里云 RDS MySQL 以降低成本和运维复杂度；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
+- 会员有效等级由后端按 `tier_expire_at` 实时计算：Plus / Pro 到期后对 `/api/me`、每日额度、加油包购买资格、Plus 升 Pro 入口都按 Free 处理；Plus 升 Pro 时仍会把 Plus 剩余额度折成永久升级补偿次数，Pro 到期后未用完的升级补偿 / 加油包仍可按当前消耗顺序继续用于超额请求
 - 聊天消息运行时当前是**单一正向列表主人**：`ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，`messages` 仍按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`
 - 底部 composer 仍是页面底部的独立 UI 宿主，继续负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - `ChatScreen.kt` 当前把消息列表和 composer 作为页面 `Box` 内的兄弟层渲染：列表铺满消息区，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 已从旧 `SubcomposeLayout` 测量链里拆出，键盘动画不再每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”

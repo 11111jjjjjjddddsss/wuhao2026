@@ -58,16 +58,7 @@ func (s *Store) GetTierForUser(ctx context.Context, userID string, fallback Tier
 		return "", nil, err
 	}
 
-	resultTier := fallback
-	switch Tier(tier.String) {
-	case TierFree, TierPlus, TierPro:
-		resultTier = Tier(tier.String)
-	}
-	if !expireAt.Valid {
-		return resultTier, nil, nil
-	}
-	value := expireAt.Int64
-	return resultTier, &value, nil
+	return effectiveTierFromRow(tier, expireAt, fallback, time.Now().UnixMilli())
 }
 
 func (s *Store) GetDailyStatus(ctx context.Context, userID string, tier Tier, dayCN string) (DailyQuotaStatus, error) {
@@ -258,20 +249,25 @@ func (s *Store) BuyTopupPack(ctx context.Context, userID string, orderID string)
 	}
 
 	var tier sql.NullString
+	var tierExpireAt sql.NullInt64
 	err = tx.QueryRowContext(
 		ctx,
-		"SELECT tier FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE",
+		"SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE",
 		userID,
-	).Scan(&tier)
+	).Scan(&tier, &tierExpireAt)
 	if err != nil && err != sql.ErrNoRows {
 		return false, "", nil, 0, err
 	}
-	if Tier(tier.String) != TierPlus && Tier(tier.String) != TierPro {
+	now := time.Now().UnixMilli()
+	effectiveTier, _, err := effectiveTierFromRow(tier, tierExpireAt, TierFree, now)
+	if err != nil {
+		return false, "", nil, 0, err
+	}
+	if effectiveTier != TierPlus && effectiveTier != TierPro {
 		return false, "", nil, 0, fmt.Errorf("FORBIDDEN_TIER")
 	}
 
 	var activeCount sql.NullInt64
-	now := time.Now().UnixMilli()
 	if err := tx.QueryRowContext(
 		ctx,
 		`SELECT COUNT(1) AS cnt
@@ -356,7 +352,12 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 		return false, 0, "", 0, 0, err
 	}
 
-	switch Tier(currentTier.String) {
+	now := time.Now().UnixMilli()
+	effectiveTier, _, err := effectiveTierFromRow(currentTier, tierExpireAt, TierFree, now)
+	if err != nil {
+		return false, 0, "", 0, 0, err
+	}
+	switch effectiveTier {
 	case TierPro:
 		return false, 0, "", 0, 0, fmt.Errorf("ALREADY_PRO")
 	case TierPlus:
@@ -364,7 +365,6 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 		return false, 0, "", 0, 0, fmt.Errorf("FORBIDDEN_TIER")
 	}
 
-	now := time.Now().UnixMilli()
 	dayCN := GetTodayKeyCN(s.shanghai, time.Now())
 	usedToday, err := s.getOrCreateDailyUsage(ctx, tx, userID, dayCN)
 	if err != nil {
@@ -467,14 +467,18 @@ func (s *Store) renewTier(ctx context.Context, userID string, orderID string, ta
 		return false, "", 0, err
 	}
 
+	now := time.Now().UnixMilli()
+	effectiveTier, _, err := effectiveTierFromRow(currentTier, tierExpireAt, TierFree, now)
+	if err != nil {
+		return false, "", 0, err
+	}
 	switch {
-	case targetTier == TierPlus && Tier(currentTier.String) == TierPro:
+	case targetTier == TierPlus && effectiveTier == TierPro:
 		return false, "", 0, fmt.Errorf("FORBIDDEN_TIER")
-	case targetTier == TierPro && Tier(currentTier.String) == TierPlus:
+	case targetTier == TierPro && effectiveTier == TierPlus:
 		return false, "", 0, fmt.Errorf("USE_UPGRADE_PLUS_TO_PRO")
 	}
 
-	now := time.Now().UnixMilli()
 	currentExpireAt := int64(0)
 	if tierExpireAt.Valid {
 		currentExpireAt = tierExpireAt.Int64
@@ -521,6 +525,24 @@ func (s *Store) renewTier(ctx context.Context, userID string, orderID string, ta
 		return false, "", 0, err
 	}
 	return false, targetTier, newTierExpireAt, nil
+}
+
+func effectiveTierFromRow(tier sql.NullString, expireAt sql.NullInt64, fallback Tier, now int64) (Tier, *int64, error) {
+	resultTier := fallback
+	switch Tier(tier.String) {
+	case TierFree, TierPlus, TierPro:
+		resultTier = Tier(tier.String)
+	}
+
+	if (resultTier == TierPlus || resultTier == TierPro) && expireAt.Valid && expireAt.Int64 <= now {
+		return TierFree, nil, nil
+	}
+
+	if !expireAt.Valid {
+		return resultTier, nil, nil
+	}
+	value := expireAt.Int64
+	return resultTier, &value, nil
 }
 
 func (s *Store) consumeOverflowQuota(ctx context.Context, tx *sql.Tx, userID string, now int64) (*QuotaSource, error) {
