@@ -5621,7 +5621,8 @@ private fun UiCopyPreviewOverlay(
                 "+ 面板未满 4 张时的提示第二行",
                 UiCopyPreviewKind.AttachmentSheet
             ),
-            UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层 / 已满附件面板", UiCopyPreviewKind.ImageCount),
+            UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层", UiCopyPreviewKind.ImageCountHint),
+            UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "已满附件面板", UiCopyPreviewKind.ImageCountSheet),
             UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
             UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "assistant 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
             UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
@@ -5728,7 +5729,8 @@ private enum class UiCopyPreviewKind {
     InputMenu,
     ImageFormat,
     ImageOversize,
-    ImageCount,
+    ImageCountHint,
+    ImageCountSheet,
     CameraOpenFailed
 }
 
@@ -5896,7 +5898,8 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
                 UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE)
-                UiCopyPreviewKind.ImageCount -> UiCopyPreviewImageCount()
+                UiCopyPreviewKind.ImageCountHint -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
+                UiCopyPreviewKind.ImageCountSheet -> UiCopyPreviewAttachmentSheet(limitReached = true)
                 UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)
             }
         }
@@ -5939,16 +5942,6 @@ private fun UiCopyPreviewHint(text: String) {
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
             )
         }
-    }
-}
-
-@Composable
-private fun UiCopyPreviewImageCount() {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
-        UiCopyPreviewAttachmentSheet(limitReached = true)
     }
 }
 
