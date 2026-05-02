@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -31,6 +32,7 @@ internal fun ImagePreviewPager(
     models: List<Any?>,
     initialPage: Int,
     contentDescription: String,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (models.isEmpty()) return
@@ -55,9 +57,9 @@ internal fun ImagePreviewPager(
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Fit,
                 state = rememberZoomableImageState(zoomableState),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(22.dp)
+                onClick = { onDismiss() },
+                contentPadding = PaddingValues(22.dp),
+                modifier = Modifier.fillMaxSize()
             )
         }
         if (models.size > 1) {

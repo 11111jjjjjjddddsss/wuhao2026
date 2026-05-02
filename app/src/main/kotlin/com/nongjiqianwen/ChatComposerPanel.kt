@@ -944,15 +944,12 @@ private fun ComposerImagePreviewDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xE6000000))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onDismiss() }
         ) {
             ImagePreviewPager(
                 models = previewModels,
                 initialPage = initialPage,
-                contentDescription = "图片预览"
+                contentDescription = "图片预览",
+                onDismiss = onDismiss
             )
             Box(
                 modifier = Modifier

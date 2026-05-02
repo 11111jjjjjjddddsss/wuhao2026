@@ -6125,15 +6125,12 @@ private fun UserMessageImagePreviewDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0xE6000000))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onDismiss() }
         ) {
             ImagePreviewPager(
                 models = sources,
                 initialPage = initialPage,
-                contentDescription = "用户上传图片预览"
+                contentDescription = "用户上传图片预览",
+                onDismiss = onDismiss
             )
             Box(
                 modifier = Modifier
