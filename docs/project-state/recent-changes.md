@@ -5,7 +5,7 @@
 
 ## 2026-05-02
 
-- `ImagePreviewGesture.kt` / `ChatComposerPanel.kt` / `ChatScreen.kt` 优化输入框图片和聊天区用户图片的全屏预览手势：双指缩放改为围绕手指中心缩放，并按当前图片实际 Fit 尺寸约束位移；放大到 1.05 倍以上时，两个预览入口都会暂停外层 `HorizontalPager` 的左右滑动，让当前图片独占单指拖动，减少 Pager 抢手势导致的迟钝感。边界内拖动加跟手增益，左右边界给更明显的阻尼回弹；缩回接近 1 倍后恢复左右切图。缩放 / 位移渲染改用 `graphicsLayer` lambda，减少手势过程中整张预览图反复重组。输入框预览和聊天区预览继续共用同一套手势 helper，不新增第二套旧方案；不改图片选择、压缩上传、发送链、聊天滚动链或 96dp 工作线。
+- Android 构建链升级到 Kotlin Android / Compose Compiler Gradle plugin `2.1.21`，并按 Kotlin 2.x 官方迁移方式应用 `org.jetbrains.kotlin.plugin.compose`、删除旧 `composeOptions.kotlinCompilerExtensionVersion`；图片全屏预览依赖升级到 Telephoto `zoomable-image-coil:0.19.0`。输入框图片预览和聊天区用户图片预览改为共用新增 `ImagePreviewPager.kt`，内部使用 Telephoto `ZoomableAsyncImage` + `HorizontalPager`，让缩放、拖动、边界阻尼和 pager handoff 交给成熟库处理；旧 `ImagePreviewGesture.kt` 及两个入口里的手写全屏 zoom page 已删除，缩略图轻量解码函数继续保留。本次不改图片选择、压缩上传、发送链、聊天滚动链或 96dp 工作线。
 - `ChatScreen.kt` 重新整理 debug-only UI 文案预览面板：上半部分列表不再用“主界面标题 / 网络 / 图片格式”这类分类名当主标题，而是直接显示用户实际会看到的文案，并把触发场景放进副标题；补齐附件面板里的“相机 / 照片 / 单次最多4张照片 / 建议拍清...”等内部文案条目。`回复未完成 / 重试` 与 `发送失败 / 重发` 抽成共享常量，正式尾部和预览面板复用同一口径。同步在文案台账里明确：预览面板不会自动扫描 Compose 文案，新增用户可见文案时必须同步维护清单。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` 收口 4 张图片已满时的附件面板文案：debug-only UI 文案预览面板不再单列“附件已满”，该状态合并到“图片数量”样式预览里；实际 `+` 附件卡片在已满状态只保留顶部“最多4张图片”，不再重复显示底部“单次最多4张照片 / 拍摄建议”。未满状态的相机 / 照片入口和拍摄建议保持不变，不改图片选择、压缩上传、发送链、预览手势、聊天滚动链或 96dp 工作线。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` / `ImagePreviewGesture.kt` 删除“图片处理中，请稍候”和“部分图片无法读取，已跳过”两类主界面提示及其 debug 文案预览项：带图发送等待期间重复点图片入口 / 删除图片改为静默忽略，多选导入时部分失败只保留可读取图片；全失败仍走“仅支持 JPEG / PNG 格式”兜底。输入框图片预览和聊天区用户图片预览的全屏页改用共享手势接管：未放大时单指横滑交给 `HorizontalPager`，双指缩放或图片已放大后才由图片本身接管拖动，修正全屏预览左右滑动被缩放手势吃掉的问题。只改图片预览手势、低频提示和文案预览面板，不改图片选择上限、压缩上传链、发送链、滚动链或 96dp 工作线。

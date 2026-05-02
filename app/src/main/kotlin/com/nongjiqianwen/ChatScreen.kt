@@ -44,8 +44,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
@@ -5984,7 +5982,6 @@ private fun UiCopyPreviewInputActionMenu() {
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
 private fun UserMessageImageStrip(
     imageUris: List<String>,
     imageUrls: List<String>,
@@ -6114,23 +6111,12 @@ private fun UserMessageImageThumb(
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
 private fun UserMessageImagePreviewDialog(
     sources: List<String>,
     initialPage: Int,
     onDismiss: () -> Unit
 ) {
     if (sources.isEmpty()) return
-    val pageCount = sources.size
-    val pagerState = rememberPagerState(
-        initialPage = initialPage.coerceIn(0, pageCount - 1)
-    ) { pageCount }
-    var currentPreviewScale by remember {
-        mutableStateOf(1f)
-    }
-    LaunchedEffect(pagerState.currentPage) {
-        currentPreviewScale = 1f
-    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -6144,38 +6130,11 @@ private fun UserMessageImagePreviewDialog(
                     indication = null
                 ) { onDismiss() }
         ) {
-            HorizontalPager(
-                state = pagerState,
-                userScrollEnabled = currentPreviewScale <= IMAGE_PREVIEW_PAGER_LOCK_SCALE,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                UserMessageImagePreviewPage(
-                    source = sources[page],
-                    canPageBefore = page > 0,
-                    canPageAfter = page < pageCount - 1,
-                    onScaleChanged = { nextScale ->
-                        if (page == pagerState.currentPage) {
-                            currentPreviewScale = nextScale
-                        }
-                    }
-                )
-            }
-            if (pageCount > 1) {
-                Text(
-                    text = "${pagerState.currentPage + 1}/$pageCount",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 44.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0x66111111))
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                        .zIndex(1f)
-                )
-            }
+            ImagePreviewPager(
+                models = sources,
+                initialPage = initialPage,
+                contentDescription = "用户上传图片预览"
+            )
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -6194,90 +6153,6 @@ private fun UserMessageImagePreviewDialog(
             }
         }
     }
-}
-
-@Composable
-private fun UserMessageImagePreviewPage(
-    source: String,
-    canPageBefore: Boolean,
-    canPageAfter: Boolean,
-    onScaleChanged: (Float) -> Unit
-) {
-    val context = LocalContext.current
-    var bitmap by remember(source) {
-        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
-    }
-    LaunchedEffect(source) {
-        bitmap = withContext(Dispatchers.IO) {
-            context.decodeChatImagePreview(source, targetSize = 1600)
-        }
-    }
-    val previewBitmap = bitmap
-    if (previewBitmap != null) {
-        ZoomableUserMessagePreviewImage(
-            bitmap = previewBitmap,
-            canPageBefore = canPageBefore,
-            canPageAfter = canPageAfter,
-            onScaleChanged = onScaleChanged
-        )
-    } else {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            UserMessageImagePlaceholderIcon(
-                tint = Color.White.copy(alpha = 0.72f),
-                modifier = Modifier.size(44.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ZoomableUserMessagePreviewImage(
-    bitmap: androidx.compose.ui.graphics.ImageBitmap,
-    canPageBefore: Boolean,
-    canPageAfter: Boolean,
-    onScaleChanged: (Float) -> Unit
-) {
-    var scale by remember(bitmap) {
-        mutableStateOf(1f)
-    }
-    var offset by remember(bitmap) {
-        mutableStateOf(Offset.Zero)
-    }
-    var viewportSize by remember(bitmap) {
-        mutableStateOf(IntSize.Zero)
-    }
-    val imageSize = remember(bitmap) {
-        IntSize(bitmap.width, bitmap.height)
-    }
-    Image(
-        bitmap = bitmap,
-        contentDescription = "用户上传图片预览",
-        contentScale = ContentScale.Fit,
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(22.dp)
-            .onSizeChanged { viewportSize = it }
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                translationX = offset.x
-                translationY = offset.y
-            }
-            .zoomableImagePreviewInput(
-                key = bitmap,
-                imageSize = imageSize,
-                viewportSize = viewportSize,
-                canPageBefore = canPageBefore,
-                canPageAfter = canPageAfter
-            ) { nextScale, nextOffset ->
-                scale = nextScale
-                offset = nextOffset
-                onScaleChanged(nextScale)
-            }
-    )
 }
 
 @Composable

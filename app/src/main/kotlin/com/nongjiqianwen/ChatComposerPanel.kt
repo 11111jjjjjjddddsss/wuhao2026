@@ -11,7 +11,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,8 +39,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -70,7 +67,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
@@ -931,22 +927,14 @@ private fun ComposerImagePreviewThumb(
 }
 
 @Composable
-@OptIn(ExperimentalFoundationApi::class)
 private fun ComposerImagePreviewDialog(
     images: List<ComposerImageAttachment>,
     initialPage: Int,
     onDismiss: () -> Unit
 ) {
     if (images.isEmpty()) return
-    val pageCount = images.size
-    val pagerState = rememberPagerState(
-        initialPage = initialPage.coerceIn(0, pageCount - 1)
-    ) { pageCount }
-    var currentPreviewScale by remember {
-        mutableStateOf(1f)
-    }
-    LaunchedEffect(pagerState.currentPage) {
-        currentPreviewScale = 1f
+    val previewModels = remember(images) {
+        images.map { it.uri }
     }
     Dialog(
         onDismissRequest = onDismiss,
@@ -961,38 +949,11 @@ private fun ComposerImagePreviewDialog(
                     indication = null
                 ) { onDismiss() }
         ) {
-            HorizontalPager(
-                state = pagerState,
-                userScrollEnabled = currentPreviewScale <= IMAGE_PREVIEW_PAGER_LOCK_SCALE,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                ComposerImagePreviewPage(
-                    image = images[page],
-                    canPageBefore = page > 0,
-                    canPageAfter = page < pageCount - 1,
-                    onScaleChanged = { nextScale ->
-                        if (page == pagerState.currentPage) {
-                            currentPreviewScale = nextScale
-                        }
-                    }
-                )
-            }
-            if (pageCount > 1) {
-                Text(
-                    text = "${pagerState.currentPage + 1}/$pageCount",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 44.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(Color(0x66111111))
-                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                        .zIndex(1f)
-                )
-            }
+            ImagePreviewPager(
+                models = previewModels,
+                initialPage = initialPage,
+                contentDescription = "图片预览"
+            )
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -1011,90 +972,6 @@ private fun ComposerImagePreviewDialog(
             }
         }
     }
-}
-
-@Composable
-private fun ComposerImagePreviewPage(
-    image: ComposerImageAttachment,
-    canPageBefore: Boolean,
-    canPageAfter: Boolean,
-    onScaleChanged: (Float) -> Unit
-) {
-    val context = LocalContext.current
-    var bitmap by remember(image.uri) {
-        mutableStateOf<ImageBitmap?>(null)
-    }
-    LaunchedEffect(image.uri) {
-        bitmap = withContext(Dispatchers.IO) {
-            decodeComposerPreviewBitmap(context, image.uri, targetSize = 1600)
-        }
-    }
-    val previewBitmap = bitmap
-    if (previewBitmap != null) {
-        ZoomableComposerPreviewImage(
-            bitmap = previewBitmap,
-            canPageBefore = canPageBefore,
-            canPageAfter = canPageAfter,
-            onScaleChanged = onScaleChanged
-        )
-    } else {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            ComposerPhotoIcon(
-                tint = Color.White.copy(alpha = 0.72f),
-                modifier = Modifier.size(44.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ZoomableComposerPreviewImage(
-    bitmap: ImageBitmap,
-    canPageBefore: Boolean,
-    canPageAfter: Boolean,
-    onScaleChanged: (Float) -> Unit
-) {
-    var scale by remember(bitmap) {
-        mutableStateOf(1f)
-    }
-    var offset by remember(bitmap) {
-        mutableStateOf(Offset.Zero)
-    }
-    var viewportSize by remember(bitmap) {
-        mutableStateOf(IntSize.Zero)
-    }
-    val imageSize = remember(bitmap) {
-        IntSize(bitmap.width, bitmap.height)
-    }
-    Image(
-        bitmap = bitmap,
-        contentDescription = "图片预览",
-        contentScale = ContentScale.Fit,
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(22.dp)
-            .onSizeChanged { viewportSize = it }
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                translationX = offset.x
-                translationY = offset.y
-            }
-            .zoomableImagePreviewInput(
-                key = bitmap,
-                imageSize = imageSize,
-                viewportSize = viewportSize,
-                canPageBefore = canPageBefore,
-                canPageAfter = canPageAfter
-            ) { nextScale, nextOffset ->
-                scale = nextScale
-                offset = nextOffset
-                onScaleChanged(nextScale)
-            }
-    )
 }
 
 @Composable
