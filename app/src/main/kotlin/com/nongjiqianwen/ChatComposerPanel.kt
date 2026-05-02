@@ -959,7 +959,11 @@ private fun ComposerImagePreviewDialog(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                ComposerImagePreviewPage(image = images[page])
+                ComposerImagePreviewPage(
+                    image = images[page],
+                    canPageBefore = page > 0,
+                    canPageAfter = page < pageCount - 1
+                )
             }
             if (pageCount > 1) {
                 Text(
@@ -999,7 +1003,9 @@ private fun ComposerImagePreviewDialog(
 
 @Composable
 private fun ComposerImagePreviewPage(
-    image: ComposerImageAttachment
+    image: ComposerImageAttachment,
+    canPageBefore: Boolean,
+    canPageAfter: Boolean
 ) {
     val context = LocalContext.current
     var bitmap by remember(image.uri) {
@@ -1012,7 +1018,11 @@ private fun ComposerImagePreviewPage(
     }
     val previewBitmap = bitmap
     if (previewBitmap != null) {
-        ZoomableComposerPreviewImage(bitmap = previewBitmap)
+        ZoomableComposerPreviewImage(
+            bitmap = previewBitmap,
+            canPageBefore = canPageBefore,
+            canPageAfter = canPageAfter
+        )
     } else {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -1027,7 +1037,11 @@ private fun ComposerImagePreviewPage(
 }
 
 @Composable
-private fun ZoomableComposerPreviewImage(bitmap: ImageBitmap) {
+private fun ZoomableComposerPreviewImage(
+    bitmap: ImageBitmap,
+    canPageBefore: Boolean,
+    canPageAfter: Boolean
+) {
     var scale by remember(bitmap) {
         mutableStateOf(1f)
     }
@@ -1057,7 +1071,9 @@ private fun ZoomableComposerPreviewImage(bitmap: ImageBitmap) {
             .zoomableImagePreviewInput(
                 key = bitmap,
                 imageSize = imageSize,
-                viewportSize = viewportSize
+                viewportSize = viewportSize,
+                canPageBefore = canPageBefore,
+                canPageAfter = canPageAfter
             ) { nextScale, nextOffset ->
                 scale = nextScale
                 offset = nextOffset

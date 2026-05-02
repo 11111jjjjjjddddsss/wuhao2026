@@ -6142,7 +6142,11 @@ private fun UserMessageImagePreviewDialog(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                UserMessageImagePreviewPage(source = sources[page])
+                UserMessageImagePreviewPage(
+                    source = sources[page],
+                    canPageBefore = page > 0,
+                    canPageAfter = page < pageCount - 1
+                )
             }
             if (pageCount > 1) {
                 Text(
@@ -6181,7 +6185,11 @@ private fun UserMessageImagePreviewDialog(
 }
 
 @Composable
-private fun UserMessageImagePreviewPage(source: String) {
+private fun UserMessageImagePreviewPage(
+    source: String,
+    canPageBefore: Boolean,
+    canPageAfter: Boolean
+) {
     val context = LocalContext.current
     var bitmap by remember(source) {
         mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
@@ -6193,7 +6201,11 @@ private fun UserMessageImagePreviewPage(source: String) {
     }
     val previewBitmap = bitmap
     if (previewBitmap != null) {
-        ZoomableUserMessagePreviewImage(bitmap = previewBitmap)
+        ZoomableUserMessagePreviewImage(
+            bitmap = previewBitmap,
+            canPageBefore = canPageBefore,
+            canPageAfter = canPageAfter
+        )
     } else {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -6208,7 +6220,11 @@ private fun UserMessageImagePreviewPage(source: String) {
 }
 
 @Composable
-private fun ZoomableUserMessagePreviewImage(bitmap: androidx.compose.ui.graphics.ImageBitmap) {
+private fun ZoomableUserMessagePreviewImage(
+    bitmap: androidx.compose.ui.graphics.ImageBitmap,
+    canPageBefore: Boolean,
+    canPageAfter: Boolean
+) {
     var scale by remember(bitmap) {
         mutableStateOf(1f)
     }
@@ -6238,7 +6254,9 @@ private fun ZoomableUserMessagePreviewImage(bitmap: androidx.compose.ui.graphics
             .zoomableImagePreviewInput(
                 key = bitmap,
                 imageSize = imageSize,
-                viewportSize = viewportSize
+                viewportSize = viewportSize,
+                canPageBefore = canPageBefore,
+                canPageAfter = canPageAfter
             ) { nextScale, nextOffset ->
                 scale = nextScale
                 offset = nextOffset
