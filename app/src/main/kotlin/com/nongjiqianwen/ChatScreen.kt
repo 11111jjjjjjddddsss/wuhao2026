@@ -357,6 +357,12 @@ private const val RATE_LIMIT_HINT_TEXT = "当前请求较多，请稍后重试"
 private const val INTERRUPTED_NETWORK_HINT_TEXT = "网络波动，回复未完成"
 private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请重试"
 private const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
+private const val ASSISTANT_RETRY_STATUS_TEXT = "回复未完成"
+private const val ASSISTANT_RETRY_ACTION_TEXT = "重试"
+private const val ASSISTANT_RETRY_PREVIEW_TEXT = "回复未完成 · 点击重试"
+private const val USER_RETRY_STATUS_TEXT = "发送失败"
+private const val USER_RETRY_ACTION_TEXT = "重发"
+private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -4679,8 +4685,8 @@ fun ChatScreen() {
                             }
                             if (failedAssistantState != null) {
                                 MessageStatusFooter(
-                                    statusText = "回复未完成",
-                                    actionText = "重试",
+                                    statusText = ASSISTANT_RETRY_STATUS_TEXT,
+                                    actionText = ASSISTANT_RETRY_ACTION_TEXT,
                                     alignEnd = false,
                                     onActionClick = {
                                         retryFailedAssistantMessage(msg.id)
@@ -4727,8 +4733,8 @@ fun ChatScreen() {
                             }
                             if (failedUserState != null) {
                                 MessageStatusFooter(
-                                    statusText = "发送失败",
-                                    actionText = "重发",
+                                    statusText = USER_RETRY_STATUS_TEXT,
+                                    actionText = USER_RETRY_ACTION_TEXT,
                                     alignEnd = true,
                                     onActionClick = {
                                         retryFailedUserMessage(msg.id)
@@ -5574,30 +5580,41 @@ private fun UiCopyPreviewOverlay(
 ) {
     val copyItems = remember {
         listOf(
-            UiCopyPreviewItem("主界面标题", "顶部标题", UiCopyPreviewKind.AppTitle),
-            UiCopyPreviewItem("欢迎空态", "空列表欢迎文案", UiCopyPreviewKind.Welcome),
-            UiCopyPreviewItem("输入框", "底部 placeholder", UiCopyPreviewKind.ComposerPlaceholder),
-            UiCopyPreviewItem("输入框带图", COMPOSER_IMAGE_PLACEHOLDER_TEXT, UiCopyPreviewKind.ComposerImagePlaceholder),
+            UiCopyPreviewItem(APP_TITLE_TEXT, "顶部标题", UiCopyPreviewKind.AppTitle),
             UiCopyPreviewItem(
-                "附件面板",
-                "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT / 拍照建议",
+                WELCOME_EMPTY_STATE_TEXT.replace("\n", " / "),
+                "空会话欢迎态",
+                UiCopyPreviewKind.Welcome
+            ),
+            UiCopyPreviewItem(COMPOSER_DEFAULT_PLACEHOLDER_TEXT, "输入框无图 placeholder", UiCopyPreviewKind.ComposerPlaceholder),
+            UiCopyPreviewItem(COMPOSER_IMAGE_PLACEHOLDER_TEXT, "输入框已有图片 placeholder", UiCopyPreviewKind.ComposerImagePlaceholder),
+            UiCopyPreviewItem(COMPOSER_ATTACHMENT_CAMERA_TEXT, "+ 面板入口", UiCopyPreviewKind.AttachmentSheet),
+            UiCopyPreviewItem(COMPOSER_ATTACHMENT_PHOTO_TEXT, "+ 面板入口", UiCopyPreviewKind.AttachmentSheet),
+            UiCopyPreviewItem(
+                COMPOSER_ATTACHMENT_LIMIT_TEXT,
+                "+ 面板未满 4 张时的提示第一行",
                 UiCopyPreviewKind.AttachmentSheet
             ),
-            UiCopyPreviewItem("AI尾部", "免责声明", UiCopyPreviewKind.Disclaimer),
-            UiCopyPreviewItem("回复中断", "回复未完成 · 点击重试", UiCopyPreviewKind.AssistantRetry),
-            UiCopyPreviewItem("发送失败", "发送失败 / 重发", UiCopyPreviewKind.UserRetry),
-            UiCopyPreviewItem("网络", NETWORK_UNAVAILABLE_HINT_TEXT, UiCopyPreviewKind.Network),
-            UiCopyPreviewItem("额度", QUOTA_EXHAUSTED_HINT_TEXT, UiCopyPreviewKind.Quota),
-            UiCopyPreviewItem("限流", RATE_LIMIT_HINT_TEXT, UiCopyPreviewKind.RateLimit),
-            UiCopyPreviewItem("中断", INTERRUPTED_NETWORK_HINT_TEXT, UiCopyPreviewKind.Interrupted),
-            UiCopyPreviewItem("中断兜底", INTERRUPTED_FALLBACK_HINT_TEXT, UiCopyPreviewKind.InterruptedFallback),
-            UiCopyPreviewItem("输入超长", INPUT_TOO_LONG_HINT_TEXT, UiCopyPreviewKind.InputTooLong),
-            UiCopyPreviewItem("消息菜单", "复制 / 全文复制", UiCopyPreviewKind.MessageMenu),
-            UiCopyPreviewItem("输入菜单", "复制 / 粘贴 / 剪切 / 全选", UiCopyPreviewKind.InputMenu),
-            UiCopyPreviewItem("图片格式", ImageUploader.DECODE_FAIL_MESSAGE, UiCopyPreviewKind.ImageFormat),
-            UiCopyPreviewItem("图片超限", ImageUploader.SIZE_LIMIT_FAIL_MESSAGE, UiCopyPreviewKind.ImageOversize),
-            UiCopyPreviewItem("图片数量", COMPOSER_IMAGE_COUNT_HINT, UiCopyPreviewKind.ImageCount),
-            UiCopyPreviewItem("相机异常", CAMERA_OPEN_FAILED_HINT_TEXT, UiCopyPreviewKind.CameraOpenFailed)
+            UiCopyPreviewItem(
+                COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT,
+                "+ 面板未满 4 张时的提示第二行",
+                UiCopyPreviewKind.AttachmentSheet
+            ),
+            UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层 / 已满附件面板", UiCopyPreviewKind.ImageCount),
+            UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
+            UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "assistant 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
+            UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
+            UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网络发送 / 重试浮层", UiCopyPreviewKind.Network),
+            UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽浮层", UiCopyPreviewKind.Quota),
+            UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
+            UiCopyPreviewItem(INTERRUPTED_NETWORK_HINT_TEXT, "streaming 网络中断浮层", UiCopyPreviewKind.Interrupted),
+            UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback),
+            UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
+            UiCopyPreviewItem("复制 / 全文复制", "消息选择菜单", UiCopyPreviewKind.MessageMenu),
+            UiCopyPreviewItem("复制 / 粘贴 / 剪切 / 全选", "输入框选择菜单", UiCopyPreviewKind.InputMenu),
+            UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片解码失败浮层", UiCopyPreviewKind.ImageFormat),
+            UiCopyPreviewItem(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE, "图片极端压缩失败兜底浮层", UiCopyPreviewKind.ImageOversize),
+            UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败浮层", UiCopyPreviewKind.CameraOpenFailed)
         )
     }
     var selectedIndex by remember { mutableIntStateOf(0) }
@@ -5830,16 +5847,16 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.AssistantRetry -> {
                     MessageStatusFooter(
-                        statusText = "回复未完成",
-                        actionText = "重试",
+                        statusText = ASSISTANT_RETRY_STATUS_TEXT,
+                        actionText = ASSISTANT_RETRY_ACTION_TEXT,
                         alignEnd = false,
                         onActionClick = {}
                     )
                 }
                 UiCopyPreviewKind.UserRetry -> {
                     MessageStatusFooter(
-                        statusText = "发送失败",
-                        actionText = "重发",
+                        statusText = USER_RETRY_STATUS_TEXT,
+                        actionText = USER_RETRY_ACTION_TEXT,
                         alignEnd = true,
                         onActionClick = {}
                     )
