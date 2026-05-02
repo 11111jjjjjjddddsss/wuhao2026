@@ -664,7 +664,7 @@ private fun ChatInputField(
 internal fun ComposerAttachmentBottomSheet(
     visible: Boolean,
     limitReached: Boolean = false,
-    limitHintText: String = "已达4张上限",
+    limitHintText: String = "最多4张图片",
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onCameraClick: () -> Unit,

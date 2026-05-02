@@ -315,7 +315,6 @@ private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
 private const val INPUT_MAX_CHARS = 6000
 private const val COMPOSER_MAX_IMAGE_COUNT = 4
 private const val COMPOSER_IMAGE_COUNT_HINT = "最多4张图片"
-private const val COMPOSER_IMAGE_COUNT_REACHED_HINT = "已达4张上限"
 private const val COMPOSER_MAX_IMAGE_SIZE_BYTES = 1024 * 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
@@ -5129,7 +5128,7 @@ fun ChatScreen() {
                 ComposerAttachmentBottomSheet(
                     visible = attachmentMenuVisible,
                     limitReached = selectedComposerImages.size >= COMPOSER_MAX_IMAGE_COUNT,
-                    limitHintText = COMPOSER_IMAGE_COUNT_REACHED_HINT,
+                    limitHintText = COMPOSER_IMAGE_COUNT_HINT,
                     modifier = Modifier.fillMaxSize(),
                     onDismiss = {
                         attachmentMenuVisible = false
@@ -5591,7 +5590,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem("输入菜单", "复制 / 粘贴 / 剪切 / 全选", UiCopyPreviewKind.InputMenu),
             UiCopyPreviewItem("图片格式", "仅支持 JPEG / PNG 格式", UiCopyPreviewKind.ImageFormat),
             UiCopyPreviewItem("图片超限", "图片压缩后仍超过 1MB", UiCopyPreviewKind.ImageOversize),
-            UiCopyPreviewItem("图片数量", "$COMPOSER_IMAGE_COUNT_HINT / $COMPOSER_IMAGE_COUNT_REACHED_HINT", UiCopyPreviewKind.ImageCount)
+            UiCopyPreviewItem("图片数量", COMPOSER_IMAGE_COUNT_HINT, UiCopyPreviewKind.ImageCount)
         )
     }
     var selectedIndex by remember { mutableIntStateOf(0) }
@@ -5829,26 +5828,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint("仅支持 JPEG / PNG 格式")
                 UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint("图片压缩后仍超过 1MB")
-                UiCopyPreviewKind.ImageCount -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
-                        Surface(
-                            color = Color.White,
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = COMPOSER_IMAGE_COUNT_REACHED_HINT,
-                                color = Color(0xFF34363B),
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-                            )
-                        }
-                    }
-                }
+                UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
             }
         }
     }
