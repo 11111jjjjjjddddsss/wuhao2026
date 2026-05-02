@@ -14,12 +14,12 @@ import kotlin.math.abs
 import kotlin.math.min
 
 private const val IMAGE_PREVIEW_MIN_ZOOMED_SCALE = 1.01f
+internal const val IMAGE_PREVIEW_PAGER_LOCK_SCALE = 1.05f
 private const val IMAGE_PREVIEW_EDGE_HANDOFF_PX = 0.5f
-private const val IMAGE_PREVIEW_EDGE_HANDOFF_RUBBER_PX = 18f
-private const val IMAGE_PREVIEW_EDGE_RUBBER_BAND_PX = 72f
-private const val IMAGE_PREVIEW_EDGE_RUBBER_FACTOR = 0.42f
-private const val IMAGE_PREVIEW_ZOOMED_DRAG_GAIN = 1.12f
-private const val IMAGE_PREVIEW_SNAP_BACK_MS = 90
+private const val IMAGE_PREVIEW_EDGE_RUBBER_BAND_PX = 104f
+private const val IMAGE_PREVIEW_EDGE_RUBBER_FACTOR = 0.54f
+private const val IMAGE_PREVIEW_ZOOMED_DRAG_GAIN = 1.2f
+private const val IMAGE_PREVIEW_SNAP_BACK_MS = 130
 
 internal fun Modifier.zoomableImagePreviewInput(
     key: Any,
@@ -88,40 +88,20 @@ internal fun Modifier.zoomableImagePreviewInput(
                     val pan = change.position - change.previousPosition
                     if (pan != Offset.Zero) {
                         val horizontalDominant = abs(pan.x) >= abs(pan.y)
-                        val hasPageInPanDirection = if (pan.x > 0f) canPageBefore else canPageAfter
                         if (gestureScale > IMAGE_PREVIEW_MIN_ZOOMED_SCALE) {
                             val imagePan = pan * IMAGE_PREVIEW_ZOOMED_DRAG_GAIN
-                            val limit = imagePreviewOffsetLimit(
+                            gestureOffset = rubberBandImagePreviewOffset(
+                                offset = gestureOffset + imagePan,
                                 scale = gestureScale,
                                 imageSize = imageSize,
                                 viewportSize = viewportSize
                             )
-                            val movingBeyondHorizontalEdge =
-                                horizontalDominant &&
-                                    abs(pan.x) > IMAGE_PREVIEW_EDGE_HANDOFF_PX &&
-                                    isMovingBeyondHorizontalLimit(
-                                        offsetX = gestureOffset.x,
-                                        panX = imagePan.x,
-                                        limitX = limit.x
-                                    )
-                            val shouldHandOffToPager =
-                                movingBeyondHorizontalEdge &&
-                                    hasPageInPanDirection &&
-                                    abs(gestureOffset.x) > limit.x + IMAGE_PREVIEW_EDGE_HANDOFF_RUBBER_PX
-                            if (!shouldHandOffToPager) {
-                                gestureOffset = rubberBandImagePreviewOffset(
-                                    offset = gestureOffset + imagePan,
-                                    scale = gestureScale,
-                                    imageSize = imageSize,
-                                    viewportSize = viewportSize
-                                )
-                                onTransformChanged(gestureScale, gestureOffset)
-                                change.consume()
-                            }
+                            onTransformChanged(gestureScale, gestureOffset)
+                            change.consume()
                         } else if (
                             horizontalDominant &&
                             abs(pan.x) > IMAGE_PREVIEW_EDGE_HANDOFF_PX &&
-                            !hasPageInPanDirection
+                            !(if (pan.x > 0f) canPageBefore else canPageAfter)
                         ) {
                             gestureOffset = Offset(
                                 x = rubberBandAxis(gestureOffset.x + pan.x, limit = 0f),
@@ -176,16 +156,6 @@ private fun List<PointerInputChange>.averageDistanceTo(centroid: Offset): Float 
         distance += (change.position - centroid).getDistance()
     }
     return distance / size
-}
-
-private fun isMovingBeyondHorizontalLimit(
-    offsetX: Float,
-    panX: Float,
-    limitX: Float
-): Boolean {
-    if (limitX <= 0f) return true
-    return (panX > 0f && offsetX >= limitX - IMAGE_PREVIEW_EDGE_HANDOFF_PX) ||
-        (panX < 0f && offsetX <= -limitX + IMAGE_PREVIEW_EDGE_HANDOFF_PX)
 }
 
 private fun rubberBandImagePreviewOffset(

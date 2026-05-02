@@ -942,6 +942,12 @@ private fun ComposerImagePreviewDialog(
     val pagerState = rememberPagerState(
         initialPage = initialPage.coerceIn(0, pageCount - 1)
     ) { pageCount }
+    var currentPreviewScale by remember {
+        mutableStateOf(1f)
+    }
+    LaunchedEffect(pagerState.currentPage) {
+        currentPreviewScale = 1f
+    }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -957,12 +963,18 @@ private fun ComposerImagePreviewDialog(
         ) {
             HorizontalPager(
                 state = pagerState,
+                userScrollEnabled = currentPreviewScale <= IMAGE_PREVIEW_PAGER_LOCK_SCALE,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 ComposerImagePreviewPage(
                     image = images[page],
                     canPageBefore = page > 0,
-                    canPageAfter = page < pageCount - 1
+                    canPageAfter = page < pageCount - 1,
+                    onScaleChanged = { nextScale ->
+                        if (page == pagerState.currentPage) {
+                            currentPreviewScale = nextScale
+                        }
+                    }
                 )
             }
             if (pageCount > 1) {
@@ -1005,7 +1017,8 @@ private fun ComposerImagePreviewDialog(
 private fun ComposerImagePreviewPage(
     image: ComposerImageAttachment,
     canPageBefore: Boolean,
-    canPageAfter: Boolean
+    canPageAfter: Boolean,
+    onScaleChanged: (Float) -> Unit
 ) {
     val context = LocalContext.current
     var bitmap by remember(image.uri) {
@@ -1021,7 +1034,8 @@ private fun ComposerImagePreviewPage(
         ZoomableComposerPreviewImage(
             bitmap = previewBitmap,
             canPageBefore = canPageBefore,
-            canPageAfter = canPageAfter
+            canPageAfter = canPageAfter,
+            onScaleChanged = onScaleChanged
         )
     } else {
         Box(
@@ -1040,7 +1054,8 @@ private fun ComposerImagePreviewPage(
 private fun ZoomableComposerPreviewImage(
     bitmap: ImageBitmap,
     canPageBefore: Boolean,
-    canPageAfter: Boolean
+    canPageAfter: Boolean,
+    onScaleChanged: (Float) -> Unit
 ) {
     var scale by remember(bitmap) {
         mutableStateOf(1f)
@@ -1062,12 +1077,12 @@ private fun ZoomableComposerPreviewImage(
             .fillMaxSize()
             .padding(22.dp)
             .onSizeChanged { viewportSize = it }
-            .graphicsLayer(
-                scaleX = scale,
-                scaleY = scale,
-                translationX = offset.x,
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                translationX = offset.x
                 translationY = offset.y
-            )
+            }
             .zoomableImagePreviewInput(
                 key = bitmap,
                 imageSize = imageSize,
@@ -1077,6 +1092,7 @@ private fun ZoomableComposerPreviewImage(
             ) { nextScale, nextOffset ->
                 scale = nextScale
                 offset = nextOffset
+                onScaleChanged(nextScale)
             }
     )
 }
