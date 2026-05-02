@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
+import android.util.LruCache
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -126,6 +127,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -292,6 +294,7 @@ private const val CHAT_COMPOSER_DRAFT_KEY_PREFIX = "composer_draft_"
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
+private const val CHAT_IMAGE_PREVIEW_CACHE_MAX_KB = 12 * 1024
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
@@ -361,6 +364,12 @@ private const val ASSISTANT_RETRY_PREVIEW_TEXT = "回复未完成 · 点击重�
 private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
 private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
+private val chatImagePreviewCache = object : LruCache<String, ImageBitmap>(CHAT_IMAGE_PREVIEW_CACHE_MAX_KB) {
+    override fun sizeOf(key: String, value: ImageBitmap): Int {
+        return ((value.width * value.height * 4) / 1024).coerceAtLeast(1)
+    }
+}
+private val chatImagePreviewCacheLock = Any()
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -380,6 +389,17 @@ private val blockMarkdownCache = object : LinkedHashMap<String, List<MarkdownUiB
         return size > BLOCK_MARKDOWN_CACHE_LIMIT
     }
 }
+
+private fun cachedChatImagePreview(source: String): ImageBitmap? =
+    synchronized(chatImagePreviewCacheLock) {
+        chatImagePreviewCache.get(source)
+    }
+
+private fun cacheChatImagePreview(source: String, bitmap: ImageBitmap): ImageBitmap =
+    synchronized(chatImagePreviewCacheLock) {
+        chatImagePreviewCache.put(source, bitmap)
+        bitmap
+    }
 
 private fun currentQuotaDayKey(): String {
     val calendar = java.util.Calendar.getInstance(
@@ -1393,25 +1413,39 @@ private fun ByteArray.hasJpegStartMarker(): Boolean =
     size >= 2 && this[0] == 0xFF.toByte() && this[1] == 0xD8.toByte()
 
 private fun Context.isPrivateComposerImage(uri: Uri): Boolean {
+    return privateComposerImageFile(uri) != null
+}
+
+private fun Context.privateComposerImageFile(uri: Uri): File? {
     return runCatching {
-        if (uri.scheme != "file") return@runCatching false
-        val path = uri.path ?: return@runCatching false
+        if (uri.scheme != "file") return@runCatching null
+        val path = uri.path ?: return@runCatching null
         val imageDir = File(filesDir, "composer_images").canonicalFile
         val imageFile = File(path).canonicalFile
-        imageFile.isFile && imageFile.parentFile?.canonicalFile == imageDir
-    }.getOrDefault(false)
+        imageFile.takeIf {
+            it.isFile && it.parentFile?.canonicalFile == imageDir
+        }
+    }.getOrNull()
 }
 
 private fun Context.deleteComposerImageAttachment(attachment: ComposerImageAttachment) {
     runCatching {
-        val uri = Uri.parse(attachment.uri)
-        if (uri.scheme != "file") return@runCatching
-        val path = uri.path ?: return@runCatching
+        privateComposerImageFile(Uri.parse(attachment.uri))?.delete()
+    }
+}
+
+private fun Context.deleteUnreferencedComposerImages(retainedUris: Collection<String>) {
+    runCatching {
         val imageDir = File(filesDir, "composer_images").canonicalFile
-        val imageFile = File(path).canonicalFile
-        if (imageFile.isFile && imageFile.parentFile?.canonicalFile == imageDir) {
-            imageFile.delete()
-        }
+        if (!imageDir.isDirectory) return@runCatching
+        val retainedFiles = retainedUris
+            .mapNotNull { uriString ->
+                runCatching { privateComposerImageFile(Uri.parse(uriString))?.canonicalFile }.getOrNull()
+            }
+            .toSet()
+        imageDir.listFiles()
+            ?.filter { file -> file.isFile && file.canonicalFile !in retainedFiles }
+            ?.forEach { file -> file.delete() }
     }
 }
 
@@ -1430,7 +1464,8 @@ private fun chatPreviewInSampleSize(width: Int, height: Int, targetSize: Int): I
 private fun Context.decodeChatImagePreview(
     source: String,
     targetSize: Int = 512
-): androidx.compose.ui.graphics.ImageBitmap? {
+): ImageBitmap? {
+    cachedChatImagePreview(source)?.let { return it }
     return runCatching {
         val bytes = if (source.startsWith("http://") || source.startsWith("https://")) {
             val connection = URL(source).openConnection().apply {
@@ -1449,7 +1484,9 @@ private fun Context.decodeChatImagePreview(
         val decodeOptions = BitmapFactory.Options().apply {
             inSampleSize = chatPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = targetSize)
         }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)?.asImageBitmap()
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
+            ?.asImageBitmap()
+            ?.let { cacheChatImagePreview(source, it) }
     }.getOrNull()
 }
 
@@ -2893,7 +2930,7 @@ fun ChatScreen() {
         showComposerStatusHint(QUOTA_EXHAUSTED_HINT_TEXT)
     }
 
-    fun pruneFailedMessageStates() {
+    fun pruneMessageRuntimeState() {
         val currentMessageIds = messages.mapTo(mutableSetOf()) { it.id }
         failedUserMessageStates.keys
             .toList()
@@ -2903,6 +2940,18 @@ fun ChatScreen() {
             .toList()
             .filterNot(currentMessageIds::contains)
             .forEach(failedAssistantMessageStates::remove)
+        messageSelectionBoundsCacheById.keys
+            .toList()
+            .filterNot(currentMessageIds::contains)
+            .forEach(messageSelectionBoundsCacheById::remove)
+        messageSelectionBoundsById.keys
+            .toList()
+            .filterNot(currentMessageIds::contains)
+            .forEach(messageSelectionBoundsById::remove)
+        messageContentBoundsById.keys
+            .toList()
+            .filterNot(currentMessageIds::contains)
+            .forEach(messageContentBoundsById::remove)
     }
 
     fun persistableMessagesSnapshot(): List<ChatMessage> {
@@ -2941,6 +2990,15 @@ fun ChatScreen() {
                     }
             )
         )
+    }
+
+    fun currentRetainedComposerImageUris(): Set<String> = buildSet {
+        messages.forEach { message ->
+            message.imageUris.orEmpty().forEach(::add)
+        }
+        selectedComposerImages.forEach { image ->
+            add(image.uri)
+        }
     }
 
     fun upsertUserMessage(
@@ -3076,7 +3134,7 @@ fun ChatScreen() {
         if (startIndex > 0) {
             repeat(startIndex) { messages.removeAt(0) }
         }
-        pruneFailedMessageStates()
+        pruneMessageRuntimeState()
         persistTick++
         val persistedSnapshot = persistableLocalChatWindowSnapshot()
         val persistedMessages = persistedSnapshot.messages
@@ -3155,7 +3213,7 @@ fun ChatScreen() {
         while (messages.size > trimmed.size) {
             messages.removeAt(messages.lastIndex)
         }
-        pruneFailedMessageStates()
+        pruneMessageRuntimeState()
     }
 
     fun trimMessagesInPlace() {
@@ -3163,7 +3221,7 @@ fun ChatScreen() {
         if (startIndex > 0) {
             repeat(startIndex) { messages.removeAt(0) }
         }
-        pruneFailedMessageStates()
+        pruneMessageRuntimeState()
     }
 
     fun resetStreamingUiState(clearVisibleContent: Boolean) {
@@ -3313,7 +3371,12 @@ fun ChatScreen() {
     LaunchedEffect(persistTick) {
         if (persistTick == 0) return@LaunchedEffect
         delay(if (isStreaming) 220 else 80)
-        context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
+        val snapshot = persistableLocalChatWindowSnapshot()
+        val retainedImageUris = currentRetainedComposerImageUris()
+        context.saveLocalChatWindow(chatScopeId, snapshot)
+        withContext(Dispatchers.IO) {
+            context.deleteUnreferencedComposerImages(retainedImageUris)
+        }
     }
 
     LaunchedEffect(uiRuntimeResetKey) {
