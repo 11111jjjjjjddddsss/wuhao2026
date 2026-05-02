@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +41,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -812,8 +815,9 @@ private fun ComposerImagePreviewStrip(
     images: List<ComposerImageAttachment>,
     onRemoveImage: (ComposerImageAttachment) -> Unit
 ) {
-    var previewImage by remember {
-        mutableStateOf<ComposerImageAttachment?>(null)
+    val previewImages = images.take(4)
+    var previewIndex by remember {
+        mutableStateOf<Int?>(null)
     }
     Row(
         modifier = Modifier
@@ -823,19 +827,20 @@ private fun ComposerImagePreviewStrip(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        images.take(4).forEachIndexed { index, image ->
+        previewImages.forEachIndexed { index, image ->
             ComposerImagePreviewThumb(
                 image = image,
                 index = index,
-                onPreviewImage = { previewImage = image },
+                onPreviewImage = { previewIndex = index },
                 onRemoveImage = onRemoveImage
             )
         }
     }
-    previewImage?.let { image ->
+    previewIndex?.let { index ->
         ComposerImagePreviewDialog(
-            image = image,
-            onDismiss = { previewImage = null }
+            images = previewImages,
+            initialPage = index,
+            onDismiss = { previewIndex = null }
         )
     }
 }
@@ -918,19 +923,17 @@ private fun ComposerImagePreviewThumb(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun ComposerImagePreviewDialog(
-    image: ComposerImageAttachment,
+    images: List<ComposerImageAttachment>,
+    initialPage: Int,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
-    var bitmap by remember(image.uri) {
-        mutableStateOf<ImageBitmap?>(null)
-    }
-    LaunchedEffect(image.uri) {
-        bitmap = withContext(Dispatchers.IO) {
-            decodeComposerPreviewBitmap(context, image.uri, targetSize = 1600)
-        }
-    }
+    if (images.isEmpty()) return
+    val pageCount = images.size
+    val pagerState = rememberPagerState(
+        initialPage = initialPage.coerceIn(0, pageCount - 1)
+    ) { pageCount }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -944,15 +947,26 @@ private fun ComposerImagePreviewDialog(
                     indication = null
                 ) { onDismiss() }
         ) {
-            val previewBitmap = bitmap
-            if (previewBitmap != null) {
-                ZoomableComposerPreviewImage(bitmap = previewBitmap)
-            } else {
-                ComposerPhotoIcon(
-                    tint = Color.White.copy(alpha = 0.72f),
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                ComposerImagePreviewPage(image = images[page])
+            }
+            if (pageCount > 1) {
+                Text(
+                    text = "${pagerState.currentPage + 1}/$pageCount",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(44.dp)
+                        .align(Alignment.TopCenter)
+                        .padding(top = 44.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0x66111111))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .zIndex(1f)
                 )
             }
             Box(
@@ -971,6 +985,35 @@ private fun ComposerImagePreviewDialog(
             ) {
                 ComposerCloseIcon(tint = Color.White, modifier = Modifier.size(14.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun ComposerImagePreviewPage(
+    image: ComposerImageAttachment
+) {
+    val context = LocalContext.current
+    var bitmap by remember(image.uri) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+    LaunchedEffect(image.uri) {
+        bitmap = withContext(Dispatchers.IO) {
+            decodeComposerPreviewBitmap(context, image.uri, targetSize = 1600)
+        }
+    }
+    val previewBitmap = bitmap
+    if (previewBitmap != null) {
+        ZoomableComposerPreviewImage(bitmap = previewBitmap)
+    } else {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            ComposerPhotoIcon(
+                tint = Color.White.copy(alpha = 0.72f),
+                modifier = Modifier.size(44.dp)
+            )
         }
     }
 }

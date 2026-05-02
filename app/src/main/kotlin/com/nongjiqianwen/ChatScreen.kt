@@ -45,6 +45,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
@@ -5933,8 +5935,8 @@ private fun UserMessageImageStrip(
         (imageUrls + imageUris).distinct().take(COMPOSER_MAX_IMAGE_COUNT)
     }
     if (imageSources.isEmpty()) return
-    var previewSource by remember {
-        mutableStateOf<String?>(null)
+    var previewIndex by remember {
+        mutableStateOf<Int?>(null)
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -5944,24 +5946,26 @@ private fun UserMessageImageStrip(
             modifier = Modifier.widthIn(max = userBubbleMaxWidth),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            imageSources.chunked(2).forEach { rowSources ->
+            imageSources.chunked(2).forEachIndexed { rowIndex, rowSources ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    rowSources.forEach { source ->
+                    rowSources.forEachIndexed { columnIndex, source ->
+                        val sourceIndex = rowIndex * 2 + columnIndex
                         UserMessageImageThumb(
                             source = source,
-                            onPreviewImage = { previewSource = source }
+                            onPreviewImage = { previewIndex = sourceIndex }
                         )
                     }
                 }
             }
         }
     }
-    previewSource?.let { source ->
+    previewIndex?.let { index ->
         UserMessageImagePreviewDialog(
-            source = source,
-            onDismiss = { previewSource = null }
+            sources = imageSources,
+            initialPage = index,
+            onDismiss = { previewIndex = null }
         )
     }
 }
@@ -6051,19 +6055,17 @@ private fun UserMessageImageThumb(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun UserMessageImagePreviewDialog(
-    source: String,
+    sources: List<String>,
+    initialPage: Int,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
-    var bitmap by remember(source) {
-        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
-    }
-    LaunchedEffect(source) {
-        bitmap = withContext(Dispatchers.IO) {
-            context.decodeChatImagePreview(source, targetSize = 1600)
-        }
-    }
+    if (sources.isEmpty()) return
+    val pageCount = sources.size
+    val pagerState = rememberPagerState(
+        initialPage = initialPage.coerceIn(0, pageCount - 1)
+    ) { pageCount }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -6077,15 +6079,26 @@ private fun UserMessageImagePreviewDialog(
                     indication = null
                 ) { onDismiss() }
         ) {
-            val previewBitmap = bitmap
-            if (previewBitmap != null) {
-                ZoomableUserMessagePreviewImage(bitmap = previewBitmap)
-            } else {
-                UserMessageImagePlaceholderIcon(
-                    tint = Color.White.copy(alpha = 0.72f),
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                UserMessageImagePreviewPage(source = sources[page])
+            }
+            if (pageCount > 1) {
+                Text(
+                    text = "${pagerState.currentPage + 1}/$pageCount",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(44.dp)
+                        .align(Alignment.TopCenter)
+                        .padding(top = 44.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0x66111111))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                        .zIndex(1f)
                 )
             }
             Box(
@@ -6104,6 +6117,33 @@ private fun UserMessageImagePreviewDialog(
             ) {
                 UserMessagePreviewCloseIcon(tint = Color.White, modifier = Modifier.size(14.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun UserMessageImagePreviewPage(source: String) {
+    val context = LocalContext.current
+    var bitmap by remember(source) {
+        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+    }
+    LaunchedEffect(source) {
+        bitmap = withContext(Dispatchers.IO) {
+            context.decodeChatImagePreview(source, targetSize = 1600)
+        }
+    }
+    val previewBitmap = bitmap
+    if (previewBitmap != null) {
+        ZoomableUserMessagePreviewImage(bitmap = previewBitmap)
+    } else {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            UserMessageImagePlaceholderIcon(
+                tint = Color.White.copy(alpha = 0.72f),
+                modifier = Modifier.size(44.dp)
+            )
         }
     }
 }
