@@ -90,25 +90,29 @@ private fun Modifier.dismissImagePreviewOnQuickTap(onDismiss: () -> Unit): Modif
     pointerInput(onDismiss) {
         awaitPointerEventScope {
             while (true) {
-                val down = awaitPointerEvent(PointerEventPass.Initial)
-                    .changes
-                    .firstOrNull { it.pressed }
-                    ?: continue
+                val firstEvent = awaitPointerEvent(PointerEventPass.Initial)
+                val initiallyPressed = firstEvent.changes.filter { it.pressed }
+                val down = initiallyPressed.firstOrNull() ?: continue
                 val startPosition = down.position
                 val startTime = down.uptimeMillis
                 var moved = false
-                var multiTouch = false
+                var multiTouch = initiallyPressed.size > 1 || firstEvent.changes.size > 1
                 var released = false
+                var pressedAtEnd = false
 
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val pressedCount = event.changes.count { it.pressed }
-                    if (pressedCount > 1) {
+                    pressedAtEnd = event.changes.any { it.pressed }
+                    val relatedPointerCount = event.changes.count { it.pressed || it.previousPressed }
+                    if (
+                        relatedPointerCount > 1 ||
+                        event.changes.any { it.pressed && !it.previousPressed }
+                    ) {
                         multiTouch = true
                     }
                     val change = event.changes.firstOrNull { it.id == down.id }
                     if (change == null) {
-                        if (pressedCount == 0) break
+                        if (event.changes.none { it.pressed }) break
                         continue
                     }
                     if ((change.position - startPosition).getDistance() > viewConfiguration.touchSlop) {
@@ -116,6 +120,7 @@ private fun Modifier.dismissImagePreviewOnQuickTap(onDismiss: () -> Unit): Modif
                     }
                     if (!change.pressed) {
                         released = true
+                        pressedAtEnd = event.changes.any { it.pressed }
                         val durationMs = change.uptimeMillis - startTime
                         if (!multiTouch && !moved && durationMs <= viewConfiguration.longPressTimeoutMillis) {
                             onDismiss()
@@ -126,6 +131,12 @@ private fun Modifier.dismissImagePreviewOnQuickTap(onDismiss: () -> Unit): Modif
 
                 if (!released) {
                     continue
+                }
+                if (multiTouch && pressedAtEnd) {
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        pressedAtEnd = event.changes.any { it.pressed }
+                    } while (pressedAtEnd)
                 }
             }
         }

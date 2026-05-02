@@ -3,6 +3,11 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-03
+
+- `ChatScreen.kt` / `MembershipCenterSheet.kt` / `SessionApi.kt` 接入首版会员中心：右上角绿色叶片打开黑白简洁的底部面板，面板读取 `/api/me` 的有效档位、今日剩余、升级补偿、加油包和到期时间，展示 Free / Plus / Pro 的真实后端权益、Plus 升 Pro 补偿规则、加油包规则和消耗顺序。当前支付链尚未接入，开通 / 升级 / 购买按钮只在会员面板内提示“支付暂未接入”，不调用后端订单接口，避免绕过真实支付。左侧菜单仍保持空入口，本次不改聊天滚动链、输入框或额度发送 gate。
+- `ImagePreviewPager.kt` 收紧全屏图片预览的单击关闭判定：外层快速 tap detector 现在会记录首帧是否多指、过程中是否新增第二根手指，以及同一手势内是否出现多个相关 pointer；只在单指、未移动、短按释放时关闭预览。一旦本轮出现多指，会等所有手指都抬起后才重新允许下一次单击关闭，避免双指缩放时第一根手指先抬起后第二根手指被重新当成单击。输入框图片预览和聊天区用户图片预览继续共用 Telephoto + `HorizontalPager`；旧 `ImagePreviewGesture.kt` 手写链未恢复。
+
 ## 2026-05-02
 
 - Android 构建链升级到 Kotlin Android / Compose Compiler Gradle plugin `2.1.21`，并按 Kotlin 2.x 官方迁移方式应用 `org.jetbrains.kotlin.plugin.compose`、删除旧 `composeOptions.kotlinCompilerExtensionVersion`；图片全屏预览依赖升级到 Telephoto `zoomable-image-coil:0.19.0`。输入框图片预览和聊天区用户图片预览改为共用新增 `ImagePreviewPager.kt`，内部使用 Telephoto `ZoomableAsyncImage` + `HorizontalPager`，让缩放、拖动、边界阻尼和 pager handoff 交给成熟库处理；旧 `ImagePreviewGesture.kt` 及两个入口里的手写全屏 zoom page 已删除，缩略图轻量解码函数继续保留。本次不改图片选择、压缩上传、发送链、聊天滚动链或 96dp 工作线。

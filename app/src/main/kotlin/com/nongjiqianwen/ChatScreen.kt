@@ -1518,6 +1518,15 @@ private suspend fun awaitRemoteSnapshot(): SessionSnapshot? =
         }
     }
 
+private suspend fun awaitMembershipEntitlement(): SessionApi.EntitlementSnapshot? =
+    suspendCancellableCoroutine { continuation ->
+        SessionApi.getEntitlement { entitlement ->
+            if (continuation.isActive) {
+                continuation.resume(entitlement)
+            }
+        }
+    }
+
 private fun SessionSnapshot.findRoundByClientMessageId(clientMessageId: String): ARound? {
     if (clientMessageId.isBlank()) return null
     for (index in a_rounds_full.lastIndex downTo 0) {
@@ -2341,6 +2350,9 @@ fun ChatScreen() {
     var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
     var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
     var uiCopyPreviewVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var membershipCenterVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var membershipLoadState by remember(uiRuntimeResetKey) { mutableStateOf(MembershipLoadState.Idle) }
+    var membershipEntitlement by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.EntitlementSnapshot?>(null) }
     BindComposerRuntimeEffects(
         inputChromeMeasured = inputChromeMeasured,
         inputText = input.value.text,
@@ -2731,10 +2743,12 @@ fun ChatScreen() {
     }
     BackHandler(
         enabled = attachmentMenuVisible ||
+            membershipCenterVisible ||
             messageSelectionToolbarState != null ||
             inputSelectionToolbarState != null
     ) {
         when {
+            membershipCenterVisible -> membershipCenterVisible = false
             attachmentMenuVisible -> attachmentMenuVisible = false
             inputSelectionToolbarState != null -> {
                 clearInputSelectionToolbar()
@@ -2747,6 +2761,18 @@ fun ChatScreen() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
+    LaunchedEffect(membershipCenterVisible, uiRuntimeResetKey) {
+        if (!membershipCenterVisible) return@LaunchedEffect
+        membershipLoadState = MembershipLoadState.Loading
+        val entitlement = awaitMembershipEntitlement()
+        membershipEntitlement = entitlement
+        membershipLoadState = if (entitlement == null) {
+            MembershipLoadState.Failed
+        } else {
+            MembershipLoadState.Loaded
         }
     }
 
@@ -5241,6 +5267,17 @@ fun ChatScreen() {
                     }
                 )
 
+                MembershipCenterBottomSheet(
+                    visible = membershipCenterVisible,
+                    entitlement = membershipEntitlement,
+                    loadState = membershipLoadState,
+                    modifier = Modifier.fillMaxSize(),
+                    onDismiss = { membershipCenterVisible = false },
+                    onPaymentUnavailable = {
+                        performButtonHaptic()
+                    }
+                )
+
             if (navigationBottomInset > 0.dp) {
                 Box(
                     modifier = Modifier
@@ -5343,7 +5380,15 @@ fun ChatScreen() {
                         )
                     }
                     IconButton(
-                        onClick = {},
+                        onClick = {
+                            performButtonHaptic()
+                            attachmentMenuVisible = false
+                            uiCopyPreviewVisible = false
+                            clearInputSelectionToolbar()
+                            clearMessageSelection()
+                            focusManager.clearFocus(force = true)
+                            membershipCenterVisible = true
+                        },
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
                         MembershipLeafIcon(

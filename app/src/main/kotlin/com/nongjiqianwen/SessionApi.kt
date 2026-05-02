@@ -44,6 +44,15 @@ object SessionApi {
         val regionReliability: String? = null
     )
 
+    data class EntitlementSnapshot(
+        val tier: String? = null,
+        @SerializedName("tier_expire_at") val tierExpireAt: Long? = null,
+        @SerializedName("daily_remaining") val dailyRemaining: Int? = null,
+        @SerializedName("topup_remaining") val topupRemaining: Int? = null,
+        @SerializedName("topup_earliest_expire_at") val topupEarliestExpireAt: Long? = null,
+        @SerializedName("upgrade_remaining") val upgradeRemaining: Int? = null
+    )
+
     private fun baseUrl(): String {
         val url = BuildConfig.UPLOAD_BASE_URL.trim()
         return if (url.endsWith("/")) url.dropLast(1) else url
@@ -111,7 +120,7 @@ object SessionApi {
         }
     }
 
-    fun getEntitlement(onResult: (String?) -> Unit) {
+    fun getEntitlement(onResult: (EntitlementSnapshot?) -> Unit) {
         val base = baseUrl()
         if (base.isEmpty()) {
             onResult(null)
@@ -129,7 +138,17 @@ object SessionApi {
                         onResult(null)
                         return@use
                     }
-                    onResult(it.body?.string())
+                    val body = it.body?.string()
+                    if (body.isNullOrBlank()) {
+                        onResult(null)
+                        return@use
+                    }
+                    try {
+                        onResult(gson.fromJson(body, EntitlementSnapshot::class.java))
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse entitlement", e)
+                        onResult(null)
+                    }
                 }
             },
             onFailure = { onResult(null) }
