@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,7 +42,11 @@ internal fun ImagePreviewPager(
         initialPage = initialPage.coerceIn(0, models.lastIndex)
     ) { models.size }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .dismissImagePreviewOnQuickTap(onDismiss)
+    ) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
@@ -57,7 +63,6 @@ internal fun ImagePreviewPager(
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Fit,
                 state = rememberZoomableImageState(zoomableState),
-                onClick = { onDismiss() },
                 contentPadding = PaddingValues(22.dp),
                 modifier = Modifier.fillMaxSize()
             )
@@ -80,3 +85,48 @@ internal fun ImagePreviewPager(
         }
     }
 }
+
+private fun Modifier.dismissImagePreviewOnQuickTap(onDismiss: () -> Unit): Modifier =
+    pointerInput(onDismiss) {
+        awaitPointerEventScope {
+            while (true) {
+                val down = awaitPointerEvent(PointerEventPass.Initial)
+                    .changes
+                    .firstOrNull { it.pressed }
+                    ?: continue
+                val startPosition = down.position
+                val startTime = down.uptimeMillis
+                var moved = false
+                var multiTouch = false
+                var released = false
+
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val pressedCount = event.changes.count { it.pressed }
+                    if (pressedCount > 1) {
+                        multiTouch = true
+                    }
+                    val change = event.changes.firstOrNull { it.id == down.id }
+                    if (change == null) {
+                        if (pressedCount == 0) break
+                        continue
+                    }
+                    if ((change.position - startPosition).getDistance() > viewConfiguration.touchSlop) {
+                        moved = true
+                    }
+                    if (!change.pressed) {
+                        released = true
+                        val durationMs = change.uptimeMillis - startTime
+                        if (!multiTouch && !moved && durationMs <= viewConfiguration.longPressTimeoutMillis) {
+                            onDismiss()
+                        }
+                        break
+                    }
+                }
+
+                if (!released) {
+                    continue
+                }
+            }
+        }
+    }
