@@ -1034,6 +1034,12 @@ private fun ZoomableComposerPreviewImage(bitmap: ImageBitmap) {
     var offset by remember(bitmap) {
         mutableStateOf(Offset.Zero)
     }
+    var viewportSize by remember(bitmap) {
+        mutableStateOf(IntSize.Zero)
+    }
+    val imageSize = remember(bitmap) {
+        IntSize(bitmap.width, bitmap.height)
+    }
     Image(
         bitmap = bitmap,
         contentDescription = "图片预览",
@@ -1041,13 +1047,18 @@ private fun ZoomableComposerPreviewImage(bitmap: ImageBitmap) {
         modifier = Modifier
             .fillMaxSize()
             .padding(22.dp)
+            .onSizeChanged { viewportSize = it }
             .graphicsLayer(
                 scaleX = scale,
                 scaleY = scale,
                 translationX = offset.x,
                 translationY = offset.y
             )
-            .zoomableImagePreviewInput(bitmap) { nextScale, nextOffset ->
+            .zoomableImagePreviewInput(
+                key = bitmap,
+                imageSize = imageSize,
+                viewportSize = viewportSize
+            ) { nextScale, nextOffset ->
                 scale = nextScale
                 offset = nextOffset
             }
