@@ -10,6 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Rect
 
+internal const val INPUT_TOO_LONG_HINT_TEXT = "已超过6000字，暂时不能发送"
+
 internal data class ChatComposerRuntimeState(
     val inputLimitHintVisible: MutableState<Boolean>,
     val inputLimitHintTick: MutableIntState,
@@ -180,7 +182,7 @@ internal fun resolveComposerOverlayHintText(
 ): String? {
     return when {
         composerStatusHintVisible && composerStatusHintText.isNotBlank() -> composerStatusHintText
-        inputLimitHintVisible -> "已超过6000字，暂时不能发送"
+        inputLimitHintVisible -> INPUT_TOO_LONG_HINT_TEXT
         else -> null
     }
 }

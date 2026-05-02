@@ -112,6 +112,13 @@ internal data class ComposerImageAttachment(
     val uri: String
 )
 
+internal const val COMPOSER_DEFAULT_PLACEHOLDER_TEXT = "描述种植问题"
+internal const val COMPOSER_IMAGE_PLACEHOLDER_TEXT = "补充作物、部位或症状会更准"
+internal const val COMPOSER_ATTACHMENT_CAMERA_TEXT = "相机"
+internal const val COMPOSER_ATTACHMENT_PHOTO_TEXT = "照片"
+internal const val COMPOSER_ATTACHMENT_LIMIT_TEXT = "单次最多4张照片"
+internal const val COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT = "建议拍清病斑、整棵植株、叶背或果实"
+
 private fun composerPreviewInSampleSize(width: Int, height: Int, targetSize: Int): Int {
     var sampleSize = 1
     if (height > targetSize || width > targetSize) {
@@ -359,9 +366,9 @@ internal fun ChatComposerBottomBar(
                         },
                         onContentHeightChanged = onInputContentHeightChanged,
                         placeholderText = if (selectedImages.isNotEmpty()) {
-                            "补充作物、部位或症状会更准"
+                            COMPOSER_IMAGE_PLACEHOLDER_TEXT
                         } else {
-                            "描述种植问题"
+                            COMPOSER_DEFAULT_PLACEHOLDER_TEXT
                         },
                         onValueChange = {
                             if (it.text.length > inputMaxChars && inputValue.text.length <= inputMaxChars) {
@@ -483,7 +490,7 @@ internal fun ChatComposerCollapseOverlay(
             onAddClick = {},
             inputContent = {
                 Text(
-                    text = "描述种植问题",
+                    text = COMPOSER_DEFAULT_PLACEHOLDER_TEXT,
                     color = Color(0xFFAEAFB4),
                     fontSize = 16.sp,
                     lineHeight = 22.sp,
@@ -601,7 +608,7 @@ private fun ChatInputField(
     onValueChange: (TextFieldValue) -> Unit,
     onFocusChanged: (Boolean) -> Unit,
     onContentHeightChanged: (Int) -> Unit,
-    placeholderText: String = "描述种植问题",
+    placeholderText: String = COMPOSER_DEFAULT_PLACEHOLDER_TEXT,
     singleLine: Boolean = false,
     minLines: Int = 1,
     maxLines: Int = 6,
@@ -733,14 +740,14 @@ internal fun ComposerAttachmentBottomSheet(
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         ComposerAttachmentBottomSheetTile(
-                            title = "相机",
+                            title = COMPOSER_ATTACHMENT_CAMERA_TEXT,
                             modifier = Modifier.weight(1f),
                             onClick = onCameraClick
                         ) {
                             ComposerCameraIcon(tint = Color(0xFF111111), modifier = Modifier.size(34.dp))
                         }
                         ComposerAttachmentBottomSheetTile(
-                            title = "照片",
+                            title = COMPOSER_ATTACHMENT_PHOTO_TEXT,
                             modifier = Modifier.weight(1f),
                             onClick = onPhotoClick
                         ) {
@@ -758,14 +765,14 @@ internal fun ComposerAttachmentBottomSheet(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "单次最多4张照片",
+                            text = COMPOSER_ATTACHMENT_LIMIT_TEXT,
                             color = Color(0xFF34363B),
                             fontSize = 14.sp,
                             lineHeight = 20.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "建议拍清病斑、整棵植株、叶背或果实",
+                            text = COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT,
                             color = Color(0xFF8B8D93),
                             fontSize = 13.sp,
                             lineHeight = 19.sp

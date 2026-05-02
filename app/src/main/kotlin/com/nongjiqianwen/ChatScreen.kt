@@ -349,8 +349,17 @@ internal val GPT_BALL_START_PADDING = 0.dp
 internal val MARKDOWN_BLOCK_SPACING = 12.dp
 internal val SECTION_DIVIDER_GAP = 28.dp
 internal val SECTION_DIVIDER_TOP_EXTRA_GAP = 16.dp
+private const val APP_TITLE_TEXT = "农技千查"
+private const val WELCOME_EMPTY_STATE_TEXT = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片"
 internal const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
 private const val QUOTA_EXHAUSTED_HINT_TEXT = "今日额度已用完，请明天再试"
+private const val NETWORK_UNAVAILABLE_HINT_TEXT = "当前网络不可用"
+private const val RATE_LIMIT_HINT_TEXT = "当前请求较多，请稍后重试"
+private const val INTERRUPTED_NETWORK_HINT_TEXT = "网络波动，回复未完成"
+private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请重试"
+private const val IMAGE_PARTIAL_READ_HINT_TEXT = "部分图片无法读取，已跳过"
+private const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
+private const val IMAGE_PROCESSING_HINT_TEXT = "图片处理中，请稍候"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -2799,7 +2808,7 @@ fun ChatScreen() {
             if (overflowImages.isNotEmpty() || uris.size > remainingSlots) {
                 showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
             } else if (importedImages.size < selectedUris.size) {
-                showComposerStatusHint("部分图片无法读取，已跳过")
+                showComposerStatusHint(IMAGE_PARTIAL_READ_HINT_TEXT)
             }
         }
     }
@@ -2843,7 +2852,7 @@ fun ChatScreen() {
         }
         val uri = context.createComposerCameraImageUri()
         if (uri == null) {
-            showComposerStatusHint("相机打开失败，请重试")
+            showComposerStatusHint(CAMERA_OPEN_FAILED_HINT_TEXT)
             return
         }
         pendingCameraImageUriString = uri.toString()
@@ -2993,10 +3002,10 @@ fun ChatScreen() {
 
     fun interruptedHintText(reason: String): String =
         when (reason) {
-            "network" -> "\u7f51\u7edc\u6ce2\u52a8\uff0c\u56de\u590d\u672a\u5b8c\u6210"
-            "quota" -> "\u4eca\u65e5\u989d\u5ea6\u5df2\u7528\u5b8c\uff0c\u8bf7\u660e\u5929\u518d\u8bd5"
-            "rate_limit" -> "\u5f53\u524d\u8bf7\u6c42\u8f83\u591a\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5"
-            else -> "\u672c\u6b21\u56de\u590d\u672a\u5b8c\u6210\uff0c\u8bf7\u91cd\u8bd5"
+            "network" -> INTERRUPTED_NETWORK_HINT_TEXT
+            "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
+            "rate_limit" -> RATE_LIMIT_HINT_TEXT
+            else -> INTERRUPTED_FALLBACK_HINT_TEXT
         }
 
     fun canAttemptRemoteAssistantRecovery(reason: String): Boolean =
@@ -3715,10 +3724,10 @@ fun ChatScreen() {
                 )
                 showComposerStatusHint(
                     when (reason) {
-                        "network" -> "网络波动，回复未完成"
+                        "network" -> INTERRUPTED_NETWORK_HINT_TEXT
                         "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
-                        "rate_limit" -> "当前请求较多，请稍后重试"
-                        else -> "本次回复未完成，请重试"
+                        "rate_limit" -> RATE_LIMIT_HINT_TEXT
+                        else -> INTERRUPTED_FALLBACK_HINT_TEXT
                     }
                 )
             }
@@ -3762,7 +3771,7 @@ fun ChatScreen() {
                     chatScopeId,
                     persistableLocalChatWindowSnapshot()
                 )
-                showComposerStatusHint("当前网络不可用")
+                showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
             } finally {
                 sendUiSettling = false
             }
@@ -4359,7 +4368,7 @@ fun ChatScreen() {
                 return
             }
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-                showComposerStatusHint("当前网络不可用")
+                showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
                 return
             }
             val previewImageUris = failedMessage.imageUris.orEmpty()
@@ -4404,7 +4413,7 @@ fun ChatScreen() {
                 return
             }
             if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-                showComposerStatusHint("当前网络不可用")
+                showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
                 return
             }
             val previewImageUris = sourceUserMessage.imageUris.orEmpty()
@@ -4471,7 +4480,7 @@ fun ChatScreen() {
                 if (imageSnapshot.isEmpty()) {
                     markUserMessageSendFailed(trimmedText)
                 } else {
-                    showComposerStatusHint("当前网络不可用")
+                    showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
                 }
                 return
             }
@@ -4835,7 +4844,7 @@ fun ChatScreen() {
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
+                            text = WELCOME_EMPTY_STATE_TEXT,
                             style = MaterialTheme.typography.titleLarge.copy(
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.Bold
@@ -4964,7 +4973,7 @@ fun ChatScreen() {
                 },
                 onAddClick = {
                     if (imageSendInProgress) {
-                        showComposerStatusHint("图片正在上传，请稍候")
+                        showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                         return@ChatComposerBottomBar
                     }
                     performButtonHaptic()
@@ -4977,7 +4986,7 @@ fun ChatScreen() {
                 },
                 onRemoveImage = { image ->
                     if (imageSendInProgress) {
-                        showComposerStatusHint("图片正在上传，请稍候")
+                        showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                         return@ChatComposerBottomBar
                     }
                     performButtonHaptic()
@@ -5135,7 +5144,7 @@ fun ChatScreen() {
                     },
                     onCameraClick = cameraClick@{
                         if (imageSendInProgress) {
-                            showComposerStatusHint("图片正在上传，请稍候")
+                            showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                             return@cameraClick
                         }
                         performButtonHaptic()
@@ -5143,7 +5152,7 @@ fun ChatScreen() {
                     },
                     onPhotoClick = photoClick@{
                         if (imageSendInProgress) {
-                            showComposerStatusHint("图片正在上传，请稍候")
+                            showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                             return@photoClick
                         }
                         performButtonHaptic()
@@ -5239,7 +5248,7 @@ fun ChatScreen() {
                                 }
                             )
                         Text(
-                            text = "农技千查",
+                            text = APP_TITLE_TEXT,
                             modifier = titleModifier,
                             color = Color(0xFF111111),
                             style = MaterialTheme.typography.titleMedium.copy(
@@ -5577,20 +5586,30 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem("主界面标题", "顶部标题", UiCopyPreviewKind.AppTitle),
             UiCopyPreviewItem("欢迎空态", "空列表欢迎文案", UiCopyPreviewKind.Welcome),
             UiCopyPreviewItem("输入框", "底部 placeholder", UiCopyPreviewKind.ComposerPlaceholder),
+            UiCopyPreviewItem("输入框带图", COMPOSER_IMAGE_PLACEHOLDER_TEXT, UiCopyPreviewKind.ComposerImagePlaceholder),
+            UiCopyPreviewItem(
+                "附件面板",
+                "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT / 拍照建议",
+                UiCopyPreviewKind.AttachmentSheet
+            ),
+            UiCopyPreviewItem("附件已满", COMPOSER_IMAGE_COUNT_HINT, UiCopyPreviewKind.AttachmentLimit),
             UiCopyPreviewItem("AI尾部", "免责声明", UiCopyPreviewKind.Disclaimer),
             UiCopyPreviewItem("回复中断", "回复未完成 · 点击重试", UiCopyPreviewKind.AssistantRetry),
             UiCopyPreviewItem("发送失败", "发送失败 / 重发", UiCopyPreviewKind.UserRetry),
-            UiCopyPreviewItem("网络", "当前网络不可用", UiCopyPreviewKind.Network),
-            UiCopyPreviewItem("额度", "今日额度已用完，请明天再试", UiCopyPreviewKind.Quota),
-            UiCopyPreviewItem("限流", "当前请求较多，请稍后重试", UiCopyPreviewKind.RateLimit),
-            UiCopyPreviewItem("中断", "网络波动，回复未完成", UiCopyPreviewKind.Interrupted),
-            UiCopyPreviewItem("中断兜底", "本次回复未完成，请重试", UiCopyPreviewKind.InterruptedFallback),
-            UiCopyPreviewItem("输入超长", "已超过6000字，暂时不能发送", UiCopyPreviewKind.InputTooLong),
+            UiCopyPreviewItem("网络", NETWORK_UNAVAILABLE_HINT_TEXT, UiCopyPreviewKind.Network),
+            UiCopyPreviewItem("额度", QUOTA_EXHAUSTED_HINT_TEXT, UiCopyPreviewKind.Quota),
+            UiCopyPreviewItem("限流", RATE_LIMIT_HINT_TEXT, UiCopyPreviewKind.RateLimit),
+            UiCopyPreviewItem("中断", INTERRUPTED_NETWORK_HINT_TEXT, UiCopyPreviewKind.Interrupted),
+            UiCopyPreviewItem("中断兜底", INTERRUPTED_FALLBACK_HINT_TEXT, UiCopyPreviewKind.InterruptedFallback),
+            UiCopyPreviewItem("输入超长", INPUT_TOO_LONG_HINT_TEXT, UiCopyPreviewKind.InputTooLong),
             UiCopyPreviewItem("消息菜单", "复制 / 全文复制", UiCopyPreviewKind.MessageMenu),
             UiCopyPreviewItem("输入菜单", "复制 / 粘贴 / 剪切 / 全选", UiCopyPreviewKind.InputMenu),
-            UiCopyPreviewItem("图片格式", "仅支持 JPEG / PNG 格式", UiCopyPreviewKind.ImageFormat),
-            UiCopyPreviewItem("图片超限", "图片压缩后仍超过 1MB", UiCopyPreviewKind.ImageOversize),
-            UiCopyPreviewItem("图片数量", COMPOSER_IMAGE_COUNT_HINT, UiCopyPreviewKind.ImageCount)
+            UiCopyPreviewItem("图片格式", ImageUploader.DECODE_FAIL_MESSAGE, UiCopyPreviewKind.ImageFormat),
+            UiCopyPreviewItem("图片超限", ImageUploader.SIZE_LIMIT_FAIL_MESSAGE, UiCopyPreviewKind.ImageOversize),
+            UiCopyPreviewItem("图片数量", COMPOSER_IMAGE_COUNT_HINT, UiCopyPreviewKind.ImageCount),
+            UiCopyPreviewItem("图片读取", IMAGE_PARTIAL_READ_HINT_TEXT, UiCopyPreviewKind.ImagePartialRead),
+            UiCopyPreviewItem("相机异常", CAMERA_OPEN_FAILED_HINT_TEXT, UiCopyPreviewKind.CameraOpenFailed),
+            UiCopyPreviewItem("图片处理", IMAGE_PROCESSING_HINT_TEXT, UiCopyPreviewKind.ImageProcessing)
         )
     }
     var selectedIndex by remember { mutableIntStateOf(0) }
@@ -5668,6 +5687,9 @@ private enum class UiCopyPreviewKind {
     AppTitle,
     Welcome,
     ComposerPlaceholder,
+    ComposerImagePlaceholder,
+    AttachmentSheet,
+    AttachmentLimit,
     Disclaimer,
     AssistantRetry,
     UserRetry,
@@ -5681,7 +5703,10 @@ private enum class UiCopyPreviewKind {
     InputMenu,
     ImageFormat,
     ImageOversize,
-    ImageCount
+    ImageCount,
+    ImagePartialRead,
+    CameraOpenFailed,
+    ImageProcessing
 }
 
 @Composable
@@ -5754,7 +5779,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
             when (item.kind) {
                 UiCopyPreviewKind.AppTitle -> {
                     Text(
-                        text = "农技千查",
+                        text = APP_TITLE_TEXT,
                         color = Color(0xFF111111),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
@@ -5770,7 +5795,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片",
+                            text = WELCOME_EMPTY_STATE_TEXT,
                             color = Color(0xFF202124),
                             style = MaterialTheme.typography.bodyMedium,
                             lineHeight = 23.sp,
@@ -5788,12 +5813,35 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "描述种植问题",
+                            text = COMPOSER_DEFAULT_PLACEHOLDER_TEXT,
                             color = Color(0xFFB7BAC1),
                             fontSize = 18.sp,
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp)
                         )
                     }
+                }
+                UiCopyPreviewKind.ComposerImagePlaceholder -> {
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(30.dp),
+                        shadowElevation = 6.dp,
+                        border = BorderStroke(0.6.dp, Color(0xFFE6E8EC)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = COMPOSER_IMAGE_PLACEHOLDER_TEXT,
+                            color = Color(0xFFB7BAC1),
+                            fontSize = 16.sp,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp)
+                        )
+                    }
+                }
+                UiCopyPreviewKind.AttachmentSheet -> {
+                    UiCopyPreviewAttachmentSheet(limitReached = false)
+                }
+                UiCopyPreviewKind.AttachmentLimit -> {
+                    UiCopyPreviewAttachmentSheet(limitReached = true)
                 }
                 UiCopyPreviewKind.Disclaimer -> {
                     UiCopyPreviewDisclaimer()
@@ -5814,21 +5862,24 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         onActionClick = {}
                     )
                 }
-                UiCopyPreviewKind.Network -> UiCopyPreviewHint("当前网络不可用")
-                UiCopyPreviewKind.Quota -> UiCopyPreviewHint("今日额度已用完，请明天再试")
-                UiCopyPreviewKind.RateLimit -> UiCopyPreviewHint("当前请求较多，请稍后重试")
-                UiCopyPreviewKind.Interrupted -> UiCopyPreviewHint("网络波动，回复未完成")
-                UiCopyPreviewKind.InterruptedFallback -> UiCopyPreviewHint("本次回复未完成，请重试")
-                UiCopyPreviewKind.InputTooLong -> UiCopyPreviewHint("已超过6000字，暂时不能发送")
+                UiCopyPreviewKind.Network -> UiCopyPreviewHint(NETWORK_UNAVAILABLE_HINT_TEXT)
+                UiCopyPreviewKind.Quota -> UiCopyPreviewHint(QUOTA_EXHAUSTED_HINT_TEXT)
+                UiCopyPreviewKind.RateLimit -> UiCopyPreviewHint(RATE_LIMIT_HINT_TEXT)
+                UiCopyPreviewKind.Interrupted -> UiCopyPreviewHint(INTERRUPTED_NETWORK_HINT_TEXT)
+                UiCopyPreviewKind.InterruptedFallback -> UiCopyPreviewHint(INTERRUPTED_FALLBACK_HINT_TEXT)
+                UiCopyPreviewKind.InputTooLong -> UiCopyPreviewHint(INPUT_TOO_LONG_HINT_TEXT)
                 UiCopyPreviewKind.MessageMenu -> {
                     MessageActionMenuCardContent(onCopy = {}, onCopyFull = {})
                 }
                 UiCopyPreviewKind.InputMenu -> {
                     UiCopyPreviewInputActionMenu()
                 }
-                UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint("仅支持 JPEG / PNG 格式")
-                UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint("图片压缩后仍超过 1MB")
+                UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
+                UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE)
                 UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
+                UiCopyPreviewKind.ImagePartialRead -> UiCopyPreviewHint(IMAGE_PARTIAL_READ_HINT_TEXT)
+                UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)
+                UiCopyPreviewKind.ImageProcessing -> UiCopyPreviewHint(IMAGE_PROCESSING_HINT_TEXT)
             }
         }
     }
@@ -5870,6 +5921,27 @@ private fun UiCopyPreviewHint(text: String) {
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewAttachmentSheet(limitReached: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(340.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFE7E9ED))
+    ) {
+        ComposerAttachmentBottomSheet(
+            visible = true,
+            limitReached = limitReached,
+            limitHintText = COMPOSER_IMAGE_COUNT_HINT,
+            modifier = Modifier.fillMaxSize(),
+            onDismiss = {},
+            onCameraClick = {},
+            onPhotoClick = {}
+        )
     }
 }
 
