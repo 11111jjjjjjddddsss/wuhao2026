@@ -15,7 +15,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -1046,12 +1045,9 @@ private fun ZoomableComposerPreviewImage(bitmap: ImageBitmap) {
                 translationX = offset.x,
                 translationY = offset.y
             )
-            .pointerInput(bitmap) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                    scale = nextScale
-                    offset = if (nextScale <= 1.01f) Offset.Zero else offset + pan
-                }
+            .zoomableImagePreviewInput(bitmap) { nextScale, nextOffset ->
+                scale = nextScale
+                offset = nextOffset
             }
     )
 }

@@ -39,7 +39,6 @@ import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -357,9 +356,7 @@ private const val NETWORK_UNAVAILABLE_HINT_TEXT = "当前网络不可用"
 private const val RATE_LIMIT_HINT_TEXT = "当前请求较多，请稍后重试"
 private const val INTERRUPTED_NETWORK_HINT_TEXT = "网络波动，回复未完成"
 private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请重试"
-private const val IMAGE_PARTIAL_READ_HINT_TEXT = "部分图片无法读取，已跳过"
 private const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
-private const val IMAGE_PROCESSING_HINT_TEXT = "图片处理中，请稍候"
 private val chatCacheGson = Gson()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
@@ -2807,8 +2804,6 @@ fun ChatScreen() {
             selectedComposerImages.addAll(imagesToAdd)
             if (overflowImages.isNotEmpty() || uris.size > remainingSlots) {
                 showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
-            } else if (importedImages.size < selectedUris.size) {
-                showComposerStatusHint(IMAGE_PARTIAL_READ_HINT_TEXT)
             }
         }
     }
@@ -4973,7 +4968,6 @@ fun ChatScreen() {
                 },
                 onAddClick = {
                     if (imageSendInProgress) {
-                        showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                         return@ChatComposerBottomBar
                     }
                     performButtonHaptic()
@@ -4986,7 +4980,6 @@ fun ChatScreen() {
                 },
                 onRemoveImage = { image ->
                     if (imageSendInProgress) {
-                        showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                         return@ChatComposerBottomBar
                     }
                     performButtonHaptic()
@@ -5144,7 +5137,6 @@ fun ChatScreen() {
                     },
                     onCameraClick = cameraClick@{
                         if (imageSendInProgress) {
-                            showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                             return@cameraClick
                         }
                         performButtonHaptic()
@@ -5152,7 +5144,6 @@ fun ChatScreen() {
                     },
                     onPhotoClick = photoClick@{
                         if (imageSendInProgress) {
-                            showComposerStatusHint(IMAGE_PROCESSING_HINT_TEXT)
                             return@photoClick
                         }
                         performButtonHaptic()
@@ -5607,9 +5598,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem("图片格式", ImageUploader.DECODE_FAIL_MESSAGE, UiCopyPreviewKind.ImageFormat),
             UiCopyPreviewItem("图片超限", ImageUploader.SIZE_LIMIT_FAIL_MESSAGE, UiCopyPreviewKind.ImageOversize),
             UiCopyPreviewItem("图片数量", COMPOSER_IMAGE_COUNT_HINT, UiCopyPreviewKind.ImageCount),
-            UiCopyPreviewItem("图片读取", IMAGE_PARTIAL_READ_HINT_TEXT, UiCopyPreviewKind.ImagePartialRead),
-            UiCopyPreviewItem("相机异常", CAMERA_OPEN_FAILED_HINT_TEXT, UiCopyPreviewKind.CameraOpenFailed),
-            UiCopyPreviewItem("图片处理", IMAGE_PROCESSING_HINT_TEXT, UiCopyPreviewKind.ImageProcessing)
+            UiCopyPreviewItem("相机异常", CAMERA_OPEN_FAILED_HINT_TEXT, UiCopyPreviewKind.CameraOpenFailed)
         )
     }
     var selectedIndex by remember { mutableIntStateOf(0) }
@@ -5704,9 +5693,7 @@ private enum class UiCopyPreviewKind {
     ImageFormat,
     ImageOversize,
     ImageCount,
-    ImagePartialRead,
-    CameraOpenFailed,
-    ImageProcessing
+    CameraOpenFailed
 }
 
 @Composable
@@ -5877,9 +5864,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
                 UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE)
                 UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
-                UiCopyPreviewKind.ImagePartialRead -> UiCopyPreviewHint(IMAGE_PARTIAL_READ_HINT_TEXT)
                 UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)
-                UiCopyPreviewKind.ImageProcessing -> UiCopyPreviewHint(IMAGE_PROCESSING_HINT_TEXT)
             }
         }
     }
@@ -6221,12 +6206,9 @@ private fun ZoomableUserMessagePreviewImage(bitmap: androidx.compose.ui.graphics
                 translationX = offset.x,
                 translationY = offset.y
             )
-            .pointerInput(bitmap) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val nextScale = (scale * zoom).coerceIn(1f, 5f)
-                    scale = nextScale
-                    offset = if (nextScale <= 1.01f) Offset.Zero else offset + pan
-                }
+            .zoomableImagePreviewInput(bitmap) { nextScale, nextOffset ->
+                scale = nextScale
+                offset = nextOffset
             }
     )
 }
