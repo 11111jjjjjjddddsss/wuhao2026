@@ -108,7 +108,7 @@ internal data class ComposerImageAttachment(
 )
 
 internal const val COMPOSER_DEFAULT_PLACEHOLDER_TEXT = "描述种植问题"
-internal const val COMPOSER_IMAGE_PLACEHOLDER_TEXT = "补充作物、部位或症状会更准"
+internal const val COMPOSER_IMAGE_PLACEHOLDER_TEXT = "描述作物、部位或症状，会更准"
 internal const val COMPOSER_ATTACHMENT_CAMERA_TEXT = "相机"
 internal const val COMPOSER_ATTACHMENT_PHOTO_TEXT = "照片"
 internal const val COMPOSER_ATTACHMENT_LIMIT_TEXT = "单次最多4张照片"
