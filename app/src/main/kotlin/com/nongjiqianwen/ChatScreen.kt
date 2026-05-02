@@ -5583,7 +5583,6 @@ private fun UiCopyPreviewOverlay(
                 "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT / 拍照建议",
                 UiCopyPreviewKind.AttachmentSheet
             ),
-            UiCopyPreviewItem("附件已满", COMPOSER_IMAGE_COUNT_HINT, UiCopyPreviewKind.AttachmentLimit),
             UiCopyPreviewItem("AI尾部", "免责声明", UiCopyPreviewKind.Disclaimer),
             UiCopyPreviewItem("回复中断", "回复未完成 · 点击重试", UiCopyPreviewKind.AssistantRetry),
             UiCopyPreviewItem("发送失败", "发送失败 / 重发", UiCopyPreviewKind.UserRetry),
@@ -5678,7 +5677,6 @@ private enum class UiCopyPreviewKind {
     ComposerPlaceholder,
     ComposerImagePlaceholder,
     AttachmentSheet,
-    AttachmentLimit,
     Disclaimer,
     AssistantRetry,
     UserRetry,
@@ -5827,9 +5825,6 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.AttachmentSheet -> {
                     UiCopyPreviewAttachmentSheet(limitReached = false)
                 }
-                UiCopyPreviewKind.AttachmentLimit -> {
-                    UiCopyPreviewAttachmentSheet(limitReached = true)
-                }
                 UiCopyPreviewKind.Disclaimer -> {
                     UiCopyPreviewDisclaimer()
                 }
@@ -5863,7 +5858,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
                 UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE)
-                UiCopyPreviewKind.ImageCount -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
+                UiCopyPreviewKind.ImageCount -> UiCopyPreviewImageCount()
                 UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)
             }
         }
@@ -5910,11 +5905,21 @@ private fun UiCopyPreviewHint(text: String) {
 }
 
 @Composable
+private fun UiCopyPreviewImageCount() {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
+        UiCopyPreviewAttachmentSheet(limitReached = true)
+    }
+}
+
+@Composable
 private fun UiCopyPreviewAttachmentSheet(limitReached: Boolean) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(340.dp)
+            .height(420.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFFE7E9ED))
     ) {

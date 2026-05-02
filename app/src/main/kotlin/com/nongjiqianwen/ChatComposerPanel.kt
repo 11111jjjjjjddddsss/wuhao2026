@@ -753,29 +753,31 @@ internal fun ComposerAttachmentBottomSheet(
                             ComposerPhotoIcon(tint = Color(0xFF111111), modifier = Modifier.size(34.dp))
                         }
                     }
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(Color(0xFFEDEEF1))
-                    )
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            text = COMPOSER_ATTACHMENT_LIMIT_TEXT,
-                            color = Color(0xFF34363B),
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp,
-                            fontWeight = FontWeight.SemiBold
+                    if (!limitReached) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(Color(0xFFEDEEF1))
                         )
-                        Text(
-                            text = COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT,
-                            color = Color(0xFF8B8D93),
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
-                        )
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = COMPOSER_ATTACHMENT_LIMIT_TEXT,
+                                color = Color(0xFF34363B),
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT,
+                                color = Color(0xFF8B8D93),
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                        }
                     }
                 }
             }
