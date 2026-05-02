@@ -1389,6 +1389,19 @@ private fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImage
     }.getOrNull()
 }
 
+private fun ByteArray.hasJpegStartMarker(): Boolean =
+    size >= 2 && this[0] == 0xFF.toByte() && this[1] == 0xD8.toByte()
+
+private fun Context.isPrivateComposerImage(uri: Uri): Boolean {
+    return runCatching {
+        if (uri.scheme != "file") return@runCatching false
+        val path = uri.path ?: return@runCatching false
+        val imageDir = File(filesDir, "composer_images").canonicalFile
+        val imageFile = File(path).canonicalFile
+        imageFile.isFile && imageFile.parentFile?.canonicalFile == imageDir
+    }.getOrDefault(false)
+}
+
 private fun Context.deleteComposerImageAttachment(attachment: ComposerImageAttachment) {
     runCatching {
         val uri = Uri.parse(attachment.uri)
@@ -4344,14 +4357,24 @@ fun ChatScreen() {
         ): Pair<List<String>?, String?> = withContext(Dispatchers.IO) {
             val compressedImages = mutableListOf<ByteArray>()
             for (image in images) {
-                val originalBytes = context.readImageBytes(Uri.parse(image.uri))
+                val imageUri = Uri.parse(image.uri)
+                val originalBytes = context.readImageBytes(imageUri)
                     ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                val compressed = ImageUploader.compressImage(originalBytes)
-                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                if (compressed.compressedSize > COMPOSER_MAX_IMAGE_SIZE_BYTES) {
-                    return@withContext null to ImageUploader.SIZE_LIMIT_FAIL_MESSAGE
+                val uploadBytes = if (
+                    context.isPrivateComposerImage(imageUri) &&
+                    originalBytes.hasJpegStartMarker() &&
+                    originalBytes.size <= COMPOSER_MAX_IMAGE_SIZE_BYTES
+                ) {
+                    originalBytes
+                } else {
+                    val compressed = ImageUploader.compressImage(originalBytes)
+                        ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                    if (compressed.compressedSize > COMPOSER_MAX_IMAGE_SIZE_BYTES) {
+                        return@withContext null to ImageUploader.SIZE_LIMIT_FAIL_MESSAGE
+                    }
+                    compressed.bytes
                 }
-                compressedImages.add(compressed.bytes)
+                compressedImages.add(uploadBytes)
             }
             if (compressedImages.isEmpty()) {
                 emptyList<String>() to null
