@@ -12,7 +12,7 @@
 
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
 - Android Auto Backup / Data Extraction 当前已关闭并显式排除：`allowBackup=false`，同时通过 `backup_rules.xml` / `data_extraction_rules.xml` 排除 cloud backup、device transfer、shared preferences、files、databases 和 external 数据。本地聊天窗口快照、流式草稿、`app_ids`、旧 UI metrics 等都只作为本机运行时缓存，不允许被系统云备份 / 设备迁移在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
-- Go 后端当前同时保存两类资产：`session_ab.a_json` 仍是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` / `c_summary` 仍是摘要文本；成功完成的问答轮次会额外写入 `session_round_archive`，按 30 天滚动保留，用于 UI 历史恢复和后续批量抽取。当前尚未实现 C+ 的用户农业画像 / 用户农业档案字段
+- Go 后端当前同时保存两类资产：`session_ab.a_json` 仍是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` / `c_summary` 仍是摘要文本；成功完成的问答轮次会额外写入 `session_round_archive`，按 30 天滚动保留，用于 UI 历史恢复和后续批量抽取。`/api/chat/stream` 允许纯文字、纯图片、图文混合；纯图片且用户未输入文字时，后端会给模型补一条内部说明，引导先基于图片可见信息做农业技术参考判断并追问必要信息，该说明不作为用户可见消息。当前尚未实现 C+ 的用户农业画像 / 用户农业档案字段
 - `/api/session/snapshot` 当前继续返回 `a_json` / `a_rounds_full` 作为 A 层窗口，同时 `a_rounds_for_ui` 会优先返回 30 天内最近 30 轮 `session_round_archive`。前端本地仍会用 `LOCAL_RENDER_ROUND_LIMIT = 30` 裁 UI 窗口；换机 / 重装后只要用户身份能对上后端 `user_id`，UI 可拉到最近 30 轮业务聊天记录。当前项目还没有手机号 / 账号登录体系，实际主要依赖本机 `user_id`；若清数据后本机 `user_id` 丢失并生成新身份，则不会恢复旧记录
 - Android 聊天页在后端历史模式下不再把本地 30 轮聊天窗口作为首帧同步启动数据：`ChatScreen.kt` 首次组合先用空本地快照放出页面壳，随后在 `LaunchedEffect` 内异步读取本地快照并等待远端 `/api/session/snapshot`。远端快照成功时仍以后端历史为主，并把本地失败消息 / 待恢复用户尾巴并回去；远端快照失败时才异步回退到本地窗口，避免首屏被 SharedPreferences + Gson 解析阻塞，同时不丢失败 / 中断恢复入口
 - Android 普通输入框草稿当前会写入本机 `chat_ui_cache` 的 `composer_draft_*` 键：用户切 App、锁屏或后台被系统回收后，未发送文字下次进入仍会回填；发送成功 / 清空运行时会清掉该草稿。图片缩略图暂不做跨进程草稿恢复，避免本地 URI 权限和临时文件生命周期带来脏状态

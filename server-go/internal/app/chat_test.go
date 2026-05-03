@@ -168,11 +168,17 @@ func TestBuildVisionUserContentAllowsImageOnly(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected multimodal content for image-only input")
 	}
-	if len(content) != 1 {
-		t.Fatalf("expected single image block for image-only input, got %d", len(content))
+	if len(content) != 2 {
+		t.Fatalf("expected text hint plus image block for image-only input, got %d", len(content))
 	}
-	if got := content[0]["type"]; got != "image_url" {
-		t.Fatalf("expected image-only input to omit empty text block, got %#v", got)
+	if got := content[0]["type"]; got != "text" {
+		t.Fatalf("expected image-only input to include internal text hint first, got %#v", got)
+	}
+	if got, _ := content[0]["text"].(string); !strings.Contains(got, "只上传了图片") {
+		t.Fatalf("expected image-only internal hint, got %#v", got)
+	}
+	if got := content[1]["type"]; got != "image_url" {
+		t.Fatalf("expected image block after internal text hint, got %#v", got)
 	}
 }
 

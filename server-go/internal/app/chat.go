@@ -539,6 +539,11 @@ func buildVisionUserContent(text string, images []string) any {
 			"type": "text",
 			"text": text,
 		})
+	} else {
+		content = append(content, map[string]any{
+			"type": "text",
+			"text": "用户本轮只上传了图片，未补充文字描述。请先基于图片可见信息给出农业技术参考判断；若作物、部位、症状或环境信息不足，请明确追问必要信息。",
+		})
 	}
 	for _, image := range images {
 		content = append(content, map[string]any{
