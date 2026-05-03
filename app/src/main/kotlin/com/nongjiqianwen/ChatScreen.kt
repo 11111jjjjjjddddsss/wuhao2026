@@ -2,14 +2,18 @@
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.MediaStore
 import android.util.Log
 import android.util.LruCache
 import android.view.HapticFeedbackConstants
@@ -317,6 +321,7 @@ private const val INPUT_MAX_CHARS = 6000
 private const val COMPOSER_MAX_IMAGE_COUNT = 4
 private const val COMPOSER_IMAGE_COUNT_HINT = "最多4张图片"
 private const val COMPOSER_MAX_IMAGE_SIZE_BYTES = 1024 * 1024
+private const val COMPOSER_CAMERA_ALBUM_NAME = "农技千问"
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
@@ -1392,7 +1397,37 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
             )
 }
 
-private fun Context.createComposerCameraImageUri(): Uri? {
+private data class ComposerCameraImageTarget(
+    val uri: Uri,
+    val galleryBacked: Boolean
+)
+
+private fun Context.createComposerCameraImageTarget(): ComposerCameraImageTarget? {
+    createGalleryComposerCameraImageUri()?.let { uri ->
+        return ComposerCameraImageTarget(uri = uri, galleryBacked = true)
+    }
+    return createTemporaryComposerCameraImageUri()?.let { uri ->
+        ComposerCameraImageTarget(uri = uri, galleryBacked = false)
+    }
+}
+
+private fun Context.createGalleryComposerCameraImageUri(): Uri? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+    return runCatching {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "nongjiqianwen_${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(
+                MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/$COMPOSER_CAMERA_ALBUM_NAME"
+            )
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+    }.getOrNull()
+}
+
+private fun Context.createTemporaryComposerCameraImageUri(): Uri? {
     return runCatching {
         val imageDir = File(cacheDir, "composer_camera").apply { mkdirs() }
         val imageFile = File.createTempFile("camera_", ".jpg", imageDir)
@@ -1402,6 +1437,22 @@ private fun Context.createComposerCameraImageUri(): Uri? {
             imageFile
         )
     }.getOrNull()
+}
+
+private fun Context.publishGalleryComposerCameraImage(uri: Uri) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    runCatching {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.IS_PENDING, 0)
+        }
+        contentResolver.update(uri, values, null, null)
+    }
+}
+
+private fun Context.deleteGalleryComposerCameraImage(uri: Uri) {
+    runCatching {
+        contentResolver.delete(uri, null, null)
+    }
 }
 
 private fun Context.readImageBytes(uri: Uri): ByteArray? {
@@ -1823,6 +1874,7 @@ fun ChatScreen() {
     }
     var attachmentMenuVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingCameraImageUriString by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var pendingCameraImageGalleryBacked by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
     var imageSendInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
@@ -2831,6 +2883,7 @@ fun ChatScreen() {
         selectedComposerImages.clear()
         attachmentMenuVisible = false
         pendingCameraImageUriString = null
+        pendingCameraImageGalleryBacked = false
         imageSendInProgress = false
         inputContentHeightPx = startupInputContentHeightEstimatePx
         composerSettlingMinHeightPx = 0
@@ -2937,9 +2990,24 @@ fun ChatScreen() {
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
         val uri = pendingCameraImageUriString?.let(Uri::parse)
+        val galleryBacked = pendingCameraImageGalleryBacked
         pendingCameraImageUriString = null
+        pendingCameraImageGalleryBacked = false
         if (success && uri != null) {
-            addComposerImageUris(listOf(uri))
+            snackbarScope.launch {
+                if (galleryBacked) {
+                    withContext(Dispatchers.IO) {
+                        context.publishGalleryComposerCameraImage(uri)
+                    }
+                }
+                addComposerImageUris(listOf(uri))
+            }
+        } else if (uri != null && galleryBacked) {
+            snackbarScope.launch {
+                withContext(Dispatchers.IO) {
+                    context.deleteGalleryComposerCameraImage(uri)
+                }
+            }
         }
     }
 
@@ -2948,14 +3016,28 @@ fun ChatScreen() {
             showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
             return
         }
-        val uri = context.createComposerCameraImageUri()
-        if (uri == null) {
+        val target = context.createComposerCameraImageTarget()
+        if (target == null) {
             showComposerStatusHint(CAMERA_OPEN_FAILED_HINT_TEXT)
             return
         }
-        pendingCameraImageUriString = uri.toString()
+        pendingCameraImageUriString = target.uri.toString()
+        pendingCameraImageGalleryBacked = target.galleryBacked
         attachmentMenuVisible = false
-        cameraLauncher.launch(uri)
+        runCatching {
+            cameraLauncher.launch(target.uri)
+        }.onFailure {
+            pendingCameraImageUriString = null
+            pendingCameraImageGalleryBacked = false
+            if (target.galleryBacked) {
+                snackbarScope.launch {
+                    withContext(Dispatchers.IO) {
+                        context.deleteGalleryComposerCameraImage(target.uri)
+                    }
+                }
+            }
+            showComposerStatusHint(CAMERA_OPEN_FAILED_HINT_TEXT)
+        }
     }
 
     fun launchComposerPhotoPicker() {
