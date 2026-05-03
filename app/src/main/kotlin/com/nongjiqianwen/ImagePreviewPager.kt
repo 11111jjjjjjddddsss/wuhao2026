@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import me.saket.telephoto.zoomable.OverzoomEffect
+import me.saket.telephoto.zoomable.ZoomLimit
 import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
@@ -53,9 +54,8 @@ internal fun ImagePreviewPager(
         ) { page ->
             val zoomableState = rememberZoomableState(
                 zoomSpec = ZoomSpec(
-                    maxZoomFactor = 5f,
-                    minZoomFactor = 1f,
-                    overzoomEffect = OverzoomEffect.RubberBanding
+                    maximum = ZoomLimit(5f, OverzoomEffect.RubberBanding),
+                    minimum = ZoomLimit(1f, OverzoomEffect.Disabled)
                 )
             )
             ZoomableAsyncImage(
