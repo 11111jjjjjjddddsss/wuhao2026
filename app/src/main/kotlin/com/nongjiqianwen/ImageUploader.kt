@@ -32,7 +32,7 @@ object ImageUploader {
     private const val FALLBACK_LONG_EDGE_2 = 768
     private const val FALLBACK_LONG_EDGE_3 = 640
     private const val FALLBACK_LONG_EDGE_4 = 512
-    private const val EMERGENCY_MIN_LONG_EDGE = 128
+    private const val EMERGENCY_MIN_LONG_EDGE = 1
     private const val MAX_SIZE_BYTES = 1024 * 1024
     private const val JPEG_QUALITY_DEFAULT = 85
     private const val JPEG_QUALITY_80 = 80
@@ -46,9 +46,7 @@ object ImageUploader {
         .build()
     
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
-    const val DECODE_FAIL_MESSAGE = "仅支持 JPEG / PNG 格式"
-    /** 极端场景：固定序列后仍超限时提示 */
-    const val SIZE_LIMIT_FAIL_MESSAGE = "图片压缩后仍超过 1MB"
+    const val DECODE_FAIL_MESSAGE = "图片无法读取，请重新选择"
 
     /**
      * 压缩图片：
@@ -145,8 +143,10 @@ object ImageUploader {
                 }
             }
             while (compressedBytes.size > MAX_SIZE_BYTES && maxOf(finalWidth, finalHeight) > EMERGENCY_MIN_LONG_EDGE) {
-                val nextLongEdge = (maxOf(finalWidth, finalHeight) * 0.85f)
+                val currentLongEdge = maxOf(finalWidth, finalHeight)
+                val nextLongEdge = (currentLongEdge * 0.85f)
                     .toInt()
+                    .coerceAtMost(currentLongEdge - 1)
                     .coerceAtLeast(EMERGENCY_MIN_LONG_EDGE)
                 val candidateBitmap = scaleBitmapByLongEdge(correctedBitmap, nextLongEdge)
                 val candidateBytes = compressToJpeg(candidateBitmap, JPEG_QUALITY_60)

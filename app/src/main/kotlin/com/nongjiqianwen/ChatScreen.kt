@@ -4593,9 +4593,6 @@ fun ChatScreen() {
                 } else {
                     val compressed = ImageUploader.compressImage(originalBytes)
                         ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                    if (compressed.compressedSize > COMPOSER_MAX_IMAGE_SIZE_BYTES) {
-                        return@withContext null to ImageUploader.SIZE_LIMIT_FAIL_MESSAGE
-                    }
                     compressed.bytes
                 }
                 compressedImages.add(uploadBytes)
@@ -5877,8 +5874,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
             UiCopyPreviewItem("复制 / 全文复制", "消息选择菜单", UiCopyPreviewKind.MessageMenu),
             UiCopyPreviewItem("复制 / 粘贴 / 剪切 / 全选", "输入框选择菜单", UiCopyPreviewKind.InputMenu),
-            UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片解码失败浮层", UiCopyPreviewKind.ImageFormat),
-            UiCopyPreviewItem(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE, "图片极端压缩失败兜底浮层", UiCopyPreviewKind.ImageOversize),
+            UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败浮层", UiCopyPreviewKind.ImageReadFailure),
             UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败浮层", UiCopyPreviewKind.CameraOpenFailed)
         )
     }
@@ -5970,8 +5966,7 @@ private enum class UiCopyPreviewKind {
     InputTooLong,
     MessageMenu,
     InputMenu,
-    ImageFormat,
-    ImageOversize,
+    ImageReadFailure,
     ImageCountHint,
     ImageCountSheet,
     CameraOpenFailed
@@ -6139,8 +6134,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.InputMenu -> {
                     UiCopyPreviewInputActionMenu()
                 }
-                UiCopyPreviewKind.ImageFormat -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
-                UiCopyPreviewKind.ImageOversize -> UiCopyPreviewHint(ImageUploader.SIZE_LIMIT_FAIL_MESSAGE)
+                UiCopyPreviewKind.ImageReadFailure -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
                 UiCopyPreviewKind.ImageCountHint -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
                 UiCopyPreviewKind.ImageCountSheet -> UiCopyPreviewAttachmentSheet(limitReached = true)
                 UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)
