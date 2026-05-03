@@ -21,6 +21,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.exifinterface.media.ExifInterface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -321,6 +322,7 @@ private const val INPUT_MAX_CHARS = 6000
 private const val COMPOSER_MAX_IMAGE_COUNT = 4
 private const val COMPOSER_IMAGE_COUNT_HINT = "最多4张图片"
 private const val COMPOSER_MAX_IMAGE_SIZE_BYTES = 1024 * 1024
+private const val COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE = 1024
 private const val COMPOSER_CAMERA_ALBUM_NAME = "农技千问"
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
@@ -1469,16 +1471,36 @@ private fun Context.readImageBytes(uri: Uri): ByteArray? {
 private fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImageAttachment? {
     return runCatching {
         val originalBytes = readImageBytes(uri) ?: return@runCatching null
-        val compressed = ImageUploader.compressImage(originalBytes) ?: return@runCatching null
+        val uploadBytes = if (originalBytes.canUseOriginalJpegForComposerUpload()) {
+            originalBytes
+        } else {
+            ImageUploader.compressImage(originalBytes)?.bytes ?: return@runCatching null
+        }
         val imageDir = File(filesDir, "composer_images").apply { mkdirs() }
         val imageFile = File(imageDir, "composer_${UUID.randomUUID()}.jpg")
-        imageFile.writeBytes(compressed.bytes)
+        imageFile.writeBytes(uploadBytes)
         ComposerImageAttachment(imageFile.toURI().toString())
     }.getOrNull()
 }
 
 private fun ByteArray.hasJpegStartMarker(): Boolean =
     size >= 2 && this[0] == 0xFF.toByte() && this[1] == 0xD8.toByte()
+
+private fun ByteArray.canUseOriginalJpegForComposerUpload(): Boolean {
+    if (!hasJpegStartMarker() || size > COMPOSER_MAX_IMAGE_SIZE_BYTES) return false
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(this, 0, size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+    if (maxOf(bounds.outWidth, bounds.outHeight) > COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE) return false
+    val orientation = runCatching {
+        ExifInterface(inputStream()).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL
+        )
+    }.getOrNull() ?: return false
+    return orientation == ExifInterface.ORIENTATION_NORMAL ||
+        orientation == ExifInterface.ORIENTATION_UNDEFINED
+}
 
 private fun Context.isPrivateComposerImage(uri: Uri): Boolean {
     return privateComposerImageFile(uri) != null
