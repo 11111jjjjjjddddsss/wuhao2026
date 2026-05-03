@@ -337,6 +337,8 @@ private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
+private const val REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS = 90
+private const val REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS = 1000L
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
@@ -3265,10 +3267,20 @@ fun ChatScreen() {
         persistTick++
     }
 
+    var stopStreamingForRemoteRecovery: () -> Unit = {}
+
     fun applyRecoveredAssistantRound(sourceUserMessageId: String, recoveredRound: ARound) {
         remoteRecoveryJob?.cancel()
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
+        SessionApi.cancelCurrentStream()
+        fakeStreamJob?.cancel()
+        fakeStreamJob = null
+        streamRevealJob?.cancel()
+        streamRevealJob = null
+        if (isStreaming) {
+            stopStreamingForRemoteRecovery()
+        }
         failedUserMessageStates.remove(sourceUserMessageId)
         clearFailedAssistantStateForUser(sourceUserMessageId)
         if (recoveredRound.user.isNotBlank() || recoveredRound.user_images.isNotEmpty()) {
@@ -3303,7 +3315,9 @@ fun ChatScreen() {
         sourceUserMessageId: String,
         assistantMessageId: String,
         fallbackContent: String,
-        reason: String
+        reason: String,
+        maxAttempts: Int = REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS,
+        delayMs: Long = REMOTE_STREAM_RECOVERY_DELAY_MS
     ) {
         if (
             remoteRecoverySourceUserMessageId == sourceUserMessageId &&
@@ -3315,14 +3329,14 @@ fun ChatScreen() {
         remoteRecoverySourceUserMessageId = sourceUserMessageId
         remoteRecoveryJob = snackbarScope.launch {
             var recoveredRound: ARound? = null
-            for (attempt in 0 until REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS) {
+            for (attempt in 0 until maxAttempts.coerceAtLeast(1)) {
                 val snapshot = awaitRemoteSnapshot()
                 recoveredRound = snapshot
                     ?.findRoundByClientMessageId(sourceUserMessageId)
                     ?.takeIf { it.assistant.isNotBlank() }
                 if (recoveredRound != null) break
-                if (attempt < REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS - 1) {
-                    delay(REMOTE_STREAM_RECOVERY_DELAY_MS)
+                if (attempt < maxAttempts.coerceAtLeast(1) - 1) {
+                    delay(delayMs)
                 }
             }
             val matchedRound = recoveredRound
@@ -3338,6 +3352,22 @@ fun ChatScreen() {
                 )
             }
         }
+    }
+
+    fun scheduleBackgroundRemoteAssistantRecoveryIfNeeded() {
+        if (!hasRemoteHistorySource || !isStreaming) return
+        if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return
+        val sourceUserMessageId = anchoredUserMessageId ?: return
+        val assistantMessageId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
+        val fallbackContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
+        scheduleRemoteAssistantRecovery(
+            sourceUserMessageId = sourceUserMessageId,
+            assistantMessageId = assistantMessageId,
+            fallbackContent = fallbackContent,
+            reason = "network",
+            maxAttempts = REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS,
+            delayMs = REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS
+        )
     }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
@@ -3503,7 +3533,7 @@ fun ChatScreen() {
         if (!hasRemoteHistorySource || !historyHydrationComplete) return@LaunchedEffect
         if (hasStartedConversation || isStreaming) return@LaunchedEffect
         if (hasSettledAssistantMessageForUser(sourceUserMessageId)) return@LaunchedEffect
-        repeat(3) { attempt ->
+        repeat(REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS) { attempt ->
             val snapshot = awaitRemoteSnapshot()
             val recoveredRound = snapshot
                 ?.findRoundByClientMessageId(sourceUserMessageId)
@@ -3513,8 +3543,8 @@ fun ChatScreen() {
                 initialBottomSnapDone = false
                 return@LaunchedEffect
             }
-            if (attempt < 2) {
-                delay(1100L * (attempt + 1))
+            if (attempt < REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS - 1) {
+                delay(REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS)
             }
         }
         if (!hasSettledAssistantMessageForUser(sourceUserMessageId)) {
@@ -3782,10 +3812,17 @@ fun ChatScreen() {
         restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor)
         clearPendingStreamingFinalize()
     }
+    stopStreamingForRemoteRecovery = {
+        clearPendingStreamingFinalize()
+        finalizeStreamingStop(shouldRestoreBottomAnchor = false)
+    }
 
     fun finishStreaming() {
         mainHandler.post {
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
+            remoteRecoveryJob?.cancel()
+            remoteRecoveryJob = null
+            remoteRecoverySourceUserMessageId = null
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             streamRevealJob?.cancel()
             streamRevealJob = null
@@ -4476,9 +4513,11 @@ fun ChatScreen() {
                 focusManager.clearFocus(force = true)
             } else if (event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
+                scheduleBackgroundRemoteAssistantRecoveryIfNeeded()
                 if (
                     isStreaming &&
                     pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                    !hasRemoteHistorySource &&
                     fakeStreamJob?.isActive != true &&
                     streamRevealJob?.isActive != true
                 ) {
