@@ -243,6 +243,12 @@ private data class LocalChatWindowSnapshotPayload(
     val failedUserMessageStates: Map<String, String>? = null,
     val failedAssistantMessageStates: Map<String, FailedAssistantMessageState>? = null
 )
+
+private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
+    role == ChatRole.USER &&
+        imageUris.orEmpty().isNotEmpty() &&
+        imageUrls.orEmpty().isEmpty()
+
 @Immutable
 private data class LocalStreamingDraft(
     val messageId: String,
@@ -1106,6 +1112,12 @@ private fun sanitizeLocalChatWindowSnapshot(snapshot: LocalChatWindowSnapshot): 
         .filter { (messageId, reason) ->
             messageId.isNotBlank() && reason.isNotBlank() && messageId in persistedMessageIds
         }
+        .toMutableMap()
+    trimmedMessages.lastOrNull()
+        ?.takeIf(ChatMessage::isLocalImageUploadPendingUserMessage)
+        ?.let { message ->
+            failedUserStates.putIfAbsent(message.id, "network")
+        }
     val failedAssistantStates = snapshot.failedAssistantMessageStates
         .filter { (messageId, state) ->
             messageId.isNotBlank() &&
@@ -1644,7 +1656,8 @@ private fun trailingRecoverableUserMessageId(
         ?.takeIf {
             it.role == ChatRole.USER &&
                 it.id.isNotBlank() &&
-                it.id !in ignoredUserMessageIds
+                it.id !in ignoredUserMessageIds &&
+                !it.isLocalImageUploadPendingUserMessage()
         }
         ?.id
 
