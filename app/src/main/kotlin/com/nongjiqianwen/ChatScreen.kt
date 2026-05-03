@@ -249,6 +249,19 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
         imageUris.orEmpty().isNotEmpty() &&
         imageUrls.orEmpty().isEmpty()
 
+private fun markTrailingLocalImageUploadPendingAsFailed(
+    snapshot: LocalChatWindowSnapshot
+): LocalChatWindowSnapshot {
+    val sanitizedSnapshot = sanitizeLocalChatWindowSnapshot(snapshot)
+    val pendingUserMessage = sanitizedSnapshot.messages.lastOrNull()
+        ?.takeIf(ChatMessage::isLocalImageUploadPendingUserMessage)
+        ?: return sanitizedSnapshot
+    if (pendingUserMessage.id in sanitizedSnapshot.failedUserMessageStates) return sanitizedSnapshot
+    return sanitizedSnapshot.copy(
+        failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates + (pendingUserMessage.id to "network")
+    )
+}
+
 @Immutable
 private data class LocalStreamingDraft(
     val messageId: String,
@@ -1112,12 +1125,6 @@ private fun sanitizeLocalChatWindowSnapshot(snapshot: LocalChatWindowSnapshot): 
         .filter { (messageId, reason) ->
             messageId.isNotBlank() && reason.isNotBlank() && messageId in persistedMessageIds
         }
-        .toMutableMap()
-    trimmedMessages.lastOrNull()
-        ?.takeIf(ChatMessage::isLocalImageUploadPendingUserMessage)
-        ?.let { message ->
-            failedUserStates.putIfAbsent(message.id, "network")
-        }
     val failedAssistantStates = snapshot.failedAssistantMessageStates
         .filter { (messageId, state) ->
             messageId.isNotBlank() &&
@@ -1148,7 +1155,7 @@ private fun mergeHydratedMessagesWithLocalPendingState(
     localSnapshot: LocalChatWindowSnapshot
 ): LocalChatWindowSnapshot {
     val mergedMessages = sanitizeMessageWindow(remoteMessages).toMutableList()
-    val localFailedSnapshot = sanitizeLocalChatWindowSnapshot(localSnapshot)
+    val localFailedSnapshot = markTrailingLocalImageUploadPendingAsFailed(localSnapshot)
     val existingIds = mergedMessages.mapTo(mutableSetOf()) { it.id }
     val retainedFailedUserStates = mutableMapOf<String, String>()
     val retainedFailedAssistantStates = mutableMapOf<String, FailedAssistantMessageState>()
@@ -1268,12 +1275,16 @@ private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatW
     runCatching {
         if (raw.trimStart().startsWith("[")) {
             @Suppress("UNCHECKED_CAST")
-            LocalChatWindowSnapshot(
-                messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
+            markTrailingLocalImageUploadPendingAsFailed(
+                LocalChatWindowSnapshot(
+                    messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
+                )
             )
         } else {
-            normalizeLocalChatWindowSnapshot(
-                chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+            markTrailingLocalImageUploadPendingAsFailed(
+                normalizeLocalChatWindowSnapshot(
+                    chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+                )
             )
         }
     }.getOrDefault(LocalChatWindowSnapshot())
@@ -1287,12 +1298,16 @@ private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindo
     return runCatching {
         if (raw.trimStart().startsWith("[")) {
             @Suppress("UNCHECKED_CAST")
-            LocalChatWindowSnapshot(
-                messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
+            markTrailingLocalImageUploadPendingAsFailed(
+                LocalChatWindowSnapshot(
+                    messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
+                )
             )
         } else {
-            normalizeLocalChatWindowSnapshot(
-                chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+            markTrailingLocalImageUploadPendingAsFailed(
+                normalizeLocalChatWindowSnapshot(
+                    chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+                )
             )
         }
     }.getOrDefault(LocalChatWindowSnapshot())
@@ -4123,8 +4138,14 @@ fun ChatScreen() {
         }
         sendUiSettling = false
         persistTick++
+        val stagedSnapshot = persistableLocalChatWindowSnapshot()
         snackbarScope.launch {
-            context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
+            val stagedMessageStillPendingUpload = messages.any { message ->
+                message.id == userId && message.isLocalImageUploadPendingUserMessage()
+            }
+            if (stagedMessageStillPendingUpload) {
+                context.saveLocalChatWindow(chatScopeId, stagedSnapshot)
+            }
         }
         return userId
     }
@@ -4236,11 +4257,21 @@ fun ChatScreen() {
         }
         sendUiSettling = false
         persistTick++
-        snackbarScope.launch {
-            context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
+        val shouldPersistImageUrlsBeforeRemoteStream =
+            hasRemoteHistorySource &&
+                existingUserMessageId != null &&
+                uploadedImageUrls.isNotEmpty()
+        val sendStartSnapshot = persistableLocalChatWindowSnapshot()
+        if (!shouldPersistImageUrlsBeforeRemoteStream) {
+            snackbarScope.launch {
+                context.saveLocalChatWindow(chatScopeId, sendStartSnapshot)
+            }
         }
         snackbarScope.launch {
             try {
+                if (shouldPersistImageUrlsBeforeRemoteStream) {
+                    context.saveLocalChatWindow(chatScopeId, sendStartSnapshot)
+                }
                 if (hasRemoteHistorySource) {
                     SessionApi.cancelCurrentStream()
                     SessionApi.streamChat(
