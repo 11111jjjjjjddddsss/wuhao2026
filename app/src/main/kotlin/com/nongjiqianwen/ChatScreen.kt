@@ -193,6 +193,7 @@ import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -1121,17 +1122,12 @@ private fun normalizeLocalChatWindowSnapshot(
         )
     )
 
-private fun mergeHydratedMessagesWithLocalFailures(
+private fun mergeHydratedMessagesWithLocalPendingState(
     remoteMessages: List<ChatMessage>,
     localSnapshot: LocalChatWindowSnapshot
 ): LocalChatWindowSnapshot {
     val mergedMessages = sanitizeMessageWindow(remoteMessages).toMutableList()
     val localFailedSnapshot = sanitizeLocalChatWindowSnapshot(localSnapshot)
-    if (localFailedSnapshot.failedUserMessageStates.isEmpty() &&
-        localFailedSnapshot.failedAssistantMessageStates.isEmpty()
-    ) {
-        return LocalChatWindowSnapshot(messages = mergedMessages)
-    }
     val existingIds = mergedMessages.mapTo(mutableSetOf()) { it.id }
     val retainedFailedUserStates = mutableMapOf<String, String>()
     val retainedFailedAssistantStates = mutableMapOf<String, FailedAssistantMessageState>()
@@ -1153,6 +1149,27 @@ private fun mergeHydratedMessagesWithLocalFailures(
             mergedMessages.add(localMessage)
         }
         retainedFailedAssistantStates[localMessage.id] = failedAssistantState
+    }
+    val recoverableUserMessageId = trailingRecoverableUserMessageId(
+        source = localFailedSnapshot.messages,
+        ignoredUserMessageIds = localFailedSnapshot.failedUserMessageStates.keys
+    )
+    val recoverableUserMessage = recoverableUserMessageId
+        ?.let { messageId ->
+            localFailedSnapshot.messages.firstOrNull { message ->
+                message.id == messageId && message.role == ChatRole.USER
+            }
+        }
+    val hasRecoveredAssistant = recoverableUserMessageId
+        ?.let { sourceUserMessageId ->
+            mergedMessages.any { message ->
+                message.id == assistantMessageIdForSourceUser(sourceUserMessageId) &&
+                    message.role == ChatRole.ASSISTANT &&
+                    message.content.isNotBlank()
+            }
+        } == true
+    if (recoverableUserMessage != null && !hasRecoveredAssistant && existingIds.add(recoverableUserMessage.id)) {
+        mergedMessages.add(recoverableUserMessage)
     }
     return sanitizeLocalChatWindowSnapshot(
         LocalChatWindowSnapshot(
@@ -1776,11 +1793,15 @@ fun ChatScreen() {
             context.loadLocalStreamingDraftSync(chatScopeId)
         }
     }
-    val initialLocalSnapshot = remember(chatScopeId, initialStreamingDraft) {
-        recoverStreamingDraftAsCompletedSnapshot(
-            localSnapshot = context.loadLocalChatWindowSync(chatScopeId),
-            draft = initialStreamingDraft
-        )
+    val initialLocalSnapshot = remember(chatScopeId, initialStreamingDraft, hasRemoteHistorySource) {
+        if (hasRemoteHistorySource) {
+            LocalChatWindowSnapshot()
+        } else {
+            recoverStreamingDraftAsCompletedSnapshot(
+                localSnapshot = context.loadLocalChatWindowSync(chatScopeId),
+                draft = initialStreamingDraft
+            )
+        }
     }
     val initialLocalMessages = remember(initialLocalSnapshot) { initialLocalSnapshot.messages }
     val initialComposerDraftText = remember(chatScopeId) {
@@ -1806,15 +1827,17 @@ fun ChatScreen() {
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
     }
-    val startupRecoverableUserMessageId = remember(chatScopeId, initialLocalSnapshot, hasRemoteHistorySource) {
-        if (hasRemoteHistorySource) {
-            trailingRecoverableUserMessageId(
-                source = initialLocalMessages,
-                ignoredUserMessageIds = initialLocalSnapshot.failedUserMessageStates.keys
-            )
-        } else {
-            null
-        }
+    var startupRecoverableUserMessageId by remember(uiRuntimeResetKey) {
+        mutableStateOf(
+            if (hasRemoteHistorySource) {
+                trailingRecoverableUserMessageId(
+                    source = initialLocalMessages,
+                    ignoredUserMessageIds = initialLocalSnapshot.failedUserMessageStates.keys
+                )
+            } else {
+                null
+            }
+        )
     }
     val messages = remember(uiRuntimeResetKey) {
         mutableStateListOf<ChatMessage>().apply { addAll(initialLocalMessages) }
@@ -3299,58 +3322,66 @@ fun ChatScreen() {
             }
         }
         if (shouldHydrateRemoteHistory) {
-                SessionApi.getSnapshot { snapshot ->
-                val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
-                val hydratedSnapshot = mergeHydratedMessagesWithLocalFailures(
+            val localSnapshotForMergeDeferred = async {
+                context.loadLocalChatWindow(chatScopeId)
+            }
+            val snapshot = awaitRemoteSnapshot()
+            val localSnapshotForMerge = localSnapshotForMergeDeferred.await()
+            startupRecoverableUserMessageId = trailingRecoverableUserMessageId(
+                source = localSnapshotForMerge.messages,
+                ignoredUserMessageIds = localSnapshotForMerge.failedUserMessageStates.keys
+            )
+            val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
+            val hydratedSnapshot = if (snapshot == null) {
+                sanitizeLocalChatWindowSnapshot(localSnapshotForMerge)
+            } else {
+                mergeHydratedMessagesWithLocalPendingState(
                     remoteMessages = remoteMessages,
-                    localSnapshot = initialLocalSnapshot
+                    localSnapshot = localSnapshotForMerge
                 )
-                if (remoteMessages.isNotEmpty()) {
-                    snackbarScope.launch {
-                        prewarmAssistantMarkdown(remoteMessages)
-                    }
-                }
-                mainHandler.post {
-                        if (remoteMessages.isNotEmpty()) {
-                            val shouldApplyHydratedSnapshot = shouldApplyHydratedSnapshot(
-                                currentMessages = messages,
-                                currentFailedUserMessageStates = failedUserMessageStates,
-                                currentFailedAssistantMessageStates = failedAssistantMessageStates,
-                                hydratedSnapshot = hydratedSnapshot
-                            )
-                            if (BuildConfig.DEBUG) {
-                                Log.d(
-                                    CHAT_STARTUP_DIAG_TAG,
-                                    buildString {
-                                        append("remoteMessages=").append(remoteMessages.size)
-                                        append(", hydratedMessages=").append(hydratedSnapshot.messages.size)
-                                        append(", applied=").append(
-                                            !hasStartedConversation &&
-                                                !isStreaming &&
-                                                shouldApplyHydratedSnapshot
-                                        )
-                                        append(", hasStarted=").append(hasStartedConversation)
-                                        append(", isStreaming=").append(isStreaming)
-                                    }
-                                )
-                            }
-                            if (
-                                !hasStartedConversation &&
-                                !isStreaming &&
-                                shouldApplyHydratedSnapshot
-                            ) {
-                                replaceMessages(hydratedSnapshot.messages)
-                                failedUserMessageStates.clear()
-                                failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
-                                failedAssistantMessageStates.clear()
-                                failedAssistantMessageStates.putAll(hydratedSnapshot.failedAssistantMessageStates)
-                                initialBottomSnapDone = false
-                                persistTick++
-                            }
-                    }
-                    historyHydrationComplete = true
+            }
+            val prewarmMessages = if (snapshot == null) hydratedSnapshot.messages else remoteMessages
+            if (prewarmMessages.isNotEmpty()) {
+                snackbarScope.launch {
+                    prewarmAssistantMarkdown(prewarmMessages)
                 }
             }
+            val shouldApplyHydratedSnapshot = shouldApplyHydratedSnapshot(
+                currentMessages = messages,
+                currentFailedUserMessageStates = failedUserMessageStates,
+                currentFailedAssistantMessageStates = failedAssistantMessageStates,
+                hydratedSnapshot = hydratedSnapshot
+            )
+            if (BuildConfig.DEBUG) {
+                Log.d(
+                    CHAT_STARTUP_DIAG_TAG,
+                    buildString {
+                        append("remoteMessages=").append(remoteMessages.size)
+                        append(", hydratedMessages=").append(hydratedSnapshot.messages.size)
+                        append(", applied=").append(
+                            !hasStartedConversation &&
+                                !isStreaming &&
+                                shouldApplyHydratedSnapshot
+                        )
+                        append(", hasStarted=").append(hasStartedConversation)
+                        append(", isStreaming=").append(isStreaming)
+                    }
+                )
+            }
+            if (
+                !hasStartedConversation &&
+                !isStreaming &&
+                shouldApplyHydratedSnapshot
+            ) {
+                replaceMessages(hydratedSnapshot.messages)
+                failedUserMessageStates.clear()
+                failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
+                failedAssistantMessageStates.clear()
+                failedAssistantMessageStates.putAll(hydratedSnapshot.failedAssistantMessageStates)
+                initialBottomSnapDone = false
+                persistTick++
+            }
+            historyHydrationComplete = true
         } else {
             historyHydrationComplete = true
         }
