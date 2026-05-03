@@ -47,6 +47,11 @@ import androidx.compose.ui.zIndex
 
 internal enum class MembershipLoadState { Idle, Loading, Loaded, Failed }
 
+private const val MEMBERSHIP_SCRIM_ENTER_MS = 80
+private const val MEMBERSHIP_SCRIM_EXIT_MS = 70
+private const val MEMBERSHIP_SHEET_ENTER_MS = 165
+private const val MEMBERSHIP_SHEET_EXIT_MS = 120
+
 @Composable
 internal fun MembershipCenterBottomSheet(
     visible: Boolean,
@@ -64,8 +69,8 @@ internal fun MembershipCenterBottomSheet(
     ) {
         AnimatedVisibility(
             visible = visible,
-            enter = fadeIn(animationSpec = tween(durationMillis = 120)),
-            exit = fadeOut(animationSpec = tween(durationMillis = 100))
+            enter = fadeIn(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_ENTER_MS)),
+            exit = fadeOut(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_EXIT_MS))
         ) {
             Box(
                 modifier = Modifier
@@ -82,12 +87,12 @@ internal fun MembershipCenterBottomSheet(
             visible = visible,
             enter = slideInVertically(
                 initialOffsetY = { it },
-                animationSpec = tween(durationMillis = 220)
-            ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+                animationSpec = tween(durationMillis = MEMBERSHIP_SHEET_ENTER_MS)
+            ) + fadeIn(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_ENTER_MS)),
             exit = slideOutVertically(
                 targetOffsetY = { it },
-                animationSpec = tween(durationMillis = 160)
-            ) + fadeOut(animationSpec = tween(durationMillis = 120)),
+                animationSpec = tween(durationMillis = MEMBERSHIP_SHEET_EXIT_MS)
+            ) + fadeOut(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_EXIT_MS)),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Surface(
