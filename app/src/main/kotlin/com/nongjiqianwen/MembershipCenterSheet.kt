@@ -107,7 +107,7 @@ internal fun MembershipCenterBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     MembershipCenterHeader(onDismiss = onDismiss)
-                    MembershipStatusCard(
+                    MembershipQuotaSummary(
                         entitlement = entitlement,
                         loadState = loadState
                     )
@@ -201,7 +201,7 @@ private fun MembershipInlineNotice(text: String) {
 }
 
 @Composable
-private fun MembershipStatusCard(
+private fun MembershipQuotaSummary(
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState
 ) {
@@ -213,8 +213,6 @@ private fun MembershipStatusCard(
     }
     val limit = membershipDailyLimit(tier)
     val dailyRemaining = entitlement?.dailyRemaining
-    val upgradeRemaining = entitlement?.upgradeRemaining ?: 0
-    val topupRemaining = entitlement?.topupRemaining ?: 0
     val expireText = formatMembershipExpireDate(entitlement?.tierExpireAt)
         ?: when (tier) {
             "unknown" -> "暂未连接后端"
@@ -222,114 +220,54 @@ private fun MembershipStatusCard(
             else -> "暂未读取到期时间"
         }
     Surface(
-        color = Color(0xFFF7F8FA),
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFE3E5E9)),
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(0.7.dp, Color(0xFFE4E6EA)),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text(
-                        text = "当前套餐",
-                        color = Color(0xFF777B83),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                    Text(
-                        text = tierName,
-                        color = Color(0xFF111111),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    text = when (loadState) {
-                        MembershipLoadState.Loading -> "读取中"
-                        MembershipLoadState.Failed -> "未连接"
-                        else -> "已同步"
+                    text = "今日剩余",
+                    color = Color(0xFF747881),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+                Text(
+                    text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
+                    color = Color(0xFF111111),
+                    fontSize = 20.sp,
+                    lineHeight = 25.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Text(
+                    text = "当前 $tierName",
+                    color = Color(0xFF151515),
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = when {
+                        loadState == MembershipLoadState.Loading -> "读取中"
+                        loadState == MembershipLoadState.Failed -> "未连接"
+                        tier == "free" -> "基础额度"
+                        else -> "到期 $expireText"
                     },
-                    color = Color(0xFF686C74),
+                    color = Color(0xFF747881),
                     fontSize = 12.sp,
                     lineHeight = 16.sp
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MembershipMetric(
-                    title = "今日还可问",
-                    value = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit",
-                    modifier = Modifier.weight(1f)
-                )
-                MembershipMetric(
-                    title = "追问记忆",
-                    value = if (tier == "unknown") "--" else "最近${membershipMemoryRounds(tier)}轮",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                MembershipMetric(
-                    title = "升级补偿",
-                    value = "${upgradeRemaining}次",
-                    modifier = Modifier.weight(1f)
-                )
-                MembershipMetric(
-                    title = "加油包",
-                    value = "${topupRemaining}次",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Text(
-                text = "到期：$expireText",
-                color = Color(0xFF73777F),
-                fontSize = 12.sp,
-                lineHeight = 17.sp
-            )
-        }
-    }
-}
-
-@Composable
-private fun MembershipMetric(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(0.7.dp, Color(0xFFE7E9ED)),
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = title,
-                color = Color(0xFF7A7E86),
-                fontSize = 12.sp,
-                lineHeight = 16.sp
-            )
-            Text(
-                text = value,
-                color = Color(0xFF151515),
-                fontSize = 16.sp,
-                lineHeight = 21.sp,
-                fontWeight = FontWeight.SemiBold
-            )
         }
     }
 }
@@ -345,15 +283,6 @@ private fun MembershipPlanSection(
             color = Color(0xFF111111),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
-        )
-        MembershipPlanCard(
-            name = "免费版",
-            price = "0元",
-            active = activeTier == "free",
-            highlights = listOf("每天6次问诊", "参考最近6轮问答", "适合偶尔咨询作物问题"),
-            actionText = if (activeTier == "free") "当前套餐" else "基础套餐",
-            actionEnabled = false,
-            onActionClick = onPaymentUnavailable
         )
         MembershipPlanCard(
             name = "Plus",

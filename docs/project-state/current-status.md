@@ -20,7 +20,7 @@
 - 当前产品策略倾向已记录为待决策：C 层后续可能升级为 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并评估改用 `Qwen3.5-Flash` 做 C+ 抽取；在代码落地前，当前真实实现仍是现有 `c_summary`
 - 基础设施首版采购倾向已调整为 `SAE + RDS MySQL`：SAE 继续适合当前无运维团队阶段，数据库首版倾向使用阿里云 RDS MySQL 以降低成本和运维复杂度；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
 - 会员有效等级由后端按 `tier_expire_at` 实时计算：Plus / Pro 到期后对 `/api/me`、每日额度、加油包购买资格、Plus 升 Pro 入口都按 Free 处理；Plus 升 Pro 时仍会把 Plus 剩余额度折成永久升级补偿次数，Pro 到期后未用完的升级补偿 / 加油包仍可按当前消耗顺序继续用于超额请求
-- Android 端右上角绿色叶片当前已接入首版会员中心底部面板：打开时读取 `/api/me` 的 `tier / tier_expire_at / daily_remaining / topup_remaining / upgrade_remaining` 并展示当前套餐、今日剩余、追问记忆、升级补偿、加油包和到期信息；套餐文案按后端真实规则展示 Free 6 次 / Plus 25 次 / Pro 40 次、Free/Plus 最近 6 轮、Pro 最近 9 轮。Plus 升 Pro 文案明确是“购买新的 Pro 月，Plus 剩余权益折成升级补偿次数”，不是补差价；加油包文案明确 `6元/100次`、仅 Plus / Pro 可买、同一时间只允许 1 个未用完包。当前支付功能尚未接入，开通 / 升级 / 购买按钮只在会员面板内提示“支付暂未接入”，不会调用后端订单接口
+- Android 端右上角绿色叶片当前已接入首版会员中心底部面板：打开时读取 `/api/me` 的 `tier / tier_expire_at / daily_remaining / topup_remaining / upgrade_remaining`。面板顶部只用一条轻量状态条展示“今日剩余”和当前有效档位，不再额外展示占空间的“当前套餐”大卡；套餐区不再单列免费版大卡，直接展示 Plus / Pro 付费套餐。套餐文案按后端真实规则展示 Plus 25 次 / Pro 40 次、Plus 最近 6 轮、Pro 最近 9 轮。Plus 升 Pro 文案明确是“购买新的 Pro 月，Plus 剩余权益折成升级补偿次数”，不是补差价；加油包文案明确 `6元/100次`、仅 Plus / Pro 可买、同一时间只允许 1 个未用完包。当前支付功能尚未接入，开通 / 升级 / 购买按钮只在会员面板内提示“支付暂未接入”，不会调用后端订单接口
 - Android 构建链当前为 Gradle wrapper 8.13、Android Gradle Plugin 8.13.2、Kotlin Android / Compose Compiler Gradle plugin 2.1.21；Compose 编译已使用 `org.jetbrains.kotlin.plugin.compose`，不再使用旧 `composeOptions.kotlinCompilerExtensionVersion`
 - 聊天消息运行时当前是**单一正向列表主人**：`ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，`messages` 仍按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`
 - 底部 composer 仍是页面底部的独立 UI 宿主，继续负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
