@@ -142,20 +142,12 @@ private fun MembershipCenterHeader(onDismiss: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "会员中心",
-                color = Color(0xFF111111),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "次数、追问记忆和加油包",
-                color = Color(0xFF73777F),
-                fontSize = 13.sp,
-                lineHeight = 18.sp
-            )
-        }
+        Text(
+            text = "会员中心",
+            color = Color(0xFF111111),
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold
+        )
         Surface(
             shape = CircleShape,
             color = Color(0xFFF5F6F7),
@@ -206,19 +198,15 @@ private fun MembershipQuotaSummary(
     loadState: MembershipLoadState
 ) {
     val tier = entitlement.activeMembershipTier(loadState)
-    val tierName = when (loadState) {
-        MembershipLoadState.Loading -> "读取中"
-        MembershipLoadState.Failed -> "未连接"
-        else -> membershipTierName(tier)
-    }
+    val tierName = membershipSummaryTierName(tier, loadState)
     val limit = membershipDailyLimit(tier)
     val dailyRemaining = entitlement?.dailyRemaining
-    val expireText = formatMembershipExpireDate(entitlement?.tierExpireAt)
-        ?: when (tier) {
-            "unknown" -> "暂未连接后端"
-            "free" -> "未开通会员"
-            else -> "暂未读取到期时间"
-        }
+    val extraCountText = membershipExtraCountText(entitlement)
+    val tierSubText = membershipSummaryTierSubText(
+        tier = tier,
+        loadState = loadState,
+        expireAtMs = entitlement?.tierExpireAt
+    )
     Surface(
         color = Color(0xFFF8F9FA),
         shape = RoundedCornerShape(16.dp),
@@ -244,29 +232,34 @@ private fun MembershipQuotaSummary(
                     lineHeight = 25.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+                if (extraCountText != null) {
+                    Text(
+                        text = extraCountText,
+                        color = Color(0xFF747881),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
             }
             Column(
                 horizontalAlignment = Alignment.End,
                 verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 Text(
-                    text = "当前 $tierName",
+                    text = tierName,
                     color = Color(0xFF151515),
                     fontSize = 14.sp,
                     lineHeight = 18.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(
-                    text = when {
-                        loadState == MembershipLoadState.Loading -> "读取中"
-                        loadState == MembershipLoadState.Failed -> "未连接"
-                        tier == "free" -> "基础额度"
-                        else -> "到期 $expireText"
-                    },
-                    color = Color(0xFF747881),
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
-                )
+                if (tierSubText != null) {
+                    Text(
+                        text = tierSubText,
+                        color = Color(0xFF747881),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
             }
         }
     }
@@ -600,8 +593,34 @@ private fun membershipDailyLimit(tier: String): Int =
         else -> 6
     }
 
-private fun membershipMemoryRounds(tier: String): Int =
-    if (tier == "pro") 9 else 6
+private fun membershipSummaryTierName(tier: String, loadState: MembershipLoadState): String =
+    when (loadState) {
+        MembershipLoadState.Loading -> "读取中"
+        MembershipLoadState.Failed -> "未同步"
+        else -> membershipTierName(tier)
+    }
+
+private fun membershipSummaryTierSubText(
+    tier: String,
+    loadState: MembershipLoadState,
+    expireAtMs: Long?
+): String? =
+    when {
+        loadState == MembershipLoadState.Loading || loadState == MembershipLoadState.Failed -> null
+        tier == "free" -> "基础额度"
+        tier == "plus" || tier == "pro" -> formatMembershipExpireDate(expireAtMs)?.let { "到期 $it" }
+        else -> null
+    }
+
+private fun membershipExtraCountText(entitlement: SessionApi.EntitlementSnapshot?): String? {
+    val parts = buildList {
+        val upgradeRemaining = entitlement?.upgradeRemaining ?: 0
+        val topupRemaining = entitlement?.topupRemaining ?: 0
+        if (upgradeRemaining > 0) add("升级补偿 ${upgradeRemaining} 次")
+        if (topupRemaining > 0) add("加油包 ${topupRemaining} 次")
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
 
 private fun formatMembershipExpireDate(expireAtMs: Long?): String? {
     if (expireAtMs == null || expireAtMs <= 0L) return null
