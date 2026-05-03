@@ -4616,6 +4616,8 @@ fun ChatScreen() {
             }
             val previewImageUris = failedMessage.imageUris.orEmpty()
             if (previewImageUris.isNotEmpty() && failedMessage.imageUrls.orEmpty().isEmpty()) {
+                failedUserMessageStates.remove(failedMessage.id)
+                persistTick++
                 imageSendInProgress = true
                 snackbarScope.launch {
                     try {
@@ -4623,10 +4625,11 @@ fun ChatScreen() {
                             previewImageUris.map(::ComposerImageAttachment)
                         )
                         if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
+                            failedUserMessageStates[failedMessage.id] = "network"
+                            persistTick++
                             uploadError?.let(::showComposerStatusHint)
                             return@launch
                         }
-                        failedUserMessageStates.remove(failedMessage.id)
                         commitSendMessage(
                             text = failedMessage.content,
                             uploadedImageUrls = uploadedUrls,
@@ -4662,6 +4665,8 @@ fun ChatScreen() {
             val previewImageUris = sourceUserMessage.imageUris.orEmpty()
             val uploadedImageUrls = sourceUserMessage.imageUrls.orEmpty()
             if (previewImageUris.isNotEmpty() && uploadedImageUrls.isEmpty()) {
+                failedAssistantMessageStates.remove(assistantMessageId)
+                persistTick++
                 imageSendInProgress = true
                 snackbarScope.launch {
                     try {
@@ -4669,10 +4674,11 @@ fun ChatScreen() {
                             previewImageUris.map(::ComposerImageAttachment)
                         )
                         if (uploadError != null || retryUploadedUrls.isNullOrEmpty()) {
+                            failedAssistantMessageStates[assistantMessageId] = failedState
+                            persistTick++
                             uploadError?.let(::showComposerStatusHint)
                             return@launch
                         }
-                        failedAssistantMessageStates.remove(assistantMessageId)
                         val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
                         if (existingAssistantIndex >= 0) {
                             messages.removeAt(existingAssistantIndex)
@@ -4931,6 +4937,7 @@ fun ChatScreen() {
                                     actionText = ASSISTANT_RETRY_ACTION_TEXT,
                                     alignEnd = false,
                                     onActionClick = {
+                                        performButtonHaptic()
                                         retryFailedAssistantMessage(msg.id)
                                     }
                                 )
@@ -4979,6 +4986,7 @@ fun ChatScreen() {
                                     actionText = USER_RETRY_ACTION_TEXT,
                                     alignEnd = true,
                                     onActionClick = {
+                                        performButtonHaptic()
                                         retryFailedUserMessage(msg.id)
                                     }
                                 )
