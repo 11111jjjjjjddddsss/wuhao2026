@@ -1,14 +1,16 @@
 const https = require('https');
 
+// Local diagnosis helper only. This script is not part of the Android runtime
+// and must not be used to reintroduce model keys into the APK.
 const imageUrl = process.argv[2];
 if (!imageUrl || !imageUrl.startsWith('https://')) {
   console.error('Usage: node scripts/verify_model_url.js <IMAGE_URL>');
   process.exit(1);
 }
 
-const apiKey = process.env.DASHSCOPE_API_KEY || process.env.API_KEY || '';
+const apiKey = process.env.DASHSCOPE_API_KEY || '';
 if (!apiKey) {
-  console.error('Missing DASHSCOPE_API_KEY or API_KEY');
+  console.error('Missing DASHSCOPE_API_KEY');
   process.exit(1);
 }
 

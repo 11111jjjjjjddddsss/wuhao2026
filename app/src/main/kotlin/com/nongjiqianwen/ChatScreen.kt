@@ -2952,7 +2952,6 @@ fun ChatScreen() {
         remoteRecoveryJob = null
         remoteRecoverySourceUserMessageId = null
         SessionApi.resetUiRuntimeForCleanState()
-        QwenClient.resetUiRuntimeForCleanState()
         isStreaming = false
         streamingMessageId = null
         streamingMessageContent = ""
@@ -3004,7 +3003,6 @@ fun ChatScreen() {
             streamRevealJob?.cancel()
             remoteRecoveryJob?.cancel()
             SessionApi.resetUiRuntimeForCleanState()
-            QwenClient.resetUiRuntimeForCleanState()
         }
     }
 

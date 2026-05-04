@@ -17,28 +17,6 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        var apiKeyFromLocal = ""
-        val localFile = rootProject.file("local.properties")
-        if (localFile.exists()) {
-            localFile.forEachLine { line ->
-                val t = line.trimStart()
-                if (t.startsWith("API_KEY=")) {
-                    apiKeyFromLocal = line.substringAfter("=").trim().trim('"')
-                }
-            }
-        }
-
-        val apiKey = (
-            System.getenv("BAILIAN_API_KEY")?.takeIf { it.isNotBlank() }
-                ?: apiKeyFromLocal.takeIf { it.isNotBlank() }
-                ?: (project.findProperty("API_KEY") as String?)?.takeIf { it.isNotBlank() }
-                ?: ""
-            ).trim()
-        if (apiKey.isBlank() || apiKey == "your_key_here") {
-            throw GradleException("API_KEY 未配置：请在 local.properties 设置 API_KEY 或设置环境变量 BAILIAN_API_KEY。")
-        }
-        buildConfigField("String", "API_KEY", "\"$apiKey\"")
-
         val uploadBaseUrl = project.findProperty("UPLOAD_BASE_URL") as String? ?: ""
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
         val sessionApiToken = (project.findProperty("SESSION_API_TOKEN") as String?) ?: ""

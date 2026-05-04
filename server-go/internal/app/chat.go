@@ -153,6 +153,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if completed {
+		consume, consumeErr := s.store.ConsumeOnDone(context.Background(), auth.UserID, tier, clientMsgID, dayCN)
+		if consumeErr != nil {
+			s.logger.Error("quota consume on replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
+			s.writeError(w, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		s.logger.Info("quota consume on replay", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
@@ -283,9 +290,11 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			trimmedLine := strings.TrimRight(line, "\r\n")
 			if trimmedLine != "" && !strings.HasPrefix(trimmedLine, ":") && !strings.HasPrefix(trimmedLine, "event:") && strings.HasPrefix(trimmedLine, "data:") {
 				data := strings.TrimLeft(strings.TrimPrefix(trimmedLine, "data:"), " ")
-				if data != "[DONE]" {
-					updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources)
+				if data == "[DONE]" {
+					doneReceived.Store(true)
+					break
 				}
+				updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources)
 				if !clientDisconnected.Load() {
 					writeMu.Lock()
 					_, err = io.WriteString(w, "data: "+data+"\n\n")
@@ -296,10 +305,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					if err != nil {
 						clientDisconnected.Store(true)
 					}
-				}
-				if data == "[DONE]" {
-					doneReceived.Store(true)
-					break
 				}
 			}
 		}
@@ -315,8 +320,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	close(stopHeartbeat)
-
+	sendDoneAfterArchiveAndQuota := false
 	if doneReceived.Load() {
 		replyText := strings.TrimSpace(assistantText.String())
 		if replyText != "" {
@@ -346,6 +350,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
 				} else {
 					s.logger.Info("quota consume on DONE", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)
+					sendDoneAfterArchiveAndQuota = true
 				}
 				if !replay && updatedSnapshot != nil {
 					snapshotCopy := cloneSessionSnapshot(*updatedSnapshot)
@@ -354,6 +359,18 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if sendDoneAfterArchiveAndQuota && !clientDisconnected.Load() {
+		writeMu.Lock()
+		_, err = io.WriteString(w, "data: [DONE]\n\n")
+		if flusher != nil {
+			flusher.Flush()
+		}
+		writeMu.Unlock()
+		if err != nil {
+			clientDisconnected.Store(true)
+		}
+	}
+	close(stopHeartbeat)
 
 	s.logger.Info("bailian stream finished",
 		"request_id", upstreamRequestID,
