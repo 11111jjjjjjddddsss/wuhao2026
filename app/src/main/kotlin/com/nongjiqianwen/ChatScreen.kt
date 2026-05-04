@@ -1469,16 +1469,18 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
 
 private data class ComposerCameraImageTarget(
     val uri: Uri,
-    val galleryBacked: Boolean
+    val galleryBacked: Boolean,
+    val temporaryFilePath: String? = null
 )
 
 private fun Context.createComposerCameraImageTarget(): ComposerCameraImageTarget? {
+    createTemporaryComposerCameraImageTarget()?.let { target ->
+        return target
+    }
     createGalleryComposerCameraImageUri()?.let { uri ->
         return ComposerCameraImageTarget(uri = uri, galleryBacked = true)
     }
-    return createTemporaryComposerCameraImageUri()?.let { uri ->
-        ComposerCameraImageTarget(uri = uri, galleryBacked = false)
-    }
+    return null
 }
 
 private fun Context.createGalleryComposerCameraImageUri(): Uri? {
@@ -1497,14 +1499,19 @@ private fun Context.createGalleryComposerCameraImageUri(): Uri? {
     }.getOrNull()
 }
 
-private fun Context.createTemporaryComposerCameraImageUri(): Uri? {
+private fun Context.createTemporaryComposerCameraImageTarget(): ComposerCameraImageTarget? {
     return runCatching {
         val imageDir = File(cacheDir, "composer_camera").apply { mkdirs() }
         val imageFile = File.createTempFile("camera_", ".jpg", imageDir)
-        FileProvider.getUriForFile(
+        val uri = FileProvider.getUriForFile(
             this,
             "$packageName.fileprovider",
             imageFile
+        )
+        ComposerCameraImageTarget(
+            uri = uri,
+            galleryBacked = false,
+            temporaryFilePath = imageFile.absolutePath
         )
     }.getOrNull()
 }
@@ -1522,6 +1529,48 @@ private fun Context.publishGalleryComposerCameraImage(uri: Uri) {
 private fun Context.deleteGalleryComposerCameraImage(uri: Uri) {
     runCatching {
         contentResolver.delete(uri, null, null)
+    }
+}
+
+private fun Context.saveComposerCameraImageToGallery(sourceUri: Uri) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    runCatching {
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "nongjiqianwen_${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            put(
+                MediaStore.Images.Media.RELATIVE_PATH,
+                "${Environment.DIRECTORY_PICTURES}/$COMPOSER_CAMERA_ALBUM_NAME"
+            )
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+        }
+        val outputUri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+            ?: return@runCatching
+        var saved = false
+        try {
+            val copiedBytes = contentResolver.openInputStream(sourceUri)?.use { input ->
+                contentResolver.openOutputStream(outputUri)?.use { output ->
+                    input.copyTo(output)
+                }
+            } ?: return@runCatching
+            if (copiedBytes <= 0L) return@runCatching
+            saved = true
+            val publishValues = ContentValues().apply {
+                put(MediaStore.Images.Media.IS_PENDING, 0)
+            }
+            contentResolver.update(outputUri, publishValues, null, null)
+        } finally {
+            if (!saved) {
+                contentResolver.delete(outputUri, null, null)
+            }
+        }
+    }
+}
+
+private fun deleteTemporaryComposerCameraImage(path: String?) {
+    if (path.isNullOrBlank()) return
+    runCatching {
+        File(path).takeIf { it.isFile }?.delete()
     }
 }
 
@@ -1966,6 +2015,7 @@ fun ChatScreen() {
     var attachmentMenuVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var pendingCameraImageUriString by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingCameraImageGalleryBacked by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
+    var pendingCameraImageTemporaryFilePath by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var imageSendInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
@@ -2972,8 +3022,6 @@ fun ChatScreen() {
         context.clearLocalComposerDraftSync(chatScopeId)
         selectedComposerImages.clear()
         attachmentMenuVisible = false
-        pendingCameraImageUriString = null
-        pendingCameraImageGalleryBacked = false
         imageSendInProgress = false
         inputContentHeightPx = startupInputContentHeightEstimatePx
         composerSettlingMinHeightPx = 0
@@ -3080,21 +3128,50 @@ fun ChatScreen() {
     ) { success ->
         val uri = pendingCameraImageUriString?.let(Uri::parse)
         val galleryBacked = pendingCameraImageGalleryBacked
+        val temporaryFilePath = pendingCameraImageTemporaryFilePath
         pendingCameraImageUriString = null
         pendingCameraImageGalleryBacked = false
+        pendingCameraImageTemporaryFilePath = null
         if (success && uri != null) {
             snackbarScope.launch {
-                if (galleryBacked) {
-                    withContext(Dispatchers.IO) {
-                        context.publishGalleryComposerCameraImage(uri)
+                val importedImage = withContext(Dispatchers.IO) {
+                    val imported = context.importComposerImageToPrivateStorage(uri)
+                    if (imported != null) {
+                        if (galleryBacked) {
+                            context.publishGalleryComposerCameraImage(uri)
+                        } else {
+                            context.saveComposerCameraImageToGallery(uri)
+                        }
+                    } else if (galleryBacked) {
+                        context.deleteGalleryComposerCameraImage(uri)
                     }
+                    if (!galleryBacked) {
+                        deleteTemporaryComposerCameraImage(temporaryFilePath)
+                    }
+                    imported
                 }
-                addComposerImageUris(listOf(uri))
+                if (importedImage == null) {
+                    showComposerStatusHint(ImageUploader.DECODE_FAIL_MESSAGE)
+                    return@launch
+                }
+                val latestRemainingSlots = COMPOSER_MAX_IMAGE_COUNT - selectedComposerImages.size
+                if (latestRemainingSlots <= 0) {
+                    withContext(Dispatchers.IO) {
+                        context.deleteComposerImageAttachment(importedImage)
+                    }
+                    showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
+                    return@launch
+                }
+                selectedComposerImages.add(importedImage)
             }
-        } else if (uri != null && galleryBacked) {
+        } else if (uri != null) {
             snackbarScope.launch {
                 withContext(Dispatchers.IO) {
-                    context.deleteGalleryComposerCameraImage(uri)
+                    if (galleryBacked) {
+                        context.deleteGalleryComposerCameraImage(uri)
+                    } else {
+                        deleteTemporaryComposerCameraImage(temporaryFilePath)
+                    }
                 }
             }
         }
@@ -3112,16 +3189,24 @@ fun ChatScreen() {
         }
         pendingCameraImageUriString = target.uri.toString()
         pendingCameraImageGalleryBacked = target.galleryBacked
+        pendingCameraImageTemporaryFilePath = target.temporaryFilePath
         attachmentMenuVisible = false
         runCatching {
             cameraLauncher.launch(target.uri)
         }.onFailure {
             pendingCameraImageUriString = null
             pendingCameraImageGalleryBacked = false
+            pendingCameraImageTemporaryFilePath = null
             if (target.galleryBacked) {
                 snackbarScope.launch {
                     withContext(Dispatchers.IO) {
                         context.deleteGalleryComposerCameraImage(target.uri)
+                    }
+                }
+            } else {
+                snackbarScope.launch {
+                    withContext(Dispatchers.IO) {
+                        deleteTemporaryComposerCameraImage(target.temporaryFilePath)
                     }
                 }
             }
@@ -3300,7 +3385,7 @@ fun ChatScreen() {
         }
 
     fun canAttemptRemoteAssistantRecovery(reason: String): Boolean =
-        hasRemoteHistorySource && reason !in setOf("quota", "rate_limit", "auth", "model_unavailable", "replay")
+        hasRemoteHistorySource && reason !in setOf("quota", "rate_limit", "auth", "model_unavailable")
 
     fun finalizeInterruptedAssistant(
         sourceUserMessageId: String,
@@ -3436,6 +3521,35 @@ fun ChatScreen() {
             maxAttempts = REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS,
             delayMs = REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS
         )
+    }
+
+    fun schedulePendingImageAssistantRecovery(sourceUserMessageId: String) {
+        if (
+            remoteRecoverySourceUserMessageId == sourceUserMessageId &&
+            remoteRecoveryJob?.isActive == true
+        ) {
+            return
+        }
+        remoteRecoveryJob?.cancel()
+        remoteRecoverySourceUserMessageId = sourceUserMessageId
+        remoteRecoveryJob = snackbarScope.launch {
+            for (attempt in 0 until REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS) {
+                val snapshot = awaitRemoteSnapshot()
+                val recoveredRound = snapshot
+                    ?.findRoundByClientMessageId(sourceUserMessageId)
+                    ?.takeIf { it.assistant.isNotBlank() }
+                if (recoveredRound != null) {
+                    applyRecoveredAssistantRound(sourceUserMessageId, recoveredRound)
+                    initialBottomSnapDone = false
+                    return@launch
+                }
+                if (attempt < REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS - 1) {
+                    delay(REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS)
+                }
+            }
+            remoteRecoverySourceUserMessageId = null
+            remoteRecoveryJob = null
+        }
     }
 
     fun replaceMessages(newMessages: List<ChatMessage>) {
@@ -3628,6 +3742,17 @@ fun ChatScreen() {
             )
             initialBottomSnapDone = false
         }
+    }
+
+    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete, messages.size, isStreaming) {
+        if (!hasRemoteHistorySource || !historyHydrationComplete || isStreaming) return@LaunchedEffect
+        val pendingUserMessage = messages.lastOrNull { message ->
+            message.role == ChatRole.USER &&
+                message.isLocalImageUploadPendingUserMessage() &&
+                PendingChatSendStore.has(context, chatScopeId, message.id) &&
+                !hasSettledAssistantMessageForUser(message.id)
+        } ?: return@LaunchedEffect
+        schedulePendingImageAssistantRecovery(pendingUserMessage.id)
     }
 
     LaunchedEffect(persistTick) {
@@ -4053,13 +4178,13 @@ fun ChatScreen() {
                     removeMessageById(finalId)
                 }
                 val recoveryMaxAttempts =
-                    if (reason == "stream_in_progress") {
+                    if (reason == "stream_in_progress" || reason == "replay") {
                         REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS
                     } else {
                         REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS
                     }
                 val recoveryDelayMs =
-                    if (reason == "stream_in_progress") {
+                    if (reason == "stream_in_progress" || reason == "replay") {
                         REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS
                     } else {
                         REMOTE_STREAM_RECOVERY_DELAY_MS

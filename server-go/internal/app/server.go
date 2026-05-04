@@ -354,7 +354,7 @@ func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if snapshot != nil {
+	if !replay && snapshot != nil {
 		snapshotCopy := cloneSessionSnapshot(*snapshot)
 		go s.summary.ProcessSessionSummaries(auth.UserID, &snapshotCopy)
 	}
