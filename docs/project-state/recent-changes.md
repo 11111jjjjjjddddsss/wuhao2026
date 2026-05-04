@@ -5,6 +5,7 @@
 
 ## 2026-05-04
 
+- `server-go/internal/app/chat.go` / `store.go` / `ChatScreen.kt` 继续加固图片发送后台兜底的幂等和恢复边界：`/api/chat/stream` 的完成 replay 改以 `session_round_ledger` / 轮次归档成功为真源，不再只看 `quota_ledger`；DONE 后先归档成功轮次再扣额度，避免“已扣额度但回答没归档”导致空 replay；`chat_stream_inflight` 锁前移到限流 / 额度预检查之前，让重复请求稳定返回 `409 STREAM_IN_PROGRESS` 走恢复链。Android 端把后台冲突恢复窗口拉长到约 10 分钟，并把本地图片 pending 失败态扫描从尾部消息扩展到当前窗口内所有未完成本地图消息，减少“前台显示失败但后台还在跑”和非尾部 pending 丢重试入口的边角风险。同步把裸 `X-User-Id` 生产鉴权和客户端旧直连模型链列入未关闭风险，后续上线前单独收口。
 - `ChatScreen.kt` / `SessionApi.kt` / `server-go/internal/app/chat.go` 为带图片发送接入 WorkManager 延迟兜底和后端进行中幂等锁：图片用户消息上屏并写入本地快照后，会按 `chatScopeId + userMessageId` 排一个唯一后台任务；前台上传 / 发起 `/api/chat/stream` 时标记该消息为 active，后台只重试不抢跑，前台开始远端请求后再写入 10 分钟保护窗。后端新增 `chat_stream_inflight` 表和 lease token，同一 `user_id + client_msg_id` 在完成归档前只允许一个上游模型流启动，重复请求返回 `409 STREAM_IN_PROGRESS`，前端对该原因走长窗口 snapshot 恢复而不是快速失败，完成后继续按 replay / snapshot 收口；前台 SSE 也会识别 replay 事件，不再把 replay + DONE 当成空回复完成。前台上传失败并显示“发送失败”时会取消对应后台任务，避免 UI 显示失败但后台偷偷消耗额度；冷启动 hydrate 会保留仍在后台队列中的图片用户消息，不让它从 UI 消失。同步接入 AndroidX WorkManager `work-runtime-ktx:2.11.2`，并更新当前状态 / 风险记忆。
 
 ## 2026-05-03

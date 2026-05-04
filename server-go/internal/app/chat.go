@@ -146,18 +146,37 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	processed, err := s.store.WasProcessed(ctx, auth.UserID, clientMsgID)
+	completed, err := s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
 	if err != nil {
-		s.logger.Error("check quota replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.logger.Error("check session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if processed {
+	if completed {
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
 		return
 	}
+
+	acquiredInflight, inflightToken, err := s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
+	if err != nil {
+		s.logger.Error("acquire chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !acquiredInflight {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STREAM_IN_PROGRESS",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
+	defer func() {
+		if err := s.store.ReleaseChatStreamInflight(context.Background(), auth.UserID, clientMsgID, inflightToken); err != nil {
+			s.logger.Warn("release chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		}
+	}()
 
 	allowed, retryAfterSec := s.rateLimiter.Consume(auth.UserID, time.Now())
 	if !allowed {
@@ -192,25 +211,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusPaymentRequired, "今日次数用完")
 		return
 	}
-
-	acquiredInflight, inflightToken, err := s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
-	if err != nil {
-		s.logger.Error("acquire chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if !acquiredInflight {
-		s.writeJSON(w, http.StatusConflict, map[string]any{
-			"error":         "STREAM_IN_PROGRESS",
-			"client_msg_id": clientMsgID,
-		})
-		return
-	}
-	defer func() {
-		if err := s.store.ReleaseChatStreamInflight(context.Background(), auth.UserID, clientMsgID, inflightToken); err != nil {
-			s.logger.Warn("release chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		}
-	}()
 
 	upstreamCtx, cancelUpstream := context.WithCancel(context.Background())
 	defer cancelUpstream()
@@ -318,13 +318,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	close(stopHeartbeat)
 
 	if doneReceived.Load() {
-		consume, consumeErr := s.store.ConsumeOnDone(context.Background(), auth.UserID, tier, clientMsgID, dayCN)
-		if consumeErr != nil {
-			s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
-		} else {
-			s.logger.Info("quota consume on DONE", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)
-		}
-
 		replyText := strings.TrimSpace(assistantText.String())
 		if replyText != "" {
 			replay, updatedSnapshot, appendErr := s.store.AppendSessionRoundComplete(
@@ -347,9 +340,17 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			)
 			if appendErr != nil {
 				s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
-			} else if !replay && updatedSnapshot != nil {
-				snapshotCopy := cloneSessionSnapshot(*updatedSnapshot)
-				go s.summary.ProcessSessionSummaries(auth.UserID, &snapshotCopy)
+			} else {
+				consume, consumeErr := s.store.ConsumeOnDone(context.Background(), auth.UserID, tier, clientMsgID, dayCN)
+				if consumeErr != nil {
+					s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
+				} else {
+					s.logger.Info("quota consume on DONE", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)
+				}
+				if !replay && updatedSnapshot != nil {
+					snapshotCopy := cloneSessionSnapshot(*updatedSnapshot)
+					go s.summary.ProcessSessionSummaries(auth.UserID, &snapshotCopy)
+				}
 			}
 		}
 	}

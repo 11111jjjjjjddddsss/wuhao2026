@@ -92,6 +92,23 @@ func (s *Store) AppendSessionRoundComplete(
 	return false, snapshot, nil
 }
 
+func (s *Store) WasSessionRoundCompleted(ctx context.Context, userID string, clientMsgID string) (bool, error) {
+	var id int64
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT id FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		userID,
+		clientMsgID,
+	).Scan(&id)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) WriteUserBSummary(ctx context.Context, userID string, summary string) error {
 	normalized := strings.TrimSpace(summary)
 	if normalized == "" {
