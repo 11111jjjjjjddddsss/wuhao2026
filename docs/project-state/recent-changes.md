@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-04
+
+- `ChatScreen.kt` / `SessionApi.kt` / `server-go/internal/app/chat.go` 为带图片发送接入 WorkManager 延迟兜底和后端进行中幂等锁：图片用户消息上屏并写入本地快照后，会按 `chatScopeId + userMessageId` 排一个唯一后台任务；前台上传 / 发起 `/api/chat/stream` 时标记该消息为 active，后台只重试不抢跑，前台开始远端请求后再写入 10 分钟保护窗。后端新增 `chat_stream_inflight` 表和 lease token，同一 `user_id + client_msg_id` 在完成归档前只允许一个上游模型流启动，重复请求返回 `409 STREAM_IN_PROGRESS`，前端对该原因走长窗口 snapshot 恢复而不是快速失败，完成后继续按 replay / snapshot 收口；前台 SSE 也会识别 replay 事件，不再把 replay + DONE 当成空回复完成。前台上传失败并显示“发送失败”时会取消对应后台任务，避免 UI 显示失败但后台偷偷消耗额度；冷启动 hydrate 会保留仍在后台队列中的图片用户消息，不让它从 UI 消失。同步接入 AndroidX WorkManager `work-runtime-ktx:2.11.2`，并更新当前状态 / 风险记忆。
+
 ## 2026-05-03
 
 - `ChatScreen.kt` 补齐图片上传阶段被杀后的恢复兜底：本地聊天窗口读取 / 远端合并时会识别“尾部用户消息只有本地 `imageUris`、没有远端 `imageUrls`”的图片尾巴，并标记为 `network` 失败态；冷启动 / 远端 hydrate 时这类消息不再误走远端 assistant 恢复等待，而是直接保留成“发送失败 · 点击重发”，用户点重发时复用既有本地图重新上传。正常上传中的运行时快照不提前标失败；图片上传成功后会在后台协程里先落盘带 `imageUrls` 的用户消息快照，再发起 `/api/chat/stream`，避免进程在极窄窗口被杀后丢掉远端恢复链；stage 阶段旧异步快照写入前也会确认该消息仍处于“只有本地图、没有远端 URL”的上传中状态，避免旧快照晚到覆盖带 URL 的新快照。该改动只是“不丢消息、可手动重发 / 可恢复”的小兜底，真正跨进程自动执行“图片上传 + 发起对话”仍需后续接 WorkManager。本次不拆 debug 预览面板、不改图片压缩规则、不动聊天滚动链或 96dp 工作线。

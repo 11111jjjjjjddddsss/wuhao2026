@@ -1,0 +1,102 @@
+package com.nongjiqianwen
+
+import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.JsonSyntaxException
+import java.util.Collections
+
+internal data class PendingChatSend(
+    val chatScopeId: String,
+    val userMessageId: String,
+    val text: String,
+    val imageUris: List<String>,
+    val imageUrls: List<String> = emptyList(),
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val updatedAtMs: Long = System.currentTimeMillis(),
+    val remoteStartedAtMs: Long = 0L
+)
+
+internal object PendingChatSendRuntime {
+    private val activeMessageIds = Collections.synchronizedSet(mutableSetOf<String>())
+
+    fun markActive(userMessageId: String) {
+        if (userMessageId.isNotBlank()) activeMessageIds.add(userMessageId)
+    }
+
+    fun markInactive(userMessageId: String) {
+        if (userMessageId.isNotBlank()) activeMessageIds.remove(userMessageId)
+    }
+
+    fun isActive(userMessageId: String): Boolean =
+        userMessageId.isNotBlank() && activeMessageIds.contains(userMessageId)
+}
+
+internal object PendingChatSendStore {
+    private const val PREFS_NAME = "pending_chat_sends"
+    private const val KEY_PREFIX = "pending_"
+    const val REMOTE_STARTED_GRACE_MS = 10 * 60 * 1000L
+    private val gson = Gson()
+
+    fun upsert(context: Context, pending: PendingChatSend) {
+        val next = pending.copy(updatedAtMs = System.currentTimeMillis())
+        prefs(context).edit()
+            .putString(key(next.chatScopeId, next.userMessageId), gson.toJson(next))
+            .commit()
+    }
+
+    fun get(context: Context, chatScopeId: String, userMessageId: String): PendingChatSend? {
+        val raw = prefs(context).getString(key(chatScopeId, userMessageId), null).orEmpty()
+        if (raw.isBlank()) return null
+        return try {
+            gson.fromJson(raw, PendingChatSend::class.java)
+        } catch (_: JsonSyntaxException) {
+            null
+        }
+    }
+
+    fun has(context: Context, chatScopeId: String, userMessageId: String): Boolean =
+        get(context, chatScopeId, userMessageId) != null
+
+    fun updateImageUrls(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String,
+        imageUrls: List<String>
+    ) {
+        val pending = get(context, chatScopeId, userMessageId) ?: return
+        upsert(context, pending.copy(imageUrls = imageUrls))
+    }
+
+    fun markRemoteStarted(context: Context, chatScopeId: String, userMessageId: String) {
+        val pending = get(context, chatScopeId, userMessageId) ?: return
+        upsert(context, pending.copy(remoteStartedAtMs = System.currentTimeMillis()))
+    }
+
+    fun remove(context: Context, chatScopeId: String, userMessageId: String) {
+        prefs(context).edit()
+            .remove(key(chatScopeId, userMessageId))
+            .commit()
+    }
+
+    fun retainedImageUris(context: Context): Set<String> {
+        val all = prefs(context).all
+        if (all.isEmpty()) return emptySet()
+        return buildSet {
+            all.values.forEach { value ->
+                val raw = value as? String ?: return@forEach
+                val pending = try {
+                    gson.fromJson(raw, PendingChatSend::class.java)
+                } catch (_: JsonSyntaxException) {
+                    null
+                } ?: return@forEach
+                pending.imageUris.forEach(::add)
+            }
+        }
+    }
+
+    private fun prefs(context: Context) =
+        context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun key(chatScopeId: String, userMessageId: String): String =
+        "$KEY_PREFIX$chatScopeId:$userMessageId"
+}

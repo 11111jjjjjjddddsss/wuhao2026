@@ -44,6 +44,25 @@ object SessionApi {
         val regionReliability: String? = null
     )
 
+    enum class StreamCompletionStatus {
+        Complete,
+        Replay,
+        RetryableFailure,
+        Quota,
+        RateLimited,
+        Auth,
+        BadRequest,
+        ServerFailure
+    }
+
+    data class StreamCompletionResult(
+        val status: StreamCompletionStatus,
+        val reason: String? = null
+    ) {
+        val shouldRetry: Boolean
+            get() = status == StreamCompletionStatus.RetryableFailure
+    }
+
     data class EntitlementSnapshot(
         val tier: String? = null,
         @SerializedName("tier_expire_at") val tierExpireAt: Long? = null,
@@ -91,6 +110,9 @@ object SessionApi {
 
     private fun applyIdentityHeaders(builder: Request.Builder): Request.Builder =
         builder.addHeader("X-User-Id", IdManager.getUserId())
+
+    private fun authTokenSync(): String? =
+        BuildConfig.SESSION_API_TOKEN.trim().takeIf { it.isNotEmpty() }
 
     private fun enqueueWithRetry401(
         requestFactory: (String?) -> Request.Builder,
@@ -443,6 +465,7 @@ object SessionApi {
                                         return
                                     }
                                     val reason = when (res.code) {
+                                        409 -> "stream_in_progress"
                                         503 -> "model_unavailable"
                                         429 -> "rate_limit"
                                         402 -> "quota"
@@ -470,6 +493,7 @@ object SessionApi {
                                 }
 
                                 try {
+                                    var sawReplay = false
                                     while (!source.exhausted()) {
                                         if (isRuntimeStale()) return
                                         if (call.isCanceled()) {
@@ -482,11 +506,19 @@ object SessionApi {
                                         if (!normalized.startsWith("data:")) continue
                                         val data = normalized.removePrefix("data:").trimStart()
                                         if (data == "[DONE]") {
-                                            deliverComplete()
+                                            if (sawReplay) {
+                                                deliverInterrupted("replay")
+                                            } else {
+                                                deliverComplete()
+                                            }
                                             return
                                         }
                                         try {
                                             val obj = gson.fromJson(data, JsonObject::class.java) ?: continue
+                                            if (obj.get("replay")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) {
+                                                sawReplay = true
+                                                continue
+                                            }
                                             val choices = obj.getAsJsonArray("choices") ?: continue
                                             if (choices.size() == 0) continue
                                             val choice0 = choices[0].asJsonObject
@@ -532,6 +564,124 @@ object SessionApi {
         }
 
         start(hasRetried = false, networkRetry = 0)
+    }
+
+    fun streamChatToCompletion(
+        options: StreamOptions,
+        shouldContinue: () -> Boolean = { true }
+    ): StreamCompletionResult {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            return StreamCompletionResult(StreamCompletionStatus.ServerFailure, "server")
+        }
+        val body = gson.toJson(
+            mapOf(
+                "client_msg_id" to options.clientMsgId,
+                "text" to options.text,
+                "images" to options.images
+            )
+        )
+        fun buildRequest(token: String?): Request {
+            val builder = applyIdentityHeaders(
+                Request.Builder()
+                    .url("$base${ApiConfig.PATH_CHAT_STREAM}")
+                    .addHeader("Content-Type", "application/json")
+                    .addHeader("Accept", "text/event-stream")
+                    .post(body.toRequestBody("application/json".toMediaType()))
+            )
+            if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+            if (!options.region.isNullOrBlank()) builder.addHeader("X-User-Region", options.region)
+            if (!options.regionSource.isNullOrBlank()) builder.addHeader("X-Region-Source", options.regionSource)
+            if (!options.regionReliability.isNullOrBlank()) builder.addHeader("X-Region-Reliability", options.regionReliability)
+            return builder.build()
+        }
+
+        fun runRequest(hasRetriedAuth: Boolean, networkRetry: Int): StreamCompletionResult {
+            val request = buildRequest(authTokenSync())
+            val call = client.newCall(request)
+            return try {
+                if (!shouldContinue()) {
+                    call.cancel()
+                    return StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "stopped")
+                }
+                call.execute().use { res ->
+                    if (res.code == 401) {
+                        return if (!hasRetriedAuth) {
+                            runRequest(hasRetriedAuth = true, networkRetry = networkRetry)
+                        } else {
+                            StreamCompletionResult(StreamCompletionStatus.Auth, "auth")
+                        }
+                    }
+                    if (!res.isSuccessful) {
+                        if (networkRetry < STREAM_NETWORK_RETRY_MAX && (res.code == 502 || res.code == 503 || res.code == 504)) {
+                            Thread.sleep(350L * (networkRetry + 1))
+                            return runRequest(hasRetriedAuth = hasRetriedAuth, networkRetry = networkRetry + 1)
+                        }
+                        val status = when (res.code) {
+                            400 -> StreamCompletionStatus.BadRequest
+                            409 -> StreamCompletionStatus.RetryableFailure
+                            402 -> StreamCompletionStatus.Quota
+                            429 -> StreamCompletionStatus.RateLimited
+                            500, 502, 503, 504 -> StreamCompletionStatus.RetryableFailure
+                            else -> StreamCompletionStatus.ServerFailure
+                        }
+                        return StreamCompletionResult(status, "http_${res.code}")
+                    }
+                    val contentType = res.header("Content-Type").orEmpty().lowercase()
+                    if (!contentType.contains("text/event-stream")) {
+                        val bodyText = res.body?.string().orEmpty()
+                        val replay = try {
+                            gson.fromJson(bodyText, JsonObject::class.java)?.get("replay")?.asBoolean == true
+                        } catch (_: Exception) {
+                            false
+                        }
+                        return StreamCompletionResult(
+                            if (replay) StreamCompletionStatus.Replay else StreamCompletionStatus.ServerFailure,
+                            if (replay) "replay" else "server"
+                        )
+                    }
+                    val source = res.body?.source()
+                        ?: return StreamCompletionResult(StreamCompletionStatus.ServerFailure, "server")
+                    var sawReplay = false
+                    while (!source.exhausted()) {
+                        if (!shouldContinue()) {
+                            call.cancel()
+                            return StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "stopped")
+                        }
+                        val line = source.readUtf8Line() ?: continue
+                        val normalized = line.trimStart()
+                        if (normalized.isBlank() || normalized.startsWith(":") || normalized.startsWith("event:")) continue
+                        if (!normalized.startsWith("data:")) continue
+                        val data = normalized.removePrefix("data:").trimStart()
+                        if (data == "[DONE]") {
+                            return StreamCompletionResult(
+                                if (sawReplay) StreamCompletionStatus.Replay else StreamCompletionStatus.Complete,
+                                if (sawReplay) "replay" else null
+                            )
+                        }
+                        try {
+                            val obj = gson.fromJson(data, JsonObject::class.java) ?: continue
+                            if (obj.get("replay")?.takeIf { it.isJsonPrimitive }?.asBoolean == true) {
+                                sawReplay = true
+                            }
+                        } catch (_: Exception) {
+                            // Ignore malformed streaming chunks; completion is driven by [DONE].
+                        }
+                    }
+                    StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "stream_ended")
+                }
+            } catch (e: IOException) {
+                if (networkRetry < STREAM_NETWORK_RETRY_MAX) {
+                    Thread.sleep(350L * (networkRetry + 1))
+                    runRequest(hasRetriedAuth = hasRetriedAuth, networkRetry = networkRetry + 1)
+                } else {
+                    Log.w(TAG, "streamChatToCompletion failed", e)
+                    StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "network")
+                }
+            }
+        }
+
+        return runRequest(hasRetriedAuth = false, networkRetry = 0)
     }
 
     private data class SessionSnapshotJson(

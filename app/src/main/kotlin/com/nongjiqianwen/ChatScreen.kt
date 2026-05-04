@@ -250,12 +250,18 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
         imageUrls.orEmpty().isEmpty()
 
 private fun markTrailingLocalImageUploadPendingAsFailed(
-    snapshot: LocalChatWindowSnapshot
+    snapshot: LocalChatWindowSnapshot,
+    shouldKeepPending: (String) -> Boolean = { false }
 ): LocalChatWindowSnapshot {
     val sanitizedSnapshot = sanitizeLocalChatWindowSnapshot(snapshot)
     val pendingUserMessage = sanitizedSnapshot.messages.lastOrNull()
         ?.takeIf(ChatMessage::isLocalImageUploadPendingUserMessage)
         ?: return sanitizedSnapshot
+    if (shouldKeepPending(pendingUserMessage.id)) {
+        return sanitizedSnapshot.copy(
+            failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates - pendingUserMessage.id
+        )
+    }
     if (pendingUserMessage.id in sanitizedSnapshot.failedUserMessageStates) return sanitizedSnapshot
     return sanitizedSnapshot.copy(
         failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates + (pendingUserMessage.id to "network")
@@ -1152,14 +1158,27 @@ private fun normalizeLocalChatWindowSnapshot(
 
 private fun mergeHydratedMessagesWithLocalPendingState(
     remoteMessages: List<ChatMessage>,
-    localSnapshot: LocalChatWindowSnapshot
+    localSnapshot: LocalChatWindowSnapshot,
+    shouldKeepPendingUserMessage: (String) -> Boolean = { false }
 ): LocalChatWindowSnapshot {
     val mergedMessages = sanitizeMessageWindow(remoteMessages).toMutableList()
-    val localFailedSnapshot = markTrailingLocalImageUploadPendingAsFailed(localSnapshot)
+    val localFailedSnapshot = markTrailingLocalImageUploadPendingAsFailed(
+        snapshot = localSnapshot,
+        shouldKeepPending = shouldKeepPendingUserMessage
+    )
     val existingIds = mergedMessages.mapTo(mutableSetOf()) { it.id }
     val retainedFailedUserStates = mutableMapOf<String, String>()
     val retainedFailedAssistantStates = mutableMapOf<String, FailedAssistantMessageState>()
     localFailedSnapshot.messages.forEach { localMessage ->
+        if (
+            localMessage.isLocalImageUploadPendingUserMessage() &&
+            shouldKeepPendingUserMessage(localMessage.id)
+        ) {
+            if (existingIds.add(localMessage.id)) {
+                mergedMessages.add(localMessage)
+            }
+            return@forEach
+        }
         val failedUserReason = localFailedSnapshot.failedUserMessageStates[localMessage.id]
         if (failedUserReason != null) {
             if (existingIds.add(localMessage.id)) {
@@ -1268,6 +1287,7 @@ private fun applyCompletedAssistantMessageInPlace(
 }
 
 private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatWindowSnapshot = withContext(Dispatchers.IO) {
+    val appContext = applicationContext
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", null)
         .orEmpty()
@@ -1276,21 +1296,28 @@ private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatW
         if (raw.trimStart().startsWith("[")) {
             @Suppress("UNCHECKED_CAST")
             markTrailingLocalImageUploadPendingAsFailed(
-                LocalChatWindowSnapshot(
+                snapshot = LocalChatWindowSnapshot(
                     messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
-                )
+                ),
+                shouldKeepPending = { messageId ->
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                }
             )
         } else {
             markTrailingLocalImageUploadPendingAsFailed(
-                normalizeLocalChatWindowSnapshot(
+                snapshot = normalizeLocalChatWindowSnapshot(
                     chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
-                )
+                ),
+                shouldKeepPending = { messageId ->
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                }
             )
         }
     }.getOrDefault(LocalChatWindowSnapshot())
 }
 
 private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindowSnapshot {
+    val appContext = applicationContext
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", null)
         .orEmpty()
@@ -1299,15 +1326,21 @@ private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindo
         if (raw.trimStart().startsWith("[")) {
             @Suppress("UNCHECKED_CAST")
             markTrailingLocalImageUploadPendingAsFailed(
-                LocalChatWindowSnapshot(
+                snapshot = LocalChatWindowSnapshot(
                     messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
-                )
+                ),
+                shouldKeepPending = { messageId ->
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                }
             )
         } else {
             markTrailingLocalImageUploadPendingAsFailed(
-                normalizeLocalChatWindowSnapshot(
+                snapshot = normalizeLocalChatWindowSnapshot(
                     chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
-                )
+                ),
+                shouldKeepPending = { messageId ->
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                }
             )
         }
     }.getOrDefault(LocalChatWindowSnapshot())
@@ -3182,6 +3215,7 @@ fun ChatScreen() {
         selectedComposerImages.forEach { image ->
             add(image.uri)
         }
+        PendingChatSendStore.retainedImageUris(context).forEach(::add)
     }
 
     fun upsertUserMessage(
@@ -3327,6 +3361,7 @@ fun ChatScreen() {
         if (startIndex > 0) {
             repeat(startIndex) { messages.removeAt(0) }
         }
+        PendingChatSendWorkScheduler.complete(context, chatScopeId, sourceUserMessageId)
         pruneMessageRuntimeState()
         persistTick++
         val persistedSnapshot = persistableLocalChatWindowSnapshot()
@@ -3378,6 +3413,7 @@ fun ChatScreen() {
                     finalContent = fallbackContent,
                     reason = reason
                 )
+                PendingChatSendWorkScheduler.cancelAndRemove(context, chatScopeId, sourceUserMessageId)
             }
         }
     }
@@ -3499,7 +3535,10 @@ fun ChatScreen() {
             } else {
                 mergeHydratedMessagesWithLocalPendingState(
                     remoteMessages = remoteMessages,
-                    localSnapshot = localSnapshotForMerge
+                    localSnapshot = localSnapshotForMerge,
+                    shouldKeepPendingUserMessage = { messageId ->
+                        PendingChatSendStore.has(context, chatScopeId, messageId)
+                    }
                 )
             }
             val prewarmMessages = if (snapshot == null) hydratedSnapshot.messages else remoteMessages
@@ -3848,6 +3887,7 @@ fun ChatScreen() {
     fun finishStreaming() {
         mainHandler.post {
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
+            val completedSourceUserMessageId = anchoredUserMessageId
             remoteRecoveryJob?.cancel()
             remoteRecoveryJob = null
             remoteRecoverySourceUserMessageId = null
@@ -3899,6 +3939,9 @@ fun ChatScreen() {
                 finalId?.let(::removeMessageById)
                 finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
                 persistTick++
+            }
+            completedSourceUserMessageId?.let { userMessageId ->
+                PendingChatSendWorkScheduler.complete(context, chatScopeId, userMessageId)
             }
         }
     }
@@ -3995,6 +4038,7 @@ fun ChatScreen() {
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             context.clearLocalStreamingDraftSync(chatScopeId)
             if (canAttemptRemoteAssistantRecovery(reason)) {
+                PendingChatSendRuntime.markInactive(sourceUserMessageId)
                 if (finalContent.isNotBlank()) {
                     applyCompletedAssistantMessageInPlace(
                         target = messages,
@@ -4004,13 +4048,32 @@ fun ChatScreen() {
                 } else {
                     removeMessageById(finalId)
                 }
+                val recoveryMaxAttempts =
+                    if (reason == "stream_in_progress") {
+                        REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS
+                    } else {
+                        REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS
+                    }
+                val recoveryDelayMs =
+                    if (reason == "stream_in_progress") {
+                        REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS
+                    } else {
+                        REMOTE_STREAM_RECOVERY_DELAY_MS
+                    }
                 scheduleRemoteAssistantRecovery(
                     sourceUserMessageId = sourceUserMessageId,
                     assistantMessageId = finalId,
                     fallbackContent = finalContent,
-                    reason = reason
+                    reason = reason,
+                    maxAttempts = recoveryMaxAttempts,
+                    delayMs = recoveryDelayMs
                 )
                 return@post
+            }
+            if (reason == "replay") {
+                PendingChatSendWorkScheduler.complete(context, chatScopeId, sourceUserMessageId)
+            } else {
+                PendingChatSendWorkScheduler.cancelAndRemove(context, chatScopeId, sourceUserMessageId)
             }
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
@@ -4139,6 +4202,18 @@ fun ChatScreen() {
         sendUiSettling = false
         persistTick++
         val stagedSnapshot = persistableLocalChatWindowSnapshot()
+        if (hasRemoteHistorySource) {
+            PendingChatSendRuntime.markActive(userId)
+            PendingChatSendWorkScheduler.enqueue(
+                context = context,
+                pending = PendingChatSend(
+                    chatScopeId = chatScopeId,
+                    userMessageId = userId,
+                    text = text,
+                    imageUris = previewImageUris
+                )
+            )
+        }
         snackbarScope.launch {
             val stagedMessageStillPendingUpload = messages.any { message ->
                 message.id == userId && message.isLocalImageUploadPendingUserMessage()
@@ -4257,6 +4332,19 @@ fun ChatScreen() {
         }
         sendUiSettling = false
         persistTick++
+        val hasPendingBackgroundSend = hasRemoteHistorySource &&
+            PendingChatSendStore.has(context, chatScopeId, userId)
+        if (hasPendingBackgroundSend) {
+            PendingChatSendRuntime.markActive(userId)
+            if (uploadedImageUrls.isNotEmpty()) {
+                PendingChatSendStore.updateImageUrls(
+                    context = context,
+                    chatScopeId = chatScopeId,
+                    userMessageId = userId,
+                    imageUrls = uploadedImageUrls
+                )
+            }
+        }
         val shouldPersistImageUrlsBeforeRemoteStream =
             hasRemoteHistorySource &&
                 existingUserMessageId != null &&
@@ -4274,6 +4362,9 @@ fun ChatScreen() {
                 }
                 if (hasRemoteHistorySource) {
                     SessionApi.cancelCurrentStream()
+                    if (hasPendingBackgroundSend) {
+                        PendingChatSendWorkScheduler.markRemoteStarted(context, chatScopeId, userId)
+                    }
                     SessionApi.streamChat(
                         options = SessionApi.StreamOptions(
                             clientMsgId = userId,
@@ -4701,6 +4792,18 @@ fun ChatScreen() {
             if (previewImageUris.isNotEmpty() && failedMessage.imageUrls.orEmpty().isEmpty()) {
                 failedUserMessageStates.remove(failedMessage.id)
                 persistTick++
+                if (hasRemoteHistorySource) {
+                    PendingChatSendRuntime.markActive(failedMessage.id)
+                    PendingChatSendWorkScheduler.enqueue(
+                        context = context,
+                        pending = PendingChatSend(
+                            chatScopeId = chatScopeId,
+                            userMessageId = failedMessage.id,
+                            text = failedMessage.content,
+                            imageUris = previewImageUris
+                        )
+                    )
+                }
                 imageSendInProgress = true
                 snackbarScope.launch {
                     try {
@@ -4708,11 +4811,22 @@ fun ChatScreen() {
                             previewImageUris.map(::ComposerImageAttachment)
                         )
                         if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
+                            PendingChatSendWorkScheduler.cancelAndRemove(
+                                context,
+                                chatScopeId,
+                                failedMessage.id
+                            )
                             failedUserMessageStates[failedMessage.id] = "network"
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
                             return@launch
                         }
+                        PendingChatSendStore.updateImageUrls(
+                            context = context,
+                            chatScopeId = chatScopeId,
+                            userMessageId = failedMessage.id,
+                            imageUrls = uploadedUrls
+                        )
                         commitSendMessage(
                             text = failedMessage.content,
                             uploadedImageUrls = uploadedUrls,
@@ -4750,6 +4864,18 @@ fun ChatScreen() {
             if (previewImageUris.isNotEmpty() && uploadedImageUrls.isEmpty()) {
                 failedAssistantMessageStates.remove(assistantMessageId)
                 persistTick++
+                if (hasRemoteHistorySource) {
+                    PendingChatSendRuntime.markActive(sourceUserMessage.id)
+                    PendingChatSendWorkScheduler.enqueue(
+                        context = context,
+                        pending = PendingChatSend(
+                            chatScopeId = chatScopeId,
+                            userMessageId = sourceUserMessage.id,
+                            text = sourceUserMessage.content,
+                            imageUris = previewImageUris
+                        )
+                    )
+                }
                 imageSendInProgress = true
                 snackbarScope.launch {
                     try {
@@ -4757,11 +4883,22 @@ fun ChatScreen() {
                             previewImageUris.map(::ComposerImageAttachment)
                         )
                         if (uploadError != null || retryUploadedUrls.isNullOrEmpty()) {
+                            PendingChatSendWorkScheduler.cancelAndRemove(
+                                context,
+                                chatScopeId,
+                                sourceUserMessage.id
+                            )
                             failedAssistantMessageStates[assistantMessageId] = failedState
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
                             return@launch
                         }
+                        PendingChatSendStore.updateImageUrls(
+                            context = context,
+                            chatScopeId = chatScopeId,
+                            userMessageId = sourceUserMessage.id,
+                            imageUrls = retryUploadedUrls
+                        )
                         val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
                         if (existingAssistantIndex >= 0) {
                             messages.removeAt(existingAssistantIndex)
@@ -4830,11 +4967,22 @@ fun ChatScreen() {
                 try {
                     val (uploadedUrls, uploadError) = uploadComposerImagesForSend(imageSnapshot)
                     if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
+                        PendingChatSendWorkScheduler.cancelAndRemove(
+                            context,
+                            chatScopeId,
+                            stagedUserMessageId
+                        )
                         failedUserMessageStates[stagedUserMessageId] = "network"
                         persistTick++
                         context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
                         uploadError?.let(::showComposerStatusHint)
                     } else {
+                        PendingChatSendStore.updateImageUrls(
+                            context = context,
+                            chatScopeId = chatScopeId,
+                            userMessageId = stagedUserMessageId,
+                            imageUrls = uploadedUrls
+                        )
                         failedUserMessageStates.remove(stagedUserMessageId)
                         commitSendMessage(
                             text = trimmedText,

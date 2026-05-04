@@ -193,6 +193,25 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	acquiredInflight, inflightToken, err := s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
+	if err != nil {
+		s.logger.Error("acquire chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !acquiredInflight {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STREAM_IN_PROGRESS",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
+	defer func() {
+		if err := s.store.ReleaseChatStreamInflight(context.Background(), auth.UserID, clientMsgID, inflightToken); err != nil {
+			s.logger.Warn("release chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		}
+	}()
+
 	upstreamCtx, cancelUpstream := context.WithCancel(context.Background())
 	defer cancelUpstream()
 	upstream, err := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages)
