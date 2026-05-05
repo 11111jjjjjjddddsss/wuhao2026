@@ -286,7 +286,7 @@ private fun MembershipPlanSection(
             name = "Plus",
             price = "¥19.9/月",
             active = activeTier == "plus",
-            highlights = listOf("每天25次问诊", "参考最近6轮问答", "可购买加油包"),
+            highlights = listOf("每天25次问诊", "适合日常拍照问诊", "保留最近6轮，追问更连贯"),
             actionText = when (activeTier) {
                 "plus" -> "续费 Plus"
                 "pro" -> "Pro 已包含"
@@ -300,7 +300,7 @@ private fun MembershipPlanSection(
             price = "¥29.9/月",
             badge = "推荐",
             active = activeTier == "pro",
-            highlights = listOf("每天40次问诊", "参考最近9轮问答", "适合多作物连续追问"),
+            highlights = listOf("每天40次问诊", "保留最近9轮，连续分析更稳", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
                 "plus" -> "升级 Pro"
                 "pro" -> "续费 Pro"
@@ -415,7 +415,7 @@ private fun MembershipTopupCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "永久有效，用完再买",
+                        text = "额外备用次数",
                         color = Color(0xFF747881),
                         fontSize = 12.sp,
                         lineHeight = 17.sp
@@ -430,7 +430,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "仅 Plus / Pro 可购买。同一时间只能有1个未用完加油包。",
+                text = "套餐次数用完后继续问，永久有效；Plus / Pro 可买，用完再续。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp
@@ -512,19 +512,19 @@ private fun MembershipRulesSection() {
         )
         MembershipRuleBlock(
             title = "Plus 升 Pro",
-            body = "购买 Pro 后获得新的 Pro 月。Plus 剩余权益会折成升级补偿次数，不是补差价。"
+            body = "开通 Pro 会开启新的 Pro 月；Plus 剩余权益自动折成升级补偿次数，不是补差价。"
         )
         MembershipRuleBlock(
             title = "补偿怎么算",
-            body = "今天剩余 Plus 次数 + 剩余完整天数 × 25。补偿次数永久有效。"
+            body = "补偿 = 今日剩余 Plus 次数 + 剩余完整天数 × 25，长期有效。"
         )
         MembershipRuleBlock(
             title = "加油包",
-            body = "6元100次，仅 Plus / Pro 可买；同一时间只能有1个未用完加油包，用完再买。"
+            body = "6元100次，套餐次数用完后继续问；Plus / Pro 可买，用完再续。"
         )
         MembershipRuleBlock(
             title = "次数顺序",
-            body = "回答完成后扣1次。先用当天次数，再用升级补偿，最后用加油包。"
+            body = "回答完成才扣1次：先用当天次数，再用升级补偿，最后用加油包。"
         )
         Text(
             text = "当前支付功能暂未接入，本页先展示规则。AI回答仅供农业技术参考，不作绝对诊断。",
