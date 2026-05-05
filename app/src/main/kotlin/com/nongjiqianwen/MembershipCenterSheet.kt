@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -178,8 +177,8 @@ private fun MembershipCenterHeader(onDismiss: () -> Unit) {
                 Text(
                     text = "×",
                     color = Color(0xFF202124),
-                    fontSize = 24.sp,
-                    lineHeight = 24.sp,
+                    fontSize = 28.sp,
+                    lineHeight = 28.sp,
                     textAlign = TextAlign.Center
                 )
             }
@@ -571,7 +570,7 @@ private fun MembershipActionButton(
 
 @Composable
 private fun MembershipRulesSection() {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE4E6EA))
         Text(
             text = "规则说明",
@@ -579,62 +578,45 @@ private fun MembershipRulesSection() {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
-        MembershipRuleBlock(
-            title = "Plus 升 Pro",
-            body = "开通 Pro 会开启新的 Pro 月；Plus 剩余权益自动折成升级补偿次数，不是补差价。"
+        MembershipRuleLine(
+            title = "升级 Pro",
+            body = "开通新的 Pro 月；补偿 = 今日剩余 Plus + 剩余完整天数 × 25。"
         )
-        MembershipRuleBlock(
-            title = "补偿怎么算",
-            body = "补偿 = 今日剩余 Plus 次数 + 剩余完整天数 × 25，长期有效。"
-        )
-        MembershipRuleBlock(
+        MembershipRuleLine(
             title = "加油包",
-            body = "6元100次，Plus / Pro 可买；同一时间只能有1个未用完加油包，用完再续。"
+            body = "Plus / Pro 可买，永久有效，用完再续。"
         )
-        MembershipRuleBlock(
-            title = "次数顺序",
-            body = "回答完成才扣1次：先用当天次数，再用升级补偿，最后用加油包。"
+        MembershipRuleLine(
+            title = "扣次顺序",
+            body = "每日额度 → 升级补偿 → 加油包。"
         )
-        Text(
-            text = "当前支付功能暂未接入，本页先展示规则。AI回答仅供农业技术参考，不作绝对诊断。",
-            color = Color(0xFF7A7E86),
-            fontSize = 12.sp,
-            lineHeight = 18.sp,
-            modifier = Modifier.widthIn(max = 520.dp)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
     }
 }
 
 @Composable
-private fun MembershipRuleBlock(
+private fun MembershipRuleLine(
     title: String,
     body: String
 ) {
-    Surface(
-        color = Color(0xFFF8F9FA),
-        shape = RoundedCornerShape(14.dp),
-        border = BorderStroke(0.7.dp, Color(0xFFE7E9ED)),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 520.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Text(
-                text = title,
-                color = Color(0xFF111111),
-                fontSize = 14.sp,
-                lineHeight = 19.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = body,
-                color = Color(0xFF686C74),
-                fontSize = 13.sp,
-                lineHeight = 19.sp
-            )
-        }
+        Text(
+            text = title,
+            color = Color(0xFF111111),
+            fontSize = 13.sp,
+            lineHeight = 17.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = body,
+            color = Color(0xFF686C74),
+            fontSize = 12.sp,
+            lineHeight = 17.sp
+        )
     }
 }
 
