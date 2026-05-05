@@ -2457,6 +2457,8 @@ fun ChatScreen() {
     var membershipCenterVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipLoadState by remember(uiRuntimeResetKey) { mutableStateOf(MembershipLoadState.Idle) }
     var membershipEntitlement by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.EntitlementSnapshot?>(null) }
+    var membershipPurchaseSuccessVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var membershipRefreshNonce by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     BindComposerRuntimeEffects(
         inputChromeMeasured = inputChromeMeasured,
         inputText = input.value.text,
@@ -2848,10 +2850,12 @@ fun ChatScreen() {
     BackHandler(
         enabled = attachmentMenuVisible ||
             membershipCenterVisible ||
+            membershipPurchaseSuccessVisible ||
             messageSelectionToolbarState != null ||
             inputSelectionToolbarState != null
     ) {
         when {
+            membershipPurchaseSuccessVisible -> membershipPurchaseSuccessVisible = false
             membershipCenterVisible -> membershipCenterVisible = false
             attachmentMenuVisible -> attachmentMenuVisible = false
             inputSelectionToolbarState != null -> {
@@ -2868,7 +2872,7 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(membershipCenterVisible, uiRuntimeResetKey) {
+    LaunchedEffect(membershipCenterVisible, membershipRefreshNonce, uiRuntimeResetKey) {
         if (!membershipCenterVisible) return@LaunchedEffect
         membershipLoadState = MembershipLoadState.Loading
         val entitlement = awaitMembershipEntitlement()
@@ -5668,10 +5672,19 @@ fun ChatScreen() {
                     visible = membershipCenterVisible,
                     entitlement = membershipEntitlement,
                     loadState = membershipLoadState,
+                    purchaseSuccessVisible = membershipPurchaseSuccessVisible,
                     modifier = Modifier.fillMaxSize(),
-                    onDismiss = { membershipCenterVisible = false },
+                    onDismiss = {
+                        membershipPurchaseSuccessVisible = false
+                        membershipCenterVisible = false
+                    },
                     onPaymentUnavailable = {
                         performButtonHaptic()
+                    },
+                    onPurchaseSuccessConfirm = {
+                        performButtonHaptic()
+                        membershipPurchaseSuccessVisible = false
+                        membershipRefreshNonce += 1
                     }
                 )
 

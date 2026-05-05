@@ -57,9 +57,11 @@ internal fun MembershipCenterBottomSheet(
     visible: Boolean,
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
+    purchaseSuccessVisible: Boolean,
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
-    onPaymentUnavailable: () -> Unit
+    onPaymentUnavailable: () -> Unit,
+    onPurchaseSuccessConfirm: () -> Unit
 ) {
     var paymentNoticeVisible by remember(visible) { mutableStateOf(false) }
     Box(
@@ -137,6 +139,13 @@ internal fun MembershipCenterBottomSheet(
                 }
             }
         }
+        MembershipPurchaseSuccessCard(
+            visible = visible && purchaseSuccessVisible,
+            onConfirm = onPurchaseSuccessConfirm,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 42.dp)
+        )
     }
 }
 
@@ -194,6 +203,66 @@ private fun MembershipInlineNotice(text: String) {
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
         )
+    }
+}
+
+@Composable
+private fun MembershipPurchaseSuccessCard(
+    visible: Boolean,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(durationMillis = 90)),
+        exit = fadeOut(animationSpec = tween(durationMillis = 80)),
+        modifier = modifier
+            .fillMaxWidth()
+            .zIndex(90f)
+    ) {
+        Surface(
+            color = Color(0xFF111111),
+            shape = RoundedCornerShape(18.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                Text(
+                    text = "订购成功",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onConfirm
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "确定",
+                            color = Color(0xFF111111),
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
