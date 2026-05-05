@@ -2345,7 +2345,7 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem) return atBottom
         return isForwardListAtExactBottom()
     }
-    val chatPageSurface = Color(0xFFF6F7F8)
+    val chatPageSurface = Color(0xFFF8F9FA)
     val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
