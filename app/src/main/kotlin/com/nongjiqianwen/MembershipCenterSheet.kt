@@ -580,7 +580,7 @@ private fun MembershipRulesSection() {
         )
         MembershipRuleLine(
             title = "Plus升级Pro",
-            body = "Plus剩余额度会折成升级补偿次数。"
+            body = "Plus剩余天数和次数会折成补偿次数。"
         )
         MembershipRuleLine(
             title = "扣次顺序",
