@@ -396,9 +396,11 @@ private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请�
 private const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
 private const val ASSISTANT_RETRY_STATUS_TEXT = "回复未完成"
 private const val ASSISTANT_RETRY_ACTION_TEXT = "重试"
+private const val ASSISTANT_RETRYING_STATUS_TEXT = "重试中"
 private const val ASSISTANT_RETRY_PREVIEW_TEXT = "回复未完成 · 点击重试"
 private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
+private const val USER_RETRYING_STATUS_TEXT = "重发中"
 private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
 private val chatImagePreviewCache = object : LruCache<String, ImageBitmap>(CHAT_IMAGE_PREVIEW_CACHE_MAX_KB) {
     override fun sizeOf(key: String, value: ImageBitmap): Int {
@@ -2039,6 +2041,8 @@ fun ChatScreen() {
             putAll(initialLocalSnapshot.failedAssistantMessageStates)
         }
     }
+    val retryingUserMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
+    val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
     val chatListMessages = messages
@@ -4809,6 +4813,7 @@ fun ChatScreen() {
             }
         }
         fun retryFailedUserMessage(messageId: String) {
+            if (retryingUserMessageIds[messageId] == true) return
             val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
             if (isQuotaExhaustedToday()) {
                 showQuotaExhaustedHint()
@@ -4820,8 +4825,10 @@ fun ChatScreen() {
             }
             val previewImageUris = failedMessage.imageUris.orEmpty()
             if (previewImageUris.isNotEmpty() && failedMessage.imageUrls.orEmpty().isEmpty()) {
-                failedUserMessageStates.remove(failedMessage.id)
-                persistTick++
+                if (!context.hasActiveNetworkConnection()) {
+                    showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
+                    return
+                }
                 if (hasRemoteHistorySource) {
                     PendingChatSendRuntime.markActive(failedMessage.id)
                     PendingChatSendWorkScheduler.enqueue(
@@ -4834,6 +4841,7 @@ fun ChatScreen() {
                         )
                     )
                 }
+                retryingUserMessageIds[failedMessage.id] = true
                 imageSendInProgress = true
                 snackbarScope.launch {
                     try {
@@ -4847,6 +4855,7 @@ fun ChatScreen() {
                                 failedMessage.id
                             )
                             failedUserMessageStates[failedMessage.id] = "network"
+                            retryingUserMessageIds.remove(failedMessage.id)
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
                             return@launch
@@ -4857,6 +4866,7 @@ fun ChatScreen() {
                             userMessageId = failedMessage.id,
                             imageUrls = uploadedUrls
                         )
+                        retryingUserMessageIds.remove(failedMessage.id)
                         commitSendMessage(
                             text = failedMessage.content,
                             uploadedImageUrls = uploadedUrls,
@@ -4865,6 +4875,7 @@ fun ChatScreen() {
                             collapseComposer = false
                         )
                     } finally {
+                        retryingUserMessageIds.remove(failedMessage.id)
                         imageSendInProgress = false
                     }
                 }
@@ -4879,6 +4890,7 @@ fun ChatScreen() {
             )
         }
         fun retryFailedAssistantMessage(assistantMessageId: String) {
+            if (retryingAssistantMessageIds[assistantMessageId] == true) return
             val failedState = failedAssistantMessageStates[assistantMessageId] ?: return
             val sourceUserMessage = messages.firstOrNull { it.id == failedState.sourceUserMessageId } ?: return
             if (isQuotaExhaustedToday()) {
@@ -4892,8 +4904,10 @@ fun ChatScreen() {
             val previewImageUris = sourceUserMessage.imageUris.orEmpty()
             val uploadedImageUrls = sourceUserMessage.imageUrls.orEmpty()
             if (previewImageUris.isNotEmpty() && uploadedImageUrls.isEmpty()) {
-                failedAssistantMessageStates.remove(assistantMessageId)
-                persistTick++
+                if (!context.hasActiveNetworkConnection()) {
+                    showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
+                    return
+                }
                 if (hasRemoteHistorySource) {
                     PendingChatSendRuntime.markActive(sourceUserMessage.id)
                     PendingChatSendWorkScheduler.enqueue(
@@ -4906,6 +4920,7 @@ fun ChatScreen() {
                         )
                     )
                 }
+                retryingAssistantMessageIds[assistantMessageId] = true
                 imageSendInProgress = true
                 snackbarScope.launch {
                     try {
@@ -4919,6 +4934,7 @@ fun ChatScreen() {
                                 sourceUserMessage.id
                             )
                             failedAssistantMessageStates[assistantMessageId] = failedState
+                            retryingAssistantMessageIds.remove(assistantMessageId)
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
                             return@launch
@@ -4933,6 +4949,8 @@ fun ChatScreen() {
                         if (existingAssistantIndex >= 0) {
                             messages.removeAt(existingAssistantIndex)
                         }
+                        retryingAssistantMessageIds.remove(assistantMessageId)
+                        failedAssistantMessageStates.remove(assistantMessageId)
                         commitSendMessage(
                             text = sourceUserMessage.content,
                             uploadedImageUrls = retryUploadedUrls,
@@ -4941,6 +4959,7 @@ fun ChatScreen() {
                             collapseComposer = false
                         )
                     } finally {
+                        retryingAssistantMessageIds.remove(assistantMessageId)
                         imageSendInProgress = false
                     }
                 }
@@ -5193,10 +5212,16 @@ fun ChatScreen() {
                                 }
                             }
                             if (failedAssistantState != null) {
+                                val assistantRetrying = retryingAssistantMessageIds[msg.id] == true
                                 MessageStatusFooter(
-                                    statusText = ASSISTANT_RETRY_STATUS_TEXT,
-                                    actionText = ASSISTANT_RETRY_ACTION_TEXT,
+                                    statusText = if (assistantRetrying) {
+                                        ASSISTANT_RETRYING_STATUS_TEXT
+                                    } else {
+                                        ASSISTANT_RETRY_STATUS_TEXT
+                                    },
+                                    actionText = ASSISTANT_RETRY_ACTION_TEXT.takeIf { !assistantRetrying },
                                     alignEnd = false,
+                                    enabled = !assistantRetrying,
                                     onActionClick = {
                                         performButtonHaptic()
                                         retryFailedAssistantMessage(msg.id)
@@ -5242,10 +5267,16 @@ fun ChatScreen() {
                                 updateMessageContentBounds(msg.id, null)
                             }
                             if (failedUserState != null) {
+                                val userRetrying = retryingUserMessageIds[msg.id] == true
                                 MessageStatusFooter(
-                                    statusText = USER_RETRY_STATUS_TEXT,
-                                    actionText = USER_RETRY_ACTION_TEXT,
+                                    statusText = if (userRetrying) {
+                                        USER_RETRYING_STATUS_TEXT
+                                    } else {
+                                        USER_RETRY_STATUS_TEXT
+                                    },
+                                    actionText = USER_RETRY_ACTION_TEXT.takeIf { !userRetrying },
                                     alignEnd = true,
+                                    enabled = !userRetrying,
                                     onActionClick = {
                                         performButtonHaptic()
                                         retryFailedUserMessage(msg.id)
@@ -6816,9 +6847,10 @@ private fun SelectableRenderedUserMessageBubble(
 @Composable
 private fun MessageStatusFooter(
     statusText: String,
-    actionText: String,
+    actionText: String?,
     alignEnd: Boolean,
     onActionClick: () -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -6837,6 +6869,7 @@ private fun MessageStatusFooter(
                 .clickable(
                     interactionSource = interactionSource,
                     indication = null,
+                    enabled = enabled,
                     onClick = onActionClick
                 )
         ) {
@@ -6851,17 +6884,19 @@ private fun MessageStatusFooter(
                     fontSize = 13.sp,
                     color = Color.White
                 )
-                Text(
-                    text = " · ",
-                    fontSize = 13.sp,
-                    color = Color.White.copy(alpha = 0.42f)
-                )
-                Text(
-                    text = "点击$actionText",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color.White
-                )
+                if (actionText != null) {
+                    Text(
+                        text = " · ",
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.42f)
+                    )
+                    Text(
+                        text = "点击$actionText",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                }
             }
         }
     }
