@@ -177,8 +177,8 @@ private fun MembershipCenterHeader(onDismiss: () -> Unit) {
                 Text(
                     text = "×",
                     color = Color(0xFF202124),
-                    fontSize = 28.sp,
-                    lineHeight = 28.sp,
+                    fontSize = 32.sp,
+                    lineHeight = 32.sp,
                     textAlign = TextAlign.Center
                 )
             }
@@ -579,12 +579,8 @@ private fun MembershipRulesSection() {
             fontWeight = FontWeight.SemiBold
         )
         MembershipRuleLine(
-            title = "升级 Pro",
-            body = "开通新的 Pro 月；补偿 = 今日剩余 Plus + 剩余完整天数 × 25。"
-        )
-        MembershipRuleLine(
-            title = "加油包",
-            body = "Plus / Pro 可买，永久有效，用完再续。"
+            title = "Plus升级Pro",
+            body = "Plus剩余额度会折成升级补偿次数。"
         )
         MembershipRuleLine(
             title = "扣次顺序",
