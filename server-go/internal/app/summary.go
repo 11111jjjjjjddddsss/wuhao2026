@@ -128,8 +128,11 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 	}
 
 	response, err := s.bailian.OpenCompletion(ctx, map[string]any{
-		"model":  "qwen-flash",
+		"model":  "qwen3.5-flash",
 		"stream": false,
+		"extra_body": map[string]any{
+			"enable_thinking": false,
+		},
 		"messages": []BailianMessage{
 			{Role: "system", Content: prompt},
 			{Role: "user", Content: userContent},

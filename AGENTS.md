@@ -77,14 +77,14 @@ Android 构建链：
 
 模型：
 - 主模型：Qwen3.5-Plus，用于农业问诊分析、图片理解、推理判断
-- 摘要模型：Qwen-Flash，用于 B 层摘要、C 层摘要
+- 摘要模型：Qwen3.5-Flash，用于 B 层摘要、C 层摘要；摘要请求显式关闭思考模式
 
 上下文结构：
 - A 层历史滑窗：Free / Plus 6 轮，Pro 9 轮
 - B 层中期摘要：约 550 tokens
 - C 层长期摘要：约 300 tokens，每 25 轮更新一次
 - 锚点信息：约 1000 tokens，每轮必注入
-- 待评估方向：后续可能把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并评估使用 `Qwen3.5-Flash` 做 C+ 抽取；在代码落地前，当前真实实现仍以 `server-go` 的 `session_ab.c_summary` 为准
+- 待评估方向：后续可能把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`；在代码落地前，当前真实实现仍以 `server-go` 的 `session_ab.c_summary` 为准
 - 原始问诊归档：成功完成的问答轮次会写入 `session_round_archive`，先按 30 天滚动保留；`/api/session/snapshot` 给 UI 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档。该归档只服务换机 / 重装后的 UI 历史恢复和后续批量抽取，不进入每轮主模型上下文，不替代 A/B/C
 - 时间 / 地点：后端每轮主对话必须注入当前时间、用户地点和地点可信度；历史轮次如果有后端 `created_at / region / region_source / region_reliability`，进入模型上下文时也要带轻量时间 / 地点前缀。时间以后端服务器时间为准，不用前端手机时间当业务真相；前端暂不显示每条消息时间戳或地点条。当前 Android 尚未接定位权限 / 地区选择，真实地点需要后续单独做；未传地点时后端只能走 IP / 未知兜底
 
@@ -99,7 +99,7 @@ Android 构建链：
 - 输入框图片预览和聊天区用户图片预览共用 `ImagePreviewPager.kt`，内部使用 Telephoto `ZoomableAsyncImage` + `HorizontalPager`，支持单击图片关闭、左右滑动切换同组图片、双指缩放、放大后拖动查看细节以及 Telephoto 的边界阻尼 / 嵌套滚动 handoff；旧 `ImagePreviewGesture.kt` 手写手势链已删除，不允许和 Telephoto 链并存。图片预览只属于 composer / 消息内容内部，不能进入聊天列表 bottom reserve 或工作线计算
 - 带图发送会按 `chatScopeId + userMessageId` 排一个唯一 WorkManager 延迟兜底任务：前台仍是正常流式显示主人，后台只在前台不活跃且远端启动保护窗已过时才补发；前台一旦开始 `/api/chat/stream` 会写入 10 分钟保护窗；后端 `chat_stream_inflight` 会按 `user_id` 限制同一用户同时只有一条活跃主流式请求，并用 `user_id + client_msg_id + lease_token` 做同消息幂等锁，确保活跃租约内只有一个上游模型流启动；重复同消息返回 `409 STREAM_IN_PROGRESS` 给前端走长窗口 snapshot 恢复，不同消息并发会被同一用户活跃锁拒掉，优先保护模型成本和扣次一致性
 - 后端完成后的 replay 真源以 `session_round_ledger` / 归档成功为准，服务端只在轮次归档成功后才向客户端发送 SSE `[DONE]`；额度扣减在归档成功后执行，若 `ConsumeOnDone` 临时失败会按同一 `client_msg_id` 短重试，重复扣由 `quota_ledger` 唯一键防住；replay 只用于恢复已归档答案，不再根据当前档位 / 当前日期补扣旧轮次，避免会员档位变化或跨日后误扣。主模型上游开流不做服务端自动二次重试，Android 前台流和 WorkManager 也不再对模型开流失败做静默多次重试，避免同一轮极端情况下多调 Qwen3.5-Plus。如果 App 在图片上传阶段或上传成功但尚未可靠完成远端请求时被系统杀掉，后台任务会复用本地稳定图片副本或已上传 URL 继续补发；若后端已用同一 `client_msg_id` 完成归档，则按 replay / snapshot 恢复收口；如果前台已经显示“发送失败”，后台任务会同步取消，不允许 UI 失败态和后台自动发送并存
-- B / C 摘要由后端 Qwen-Flash 异步处理，同一用户同一摘要层有本进程运行中保护；摘要写回必须匹配触发时的 `round_total`，旧快照结果不能覆盖更新轮次
+- B / C 摘要由后端 Qwen3.5-Flash 异步处理，摘要请求显式设置 `enable_thinking=false`；同一用户同一摘要层有本进程运行中保护；摘要写回必须匹配触发时的 `round_total`，旧快照结果不能覆盖更新轮次
 - App 内相机优先让外部相机写入 App cache 下的 `NongjiFileProvider` 临时 URI；启动外部相机时会给输出 URI 加读写 grant flags、ClipData，并按可解析相机包显式授权，回调或启动失败后撤销授权。导入 App 私有 `composer_images` 成功后，Android Q+ 再把原始拍照结果复制到系统相册 `Pictures/农技千查`。临时文件、拍照取消和相机启动失败都会清理；只有 FileProvider 目标创建失败时才回退到直接创建相册 URI。相机待回调 URI、是否相册保存和临时文件路径当前用可保存状态暂存，降低外部相机期间 Activity 重建导致拍照结果丢失的概率
 - 当前图片入口不额外申请相册 / 相机 / 存储权限：照片入口使用系统 Photo Picker，拍照入口使用外部相机写入 App 创建的 FileProvider URI，Android Q+ 复制到本 App 创建的相册图片不需要存储权限。定位采集尚未接入，不顺手声明定位权限
 

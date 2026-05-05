@@ -5,6 +5,7 @@
 
 ## 2026-05-05
 
+- `server-go/internal/app/summary.go` 将 B / C 摘要模型从 `qwen-flash` 切到 `qwen3.5-flash`，并在摘要请求里显式传 `extra_body.enable_thinking=false`；主对话 `qwen3.5-plus` 已经显式关闭思考模式，本次保持不变。新增后端单测锁住摘要模型名和关闭思考参数；同步更新根规则和项目记忆，删除“后续评估切到 Qwen3.5-Flash”的待决策项；不改主模型、摘要触发时机、写回校验、扣次顺序、Android UI 或聊天滚动链。
 - `ChatScreen.kt` 将主聊天页背景从 `#F6F7F8` 轻微提亮到 `#F8F9FA`，让页面观感更透亮，同时保留输入框白壳、用户文字气泡边框 / 阴影、AI 文本、附件面板、图片预览和滚动链不变。
 - `ChatComposerPanel.kt` 收小 `+` 附件底部卡片里的“相机 / 照片”入口框：入口卡片高度从 118dp 降到 104dp，圆角和上下留白同步收紧，底部面板左右内边距略增，让两个入口不再显得过大笨重。相机 / 照片图标、文案、Photo Picker、相机 FileProvider、图片私有副本、压缩上传和聊天滚动链均不变。
 - `ChatScreen.kt` / `ChatComposerCameraStore.kt` 先做聊天页瘦身的第一刀：把 App 内相机目标创建、FileProvider 授权 / 撤销、相册发布 / 删除、临时拍照文件清理等纯相机文件 helper 从 `ChatScreen.kt` 搬到独立文件，调用点和逻辑保持不变。该改动只降低 `ChatScreen.kt` 维护压力，不改相机行为、图片私有副本、压缩上传、图片预览、发送恢复、会员中心或聊天滚动链。
@@ -14,7 +15,7 @@
 - `server-go/internal/app/upload.go` / `chat.go` / `chat_test.go` / `ImageUploader.kt` 补上后端图片入口兜底：`POST /upload` 改为先鉴权，只收单张 `<=1MB` JPEG，Android 上传同步带 `X-User-Id` 和可选 bearer token；`/api/chat/stream` 对图片 URL 增加后端校验，只接受当前公开基地址下的 `/uploads/*.jpg`，防止非 App 客户端绕过 Android 端压缩 / 转 JPEG / 4 张限制，把外部大图或非上传域名直接塞进主模型。新增单测覆盖合法上传 URL、外部域名、非 `/uploads` 路径和非 JPG 后缀；不改 Android 图片压缩序列、输入框预览、聊天区预览、WorkManager 和扣次顺序。
 - `AndroidManifest.xml` / `ChatScreen.kt` 复查相机 / 相册跨机型兼容后做低风险加固：照片入口继续使用 Android 官方 Photo Picker，并按官方建议在 manifest 声明 Photo Picker backport module 依赖，帮助旧系统 / Android Go + GMS 设备安装回传选择器模块；相机入口从 `TakePicture()` 改为显式构造 `ACTION_IMAGE_CAPTURE` intent，仍写入同一个 `NongjiFileProvider` 临时 URI，但额外加读写 grant flags、ClipData，并对可解析相机包显式授权，回调或启动失败后撤销授权。私有 `composer_images` 副本、<=1MB 压缩 / 直通、拍照后相册保存、发送 / WorkManager / 后端扣次链、图片预览和聊天滚动链均不变。
 - `server-go/internal/app/inflight.go` / `quota.go` / `chat.go` / `server.go` / `store.go` / `SessionApi.kt` / `PendingChatSendWorker.kt` / `SessionSnapshot.kt` / `ChatScreen.kt` 再按“扣用户次数、主模型成本、摘要模型成本、相机 / 相册兼容”复查并收紧边界：`chat_stream_inflight` 新增同一 `user_id` 活跃流唯一约束，迁移前会保留每个用户最新租约并清理重复行，避免不同 `client_msg_id` 并发打穿额度预检查后同时多开 Qwen3.5-Plus；`daily_usage` 在扣减事务内改为 `FOR UPDATE`，并补单测确认每日额度按后端上海时区 0 点换日，请求开始时记录的 `day_cn` 决定本轮扣哪一天。已归档 replay 不再尝试补扣旧轮次，避免跨日 / 会员档位变化后误扣用户；连续数据库异常下残余风险转为可能漏记一次成本，后续需后台对账。旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 统一返回 410，同时删除 Android 旧 `appendA/updateB/updateC` 客户端方法、旧请求体和后端旧写入死代码，避免绕过主链扣次或重复触发摘要模型；Android 前台 SSE 自动 stream retry 关闭，WorkManager 只对进行中 / 本地停止 / 限流做保守重试，不再对一般模型开流失败反复补发。相机 FileProvider 改为 App 自定义 `NongjiFileProvider` 子类，外部相机拍完后的相册发布继续检查 `IS_PENDING=0` 更新结果，失败会清理占位；图片压缩、输入框预览、聊天区预览和滚动链不变。
-- `server-go/internal/app/chat.go` / `inflight.go` / `server.go` / `store.go` / `summary.go` 复查昨晚 WorkManager、相机、主模型、摘要模型和扣次链后补三处后端保险：主模型上游开流不再自动做第二次 `OpenStream` 重试，降低同一轮极端双调 Qwen3.5-Plus 的成本风险；`chat_stream_inflight` 获取结果改为对比 lease token，不再依赖 MySQL `RowsAffected` 语义；旧 `/api/session/round_complete` 若发现同一 `client_msg_id` 主流式仍在进行中，会返回 `STREAM_IN_PROGRESS`，不再抢写主链。当日已归档轮次 replay 时会按原完成日期异步尝试补 `quota_ledger`，重复扣仍由唯一键拦住；隔天历史轮次不在用户 replay 时硬补，避免会员档位变化后按错误权益补旧账。摘要 B/C 写入增加“用户 + 层”运行中保护和 `round_total` 版本校验，避免 Qwen-Flash 并发重复跑太多以及旧摘要覆盖新轮次。`ChatScreen.kt` 同步小修相机保存到系统相册的发布结果判断：只有 `IS_PENDING=0` 发布成功才认为相册保存成功，失败时清理占位；输入框上传副本和压缩链不变。本次不改聊天滚动链、图片预览手势、输入框布局或会员 UI。
+- `server-go/internal/app/chat.go` / `inflight.go` / `server.go` / `store.go` / `summary.go` 复查昨晚 WorkManager、相机、主模型、摘要模型和扣次链后补三处后端保险：主模型上游开流不再自动做第二次 `OpenStream` 重试，降低同一轮极端双调 Qwen3.5-Plus 的成本风险；`chat_stream_inflight` 获取结果改为对比 lease token，不再依赖 MySQL `RowsAffected` 语义；旧 `/api/session/round_complete` 若发现同一 `client_msg_id` 主流式仍在进行中，会返回 `STREAM_IN_PROGRESS`，不再抢写主链。当日已归档轮次 replay 时会按原完成日期异步尝试补 `quota_ledger`，重复扣仍由唯一键拦住；隔天历史轮次不在用户 replay 时硬补，避免会员档位变化后按错误权益补旧账。摘要 B/C 写入增加“用户 + 层”运行中保护和 `round_total` 版本校验，避免摘要模型并发重复跑太多以及旧摘要覆盖新轮次。`ChatScreen.kt` 同步小修相机保存到系统相册的发布结果判断：只有 `IS_PENDING=0` 发布成功才认为相册保存成功，失败时清理占位；输入框上传副本和压缩链不变。本次不改聊天滚动链、图片预览手势、输入框布局或会员 UI。
 
 ## 2026-05-04
 
@@ -107,7 +108,7 @@
 - `server-go` 新增 `session_round_archive` 归档表：成功完成的问答轮次会在 `Store.AppendSessionRoundComplete(...)` 同事务写入归档，按 30 天滚动保留；`/api/session/snapshot` 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档，A/B/C 主上下文仍保持原来的短窗口和摘要，不把归档内容每轮喂给模型。
 - 同步明确“清数据”和“换机恢复”的边界：本地 UI 缓存 / 草稿 / 旧视口不允许通过 Android 备份恢复；但如果用户有稳定账号 / 后端身份，后端返回最近 30 轮业务聊天记录属于账号级恢复，不是 UI 回退。匿名本机 UUID 清数据后仍是 clean-state，新身份不会拿到旧记录。
 - 基础设施首版采购口径从“SAE + PolarDB”调整为“SAE + RDS MySQL 优先”。RDS MySQL 更符合当前个人创业、无专职运维、成本敏感阶段；PolarDB 暂作为后续高并发 / 更高规格升级选项。`infra-readiness.md`、`pending-decisions.md` 和 `open-risks.md` 已同步改口径，避免采购时沿用旧默认。
-- 项目记忆补充了后端长期资产和 C+ 方向：当前已先落 30 天原始问诊归档，后续再评估把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`，并考虑用 `Qwen3.5-Flash` 做 C+ 抽取。当前没有改变 A/B/C prompt 或主模型调用链。
+- 项目记忆补充了后端长期资产和 C+ 方向：当前已先落 30 天原始问诊归档，后续再评估把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`。当前没有改变 A/B/C prompt 或主模型调用链。
 - 用户真机反馈当前正向列表滚动链“确实很稳”。项目记忆已把 `SideEffect` 同帧底部锚定、物理底部恢复 AutoFollow、96dp 工作线贴底、禁止恢复反向列表 / 小分割 / overlay / raw delta 等规则继续固化为稳定基线；`open-risks.md` 中对应风险从“主链待验证”降为“核心已稳定，继续观察边角场景”。
 
 ## 2026-04-27
