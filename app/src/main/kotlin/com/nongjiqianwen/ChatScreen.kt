@@ -2500,7 +2500,7 @@ fun ChatScreen() {
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
     val userBubbleColor = Color.White
-    val userBubbleBorderColor = Color(0xFFDCE1E7).copy(alpha = 0.92f)
+    val userBubbleBorderColor = Color(0xFFCFCFCF).copy(alpha = 0.96f)
     var inputChromeMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var messageViewportMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var composerMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -6915,9 +6915,15 @@ private fun SelectableRenderedUserMessageBubble(
             modifier = Modifier
                 .wrapContentWidth(Alignment.End)
                 .widthIn(max = userBubbleMaxWidth)
+                .shadow(
+                    elevation = 1.dp,
+                    shape = bubbleShape,
+                    ambientColor = Color(0x12000000),
+                    spotColor = Color(0x12000000)
+                )
                 .clip(bubbleShape)
                 .background(userBubbleColor)
-                .border(BorderStroke(0.8.dp, userBubbleBorderColor), bubbleShape)
+                .border(BorderStroke(1.dp, userBubbleBorderColor), bubbleShape)
                 .onGloballyPositioned { coordinates ->
                     onBubbleBoundsChanged(coordinates.boundsInWindow())
                 }

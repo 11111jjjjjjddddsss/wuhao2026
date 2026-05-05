@@ -5,6 +5,7 @@
 
 ## 2026-05-05
 
+- `ChatScreen.kt` 轻微增强用户文字消息气泡的黑白灰分层：用户气泡边框从浅蓝灰改为更中性的浅灰并略加粗，同时增加约 1dp 的低透明黑色阴影，让用户消息和 AI 正文更容易区分。只改用户文字气泡视觉，不改用户图片缩略图、AI 消息渲染、输入框、图片预览、消息发送或聊天滚动链。
 - `MembershipCenterSheet.kt` 继续收口会员中心 Plus / Pro / 加油包文案：Plus 展示“每天25次问诊 / 图文问题随时问 / 记忆与上下文更强”，Pro 展示“每天40次问诊 / 复杂问题推理更强 / 适合多作物、多地块复盘”，加油包副标题改为“额外100次”，说明压成“Plus / Pro 可买，永久有效，用完再续。”用户可见套餐卡片不再展示具体上下文轮数或说明书式加油包解释；只改 UI 文案，不改 `/api/me` 字段、支付占位、会员周期、扣次顺序、加油包购买限制或聊天链路。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` 小修相机入口细节：拍照成功后复制到系统相册的目录名从 `Pictures/农技千问` 对齐当前 App 名称为 `Pictures/农技千查`；`ComposerCameraIcon` 内部镜头圆心从 `0.575h` 上移到 `0.555h`，让相机图标视觉重心更贴近用户截图。只改相册目录名和 Canvas 几何比例，不动相机 FileProvider / Photo Picker / 私有图片副本 / 压缩上传 / 图片预览 / 滚动链。
 - `server-go/internal/app/upload.go` / `chat.go` / `chat_test.go` / `ImageUploader.kt` 补上后端图片入口兜底：`POST /upload` 改为先鉴权，只收单张 `<=1MB` JPEG，Android 上传同步带 `X-User-Id` 和可选 bearer token；`/api/chat/stream` 对图片 URL 增加后端校验，只接受当前公开基地址下的 `/uploads/*.jpg`，防止非 App 客户端绕过 Android 端压缩 / 转 JPEG / 4 张限制，把外部大图或非上传域名直接塞进主模型。新增单测覆盖合法上传 URL、外部域名、非 `/uploads` 路径和非 JPG 后缀；不改 Android 图片压缩序列、输入框预览、聊天区预览、WorkManager 和扣次顺序。
