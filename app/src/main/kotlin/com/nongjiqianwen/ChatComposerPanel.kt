@@ -717,7 +717,7 @@ internal fun ComposerAttachmentBottomSheet(
                         .fillMaxWidth()
                         .heightIn(min = 292.dp)
                         .navigationBarsPadding()
-                        .padding(start = 24.dp, end = 24.dp, top = 32.dp, bottom = 24.dp),
+                        .padding(start = 30.dp, end = 30.dp, top = 32.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
                     if (limitReached) {
@@ -732,7 +732,7 @@ internal fun ComposerAttachmentBottomSheet(
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         ComposerAttachmentBottomSheetTile(
                             title = COMPOSER_ATTACHMENT_CAMERA_TEXT,
@@ -791,20 +791,20 @@ private fun RowScope.ComposerAttachmentBottomSheetTile(
     val interactionSource = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .height(118.dp)
-            .clip(RoundedCornerShape(20.dp))
+            .height(104.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFFF5F6F7))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             )
-            .padding(vertical = 16.dp),
+            .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         icon()
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = title,
             color = Color(0xFF111111),
