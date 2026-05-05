@@ -578,14 +578,27 @@ private fun MembershipRulesSection() {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
-        MembershipRuleLine(
-            title = "Plus升级Pro",
-            body = "Plus剩余天数和次数会折成补偿次数。"
-        )
-        MembershipRuleLine(
-            title = "扣次顺序",
-            body = "每日额度 → 升级补偿 → 加油包。"
-        )
+        Surface(
+            color = Color(0xFFF8F9FA),
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(0.7.dp, Color(0xFFE7E9ED)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                MembershipRuleLine(
+                    title = "Plus升级Pro",
+                    body = "Plus剩余天数和次数会折成补偿次数。"
+                )
+                HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
+                MembershipRuleLine(
+                    title = "扣次顺序",
+                    body = "每日额度 → 升级补偿 → 加油包。"
+                )
+            }
+        }
     }
 }
 
