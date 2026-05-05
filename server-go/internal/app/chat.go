@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -82,6 +83,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	text := strings.TrimSpace(body.Text)
 	images := normalizeImages(body.Images)
 	if validationError := validateChatStreamInput(clientMsgID, text, images); validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	if validationError := s.validateChatStreamImageURLs(r, images); validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
@@ -658,6 +663,40 @@ func validateChatStreamInput(clientMsgID string, text string, images []string) s
 		return "text or images required"
 	}
 	return ""
+}
+
+func (s *Server) validateChatStreamImageURLs(r *http.Request, images []string) string {
+	if len(images) == 0 {
+		return ""
+	}
+	publicBaseURL := resolvePublicBaseURL(r)
+	baseURL, err := url.Parse(publicBaseURL)
+	if err != nil || baseURL.Scheme != "https" || baseURL.Host == "" {
+		return "image host not configured"
+	}
+	for _, image := range images {
+		parsed, err := url.Parse(image)
+		if err != nil ||
+			parsed.Scheme != "https" ||
+			!strings.EqualFold(parsed.Host, baseURL.Host) ||
+			parsed.RawQuery != "" ||
+			parsed.Fragment != "" ||
+			!isUploadedImagePath(parsed.Path) {
+			return "invalid image url"
+		}
+	}
+	return ""
+}
+
+func isUploadedImagePath(path string) bool {
+	name := strings.TrimPrefix(path, "/uploads/")
+	if name == path || name == "" {
+		return false
+	}
+	if strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(name), ".jpg")
 }
 
 func updateAssistantAccumulator(data string, assistantText *strings.Builder, hasCitations *atomic.Bool, hasSources *atomic.Bool) {

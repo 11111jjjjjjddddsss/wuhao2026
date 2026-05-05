@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -231,6 +232,57 @@ func TestValidateChatStreamInputMatchesCurrentRules(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := validateChatStreamInput(tc.clientMsgID, tc.text, tc.images); got != tc.want {
+				t.Fatalf("validation mismatch: got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateChatStreamImageURLsRequiresUploadedJPEG(t *testing.T) {
+	t.Setenv("BASE_PUBLIC_URL", "https://api.example.com")
+	server := &Server{}
+	req := httptest.NewRequest("POST", "https://api.example.com/api/chat/stream", nil)
+
+	cases := []struct {
+		name   string
+		images []string
+		want   string
+	}{
+		{
+			name:   "empty allowed",
+			images: nil,
+			want:   "",
+		},
+		{
+			name:   "uploaded jpg allowed",
+			images: []string{"https://api.example.com/uploads/abc123.jpg"},
+			want:   "",
+		},
+		{
+			name:   "external host rejected",
+			images: []string{"https://other.example.com/uploads/abc123.jpg"},
+			want:   "invalid image url",
+		},
+		{
+			name:   "non upload path rejected",
+			images: []string{"https://api.example.com/assets/abc123.jpg"},
+			want:   "invalid image url",
+		},
+		{
+			name:   "non jpg rejected",
+			images: []string{"https://api.example.com/uploads/abc123.png"},
+			want:   "invalid image url",
+		},
+		{
+			name:   "query rejected",
+			images: []string{"https://api.example.com/uploads/abc123.jpg?x=1"},
+			want:   "invalid image url",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := server.validateChatStreamImageURLs(req, tc.images); got != tc.want {
 				t.Fatalf("validation mismatch: got %q want %q", got, tc.want)
 			}
 		})

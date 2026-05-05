@@ -11,15 +11,18 @@ import (
 	"strings"
 )
 
-const maxUploadFileSize = 10 * 1024 * 1024
+const maxUploadFileSize = 1024 * 1024
 
 var uploadExtensions = map[string]string{
 	"image/jpeg": ".jpg",
-	"image/png":  ".png",
-	"image/webp": ".webp",
 }
 
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
+	_, ok := s.requireAuth(w, r)
+	if !ok {
+		return
+	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadFileSize+1024)
 	if err := r.ParseMultipartForm(maxUploadFileSize); err != nil {
 		s.writeError(w, http.StatusBadRequest, "missing file field")
@@ -39,7 +42,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := uploadExtensions[contentType]; !ok {
-		s.writeError(w, http.StatusBadRequest, "only jpeg/png/webp allowed")
+		s.writeError(w, http.StatusBadRequest, "only jpeg allowed")
 		return
 	}
 

@@ -93,13 +93,14 @@ Android 构建链：
 - 压缩：Android 端生成上传副本时，若原图已经是 JPEG、<=1MB、最长边 <=1024px 且 EXIF 方向正常 / 未定义，则直接复制为私有上传副本，不重新编码；其他可解码图片统一转 JPEG，目标单张 <=1MB，按 `1024@Q85 -> 1024@Q80 -> 896@Q80 -> 896@Q70 -> 768@Q70 -> 640@Q60 -> 512@Q60` 固定序列降级；若极端可解码图片仍超 1MB，继续保持 Q60 等比缩小直到 <=1MB；全程不裁剪、不拉伸，保持原图比例
 - 估算：1 张图约 1000 tokens
 - 图片上下文只保留当前轮和上一轮；更早图片只保留文字结论与摘要
-- Android 端当前 `+` 入口只开放“相机 / 照片”两个入口；照片入口优先使用 Android 官方 Photo Picker 按剩余槽位请求选择上限，App 和后端继续兜底最多 4 张。输入框已有 4 张图片时，附件卡片顶部和相机 / 照片点击都统一提示“最多4张图片”
+- Android 端当前 `+` 入口只开放“相机 / 照片”两个入口；照片入口优先使用 Android 官方 Photo Picker 按剩余槽位请求选择上限，并在 manifest 声明官方 Photo Picker backport module 依赖，App 和后端继续兜底最多 4 张。输入框已有 4 张图片时，附件卡片顶部和相机 / 照片点击都统一提示“最多4张图片”
 - 图片选中后会先生成 App 私有 `files/composer_images` 稳定上传副本：合格 JPEG 直接复制，其他可解码图片才压缩并转 JPEG；随后按最新剩余槽位二次截断后进入输入框壳体内的缩略图预览，最多 4 张。点发送后会先把带本地 `imageUris` 的用户消息上屏并清空输入框，再后台上传；若确认该图仍是 App 私有 `composer_images` 里的 JPEG 且 `<=1MB`，发送时直接复用这份已压缩或直通的字节，不再二次压缩
+- 后端 `/upload` 同样要求鉴权，只接受单张 `<=1MB` JPEG 上传；`/api/chat/stream` 只接受本后端公开基地址下 `/uploads/*.jpg` 图片 URL，防止非 App 客户端绕过 Android 压缩链直接把外部大图或非上传域名塞给主模型
 - 输入框图片预览和聊天区用户图片预览共用 `ImagePreviewPager.kt`，内部使用 Telephoto `ZoomableAsyncImage` + `HorizontalPager`，支持单击图片关闭、左右滑动切换同组图片、双指缩放、放大后拖动查看细节以及 Telephoto 的边界阻尼 / 嵌套滚动 handoff；旧 `ImagePreviewGesture.kt` 手写手势链已删除，不允许和 Telephoto 链并存。图片预览只属于 composer / 消息内容内部，不能进入聊天列表 bottom reserve 或工作线计算
 - 带图发送会按 `chatScopeId + userMessageId` 排一个唯一 WorkManager 延迟兜底任务：前台仍是正常流式显示主人，后台只在前台不活跃且远端启动保护窗已过时才补发；前台一旦开始 `/api/chat/stream` 会写入 10 分钟保护窗；后端 `chat_stream_inflight` 会按 `user_id` 限制同一用户同时只有一条活跃主流式请求，并用 `user_id + client_msg_id + lease_token` 做同消息幂等锁，确保活跃租约内只有一个上游模型流启动；重复同消息返回 `409 STREAM_IN_PROGRESS` 给前端走长窗口 snapshot 恢复，不同消息并发会被同一用户活跃锁拒掉，优先保护模型成本和扣次一致性
 - 后端完成后的 replay 真源以 `session_round_ledger` / 归档成功为准，服务端只在轮次归档成功后才向客户端发送 SSE `[DONE]`；额度扣减在归档成功后执行，若 `ConsumeOnDone` 临时失败会按同一 `client_msg_id` 短重试，重复扣由 `quota_ledger` 唯一键防住；replay 只用于恢复已归档答案，不再根据当前档位 / 当前日期补扣旧轮次，避免会员档位变化或跨日后误扣。主模型上游开流不做服务端自动二次重试，Android 前台流和 WorkManager 也不再对模型开流失败做静默多次重试，避免同一轮极端情况下多调 Qwen3.5-Plus。如果 App 在图片上传阶段或上传成功但尚未可靠完成远端请求时被系统杀掉，后台任务会复用本地稳定图片副本或已上传 URL 继续补发；若后端已用同一 `client_msg_id` 完成归档，则按 replay / snapshot 恢复收口；如果前台已经显示“发送失败”，后台任务会同步取消，不允许 UI 失败态和后台自动发送并存
 - B / C 摘要由后端 Qwen-Flash 异步处理，同一用户同一摘要层有本进程运行中保护；摘要写回必须匹配触发时的 `round_total`，旧快照结果不能覆盖更新轮次
-- App 内相机优先让外部相机写入 App cache 下的 `NongjiFileProvider` 临时 URI；导入 App 私有 `composer_images` 成功后，Android Q+ 再把原始拍照结果复制到系统相册 `Pictures/农技千问`。临时文件、拍照取消和相机启动失败都会清理；只有 FileProvider 目标创建失败时才回退到直接创建相册 URI。相机待回调 URI、是否相册保存和临时文件路径当前用可保存状态暂存，降低外部相机期间 Activity 重建导致拍照结果丢失的概率
+- App 内相机优先让外部相机写入 App cache 下的 `NongjiFileProvider` 临时 URI；启动外部相机时会给输出 URI 加读写 grant flags、ClipData，并按可解析相机包显式授权，回调或启动失败后撤销授权。导入 App 私有 `composer_images` 成功后，Android Q+ 再把原始拍照结果复制到系统相册 `Pictures/农技千问`。临时文件、拍照取消和相机启动失败都会清理；只有 FileProvider 目标创建失败时才回退到直接创建相册 URI。相机待回调 URI、是否相册保存和临时文件路径当前用可保存状态暂存，降低外部相机期间 Activity 重建导致拍照结果丢失的概率
 - 当前图片入口不额外申请相册 / 相机 / 存储权限：照片入口使用系统 Photo Picker，拍照入口使用外部相机写入 App 创建的 FileProvider URI，Android Q+ 复制到本 App 创建的相册图片不需要存储权限。定位采集尚未接入，不顺手声明定位权限
 
 联网搜索：

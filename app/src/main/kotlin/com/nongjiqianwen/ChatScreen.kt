@@ -1,9 +1,12 @@
 package com.nongjiqianwen
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -355,6 +358,8 @@ private const val COMPOSER_IMAGE_COUNT_HINT = "最多4张图片"
 private const val COMPOSER_MAX_IMAGE_SIZE_BYTES = 1024 * 1024
 private const val COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE = 1024
 private const val COMPOSER_CAMERA_ALBUM_NAME = "农技千问"
+private val COMPOSER_CAMERA_URI_PERMISSION_FLAGS =
+    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
@@ -1514,6 +1519,38 @@ private fun Context.createTemporaryComposerCameraImageTarget(): ComposerCameraIm
             temporaryFilePath = imageFile.absolutePath
         )
     }.getOrNull()
+}
+
+private fun buildComposerCameraIntent(uri: Uri): Intent {
+    return Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+        putExtra(MediaStore.EXTRA_OUTPUT, uri)
+        clipData = ClipData.newRawUri("composer_camera_output", uri)
+        addFlags(COMPOSER_CAMERA_URI_PERMISSION_FLAGS)
+    }
+}
+
+private fun Context.grantComposerCameraUri(uri: Uri, intent: Intent) {
+    val cameraActivities = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        packageManager.queryIntentActivities(
+            intent,
+            PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+        )
+    } else {
+        @Suppress("DEPRECATION")
+        packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+    }
+    cameraActivities.forEach { info ->
+        val packageName = info.activityInfo?.packageName ?: return@forEach
+        runCatching {
+            grantUriPermission(packageName, uri, COMPOSER_CAMERA_URI_PERMISSION_FLAGS)
+        }
+    }
+}
+
+private fun Context.revokeComposerCameraUri(uri: Uri) {
+    runCatching {
+        revokeUriPermission(uri, COMPOSER_CAMERA_URI_PERMISSION_FLAGS)
+    }
 }
 
 private fun Context.publishGalleryComposerCameraImage(uri: Uri): Boolean {
@@ -3125,14 +3162,18 @@ fun ChatScreen() {
         addComposerImageUris(uris)
     }
     val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
         val uri = pendingCameraImageUriString?.let(Uri::parse)
         val galleryBacked = pendingCameraImageGalleryBacked
         val temporaryFilePath = pendingCameraImageTemporaryFilePath
         pendingCameraImageUriString = null
         pendingCameraImageGalleryBacked = false
         pendingCameraImageTemporaryFilePath = null
+        if (uri != null) {
+            context.revokeComposerCameraUri(uri)
+        }
+        val success = result.resultCode == Activity.RESULT_OK
         if (success && uri != null) {
             snackbarScope.launch {
                 val importedImage = withContext(Dispatchers.IO) {
@@ -3194,9 +3235,12 @@ fun ChatScreen() {
         pendingCameraImageGalleryBacked = target.galleryBacked
         pendingCameraImageTemporaryFilePath = target.temporaryFilePath
         attachmentMenuVisible = false
+        val cameraIntent = buildComposerCameraIntent(target.uri)
+        context.grantComposerCameraUri(target.uri, cameraIntent)
         runCatching {
-            cameraLauncher.launch(target.uri)
+            cameraLauncher.launch(cameraIntent)
         }.onFailure {
+            context.revokeComposerCameraUri(target.uri)
             pendingCameraImageUriString = null
             pendingCameraImageGalleryBacked = false
             pendingCameraImageTemporaryFilePath = null

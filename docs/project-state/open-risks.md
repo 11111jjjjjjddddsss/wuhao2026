@@ -31,7 +31,7 @@
 - 剩余风险：仍需在更长回复、不同输入法 / 设备、含免责声明答案、冷启动首次点输入框等边角场景继续观察；如果再次出现冒头闪、尾部收口微动或手动回底不跟随，下一刀优先检查当前正向列表底部锚点、reveal 提交节奏、工作线 bounds、contentPadding 与 item padding 的几何关系，不恢复 overlay、小分割或 raw delta
 - 风险补充：pending finalize 仍不主动 bottom align，主要依赖两阶段 fresh bounds、unified soft-wrap renderer 和 streaming 免责声明几何占位。若含免责声明答案收口仍微跳，优先在同一消息主人内复核高度来源，不恢复完整 `scrollToBottom(false)` 精修
 - 风险补充：composer 当前已完成 P0 拆链、取消发送旧高度锁、统一收键盘路径为 `clearFocus(force = true)`，并删除死链 overlay prewarm snapshot 协程。若真机仍有输入框残影或冷启动首点迟钝，下一步才评估是否需要 `WindowInsetsAnimationCompat`；不要把 IME padding 挪到根容器去抬升消息列表，也不要动滚动主链
-- 风险补充：极端恢复链已做低风险兜底：断网连续发送同文复用已有失败用户消息；远端 streaming 重启恢复失败会补 assistant 重试入口；切后台会清消息 / 输入选择菜单；`SessionApi` 保留 active SSE call 引用直到读循环退出，方便 reset / cancel。剩余观察点是：弱网下 OkHttp `readTimeout(60s)` 仍可能让小球等待较久；额度用完前端锁当前是本地会话级，App 被系统杀掉后仍以第一次后端 quota 返回为准；图片入口首版已接入相机 / 照片、后台下采样预览、压缩上传和 URL 恢复显示，后续仍需真机验证第三方相机 / 相册 URI、弱网多图上传失败、后端图片生命周期和 OSS 权限
+- 风险补充：极端恢复链已做低风险兜底：断网连续发送同文复用已有失败用户消息；远端 streaming 重启恢复失败会补 assistant 重试入口；切后台会清消息 / 输入选择菜单；`SessionApi` 保留 active SSE call 引用直到读循环退出，方便 reset / cancel。剩余观察点是：弱网下 OkHttp `readTimeout(60s)` 仍可能让小球等待较久；额度用完前端锁当前是本地会话级，App 被系统杀掉后仍以第一次后端 quota 返回为准；图片入口首版已接入相机 / 照片、后台下采样预览、压缩上传和 URL 恢复显示，相机 FileProvider URI 已补读写 flags、ClipData 和显式包授权，但仍需继续真机验证第三方相机 / 相册 URI、弱网多图上传失败、后端图片生命周期和 OSS 权限
 - 后续动作：把当前正向列表滚动链作为稳定基线保留；短期只做边角验证和低风险清理，不再主动重构滚动主链
 
 ## R5 聊天页主文件偏重但暂不影响运行时主链
@@ -74,7 +74,7 @@
 ## R10 生产鉴权仍需上线前收口
 
 - 状态：未关闭
-- 说明：当前后端仍兼容 Android 早期阶段的裸 `X-User-Id` 本机身份兜底；这方便单机开发和无登录阶段联调，但不适合作为公开生产鉴权
+- 说明：当前后端业务接口和 `/upload` 都要求身份头 / token，但仍兼容 Android 早期阶段的裸 `X-User-Id` 本机身份兜底；这方便单机开发和无登录阶段联调，但不适合作为公开生产鉴权
 - 风险：如果直接公网开放并把裸 `X-User-Id` 当真实登录身份，理论上存在冒充 user_id 读取 / 污染会话、会员和额度状态的风险
 - 后续动作：正式公开上线前必须接入手机号 / token / HMAC 等服务端可验证身份，并关闭裸 `X-User-Id` 生产兜底；这属于账号体系任务，不和本次图片发送兜底混在一刀里改
 

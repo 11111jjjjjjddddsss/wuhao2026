@@ -309,10 +309,14 @@ object ImageUploader {
                     )
                     .build()
                 
-                val request = Request.Builder()
+                val requestBuilder = Request.Builder()
                     .url(uploadUrl)
                     .post(requestBody)
-                    .build()
+                    .addHeader("X-User-Id", IdManager.getUserId())
+                BuildConfig.SESSION_API_TOKEN.trim().takeIf { it.isNotEmpty() }?.let { token ->
+                    requestBuilder.addHeader("Authorization", "Bearer $token")
+                }
+                val request = requestBuilder.build()
                 
                 client.newCall(request).execute().use { response ->
                     val code = response.code
