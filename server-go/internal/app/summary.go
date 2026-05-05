@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type SummaryService struct {
@@ -15,6 +16,7 @@ type SummaryService struct {
 	prompts *PromptLoader
 	bailian *BailianClient
 	logger  *slog.Logger
+	running sync.Map
 }
 
 func NewSummaryService(store *Store, prompts *PromptLoader, bailian *BailianClient, logger *slog.Logger) *SummaryService {
@@ -49,6 +51,11 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 	if !pending {
 		return
 	}
+	if !s.tryStartLayer(userID, layer) {
+		s.logger.Info("summary extraction skipped: already running", "userId", userID, "layer", layer, "roundTotal", snapshot.RoundTotal)
+		return
+	}
+	defer s.finishLayer(userID, layer)
 	if !s.bailian.HasKeyConfigured() {
 		s.logger.Warn("summary extraction skipped: model backend unavailable", "userId", userID, "layer", layer)
 		return
@@ -68,17 +75,27 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 	}
 
 	if layer == SummaryLayerB {
-		if err := s.store.WriteUserBSummary(ctx, userID, nextSummary); err != nil {
+		written, err := s.store.WriteUserBSummaryIfCurrent(ctx, userID, nextSummary, snapshot.RoundTotal)
+		if err != nil {
 			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
 			s.logger.Error("write B summary failed", "userId", userID, "error", err)
+			return
+		}
+		if !written {
+			s.logger.Info("B summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
 			return
 		}
 		snapshot.BSummary = nextSummary
 		snapshot.PendingRetryB = false
 	} else {
-		if err := s.store.WriteUserCSummary(ctx, userID, nextSummary); err != nil {
+		written, err := s.store.WriteUserCSummaryIfCurrent(ctx, userID, nextSummary, snapshot.RoundTotal)
+		if err != nil {
 			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
 			s.logger.Error("write C summary failed", "userId", userID, "error", err)
+			return
+		}
+		if !written {
+			s.logger.Info("C summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
 			return
 		}
 		snapshot.CSummary = nextSummary
@@ -86,6 +103,17 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 	}
 
 	s.logger.Info("summary extraction success", "userId", userID, "layer", layer, "chars", len(nextSummary))
+}
+
+func (s *SummaryService) tryStartLayer(userID string, layer SummaryLayer) bool {
+	key := userID + ":" + string(layer)
+	_, loaded := s.running.LoadOrStore(key, struct{}{})
+	return !loaded
+}
+
+func (s *SummaryService) finishLayer(userID string, layer SummaryLayer) {
+	key := userID + ":" + string(layer)
+	s.running.Delete(key)
 }
 
 func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer, oldSummary string, dialogueText string) (string, error) {

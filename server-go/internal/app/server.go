@@ -330,6 +330,19 @@ func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Reque
 	if err := s.store.TouchSessionContext(ctx, auth.UserID, region.Region, region.Source, region.Reliability, time.Now().UnixMilli()); err != nil {
 		s.logger.Warn("touch session context failed", "userId", auth.UserID, "error", err)
 	}
+	activeStream, err := s.store.HasActiveChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
+	if err != nil {
+		s.logger.Error("check active chat stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if activeStream {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STREAM_IN_PROGRESS",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
 	replay, snapshot, err := s.store.AppendSessionRoundComplete(
 		ctx,
 		auth.UserID,

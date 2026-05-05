@@ -16,7 +16,7 @@ import (
 const (
 	chatRateLimitWindow   = 60 * time.Second
 	chatRateLimitMaxHits  = 20
-	upstreamMaxAttempts   = 2
+	upstreamMaxAttempts   = 1
 	upstreamRetryBaseWait = 350 * time.Millisecond
 )
 
@@ -153,6 +153,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if completed {
+		go s.reconcileCompletedRoundQuota(auth.UserID, tier, clientMsgID)
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
@@ -405,6 +406,32 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 			"attempt", attempt+1,
 			"error", err,
 		)
+	}
+}
+
+func (s *Server) reconcileCompletedRoundQuota(userID string, tier Tier, clientMsgID string) {
+	createdAt, ok, err := s.store.GetSessionRoundCompletedAt(context.Background(), userID, clientMsgID)
+	if err != nil {
+		s.logger.Warn("quota reconcile lookup failed", "userId", userID, "clientMsgId", clientMsgID, "error", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	dayCN := GetTodayKeyCN(s.shanghai, time.UnixMilli(createdAt))
+	todayCN := GetTodayKeyCN(s.shanghai, time.Now())
+	if dayCN != todayCN {
+		s.logger.Info("quota reconcile skipped for historical round", "userId", userID, "clientMsgId", clientMsgID, "dayCN", dayCN)
+		return
+	}
+	consume, err := s.store.ConsumeOnDone(context.Background(), userID, tier, clientMsgID, dayCN)
+	if err != nil {
+		s.logger.Warn("quota reconcile consume failed", "userId", userID, "clientMsgId", clientMsgID, "dayCN", dayCN, "error", err)
+		go s.retryQuotaConsumeOnDone(userID, tier, clientMsgID, dayCN)
+		return
+	}
+	if consume.Deducted {
+		s.logger.Info("quota reconcile recovered", "userId", userID, "clientMsgId", clientMsgID, "dayCN", dayCN, "source", consume.Source)
 	}
 }
 

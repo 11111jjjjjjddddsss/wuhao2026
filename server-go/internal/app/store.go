@@ -109,6 +109,23 @@ func (s *Store) WasSessionRoundCompleted(ctx context.Context, userID string, cli
 	return true, nil
 }
 
+func (s *Store) GetSessionRoundCompletedAt(ctx context.Context, userID string, clientMsgID string) (int64, bool, error) {
+	var createdAt int64
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT created_at FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		userID,
+		clientMsgID,
+	).Scan(&createdAt)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	return createdAt, true, nil
+}
+
 func (s *Store) WriteUserBSummary(ctx context.Context, userID string, summary string) error {
 	normalized := strings.TrimSpace(summary)
 	if normalized == "" {
@@ -128,6 +145,31 @@ func (s *Store) WriteUserBSummary(ctx context.Context, userID string, summary st
 	return err
 }
 
+func (s *Store) WriteUserBSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error) {
+	normalized := strings.TrimSpace(summary)
+	if normalized == "" {
+		return false, fmt.Errorf("b_summary empty")
+	}
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE session_ab
+		 SET b_summary = ?, pending_retry_b = 0, updated_at = ?
+		 WHERE user_id = ? AND round_total = ?`,
+		normalized,
+		time.Now().UnixMilli(),
+		userID,
+		expectedRoundTotal,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 func (s *Store) WriteUserCSummary(ctx context.Context, userID string, summary string) error {
 	normalized := strings.TrimSpace(summary)
 	if normalized == "" {
@@ -145,6 +187,31 @@ func (s *Store) WriteUserCSummary(ctx context.Context, userID string, summary st
 		time.Now().UnixMilli(),
 	)
 	return err
+}
+
+func (s *Store) WriteUserCSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error) {
+	normalized := strings.TrimSpace(summary)
+	if normalized == "" {
+		return false, fmt.Errorf("c_summary empty")
+	}
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE session_ab
+		 SET c_summary = ?, pending_retry_c = 0, updated_at = ?
+		 WHERE user_id = ? AND round_total = ?`,
+		normalized,
+		time.Now().UnixMilli(),
+		userID,
+		expectedRoundTotal,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
 }
 
 func (s *Store) SetUserSummaryPending(ctx context.Context, userID string, layer SummaryLayer, pending bool) error {

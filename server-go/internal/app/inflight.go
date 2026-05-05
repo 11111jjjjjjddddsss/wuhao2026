@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"time"
 )
@@ -16,7 +17,7 @@ func (s *Store) TryAcquireChatStreamInflight(ctx context.Context, userID string,
 	if err != nil {
 		return false, "", err
 	}
-	result, err := s.db.ExecContext(
+	if _, err := s.db.ExecContext(
 		ctx,
 		`INSERT INTO chat_stream_inflight(user_id, client_msg_id, lease_token, lease_until, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?)
@@ -30,18 +31,21 @@ func (s *Store) TryAcquireChatStreamInflight(ctx context.Context, userID string,
 		leaseUntilMs,
 		nowMs,
 		nowMs,
-	)
+	); err != nil {
+		return false, "", err
+	}
+
+	var storedToken string
+	err = s.db.QueryRowContext(
+		ctx,
+		"SELECT lease_token FROM chat_stream_inflight WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		userID,
+		clientMsgID,
+	).Scan(&storedToken)
 	if err != nil {
 		return false, "", err
 	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return false, "", err
-	}
-	if affected <= 0 {
-		return false, "", nil
-	}
-	return true, leaseToken, nil
+	return storedToken == leaseToken, leaseToken, nil
 }
 
 func (s *Store) ReleaseChatStreamInflight(ctx context.Context, userID string, clientMsgID string, leaseToken string) error {
@@ -53,6 +57,24 @@ func (s *Store) ReleaseChatStreamInflight(ctx context.Context, userID string, cl
 		leaseToken,
 	)
 	return err
+}
+
+func (s *Store) HasActiveChatStreamInflight(ctx context.Context, userID string, clientMsgID string, now time.Time) (bool, error) {
+	var id int64
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT id FROM chat_stream_inflight WHERE user_id = ? AND client_msg_id = ? AND lease_until > ? LIMIT 1",
+		userID,
+		clientMsgID,
+		now.UnixMilli(),
+	).Scan(&id)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func newChatStreamInflightToken() (string, error) {

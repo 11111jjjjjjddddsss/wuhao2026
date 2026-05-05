@@ -1554,11 +1554,12 @@ private fun Context.saveComposerCameraImageToGallery(sourceUri: Uri) {
                 }
             } ?: return@runCatching
             if (copiedBytes <= 0L) return@runCatching
-            saved = true
             val publishValues = ContentValues().apply {
                 put(MediaStore.Images.Media.IS_PENDING, 0)
             }
-            contentResolver.update(outputUri, publishValues, null, null)
+            val publishCount = contentResolver.update(outputUri, publishValues, null, null)
+            if (publishCount <= 0) return@runCatching
+            saved = true
         } finally {
             if (!saved) {
                 contentResolver.delete(outputUri, null, null)

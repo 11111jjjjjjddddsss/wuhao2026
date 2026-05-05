@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-05
+
+- `server-go/internal/app/chat.go` / `inflight.go` / `server.go` / `store.go` / `summary.go` 复查昨晚 WorkManager、相机、主模型、摘要模型和扣次链后补三处后端保险：主模型上游开流不再自动做第二次 `OpenStream` 重试，降低同一轮极端双调 Qwen3.5-Plus 的成本风险；`chat_stream_inflight` 获取结果改为对比 lease token，不再依赖 MySQL `RowsAffected` 语义；旧 `/api/session/round_complete` 若发现同一 `client_msg_id` 主流式仍在进行中，会返回 `STREAM_IN_PROGRESS`，不再抢写主链。当日已归档轮次 replay 时会按原完成日期异步尝试补 `quota_ledger`，重复扣仍由唯一键拦住；隔天历史轮次不在用户 replay 时硬补，避免会员档位变化后按错误权益补旧账。摘要 B/C 写入增加“用户 + 层”运行中保护和 `round_total` 版本校验，避免 Qwen-Flash 并发重复跑太多以及旧摘要覆盖新轮次。`ChatScreen.kt` 同步小修相机保存到系统相册的发布结果判断：只有 `IS_PENDING=0` 发布成功才认为相册保存成功，失败时清理占位；输入框上传副本和压缩链不变。本次不改聊天滚动链、图片预览手势、输入框布局或会员 UI。
+
 ## 2026-05-04
 
 - `ChatScreen.kt` / `server-go/internal/app/chat.go` / `server.go` 复查并加固“后台恢复 + 不重复扣费”链：Android 端把 SSE `replay` 事件也纳入长窗口 snapshot 恢复，前台打开时若发现仍在 WorkManager 队列里的本地图文消息，会继续轮询后端归档并恢复完整 AI 回复，不再只能等下次冷启动。后端 `/api/session/round_complete` 对 replay 不再触发摘要任务，避免旧接口重放时重复调用摘要模型。`/api/chat/stream` 继续只在轮次归档成功后才向客户端发送 `[DONE]`；额度扣减在归档成功后执行，若 `ConsumeOnDone` 临时失败会按同一 `client_msg_id` 短重试，重复扣由 `quota_ledger` 唯一键防住。该口径优先保证用户能拿到已归档答案，连续数据库异常导致的漏记成本仍列入未关闭风险观察。
