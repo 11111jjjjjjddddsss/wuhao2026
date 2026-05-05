@@ -129,6 +129,7 @@ internal fun MembershipCenterBottomSheet(
                     )
                     MembershipTopupCard(
                         activeTier = entitlement.activeMembershipTier(loadState),
+                        topupRemaining = entitlement?.topupRemaining ?: 0,
                         onPaymentUnavailable = {
                             paymentNoticeVisible = true
                             onPaymentUnavailable()
@@ -456,9 +457,11 @@ private fun MembershipPlanCard(
 @Composable
 private fun MembershipTopupCard(
     activeTier: String,
+    topupRemaining: Int,
     onPaymentUnavailable: () -> Unit
 ) {
-    val canBuy = activeTier == "plus" || activeTier == "pro"
+    val hasActiveTopup = topupRemaining > 0
+    val canBuy = (activeTier == "plus" || activeTier == "pro") && !hasActiveTopup
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(18.dp),
@@ -504,7 +507,11 @@ private fun MembershipTopupCard(
                 lineHeight = 19.sp
             )
             MembershipActionButton(
-                text = if (canBuy) "购买加油包" else "Plus / Pro 可买",
+                text = when {
+                    hasActiveTopup -> "用完再续"
+                    canBuy -> "购买加油包"
+                    else -> "Plus / Pro 可买"
+                },
                 enabled = canBuy,
                 onClick = onPaymentUnavailable
             )
@@ -590,7 +597,7 @@ private fun MembershipRulesSection() {
             ) {
                 MembershipRuleLine(
                     title = "Plus升级Pro",
-                    body = "Plus剩余天数和次数会折成补偿次数。"
+                    body = "不是补差价；Plus剩余天数和次数会折成补偿次数。"
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(

@@ -6205,45 +6205,96 @@ private fun MessageActionMenuPopup(
 private fun UiCopyPreviewOverlay(
     onDismiss: () -> Unit
 ) {
-    val copyItems = remember {
+    val copyGroups = remember {
         listOf(
-            UiCopyPreviewItem(APP_TITLE_TEXT, "顶部标题", UiCopyPreviewKind.AppTitle),
-            UiCopyPreviewItem(
-                WELCOME_EMPTY_STATE_TEXT.replace("\n", " / "),
-                "空会话欢迎态",
-                UiCopyPreviewKind.Welcome
+            UiCopyPreviewGroup(
+                title = "顶部与空态",
+                items = listOf(
+                    UiCopyPreviewItem(APP_TITLE_TEXT, "顶部标题", UiCopyPreviewKind.AppTitle),
+                    UiCopyPreviewItem(
+                        WELCOME_EMPTY_STATE_TEXT.replace("\n", " / "),
+                        "空会话欢迎态",
+                        UiCopyPreviewKind.Welcome
+                    )
+                )
             ),
-            UiCopyPreviewItem(COMPOSER_DEFAULT_PLACEHOLDER_TEXT, "输入框无图 placeholder", UiCopyPreviewKind.ComposerPlaceholder),
-            UiCopyPreviewItem(COMPOSER_IMAGE_PLACEHOLDER_TEXT, "输入框已有图片 placeholder", UiCopyPreviewKind.ComposerImagePlaceholder),
-            UiCopyPreviewItem(COMPOSER_ATTACHMENT_CAMERA_TEXT, "+ 面板入口", UiCopyPreviewKind.AttachmentSheet),
-            UiCopyPreviewItem(COMPOSER_ATTACHMENT_PHOTO_TEXT, "+ 面板入口", UiCopyPreviewKind.AttachmentSheet),
-            UiCopyPreviewItem(
-                COMPOSER_ATTACHMENT_LIMIT_TEXT,
-                "+ 面板未满 4 张时的提示第一行",
-                UiCopyPreviewKind.AttachmentSheet
+            UiCopyPreviewGroup(
+                title = "输入区",
+                items = listOf(
+                    UiCopyPreviewItem(
+                        COMPOSER_DEFAULT_PLACEHOLDER_TEXT,
+                        "输入框无图 placeholder",
+                        UiCopyPreviewKind.ComposerPlaceholder
+                    ),
+                    UiCopyPreviewItem(
+                        COMPOSER_IMAGE_PLACEHOLDER_TEXT,
+                        "输入框已有图片 placeholder",
+                        UiCopyPreviewKind.ComposerImagePlaceholder
+                    ),
+                    UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
+                    UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽浮层", UiCopyPreviewKind.Quota)
+                )
             ),
-            UiCopyPreviewItem(
-                COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT,
-                "+ 面板未满 4 张时的提示第二行",
-                UiCopyPreviewKind.AttachmentSheet
+            UiCopyPreviewGroup(
+                title = "附件面板",
+                items = listOf(
+                    UiCopyPreviewItem(
+                        "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT",
+                        "+ 面板未满状态：入口和拍摄建议",
+                        UiCopyPreviewKind.AttachmentSheet
+                    ),
+                    UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层", UiCopyPreviewKind.ImageCountHint),
+                    UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "已满附件面板", UiCopyPreviewKind.ImageCountSheet)
+                )
             ),
-            UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层", UiCopyPreviewKind.ImageCountHint),
-            UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "已满附件面板", UiCopyPreviewKind.ImageCountSheet),
-            UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
-            UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "assistant 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
-            UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
-            UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网络发送 / 重试浮层", UiCopyPreviewKind.Network),
-            UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽浮层", UiCopyPreviewKind.Quota),
-            UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
-            UiCopyPreviewItem(INTERRUPTED_NETWORK_HINT_TEXT, "streaming 网络中断浮层", UiCopyPreviewKind.Interrupted),
-            UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback),
-            UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
-            UiCopyPreviewItem("复制 / 全文复制", "消息选择菜单", UiCopyPreviewKind.MessageMenu),
-            UiCopyPreviewItem("复制 / 粘贴 / 剪切 / 全选", "输入框选择菜单", UiCopyPreviewKind.InputMenu),
-            UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败浮层", UiCopyPreviewKind.ImageReadFailure),
-            UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败浮层", UiCopyPreviewKind.CameraOpenFailed)
+            UiCopyPreviewGroup(
+                title = "图片与预览",
+                items = listOf(
+                    UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败浮层", UiCopyPreviewKind.ImageReadFailure),
+                    UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败浮层", UiCopyPreviewKind.CameraOpenFailed),
+                    UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
+                    UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
+                    UiCopyPreviewItem("第1张图片 / 图片预览 / 用户上传图片", "图片相关无障碍文案", UiCopyPreviewKind.ImageAccessibility)
+                )
+            ),
+            UiCopyPreviewGroup(
+                title = "消息尾部",
+                items = listOf(
+                    UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
+                    UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
+                    UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 尾部补上传图片时", UiCopyPreviewKind.AssistantRetrying),
+                    UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
+                    UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户尾部补上传图片时", UiCopyPreviewKind.UserRetrying)
+                )
+            ),
+            UiCopyPreviewGroup(
+                title = "异常浮层",
+                items = listOf(
+                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网络发送 / 重试浮层", UiCopyPreviewKind.Network),
+                    UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
+                    UiCopyPreviewItem(INTERRUPTED_NETWORK_HINT_TEXT, "streaming 网络中断浮层", UiCopyPreviewKind.Interrupted),
+                    UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback)
+                )
+            ),
+            UiCopyPreviewGroup(
+                title = "选择菜单",
+                items = listOf(
+                    UiCopyPreviewItem("复制 / 全文复制", "消息选择菜单", UiCopyPreviewKind.MessageMenu),
+                    UiCopyPreviewItem("复制 / 粘贴 / 剪切 / 全选", "输入框完整选择菜单", UiCopyPreviewKind.InputMenu),
+                    UiCopyPreviewItem("复制", "输入框仅复制菜单", UiCopyPreviewKind.InputMenuCopyOnly),
+                    UiCopyPreviewItem("粘贴 / 全选", "输入框无选区菜单", UiCopyPreviewKind.InputMenuPasteSelect)
+                )
+            ),
+            UiCopyPreviewGroup(
+                title = "预览面板",
+                items = listOf(
+                    UiCopyPreviewItem("UI文案样式预览", "debug 面板标题和说明", UiCopyPreviewKind.DebugPanel),
+                    UiCopyPreviewItem("查看 / 预览中 / 样式预览", "debug 面板内部控件文案", UiCopyPreviewKind.DebugPanelControls)
+                )
+            )
         )
     }
+    val copyItems = remember(copyGroups) { copyGroups.flatMap { it.items } }
     var selectedIndex by remember { mutableIntStateOf(0) }
     val selectedItem = copyItems[selectedIndex.coerceIn(0, copyItems.lastIndex)]
     Box(
@@ -6285,12 +6336,24 @@ private fun UiCopyPreviewOverlay(
                     color = Color(0xFF6D7178),
                     style = MaterialTheme.typography.bodySmall
                 )
-                copyItems.forEachIndexed { index, item ->
-                    UiCopyPreviewListRow(
-                        item = item,
-                        selected = index == selectedIndex,
-                        onClick = { selectedIndex = index }
+                var itemIndex = 0
+                copyGroups.forEach { group ->
+                    Text(
+                        text = group.title,
+                        color = Color(0xFF111111),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
+                    group.items.forEach { item ->
+                        val rowIndex = itemIndex
+                        UiCopyPreviewListRow(
+                            item = item,
+                            selected = rowIndex == selectedIndex,
+                            onClick = { selectedIndex = rowIndex }
+                        )
+                        itemIndex += 1
+                    }
                 }
                 HorizontalDivider(
                     thickness = 0.7.dp,
@@ -6309,6 +6372,11 @@ private fun UiCopyPreviewOverlay(
     }
 }
 
+private data class UiCopyPreviewGroup(
+    val title: String,
+    val items: List<UiCopyPreviewItem>
+)
+
 private data class UiCopyPreviewItem(
     val title: String,
     val subtitle: String,
@@ -6323,7 +6391,9 @@ private enum class UiCopyPreviewKind {
     AttachmentSheet,
     Disclaimer,
     AssistantRetry,
+    AssistantRetrying,
     UserRetry,
+    UserRetrying,
     Network,
     Quota,
     RateLimit,
@@ -6335,7 +6405,14 @@ private enum class UiCopyPreviewKind {
     ImageReadFailure,
     ImageCountHint,
     ImageCountSheet,
-    CameraOpenFailed
+    CameraOpenFailed,
+    ComposerImageBadge,
+    ImagePageIndicator,
+    ImageAccessibility,
+    InputMenuCopyOnly,
+    InputMenuPasteSelect,
+    DebugPanel,
+    DebugPanelControls
 }
 
 @Composable
@@ -6480,11 +6557,29 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         onActionClick = {}
                     )
                 }
+                UiCopyPreviewKind.AssistantRetrying -> {
+                    MessageStatusFooter(
+                        statusText = ASSISTANT_RETRYING_STATUS_TEXT,
+                        actionText = null,
+                        alignEnd = false,
+                        enabled = false,
+                        onActionClick = {}
+                    )
+                }
                 UiCopyPreviewKind.UserRetry -> {
                     MessageStatusFooter(
                         statusText = USER_RETRY_STATUS_TEXT,
                         actionText = USER_RETRY_ACTION_TEXT,
                         alignEnd = true,
+                        onActionClick = {}
+                    )
+                }
+                UiCopyPreviewKind.UserRetrying -> {
+                    MessageStatusFooter(
+                        statusText = USER_RETRYING_STATUS_TEXT,
+                        actionText = null,
+                        alignEnd = true,
+                        enabled = false,
                         onActionClick = {}
                     )
                 }
@@ -6498,12 +6593,25 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     MessageActionMenuCardContent(onCopy = {}, onCopyFull = {})
                 }
                 UiCopyPreviewKind.InputMenu -> {
-                    UiCopyPreviewInputActionMenu()
+                    UiCopyPreviewInputActionMenu(listOf("复制", "粘贴", "剪切", "全选"))
                 }
                 UiCopyPreviewKind.ImageReadFailure -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
                 UiCopyPreviewKind.ImageCountHint -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
                 UiCopyPreviewKind.ImageCountSheet -> UiCopyPreviewAttachmentSheet(limitReached = true)
                 UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)
+                UiCopyPreviewKind.ComposerImageBadge -> UiCopyPreviewComposerImageBadge()
+                UiCopyPreviewKind.ImagePageIndicator -> UiCopyPreviewImagePageIndicator()
+                UiCopyPreviewKind.ImageAccessibility -> UiCopyPreviewPlainText(
+                    listOf("第1张图片", "图片预览", "用户上传图片", "用户上传图片预览")
+                )
+                UiCopyPreviewKind.InputMenuCopyOnly -> UiCopyPreviewInputActionMenu(listOf("复制"))
+                UiCopyPreviewKind.InputMenuPasteSelect -> UiCopyPreviewInputActionMenu(listOf("粘贴", "全选"))
+                UiCopyPreviewKind.DebugPanel -> UiCopyPreviewPlainText(
+                    listOf("UI文案样式预览", "点下面任意一条，查看它在 App 里的实际样式。点空白关闭，仅 debug 包显示。")
+                )
+                UiCopyPreviewKind.DebugPanelControls -> UiCopyPreviewPlainText(
+                    listOf("查看", "预览中", "样式预览")
+                )
             }
         }
     }
@@ -6570,7 +6678,7 @@ private fun UiCopyPreviewAttachmentSheet(limitReached: Boolean) {
 }
 
 @Composable
-private fun UiCopyPreviewInputActionMenu() {
+private fun UiCopyPreviewInputActionMenu(labels: List<String>) {
     Surface(
         color = Color(0xFF111111),
         shape = RoundedCornerShape(16.dp),
@@ -6580,7 +6688,7 @@ private fun UiCopyPreviewInputActionMenu() {
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            listOf("复制", "粘贴", "剪切", "全选").forEachIndexed { index, label ->
+            labels.forEachIndexed { index, label ->
                 if (index > 0) {
                     Box(
                         modifier = Modifier
@@ -6591,11 +6699,77 @@ private fun UiCopyPreviewInputActionMenu() {
                 }
                 MessageActionMenuButton(
                     label = label,
-                    minWidth = 0.dp,
-                    horizontalPadding = 13.dp,
+                    minWidth = 64.dp,
+                    horizontalPadding = 14.dp,
                     onClick = {}
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewComposerImageBadge() {
+    Box(
+        modifier = Modifier
+            .size(100.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFF0F1F3))
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(5.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(Color(0xAA111111))
+                .padding(horizontal = 5.dp, vertical = 1.dp)
+        ) {
+            Text(
+                text = "1",
+                color = Color.White,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewImagePageIndicator() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xE6000000)),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Text(
+            text = "1/4",
+            color = Color.White,
+            fontSize = 14.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .padding(top = 44.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0x66111111))
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        )
+    }
+}
+
+@Composable
+private fun UiCopyPreviewPlainText(lines: List<String>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        lines.forEach { line ->
+            Text(
+                text = line,
+                color = Color(0xFF17191C),
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
         }
     }
 }
