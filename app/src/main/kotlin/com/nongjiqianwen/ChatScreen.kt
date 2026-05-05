@@ -342,6 +342,7 @@ internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
 private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
 private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
 private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
+private const val REMOTE_STREAM_MIN_BALL_MS = 500L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
@@ -4399,15 +4400,73 @@ fun ChatScreen() {
                     if (hasPendingBackgroundSend) {
                         PendingChatSendWorkScheduler.markRemoteStarted(context, chatScopeId, userId)
                     }
+                    val remoteStreamStartMs = SystemClock.uptimeMillis()
+                    val remoteFirstChunkLock = Any()
+                    val remoteFirstChunkQueue = mutableListOf<String>()
+                    var remoteFirstChunkFlushScheduled = false
+                    var remoteFirstChunkReleased = false
+                    var remoteFirstChunkTerminalAction: (() -> Unit)? = null
+                    fun flushRemoteFirstChunkGate() {
+                        val chunksToFlush: List<String>
+                        val terminalAction: (() -> Unit)?
+                        synchronized(remoteFirstChunkLock) {
+                            if (remoteFirstChunkReleased) return
+                            remoteFirstChunkReleased = true
+                            chunksToFlush = remoteFirstChunkQueue.toList()
+                            remoteFirstChunkQueue.clear()
+                            terminalAction = remoteFirstChunkTerminalAction
+                            remoteFirstChunkTerminalAction = null
+                        }
+                        chunksToFlush.forEach { queuedPiece -> appendAssistantChunk(queuedPiece) }
+                        terminalAction?.invoke()
+                    }
+                    fun enqueueRemoteChunk(piece: String) {
+                        var shouldAppendNow = false
+                        var delayMs: Long? = null
+                        synchronized(remoteFirstChunkLock) {
+                            if (remoteFirstChunkReleased) {
+                                shouldAppendNow = true
+                            } else {
+                                remoteFirstChunkQueue.add(piece)
+                                if (!remoteFirstChunkFlushScheduled) {
+                                    remoteFirstChunkFlushScheduled = true
+                                    val elapsedMs = SystemClock.uptimeMillis() - remoteStreamStartMs
+                                    delayMs = (REMOTE_STREAM_MIN_BALL_MS - elapsedMs).coerceAtLeast(0L)
+                                }
+                            }
+                        }
+                        if (shouldAppendNow) {
+                            appendAssistantChunk(piece)
+                        } else {
+                            delayMs?.let { waitMs ->
+                                mainHandler.postDelayed({ flushRemoteFirstChunkGate() }, waitMs)
+                            }
+                        }
+                    }
+                    fun runAfterRemoteFirstChunkGate(action: () -> Unit) {
+                        var shouldRunNow = false
+                        synchronized(remoteFirstChunkLock) {
+                            if (remoteFirstChunkReleased || remoteFirstChunkQueue.isEmpty()) {
+                                shouldRunNow = true
+                            } else {
+                                remoteFirstChunkTerminalAction = action
+                            }
+                        }
+                        if (shouldRunNow) action()
+                    }
                     SessionApi.streamChat(
                         options = SessionApi.StreamOptions(
                             clientMsgId = userId,
                             text = text,
                             images = uploadedImageUrls
                         ),
-                        onChunk = { piece -> appendAssistantChunk(piece) },
-                        onComplete = { finishStreaming() },
-                        onInterrupted = { reason -> handleAssistantInterrupted(userId, reason) }
+                        onChunk = { piece -> enqueueRemoteChunk(piece) },
+                        onComplete = { runAfterRemoteFirstChunkGate { finishStreaming() } },
+                        onInterrupted = { reason ->
+                            runAfterRemoteFirstChunkGate {
+                                handleAssistantInterrupted(userId, reason)
+                            }
+                        }
                     )
                 } else {
                     launchLocalFakeStream(applyInitialDelay = true)
