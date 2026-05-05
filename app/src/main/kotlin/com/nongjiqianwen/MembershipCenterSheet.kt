@@ -286,7 +286,7 @@ private fun MembershipPlanSection(
             name = "Plus",
             price = "¥19.9/月",
             active = activeTier == "plus",
-            highlights = listOf("每天25次问诊", "适合日常拍照问诊", "保留最近6轮，追问更连贯"),
+            highlights = listOf("每天25次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = when (activeTier) {
                 "plus" -> "续费 Plus"
                 "pro" -> "Pro 已包含"
@@ -300,7 +300,7 @@ private fun MembershipPlanSection(
             price = "¥29.9/月",
             badge = "推荐",
             active = activeTier == "pro",
-            highlights = listOf("每天40次问诊", "保留最近9轮，连续分析更稳", "适合多作物、多地块复盘"),
+            highlights = listOf("每天40次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
                 "plus" -> "升级 Pro"
                 "pro" -> "续费 Pro"
@@ -415,7 +415,7 @@ private fun MembershipTopupCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "额外备用次数",
+                        text = "额外100次",
                         color = Color(0xFF747881),
                         fontSize = 12.sp,
                         lineHeight = 17.sp
@@ -430,7 +430,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "套餐次数用完后继续问，永久有效；Plus / Pro 可买，用完再续。",
+                text = "Plus / Pro 可买，永久有效，用完再续。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp
@@ -520,7 +520,7 @@ private fun MembershipRulesSection() {
         )
         MembershipRuleBlock(
             title = "加油包",
-            body = "6元100次，套餐次数用完后继续问；Plus / Pro 可买，用完再续。"
+            body = "6元100次，Plus / Pro 可买；同一时间只能有1个未用完加油包，用完再续。"
         )
         MembershipRuleBlock(
             title = "次数顺序",

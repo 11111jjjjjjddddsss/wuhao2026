@@ -5,7 +5,7 @@
 
 ## 2026-05-05
 
-- `MembershipCenterSheet.kt` 优化会员中心 Plus / Pro / 加油包文案：套餐卡片继续保留每天 25 / 40 次和最近 6 / 9 轮上下文这些真实后端权益，但把说明从工程口径改成“拍照问诊、追问更连贯、连续分析、多作物多地块复盘、额外备用次数”等更贴近农业问诊场景的表达；底部 Plus 升 Pro、补偿次数、加油包和扣次顺序规则同步收口为更短的口径。只改 UI 文案，不改 `/api/me` 字段、支付占位、会员周期、扣次顺序、加油包购买限制或聊天链路。
+- `MembershipCenterSheet.kt` 继续收口会员中心 Plus / Pro / 加油包文案：Plus 展示“每天25次问诊 / 图文问题随时问 / 记忆与上下文更强”，Pro 展示“每天40次问诊 / 复杂问题推理更强 / 适合多作物、多地块复盘”，加油包副标题改为“额外100次”，说明压成“Plus / Pro 可买，永久有效，用完再续。”用户可见套餐卡片不再展示具体上下文轮数或说明书式加油包解释；只改 UI 文案，不改 `/api/me` 字段、支付占位、会员周期、扣次顺序、加油包购买限制或聊天链路。
 - `ChatScreen.kt` / `ChatComposerPanel.kt` 小修相机入口细节：拍照成功后复制到系统相册的目录名从 `Pictures/农技千问` 对齐当前 App 名称为 `Pictures/农技千查`；`ComposerCameraIcon` 内部镜头圆心从 `0.575h` 上移到 `0.555h`，让相机图标视觉重心更贴近用户截图。只改相册目录名和 Canvas 几何比例，不动相机 FileProvider / Photo Picker / 私有图片副本 / 压缩上传 / 图片预览 / 滚动链。
 - `server-go/internal/app/upload.go` / `chat.go` / `chat_test.go` / `ImageUploader.kt` 补上后端图片入口兜底：`POST /upload` 改为先鉴权，只收单张 `<=1MB` JPEG，Android 上传同步带 `X-User-Id` 和可选 bearer token；`/api/chat/stream` 对图片 URL 增加后端校验，只接受当前公开基地址下的 `/uploads/*.jpg`，防止非 App 客户端绕过 Android 端压缩 / 转 JPEG / 4 张限制，把外部大图或非上传域名直接塞进主模型。新增单测覆盖合法上传 URL、外部域名、非 `/uploads` 路径和非 JPG 后缀；不改 Android 图片压缩序列、输入框预览、聊天区预览、WorkManager 和扣次顺序。
 - `AndroidManifest.xml` / `ChatScreen.kt` 复查相机 / 相册跨机型兼容后做低风险加固：照片入口继续使用 Android 官方 Photo Picker，并按官方建议在 manifest 声明 Photo Picker backport module 依赖，帮助旧系统 / Android Go + GMS 设备安装回传选择器模块；相机入口从 `TakePicture()` 改为显式构造 `ACTION_IMAGE_CAPTURE` intent，仍写入同一个 `NongjiFileProvider` 临时 URI，但额外加读写 grant flags、ClipData，并对可解析相机包显式授权，回调或启动失败后撤销授权。私有 `composer_images` 副本、<=1MB 压缩 / 直通、拍照后相册保存、发送 / WorkManager / 后端扣次链、图片预览和聊天滚动链均不变。
