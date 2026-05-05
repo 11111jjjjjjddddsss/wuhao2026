@@ -75,7 +75,14 @@ class PendingChatSendWorker(
                 PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
                 Result.success()
             }
-            SessionApi.StreamCompletionStatus.RetryableFailure,
+            SessionApi.StreamCompletionStatus.RetryableFailure -> {
+                if (result.reason == "http_409" || result.reason == "stopped") {
+                    Result.retry()
+                } else {
+                    PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+                    Result.failure()
+                }
+            }
             SessionApi.StreamCompletionStatus.RateLimited -> Result.retry()
             SessionApi.StreamCompletionStatus.Quota,
             SessionApi.StreamCompletionStatus.Auth,

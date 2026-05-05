@@ -1516,14 +1516,14 @@ private fun Context.createTemporaryComposerCameraImageTarget(): ComposerCameraIm
     }.getOrNull()
 }
 
-private fun Context.publishGalleryComposerCameraImage(uri: Uri) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-    runCatching {
+private fun Context.publishGalleryComposerCameraImage(uri: Uri): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+    return runCatching {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.IS_PENDING, 0)
         }
-        contentResolver.update(uri, values, null, null)
-    }
+        contentResolver.update(uri, values, null, null) > 0
+    }.getOrDefault(false)
 }
 
 private fun Context.deleteGalleryComposerCameraImage(uri: Uri) {
@@ -3139,7 +3139,9 @@ fun ChatScreen() {
                     val imported = context.importComposerImageToPrivateStorage(uri)
                     if (imported != null) {
                         if (galleryBacked) {
-                            context.publishGalleryComposerCameraImage(uri)
+                            if (!context.publishGalleryComposerCameraImage(uri)) {
+                                context.deleteGalleryComposerCameraImage(uri)
+                            }
                         } else {
                             context.saveComposerCameraImageToGallery(uri)
                         }

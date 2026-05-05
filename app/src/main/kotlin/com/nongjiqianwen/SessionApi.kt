@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicReference
 object SessionApi {
     private const val TAG = "SessionApi"
     private const val SNAPSHOT_NETWORK_RETRY_MAX = 2
-    private const val STREAM_NETWORK_RETRY_MAX = 2
+    private const val STREAM_NETWORK_RETRY_MAX = 0
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
@@ -264,114 +264,6 @@ object SessionApi {
             )
         }
         attempt(networkRetry = 0)
-    }
-
-    fun appendA(
-        clientMsgId: String,
-        userMessage: String,
-        userImages: List<String> = emptyList(),
-        assistantMessage: String,
-        onResult: (Boolean) -> Unit
-    ) {
-        if (!BuildConfig.USE_BACKEND_AB) {
-            onResult(false)
-            return
-        }
-        val base = baseUrl()
-        if (base.isEmpty()) {
-            onResult(false)
-            return
-        }
-        val body = gson.toJson(
-            mapOf(
-                "client_msg_id" to clientMsgId,
-                "user_text" to userMessage,
-                "user_images" to userImages,
-                "assistant_text" to assistantMessage
-            )
-        )
-        enqueueWithRetry401(
-            requestFactory = { token ->
-                val builder = applyIdentityHeaders(
-                    Request.Builder()
-                        .url("$base/api/session/round_complete")
-                        .post(body.toRequestBody("application/json".toMediaType()))
-                )
-                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
-                builder
-            },
-            onResult = { response -> response.use { onResult(it.isSuccessful) } },
-            onFailure = {
-                Log.w(TAG, "appendA failed", it)
-                onResult(false)
-            }
-        )
-    }
-
-    fun updateB(bSummary: String, onResult: (Boolean) -> Unit) {
-        if (!BuildConfig.USE_BACKEND_AB) {
-            onResult(false)
-            return
-        }
-        val base = baseUrl()
-        if (base.isEmpty()) {
-            onResult(false)
-            return
-        }
-        val body = gson.toJson(
-            mapOf(
-                "b_summary" to bSummary
-            )
-        )
-        enqueueWithRetry401(
-            requestFactory = { token ->
-                val builder = applyIdentityHeaders(
-                    Request.Builder()
-                        .url("$base/api/session/b")
-                        .post(body.toRequestBody("application/json".toMediaType()))
-                )
-                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
-                builder
-            },
-            onResult = { response -> response.use { onResult(it.isSuccessful) } },
-            onFailure = {
-                Log.w(TAG, "updateB failed", it)
-                onResult(false)
-            }
-        )
-    }
-
-    fun updateC(cSummary: String, onResult: (Boolean) -> Unit) {
-        if (!BuildConfig.USE_BACKEND_AB) {
-            onResult(false)
-            return
-        }
-        val base = baseUrl()
-        if (base.isEmpty()) {
-            onResult(false)
-            return
-        }
-        val body = gson.toJson(
-            mapOf(
-                "c_summary" to cSummary
-            )
-        )
-        enqueueWithRetry401(
-            requestFactory = { token ->
-                val builder = applyIdentityHeaders(
-                    Request.Builder()
-                        .url("$base/api/session/c")
-                        .post(body.toRequestBody("application/json".toMediaType()))
-                )
-                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
-                builder
-            },
-            onResult = { response -> response.use { onResult(it.isSuccessful) } },
-            onFailure = {
-                Log.w(TAG, "updateC failed", it)
-                onResult(false)
-            }
-        )
     }
 
     fun streamChat(

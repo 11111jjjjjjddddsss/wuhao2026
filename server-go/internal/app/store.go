@@ -109,42 +109,6 @@ func (s *Store) WasSessionRoundCompleted(ctx context.Context, userID string, cli
 	return true, nil
 }
 
-func (s *Store) GetSessionRoundCompletedAt(ctx context.Context, userID string, clientMsgID string) (int64, bool, error) {
-	var createdAt int64
-	err := s.db.QueryRowContext(
-		ctx,
-		"SELECT created_at FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
-		userID,
-		clientMsgID,
-	).Scan(&createdAt)
-	if err == sql.ErrNoRows {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, err
-	}
-	return createdAt, true, nil
-}
-
-func (s *Store) WriteUserBSummary(ctx context.Context, userID string, summary string) error {
-	normalized := strings.TrimSpace(summary)
-	if normalized == "" {
-		return fmt.Errorf("b_summary empty")
-	}
-	_, err := s.db.ExecContext(
-		ctx,
-		`INSERT INTO session_ab(user_id, a_json, b_summary, c_summary, round_total, updated_at)
-		 VALUES (?, ?, ?, ?, 0, ?)
-		 ON DUPLICATE KEY UPDATE b_summary = VALUES(b_summary), pending_retry_b = 0, updated_at = VALUES(updated_at)`,
-		userID,
-		"[]",
-		normalized,
-		"",
-		time.Now().UnixMilli(),
-	)
-	return err
-}
-
 func (s *Store) WriteUserBSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error) {
 	normalized := strings.TrimSpace(summary)
 	if normalized == "" {
@@ -168,25 +132,6 @@ func (s *Store) WriteUserBSummaryIfCurrent(ctx context.Context, userID string, s
 		return false, err
 	}
 	return affected > 0, nil
-}
-
-func (s *Store) WriteUserCSummary(ctx context.Context, userID string, summary string) error {
-	normalized := strings.TrimSpace(summary)
-	if normalized == "" {
-		return fmt.Errorf("c_summary empty")
-	}
-	_, err := s.db.ExecContext(
-		ctx,
-		`INSERT INTO session_ab(user_id, a_json, b_summary, c_summary, round_total, updated_at)
-		 VALUES (?, ?, ?, ?, 0, ?)
-		 ON DUPLICATE KEY UPDATE c_summary = VALUES(c_summary), pending_retry_c = 0, updated_at = VALUES(updated_at)`,
-		userID,
-		"[]",
-		"",
-		normalized,
-		time.Now().UnixMilli(),
-	)
-	return err
 }
 
 func (s *Store) WriteUserCSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error) {

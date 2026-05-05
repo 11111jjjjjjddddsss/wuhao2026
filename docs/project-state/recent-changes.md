@@ -5,6 +5,7 @@
 
 ## 2026-05-05
 
+- `server-go/internal/app/inflight.go` / `quota.go` / `chat.go` / `server.go` / `store.go` / `SessionApi.kt` / `PendingChatSendWorker.kt` / `SessionSnapshot.kt` / `ChatScreen.kt` 再按“扣用户次数、主模型成本、摘要模型成本、相机 / 相册兼容”复查并收紧边界：`chat_stream_inflight` 新增同一 `user_id` 活跃流唯一约束，迁移前会保留每个用户最新租约并清理重复行，避免不同 `client_msg_id` 并发打穿额度预检查后同时多开 Qwen3.5-Plus；`daily_usage` 在扣减事务内改为 `FOR UPDATE`，并补单测确认每日额度按后端上海时区 0 点换日，请求开始时记录的 `day_cn` 决定本轮扣哪一天。已归档 replay 不再尝试补扣旧轮次，避免跨日 / 会员档位变化后误扣用户；连续数据库异常下残余风险转为可能漏记一次成本，后续需后台对账。旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 统一返回 410，同时删除 Android 旧 `appendA/updateB/updateC` 客户端方法、旧请求体和后端旧写入死代码，避免绕过主链扣次或重复触发摘要模型；Android 前台 SSE 自动 stream retry 关闭，WorkManager 只对进行中 / 本地停止 / 限流做保守重试，不再对一般模型开流失败反复补发。相机 FileProvider 改为 App 自定义 `NongjiFileProvider` 子类，外部相机拍完后的相册发布继续检查 `IS_PENDING=0` 更新结果，失败会清理占位；图片压缩、输入框预览、聊天区预览和滚动链不变。
 - `server-go/internal/app/chat.go` / `inflight.go` / `server.go` / `store.go` / `summary.go` 复查昨晚 WorkManager、相机、主模型、摘要模型和扣次链后补三处后端保险：主模型上游开流不再自动做第二次 `OpenStream` 重试，降低同一轮极端双调 Qwen3.5-Plus 的成本风险；`chat_stream_inflight` 获取结果改为对比 lease token，不再依赖 MySQL `RowsAffected` 语义；旧 `/api/session/round_complete` 若发现同一 `client_msg_id` 主流式仍在进行中，会返回 `STREAM_IN_PROGRESS`，不再抢写主链。当日已归档轮次 replay 时会按原完成日期异步尝试补 `quota_ledger`，重复扣仍由唯一键拦住；隔天历史轮次不在用户 replay 时硬补，避免会员档位变化后按错误权益补旧账。摘要 B/C 写入增加“用户 + 层”运行中保护和 `round_total` 版本校验，避免 Qwen-Flash 并发重复跑太多以及旧摘要覆盖新轮次。`ChatScreen.kt` 同步小修相机保存到系统相册的发布结果判断：只有 `IS_PENDING=0` 发布成功才认为相册保存成功，失败时清理占位；输入框上传副本和压缩链不变。本次不改聊天滚动链、图片预览手势、输入框布局或会员 UI。
 
 ## 2026-05-04

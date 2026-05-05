@@ -29,18 +29,6 @@ type Server struct {
 	rateLimiter  *chatRateLimiter
 }
 
-type summaryRequest struct {
-	BSummary string `json:"b_summary"`
-	CSummary string `json:"c_summary"`
-}
-
-type roundCompleteRequest struct {
-	ClientMsgID   string   `json:"client_msg_id"`
-	UserText      string   `json:"user_text"`
-	UserImages    []string `json:"user_images,omitempty"`
-	AssistantText string   `json:"assistant_text"`
-}
-
 type orderRequest struct {
 	OrderID string `json:"order_id"`
 }
@@ -205,51 +193,19 @@ func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionB(w http.ResponseWriter, r *http.Request) {
-	auth, ok := s.requireAuth(w, r)
+	_, ok := s.requireAuth(w, r)
 	if !ok {
 		return
 	}
-
-	var body summaryRequest
-	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
-		return
-	}
-	if strings.TrimSpace(body.BSummary) == "" {
-		s.writeError(w, http.StatusBadRequest, "b_summary required")
-		return
-	}
-
-	if err := s.store.WriteUserBSummary(r.Context(), auth.UserID, body.BSummary); err != nil {
-		s.logger.Error("write B summary failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	s.writeJSON(w, http.StatusGone, map[string]any{"error": "DEPRECATED_ENDPOINT"})
 }
 
 func (s *Server) handleSessionC(w http.ResponseWriter, r *http.Request) {
-	auth, ok := s.requireAuth(w, r)
+	_, ok := s.requireAuth(w, r)
 	if !ok {
 		return
 	}
-
-	var body summaryRequest
-	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
-		return
-	}
-	if strings.TrimSpace(body.CSummary) == "" {
-		s.writeError(w, http.StatusBadRequest, "c_summary required")
-		return
-	}
-
-	if err := s.store.WriteUserCSummary(r.Context(), auth.UserID, body.CSummary); err != nil {
-		s.logger.Error("write C summary failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	s.writeJSON(w, http.StatusGone, map[string]any{"error": "DEPRECATED_ENDPOINT"})
 }
 
 func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
@@ -285,110 +241,11 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Request) {
-	auth, ok := s.requireAuth(w, r)
+	_, ok := s.requireAuth(w, r)
 	if !ok {
 		return
 	}
-
-	var body roundCompleteRequest
-	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
-		return
-	}
-
-	clientMsgID := strings.TrimSpace(body.ClientMsgID)
-	userText := strings.TrimSpace(body.UserText)
-	userImages := normalizeImages(body.UserImages)
-	assistantText := strings.TrimSpace(body.AssistantText)
-	if validationError := validateRoundCompleteInput(clientMsgID, userText, userImages, assistantText); validationError != "" {
-		s.writeError(w, http.StatusBadRequest, validationError)
-		return
-	}
-
-	ctx := r.Context()
-	if err := s.store.EnsureUser(ctx, auth.UserID, TierFree); err != nil {
-		s.logger.Error("ensure user failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-
-	tier, _, err := s.store.GetTierForUser(ctx, auth.UserID, TierFree)
-	if err != nil {
-		s.logger.Error("get tier failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-
-	aWindowRounds := getAWindowByTier(tier)
-	bEveryRounds, cEveryRounds := GetSummaryIntervals(tier)
-	clientIP := GetClientIP(r)
-	region := ParseRegionFromHeaders(r.Header)
-	if region == nil {
-		resolved := ResolveRegionByIP(clientIP)
-		region = &resolved
-	}
-	if err := s.store.TouchSessionContext(ctx, auth.UserID, region.Region, region.Source, region.Reliability, time.Now().UnixMilli()); err != nil {
-		s.logger.Warn("touch session context failed", "userId", auth.UserID, "error", err)
-	}
-	activeStream, err := s.store.HasActiveChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
-	if err != nil {
-		s.logger.Error("check active chat stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if activeStream {
-		s.writeJSON(w, http.StatusConflict, map[string]any{
-			"error":         "STREAM_IN_PROGRESS",
-			"client_msg_id": clientMsgID,
-		})
-		return
-	}
-	replay, snapshot, err := s.store.AppendSessionRoundComplete(
-		ctx,
-		auth.UserID,
-		clientMsgID,
-		SessionRound{
-			ClientMsgID:       clientMsgID,
-			User:              userText,
-			UserImages:        userImages,
-			Assistant:         assistantText,
-			Region:            region.Region,
-			RegionSource:      region.Source,
-			RegionReliability: region.Reliability,
-		},
-		aWindowRounds,
-		bEveryRounds,
-		cEveryRounds,
-		"round_complete",
-	)
-	if err != nil {
-		s.logger.Error("append session round failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-
-	if !replay && snapshot != nil {
-		snapshotCopy := cloneSessionSnapshot(*snapshot)
-		go s.summary.ProcessSessionSummaries(auth.UserID, &snapshotCopy)
-	}
-	safe := safeSnapshot(auth.UserID, snapshot)
-
-	s.logger.Info("session round_complete",
-		"userId", auth.UserID,
-		"clientMsgId", clientMsgID,
-		"replay", replay,
-		"tier", tier,
-		"a_size", len(safe.ARoundsFull),
-		"round_total", safe.RoundTotal,
-	)
-
-	s.writeJSON(w, http.StatusOK, map[string]any{
-		"ok":          true,
-		"replay":      replay,
-		"a_json":      safe.ARoundsFull,
-		"round_total": safe.RoundTotal,
-		"updated_at":  safe.UpdatedAt,
-	})
+	s.writeJSON(w, http.StatusGone, map[string]any{"error": "DEPRECATED_ENDPOINT"})
 }
 
 func (s *Server) handleTopupBuy(w http.ResponseWriter, r *http.Request) {
@@ -436,22 +293,6 @@ func (s *Server) handleTopupBuy(w http.ResponseWriter, r *http.Request) {
 		"expire_at": expireAt,
 		"remaining": remaining,
 	})
-}
-
-func validateRoundCompleteInput(clientMsgID string, userText string, userImages []string, assistantText string) string {
-	if clientMsgID == "" {
-		return "client_msg_id required"
-	}
-	if len(userImages) > 4 {
-		return "single request supports up to 4 images"
-	}
-	if strings.TrimSpace(userText) == "" && len(userImages) == 0 {
-		return "user_text or user_images required"
-	}
-	if strings.TrimSpace(assistantText) == "" {
-		return "assistant_text required"
-	}
-	return ""
 }
 
 func mergeSessionRoundsForUI(fallbackRounds []SessionRound, archivedRounds []SessionRound) []SessionRound {

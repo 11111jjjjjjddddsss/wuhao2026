@@ -22,6 +22,7 @@ func (s *Store) TryAcquireChatStreamInflight(ctx context.Context, userID string,
 		`INSERT INTO chat_stream_inflight(user_id, client_msg_id, lease_token, lease_until, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE
+		   client_msg_id = IF(lease_until <= VALUES(updated_at), VALUES(client_msg_id), client_msg_id),
 		   lease_token = IF(lease_until <= VALUES(updated_at), VALUES(lease_token), lease_token),
 		   lease_until = IF(lease_until <= VALUES(updated_at), VALUES(lease_until), lease_until),
 		   updated_at = IF(lease_until <= VALUES(updated_at), VALUES(updated_at), updated_at)`,
@@ -43,6 +44,9 @@ func (s *Store) TryAcquireChatStreamInflight(ctx context.Context, userID string,
 		clientMsgID,
 	).Scan(&storedToken)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, "", nil
+		}
 		return false, "", err
 	}
 	return storedToken == leaseToken, leaseToken, nil
@@ -60,14 +64,14 @@ func (s *Store) ReleaseChatStreamInflight(ctx context.Context, userID string, cl
 }
 
 func (s *Store) HasActiveChatStreamInflight(ctx context.Context, userID string, clientMsgID string, now time.Time) (bool, error) {
-	var id int64
+	var leaseToken string
 	err := s.db.QueryRowContext(
 		ctx,
-		"SELECT id FROM chat_stream_inflight WHERE user_id = ? AND client_msg_id = ? AND lease_until > ? LIMIT 1",
+		"SELECT lease_token FROM chat_stream_inflight WHERE user_id = ? AND client_msg_id = ? AND lease_until > ? LIMIT 1",
 		userID,
 		clientMsgID,
 		now.UnixMilli(),
-	).Scan(&id)
+	).Scan(&leaseToken)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}

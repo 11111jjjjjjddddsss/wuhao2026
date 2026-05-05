@@ -3,6 +3,7 @@ package app
 import (
 	"database/sql"
 	"testing"
+	"time"
 )
 
 func TestQuotaBusinessConstantsMatchCurrentRules(t *testing.T) {
@@ -57,5 +58,18 @@ func TestEffectiveTierFromRowKeepsActivePaidTier(t *testing.T) {
 	}
 	if expireAt == nil || *expireAt != now+1 {
 		t.Fatalf("active tier expireAt mismatch: %v", expireAt)
+	}
+}
+
+func TestGetTodayKeyCNUsesShanghaiMidnight(t *testing.T) {
+	shanghai := time.FixedZone("Asia/Shanghai", 8*60*60)
+	beforeMidnightUTC := time.Date(2026, 5, 4, 15, 59, 59, 0, time.UTC)
+	afterMidnightUTC := time.Date(2026, 5, 4, 16, 0, 0, 0, time.UTC)
+
+	if got := GetTodayKeyCN(shanghai, beforeMidnightUTC); got != "20260504" {
+		t.Fatalf("before Shanghai midnight mismatch: got %s", got)
+	}
+	if got := GetTodayKeyCN(shanghai, afterMidnightUTC); got != "20260505" {
+		t.Fatalf("after Shanghai midnight mismatch: got %s", got)
 	}
 }

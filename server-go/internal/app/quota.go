@@ -620,12 +620,12 @@ func (s *Store) getOrCreateDailyUsage(ctx context.Context, tx *sql.Tx, userID st
 		return 0, err
 	}
 
+	query := "SELECT used FROM daily_usage WHERE user_id = ? AND day_cn = ? LIMIT 1"
+	if tx != nil {
+		query += " FOR UPDATE"
+	}
 	var used sql.NullInt64
-	if err := queryRowContext(execer, ctx,
-		"SELECT used FROM daily_usage WHERE user_id = ? AND day_cn = ? LIMIT 1",
-		userID,
-		dayCN,
-	).Scan(&used); err != nil {
+	if err := queryRowContext(execer, ctx, query, userID, dayCN).Scan(&used); err != nil {
 		return 0, err
 	}
 	return int(used.Int64), nil
