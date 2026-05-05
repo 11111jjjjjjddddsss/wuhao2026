@@ -1054,7 +1054,7 @@ private fun ComposerCameraIcon(
         drawCircle(
             color = tint,
             radius = size.minDimension * 0.16f,
-            center = Offset(size.width * 0.5f, size.height * 0.575f),
+            center = Offset(size.width * 0.5f, size.height * 0.555f),
             style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke)
         )
     }
