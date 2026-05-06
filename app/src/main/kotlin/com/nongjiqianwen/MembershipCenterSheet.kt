@@ -597,7 +597,7 @@ private fun MembershipRulesSection() {
             ) {
                 MembershipRuleLine(
                     title = "Plus升级Pro",
-                    body = "不是补差价；Plus剩余天数和次数会折成补偿次数。"
+                    body = "升级 Pro 后，Plus 剩余权益会自动折成补偿次数。"
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(
