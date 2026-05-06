@@ -275,7 +275,7 @@ internal fun MembershipQuotaSummary(
     val tierName = membershipSummaryTierName(tier, loadState)
     val limit = membershipDailyLimit(tier)
     val dailyRemaining = entitlement?.dailyRemaining
-    val extraCountText = membershipExtraCountText(entitlement)
+    val extraCounts = membershipExtraCounts(entitlement)
     val tierSubText = membershipSummaryTierSubText(
         tier = tier,
         loadState = loadState,
@@ -336,15 +336,80 @@ internal fun MembershipQuotaSummary(
                     }
                 }
             }
-            if (extraCountText != null) {
-                Text(
-                    text = extraCountText,
-                    color = Color(0xFF747881),
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
-                )
+            if (extraCounts.isNotEmpty()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    extraCounts.take(2).forEach { item ->
+                        MembershipExtraCountPill(text = item)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+internal fun MembershipPlanSectionPreview(activeTier: String) {
+    MembershipPlanSection(
+        activeTier = activeTier,
+        onPaymentUnavailable = {}
+    )
+}
+
+@Composable
+internal fun MembershipTopupCardPreview(
+    activeTier: String,
+    topupRemaining: Int
+) {
+    MembershipTopupCard(
+        activeTier = activeTier,
+        topupRemaining = topupRemaining,
+        onPaymentUnavailable = {}
+    )
+}
+
+@Composable
+internal fun MembershipPaymentNoticePreview() {
+    MembershipInlineNotice(text = "支付暂未接入")
+}
+
+@Composable
+internal fun MembershipPurchaseSuccessPreview() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(136.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        MembershipPurchaseSuccessCard(
+            visible = true,
+            onConfirm = {},
+            modifier = Modifier.padding(horizontal = 18.dp)
+        )
+    }
+}
+
+@Composable
+internal fun MembershipRulesPreview() {
+    MembershipRulesSection()
+}
+
+@Composable
+private fun MembershipExtraCountPill(text: String) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(999.dp),
+        border = BorderStroke(0.7.dp, Color(0xFFE2E4E8))
+    ) {
+        Text(
+            text = text,
+            color = Color(0xFF666A72),
+            fontSize = 11.sp,
+            lineHeight = 15.sp,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
     }
 }
 
@@ -693,15 +758,13 @@ private fun membershipSummaryTierSubText(
         else -> null
     }
 
-private fun membershipExtraCountText(entitlement: SessionApi.EntitlementSnapshot?): String? {
-    val parts = buildList {
+private fun membershipExtraCounts(entitlement: SessionApi.EntitlementSnapshot?): List<String> =
+    buildList {
         val upgradeRemaining = entitlement?.upgradeRemaining ?: 0
         val topupRemaining = entitlement?.topupRemaining ?: 0
-        if (upgradeRemaining > 0) add("升级补偿 ${upgradeRemaining} 次")
-        if (topupRemaining > 0) add("加油包 ${topupRemaining} 次")
+        if (upgradeRemaining > 0) add("补偿 ${upgradeRemaining}次")
+        if (topupRemaining > 0) add("加油包 ${topupRemaining}次")
     }
-    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
-}
 
 private fun formatMembershipExpireDate(expireAtMs: Long?): String? {
     if (expireAtMs == null || expireAtMs <= 0L) return null

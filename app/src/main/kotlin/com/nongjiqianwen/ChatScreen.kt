@@ -6245,7 +6245,15 @@ private fun UiCopyPreviewOverlay(
                         UiCopyPreviewKind.MembershipPlusExtraSummary
                     ),
                     UiCopyPreviewItem("Pro 到期日", "今日剩余 32 / 40 次", UiCopyPreviewKind.MembershipProSummary),
-                    UiCopyPreviewItem("会员信息未同步", "未同步状态条", UiCopyPreviewKind.MembershipFailedSummary)
+                    UiCopyPreviewItem("会员信息未同步", "未同步状态条", UiCopyPreviewKind.MembershipFailedSummary),
+                    UiCopyPreviewItem("套餐区：Free", "Plus / Pro 开通按钮", UiCopyPreviewKind.MembershipPlanFree),
+                    UiCopyPreviewItem("套餐区：Plus", "Plus 当前 / Pro 升级", UiCopyPreviewKind.MembershipPlanPlus),
+                    UiCopyPreviewItem("套餐区：Pro", "Pro 当前状态", UiCopyPreviewKind.MembershipPlanPro),
+                    UiCopyPreviewItem("加油包：可购买", "Plus / Pro 可买，用完再续", UiCopyPreviewKind.MembershipTopupBuyable),
+                    UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
+                    UiCopyPreviewItem("支付暂未接入", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
+                    UiCopyPreviewItem("订购成功", "支付成功后的确认卡片", UiCopyPreviewKind.MembershipPurchaseSuccess),
+                    UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
                 )
             ),
             UiCopyPreviewGroup(
@@ -6405,6 +6413,14 @@ private enum class UiCopyPreviewKind {
     MembershipPlusExtraSummary,
     MembershipProSummary,
     MembershipFailedSummary,
+    MembershipPlanFree,
+    MembershipPlanPlus,
+    MembershipPlanPro,
+    MembershipTopupBuyable,
+    MembershipTopupActive,
+    MembershipPaymentNotice,
+    MembershipPurchaseSuccess,
+    MembershipRules,
     AttachmentSheet,
     Disclaimer,
     AssistantRetry,
@@ -6596,6 +6612,36 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         entitlement = null,
                         loadState = MembershipLoadState.Failed
                     )
+                }
+                UiCopyPreviewKind.MembershipPlanFree -> {
+                    MembershipPlanSectionPreview(activeTier = "free")
+                }
+                UiCopyPreviewKind.MembershipPlanPlus -> {
+                    MembershipPlanSectionPreview(activeTier = "plus")
+                }
+                UiCopyPreviewKind.MembershipPlanPro -> {
+                    MembershipPlanSectionPreview(activeTier = "pro")
+                }
+                UiCopyPreviewKind.MembershipTopupBuyable -> {
+                    MembershipTopupCardPreview(
+                        activeTier = "plus",
+                        topupRemaining = 0
+                    )
+                }
+                UiCopyPreviewKind.MembershipTopupActive -> {
+                    MembershipTopupCardPreview(
+                        activeTier = "pro",
+                        topupRemaining = 73
+                    )
+                }
+                UiCopyPreviewKind.MembershipPaymentNotice -> {
+                    MembershipPaymentNoticePreview()
+                }
+                UiCopyPreviewKind.MembershipPurchaseSuccess -> {
+                    MembershipPurchaseSuccessPreview()
+                }
+                UiCopyPreviewKind.MembershipRules -> {
+                    MembershipRulesPreview()
                 }
                 UiCopyPreviewKind.AttachmentSheet -> {
                     UiCopyPreviewAttachmentSheet(limitReached = false)
