@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -243,8 +244,8 @@ private fun MembershipPurchaseSuccessCard(
                     color = Color.White,
                     shape = RoundedCornerShape(999.dp),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(42.dp)
+                        .width(168.dp)
+                        .height(40.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -275,7 +276,8 @@ internal fun MembershipQuotaSummary(
     val tierName = membershipSummaryTierName(tier, loadState)
     val limit = membershipDailyLimit(tier)
     val dailyRemaining = entitlement?.dailyRemaining
-    val extraCounts = membershipExtraCounts(entitlement)
+    val upgradeRemaining = entitlement?.upgradeRemaining ?: 0
+    val topupRemaining = entitlement?.topupRemaining ?: 0
     val tierSubText = membershipSummaryTierSubText(
         tier = tier,
         loadState = loadState,
@@ -294,7 +296,7 @@ internal fun MembershipQuotaSummary(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.Top
             ) {
                 Column(
                     modifier = Modifier.weight(1f),
@@ -313,6 +315,9 @@ internal fun MembershipQuotaSummary(
                         lineHeight = 23.sp,
                         fontWeight = FontWeight.SemiBold
                     )
+                    if (upgradeRemaining > 0) {
+                        MembershipExtraCountPill(text = "补偿 ${upgradeRemaining}次")
+                    }
                 }
                 Column(
                     horizontalAlignment = Alignment.Start,
@@ -334,15 +339,8 @@ internal fun MembershipQuotaSummary(
                             lineHeight = 16.sp
                         )
                     }
-                }
-            }
-            if (extraCounts.isNotEmpty()) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    extraCounts.take(2).forEach { item ->
-                        MembershipExtraCountPill(text = item)
+                    if (topupRemaining > 0) {
+                        MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
                     }
                 }
             }
@@ -756,14 +754,6 @@ private fun membershipSummaryTierSubText(
         tier == "free" -> "基础额度"
         tier == "plus" || tier == "pro" -> formatMembershipExpireDate(expireAtMs)?.let { "到期 $it" }
         else -> null
-    }
-
-private fun membershipExtraCounts(entitlement: SessionApi.EntitlementSnapshot?): List<String> =
-    buildList {
-        val upgradeRemaining = entitlement?.upgradeRemaining ?: 0
-        val topupRemaining = entitlement?.topupRemaining ?: 0
-        if (upgradeRemaining > 0) add("补偿 ${upgradeRemaining}次")
-        if (topupRemaining > 0) add("加油包 ${topupRemaining}次")
     }
 
 private fun formatMembershipExpireDate(expireAtMs: Long?): String? {
