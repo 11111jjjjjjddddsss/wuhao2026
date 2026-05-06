@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-06
+
+- `ChatScreen.kt` / `MembershipCenterSheet.kt` 给 debug-only UI 文案预览面板补上会员中心顶部状态条分组：直接复用真实 `MembershipQuotaSummary`，可预览 Free 基础额度、Plus 带升级补偿 / 加油包、Pro 到期日和未同步四种“平时不一定看得到”的状态。只放开组件可见性并增加 debug 预览样例，不改 `/api/me`、会员权益、支付占位、扣次顺序或正式会员中心逻辑。
+
 ## 2026-05-05
 
 - `MembershipCenterSheet.kt` 把 Plus 升 Pro 规则文案调整为“升级 Pro 后，Plus 剩余权益会自动折成补偿次数。”，让会员中心读起来更顺、更产品化。只改用户可见文案和项目记忆，不改升级补偿算法、订单占位、支付接口、会员权益、扣次顺序或聊天链路。

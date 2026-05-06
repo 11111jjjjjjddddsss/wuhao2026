@@ -267,7 +267,7 @@ private fun MembershipPurchaseSuccessCard(
 }
 
 @Composable
-private fun MembershipQuotaSummary(
+internal fun MembershipQuotaSummary(
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState
 ) {

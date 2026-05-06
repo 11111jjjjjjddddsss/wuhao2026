@@ -6236,6 +6236,19 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
+                title = "会员中心",
+                items = listOf(
+                    UiCopyPreviewItem("今日剩余 6 / 6 次", "Free 基础额度状态条", UiCopyPreviewKind.MembershipFreeSummary),
+                    UiCopyPreviewItem(
+                        "今日剩余 18 / 25 次",
+                        "Plus + 升级补偿 + 加油包状态条",
+                        UiCopyPreviewKind.MembershipPlusExtraSummary
+                    ),
+                    UiCopyPreviewItem("今日剩余 32 / 40 次", "Pro 到期日状态条", UiCopyPreviewKind.MembershipProSummary),
+                    UiCopyPreviewItem("--", "会员信息未同步状态条", UiCopyPreviewKind.MembershipFailedSummary)
+                )
+            ),
+            UiCopyPreviewGroup(
                 title = "附件面板",
                 items = listOf(
                     UiCopyPreviewItem(
@@ -6388,6 +6401,10 @@ private enum class UiCopyPreviewKind {
     Welcome,
     ComposerPlaceholder,
     ComposerImagePlaceholder,
+    MembershipFreeSummary,
+    MembershipPlusExtraSummary,
+    MembershipProSummary,
+    MembershipFailedSummary,
     AttachmentSheet,
     Disclaimer,
     AssistantRetry,
@@ -6543,6 +6560,43 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         )
                     }
                 }
+                UiCopyPreviewKind.MembershipFreeSummary -> {
+                    UiCopyPreviewMembershipSummary(
+                        entitlement = SessionApi.EntitlementSnapshot(
+                            tier = "free",
+                            dailyRemaining = 6
+                        ),
+                        loadState = MembershipLoadState.Loaded
+                    )
+                }
+                UiCopyPreviewKind.MembershipPlusExtraSummary -> {
+                    UiCopyPreviewMembershipSummary(
+                        entitlement = SessionApi.EntitlementSnapshot(
+                            tier = "plus",
+                            tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 24),
+                            dailyRemaining = 18,
+                            topupRemaining = 73,
+                            upgradeRemaining = 12
+                        ),
+                        loadState = MembershipLoadState.Loaded
+                    )
+                }
+                UiCopyPreviewKind.MembershipProSummary -> {
+                    UiCopyPreviewMembershipSummary(
+                        entitlement = SessionApi.EntitlementSnapshot(
+                            tier = "pro",
+                            tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 30),
+                            dailyRemaining = 32
+                        ),
+                        loadState = MembershipLoadState.Loaded
+                    )
+                }
+                UiCopyPreviewKind.MembershipFailedSummary -> {
+                    UiCopyPreviewMembershipSummary(
+                        entitlement = null,
+                        loadState = MembershipLoadState.Failed
+                    )
+                }
                 UiCopyPreviewKind.AttachmentSheet -> {
                     UiCopyPreviewAttachmentSheet(limitReached = false)
                 }
@@ -6616,6 +6670,20 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
         }
     }
 }
+
+@Composable
+private fun UiCopyPreviewMembershipSummary(
+    entitlement: SessionApi.EntitlementSnapshot?,
+    loadState: MembershipLoadState
+) {
+    MembershipQuotaSummary(
+        entitlement = entitlement,
+        loadState = loadState
+    )
+}
+
+private fun uiCopyPreviewExpireAtMs(daysFromNow: Long): Long =
+    System.currentTimeMillis() + daysFromNow * 24L * 60L * 60L * 1000L
 
 @Composable
 private fun UiCopyPreviewDisclaimer() {
