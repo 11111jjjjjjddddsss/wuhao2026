@@ -311,8 +311,8 @@ internal fun MembershipQuotaSummary(
                     Text(
                         text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
                         color = Color(0xFF111111),
-                        fontSize = 18.sp,
-                        lineHeight = 23.sp,
+                        fontSize = 17.sp,
+                        lineHeight = 22.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     if (upgradeRemaining > 0) {
@@ -335,8 +335,8 @@ internal fun MembershipQuotaSummary(
                         Text(
                             text = tierSubText,
                             color = Color(0xFF747881),
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp
+                            fontSize = 13.sp,
+                            lineHeight = 17.sp
                         )
                     }
                     if (topupRemaining > 0) {
@@ -399,15 +399,20 @@ private fun MembershipExtraCountPill(text: String) {
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(999.dp),
-        border = BorderStroke(0.7.dp, Color(0xFFE2E4E8))
+        border = BorderStroke(0.7.dp, Color(0xFFE2E4E8)),
+        modifier = Modifier.height(24.dp)
     ) {
-        Text(
-            text = text,
-            color = Color(0xFF666A72),
-            fontSize = 11.sp,
-            lineHeight = 15.sp,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-        )
+        Box(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = Color(0xFF666A72),
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            )
+        }
     }
 }
 
@@ -429,11 +434,11 @@ private fun MembershipPlanSection(
             active = activeTier == "plus",
             highlights = listOf("每天25次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = when (activeTier) {
-                "plus" -> "续费 Plus"
+                "plus" -> "当前套餐"
                 "pro" -> "Pro 已包含"
                 else -> "开通 Plus"
             },
-            actionEnabled = activeTier != "pro",
+            actionEnabled = activeTier == "free" || activeTier == "unknown",
             onActionClick = onPaymentUnavailable
         )
         MembershipPlanCard(
@@ -444,10 +449,10 @@ private fun MembershipPlanSection(
             highlights = listOf("每天40次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
                 "plus" -> "升级 Pro"
-                "pro" -> "续费 Pro"
+                "pro" -> "当前套餐"
                 else -> "开通 Pro"
             },
-            actionEnabled = true,
+            actionEnabled = activeTier != "pro",
             onActionClick = onPaymentUnavailable
         )
     }
