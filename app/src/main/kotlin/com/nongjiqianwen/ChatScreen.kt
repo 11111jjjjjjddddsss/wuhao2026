@@ -6238,14 +6238,14 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "会员中心",
                 items = listOf(
-                    UiCopyPreviewItem("今日剩余 6 / 6 次", "Free 基础额度状态条", UiCopyPreviewKind.MembershipFreeSummary),
+                    UiCopyPreviewItem("Free 基础额度", "今日剩余 6 / 6 次", UiCopyPreviewKind.MembershipFreeSummary),
                     UiCopyPreviewItem(
-                        "今日剩余 18 / 25 次",
-                        "Plus + 升级补偿 + 加油包状态条",
+                        "Plus 额外次数",
+                        "今日剩余 18 / 25 次，含补偿和加油包",
                         UiCopyPreviewKind.MembershipPlusExtraSummary
                     ),
-                    UiCopyPreviewItem("今日剩余 32 / 40 次", "Pro 到期日状态条", UiCopyPreviewKind.MembershipProSummary),
-                    UiCopyPreviewItem("--", "会员信息未同步状态条", UiCopyPreviewKind.MembershipFailedSummary)
+                    UiCopyPreviewItem("Pro 到期日", "今日剩余 32 / 40 次", UiCopyPreviewKind.MembershipProSummary),
+                    UiCopyPreviewItem("会员信息未同步", "未同步状态条", UiCopyPreviewKind.MembershipFailedSummary)
                 )
             ),
             UiCopyPreviewGroup(

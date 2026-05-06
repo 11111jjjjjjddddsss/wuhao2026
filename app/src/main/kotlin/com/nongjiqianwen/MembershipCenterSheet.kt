@@ -287,53 +287,62 @@ internal fun MembershipQuotaSummary(
         border = BorderStroke(0.7.dp, Color(0xFFE4E6EA)),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier.padding(horizontal = 15.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(
-                    text = "今日剩余",
-                    color = Color(0xFF747881),
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
-                )
-                Text(
-                    text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
-                    color = Color(0xFF111111),
-                    fontSize = 20.sp,
-                    lineHeight = 25.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (extraCountText != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
                     Text(
-                        text = extraCountText,
+                        text = "今日剩余",
                         color = Color(0xFF747881),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
+                        fontSize = 11.sp,
+                        lineHeight = 15.sp
                     )
+                    Text(
+                        text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
+                        color = Color(0xFF111111),
+                        fontSize = 18.sp,
+                        lineHeight = 23.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Column(
+                    horizontalAlignment = Alignment.Start,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                    modifier = Modifier.padding(start = 12.dp)
+                ) {
+                    Text(
+                        text = tierName,
+                        color = Color(0xFF151515),
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (tierSubText != null) {
+                        Text(
+                            text = tierSubText,
+                            color = Color(0xFF747881),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
                 }
             }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
+            if (extraCountText != null) {
                 Text(
-                    text = tierName,
-                    color = Color(0xFF151515),
-                    fontSize = 14.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.SemiBold
+                    text = extraCountText,
+                    color = Color(0xFF747881),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
                 )
-                if (tierSubText != null) {
-                    Text(
-                        text = tierSubText,
-                        color = Color(0xFF747881),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                }
             }
         }
     }

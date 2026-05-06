@@ -5,6 +5,8 @@
 
 ## 2026-05-06
 
+- `MembershipCenterSheet.kt` / `ChatScreen.kt` 继续收细会员中心顶部状态条视觉：把主数字从 20sp 收到 18sp，右侧套餐 / 到期日改成整组靠右但组内左对齐，并把 debug 预览面板里的会员样例标题改成“Free 基础额度 / Plus 额外次数 / Pro 到期日 / 会员信息未同步”，避免预览标题和状态条内容重复，也避免 `Pro` 和日期贴右边显得别扭。只改状态条视觉和 debug 预览标题，不改 `/api/me`、会员权益、扣次顺序或支付占位。
+- `MembershipCenterSheet.kt` 调整会员中心顶部状态条排版：把“升级补偿 / 加油包”额外次数从左右 Row 里移到状态条底部独立一行，避免 Plus + 到期日 + 额外次数同时出现时把右侧“到期 yyyy-MM-dd”挤成两行。debug-only 预览面板继续复用真实状态条组件；不改 `/api/me`、会员权益、扣次顺序或支付占位。
 - `ChatScreen.kt` / `MembershipCenterSheet.kt` 给 debug-only UI 文案预览面板补上会员中心顶部状态条分组：直接复用真实 `MembershipQuotaSummary`，可预览 Free 基础额度、Plus 带升级补偿 / 加油包、Pro 到期日和未同步四种“平时不一定看得到”的状态。只放开组件可见性并增加 debug 预览样例，不改 `/api/me`、会员权益、支付占位、扣次顺序或正式会员中心逻辑。
 
 ## 2026-05-05
