@@ -2459,6 +2459,7 @@ fun ChatScreen() {
     var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
     var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
     var uiCopyPreviewVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var hamburgerMenuVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipCenterVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipLoadState by remember(uiRuntimeResetKey) { mutableStateOf(MembershipLoadState.Idle) }
     var membershipEntitlement by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.EntitlementSnapshot?>(null) }
@@ -2854,6 +2855,7 @@ fun ChatScreen() {
     }
     BackHandler(
         enabled = attachmentMenuVisible ||
+            hamburgerMenuVisible ||
             membershipCenterVisible ||
             membershipPurchaseSuccessVisible ||
             messageSelectionToolbarState != null ||
@@ -2862,6 +2864,7 @@ fun ChatScreen() {
         when {
             membershipPurchaseSuccessVisible -> membershipPurchaseSuccessVisible = false
             membershipCenterVisible -> membershipCenterVisible = false
+            hamburgerMenuVisible -> hamburgerMenuVisible = false
             attachmentMenuVisible -> attachmentMenuVisible = false
             inputSelectionToolbarState != null -> {
                 clearInputSelectionToolbar()
@@ -5761,6 +5764,7 @@ fun ChatScreen() {
                     entitlement = membershipEntitlement,
                     loadState = membershipLoadState,
                     purchaseSuccessVisible = membershipPurchaseSuccessVisible,
+                    userId = chatScopeId,
                     modifier = Modifier.fillMaxSize(),
                     onDismiss = {
                         membershipPurchaseSuccessVisible = false
@@ -5773,6 +5777,30 @@ fun ChatScreen() {
                         performButtonHaptic()
                         membershipPurchaseSuccessVisible = false
                         membershipRefreshNonce += 1
+                    }
+                )
+
+                HamburgerMenuSheet(
+                    visible = hamburgerMenuVisible,
+                    userId = chatScopeId,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(78f),
+                    onDismiss = {
+                        hamburgerMenuVisible = false
+                    },
+                    onOpenMembership = {
+                        performButtonHaptic()
+                        hamburgerMenuVisible = false
+                        attachmentMenuVisible = false
+                        uiCopyPreviewVisible = false
+                        clearInputSelectionToolbar()
+                        clearMessageSelection()
+                        focusManager.clearFocus(force = true)
+                        membershipCenterVisible = true
+                    },
+                    onPlaceholderClick = {
+                        performButtonHaptic()
                     }
                 )
 
@@ -5842,7 +5870,17 @@ fun ChatScreen() {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = {},
+                        onClick = {
+                            performButtonHaptic()
+                            attachmentMenuVisible = false
+                            uiCopyPreviewVisible = false
+                            membershipPurchaseSuccessVisible = false
+                            membershipCenterVisible = false
+                            clearInputSelectionToolbar()
+                            clearMessageSelection()
+                            focusManager.clearFocus(force = true)
+                            hamburgerMenuVisible = true
+                        },
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
                         MenuBarsIcon(
@@ -6238,7 +6276,10 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "会员中心",
                 items = listOf(
+                    UiCopyPreviewItem("会员中心（ID）", "标题后展示本机短 ID", UiCopyPreviewKind.MembershipHeader),
+                    UiCopyPreviewItem("会员信息读取中", "读取中状态条", UiCopyPreviewKind.MembershipLoadingSummary),
                     UiCopyPreviewItem("Free 基础额度", "今日剩余 6 / 6 次", UiCopyPreviewKind.MembershipFreeSummary),
+                    UiCopyPreviewItem("Free 额外次数", "到期后仍剩补偿 / 加油包", UiCopyPreviewKind.MembershipFreeExtraSummary),
                     UiCopyPreviewItem(
                         "Plus 额外次数",
                         "今日剩余 18 / 25 次，含补偿和加油包",
@@ -6249,11 +6290,18 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("套餐区：Free", "Plus / Pro 开通按钮", UiCopyPreviewKind.MembershipPlanFree),
                     UiCopyPreviewItem("套餐区：Plus", "Plus 当前 / Pro 升级", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Pro 当前状态", UiCopyPreviewKind.MembershipPlanPro),
+                    UiCopyPreviewItem("加油包：Free不可买", "Plus / Pro 可买置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
                     UiCopyPreviewItem("加油包：可购买", "Plus / Pro 可买，用完再续", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("支付暂未接入", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
                     UiCopyPreviewItem("订购成功", "支付成功后的确认卡片", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
+                )
+            ),
+            UiCopyPreviewGroup(
+                title = "汉堡菜单",
+                items = listOf(
+                    UiCopyPreviewItem("设置入口", "会员、协议、隐私、风险提示和关于", UiCopyPreviewKind.HamburgerMenu)
                 )
             ),
             UiCopyPreviewGroup(
@@ -6409,18 +6457,23 @@ private enum class UiCopyPreviewKind {
     Welcome,
     ComposerPlaceholder,
     ComposerImagePlaceholder,
+    MembershipHeader,
+    MembershipLoadingSummary,
     MembershipFreeSummary,
+    MembershipFreeExtraSummary,
     MembershipPlusExtraSummary,
     MembershipProSummary,
     MembershipFailedSummary,
     MembershipPlanFree,
     MembershipPlanPlus,
     MembershipPlanPro,
+    MembershipTopupUnavailable,
     MembershipTopupBuyable,
     MembershipTopupActive,
     MembershipPaymentNotice,
     MembershipPurchaseSuccess,
     MembershipRules,
+    HamburgerMenu,
     AttachmentSheet,
     Disclaimer,
     AssistantRetry,
@@ -6576,11 +6629,31 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         )
                     }
                 }
+                UiCopyPreviewKind.MembershipHeader -> {
+                    MembershipCenterHeaderPreview(userId = IdManager.getUserId())
+                }
+                UiCopyPreviewKind.MembershipLoadingSummary -> {
+                    UiCopyPreviewMembershipSummary(
+                        entitlement = null,
+                        loadState = MembershipLoadState.Loading
+                    )
+                }
                 UiCopyPreviewKind.MembershipFreeSummary -> {
                     UiCopyPreviewMembershipSummary(
                         entitlement = SessionApi.EntitlementSnapshot(
                             tier = "free",
                             dailyRemaining = 6
+                        ),
+                        loadState = MembershipLoadState.Loaded
+                    )
+                }
+                UiCopyPreviewKind.MembershipFreeExtraSummary -> {
+                    UiCopyPreviewMembershipSummary(
+                        entitlement = SessionApi.EntitlementSnapshot(
+                            tier = "free",
+                            dailyRemaining = 2,
+                            topupRemaining = 15,
+                            upgradeRemaining = 3
                         ),
                         loadState = MembershipLoadState.Loaded
                     )
@@ -6622,6 +6695,12 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.MembershipPlanPro -> {
                     MembershipPlanSectionPreview(activeTier = "pro")
                 }
+                UiCopyPreviewKind.MembershipTopupUnavailable -> {
+                    MembershipTopupCardPreview(
+                        activeTier = "free",
+                        topupRemaining = 0
+                    )
+                }
                 UiCopyPreviewKind.MembershipTopupBuyable -> {
                     MembershipTopupCardPreview(
                         activeTier = "plus",
@@ -6642,6 +6721,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.MembershipRules -> {
                     MembershipRulesPreview()
+                }
+                UiCopyPreviewKind.HamburgerMenu -> {
+                    HamburgerMenuSheetPreview(userId = IdManager.getUserId())
                 }
                 UiCopyPreviewKind.AttachmentSheet -> {
                     UiCopyPreviewAttachmentSheet(limitReached = false)

@@ -41,9 +41,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import java.util.Locale
 
 internal enum class MembershipLoadState { Idle, Loading, Loaded, Failed }
 
@@ -58,6 +60,7 @@ internal fun MembershipCenterBottomSheet(
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
     purchaseSuccessVisible: Boolean,
+    userId: String,
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onPaymentUnavailable: () -> Unit,
@@ -113,7 +116,7 @@ internal fun MembershipCenterBottomSheet(
                         .padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    MembershipCenterHeader(onDismiss = onDismiss)
+                    MembershipCenterHeader(userId = userId, onDismiss = onDismiss)
                     MembershipQuotaSummary(
                         entitlement = entitlement,
                         loadState = loadState
@@ -151,18 +154,35 @@ internal fun MembershipCenterBottomSheet(
 }
 
 @Composable
-private fun MembershipCenterHeader(onDismiss: () -> Unit) {
+private fun MembershipCenterHeader(
+    userId: String,
+    onDismiss: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "会员中心",
-            color = Color(0xFF111111),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold
-        )
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "会员中心",
+                color = Color(0xFF111111),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "（ID ${compactUserId(userId)}）",
+                color = Color(0xFF7B7F87),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 6.dp, end = 12.dp)
+            )
+        }
         Surface(
             shape = CircleShape,
             color = Color(0xFFF5F6F7),
@@ -186,6 +206,14 @@ private fun MembershipCenterHeader(onDismiss: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+internal fun MembershipCenterHeaderPreview(userId: String) {
+    MembershipCenterHeader(
+        userId = userId,
+        onDismiss = {}
+    )
 }
 
 @Composable
@@ -766,4 +794,10 @@ private fun formatMembershipExpireDate(expireAtMs: Long?): String? {
     return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).apply {
         timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
     }.format(java.util.Date(expireAtMs))
+}
+
+internal fun compactUserId(userId: String): String {
+    val normalized = userId.filter { it.isLetterOrDigit() }
+    val compact = normalized.takeLast(8).ifBlank { "未生成" }
+    return compact.uppercase(Locale.US)
 }
