@@ -305,14 +305,14 @@ internal fun MembershipQuotaSummary(
                     Text(
                         text = "今日剩余",
                         color = Color(0xFF747881),
-                        fontSize = 11.sp,
-                        lineHeight = 15.sp
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
                     )
                     Text(
                         text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
                         color = Color(0xFF111111),
-                        fontSize = 17.sp,
-                        lineHeight = 22.sp,
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     if (upgradeRemaining > 0) {
@@ -327,16 +327,16 @@ internal fun MembershipQuotaSummary(
                     Text(
                         text = tierName,
                         color = Color(0xFF151515),
-                        fontSize = 13.sp,
-                        lineHeight = 17.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     if (tierSubText != null) {
                         Text(
                             text = tierSubText,
                             color = Color(0xFF747881),
-                            fontSize = 13.sp,
-                            lineHeight = 17.sp
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp
                         )
                     }
                     if (topupRemaining > 0) {
