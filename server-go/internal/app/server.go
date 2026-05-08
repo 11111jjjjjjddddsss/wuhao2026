@@ -135,9 +135,10 @@ func (s *Server) registerRoutes() {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"ok":          true,
-		"bailian":     ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
-		"auth_strict": IsAuthStrict(),
+		"ok":                  true,
+		"bailian":             ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
+		"auth_strict":         IsAuthStrict(),
+		"dev_order_endpoints": devOrderEndpointsEnabled(),
 	})
 }
 
@@ -253,6 +254,9 @@ func (s *Server) handleTopupBuy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !s.allowDevOrderEndpoint(w) {
+		return
+	}
 	var body orderRequest
 	if err := decodeJSONBody(r, &body); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_json")
@@ -340,6 +344,9 @@ func (s *Server) handleRenewTier(w http.ResponseWriter, r *http.Request, targetT
 	if !ok {
 		return
 	}
+	if !s.allowDevOrderEndpoint(w) {
+		return
+	}
 	var body orderRequest
 	if err := decodeJSONBody(r, &body); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_json")
@@ -396,6 +403,9 @@ func (s *Server) handleUpgradePlusToPro(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
+	if !s.allowDevOrderEndpoint(w) {
+		return
+	}
 	var body orderRequest
 	if err := decodeJSONBody(r, &body); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_json")
@@ -437,6 +447,19 @@ func (s *Server) handleUpgradePlusToPro(w http.ResponseWriter, r *http.Request) 
 		"tier_expire_at":    tierExpireAt,
 		"upgrade_remaining": upgradeRemaining,
 	})
+}
+
+func (s *Server) allowDevOrderEndpoint(w http.ResponseWriter) bool {
+	if devOrderEndpointsEnabled() {
+		return true
+	}
+	s.writeError(w, http.StatusServiceUnavailable, "PAYMENT_NOT_CONFIGURED")
+	return false
+}
+
+func devOrderEndpointsEnabled() bool {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv("ALLOW_DEV_ORDER_ENDPOINTS")))
+	return raw == "1" || raw == "true" || raw == "yes"
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, payload any) {

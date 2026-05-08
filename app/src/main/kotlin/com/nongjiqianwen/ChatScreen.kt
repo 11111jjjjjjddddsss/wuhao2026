@@ -1785,7 +1785,7 @@ private fun MembershipLeafIcon(
 ) {
     Image(
         painter = painterResource(id = R.drawable.ic_membership_leaf),
-        contentDescription = null,
+        contentDescription = "会员中心",
         modifier = modifier.size(size)
     )
 }
@@ -2885,6 +2885,16 @@ fun ChatScreen() {
         membershipLoadState = MembershipLoadState.Loading
         val entitlement = awaitMembershipEntitlement()
         membershipEntitlement = entitlement
+        if (
+            entitlement != null &&
+            (
+                (entitlement.dailyRemaining ?: 0) > 0 ||
+                    (entitlement.upgradeRemaining ?: 0) > 0 ||
+                    (entitlement.topupRemaining ?: 0) > 0
+                )
+        ) {
+            quotaExhaustedDayKey = null
+        }
         membershipLoadState = if (entitlement == null) {
             MembershipLoadState.Failed
         } else {
@@ -6323,6 +6333,7 @@ private fun UiCopyPreviewOverlay(
                     ),
                     UiCopyPreviewItem("Pro 到期日", "今日剩余 32 / 40 次", UiCopyPreviewKind.MembershipProSummary),
                     UiCopyPreviewItem("会员信息未同步", "未同步状态条", UiCopyPreviewKind.MembershipFailedSummary),
+                    UiCopyPreviewItem("套餐区：未同步", "同步后开通置灰状态", UiCopyPreviewKind.MembershipPlanUnknown),
                     UiCopyPreviewItem("套餐区：Free", "Plus / Pro 开通按钮", UiCopyPreviewKind.MembershipPlanFree),
                     UiCopyPreviewItem("套餐区：Plus", "Plus 当前 / Pro 升级", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Pro 当前状态", UiCopyPreviewKind.MembershipPlanPro),
@@ -6499,6 +6510,7 @@ private enum class UiCopyPreviewKind {
     MembershipPlusExtraSummary,
     MembershipProSummary,
     MembershipFailedSummary,
+    MembershipPlanUnknown,
     MembershipPlanFree,
     MembershipPlanPlus,
     MembershipPlanPro,
@@ -6721,6 +6733,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         entitlement = null,
                         loadState = MembershipLoadState.Failed
                     )
+                }
+                UiCopyPreviewKind.MembershipPlanUnknown -> {
+                    MembershipPlanSectionPreview(activeTier = "unknown")
                 }
                 UiCopyPreviewKind.MembershipPlanFree -> {
                     MembershipPlanSectionPreview(activeTier = "free")

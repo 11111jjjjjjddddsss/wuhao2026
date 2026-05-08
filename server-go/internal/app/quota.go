@@ -534,8 +534,10 @@ func effectiveTierFromRow(tier sql.NullString, expireAt sql.NullInt64, fallback 
 		resultTier = Tier(tier.String)
 	}
 
-	if (resultTier == TierPlus || resultTier == TierPro) && expireAt.Valid && expireAt.Int64 <= now {
-		return TierFree, nil, nil
+	if resultTier == TierPlus || resultTier == TierPro {
+		if !expireAt.Valid || expireAt.Int64 <= now {
+			return TierFree, nil, nil
+		}
 	}
 
 	if !expireAt.Valid {

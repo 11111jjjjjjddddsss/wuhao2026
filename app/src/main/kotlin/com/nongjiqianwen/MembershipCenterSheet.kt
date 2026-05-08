@@ -40,6 +40,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -192,9 +196,14 @@ private fun MembershipCenterHeader(
             border = BorderStroke(0.7.dp, Color(0xFFE2E4E8)),
             modifier = Modifier
                 .size(42.dp)
+                .semantics {
+                    contentDescription = "关闭会员中心"
+                    role = Role.Button
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
+                    role = Role.Button,
                     onClick = onDismiss
                 )
         ) {
@@ -280,6 +289,7 @@ private fun MembershipPurchaseSuccessCard(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
+                            role = Role.Button,
                             onClick = onConfirm
                         )
                 ) {
@@ -452,6 +462,7 @@ private fun MembershipPlanSection(
     topupRemaining: Int,
     onPaymentUnavailable: () -> Unit
 ) {
+    val membershipSynced = activeTier != "unknown"
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         MembershipPlanSectionTitle(
             upgradeRemaining = upgradeRemaining,
@@ -463,11 +474,12 @@ private fun MembershipPlanSection(
             active = activeTier == "plus",
             highlights = listOf("每天25次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = when (activeTier) {
+                "unknown" -> "同步后开通"
                 "plus" -> "当前套餐"
                 "pro" -> "Pro 已包含"
                 else -> "开通 Plus"
             },
-            actionEnabled = activeTier == "free" || activeTier == "unknown",
+            actionEnabled = membershipSynced && activeTier == "free",
             onActionClick = onPaymentUnavailable
         )
         MembershipPlanCard(
@@ -477,11 +489,12 @@ private fun MembershipPlanSection(
             active = activeTier == "pro",
             highlights = listOf("每天40次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
+                "unknown" -> "同步后开通"
                 "plus" -> "升级 Pro"
                 "pro" -> "当前套餐"
                 else -> "开通 Pro"
             },
-            actionEnabled = activeTier != "pro",
+            actionEnabled = membershipSynced && activeTier != "pro",
             onActionClick = onPaymentUnavailable
         )
     }
@@ -698,6 +711,7 @@ private fun MembershipActionButton(
                     Modifier.clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
+                        role = Role.Button,
                         onClick = onClick
                     )
                 } else {

@@ -88,6 +88,6 @@
 ## R12 会员订单接口仍需接真实支付回调
 
 - 状态：未关闭
-- 说明：Android 会员中心当前只展示支付占位提示，不会调用后端下单 / 续费 / 升级 / 加油包接口；但 `server-go` 里现有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍是按 `order_id` 直接写会员 / 加油包状态的开发期接口，还没有接入微信 / 支付宝 / 平台支付回调验签真源
-- 风险：如果正式公网开放前不收口这些接口，非 App 客户端理论上可以绕过真实支付直接请求会员变更；这不影响当前 Android UI 展示，也不影响每日额度 / 升级补偿 / 加油包扣次顺序本身，但属于上线前必须处理的业务安全风险
-- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程；若上线前仍未接支付，应在生产环境禁用这些开发期直接变更接口，避免“支付占位 UI 安全、后端接口裸奔”的不一致
+- 说明：Android 会员中心当前只展示支付占位提示，不会调用后端下单 / 续费 / 升级 / 加油包接口；`server-go` 里现有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍是开发期直接变更接口，但默认已返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 才允许本地 / 内测调试使用
+- 风险：这些接口仍不是正式支付真源；如果内测 / 生产环境误开 `ALLOW_DEV_ORDER_ENDPOINTS=true`，非 App 客户端理论上仍可绕过真实支付直接请求会员变更。这不影响当前 Android UI 展示，也不影响每日额度 / 升级补偿 / 加油包扣次顺序本身，但属于上线前必须继续收口的业务安全风险
+- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false

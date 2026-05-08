@@ -21,6 +21,22 @@ func TestQuotaBusinessConstantsMatchCurrentRules(t *testing.T) {
 	}
 }
 
+func TestDevOrderEndpointsAreDisabledByDefault(t *testing.T) {
+	t.Setenv("ALLOW_DEV_ORDER_ENDPOINTS", "")
+
+	if devOrderEndpointsEnabled() {
+		t.Fatal("dev order endpoints should be disabled by default")
+	}
+}
+
+func TestDevOrderEndpointsRequireExplicitOptIn(t *testing.T) {
+	t.Setenv("ALLOW_DEV_ORDER_ENDPOINTS", "true")
+
+	if !devOrderEndpointsEnabled() {
+		t.Fatal("dev order endpoints should be enabled by explicit opt-in")
+	}
+}
+
 func TestEffectiveTierFromRowExpiresPaidTier(t *testing.T) {
 	now := int64(1_700_000_000_000)
 
@@ -38,6 +54,26 @@ func TestEffectiveTierFromRowExpiresPaidTier(t *testing.T) {
 	}
 	if expireAt != nil {
 		t.Fatalf("expired tier should not expose active expireAt, got %v", *expireAt)
+	}
+}
+
+func TestEffectiveTierFromRowTreatsPaidTierWithoutExpiryAsFree(t *testing.T) {
+	now := int64(1_700_000_000_000)
+
+	tier, expireAt, err := effectiveTierFromRow(
+		sql.NullString{String: string(TierPlus), Valid: true},
+		sql.NullInt64{},
+		TierFree,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("effective tier failed: %v", err)
+	}
+	if tier != TierFree {
+		t.Fatalf("paid tier without expireAt should become free, got %s", tier)
+	}
+	if expireAt != nil {
+		t.Fatalf("paid tier without expireAt should not expose active expireAt, got %v", *expireAt)
 	}
 }
 

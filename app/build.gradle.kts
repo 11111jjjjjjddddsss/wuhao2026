@@ -23,10 +23,7 @@ android {
         buildConfigField("String", "SESSION_API_TOKEN", "\"$sessionApiToken\"")
 
         val useBackendAb = (project.findProperty("USE_BACKEND_AB") as String?)?.toBooleanStrictOrNull() ?: true
-        val useBackendEntitlement =
-            (project.findProperty("USE_BACKEND_ENTITLEMENT") as String?)?.toBooleanStrictOrNull() ?: true
         buildConfigField("boolean", "USE_BACKEND_AB", useBackendAb.toString())
-        buildConfigField("boolean", "USE_BACKEND_ENTITLEMENT", useBackendEntitlement.toString())
     }
 
     buildTypes {
