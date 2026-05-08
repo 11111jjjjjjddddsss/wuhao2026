@@ -126,6 +126,8 @@ internal fun MembershipCenterBottomSheet(
                     }
                     MembershipPlanSection(
                         activeTier = entitlement.activeMembershipTier(loadState),
+                        upgradeRemaining = entitlement?.upgradeRemaining ?: 0,
+                        topupRemaining = entitlement?.topupRemaining ?: 0,
                         onPaymentUnavailable = {
                             paymentNoticeVisible = true
                             onPaymentUnavailable()
@@ -304,8 +306,6 @@ internal fun MembershipQuotaSummary(
     val tierName = membershipSummaryTierName(tier, loadState)
     val limit = membershipDailyLimit(tier)
     val dailyRemaining = entitlement?.dailyRemaining
-    val upgradeRemaining = entitlement?.upgradeRemaining ?: 0
-    val topupRemaining = entitlement?.topupRemaining ?: 0
     val tierSubText = membershipSummaryTierSubText(
         tier = tier,
         loadState = loadState,
@@ -343,9 +343,6 @@ internal fun MembershipQuotaSummary(
                         lineHeight = 20.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (upgradeRemaining > 0) {
-                        MembershipExtraCountPill(text = "补偿 ${upgradeRemaining}次")
-                    }
                 }
                 Column(
                     horizontalAlignment = Alignment.Start,
@@ -367,9 +364,6 @@ internal fun MembershipQuotaSummary(
                             lineHeight = 20.sp
                         )
                     }
-                    if (topupRemaining > 0) {
-                        MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
-                    }
                 }
             }
         }
@@ -377,9 +371,15 @@ internal fun MembershipQuotaSummary(
 }
 
 @Composable
-internal fun MembershipPlanSectionPreview(activeTier: String) {
+internal fun MembershipPlanSectionPreview(
+    activeTier: String,
+    upgradeRemaining: Int = 0,
+    topupRemaining: Int = 0
+) {
     MembershipPlanSection(
         activeTier = activeTier,
+        upgradeRemaining = upgradeRemaining,
+        topupRemaining = topupRemaining,
         onPaymentUnavailable = {}
     )
 }
@@ -447,14 +447,14 @@ private fun MembershipExtraCountPill(text: String) {
 @Composable
 private fun MembershipPlanSection(
     activeTier: String,
+    upgradeRemaining: Int,
+    topupRemaining: Int,
     onPaymentUnavailable: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = "套餐",
-            color = Color(0xFF111111),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+        MembershipPlanSectionTitle(
+            upgradeRemaining = upgradeRemaining,
+            topupRemaining = topupRemaining
         )
         MembershipPlanCard(
             name = "Plus",
@@ -483,6 +483,36 @@ private fun MembershipPlanSection(
             actionEnabled = activeTier != "pro",
             onActionClick = onPaymentUnavailable
         )
+    }
+}
+
+@Composable
+private fun MembershipPlanSectionTitle(
+    upgradeRemaining: Int,
+    topupRemaining: Int
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "套餐",
+            color = Color(0xFF111111),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(
+            modifier = Modifier.padding(start = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (upgradeRemaining > 0) {
+                MembershipExtraCountPill(text = "升级补偿次数 ${upgradeRemaining}次")
+            }
+            if (topupRemaining > 0) {
+                MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
+            }
+        }
     }
 }
 

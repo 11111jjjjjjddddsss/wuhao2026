@@ -6311,10 +6311,14 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("会员中心（ID）", "标题后展示本机短 ID", UiCopyPreviewKind.MembershipHeader),
                     UiCopyPreviewItem("会员信息读取中", "读取中状态条", UiCopyPreviewKind.MembershipLoadingSummary),
                     UiCopyPreviewItem("Free 基础额度", "今日剩余 6 / 6 次", UiCopyPreviewKind.MembershipFreeSummary),
-                    UiCopyPreviewItem("Free 额外次数", "到期后仍剩补偿 / 加油包", UiCopyPreviewKind.MembershipFreeExtraSummary),
+                    UiCopyPreviewItem(
+                        "Free 额外次数",
+                        "到期后仍可显示升级补偿次数 / 加油包",
+                        UiCopyPreviewKind.MembershipFreeExtraSummary
+                    ),
                     UiCopyPreviewItem(
                         "Plus 额外次数",
-                        "今日剩余 18 / 25 次，含补偿和加油包",
+                        "套餐标题后显示升级补偿次数和加油包",
                         UiCopyPreviewKind.MembershipPlusExtraSummary
                     ),
                     UiCopyPreviewItem("Pro 到期日", "今日剩余 32 / 40 次", UiCopyPreviewKind.MembershipProSummary),
@@ -6355,7 +6359,11 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败浮层", UiCopyPreviewKind.CameraOpenFailed),
                     UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
                     UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
-                    UiCopyPreviewItem("第1张图片 / 图片预览 / 用户上传图片", "图片相关无障碍文案", UiCopyPreviewKind.ImageAccessibility)
+                    UiCopyPreviewItem(
+                        "图片读屏文案（不可见）",
+                        "给系统无障碍读屏用，正常界面不显示",
+                        UiCopyPreviewKind.ImageAccessibility
+                    )
                 )
             ),
             UiCopyPreviewGroup(
@@ -6680,18 +6688,19 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     )
                 }
                 UiCopyPreviewKind.MembershipFreeExtraSummary -> {
-                    UiCopyPreviewMembershipSummary(
+                    UiCopyPreviewMembershipSummaryWithPlans(
                         entitlement = SessionApi.EntitlementSnapshot(
                             tier = "free",
                             dailyRemaining = 2,
                             topupRemaining = 15,
                             upgradeRemaining = 3
                         ),
-                        loadState = MembershipLoadState.Loaded
+                        loadState = MembershipLoadState.Loaded,
+                        activeTier = "free"
                     )
                 }
                 UiCopyPreviewKind.MembershipPlusExtraSummary -> {
-                    UiCopyPreviewMembershipSummary(
+                    UiCopyPreviewMembershipSummaryWithPlans(
                         entitlement = SessionApi.EntitlementSnapshot(
                             tier = "plus",
                             tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 24),
@@ -6699,7 +6708,8 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             topupRemaining = 73,
                             upgradeRemaining = 12
                         ),
-                        loadState = MembershipLoadState.Loaded
+                        loadState = MembershipLoadState.Loaded,
+                        activeTier = "plus"
                     )
                 }
                 UiCopyPreviewKind.MembershipProSummary -> {
@@ -6816,7 +6826,14 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.ComposerImageBadge -> UiCopyPreviewComposerImageBadge()
                 UiCopyPreviewKind.ImagePageIndicator -> UiCopyPreviewImagePageIndicator()
                 UiCopyPreviewKind.ImageAccessibility -> UiCopyPreviewPlainText(
-                    listOf("第1张图片", "图片预览", "用户上传图片", "用户上传图片预览")
+                    listOf(
+                        "这些不是页面上给用户看的文字。",
+                        "它们是系统读屏 / 无障碍描述：",
+                        "第1张图片",
+                        "图片预览",
+                        "用户上传图片",
+                        "用户上传图片预览"
+                    )
                 )
                 UiCopyPreviewKind.InputMenuCopyOnly -> UiCopyPreviewInputActionMenu(listOf("复制"))
                 UiCopyPreviewKind.InputMenuPasteSelect -> UiCopyPreviewInputActionMenu(listOf("粘贴", "全选"))
@@ -6840,6 +6857,25 @@ private fun UiCopyPreviewMembershipSummary(
         entitlement = entitlement,
         loadState = loadState
     )
+}
+
+@Composable
+private fun UiCopyPreviewMembershipSummaryWithPlans(
+    entitlement: SessionApi.EntitlementSnapshot,
+    loadState: MembershipLoadState,
+    activeTier: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        MembershipQuotaSummary(
+            entitlement = entitlement,
+            loadState = loadState
+        )
+        MembershipPlanSectionPreview(
+            activeTier = activeTier,
+            upgradeRemaining = entitlement.upgradeRemaining ?: 0,
+            topupRemaining = entitlement.topupRemaining ?: 0
+        )
+    }
 }
 
 private fun uiCopyPreviewExpireAtMs(daysFromNow: Long): Long =
