@@ -345,14 +345,14 @@ internal fun MembershipQuotaSummary(
                         text = "今日剩余",
                         color = Color(0xFF747881),
                         fontSize = 12.sp,
-                        lineHeight = 16.sp
+                        lineHeight = 16.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                     Text(
                         text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
                         color = Color(0xFF111111),
                         fontSize = 15.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.SemiBold
+                        lineHeight = 20.sp
                     )
                 }
                 Column(

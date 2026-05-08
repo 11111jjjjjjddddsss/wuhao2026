@@ -5,6 +5,7 @@
 
 ## 2026-05-08
 
+- `MembershipCenterSheet.kt` 微调会员中心顶部状态条字重：左侧“今日剩余”和右侧当前档位名保持加粗，下面的剩余次数、到期日期 / 基础额度改为普通字重，避免数字和日期抢过标题层级。只改会员中心视觉层级，不改 `/api/me`、会员权益、补偿次数、加油包、支付占位或扣次顺序。
 - 会员中心 / 会员后端做一轮前后端审查后收口高风险点：Android 端会员信息未同步时，Plus / Pro 开通按钮改为置灰“同步后开通”，避免在 `/api/me` 未拿到后端真相时启动购买；会员中心刷新到可用每日额度、升级补偿或加油包后，会清掉当天本地“次数用完”发送锁。后端开发期订单接口 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 默认返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 才允许本地 / 内测调试；Plus / Pro 若没有有效 `tier_expire_at` 会按 Free 处理，避免脏数据永久会员；`012_chat_stream_single_user.sql` 的唯一索引迁移改为幂等，避免后端重启重复执行迁移失败；删除未使用的 Android `USE_BACKEND_ENTITLEMENT` BuildConfig 开关，避免误以为会员中心还有前端真相开关。只收口会员 / 扣次安全边界，不改聊天滚动链、图片链、Plus 升 Pro 补偿算法或正式支付回调方案。
 - `MembershipCenterSheet.kt` / `ChatScreen.kt` 调整会员中心额外次数展示：顶部“今日剩余”状态条只保留今日剩余、当前档位和到期 / 基础额度；升级补偿和加油包从状态条内部挪到“套餐”标题后方两个胶囊里，并把“补偿”改成“升级补偿次数”。Free 用户如果是会员到期后仍有升级补偿或加油包，也会在套餐标题后继续展示；“套餐”标题固定 24dp 视觉高度并和两个额外次数胶囊居中对齐。debug-only UI 文案预览面板同步改成可预览这类状态；图片无障碍读屏文案继续留在正式组件的 `contentDescription` 里，但不再出现在文案预览面板。
 - `ChatScreen.kt` 收掉两个低风险图片兜底 P3：聊天区用户图片预览改为本地 `imageUris` 优先、远端 `imageUrls` 兜底，弱网下只要本地副本还在就不先卡远端图；冷启动 / 远端 hydrate 后如果同一窗口里有多条仍在 WorkManager 队列中的本地图文 pending 消息，会把这些 pending 消息一起纳入远端归档恢复轮询，不再只盯最后一条，并且这种补旧答案的恢复不会打断用户后面新发起的活跃 SSE。`composerCollapseOverlayVisible` 复查后确认仍参与输入框收口遮罩和高度释放，不是可直接删除的死链；本次不动输入框收口、聊天滚动链、图片上传、扣次、WorkManager 调度或后端接口。
