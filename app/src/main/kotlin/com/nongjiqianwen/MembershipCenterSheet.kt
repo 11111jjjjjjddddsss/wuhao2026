@@ -343,16 +343,16 @@ internal fun MembershipQuotaSummary(
                 ) {
                     Text(
                         text = "今日剩余",
-                        color = Color(0xFF747881),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        fontWeight = FontWeight.SemiBold
+                        color = Color(0xFF5F636B),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
                         color = Color(0xFF111111),
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
                     )
                 }
                 Column(
@@ -363,16 +363,16 @@ internal fun MembershipQuotaSummary(
                     Text(
                         text = tierName,
                         color = Color(0xFF151515),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.Bold
                     )
                     if (tierSubText != null) {
                         Text(
                             text = tierSubText,
                             color = Color(0xFF747881),
-                            fontSize = 15.sp,
-                            lineHeight = 20.sp
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
                         )
                     }
                 }

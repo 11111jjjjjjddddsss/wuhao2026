@@ -5,6 +5,7 @@
 
 ## 2026-05-08
 
+- `MembershipCenterSheet.kt` 继续调整会员中心顶部状态条字号层级：上方“今日剩余”和当前档位名改为 13sp Bold，下方剩余次数、到期日期 / 基础额度收为 13sp 普通字重，让标题比信息值更明确。只改会员中心视觉层级，不改会员权益、扣次、补偿次数、加油包或后端接口。
 - `ChatScreen.kt` 同步更新 debug-only UI 文案预览面板里的会员中心状态条说明：Free / Plus / Pro 预览项现在明确标注“标题 / 档位加粗，次数 / 到期普通”，方便核对刚调整过的会员顶部状态条层级。只改 debug 预览说明，不改真实会员中心业务逻辑、扣次、支付占位或后端接口。
 - `MembershipCenterSheet.kt` 微调会员中心顶部状态条字重：左侧“今日剩余”和右侧当前档位名保持加粗，下面的剩余次数、到期日期 / 基础额度改为普通字重，避免数字和日期抢过标题层级。只改会员中心视觉层级，不改 `/api/me`、会员权益、补偿次数、加油包、支付占位或扣次顺序。
 - 会员中心 / 会员后端做一轮前后端审查后收口高风险点：Android 端会员信息未同步时，Plus / Pro 开通按钮改为置灰“同步后开通”，避免在 `/api/me` 未拿到后端真相时启动购买；会员中心刷新到可用每日额度、升级补偿或加油包后，会清掉当天本地“次数用完”发送锁。后端开发期订单接口 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 默认返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 才允许本地 / 内测调试；Plus / Pro 若没有有效 `tier_expire_at` 会按 Free 处理，避免脏数据永久会员；`012_chat_stream_single_user.sql` 的唯一索引迁移改为幂等，避免后端重启重复执行迁移失败；删除未使用的 Android `USE_BACKEND_ENTITLEMENT` BuildConfig 开关，避免误以为会员中心还有前端真相开关。只收口会员 / 扣次安全边界，不改聊天滚动链、图片链、Plus 升 Pro 补偿算法或正式支付回调方案。
