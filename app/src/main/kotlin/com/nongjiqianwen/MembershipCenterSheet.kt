@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -498,8 +499,14 @@ private fun MembershipPlanSectionTitle(
         Text(
             text = "套餐",
             color = Color(0xFF111111),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 18.sp,
+                lineHeight = 24.sp
+            ),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .height(24.dp)
+                .wrapContentHeight(Alignment.CenterVertically)
         )
         Row(
             modifier = Modifier.padding(start = 10.dp),
