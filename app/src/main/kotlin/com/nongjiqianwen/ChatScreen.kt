@@ -6320,7 +6320,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("会员中心（ID）", "标题后展示本机短 ID", UiCopyPreviewKind.MembershipHeader),
                     UiCopyPreviewItem("会员信息读取中", "读取中状态条", UiCopyPreviewKind.MembershipLoadingSummary),
-                    UiCopyPreviewItem("Free 基础额度", "标题加粗，次数普通", UiCopyPreviewKind.MembershipFreeSummary),
+                    UiCopyPreviewItem("Free 基础额度", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipFreeSummary),
                     UiCopyPreviewItem(
                         "Free 额外次数",
                         "到期后仍可显示升级补偿次数 / 加油包",
@@ -6328,10 +6328,10 @@ private fun UiCopyPreviewOverlay(
                     ),
                     UiCopyPreviewItem(
                         "Plus 额外次数",
-                        "档位加粗，到期和次数普通",
+                        "标题同色加粗，信息同色普通",
                         UiCopyPreviewKind.MembershipPlusExtraSummary
                     ),
-                    UiCopyPreviewItem("Pro 到期日", "档位加粗，到期日期普通", UiCopyPreviewKind.MembershipProSummary),
+                    UiCopyPreviewItem("Pro 到期日", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipProSummary),
                     UiCopyPreviewItem("会员信息未同步", "未同步状态条", UiCopyPreviewKind.MembershipFailedSummary),
                     UiCopyPreviewItem("套餐区：未同步", "同步后开通置灰状态", UiCopyPreviewKind.MembershipPlanUnknown),
                     UiCopyPreviewItem("套餐区：Free", "Plus / Pro 开通按钮", UiCopyPreviewKind.MembershipPlanFree),

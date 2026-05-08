@@ -322,6 +322,8 @@ internal fun MembershipQuotaSummary(
         loadState = loadState,
         expireAtMs = entitlement?.tierExpireAt
     )
+    val summaryTitleColor = Color(0xFF151515)
+    val summaryValueColor = Color(0xFF5F636B)
     Surface(
         color = Color(0xFFF8F9FA),
         shape = RoundedCornerShape(16.dp),
@@ -343,14 +345,14 @@ internal fun MembershipQuotaSummary(
                 ) {
                     Text(
                         text = "今日剩余",
-                        color = Color(0xFF5F636B),
+                        color = summaryTitleColor,
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         text = if (tier == "unknown") "--" else if (dailyRemaining == null) "-- / $limit" else "$dailyRemaining / $limit 次",
-                        color = Color(0xFF111111),
+                        color = summaryValueColor,
                         fontSize = 13.sp,
                         lineHeight = 18.sp
                     )
@@ -362,7 +364,7 @@ internal fun MembershipQuotaSummary(
                 ) {
                     Text(
                         text = tierName,
-                        color = Color(0xFF151515),
+                        color = summaryTitleColor,
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
                         fontWeight = FontWeight.Bold
@@ -370,7 +372,7 @@ internal fun MembershipQuotaSummary(
                     if (tierSubText != null) {
                         Text(
                             text = tierSubText,
-                            color = Color(0xFF747881),
+                            color = summaryValueColor,
                             fontSize = 13.sp,
                             lineHeight = 18.sp
                         )
