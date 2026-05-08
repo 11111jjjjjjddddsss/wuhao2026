@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -89,6 +90,7 @@ internal fun HamburgerMenuSheet(
                         .fillMaxSize()
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                         .statusBarsPadding()
+                        .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
                         .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 34.dp),
                     verticalArrangement = Arrangement.spacedBy(22.dp)
@@ -209,6 +211,7 @@ internal fun HamburgerMenuSheet(
                         shadowElevation = 4.dp,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            .navigationBarsPadding()
                             .padding(bottom = 36.dp)
                     ) {
                         Text(
@@ -259,12 +262,53 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 )
                 HamburgerMenuDivider()
                 HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Appearance,
+                    title = "外观",
+                    subtitle = "系统默认",
+                    onClick = {}
+                )
+                HamburgerMenuDivider()
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Data,
+                    title = "数据与隐私",
+                    subtitle = "聊天记录和图片缓存",
+                    onClick = {}
+                )
+            }
+            HamburgerMenuGroup {
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Document,
+                    title = "用户协议",
+                    onClick = {}
+                )
+                HamburgerMenuDivider()
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Privacy,
+                    title = "隐私政策",
+                    onClick = {}
+                )
+                HamburgerMenuDivider()
+                HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Risk,
                     title = "风险提示",
                     subtitle = "AI 建议仅供参考",
                     onClick = {}
                 )
                 HamburgerMenuDivider()
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Feedback,
+                    title = "反馈问题",
+                    onClick = {}
+                )
+                HamburgerMenuDivider()
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.About,
+                    title = "关于",
+                    subtitle = BuildConfig.VERSION_NAME,
+                    onClick = {}
+                )
+            }
+            HamburgerMenuGroup {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Logout,
                     title = "退出登录",

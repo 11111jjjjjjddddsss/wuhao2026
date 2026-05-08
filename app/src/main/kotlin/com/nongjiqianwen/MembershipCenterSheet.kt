@@ -441,7 +441,9 @@ private fun MembershipExtraCountPill(text: String) {
         color = Color.White,
         shape = RoundedCornerShape(999.dp),
         border = BorderStroke(0.7.dp, Color(0xFFE2E4E8)),
-        modifier = Modifier.height(24.dp)
+        modifier = Modifier
+            .height(24.dp)
+            .widthIn(max = 132.dp)
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 8.dp),
@@ -451,7 +453,9 @@ private fun MembershipExtraCountPill(text: String) {
                 text = text,
                 color = Color(0xFF666A72),
                 fontSize = 11.sp,
-                lineHeight = 14.sp
+                lineHeight = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -618,7 +622,8 @@ private fun MembershipTopupCard(
     onPaymentUnavailable: () -> Unit
 ) {
     val hasActiveTopup = topupRemaining > 0
-    val canBuy = (activeTier == "plus" || activeTier == "pro") && !hasActiveTopup
+    val isPaidTier = activeTier == "plus" || activeTier == "pro"
+    val canBuy = isPaidTier && !hasActiveTopup
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(18.dp),
@@ -665,7 +670,8 @@ private fun MembershipTopupCard(
             )
             MembershipActionButton(
                 text = when {
-                    hasActiveTopup -> "用完再续"
+                    hasActiveTopup && isPaidTier -> "用完再续"
+                    hasActiveTopup -> "剩余可用"
                     canBuy -> "购买加油包"
                     else -> "Plus / Pro 可买"
                 },
@@ -802,7 +808,7 @@ private fun SessionApi.EntitlementSnapshot?.normalizedTier(): String =
     }
 
 private fun SessionApi.EntitlementSnapshot?.activeMembershipTier(loadState: MembershipLoadState): String =
-    if (this == null && loadState != MembershipLoadState.Loaded) {
+    if (loadState != MembershipLoadState.Loaded) {
         "unknown"
     } else {
         normalizedTier()

@@ -4918,6 +4918,7 @@ fun ChatScreen() {
         }
         fun retryFailedUserMessage(messageId: String) {
             if (retryingUserMessageIds[messageId] == true) return
+            if (isStreaming || sendUiSettling || imageSendInProgress) return
             val failedMessage = messages.firstOrNull { it.id == messageId } ?: return
             if (isQuotaExhaustedToday()) {
                 showQuotaExhaustedHint()
@@ -4994,6 +4995,7 @@ fun ChatScreen() {
         }
         fun retryFailedAssistantMessage(assistantMessageId: String) {
             if (retryingAssistantMessageIds[assistantMessageId] == true) return
+            if (isStreaming || sendUiSettling || imageSendInProgress) return
             val failedState = failedAssistantMessageStates[assistantMessageId] ?: return
             val sourceUserMessage = messages.firstOrNull { it.id == failedState.sourceUserMessageId } ?: return
             if (isQuotaExhaustedToday()) {
@@ -5323,7 +5325,10 @@ fun ChatScreen() {
                                     },
                                     actionText = ASSISTANT_RETRY_ACTION_TEXT.takeIf { !assistantRetrying },
                                     alignEnd = false,
-                                    enabled = !assistantRetrying,
+                                    enabled = !assistantRetrying &&
+                                        !isStreaming &&
+                                        !sendUiSettling &&
+                                        !imageSendInProgress,
                                     onActionClick = {
                                         performButtonHaptic()
                                         retryFailedAssistantMessage(msg.id)
@@ -5378,7 +5383,10 @@ fun ChatScreen() {
                                     },
                                     actionText = USER_RETRY_ACTION_TEXT.takeIf { !userRetrying },
                                     alignEnd = true,
-                                    enabled = !userRetrying,
+                                    enabled = !userRetrying &&
+                                        !isStreaming &&
+                                        !sendUiSettling &&
+                                        !imageSendInProgress,
                                     onActionClick = {
                                         performButtonHaptic()
                                         retryFailedUserMessage(msg.id)
@@ -5633,7 +5641,13 @@ fun ChatScreen() {
                         return@ChatComposerBottomBar
                     }
                     performButtonHaptic()
-                    selectedComposerImages.remove(image)
+                    if (selectedComposerImages.remove(image)) {
+                        snackbarScope.launch {
+                            withContext(Dispatchers.IO) {
+                                context.deleteComposerImageAttachment(image)
+                            }
+                        }
+                    }
                 },
                 onSendClick = {
                     performButtonHaptic()
@@ -6338,6 +6352,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("套餐区：Plus", "Plus 当前 / Pro 升级", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Pro 当前状态", UiCopyPreviewKind.MembershipPlanPro),
                     UiCopyPreviewItem("加油包：Free不可买", "Plus / Pro 可买置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
+                    UiCopyPreviewItem("加油包：Free剩余", "到期后仍可用但不可直接续买", UiCopyPreviewKind.MembershipTopupFreeActive),
                     UiCopyPreviewItem("加油包：可购买", "Plus / Pro 可买，用完再续", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("支付暂未接入", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
@@ -6515,6 +6530,7 @@ private enum class UiCopyPreviewKind {
     MembershipPlanPlus,
     MembershipPlanPro,
     MembershipTopupUnavailable,
+    MembershipTopupFreeActive,
     MembershipTopupBuyable,
     MembershipTopupActive,
     MembershipPaymentNotice,
@@ -6750,6 +6766,12 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     MembershipTopupCardPreview(
                         activeTier = "free",
                         topupRemaining = 0
+                    )
+                }
+                UiCopyPreviewKind.MembershipTopupFreeActive -> {
+                    MembershipTopupCardPreview(
+                        activeTier = "free",
+                        topupRemaining = 15
                     )
                 }
                 UiCopyPreviewKind.MembershipTopupBuyable -> {
@@ -7044,7 +7066,13 @@ private fun UserMessageImageStrip(
     userBubbleMaxWidth: Dp
 ) {
     val imageSources = remember(imageUris, imageUrls) {
-        (imageUris + imageUrls).distinct().take(COMPOSER_MAX_IMAGE_COUNT)
+        val localSources = imageUris.filter { it.isNotBlank() }
+        val remoteSources = imageUrls.filter { it.isNotBlank() }
+        val maxSourceCount = maxOf(localSources.size, remoteSources.size)
+        (0 until maxSourceCount)
+            .mapNotNull { index -> localSources.getOrNull(index) ?: remoteSources.getOrNull(index) }
+            .distinct()
+            .take(COMPOSER_MAX_IMAGE_COUNT)
     }
     if (imageSources.isEmpty()) return
     var previewIndex by remember {
