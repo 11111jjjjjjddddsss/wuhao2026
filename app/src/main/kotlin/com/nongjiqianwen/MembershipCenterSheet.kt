@@ -480,10 +480,10 @@ private fun MembershipPlanSection(
             active = activeTier == "plus",
             highlights = listOf("每天25次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = when (activeTier) {
-                "unknown" -> "同步后订购"
+                "unknown" -> "同步后开通"
                 "plus" -> "当前套餐"
                 "pro" -> "当前为 Pro"
-                else -> "订购 Plus"
+                else -> "开通 Plus"
             },
             actionEnabled = membershipSynced && activeTier == "free",
             onActionClick = onPaymentUnavailable
@@ -495,10 +495,10 @@ private fun MembershipPlanSection(
             active = activeTier == "pro",
             highlights = listOf("每天40次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
-                "unknown" -> "同步后订购"
+                "unknown" -> "同步后开通"
                 "plus" -> "升级 Pro"
                 "pro" -> "当前套餐"
-                else -> "订购 Pro"
+                else -> "开通 Pro"
             },
             actionEnabled = membershipSynced && activeTier != "pro",
             onActionClick = onPaymentUnavailable
