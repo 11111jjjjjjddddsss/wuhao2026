@@ -5847,7 +5847,6 @@ fun ChatScreen() {
                     },
                     onOpenMembership = {
                         performButtonHaptic()
-                        hamburgerMenuVisible = false
                         attachmentMenuVisible = false
                         uiCopyPreviewVisible = false
                         clearInputSelectionToolbar()
