@@ -212,6 +212,12 @@ Clean-State 必做回归的范围：
 - [ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)：页面组装、测量值采集、状态接线
 - [ChatRecyclerViewHost.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt)：纯 Compose `LazyColumn` 底座与 bottom padding 宿主；文件名只是历史命名残留，运行时已不是 `RecyclerView`
 
+浮层退出动画规则：
+- 整页浮层、半屏面板和居中卡片关闭时，不允许让主体内容整块 `fadeOut` 到下一层页面上；否则黑色文字、返回键、价格数字等高对比元素会在聊天页或上一层浮层上形成残影
+- 半屏面板可以滑出，但面板内容不再叠加淡出；遮罩退出时间必须不早于面板主体退出时间
+- 整页设置页关闭优先直接卸载或使用非淡出位移动画，不做整页淡出
+- toast / 小型黑色提示浮层可以淡入淡出，因为它本来就是短暂提示，不承载页面结构
+
 旧 `RecyclerView / AdapterDataObserver / DiffUtil / suppressLayout / frozenBottom / retainedBottomGap` 等旧滚动术语全部视为历史归档，不再执行。
 
 ## 7. 当前 Compose 列表滚动链唯一真相

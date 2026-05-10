@@ -680,7 +680,7 @@ internal fun ComposerAttachmentBottomSheet(
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(durationMillis = 120)),
-            exit = fadeOut(animationSpec = tween(durationMillis = 100))
+            exit = fadeOut(animationSpec = tween(durationMillis = 160))
         ) {
             Box(
                 modifier = Modifier
@@ -702,7 +702,7 @@ internal fun ComposerAttachmentBottomSheet(
             exit = slideOutVertically(
                 targetOffsetY = { it },
                 animationSpec = tween(durationMillis = 160)
-            ) + fadeOut(animationSpec = tween(durationMillis = 120)),
+            ),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Surface(

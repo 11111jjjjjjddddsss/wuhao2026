@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -257,7 +258,7 @@ private fun MembershipPurchaseSuccessCard(
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(animationSpec = tween(durationMillis = 90)),
-        exit = fadeOut(animationSpec = tween(durationMillis = 80)),
+        exit = ExitTransition.None,
         modifier = modifier
             .fillMaxWidth()
             .zIndex(90f)
