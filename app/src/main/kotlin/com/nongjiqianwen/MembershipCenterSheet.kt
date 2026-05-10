@@ -671,7 +671,7 @@ private fun MembershipTopupCard(
             MembershipActionButton(
                 text = when {
                     hasActiveTopup && isPaidTier -> "用完再续"
-                    hasActiveTopup -> "剩余可用"
+                    hasActiveTopup -> "剩余次数可用"
                     canBuy -> "购买加油包"
                     else -> "Plus / Pro 可买"
                 },
