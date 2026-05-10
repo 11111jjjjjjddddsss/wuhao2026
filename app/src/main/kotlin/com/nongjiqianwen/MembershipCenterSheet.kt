@@ -480,10 +480,10 @@ private fun MembershipPlanSection(
             active = activeTier == "plus",
             highlights = listOf("每天25次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = when (activeTier) {
-                "unknown" -> "同步后开通"
+                "unknown" -> "同步后订购"
                 "plus" -> "当前套餐"
-                "pro" -> "Pro 已包含"
-                else -> "开通 Plus"
+                "pro" -> "当前为 Pro"
+                else -> "订购 Plus"
             },
             actionEnabled = membershipSynced && activeTier == "free",
             onActionClick = onPaymentUnavailable
@@ -495,10 +495,10 @@ private fun MembershipPlanSection(
             active = activeTier == "pro",
             highlights = listOf("每天40次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
-                "unknown" -> "同步后开通"
+                "unknown" -> "同步后订购"
                 "plus" -> "升级 Pro"
                 "pro" -> "当前套餐"
-                else -> "开通 Pro"
+                else -> "订购 Pro"
             },
             actionEnabled = membershipSynced && activeTier != "pro",
             onActionClick = onPaymentUnavailable
@@ -663,7 +663,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "Plus / Pro 可买，永久有效，用完再续。",
+                text = "Plus / Pro 可订购，永久有效，用完再续。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp
@@ -672,8 +672,8 @@ private fun MembershipTopupCard(
                 text = when {
                     hasActiveTopup && isPaidTier -> "用完再续"
                     hasActiveTopup -> "剩余次数可用"
-                    canBuy -> "购买加油包"
-                    else -> "Plus / Pro 可买"
+                    canBuy -> "订购加油包"
+                    else -> "Plus / Pro 可订购"
                 },
                 enabled = canBuy,
                 onClick = onPaymentUnavailable
