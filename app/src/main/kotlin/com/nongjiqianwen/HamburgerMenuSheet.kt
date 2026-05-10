@@ -473,7 +473,7 @@ private fun HamburgerMenuGlyph(
                 )
             }
             HamburgerMenuIcon.Update -> {
-                val updateStrokeWidth = strokeWidth * 1.12f
+                val updateStrokeWidth = strokeWidth * 1.05f
                 val updateStroke = Stroke(
                     width = updateStrokeWidth,
                     cap = StrokeCap.Round,
@@ -481,51 +481,63 @@ private fun HamburgerMenuGlyph(
                 )
                 drawArc(
                     color = tint,
-                    startAngle = 48f,
-                    sweepAngle = 292f,
+                    startAngle = 190f,
+                    sweepAngle = 148f,
                     useCenter = false,
-                    topLeft = Offset(w * 0.18f, h * 0.18f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.64f),
+                    topLeft = Offset(w * 0.14f, h * 0.14f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.72f, h * 0.72f),
                     style = updateStroke
                 )
-                val tip = Offset(w * 0.84f, h * 0.20f)
-                drawLine(tint, tip, Offset(w * 0.88f, h * 0.48f), updateStrokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, tip, Offset(w * 0.56f, h * 0.22f), updateStrokeWidth, cap = StrokeCap.Round)
+                drawArc(
+                    color = tint,
+                    startAngle = 10f,
+                    sweepAngle = 148f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.14f, h * 0.14f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.72f, h * 0.72f),
+                    style = updateStroke
+                )
+                val topTip = Offset(w * 0.84f, h * 0.34f)
+                drawLine(tint, topTip, Offset(w * 0.84f, h * 0.16f), updateStrokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, topTip, Offset(w * 0.66f, h * 0.34f), updateStrokeWidth, cap = StrokeCap.Round)
+                val bottomTip = Offset(w * 0.16f, h * 0.66f)
+                drawLine(tint, bottomTip, Offset(w * 0.34f, h * 0.66f), updateStrokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, bottomTip, Offset(w * 0.16f, h * 0.84f), updateStrokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Document -> {
                 val path = Path().apply {
-                    moveTo(w * 0.25f, h * 0.12f)
-                    lineTo(w * 0.62f, h * 0.12f)
-                    lineTo(w * 0.78f, h * 0.30f)
-                    lineTo(w * 0.78f, h * 0.88f)
-                    lineTo(w * 0.25f, h * 0.88f)
+                    moveTo(w * 0.23f, h * 0.12f)
+                    lineTo(w * 0.63f, h * 0.12f)
+                    lineTo(w * 0.80f, h * 0.30f)
+                    lineTo(w * 0.80f, h * 0.88f)
+                    lineTo(w * 0.23f, h * 0.88f)
                     close()
                 }
                 drawPath(path, tint, style = stroke)
-                drawLine(tint, Offset(w * 0.36f, h * 0.46f), Offset(w * 0.66f, h * 0.46f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.36f, h * 0.63f), Offset(w * 0.66f, h * 0.63f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.34f, h * 0.46f), Offset(w * 0.68f, h * 0.46f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.34f, h * 0.63f), Offset(w * 0.68f, h * 0.63f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Privacy -> {
                 val shackle = Path().apply {
-                    moveTo(w * 0.34f, h * 0.43f)
-                    lineTo(w * 0.34f, h * 0.34f)
+                    moveTo(w * 0.32f, h * 0.43f)
+                    lineTo(w * 0.32f, h * 0.34f)
                     cubicTo(
-                        w * 0.34f, h * 0.14f,
-                        w * 0.66f, h * 0.14f,
-                        w * 0.66f, h * 0.34f
+                        w * 0.32f, h * 0.12f,
+                        w * 0.68f, h * 0.12f,
+                        w * 0.68f, h * 0.34f
                     )
-                    lineTo(w * 0.66f, h * 0.43f)
+                    lineTo(w * 0.68f, h * 0.43f)
                 }
                 drawPath(shackle, tint, style = stroke)
                 drawRoundRect(
                     color = tint,
-                    topLeft = Offset(w * 0.23f, h * 0.43f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.54f, h * 0.41f),
+                    topLeft = Offset(w * 0.20f, h * 0.42f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.60f, h * 0.44f),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.08f, h * 0.08f),
                     style = stroke
                 )
-                drawCircle(tint, radius = w * 0.045f, center = Offset(w * 0.50f, h * 0.61f))
-                drawLine(tint, Offset(w * 0.50f, h * 0.65f), Offset(w * 0.50f, h * 0.72f), strokeWidth, cap = StrokeCap.Round)
+                drawCircle(tint, radius = w * 0.05f, center = Offset(w * 0.50f, h * 0.62f))
+                drawLine(tint, Offset(w * 0.50f, h * 0.67f), Offset(w * 0.50f, h * 0.74f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Risk -> {
                 val path = Path().apply {
