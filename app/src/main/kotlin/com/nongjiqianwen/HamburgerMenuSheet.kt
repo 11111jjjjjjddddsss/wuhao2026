@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -47,6 +48,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +68,15 @@ internal fun HamburgerMenuSheet(
     onOpenMembership: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
+    val view = LocalView.current
+    val haptic = LocalHapticFeedback.current
     var noticeText by remember(visible) { mutableStateOf<String?>(null) }
+    fun performButtonHaptic() {
+        val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        if (!handled) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
     fun showNotice(text: String) {
         noticeText = text
         onPlaceholderClick(text)
@@ -85,30 +97,6 @@ internal fun HamburgerMenuSheet(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White,
-                    shadowElevation = 3.dp,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                        .statusBarsPadding()
-                        .padding(start = 22.dp, top = 8.dp)
-                        .size(58.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = onDismiss
-                        )
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        HamburgerBackIcon(
-                            tint = Color(0xFF111111),
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -205,6 +193,32 @@ internal fun HamburgerMenuSheet(
                             subtitle = "登录功能后续接入",
                             destructive = true,
                             onClick = { showNotice("登录功能后续接入") }
+                        )
+                    }
+                }
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                        .statusBarsPadding()
+                        .padding(start = 22.dp, top = 8.dp)
+                        .size(58.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                performButtonHaptic()
+                                onDismiss()
+                            }
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        HamburgerBackIcon(
+                            tint = Color(0xFF111111),
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
