@@ -553,17 +553,17 @@ private fun HamburgerMenuGlyph(
             }
             HamburgerMenuIcon.Feedback -> {
                 val path = Path().apply {
-                    moveTo(w * 0.18f, h * 0.22f)
-                    lineTo(w * 0.82f, h * 0.22f)
-                    lineTo(w * 0.82f, h * 0.66f)
-                    lineTo(w * 0.56f, h * 0.66f)
-                    lineTo(w * 0.42f, h * 0.84f)
-                    lineTo(w * 0.42f, h * 0.66f)
-                    lineTo(w * 0.18f, h * 0.66f)
+                    moveTo(w * 0.14f, h * 0.19f)
+                    lineTo(w * 0.86f, h * 0.19f)
+                    lineTo(w * 0.86f, h * 0.69f)
+                    lineTo(w * 0.58f, h * 0.69f)
+                    lineTo(w * 0.42f, h * 0.88f)
+                    lineTo(w * 0.42f, h * 0.69f)
+                    lineTo(w * 0.14f, h * 0.69f)
                     close()
                 }
                 drawPath(path, tint, style = stroke)
-                drawLine(tint, Offset(w * 0.34f, h * 0.44f), Offset(w * 0.66f, h * 0.44f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.32f, h * 0.45f), Offset(w * 0.68f, h * 0.45f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Logout -> {
                 drawLine(tint, Offset(w * 0.18f, h * 0.18f), Offset(w * 0.18f, h * 0.82f), strokeWidth, cap = StrokeCap.Round)
