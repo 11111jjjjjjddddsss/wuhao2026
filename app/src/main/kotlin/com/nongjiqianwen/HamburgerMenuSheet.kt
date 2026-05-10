@@ -92,8 +92,8 @@ internal fun HamburgerMenuSheet(
                         .statusBarsPadding()
                         .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 34.dp),
-                    verticalArrangement = Arrangement.spacedBy(22.dp)
+                        .padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 34.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Surface(
                         shape = CircleShape,
