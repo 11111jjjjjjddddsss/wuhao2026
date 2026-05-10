@@ -112,7 +112,7 @@ internal fun HamburgerMenuSheet(
                         .statusBarsPadding()
                         .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(start = 22.dp, end = 22.dp, top = 52.dp, bottom = 34.dp),
+                        .padding(start = 22.dp, end = 22.dp, top = 36.dp, bottom = 34.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     Column(
@@ -489,15 +489,16 @@ private fun HamburgerMenuGlyph(
             HamburgerMenuIcon.Update -> {
                 drawArc(
                     color = tint,
-                    startAngle = 34f,
-                    sweepAngle = 285f,
+                    startAngle = 42f,
+                    sweepAngle = 278f,
                     useCenter = false,
-                    topLeft = Offset(w * 0.16f, h * 0.16f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.68f, h * 0.68f),
+                    topLeft = Offset(w * 0.17f, h * 0.17f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.66f, h * 0.66f),
                     style = stroke
                 )
-                drawLine(tint, Offset(w * 0.76f, h * 0.20f), Offset(w * 0.82f, h * 0.42f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.76f, h * 0.20f), Offset(w * 0.55f, h * 0.25f), strokeWidth, cap = StrokeCap.Round)
+                val tip = Offset(w * 0.80f, h * 0.24f)
+                drawLine(tint, tip, Offset(w * 0.80f, h * 0.46f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, tip, Offset(w * 0.58f, h * 0.26f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Document -> {
                 val path = Path().apply {
