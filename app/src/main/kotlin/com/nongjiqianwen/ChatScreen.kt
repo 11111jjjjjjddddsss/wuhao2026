@@ -6362,7 +6362,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "汉堡菜单",
                 items = listOf(
-                    UiCopyPreviewItem("设置入口", "会员、协议、隐私、风险提示和关于", UiCopyPreviewKind.HamburgerMenu)
+                    UiCopyPreviewItem("设置入口", "会员、账号、客服反馈、检查更新和协议", UiCopyPreviewKind.HamburgerMenu)
                 )
             ),
             UiCopyPreviewGroup(

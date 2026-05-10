@@ -7,7 +7,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -147,16 +146,22 @@ internal fun HamburgerMenuSheet(
                         )
                         HamburgerMenuDivider()
                         HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Appearance,
-                            title = "外观",
-                            subtitle = "系统默认",
+                            icon = HamburgerMenuIcon.Account,
+                            title = "账号管理",
+                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
+                        )
+                    }
+
+                    HamburgerMenuGroup {
+                        HamburgerMenuRow(
+                            icon = HamburgerMenuIcon.Feedback,
+                            title = "客服反馈",
                             onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
                         )
                         HamburgerMenuDivider()
                         HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Data,
-                            title = "数据与隐私",
-                            subtitle = "聊天记录和图片缓存",
+                            icon = HamburgerMenuIcon.Update,
+                            title = "检查更新",
                             onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
                         )
                     }
@@ -164,7 +169,7 @@ internal fun HamburgerMenuSheet(
                     HamburgerMenuGroup {
                         HamburgerMenuRow(
                             icon = HamburgerMenuIcon.Document,
-                            title = "用户协议",
+                            title = "服务协议",
                             onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
                         )
                         HamburgerMenuDivider()
@@ -178,19 +183,6 @@ internal fun HamburgerMenuSheet(
                             icon = HamburgerMenuIcon.Risk,
                             title = "风险提示",
                             subtitle = "AI 建议仅供参考",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                        HamburgerMenuDivider()
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Feedback,
-                            title = "反馈问题",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                        HamburgerMenuDivider()
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.About,
-                            title = "关于",
-                            subtitle = BuildConfig.VERSION_NAME,
                             onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
                         )
                     }
@@ -289,23 +281,28 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 )
                 HamburgerMenuDivider()
                 HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Appearance,
-                    title = "外观",
-                    subtitle = "系统默认",
+                    icon = HamburgerMenuIcon.Account,
+                    title = "账号管理",
+                    onClick = {}
+                )
+            }
+            HamburgerMenuGroup {
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Feedback,
+                    title = "客服反馈",
                     onClick = {}
                 )
                 HamburgerMenuDivider()
                 HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Data,
-                    title = "数据与隐私",
-                    subtitle = "聊天记录和图片缓存",
+                    icon = HamburgerMenuIcon.Update,
+                    title = "检查更新",
                     onClick = {}
                 )
             }
             HamburgerMenuGroup {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Document,
-                    title = "用户协议",
+                    title = "服务协议",
                     onClick = {}
                 )
                 HamburgerMenuDivider()
@@ -319,19 +316,6 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                     icon = HamburgerMenuIcon.Risk,
                     title = "风险提示",
                     subtitle = "AI 建议仅供参考",
-                    onClick = {}
-                )
-                HamburgerMenuDivider()
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Feedback,
-                    title = "反馈问题",
-                    onClick = {}
-                )
-                HamburgerMenuDivider()
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.About,
-                    title = "关于",
-                    subtitle = BuildConfig.VERSION_NAME,
                     onClick = {}
                 )
             }
@@ -427,13 +411,12 @@ private fun HamburgerMenuRow(
 
 private enum class HamburgerMenuIcon {
     Membership,
-    Appearance,
-    Data,
+    Account,
+    Update,
     Document,
     Privacy,
     Risk,
     Feedback,
-    About,
     Logout
 }
 
@@ -491,21 +474,30 @@ private fun HamburgerMenuGlyph(
                 drawLine(tint, Offset(w * 0.36f, h * 0.55f), Offset(w * 0.64f, h * 0.55f), strokeWidth, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.50f, h * 0.41f), Offset(w * 0.50f, h * 0.69f), strokeWidth, cap = StrokeCap.Round)
             }
-            HamburgerMenuIcon.Appearance -> {
-                drawCircle(tint, radius = w * 0.18f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
-                repeat(8) { index ->
-                    val angle = index * Math.PI.toFloat() / 4f
-                    val start = Offset(w * (0.5f + kotlin.math.cos(angle) * 0.32f), h * (0.5f + kotlin.math.sin(angle) * 0.32f))
-                    val end = Offset(w * (0.5f + kotlin.math.cos(angle) * 0.43f), h * (0.5f + kotlin.math.sin(angle) * 0.43f))
-                    drawLine(tint, start, end, strokeWidth, cap = StrokeCap.Round)
-                }
+            HamburgerMenuIcon.Account -> {
+                drawCircle(tint, radius = w * 0.16f, center = Offset(w * 0.50f, h * 0.31f), style = stroke)
+                drawArc(
+                    color = tint,
+                    startAngle = 202f,
+                    sweepAngle = 136f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.22f, h * 0.47f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.56f, h * 0.44f),
+                    style = stroke
+                )
             }
-            HamburgerMenuIcon.Data -> {
-                drawOval(tint, topLeft = Offset(w * 0.22f, h * 0.14f), size = androidx.compose.ui.geometry.Size(w * 0.56f, h * 0.22f), style = stroke)
-                drawLine(tint, Offset(w * 0.22f, h * 0.25f), Offset(w * 0.22f, h * 0.72f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.78f, h * 0.25f), Offset(w * 0.78f, h * 0.72f), strokeWidth, cap = StrokeCap.Round)
-                drawOval(tint, topLeft = Offset(w * 0.22f, h * 0.61f), size = androidx.compose.ui.geometry.Size(w * 0.56f, h * 0.22f), style = stroke)
-                drawLine(tint, Offset(w * 0.36f, h * 0.49f), Offset(w * 0.64f, h * 0.49f), strokeWidth, cap = StrokeCap.Round)
+            HamburgerMenuIcon.Update -> {
+                drawArc(
+                    color = tint,
+                    startAngle = 34f,
+                    sweepAngle = 285f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.16f, h * 0.16f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.68f, h * 0.68f),
+                    style = stroke
+                )
+                drawLine(tint, Offset(w * 0.76f, h * 0.20f), Offset(w * 0.82f, h * 0.42f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.76f, h * 0.20f), Offset(w * 0.55f, h * 0.25f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Document -> {
                 val path = Path().apply {
@@ -557,11 +549,6 @@ private fun HamburgerMenuGlyph(
                 }
                 drawPath(path, tint, style = stroke)
                 drawLine(tint, Offset(w * 0.34f, h * 0.44f), Offset(w * 0.66f, h * 0.44f), strokeWidth, cap = StrokeCap.Round)
-            }
-            HamburgerMenuIcon.About -> {
-                drawCircle(tint, radius = w * 0.38f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
-                drawCircle(tint, radius = w * 0.025f, center = Offset(w * 0.5f, h * 0.34f))
-                drawLine(tint, Offset(w * 0.5f, h * 0.48f), Offset(w * 0.5f, h * 0.68f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Logout -> {
                 drawLine(tint, Offset(w * 0.18f, h * 0.18f), Offset(w * 0.18f, h * 0.82f), strokeWidth, cap = StrokeCap.Round)
