@@ -127,14 +127,6 @@ internal fun HamburgerMenuSheet(
                             lineHeight = 30.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Text(
-                            text = "ID ${compactUserId(userId)}",
-                            color = Color(0xFF8A8E96),
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
                     }
 
                     HamburgerMenuGroup {
@@ -265,12 +257,6 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 fontSize = 20.sp,
                 lineHeight = 26.sp,
                 fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "ID ${compactUserId(userId)}",
-                color = Color(0xFF8A8E96),
-                fontSize = 13.sp,
-                lineHeight = 18.sp
             )
             HamburgerMenuGroup {
                 HamburgerMenuRow(
