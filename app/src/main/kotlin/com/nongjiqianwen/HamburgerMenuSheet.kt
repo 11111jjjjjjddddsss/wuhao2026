@@ -1,9 +1,6 @@
 package com.nongjiqianwen
 
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -86,17 +83,14 @@ internal fun HamburgerMenuSheet(
         delay(1500)
         noticeText = null
     }
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = ExitTransition.None,
+    if (!visible) {
+        return
+    }
+    Surface(
+        color = Color(0xFFF8F9FA),
         modifier = modifier.fillMaxSize()
     ) {
-        Surface(
-            color = Color(0xFFF8F9FA),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -244,7 +238,6 @@ internal fun HamburgerMenuSheet(
                 }
             }
         }
-    }
 }
 
 @Composable
