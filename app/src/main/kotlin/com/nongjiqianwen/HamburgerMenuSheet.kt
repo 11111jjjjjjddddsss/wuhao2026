@@ -92,11 +92,11 @@ internal fun HamburgerMenuSheet(
     AnimatedVisibility(
         visible = visible,
         enter = slideInHorizontally(
-            initialOffsetX = { it },
+            initialOffsetX = { -it },
             animationSpec = tween(durationMillis = HAMBURGER_PAGE_ENTER_MS)
         ),
         exit = slideOutHorizontally(
-            targetOffsetX = { it },
+            targetOffsetX = { -it },
             animationSpec = tween(durationMillis = HAMBURGER_PAGE_EXIT_MS)
         ),
         modifier = modifier.fillMaxSize()
