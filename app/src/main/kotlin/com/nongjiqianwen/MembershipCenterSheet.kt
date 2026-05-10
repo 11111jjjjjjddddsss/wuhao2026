@@ -55,9 +55,9 @@ import java.util.Locale
 internal enum class MembershipLoadState { Idle, Loading, Loaded, Failed }
 
 private const val MEMBERSHIP_SCRIM_ENTER_MS = 80
-private const val MEMBERSHIP_SCRIM_EXIT_MS = 70
 private const val MEMBERSHIP_SHEET_ENTER_MS = 165
 private const val MEMBERSHIP_SHEET_EXIT_MS = 120
+private const val MEMBERSHIP_SCRIM_EXIT_MS = MEMBERSHIP_SHEET_EXIT_MS
 
 @Composable
 internal fun MembershipCenterBottomSheet(
@@ -102,7 +102,7 @@ internal fun MembershipCenterBottomSheet(
             exit = slideOutVertically(
                 targetOffsetY = { it },
                 animationSpec = tween(durationMillis = MEMBERSHIP_SHEET_EXIT_MS)
-            ) + fadeOut(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_EXIT_MS)),
+            ),
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Surface(

@@ -2,8 +2,8 @@ package com.nongjiqianwen
 
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -89,7 +89,7 @@ internal fun HamburgerMenuSheet(
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(),
-        exit = fadeOut(),
+        exit = ExitTransition.None,
         modifier = modifier.fillMaxSize()
     ) {
         Surface(
