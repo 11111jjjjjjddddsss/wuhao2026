@@ -5,6 +5,7 @@
 
 ## 2026-05-10
 
+- `ChatScreen.kt` / `chat.go` / Android 备份规则做了一轮前后端守门复查后的低风险收口：未发送文字草稿不再在启动 reset 时被立刻清掉，`client_msg_id` 已完成的后端 replay 提前到 prompt 组装、模型 Key、进行中锁和额度检查之前返回，拿到 inflight 锁后还会二次复查完成态，减少已完成轮次恢复失败、重复走重链以及完成临界点重复开主模型的机会；`backup_rules.xml` / `data_extraction_rules.xml` 同步排除 device-protected 本地域，继续避免清数据 / 迁移后旧本地 UI 状态回流。后端同时新增 `013_topup_packs_lookup_index.sql`，给加油包状态查询补 `user_id/status/expire_at/created_at` 复合索引。同步更新 R9，保留“主模型已开但未归档时仍需后续持久化 attempt/status 才能彻底避免二次开流”的上线前风险。
 - `HamburgerMenuSheet.kt` 轻微放大汉堡设置页“客服反馈”气泡图标：外框左右和上下占位扩大，尾巴下探一点，内部横线同步加长，让它在同一 26dp 图标列里不再比账号、检查更新、隐私锁等图标显小。只改反馈图标 Canvas，不改菜单结构、会员中心、聊天滚动链、输入框、图片链或后端接口。
 - `HamburgerMenuSheet.kt` 将汉堡设置页“账号管理”图标从裸头像 / 肩线改成参考 Lucide `circle-user-round` 的账号圆形图标：外圈代表账号入口，内部保留头像和肩线，小尺寸下比原来更完整、更容易识别。只改账号图标 Canvas，不改菜单结构、会员中心、聊天滚动链、输入框、图片链或后端接口。
 - `HamburgerMenuSheet.kt` 继续对齐汉堡设置页图标视觉尺寸：参考 Lucide `refresh-cw` 的双弧刷新结构，把“检查更新”图标改成上下两段弧线 + 两个拐角箭头，小尺寸下更容易识别；同时轻微放大“隐私政策”的锁体 / 锁梁，并扩宽“服务协议”文档图标，让这组图标在同一 26dp 画布内更接近统一视觉占位。只改图标 Canvas，不改菜单结构、会员中心、聊天滚动链、输入框、图片链或后端接口。

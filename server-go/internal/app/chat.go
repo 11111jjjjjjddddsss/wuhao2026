@@ -98,6 +98,19 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	completed, err := s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
+	if err != nil {
+		s.logger.Error("check session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if completed {
+		s.writeSSEHeaders(w)
+		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
+		s.writeSSEString(w, "data: [DONE]\n\n")
+		return
+	}
+
 	tier, _, err := s.store.GetTierForUser(ctx, auth.UserID, TierFree)
 	if err != nil {
 		s.logger.Error("get tier failed", "userId", auth.UserID, "error", err)
@@ -151,19 +164,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	completed, err := s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
-	if err != nil {
-		s.logger.Error("check session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if completed {
-		s.writeSSEHeaders(w)
-		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
-		s.writeSSEString(w, "data: [DONE]\n\n")
-		return
-	}
-
 	acquiredInflight, inflightToken, err := s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
 	if err != nil {
 		s.logger.Error("acquire chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
@@ -182,6 +182,19 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			s.logger.Warn("release chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
 		}
 	}()
+
+	completed, err = s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
+	if err != nil {
+		s.logger.Error("recheck session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if completed {
+		s.writeSSEHeaders(w)
+		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
+		s.writeSSEString(w, "data: [DONE]\n\n")
+		return
+	}
 
 	allowed, retryAfterSec := s.rateLimiter.Consume(auth.UserID, time.Now())
 	if !allowed {

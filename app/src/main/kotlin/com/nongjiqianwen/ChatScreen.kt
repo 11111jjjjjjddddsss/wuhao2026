@@ -2928,8 +2928,6 @@ fun ChatScreen() {
         composerStatusHintText = ""
         inputFieldFocused = false
         suppressInputCursor = false
-        input.value = TextFieldValue("")
-        context.clearLocalComposerDraftSync(chatScopeId)
         selectedComposerImages.clear()
         attachmentMenuVisible = false
         imageSendInProgress = false
