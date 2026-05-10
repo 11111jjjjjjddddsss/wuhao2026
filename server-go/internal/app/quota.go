@@ -576,9 +576,10 @@ func (s *Store) consumeOverflowQuota(ctx context.Context, tx *sql.Tx, userID str
 	}
 
 	var packID sql.NullString
+	var packRemaining sql.NullInt64
 	err = tx.QueryRowContext(
 		ctx,
-		`SELECT pack_id
+		`SELECT pack_id, remaining
 		 FROM topup_packs
 		 WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)
 		 ORDER BY CASE WHEN expire_at IS NULL THEN 1 ELSE 0 END ASC, expire_at ASC, created_at ASC
@@ -586,14 +587,15 @@ func (s *Store) consumeOverflowQuota(ctx context.Context, tx *sql.Tx, userID str
 		 FOR UPDATE`,
 		userID,
 		now,
-	).Scan(&packID)
+	).Scan(&packID, &packRemaining)
 	if err == nil {
 		if _, err := tx.ExecContext(
 			ctx,
 			`UPDATE topup_packs
 			 SET remaining = remaining - 1,
-			     status = CASE WHEN remaining - 1 <= 0 THEN 'used_up' ELSE status END
+			     status = ?
 			 WHERE pack_id = ?`,
+			topupPackStatusAfterConsume(packRemaining.Int64),
 			packID.String,
 		); err != nil {
 			return nil, err
@@ -605,6 +607,13 @@ func (s *Store) consumeOverflowQuota(ctx context.Context, tx *sql.Tx, userID str
 		return nil, err
 	}
 	return nil, nil
+}
+
+func topupPackStatusAfterConsume(remainingBeforeConsume int64) string {
+	if remainingBeforeConsume <= 1 {
+		return "used_up"
+	}
+	return "active"
 }
 
 func (s *Store) getOrCreateDailyUsage(ctx context.Context, tx *sql.Tx, userID string, dayCN string) (int, error) {

@@ -126,13 +126,14 @@ internal fun MembershipCenterBottomSheet(
                         entitlement = entitlement,
                         loadState = loadState
                     )
+                    val loadedEntitlement = entitlement.takeIf { loadState == MembershipLoadState.Loaded }
                     if (paymentNoticeVisible) {
                         MembershipInlineNotice(text = "支付暂未接入")
                     }
                     MembershipPlanSection(
                         activeTier = entitlement.activeMembershipTier(loadState),
-                        upgradeRemaining = entitlement?.upgradeRemaining ?: 0,
-                        topupRemaining = entitlement?.topupRemaining ?: 0,
+                        upgradeRemaining = loadedEntitlement?.upgradeRemaining ?: 0,
+                        topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
                         onPaymentUnavailable = {
                             paymentNoticeVisible = true
                             onPaymentUnavailable()
@@ -140,7 +141,7 @@ internal fun MembershipCenterBottomSheet(
                     )
                     MembershipTopupCard(
                         activeTier = entitlement.activeMembershipTier(loadState),
-                        topupRemaining = entitlement?.topupRemaining ?: 0,
+                        topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
                         onPaymentUnavailable = {
                             paymentNoticeVisible = true
                             onPaymentUnavailable()

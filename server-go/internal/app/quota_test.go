@@ -109,3 +109,12 @@ func TestGetTodayKeyCNUsesShanghaiMidnight(t *testing.T) {
 		t.Fatalf("after Shanghai midnight mismatch: got %s", got)
 	}
 }
+
+func TestTopupPackStatusAfterConsumeUsesRemainingBeforeConsume(t *testing.T) {
+	if got := topupPackStatusAfterConsume(2); got != "active" {
+		t.Fatalf("2 remaining should stay active after one consume, got %s", got)
+	}
+	if got := topupPackStatusAfterConsume(1); got != "used_up" {
+		t.Fatalf("1 remaining should become used_up after one consume, got %s", got)
+	}
+}

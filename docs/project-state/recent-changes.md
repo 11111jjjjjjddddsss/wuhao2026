@@ -5,6 +5,8 @@
 
 ## 2026-05-10
 
+- `MembershipCenterSheet.kt` 小修会员中心读取中态：`/api/me` 重新加载或支付成功后刷新时，套餐标题后方的“升级补偿次数 / 加油包”胶囊和加油包卡片只使用已加载完成的最新 entitlement；读取中 / 未同步时不再短暂沿用上一轮旧余额。只改加载态展示一致性，不改 `/api/me` 字段、会员权益、按钮 gating、支付占位或扣次逻辑。
+- `server-go/internal/app/quota.go` 修复加油包扣减状态判断：扣加油包时先锁定并读取扣减前 `remaining`，再决定本次扣完后是否把包标为 `used_up`，避免 MySQL 单表 `UPDATE` 赋值顺序导致 `remaining=2` 时提前变成 `used_up`，让 100 次加油包少用 1 次。新增单测锁住 `2 -> active`、`1 -> used_up`；不改每日额度、升级补偿、加油包消耗顺序、会员 UI 或支付占位。
 - `MembershipCenterSheet.kt` / `ChatScreen.kt` 继续调整会员中心动作文案：套餐按钮保持“开通 Plus / 开通 Pro / 同步后开通”，加油包从“购买加油包 / Plus Pro 可买”改为“订购加油包 / Plus Pro 可订购”；Pro 用户看 Plus 卡片时从“Pro 已包含”改为“当前为 Pro”，避免因为 Plus / Pro 次数不同而让“已包含”听起来不严谨。debug-only 预览面板同步标明 Pro 状态下 Plus 卡片会显示“当前为 Pro”；只改用户可见文案和预览说明，不改会员等级、订购资格、支付占位、扣次顺序或后端接口。
 - `MembershipCenterSheet.kt` / `ChatScreen.kt` 将 Free 到期后仍有加油包余额时的按钮文案从“剩余可用”改为“剩余次数可用”，并同步 debug-only UI 文案预览面板里的“加油包：Free剩余”说明，让用户更明确这是历史剩余次数还能继续用，而不是 Free 可以直接续订加油包。只改会员中心按钮文案、预览说明和项目记忆，不改 `/api/me`、加油包订购资格、扣次顺序、支付占位或后端接口。
 
