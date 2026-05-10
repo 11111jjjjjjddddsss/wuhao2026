@@ -85,6 +85,30 @@ internal fun HamburgerMenuSheet(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                Surface(
+                    shape = CircleShape,
+                    color = Color.White,
+                    shadowElevation = 3.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                        .statusBarsPadding()
+                        .padding(start = 22.dp, top = 8.dp)
+                        .size(58.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        HamburgerBackIcon(
+                            tint = Color(0xFF111111),
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                }
+
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -92,29 +116,9 @@ internal fun HamburgerMenuSheet(
                         .statusBarsPadding()
                         .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(start = 22.dp, end = 22.dp, top = 8.dp, bottom = 34.dp),
+                        .padding(start = 22.dp, end = 22.dp, top = 52.dp, bottom = 34.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Surface(
-                        shape = CircleShape,
-                        color = Color.White,
-                        shadowElevation = 3.dp,
-                        modifier = Modifier
-                            .size(58.dp)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onDismiss
-                            )
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            HamburgerBackIcon(
-                                tint = Color(0xFF111111),
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-                    }
-
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
