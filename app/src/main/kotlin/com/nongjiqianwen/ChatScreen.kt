@@ -6352,7 +6352,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("套餐区：Plus", "Plus 当前 / Pro 升级", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Pro 当前状态", UiCopyPreviewKind.MembershipPlanPro),
                     UiCopyPreviewItem("加油包：Free不可买", "Plus / Pro 可买置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
-                    UiCopyPreviewItem("加油包：Free剩余", "到期后仍可用但不可直接续买", UiCopyPreviewKind.MembershipTopupFreeActive),
+                    UiCopyPreviewItem("加油包：Free剩余", "按钮显示“剩余次数可用”", UiCopyPreviewKind.MembershipTopupFreeActive),
                     UiCopyPreviewItem("加油包：可购买", "Plus / Pro 可买，用完再续", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("支付暂未接入", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
