@@ -5,6 +5,7 @@
 
 ## 2026-05-10
 
+- `HamburgerMenuSheet.kt` 给汉堡全屏设置页补上短横向转场：设置页打开时从右侧滑入，返回时向右滑出，时长控制在 180ms / 150ms，只做位移动画、不叠加 fade、不加白底兜底，让返回主聊天界面时有方向感，避免“瞬间切掉”被感知成主界面轻微抖动。只改汉堡页转场，不改会员中心、`+` 附件面板、聊天滚动链、输入框、图片链或后端接口。
 - `HamburgerMenuSheet.kt` 进一步收口汉堡页返回后的主界面轻微抖动：全屏设置页不再包 `AnimatedVisibility`，`visible=false` 时直接不渲染，避免退出时动画容器仍参与一帧 transition 收尾；会员中心和 `+` 附件面板暂保持上一版直接 `ExitTransition.None` 卸载。只改汉堡全屏设置页承载方式，不改汉堡菜单内容、会员中心、聊天滚动链、输入框、图片链或后端接口。
 - `HamburgerMenuSheet.kt` / `MembershipCenterSheet.kt` / `ChatComposerPanel.kt` 撤掉上一版浮层关闭时的延迟遮罩和 64ms 纯背景覆盖：联网核对 Android Compose 官方文档后，改为关闭时直接 `ExitTransition.None` 卸载浮层，进场动画保留，避免汉堡返回、会员中心关闭和 `+` 附件面板关闭时出现白闪、残影或多层退场不同步。同步更新根规则里的浮层退出口径；不改浮层内容、会员权益、附件入口、支付占位、聊天滚动链、图片链或后端接口。
 - `HamburgerMenuSheet.kt` / `MembershipCenterSheet.kt` / `ChatComposerPanel.kt` 按会诊结果继续收口浮层残影：会员中心和 `+` 附件面板退出时，面板主体先滑出，遮罩延迟到主体退出后再淡出，避免底层聊天页过早透出；汉堡设置页关闭后额外保留 64ms 的纯背景覆盖，盖住返回键 / elevation 阴影可能残留的最后一帧。只改退场时序，不改浮层内容、入口层级、会员权益、附件逻辑、聊天滚动链或后端接口。

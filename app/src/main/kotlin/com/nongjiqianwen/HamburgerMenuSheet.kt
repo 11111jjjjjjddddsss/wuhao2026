@@ -1,6 +1,10 @@
 package com.nongjiqianwen
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -55,6 +59,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 private const val HAMBURGER_PLACEHOLDER_HINT = "功能后续接入"
+private const val HAMBURGER_PAGE_ENTER_MS = 180
+private const val HAMBURGER_PAGE_EXIT_MS = 150
 
 @Composable
 internal fun HamburgerMenuSheet(
@@ -83,14 +89,23 @@ internal fun HamburgerMenuSheet(
         delay(1500)
         noticeText = null
     }
-    if (!visible) {
-        return
-    }
-    Surface(
-        color = Color(0xFFF8F9FA),
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInHorizontally(
+            initialOffsetX = { it },
+            animationSpec = tween(durationMillis = HAMBURGER_PAGE_ENTER_MS)
+        ),
+        exit = slideOutHorizontally(
+            targetOffsetX = { it },
+            animationSpec = tween(durationMillis = HAMBURGER_PAGE_EXIT_MS)
+        ),
         modifier = modifier.fillMaxSize()
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            color = Color(0xFFF8F9FA),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -238,6 +253,7 @@ internal fun HamburgerMenuSheet(
                 }
             }
         }
+    }
 }
 
 @Composable
