@@ -461,14 +461,15 @@ private fun HamburgerMenuGlyph(
                 drawLine(tint, Offset(w * 0.50f, h * 0.41f), Offset(w * 0.50f, h * 0.69f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Account -> {
-                drawCircle(tint, radius = w * 0.17f, center = Offset(w * 0.50f, h * 0.30f), style = stroke)
+                drawCircle(tint, radius = w * 0.40f, center = Offset(w * 0.50f, h * 0.50f), style = stroke)
+                drawCircle(tint, radius = w * 0.14f, center = Offset(w * 0.50f, h * 0.39f), style = stroke)
                 drawArc(
                     color = tint,
-                    startAngle = 204f,
-                    sweepAngle = 132f,
+                    startAngle = 205f,
+                    sweepAngle = 130f,
                     useCenter = false,
-                    topLeft = Offset(w * 0.14f, h * 0.46f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.72f, h * 0.48f),
+                    topLeft = Offset(w * 0.25f, h * 0.57f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.50f, h * 0.34f),
                     style = stroke
                 )
             }
