@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
 private const val HAMBURGER_PLACEHOLDER_HINT = "功能后续接入"
-private const val HAMBURGER_EXIT_COVER_MS = 64L
 
 @Composable
 internal fun HamburgerMenuSheet(
@@ -71,8 +70,6 @@ internal fun HamburgerMenuSheet(
 ) {
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
-    var hasBeenVisible by remember { mutableStateOf(false) }
-    var exitCoverVisible by remember { mutableStateOf(false) }
     var noticeText by remember(visible) { mutableStateOf<String?>(null) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
@@ -89,37 +86,17 @@ internal fun HamburgerMenuSheet(
         delay(1500)
         noticeText = null
     }
-    LaunchedEffect(visible) {
-        if (visible) {
-            hasBeenVisible = true
-            exitCoverVisible = false
-        } else if (hasBeenVisible) {
-            exitCoverVisible = true
-            delay(HAMBURGER_EXIT_COVER_MS)
-            exitCoverVisible = false
-        }
-    }
-    if (!visible && !exitCoverVisible) {
-        return
-    }
-    Box(modifier = modifier.fillMaxSize()) {
-        if (exitCoverVisible && !visible) {
-            Surface(
-                color = Color(0xFFF8F9FA),
-                modifier = Modifier.fillMaxSize()
-            ) {}
-        }
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(),
-            exit = ExitTransition.None,
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = ExitTransition.None,
+        modifier = modifier.fillMaxSize()
+    ) {
+        Surface(
+            color = Color(0xFFF8F9FA),
             modifier = Modifier.fillMaxSize()
         ) {
-            Surface(
-                color = Color(0xFFF8F9FA),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                Box(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -267,7 +244,6 @@ internal fun HamburgerMenuSheet(
                 }
             }
         }
-    }
     }
 }
 

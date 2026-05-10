@@ -4,10 +4,9 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -680,12 +679,7 @@ internal fun ComposerAttachmentBottomSheet(
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(durationMillis = 120)),
-            exit = fadeOut(
-                animationSpec = tween(
-                    durationMillis = 80,
-                    delayMillis = 160
-                )
-            )
+            exit = ExitTransition.None
         ) {
             Box(
                 modifier = Modifier
@@ -704,10 +698,7 @@ internal fun ComposerAttachmentBottomSheet(
                 initialOffsetY = { it },
                 animationSpec = tween(durationMillis = 220)
             ) + fadeIn(animationSpec = tween(durationMillis = 120)),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(durationMillis = 160)
-            ),
+            exit = ExitTransition.None,
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Surface(

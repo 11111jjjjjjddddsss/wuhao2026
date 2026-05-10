@@ -3,9 +3,7 @@ package com.nongjiqianwen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -57,8 +55,6 @@ internal enum class MembershipLoadState { Idle, Loading, Loaded, Failed }
 
 private const val MEMBERSHIP_SCRIM_ENTER_MS = 80
 private const val MEMBERSHIP_SHEET_ENTER_MS = 165
-private const val MEMBERSHIP_SHEET_EXIT_MS = 120
-private const val MEMBERSHIP_SCRIM_EXIT_MS = 80
 
 @Composable
 internal fun MembershipCenterBottomSheet(
@@ -81,12 +77,7 @@ internal fun MembershipCenterBottomSheet(
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_ENTER_MS)),
-            exit = fadeOut(
-                animationSpec = tween(
-                    durationMillis = MEMBERSHIP_SCRIM_EXIT_MS,
-                    delayMillis = MEMBERSHIP_SHEET_EXIT_MS
-                )
-            )
+            exit = ExitTransition.None
         ) {
             Box(
                 modifier = Modifier
@@ -105,10 +96,7 @@ internal fun MembershipCenterBottomSheet(
                 initialOffsetY = { it },
                 animationSpec = tween(durationMillis = MEMBERSHIP_SHEET_ENTER_MS)
             ) + fadeIn(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_ENTER_MS)),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(durationMillis = MEMBERSHIP_SHEET_EXIT_MS)
-            ),
+            exit = ExitTransition.None,
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Surface(
