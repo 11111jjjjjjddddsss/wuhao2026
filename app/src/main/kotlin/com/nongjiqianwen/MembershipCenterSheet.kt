@@ -58,7 +58,7 @@ internal enum class MembershipLoadState { Idle, Loading, Loaded, Failed }
 private const val MEMBERSHIP_SCRIM_ENTER_MS = 80
 private const val MEMBERSHIP_SHEET_ENTER_MS = 165
 private const val MEMBERSHIP_SHEET_EXIT_MS = 120
-private const val MEMBERSHIP_SCRIM_EXIT_MS = MEMBERSHIP_SHEET_EXIT_MS
+private const val MEMBERSHIP_SCRIM_EXIT_MS = 80
 
 @Composable
 internal fun MembershipCenterBottomSheet(
@@ -81,7 +81,12 @@ internal fun MembershipCenterBottomSheet(
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_ENTER_MS)),
-            exit = fadeOut(animationSpec = tween(durationMillis = MEMBERSHIP_SCRIM_EXIT_MS))
+            exit = fadeOut(
+                animationSpec = tween(
+                    durationMillis = MEMBERSHIP_SCRIM_EXIT_MS,
+                    delayMillis = MEMBERSHIP_SHEET_EXIT_MS
+                )
+            )
         ) {
             Box(
                 modifier = Modifier

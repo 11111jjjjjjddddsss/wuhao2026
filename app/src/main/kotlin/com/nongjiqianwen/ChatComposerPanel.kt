@@ -680,7 +680,12 @@ internal fun ComposerAttachmentBottomSheet(
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(durationMillis = 120)),
-            exit = fadeOut(animationSpec = tween(durationMillis = 160))
+            exit = fadeOut(
+                animationSpec = tween(
+                    durationMillis = 80,
+                    delayMillis = 160
+                )
+            )
         ) {
             Box(
                 modifier = Modifier
