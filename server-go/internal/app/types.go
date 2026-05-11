@@ -112,3 +112,25 @@ type PromptProbeResult struct {
 	Chars int
 	Error string
 }
+
+type DailyAgriCardItem struct {
+	Title         string `json:"title"`
+	Summary       string `json:"summary"`
+	URL           string `json:"url"`
+	Source        string `json:"source"`
+	PublishedDate string `json:"published_date,omitempty"`
+}
+
+type DailyAgriCard struct {
+	DateCN      string              `json:"date_cn"`
+	Title       string              `json:"title"`
+	Items       []DailyAgriCardItem `json:"items"`
+	GeneratedAt int64               `json:"generated_at,omitempty"`
+}
+
+type DailyAgriSearchSource struct {
+	Index    int    `json:"index,omitempty"`
+	Title    string `json:"title,omitempty"`
+	URL      string `json:"url,omitempty"`
+	SiteName string `json:"site_name,omitempty"`
+}

@@ -72,6 +72,37 @@ object SessionApi {
         @SerializedName("upgrade_remaining") val upgradeRemaining: Int? = null
     )
 
+    data class TodayAgriCardResponse(
+        val status: String? = null,
+        val card: TodayAgriCard? = null
+    )
+
+    data class TodayAgriCard(
+        @SerializedName("date_cn") val dateCn: String? = null,
+        val title: String? = null,
+        val items: List<TodayAgriCardItem>? = null,
+        @SerializedName("generated_at") val generatedAt: Long? = null
+    )
+
+    data class TodayAgriCardItem(
+        val title: String? = null,
+        val summary: String? = null,
+        val url: String? = null,
+        val source: String? = null,
+        @SerializedName("published_date") val publishedDate: String? = null
+    )
+
+    private fun TodayAgriCard?.isValidTodayAgriCard(): Boolean {
+        val candidate = this ?: return false
+        return candidate.title == "今日农情" &&
+            candidate.items.orEmpty().count { item ->
+                !item.title.isNullOrBlank() &&
+                    !item.summary.isNullOrBlank() &&
+                    !item.url.isNullOrBlank() &&
+                    item.url.trim().startsWith("https://")
+            } == 3
+    }
+
     private fun baseUrl(): String {
         val url = BuildConfig.UPLOAD_BASE_URL.trim()
         return if (url.endsWith("/")) url.dropLast(1) else url
@@ -169,6 +200,46 @@ object SessionApi {
                         onResult(gson.fromJson(body, EntitlementSnapshot::class.java))
                     } catch (e: Exception) {
                         Log.e(TAG, "parse entitlement", e)
+                        onResult(null)
+                    }
+                }
+            },
+            onFailure = { onResult(null) }
+        )
+    }
+
+    fun getTodayAgriCard(onResult: (TodayAgriCard?) -> Unit) {
+        val requestGeneration = runtimeGeneration.get()
+        fun isRuntimeStale(): Boolean = requestGeneration != runtimeGeneration.get()
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            onResult(null)
+            return
+        }
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(Request.Builder().url("$base/api/today-agri-card").get())
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    if (isRuntimeStale()) return@use
+                    if (!it.isSuccessful) {
+                        onResult(null)
+                        return@use
+                    }
+                    val body = it.body?.string()
+                    if (body.isNullOrBlank()) {
+                        onResult(null)
+                        return@use
+                    }
+                    try {
+                        val parsed = gson.fromJson(body, TodayAgriCardResponse::class.java)
+                        val validCard = parsed?.card?.takeIf { it.isValidTodayAgriCard() }
+                        onResult(validCard)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse today agri card", e)
                         onResult(null)
                     }
                 }

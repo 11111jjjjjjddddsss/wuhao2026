@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-11
+
+- `server-go` / `ChatScreen.kt` / `SessionApi.kt` 接入首版“今日农情”：后端新增 `daily_agri_cards` 迁移、`GET /api/today-agri-card` 只读接口和带 `DAILY_AGRI_JOB_SECRET` 的内部生成接口，生成链路使用 DashScope 原生 Generation 调 `qwen3.5-plus`，显式关闭思考模式，强制联网搜索 `search_strategy=max` 并返回来源；服务端用数据库 lease 防并发，并校验 JSON、3 条 item、https、近 7 天、来源 URL 必须来自搜索结果、可信域名和广告 / 泄露词过滤。Android 在历史 hydrate 后拉取卡片，作为 `ChatTimelineItem.TodayAgriCard` 插入聊天列表展示层，三条卡片点击打开来源 URL；它不是 `ChatMessage`，不进入本地聊天快照、A/B/C 上下文、归档、摘要或问诊扣次。debug-only 文案预览面板同步新增“今日农情”样式预览；缺失 / pending / failed 时前端静默不展示，不阻塞聊天页。
+
 ## 2026-05-10
 
 - `ChatScreen.kt` / `chat.go` / Android 备份规则做了一轮前后端守门复查后的低风险收口：未发送文字草稿不再在启动 reset 时被立刻清掉，`client_msg_id` 已完成的后端 replay 提前到 prompt 组装、模型 Key、进行中锁和额度检查之前返回，拿到 inflight 锁后还会二次复查完成态，减少已完成轮次恢复失败、重复走重链以及完成临界点重复开主模型的机会；`backup_rules.xml` / `data_extraction_rules.xml` 同步排除 device-protected 本地域，继续避免清数据 / 迁移后旧本地 UI 状态回流。后端同时新增 `013_topup_packs_lookup_index.sql`，给加油包状态查询补 `user_id/status/expire_at/created_at` 复合索引。同步更新 R9，保留“主模型已开但未归档时仍需后续持久化 attempt/status 才能彻底避免二次开流”的上线前风险。

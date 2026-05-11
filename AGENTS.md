@@ -108,6 +108,15 @@ Android 构建链：
 - 仅在强时效、事实核对、外部数据查询等场景触发
 - 不允许凭印象硬改
 
+今日农情：
+- 今日农情是独立的每日资讯卡片，不是聊天消息，不进入 A/B/C 上下文，不写 `session_ab` / `session_round_archive`，不触发摘要，不扣用户问诊次数
+- 后端数据真源是 `daily_agri_cards`，按 `day_cn + scope` 唯一保存；当前 scope 固定为 `CN`
+- 用户侧只读接口是 `GET /api/today-agri-card`，需要用户鉴权，只读取已生成缓存，缺失 / pending / failed 时前端静默不展示，不在用户打开 App 时临时触发模型
+- 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只给定时任务 / 运维调用，必须携带 `DAILY_AGRI_JOB_SECRET`；生成前用数据库 lease 防并发
+- 生成链路使用 DashScope 原生 Generation 协议调用 `qwen3.5-plus`，显式关闭思考模式，开启强制联网搜索，`search_strategy=max`，`enable_source=true`，并要求只产出“今日农情”3 条事实类农业资讯
+- 后端只发布可解析 JSON、严格 3 条、https、近 7 天、来源 URL 来自 DashScope 搜索结果且域名可信的结果；广告、导购、软文、模型 / 提示词泄露类内容直接过滤，过滤后不足 3 条则不发布新卡片
+- Android 只把今日农情作为 `ChatTimelineItem.TodayAgriCard` 插入聊天列表展示层；真实 `messages` 仍只包含用户 / assistant 对话。卡片不参与本地聊天快照、发送、重试、复制、滚动工作线真值或后端上下文；点击单条农情只用系统浏览器打开来源 URL，不自动向 AI 发送问题
+
 会员与计费：
 - Free：6 次 / 天
 - Plus：19.9 元 / 月，25 次 / 天
@@ -227,10 +236,10 @@ Clean-State 必做回归的范围：
 - 聊天消息运行时当前只允许有一个主人：正向 `LazyColumn`
 - `ChatRecyclerViewHost.kt` 当前使用：
   - `LazyColumn`
-  - `items = messages`
+  - `items = ChatTimelineItem` 展示层；当前可能包含一个 `TodayAgriCard` UI-only 卡片和真实 `messages`
   - `verticalArrangement = Arrangement.Bottom`，用于正向列表短内容不满一屏时也贴到底部工作线
-  - `messages` 仍按 oldest -> newest 存储，视觉底部最新消息是 `lastIndex`
-  - 回到底部 / AutoFollow 使用最新消息 index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义，把最新消息底部压到工作线附近
+  - `messages` 仍按 oldest -> newest 存储；视觉底部最新真实消息通过 `ChatTimelineItem.Message` 反查 index，不能把今日农情卡片当成最新消息锚点
+  - 回到底部 / AutoFollow 使用最新真实消息 index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义，把最新消息底部压到工作线附近
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - `ChatScreen.kt` 当前把消息列表和 composer 作为同一个页面 `Box` 下的兄弟层渲染：列表先铺满消息区域，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 不再作为 `SubcomposeLayout` 的 child 参与列表同拍测量，避免 IME 动画每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”
 - composer 内部内容高度不属于聊天列表 bottom reserve。长文本、当前图片缩略图预览、未来附件缩略图、图文混排等只能影响输入框内部布局 / 内部滚动 / composer 自身视觉高度，不能直接把历史消息区顶上去；聊天列表 reserve 只允许吃折叠态 composer 外壳、safe area / navigation bar、发送期锁定 reserve、工作线 gap。IME 动画只移动 composer，不允许重新进入列表 reserve。若未来产品明确要“附件栏顶起聊天区”，必须作为单独 external tray 重新设计和命名，不能复用输入内容高度偷渡进滚动链
@@ -277,8 +286,8 @@ Clean-State 必做回归的范围：
 
 - `ChatRecyclerViewHost.kt` 当前已切回正向列表底座；如果后续再调整顺序，必须连同当前 `messages` 的真实存储顺序一起检查，不能只改 `reverseLayout` 或只改 `items` 顺序
 - `ChatScreen.kt` 当前已回到：
-  - `messages` 作为 oldest -> newest 的唯一消息数据源；列表显示层直接使用 `messages`，不再通过 `chatListItems` 派生 streaming block item
-  - `currentLastMessageContentBottomPx()` 的 fallback 按正向列表使用最新项 index `lastIndex`
+  - `messages` 作为 oldest -> newest 的唯一业务消息数据源；列表显示层可以包一层 `ChatTimelineItem` 承接 UI-only 今日农情卡片，但不再通过 `chatListItems` 派生 streaming block item
+  - `currentLastMessageContentBottomPx()` 的 fallback 按正向列表使用最新真实消息的 UI index
   - `currentBottomOverflowPx()` 按正向列表单主人口径计算最新消息底边与统一底部目标之间的绝对误差
 - 发送起步当前保留的旧保护只有两样：
   - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`
@@ -296,8 +305,8 @@ Clean-State 必做回归的范围：
   3. 插入 assistant placeholder
   4. `prepareScrollRuntimeForStreamingStart(...)`
   5. 置 `sendStartAnchorActive = true`
-  6. 按正向列表口径同步请求最新消息 `lastIndex` + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让新插入的底部 assistant placeholder 成为视觉底部锚点
-- `scrollToBottom(false)` 当前是正向列表主链口径；聊天页主调处应把“视觉底部最新消息”的 index 按 `lastIndex` 传给 coordinator，并使用 `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，不要回到 `scrollToItem(0)`
+  6. 按正向列表口径同步请求最新真实消息 UI index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让新插入的底部 assistant placeholder 成为视觉底部锚点
+- `scrollToBottom(false)` 当前是正向列表主链口径；聊天页主调处应把“视觉底部最新真实消息”的 UI index 传给 coordinator，并使用 `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，不要回到 `scrollToItem(0)`
 - 正向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)`、`scrollBy(...)` 或 `dispatchRawDelta(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机、发送起步保护和正向底部锚点请求
 - AutoFollow 中每次 reveal 提交前会先请求一次最新消息底部锚点；提交 `streamingMessageContent` 后，`ChatScreen.kt` 顶层通过 `SideEffect` 在同帧 apply changes 后、layout 前再次请求最新消息底部锚点，减少“新换行先进树、下一帧才贴底”造成的工作线下方冒头闪
 - 高频 reveal 底部锚点请求使用一份 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览

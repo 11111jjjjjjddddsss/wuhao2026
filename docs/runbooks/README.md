@@ -10,6 +10,7 @@
 - [rollback.md](D:/wuhao/docs/runbooks/rollback.md)：回滚入口
 - [logs-sls.md](D:/wuhao/docs/runbooks/logs-sls.md)：日志排查入口
 - [db-readonly.md](D:/wuhao/docs/runbooks/db-readonly.md)：数据库只读排查入口
+- [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情每日卡片生成与排查入口
 
 维护规则：
 

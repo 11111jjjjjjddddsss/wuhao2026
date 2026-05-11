@@ -1,6 +1,6 @@
 # 当前未关闭风险
 
-最后更新：2026-05-10
+最后更新：2026-05-11
 
 ## R1 运维入口仍以文档骨架为主
 
@@ -91,3 +91,10 @@
 - 说明：Android 会员中心当前只展示支付占位提示，不会调用后端下单 / 续费 / 升级 / 加油包接口；`server-go` 里现有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍是开发期直接变更接口，但默认已返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 才允许本地 / 内测调试使用
 - 风险：这些接口仍不是正式支付真源；如果内测 / 生产环境误开 `ALLOW_DEV_ORDER_ENDPOINTS=true`，非 App 客户端理论上仍可绕过真实支付直接请求会员变更。这不影响当前 Android UI 展示，也不影响每日额度 / 升级补偿 / 加油包扣次顺序本身，但属于上线前必须继续收口的业务安全风险
 - 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false
+
+## R13 今日农情生成质量和调度仍需上线观察
+
+- 状态：未关闭
+- 说明：今日农情首版已接入独立后端链路和 Android UI-only 卡片；它不影响聊天主链、不扣用户问诊次数、不进入 A/B/C 或归档。当前生成依赖 `qwen3.5-plus + forced_search + search_strategy=max + enable_source`，服务端会校验搜索来源、可信域名、近 7 天日期、广告 / 导购 / 泄露词，过滤后不足 3 条则不发布新卡片
+- 风险：`max` 搜索比主对话默认 Turbo 更慢且成本更高；如果当天搜索结果来源质量不足或 DashScope 未返回 `search_info.search_results`，后端会不发布，前端静默不展示。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；云端 05:30 定时触发、失败重试、告警和人工补生成还需要真实 SAE / 调度环境落地后验证
+- 后续动作：上线前按 `docs/runbooks/today-agri-card.md` 配置 `DAILY_AGRI_JOB_SECRET` 和定时触发；观察 SLS 日志关键词 `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error`。若连续失败，再评估放宽可信域名、切 `turbo + assigned_site_list` 或做人工审核入口，不把失败转成用户打开 App 时临时多次调模型

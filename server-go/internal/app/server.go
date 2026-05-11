@@ -22,6 +22,7 @@ type Server struct {
 	prompts      *PromptLoader
 	bailian      *BailianClient
 	summary      *SummaryService
+	dailyAgri    *DailyAgriCardService
 	shanghai     *time.Location
 	assetDir     string
 	uploadsDir   string
@@ -103,6 +104,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		prompts:      prompts,
 		bailian:      bailian,
 		summary:      NewSummaryService(store, prompts, bailian, logger),
+		dailyAgri:    NewDailyAgriCardService(store, bailian, logger, shanghai),
 		shanghai:     shanghai,
 		assetDir:     assetDir,
 		uploadsDir:   uploadsDir,
@@ -128,6 +130,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/tier/renew_plus", s.handleRenewPlus)
 	s.mux.HandleFunc("POST /api/tier/renew_pro", s.handleRenewPro)
 	s.mux.HandleFunc("POST /api/tier/upgrade_plus_to_pro", s.handleUpgradePlusToPro)
+	s.mux.HandleFunc("GET /api/today-agri-card", s.handleTodayAgriCard)
+	s.mux.HandleFunc("POST /internal/jobs/today-agri-card/generate", s.handleGenerateTodayAgriCard)
 	s.mux.HandleFunc("POST /api/chat/stream", s.handleChatStream)
 	s.mux.HandleFunc("POST /upload", s.handleUpload)
 	s.mux.HandleFunc("/uploads/", s.handleUploadsStatic)

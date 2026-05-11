@@ -1,0 +1,19 @@
+CREATE TABLE IF NOT EXISTS daily_agri_cards (
+  day_cn VARCHAR(8) NOT NULL,
+  scope VARCHAR(32) NOT NULL DEFAULT 'CN',
+  status ENUM('pending','ready','failed') NOT NULL DEFAULT 'pending',
+  content_json JSON NULL,
+  sources_json JSON NULL,
+  model VARCHAR(64) NOT NULL DEFAULT '',
+  search_strategy VARCHAR(32) NOT NULL DEFAULT '',
+  prompt_version VARCHAR(32) NOT NULL DEFAULT '',
+  lease_token VARCHAR(64) NULL,
+  lease_until BIGINT NOT NULL DEFAULT 0,
+  generated_at BIGINT NULL,
+  error VARCHAR(255) NULL,
+  created_at BIGINT NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (day_cn, scope),
+  KEY idx_daily_agri_cards_status (status, updated_at),
+  KEY idx_daily_agri_cards_lease (lease_until)
+);

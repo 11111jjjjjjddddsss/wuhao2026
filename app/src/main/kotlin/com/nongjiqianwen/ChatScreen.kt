@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -226,6 +227,20 @@ private data class ChatMessage(
     val imageUrls: List<String>? = null
 )
 @Immutable
+private sealed interface ChatTimelineItem {
+    val stableKey: String
+
+    @Immutable
+    data class Message(val message: ChatMessage) : ChatTimelineItem {
+        override val stableKey: String = message.id
+    }
+
+    @Immutable
+    data class TodayAgriCard(val card: SessionApi.TodayAgriCard) : ChatTimelineItem {
+        override val stableKey: String = "today-agri-card-${card.dateCn.orEmpty()}"
+    }
+}
+@Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
 @Immutable
 private data class LocalChatWindowSnapshot(
@@ -244,6 +259,30 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
     role == ChatRole.USER &&
         imageUris.orEmpty().isNotEmpty() &&
         imageUrls.orEmpty().isEmpty()
+
+private fun buildChatTimelineItems(
+    messages: List<ChatMessage>,
+    todayAgriCard: SessionApi.TodayAgriCard?
+): List<ChatTimelineItem> {
+    val items = ArrayList<ChatTimelineItem>(messages.size + 1)
+    val validTodayAgriCard = todayAgriCard?.takeIf { it.isRenderableTodayAgriCard() }
+    if (validTodayAgriCard != null) {
+        items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
+    }
+    messages.forEach { message ->
+        items += ChatTimelineItem.Message(message)
+    }
+    return items
+}
+
+private fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean =
+    title == "今日农情" &&
+        items.orEmpty().count { item ->
+            !item.title.isNullOrBlank() &&
+                !item.summary.isNullOrBlank() &&
+                !item.url.isNullOrBlank() &&
+                item.url.trim().startsWith("https://")
+        } == 3
 
 private fun markLocalImageUploadPendingAsFailed(
     snapshot: LocalChatWindowSnapshot,
@@ -1625,6 +1664,15 @@ private suspend fun awaitMembershipEntitlement(): SessionApi.EntitlementSnapshot
         }
     }
 
+private suspend fun awaitTodayAgriCard(): SessionApi.TodayAgriCard? =
+    suspendCancellableCoroutine { continuation ->
+        SessionApi.getTodayAgriCard { card ->
+            if (continuation.isActive) {
+                continuation.resume(card)
+            }
+        }
+    }
+
 private fun SessionSnapshot.findRoundByClientMessageId(clientMessageId: String): ARound? {
     if (clientMessageId.isBlank()) return null
     for (index in a_rounds_full.lastIndex downTo 0) {
@@ -2042,11 +2090,22 @@ fun ChatScreen() {
             putAll(initialLocalSnapshot.failedAssistantMessageStates)
         }
     }
+    var todayAgriCard by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.TodayAgriCard?>(null) }
     val retryingUserMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
-    val chatListMessages = messages
+    val chatListItems by remember(todayAgriCard, messages.size) {
+        derivedStateOf {
+            buildChatTimelineItems(
+                messages = messages,
+                todayAgriCard = todayAgriCard
+            )
+        }
+    }
+    val hasTodayAgriCard by remember(todayAgriCard) {
+        derivedStateOf { todayAgriCard?.isRenderableTodayAgriCard() == true }
+    }
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2264,7 +2323,9 @@ fun ChatScreen() {
         return streamingContentBottomPx.takeIf { it > 0 } ?: -1
     }
     fun latestMessageIndex(): Int {
-        return chatListMessages.lastIndex
+        return chatListItems.indexOfLast { item ->
+            item is ChatTimelineItem.Message
+        }
     }
     fun latestMessageIndexOrMinusOne(): Int {
         return latestMessageIndex()
@@ -2416,12 +2477,14 @@ fun ChatScreen() {
     val shouldRevealMessageList by remember(
         startupHydrationBarrierSatisfied,
         messages.size,
+        hasTodayAgriCard,
         hasStreamingItem,
         hasStartedConversation
     ) {
         derivedStateOf {
             when {
                 messages.isNotEmpty() -> true
+                hasTodayAgriCard -> true
                 hasStreamingItem -> true
                 !hasStartedConversation -> true
                 startupHydrationBarrierSatisfied -> true
@@ -2432,11 +2495,15 @@ fun ChatScreen() {
     val showWelcomePlaceholder by remember(
         startupHydrationBarrierSatisfied,
         messages.size,
+        hasTodayAgriCard,
         hasStreamingItem,
         hasStartedConversation
     ) {
         derivedStateOf {
-            messages.isEmpty() && !hasStreamingItem && (startupHydrationBarrierSatisfied || !hasStartedConversation)
+            messages.isEmpty() &&
+                !hasTodayAgriCard &&
+                !hasStreamingItem &&
+                (startupHydrationBarrierSatisfied || !hasStartedConversation)
         }
     }
     val topInset = WindowInsets.safeDrawing
@@ -2465,6 +2532,13 @@ fun ChatScreen() {
     var membershipEntitlement by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.EntitlementSnapshot?>(null) }
     var membershipPurchaseSuccessVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipRefreshNonce by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete) {
+        if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
+        val card = awaitTodayAgriCard()
+        if (card != null) {
+            todayAgriCard = card
+        }
+    }
     BindComposerRuntimeEffects(
         inputChromeMeasured = inputChromeMeasured,
         inputText = input.value.text,
@@ -2965,6 +3039,23 @@ fun ChatScreen() {
     fun showComposerStatusHint(text: String) {
         composerStatusHintText = text
         composerStatusHintTick++
+    }
+
+    fun openExternalUrl(rawUrl: String) {
+        val normalized = rawUrl.trim()
+        if (!normalized.startsWith("https://")) {
+            showComposerStatusHint("链接打开失败")
+            return
+        }
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(normalized)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        }.onFailure {
+            showComposerStatusHint("链接打开失败")
+        }
     }
 
     fun addComposerImageUris(uris: List<Uri>) {
@@ -5431,9 +5522,14 @@ fun ChatScreen() {
             ) {
                 ChatRecyclerViewHost(
                     listState = chatListState,
-                    items = chatListMessages,
-                    itemKey = { it.id },
-                    itemContentType = { it.role },
+                    items = chatListItems,
+                    itemKey = { it.stableKey },
+                    itemContentType = { item ->
+                        when (item) {
+                            is ChatTimelineItem.Message -> item.message.role
+                            is ChatTimelineItem.TodayAgriCard -> "today_agri_card"
+                        }
+                    },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = forwardListBottomPaddingPx,
                     modifier = Modifier
@@ -5468,7 +5564,13 @@ fun ChatScreen() {
                             }
                         )
                 ) { msg ->
-                    renderConversationMessage(msg)
+                    when (msg) {
+                        is ChatTimelineItem.Message -> renderConversationMessage(msg.message)
+                        is ChatTimelineItem.TodayAgriCard -> TodayAgriNewsCard(
+                            card = msg.card,
+                            onOpenUrl = { url -> openExternalUrl(url) }
+                        )
+                    }
                 }
             }
         }
@@ -6364,6 +6466,12 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
+                title = "今日农情",
+                items = listOf(
+                    UiCopyPreviewItem("今日农情", "三条农情卡片，整条点击跳转来源", UiCopyPreviewKind.TodayAgriCard)
+                )
+            ),
+            UiCopyPreviewGroup(
                 title = "附件面板",
                 items = listOf(
                     UiCopyPreviewItem(
@@ -6534,6 +6642,7 @@ private enum class UiCopyPreviewKind {
     MembershipPurchaseSuccess,
     MembershipRules,
     HamburgerMenu,
+    TodayAgriCard,
     AttachmentSheet,
     Disclaimer,
     AssistantRetry,
@@ -6795,6 +6904,12 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerMenu -> {
                     HamburgerMenuSheetPreview(userId = IdManager.getUserId())
                 }
+                UiCopyPreviewKind.TodayAgriCard -> {
+                    TodayAgriNewsCard(
+                        card = uiCopyPreviewTodayAgriCard(),
+                        onOpenUrl = {}
+                    )
+                }
                 UiCopyPreviewKind.AttachmentSheet -> {
                     UiCopyPreviewAttachmentSheet(limitReached = false)
                 }
@@ -6898,6 +7013,35 @@ private fun UiCopyPreviewMembershipSummaryWithPlans(
 
 private fun uiCopyPreviewExpireAtMs(daysFromNow: Long): Long =
     System.currentTimeMillis() + daysFromNow * 24L * 60L * 60L * 1000L
+
+private fun uiCopyPreviewTodayAgriCard(): SessionApi.TodayAgriCard =
+    SessionApi.TodayAgriCard(
+        dateCn = "20260511",
+        title = "今日农情",
+        items = listOf(
+            SessionApi.TodayAgriCardItem(
+                title = "华北麦区防干热风",
+                summary = "华北多地小麦进入灌浆关键期，气象部门提醒关注高温干风，适时浇水稳粒重。",
+                source = "中国天气网",
+                publishedDate = "2026-05-11",
+                url = "https://www.weather.com.cn/"
+            ),
+            SessionApi.TodayAgriCardItem(
+                title = "早稻病虫进入防控期",
+                summary = "南方早稻陆续分蘖拔节，植保系统提示加强纹枯病和稻飞虱巡查，抓住窗口防治。",
+                source = "全国农技推广网",
+                publishedDate = "2026-05-11",
+                url = "https://www.natesc.org.cn/"
+            ),
+            SessionApi.TodayAgriCardItem(
+                title = "蔬菜价格稳中有降",
+                summary = "批发市场监测显示多类蔬菜供应增加，部分叶菜价格回落，种植户可关注本地走货节奏。",
+                source = "农业农村部",
+                publishedDate = "2026-05-11",
+                url = "https://www.moa.gov.cn/"
+            )
+        )
+    )
 
 @Composable
 private fun UiCopyPreviewDisclaimer() {
@@ -7054,6 +7198,148 @@ private fun UiCopyPreviewPlainText(lines: List<String>) {
             )
         }
     }
+}
+
+@Composable
+private fun TodayAgriNewsCard(
+    card: SessionApi.TodayAgriCard,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val items = card.items.orEmpty().take(3)
+    if (items.size != 3) return
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 40.dp, vertical = 12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = Color(0xFF111111),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text(
+                        text = "今日农情",
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                todayAgriDateText(card.dateCn)?.let { dateText ->
+                    Text(
+                        text = dateText,
+                        color = Color(0xFF8B8F96),
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
+            items.forEachIndexed { index, item ->
+                TodayAgriNewsItem(
+                    index = index + 1,
+                    item = item,
+                    onOpenUrl = onOpenUrl
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodayAgriNewsItem(
+    index: Int,
+    item: SessionApi.TodayAgriCardItem,
+    onOpenUrl: (String) -> Unit
+) {
+    val title = item.title.orEmpty().trim()
+    val summary = item.summary.orEmpty().trim()
+    val source = item.source.orEmpty().trim()
+    val date = item.publishedDate.orEmpty().trim()
+    val url = item.url.orEmpty().trim()
+    Surface(
+        color = Color(0xFFF7F8FA),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.7.dp, Color(0xFFE7E9EE)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(enabled = url.isNotBlank()) { onOpenUrl(url) }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Surface(
+                color = Color(0xFF111111),
+                shape = CircleShape,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = index.toString(),
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 15.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = title,
+                    color = Color(0xFF111111),
+                    fontSize = 16.sp,
+                    lineHeight = 21.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = summary,
+                    color = Color(0xFF4F535A),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (source.isNotBlank() || date.isNotBlank()) {
+                    Text(
+                        text = listOf(source, date).filter { it.isNotBlank() }.joinToString(" · "),
+                        color = Color(0xFF8B8F96),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun todayAgriDateText(dateCn: String?): String? {
+    val raw = dateCn?.trim().orEmpty()
+    if (raw.length != 8) return null
+    val month = raw.substring(4, 6).trimStart('0').ifBlank { "0" }
+    val day = raw.substring(6, 8).trimStart('0').ifBlank { "0" }
+    return "${month}月${day}日"
 }
 
 @Composable
