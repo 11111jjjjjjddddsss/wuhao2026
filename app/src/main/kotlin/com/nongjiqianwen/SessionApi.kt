@@ -102,7 +102,7 @@ object SessionApi {
                     !item.summary.isNullOrBlank() &&
                     !item.url.isNullOrBlank() &&
                     item.url.trim().startsWith("https://")
-            } == 3
+            }
     }
 
     private fun baseUrl(): String {
