@@ -1847,8 +1847,8 @@ private fun MembershipCenterAddIcon(
         val corner = this.size.minDimension * 0.15f
         drawRoundRect(
             color = Color(0xFF111111),
-            topLeft = Offset(w * 0.18f, h * 0.18f),
-            size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.64f),
+            topLeft = Offset(w * 0.14f, h * 0.14f),
+            size = androidx.compose.ui.geometry.Size(w * 0.72f, h * 0.72f),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
             style = androidx.compose.ui.graphics.drawscope.Stroke(
                 width = stroke,
@@ -1857,15 +1857,15 @@ private fun MembershipCenterAddIcon(
         )
         drawLine(
             color = Color(0xFF111111),
-            start = Offset(w * 0.35f, h * 0.50f),
-            end = Offset(w * 0.65f, h * 0.50f),
+            start = Offset(w * 0.33f, h * 0.50f),
+            end = Offset(w * 0.67f, h * 0.50f),
             strokeWidth = plusStroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = Color(0xFF111111),
-            start = Offset(w * 0.50f, h * 0.35f),
-            end = Offset(w * 0.50f, h * 0.65f),
+            start = Offset(w * 0.50f, h * 0.33f),
+            end = Offset(w * 0.50f, h * 0.67f),
             strokeWidth = plusStroke,
             cap = StrokeCap.Round
         )

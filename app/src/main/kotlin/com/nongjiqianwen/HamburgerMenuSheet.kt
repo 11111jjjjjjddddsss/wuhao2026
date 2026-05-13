@@ -450,13 +450,13 @@ private fun HamburgerMenuGlyph(
                 val plusStrokeWidth = strokeWidth * 0.92f
                 drawRoundRect(
                     color = tint,
-                    topLeft = Offset(w * 0.18f, h * 0.18f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.64f),
+                    topLeft = Offset(w * 0.14f, h * 0.14f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.72f, h * 0.72f),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.15f, h * 0.15f),
                     style = stroke
                 )
-                drawLine(tint, Offset(w * 0.35f, h * 0.50f), Offset(w * 0.65f, h * 0.50f), plusStrokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.50f, h * 0.35f), Offset(w * 0.50f, h * 0.65f), plusStrokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.33f, h * 0.50f), Offset(w * 0.67f, h * 0.50f), plusStrokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.50f, h * 0.33f), Offset(w * 0.50f, h * 0.67f), plusStrokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Account -> {
                 drawCircle(tint, radius = w * 0.40f, center = Offset(w * 0.50f, h * 0.50f), style = stroke)
