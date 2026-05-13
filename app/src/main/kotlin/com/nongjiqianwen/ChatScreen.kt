@@ -150,12 +150,13 @@ import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -1830,15 +1831,51 @@ private fun MenuBarsIcon(
 }
 
 @Composable
-private fun MembershipLeafIcon(
+private fun MembershipCenterBadgeIcon(
     size: Dp,
     modifier: Modifier = Modifier
 ) {
-    Image(
-        painter = painterResource(id = R.drawable.ic_membership_leaf),
-        contentDescription = "会员中心",
-        modifier = modifier.size(size)
-    )
+    Canvas(
+        modifier = modifier
+            .size(size)
+            .semantics { contentDescription = "会员中心" }
+    ) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = this.size.minDimension * 0.09f
+        val shield = listOf(
+            Offset(w * 0.50f, h * 0.08f),
+            Offset(w * 0.86f, h * 0.28f),
+            Offset(w * 0.78f, h * 0.78f),
+            Offset(w * 0.50f, h * 0.92f),
+            Offset(w * 0.22f, h * 0.78f),
+            Offset(w * 0.14f, h * 0.28f)
+        )
+        shield.forEachIndexed { index, start ->
+            val end = shield[(index + 1) % shield.size]
+            drawLine(
+                color = Color(0xFF111111),
+                start = start,
+                end = end,
+                strokeWidth = stroke,
+                cap = StrokeCap.Round
+            )
+        }
+        drawLine(
+            color = Color(0xFF111111),
+            start = Offset(w * 0.36f, h * 0.55f),
+            end = Offset(w * 0.64f, h * 0.55f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = Color(0xFF111111),
+            start = Offset(w * 0.50f, h * 0.41f),
+            end = Offset(w * 0.50f, h * 0.69f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
 }
 
 @Composable
@@ -6085,7 +6122,7 @@ fun ChatScreen() {
                         },
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
-                        MembershipLeafIcon(
+                        MembershipCenterBadgeIcon(
                             size = membershipIconSize
                         )
                     }

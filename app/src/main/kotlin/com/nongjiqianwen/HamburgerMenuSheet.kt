@@ -457,14 +457,8 @@ private fun HamburgerMenuGlyph(
                     close()
                 }
                 drawPath(path, tint, style = stroke)
-                drawLine(tint, Offset(w * 0.50f, h * 0.34f), Offset(w * 0.50f, h * 0.48f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.50f, h * 0.62f), Offset(w * 0.50f, h * 0.76f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.26f, h * 0.55f), Offset(w * 0.40f, h * 0.55f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.60f, h * 0.55f), Offset(w * 0.74f, h * 0.55f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.39f, h * 0.44f), Offset(w * 0.45f, h * 0.50f), strokeWidth * 0.9f, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.55f, h * 0.60f), Offset(w * 0.61f, h * 0.66f), strokeWidth * 0.9f, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.61f, h * 0.44f), Offset(w * 0.55f, h * 0.50f), strokeWidth * 0.9f, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.45f, h * 0.60f), Offset(w * 0.39f, h * 0.66f), strokeWidth * 0.9f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.36f, h * 0.55f), Offset(w * 0.64f, h * 0.55f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.50f, h * 0.41f), Offset(w * 0.50f, h * 0.69f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Account -> {
                 drawCircle(tint, radius = w * 0.40f, center = Offset(w * 0.50f, h * 0.50f), style = stroke)
