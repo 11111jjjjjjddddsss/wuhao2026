@@ -5704,7 +5704,11 @@ fun ChatScreen() {
                     },
                 onChromeMeasured = { height ->
                     val canRecordChromeHeight =
-                        selectedComposerImages.isEmpty() && !attachmentMenuVisible
+                        !inputFieldFocused &&
+                            !imeVisible &&
+                            selectedComposerImages.isEmpty() &&
+                            !attachmentMenuVisible &&
+                            input.value.text.isEmpty()
                     if (canRecordChromeHeight && inputChromeRowHeightPx != height) {
                         inputChromeRowHeightPx = height
                     }
@@ -6496,7 +6500,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "汉堡菜单",
                 items = listOf(
-                    UiCopyPreviewItem("设置入口", "会员、账号、客服反馈、检查更新和协议", UiCopyPreviewKind.HamburgerMenu)
+                    UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、客服和协议入口", UiCopyPreviewKind.HamburgerMenu)
                 )
             ),
             UiCopyPreviewGroup(
@@ -6510,7 +6514,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem(
                         "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT",
-                        "+ 面板未满状态：入口和拍摄建议",
+                        "+ 面板未满状态：紧凑入口和拍摄建议",
                         UiCopyPreviewKind.AttachmentSheet
                     ),
                     UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层", UiCopyPreviewKind.ImageCountHint),
@@ -6601,7 +6605,7 @@ private fun UiCopyPreviewOverlay(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "点下面任意一条，查看它在 App 里的实际样式。点空白关闭，仅 debug 包显示。",
+                    text = "点下面任意一条，查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。",
                     color = Color(0xFF6D7178),
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -7005,7 +7009,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.InputMenuCopyOnly -> UiCopyPreviewInputActionMenu(listOf("复制"))
                 UiCopyPreviewKind.InputMenuPasteSelect -> UiCopyPreviewInputActionMenu(listOf("粘贴", "全选"))
                 UiCopyPreviewKind.DebugPanel -> UiCopyPreviewPlainText(
-                    listOf("UI文案样式预览", "点下面任意一条，查看它在 App 里的实际样式。点空白关闭，仅 debug 包显示。")
+                    listOf("UI文案样式预览", "点下面任意一条，查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。")
                 )
                 UiCopyPreviewKind.DebugPanelControls -> UiCopyPreviewPlainText(
                     listOf("查看", "预览中", "样式预览")

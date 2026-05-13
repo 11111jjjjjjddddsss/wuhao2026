@@ -14,7 +14,7 @@ import (
 
 func IsAuthStrict() bool {
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_STRICT")))
-	return raw != "false"
+	return raw == "1" || raw == "true" || raw == "yes"
 }
 
 func ResolveAuthUserID(r *http.Request) AuthInfo {
@@ -31,6 +31,14 @@ func ResolveAuthUserID(r *http.Request) AuthInfo {
 				AuthMode: AuthModeToken,
 				MaskedIP: maskedIP,
 			}
+		}
+	}
+
+	if IsAuthStrict() {
+		return AuthInfo{
+			UserID:   "",
+			AuthMode: AuthModeUnauthorized,
+			MaskedIP: maskedIP,
 		}
 	}
 

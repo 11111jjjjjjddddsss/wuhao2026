@@ -74,9 +74,9 @@
 ## R10 生产鉴权仍需上线前收口
 
 - 状态：未关闭
-- 说明：当前后端业务接口和 `/upload` 都要求身份头 / token，但仍兼容 Android 早期阶段的裸 `X-User-Id` 本机身份兜底；这方便单机开发和无登录阶段联调，但不适合作为公开生产鉴权
-- 风险：如果直接公网开放并把裸 `X-User-Id` 当真实登录身份，理论上存在冒充 user_id 读取 / 污染会话、会员和额度状态的风险
-- 后续动作：正式公开上线前必须接入手机号 / token / HMAC 等服务端可验证身份，并关闭裸 `X-User-Id` 生产兜底；这属于账号体系任务，不和本次图片发送兜底混在一刀里改
+- 说明：当前后端业务接口和 `/upload` 都要求身份头 / token，但默认仍兼容 Android 早期阶段的裸 `X-User-Id` 本机身份兜底；这方便单机开发和无登录阶段联调，但不适合作为公开生产鉴权。服务端现在支持 `APP_SECRET + Authorization: Bearer <签名token>`，且显式设置 `AUTH_STRICT=true` 时会关闭裸 `X-User-Id` 兜底，只接受可验证 token
+- 风险：如果公开生产环境仍未接入正式账号体系，且没有开启 `AUTH_STRICT=true`，理论上仍存在冒充 user_id 读取 / 污染会话、会员和额度状态的风险
+- 后续动作：正式公开上线前必须接入手机号 / token / HMAC 等服务端可验证身份，并在生产环境配置 `APP_SECRET` 与 `AUTH_STRICT=true`；后续真实登录体系上线后，再移除或隔离裸 `X-User-Id` 兜底
 
 ## R11 历史模型 Key 轮换确认
 
@@ -88,9 +88,9 @@
 ## R12 会员订单接口仍需接真实支付回调
 
 - 状态：未关闭
-- 说明：Android 会员中心当前只展示支付占位提示，不会调用后端下单 / 续费 / 升级 / 加油包接口；`server-go` 里现有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍是开发期直接变更接口，但默认已返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 才允许本地 / 内测调试使用
-- 风险：这些接口仍不是正式支付真源；如果内测 / 生产环境误开 `ALLOW_DEV_ORDER_ENDPOINTS=true`，非 App 客户端理论上仍可绕过真实支付直接请求会员变更。这不影响当前 Android UI 展示，也不影响每日额度 / 升级补偿 / 加油包扣次顺序本身，但属于上线前必须继续收口的业务安全风险
-- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false
+- 说明：Android 会员中心当前只展示支付占位提示，不会调用后端下单 / 续费 / 升级 / 加油包接口；`server-go` 里现有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍是开发期直接变更接口，但默认已返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境不是 `APP_ENV / ENV / GO_ENV = prod / production` 时才允许本地 / 内测调试使用
+- 风险：这些接口仍不是正式支付真源；如果内测环境误开 `ALLOW_DEV_ORDER_ENDPOINTS=true`，非 App 客户端理论上仍可绕过真实支付直接请求会员变更。这不影响当前 Android UI 展示，也不影响每日额度 / 升级补偿 / 加油包扣次顺序本身，但属于上线前必须继续收口的业务安全风险
+- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false，并配置 `APP_ENV=production` 或等价环境变量作为额外保险
 
 ## R13 今日农情生成质量和调度仍需上线观察
 

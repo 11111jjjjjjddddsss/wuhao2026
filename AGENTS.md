@@ -59,6 +59,7 @@
 - 后端是唯一真相来源
 - 以下业务逻辑必须由后端控制：用户鉴权、会员等级、调用次数、上下文组装、模型调用、成本统计
 - Android 客户端禁止保存、注入或使用模型服务 API Key；主模型和摘要模型调用只能由后端发起，不允许重新引入客户端直连模型链
+- 当前无完整账号体系前，后端默认仍兼容 Android 早期阶段的 `X-User-Id` 本机身份兜底；服务端也支持 `APP_SECRET` 签名 bearer token。生产若配置 `AUTH_STRICT=true`，必须同时配置 `APP_SECRET`，此时裸 `X-User-Id` 会被拒绝，只接受可验证 token
 
 Android 构建链：
 - Gradle wrapper：8.13
@@ -128,7 +129,7 @@ Android 构建链：
 - 加油包：6 元 / 100 次，仅 Plus / Pro 可买
 - 同一时刻只允许 1 个 active 加油包，用完再续
 - 续费订单金额以后端 `orders.amount` 记账为准：Plus 19.9，Pro 29.9
-- 支付未接入前，后端开发期订单变更接口默认返回 `PAYMENT_NOT_CONFIGURED`；只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 才允许用这些接口做本地 / 内测调试。正式支付必须走服务端验签后的支付回调 / 对账流程
+- 支付未接入前，后端开发期订单变更接口默认返回 `PAYMENT_NOT_CONFIGURED`；只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境不是 `APP_ENV / ENV / GO_ENV = prod / production` 时才允许用这些接口做本地 / 内测调试。正式支付必须走服务端验签后的支付回调 / 对账流程
 - 当前代码里的超额消耗顺序：先每日额度，再升级补偿额度，再加油包；如果后续业务口径调整，再单独同步改代码和本文
 
 ## 4. 提示词与后端真源

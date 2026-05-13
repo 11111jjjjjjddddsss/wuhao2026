@@ -1,6 +1,6 @@
 # SAE 发版 Runbook
 
-最后更新：2026-04-14
+最后更新：2026-05-13
 
 ## 目的
 
@@ -19,6 +19,13 @@
   - 成功判定方式
   - 回滚触发条件
   - 相关环境变量来源
+
+## 当前必须确认的环境变量
+
+- `BASE_PUBLIC_URL` 或 `UPLOAD_BASE_URL`：后端公开 `https` 基地址；`/upload` 返回图片 URL 和 `/api/chat/stream` 图片 URL 校验都只认这里，不再从请求转发头临时推导可信域名
+- `APP_ENV=production`：生产环境建议显式配置，防止开发期订单接口被误开
+- `APP_SECRET` + `AUTH_STRICT=true`：生产如果要关闭裸 `X-User-Id` 兜底，必须同时配置签名 token 密钥；在正式账号体系上线前，是否开启需要和 Android 登录 / token 发放链一起确认
+- `ALLOW_DEV_ORDER_ENDPOINTS`：生产保持未设置或 false；即使误设为 true，只要 `APP_ENV / ENV / GO_ENV` 是 `prod / production`，后端也会强制关闭开发期订单接口
 
 ## 暂行原则
 

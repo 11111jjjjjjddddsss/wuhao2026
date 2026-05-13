@@ -289,6 +289,19 @@ func TestValidateChatStreamImageURLsRequiresUploadedJPEG(t *testing.T) {
 	}
 }
 
+func TestValidateChatStreamImageURLsRequiresConfiguredPublicBase(t *testing.T) {
+	t.Setenv("BASE_PUBLIC_URL", "")
+	t.Setenv("UPLOAD_BASE_URL", "")
+	server := &Server{}
+	req := httptest.NewRequest("POST", "https://api.example.com/api/chat/stream", nil)
+	req.Header.Set("X-Forwarded-Host", "api.example.com")
+	req.Header.Set("X-Forwarded-Proto", "https")
+
+	if got := server.validateChatStreamImageURLs(req, []string{"https://api.example.com/uploads/abc123.jpg"}); got != "image host not configured" {
+		t.Fatalf("validation mismatch: got %q want %q", got, "image host not configured")
+	}
+}
+
 func TestTierWindowsAndSummaryIntervalsMatchBusinessRules(t *testing.T) {
 	if got := getAWindowByTier(TierFree); got != 6 {
 		t.Fatalf("free a-window mismatch: %d", got)

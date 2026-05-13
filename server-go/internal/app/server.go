@@ -462,8 +462,20 @@ func (s *Server) allowDevOrderEndpoint(w http.ResponseWriter) bool {
 }
 
 func devOrderEndpointsEnabled() bool {
+	if isProductionEnv() {
+		return false
+	}
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv("ALLOW_DEV_ORDER_ENDPOINTS")))
 	return raw == "1" || raw == "true" || raw == "yes"
+}
+
+func isProductionEnv() bool {
+	raw := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("APP_ENV"),
+		os.Getenv("ENV"),
+		os.Getenv("GO_ENV"),
+	)))
+	return raw == "prod" || raw == "production"
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, payload any) {

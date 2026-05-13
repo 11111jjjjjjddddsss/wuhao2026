@@ -5,6 +5,8 @@
 
 ## 2026-05-13
 
+- 夜间代理会诊后做一轮高风险收口：`AUTH_STRICT=true` 现在会真正关闭裸 `X-User-Id` 兜底，只接受 `APP_SECRET` 签名 bearer token；图片上传 / 聊天图片 URL 校验不再用请求转发头推导公开基地址，必须配置 `BASE_PUBLIC_URL` 或 `UPLOAD_BASE_URL` 为公开 `https` 域名；开发期订单接口即使误设 `ALLOW_DEV_ORDER_ENDPOINTS=true`，在 `APP_ENV / ENV / GO_ENV = prod / production` 时仍强制关闭。Android 侧同步收紧 `onChromeMeasured` 的折叠高度采样条件，避免多行输入框高度污染聊天列表 reserve / 96dp 工作线；debug-only UI 预览面板文案改成“正式组件或调试近似样式”，汉堡页预览说明同步无标题设置页；附件提示统一为“单次最多4张图片”。本次不改聊天列表主人、图片压缩上传链、会员支付真实方案或今日农情生成链。
+
 - `HamburgerMenuSheet.kt` 精简汉堡设置页顶部：删除居中的“农技千查”标题，只保留左上角返回按钮和下方设置入口组，并把内容区 top padding 调到 78dp，避免第一组卡片删标题后顶到返回按钮下方；同时把“服务协议”文档图标上下压短一点，减少文档图标显得过长的问题。只改汉堡设置页视觉布局和图标 Canvas，不改菜单结构、会员中心、点击占位、聊天滚动链、输入框、图片链或后端接口。
 
 - `ChatComposerPanel.kt` 收小 `+` 附件面板里的“相机 / 照片”灰色入口块：底部面板最小高度从 292dp 收到 270dp，内容左右留白从 30dp 加到 38dp，两个入口间距从 12dp 加到 24dp，单块高度从 104dp 收到 90dp，图标从 34dp 收到 30dp，文字从 18sp 收到 17sp，让两个触摸块不再显得又大又挤。已按 baseline profile runbook 复查：本次不改输入框聚焦、IME、LazyColumn、发送起步或首屏预热路径，暂不需要更新 profile 脚本。只改附件面板视觉密度，不改相机 / Photo Picker 入口、图片最多 4 张规则、上传链、聊天滚动链或后端接口。

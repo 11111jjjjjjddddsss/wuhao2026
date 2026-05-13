@@ -104,7 +104,7 @@ func readUpload(file multipart.File) (string, []byte, error) {
 	return contentType, data, nil
 }
 
-func resolvePublicBaseURL(r *http.Request) string {
+func resolvePublicBaseURL(_ *http.Request) string {
 	configured := strings.TrimRight(strings.TrimSpace(firstNonEmpty(
 		os.Getenv("BASE_PUBLIC_URL"),
 		os.Getenv("UPLOAD_BASE_URL"),
@@ -112,13 +112,7 @@ func resolvePublicBaseURL(r *http.Request) string {
 	if strings.HasPrefix(configured, "http://") || strings.HasPrefix(configured, "https://") {
 		return configured
 	}
-
-	host := strings.TrimSpace(firstNonEmpty(r.Header.Get("X-Forwarded-Host"), r.Host))
-	proto := strings.TrimSpace(firstNonEmpty(r.Header.Get("X-Forwarded-Proto"), ternary(r.TLS != nil, "https", "http")))
-	if host == "" || proto == "" {
-		return ""
-	}
-	return strings.TrimRight(proto+"://"+host, "/")
+	return ""
 }
 
 func randomFilename(ext string, header *multipart.FileHeader) (string, error) {

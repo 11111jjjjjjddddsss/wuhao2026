@@ -22,6 +22,7 @@ func TestQuotaBusinessConstantsMatchCurrentRules(t *testing.T) {
 }
 
 func TestDevOrderEndpointsAreDisabledByDefault(t *testing.T) {
+	t.Setenv("APP_ENV", "")
 	t.Setenv("ALLOW_DEV_ORDER_ENDPOINTS", "")
 
 	if devOrderEndpointsEnabled() {
@@ -30,10 +31,20 @@ func TestDevOrderEndpointsAreDisabledByDefault(t *testing.T) {
 }
 
 func TestDevOrderEndpointsRequireExplicitOptIn(t *testing.T) {
+	t.Setenv("APP_ENV", "")
 	t.Setenv("ALLOW_DEV_ORDER_ENDPOINTS", "true")
 
 	if !devOrderEndpointsEnabled() {
 		t.Fatal("dev order endpoints should be enabled by explicit opt-in")
+	}
+}
+
+func TestDevOrderEndpointsStayDisabledInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("ALLOW_DEV_ORDER_ENDPOINTS", "true")
+
+	if devOrderEndpointsEnabled() {
+		t.Fatal("dev order endpoints should stay disabled in production")
 	}
 }
 
