@@ -1831,7 +1831,7 @@ private fun MenuBarsIcon(
 }
 
 @Composable
-private fun MembershipCenterBadgeIcon(
+private fun MembershipCenterAddIcon(
     size: Dp,
     modifier: Modifier = Modifier
 ) {
@@ -1843,24 +1843,17 @@ private fun MembershipCenterBadgeIcon(
         val w = this.size.width
         val h = this.size.height
         val stroke = this.size.minDimension * 0.09f
-        val shield = listOf(
-            Offset(w * 0.50f, h * 0.08f),
-            Offset(w * 0.86f, h * 0.28f),
-            Offset(w * 0.78f, h * 0.78f),
-            Offset(w * 0.50f, h * 0.92f),
-            Offset(w * 0.22f, h * 0.78f),
-            Offset(w * 0.14f, h * 0.28f)
-        )
-        shield.forEachIndexed { index, start ->
-            val end = shield[(index + 1) % shield.size]
-            drawLine(
-                color = Color(0xFF111111),
-                start = start,
-                end = end,
-                strokeWidth = stroke,
+        val corner = this.size.minDimension * 0.15f
+        drawRoundRect(
+            color = Color(0xFF111111),
+            topLeft = Offset(w * 0.18f, h * 0.18f),
+            size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.64f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = stroke,
                 cap = StrokeCap.Round
             )
-        }
+        )
         drawLine(
             color = Color(0xFF111111),
             start = Offset(w * 0.36f, h * 0.55f),
@@ -6122,7 +6115,7 @@ fun ChatScreen() {
                         },
                         modifier = Modifier.size(chromeButtonSize)
                     ) {
-                        MembershipCenterBadgeIcon(
+                        MembershipCenterAddIcon(
                             size = membershipIconSize
                         )
                     }

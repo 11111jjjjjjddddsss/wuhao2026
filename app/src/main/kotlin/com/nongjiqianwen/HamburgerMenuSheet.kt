@@ -447,16 +447,13 @@ private fun HamburgerMenuGlyph(
         )
         when (icon) {
             HamburgerMenuIcon.Membership -> {
-                val path = Path().apply {
-                    moveTo(w * 0.50f, h * 0.08f)
-                    lineTo(w * 0.86f, h * 0.28f)
-                    lineTo(w * 0.78f, h * 0.78f)
-                    lineTo(w * 0.50f, h * 0.92f)
-                    lineTo(w * 0.22f, h * 0.78f)
-                    lineTo(w * 0.14f, h * 0.28f)
-                    close()
-                }
-                drawPath(path, tint, style = stroke)
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.18f, h * 0.18f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.64f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.15f, h * 0.15f),
+                    style = stroke
+                )
                 drawLine(tint, Offset(w * 0.36f, h * 0.55f), Offset(w * 0.64f, h * 0.55f), strokeWidth, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.50f, h * 0.41f), Offset(w * 0.50f, h * 0.69f), strokeWidth, cap = StrokeCap.Round)
             }
