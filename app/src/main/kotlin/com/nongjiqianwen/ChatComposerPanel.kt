@@ -711,10 +711,10 @@ internal fun ComposerAttachmentBottomSheet(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 292.dp)
+                        .heightIn(min = 270.dp)
                         .navigationBarsPadding()
-                        .padding(start = 30.dp, end = 30.dp, top = 32.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                        .padding(start = 38.dp, end = 38.dp, top = 30.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (limitReached) {
                         Text(
@@ -728,21 +728,21 @@ internal fun ComposerAttachmentBottomSheet(
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
                         ComposerAttachmentBottomSheetTile(
                             title = COMPOSER_ATTACHMENT_CAMERA_TEXT,
                             modifier = Modifier.weight(1f),
                             onClick = onCameraClick
                         ) {
-                            ComposerCameraIcon(tint = Color(0xFF111111), modifier = Modifier.size(34.dp))
+                            ComposerCameraIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
                         }
                         ComposerAttachmentBottomSheetTile(
                             title = COMPOSER_ATTACHMENT_PHOTO_TEXT,
                             modifier = Modifier.weight(1f),
                             onClick = onPhotoClick
                         ) {
-                            ComposerPhotoIcon(tint = Color(0xFF111111), modifier = Modifier.size(34.dp))
+                            ComposerPhotoIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
                         }
                     }
                     if (!limitReached) {
@@ -787,24 +787,24 @@ private fun RowScope.ComposerAttachmentBottomSheetTile(
     val interactionSource = remember { MutableInteractionSource() }
     Column(
         modifier = modifier
-            .height(104.dp)
-            .clip(RoundedCornerShape(18.dp))
+            .height(90.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFFF5F6F7))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             )
-            .padding(vertical = 12.dp),
+            .padding(vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         icon()
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(7.dp))
         Text(
             text = title,
             color = Color(0xFF111111),
-            fontSize = 18.sp,
+            fontSize = 17.sp,
             fontWeight = FontWeight.Medium
         )
     }
