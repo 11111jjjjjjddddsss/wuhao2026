@@ -425,7 +425,10 @@ func validateDailyAgriItem(item DailyAgriCardItem, sourceURLs map[string]struct{
 	for _, word := range []string{
 		"招商", "加盟", "代理", "厂家直销", "优惠", "扫码", "二维码", "微信", "电话",
 		"直播", "带货", "购买", "下单", "促销", "广告", "软文", "模型", "提示词", "api",
-		"system prompt", "search_strategy", "enable_thinking",
+		"system prompt", "search_strategy", "enable_thinking", "值得看", "值得关注", "对农户有用",
+		"参考意义", "可供参考", "建议阅读", "本条新闻", "该消息", "该新闻", "根据搜索结果",
+		"检索显示", "模型认为", "我是ai", "速看", "必看", "重磅", "紧急", "大消息", "来了",
+		"暴涨", "利好", "震惊",
 	} {
 		if strings.Contains(combined, strings.ToLower(word)) {
 			return fmt.Errorf("blocked word")

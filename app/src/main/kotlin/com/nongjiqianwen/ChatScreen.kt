@@ -7211,41 +7211,48 @@ private fun TodayAgriNewsCard(
 ) {
     val items = card.items.orEmpty()
     if (items.size != 3) return
-    Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(22.dp),
+            border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+            modifier = Modifier
+                .widthIn(max = 560.dp)
+                .fillMaxWidth()
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Surface(
-                    color = Color(0xFF111111),
-                    shape = RoundedCornerShape(999.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "今日农情",
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        lineHeight = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    Surface(
+                        color = Color(0xFF111111),
+                        shape = RoundedCornerShape(999.dp)
+                    ) {
+                        Text(
+                            text = "今日农情",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            lineHeight = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+                items.forEach { item ->
+                    TodayAgriNewsItem(
+                        item = item,
+                        onOpenUrl = onOpenUrl
                     )
                 }
-            }
-            items.forEach { item ->
-                TodayAgriNewsItem(
-                    item = item,
-                    onOpenUrl = onOpenUrl
-                )
             }
         }
     }
