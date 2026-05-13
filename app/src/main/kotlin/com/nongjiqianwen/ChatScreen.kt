@@ -7240,16 +7240,6 @@ private fun TodayAgriNewsCard(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
-                Spacer(modifier = Modifier.weight(1f))
-                todayAgriDateText(card.dateCn)?.let { dateText ->
-                    Text(
-                        text = dateText,
-                        color = Color(0xFF8B8F96),
-                        fontSize = 13.sp,
-                        lineHeight = 17.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
             }
             items.forEach { item ->
                 TodayAgriNewsItem(
