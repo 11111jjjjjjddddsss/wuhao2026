@@ -1843,7 +1843,7 @@ private fun MembershipCenterAddIcon(
         val w = this.size.width
         val h = this.size.height
         val stroke = this.size.minDimension * 0.09f
-        val plusStroke = stroke * 0.82f
+        val plusStroke = stroke * 0.92f
         val corner = this.size.minDimension * 0.15f
         drawRoundRect(
             color = Color(0xFF111111),
@@ -1857,15 +1857,15 @@ private fun MembershipCenterAddIcon(
         )
         drawLine(
             color = Color(0xFF111111),
-            start = Offset(w * 0.38f, h * 0.50f),
-            end = Offset(w * 0.62f, h * 0.50f),
+            start = Offset(w * 0.35f, h * 0.50f),
+            end = Offset(w * 0.65f, h * 0.50f),
             strokeWidth = plusStroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = Color(0xFF111111),
-            start = Offset(w * 0.50f, h * 0.38f),
-            end = Offset(w * 0.50f, h * 0.62f),
+            start = Offset(w * 0.50f, h * 0.35f),
+            end = Offset(w * 0.50f, h * 0.65f),
             strokeWidth = plusStroke,
             cap = StrokeCap.Round
         )
