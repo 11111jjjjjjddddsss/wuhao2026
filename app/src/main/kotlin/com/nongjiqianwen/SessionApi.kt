@@ -94,8 +94,10 @@ object SessionApi {
 
     private fun TodayAgriCard?.isValidTodayAgriCard(): Boolean {
         val candidate = this ?: return false
+        val items = candidate.items.orEmpty()
         return candidate.title == "今日农情" &&
-            candidate.items.orEmpty().count { item ->
+            items.size == 3 &&
+            items.all { item ->
                 !item.title.isNullOrBlank() &&
                     !item.summary.isNullOrBlank() &&
                     !item.url.isNullOrBlank() &&
@@ -236,7 +238,10 @@ object SessionApi {
                     }
                     try {
                         val parsed = gson.fromJson(body, TodayAgriCardResponse::class.java)
-                        val validCard = parsed?.card?.takeIf { it.isValidTodayAgriCard() }
+                        val validCard = parsed
+                            ?.takeIf { it.status == "ready" }
+                            ?.card
+                            ?.takeIf { it.isValidTodayAgriCard() }
                         onResult(validCard)
                     } catch (e: Exception) {
                         Log.e(TAG, "parse today agri card", e)

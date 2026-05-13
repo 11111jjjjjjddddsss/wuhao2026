@@ -85,3 +85,31 @@ func TestParseDailyAgriCardSkipsRecentAndCurrentDuplicates(t *testing.T) {
 		}
 	}
 }
+
+func TestParseDailyAgriCardRequiresFixedCardName(t *testing.T) {
+	sources := []DailyAgriSearchSource{
+		{Index: 1, URL: "https://www.gov.cn/agri/new-1", SiteName: "中国政府网"},
+		{Index: 2, URL: "https://www.gov.cn/agri/new-2", SiteName: "中国政府网"},
+		{Index: 3, URL: "https://www.gov.cn/agri/new-3", SiteName: "中国政府网"},
+	}
+	content := `{
+	  "items": [
+	    {"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。","source_index":1,"source_name":"中国政府网","published_date":"2026-05-13"},
+	    {"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。","source_index":2,"source_name":"中国政府网","published_date":"2026-05-13"},
+	    {"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。","source_index":3,"source_name":"中国政府网","published_date":"2026-05-13"}
+	  ]
+	}`
+
+	if _, err := parseDailyAgriCard(content, sources, "20260513", nil); err == nil {
+		t.Fatalf("expected missing card_name to be rejected")
+	}
+}
+
+func TestValidateDailyAgriPublishedDateRejectsFutureDate(t *testing.T) {
+	if err := validateDailyAgriPublishedDate("2026-05-14", "20260513"); err == nil {
+		t.Fatalf("expected future published date to be rejected")
+	}
+	if err := validateDailyAgriPublishedDate("2026-05-13", "20260513"); err != nil {
+		t.Fatalf("expected current date to be accepted: %v", err)
+	}
+}

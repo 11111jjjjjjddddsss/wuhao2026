@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const dailyAgriDefaultScope = "CN"
@@ -246,9 +247,7 @@ func (s *Store) PublishDailyAgriCard(
 func (s *Store) MarkDailyAgriCardFailed(ctx context.Context, dayCN string, scope string, leaseToken string, message string) error {
 	scope = normalizeDailyAgriScope(scope)
 	now := time.Now().UnixMilli()
-	if len(message) > 240 {
-		message = message[:240]
-	}
+	message = truncateUTF8Bytes(message, 240)
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE daily_agri_cards
@@ -275,6 +274,16 @@ func (s *Store) MarkDailyAgriCardFailed(ctx context.Context, dayCN string, scope
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func truncateUTF8Bytes(value string, maxBytes int) string {
+	if maxBytes <= 0 || len(value) <= maxBytes {
+		return value
+	}
+	for maxBytes > 0 && !utf8.ValidString(value[:maxBytes]) {
+		maxBytes--
+	}
+	return value[:maxBytes]
 }
 
 func normalizeDailyAgriScope(scope string) string {

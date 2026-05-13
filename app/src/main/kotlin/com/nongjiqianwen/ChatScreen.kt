@@ -275,14 +275,17 @@ private fun buildChatTimelineItems(
     return items
 }
 
-private fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean =
-    title == "今日农情" &&
-        items.orEmpty().count { item ->
+private fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
+    val cardItems = items.orEmpty()
+    return title == "今日农情" &&
+        cardItems.size == 3 &&
+        cardItems.all { item ->
             !item.title.isNullOrBlank() &&
                 !item.summary.isNullOrBlank() &&
                 !item.url.isNullOrBlank() &&
                 item.url.trim().startsWith("https://")
-        } == 3
+        }
+}
 
 private fun markLocalImageUploadPendingAsFailed(
     snapshot: LocalChatWindowSnapshot,
@@ -7206,7 +7209,7 @@ private fun TodayAgriNewsCard(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val items = card.items.orEmpty().take(3)
+    val items = card.items.orEmpty()
     if (items.size != 3) return
     Surface(
         color = Color.White,

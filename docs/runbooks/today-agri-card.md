@@ -41,7 +41,29 @@ curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/generate" 
   "card": {
     "date_cn": "20260511",
     "title": "今日农情",
-    "items": []
+    "items": [
+      {
+        "title": "华北麦区防干热风",
+        "summary": "华北多地小麦进入灌浆关键期，气象部门提醒关注高温干风，适时浇水稳粒重。",
+        "url": "https://www.weather.com.cn/",
+        "source": "中国天气网",
+        "published_date": "2026-05-11"
+      },
+      {
+        "title": "早稻病虫进入防控期",
+        "summary": "南方早稻陆续分蘖拔节，植保系统提示加强纹枯病和稻飞虱巡查。",
+        "url": "https://www.natesc.org.cn/",
+        "source": "全国农技推广网",
+        "published_date": "2026-05-11"
+      },
+      {
+        "title": "蔬菜价格稳中有降",
+        "summary": "批发市场监测显示多类蔬菜供应增加，部分叶菜价格回落，可关注本地走货节奏。",
+        "url": "https://www.moa.gov.cn/",
+        "source": "农业农村部",
+        "published_date": "2026-05-11"
+      }
+    ]
   }
 }
 ```

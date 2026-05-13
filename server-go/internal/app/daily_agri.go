@@ -301,7 +301,7 @@ func parseDailyAgriCard(content string, sources []DailyAgriSearchSource, dayCN s
 	if err := json.Unmarshal([]byte(jsonContent), &payload); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(payload.CardName) != "" && strings.TrimSpace(payload.CardName) != "今日农情" {
+	if strings.TrimSpace(payload.CardName) != "今日农情" {
 		return nil, fmt.Errorf("unexpected card_name %q", payload.CardName)
 	}
 	sourceURLs := buildSourceURLSet(sources)
@@ -441,7 +441,7 @@ func validateDailyAgriPublishedDate(rawDate string, dayCN string) error {
 	if err != nil {
 		return fmt.Errorf("invalid current date")
 	}
-	if published.After(current.AddDate(0, 0, 1)) || published.Before(current.AddDate(0, 0, -7)) {
+	if published.After(current) || published.Before(current.AddDate(0, 0, -7)) {
 		return fmt.Errorf("published date out of range")
 	}
 	return nil
