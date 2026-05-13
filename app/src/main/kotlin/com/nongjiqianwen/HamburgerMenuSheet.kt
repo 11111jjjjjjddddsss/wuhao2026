@@ -112,23 +112,9 @@ internal fun HamburgerMenuSheet(
                         .statusBarsPadding()
                         .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(start = 18.dp, end = 18.dp, top = 34.dp, bottom = 32.dp),
+                        .padding(start = 18.dp, end = 18.dp, top = 78.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = "农技千查",
-                            color = Color(0xFF111111),
-                            fontSize = 22.sp,
-                            lineHeight = 28.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-
                     HamburgerMenuGroup {
                         HamburgerMenuRow(
                             icon = HamburgerMenuIcon.Membership,
@@ -251,13 +237,6 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = "农技千查",
-                color = Color(0xFF111111),
-                fontSize = 19.sp,
-                lineHeight = 25.sp,
-                fontWeight = FontWeight.Medium
-            )
             HamburgerMenuGroup {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Membership,
@@ -505,16 +484,16 @@ private fun HamburgerMenuGlyph(
             }
             HamburgerMenuIcon.Document -> {
                 val path = Path().apply {
-                    moveTo(w * 0.23f, h * 0.12f)
-                    lineTo(w * 0.63f, h * 0.12f)
-                    lineTo(w * 0.80f, h * 0.30f)
-                    lineTo(w * 0.80f, h * 0.88f)
-                    lineTo(w * 0.23f, h * 0.88f)
+                    moveTo(w * 0.23f, h * 0.17f)
+                    lineTo(w * 0.64f, h * 0.17f)
+                    lineTo(w * 0.78f, h * 0.31f)
+                    lineTo(w * 0.78f, h * 0.83f)
+                    lineTo(w * 0.23f, h * 0.83f)
                     close()
                 }
                 drawPath(path, tint, style = stroke)
-                drawLine(tint, Offset(w * 0.34f, h * 0.46f), Offset(w * 0.68f, h * 0.46f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.34f, h * 0.63f), Offset(w * 0.68f, h * 0.63f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.34f, h * 0.47f), Offset(w * 0.67f, h * 0.47f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.34f, h * 0.62f), Offset(w * 0.67f, h * 0.62f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Privacy -> {
                 val shackle = Path().apply {
