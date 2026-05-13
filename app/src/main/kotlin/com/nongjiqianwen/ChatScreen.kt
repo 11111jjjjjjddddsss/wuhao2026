@@ -7217,7 +7217,7 @@ private fun TodayAgriNewsCard(
         border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 40.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp, vertical = 12.dp)
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -7251,9 +7251,8 @@ private fun TodayAgriNewsCard(
                     )
                 }
             }
-            items.forEachIndexed { index, item ->
+            items.forEach { item ->
                 TodayAgriNewsItem(
-                    index = index + 1,
                     item = item,
                     onOpenUrl = onOpenUrl
                 )
@@ -7264,7 +7263,6 @@ private fun TodayAgriNewsCard(
 
 @Composable
 private fun TodayAgriNewsItem(
-    index: Int,
     item: SessionApi.TodayAgriCardItem,
     onOpenUrl: (String) -> Unit
 ) {
@@ -7283,24 +7281,9 @@ private fun TodayAgriNewsItem(
             .clickable(enabled = url.isNotBlank()) { onOpenUrl(url) }
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Surface(
-                color = Color(0xFF111111),
-                shape = CircleShape,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = index.toString(),
-                        color = Color.White,
-                        fontSize = 13.sp,
-                        lineHeight = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
