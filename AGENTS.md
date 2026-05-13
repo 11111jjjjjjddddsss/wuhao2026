@@ -114,6 +114,7 @@ Android 构建链：
 - 用户侧只读接口是 `GET /api/today-agri-card`，需要用户鉴权，只读取已生成缓存，缺失 / pending / failed 时前端静默不展示，不在用户打开 App 时临时触发模型
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只给定时任务 / 运维调用，必须携带 `DAILY_AGRI_JOB_SECRET`；生成前用数据库 lease 防并发
 - 生成链路使用 DashScope 原生 Generation 协议调用 `qwen3.5-plus`，显式关闭思考模式，开启强制联网搜索，`search_strategy=max`，`enable_source=true`，并要求只产出“今日农情”3 条事实类农业资讯
+- 生成时会读取过去 7 天已 ready 的今日农情卡片，把标题 / 摘要 / 来源 / 链接喂给模型，要求今天不要重复同链接、同标题或同一事件；后端也会硬过滤过去 7 天和当天候选里的重复链接 / 重复标题
 - 后端只发布可解析 JSON、严格 3 条、https、近 7 天、来源 URL 来自 DashScope 搜索结果且域名可信的结果；广告、导购、软文、模型 / 提示词泄露类内容直接过滤，过滤后不足 3 条则不发布新卡片
 - Android 只把今日农情作为 `ChatTimelineItem.TodayAgriCard` 插入聊天列表展示层；真实 `messages` 仍只包含用户 / assistant 对话。卡片不参与本地聊天快照、发送、重试、复制、滚动工作线真值或后端上下文；点击单条农情只用系统浏览器打开来源 URL，不自动向 AI 发送问题
 

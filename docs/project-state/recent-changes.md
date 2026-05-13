@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-13
+
+- `server-go` 今日农情生成链路补近 7 天去重：生成前读取过去 7 天已 ready 的 `daily_agri_cards`，把标题 / 摘要 / 来源 / 链接喂给 `qwen3.5-plus` prompt，明确要求不重复同 URL、同标题或同一事件；服务端解析结果时同步硬过滤过去 7 天和当天候选里的重复链接 / 重复标题，过滤后不足 3 条仍不发布新卡片。提示词也收紧为优先有直接农业参考价值的事实类农情，少选空泛会议、一般部署和表态新闻。
+
 ## 2026-05-11
 
 - `server-go` / `ChatScreen.kt` / `SessionApi.kt` 接入首版“今日农情”：后端新增 `daily_agri_cards` 迁移、`GET /api/today-agri-card` 只读接口和带 `DAILY_AGRI_JOB_SECRET` 的内部生成接口，生成链路使用 DashScope 原生 Generation 调 `qwen3.5-plus`，显式关闭思考模式，强制联网搜索 `search_strategy=max` 并返回来源；服务端用数据库 lease 防并发，并校验 JSON、3 条 item、https、近 7 天、来源 URL 必须来自搜索结果、可信域名和广告 / 泄露词过滤。Android 在历史 hydrate 后拉取卡片，作为 `ChatTimelineItem.TodayAgriCard` 插入聊天列表展示层，三条卡片点击打开来源 URL；它不是 `ChatMessage`，不进入本地聊天快照、A/B/C 上下文、归档、摘要或问诊扣次。debug-only 文案预览面板同步新增“今日农情”样式预览；缺失 / pending / failed 时前端静默不展示，不阻塞聊天页。

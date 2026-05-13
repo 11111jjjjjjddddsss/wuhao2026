@@ -45,6 +45,59 @@ func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string
 	return &card, status, nil
 }
 
+func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string, beforeDayCN string, scope string, limit int) ([]DailyAgriCard, error) {
+	scope = normalizeDailyAgriScope(scope)
+	if limit <= 0 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT day_cn, content_json, generated_at
+		 FROM daily_agri_cards
+		 WHERE scope = ? AND day_cn >= ? AND day_cn < ? AND status = 'ready' AND content_json IS NOT NULL
+		 ORDER BY day_cn DESC
+		 LIMIT ?`,
+		scope,
+		sinceDayCN,
+		beforeDayCN,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cards := make([]DailyAgriCard, 0, limit)
+	for rows.Next() {
+		var (
+			dayCN      string
+			contentRaw string
+			generated  sql.NullInt64
+		)
+		if err := rows.Scan(&dayCN, &contentRaw, &generated); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(contentRaw) == "" {
+			continue
+		}
+		var card DailyAgriCard
+		if err := json.Unmarshal([]byte(contentRaw), &card); err != nil {
+			return nil, err
+		}
+		if card.DateCN == "" {
+			card.DateCN = dayCN
+		}
+		if card.GeneratedAt == 0 {
+			card.GeneratedAt = generated.Int64
+		}
+		cards = append(cards, card)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return cards, nil
+}
+
 func (s *Store) TryAcquireDailyAgriCardGeneration(
 	ctx context.Context,
 	dayCN string,
