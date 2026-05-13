@@ -112,8 +112,8 @@ internal fun HamburgerMenuSheet(
                         .statusBarsPadding()
                         .navigationBarsPadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(start = 22.dp, end = 22.dp, top = 36.dp, bottom = 34.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                        .padding(start = 18.dp, end = 18.dp, top = 34.dp, bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -123,9 +123,9 @@ internal fun HamburgerMenuSheet(
                         Text(
                             text = "农技千查",
                             color = Color(0xFF111111),
-                            fontSize = 24.sp,
-                            lineHeight = 30.sp,
-                            fontWeight = FontWeight.SemiBold
+                            fontSize = 22.sp,
+                            lineHeight = 28.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
 
@@ -197,8 +197,8 @@ internal fun HamburgerMenuSheet(
                         .align(Alignment.TopStart)
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                         .statusBarsPadding()
-                        .padding(start = 22.dp, top = 8.dp)
-                        .size(58.dp)
+                        .padding(start = 18.dp, top = 10.dp)
+                        .size(50.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -211,7 +211,7 @@ internal fun HamburgerMenuSheet(
                     Box(contentAlignment = Alignment.Center) {
                         HamburgerBackIcon(
                             tint = Color(0xFF111111),
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -254,9 +254,9 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
             Text(
                 text = "农技千查",
                 color = Color(0xFF111111),
-                fontSize = 20.sp,
-                lineHeight = 26.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = 19.sp,
+                lineHeight = 25.sp,
+                fontWeight = FontWeight.Medium
             )
             HamburgerMenuGroup {
                 HamburgerMenuRow(
@@ -322,7 +322,7 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
 private fun HamburgerMenuGroup(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         color = Color(0xFFF0F1F2),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(22.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -337,7 +337,7 @@ private fun HamburgerMenuDivider() {
     HorizontalDivider(
         thickness = 2.dp,
         color = Color(0xFFF8F9FA),
-        modifier = Modifier.padding(start = 64.dp)
+        modifier = Modifier.fillMaxWidth()
     )
 }
 
@@ -353,20 +353,20 @@ private fun HamburgerMenuRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 68.dp)
+            .heightIn(min = 60.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(18.dp)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         HamburgerMenuGlyph(
             icon = icon,
             tint = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier.size(24.dp)
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -375,9 +375,9 @@ private fun HamburgerMenuRow(
             Text(
                 text = title,
                 color = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-                fontSize = 20.sp,
-                lineHeight = 25.sp,
-                fontWeight = FontWeight.Medium,
+                fontSize = 18.sp,
+                lineHeight = 23.sp,
+                fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -385,8 +385,8 @@ private fun HamburgerMenuRow(
                 Text(
                     text = subtitle,
                     color = if (destructive) Color(0xFFD24646).copy(alpha = 0.72f) else Color(0xFF686C74),
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    fontSize = 12.5.sp,
+                    lineHeight = 17.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
