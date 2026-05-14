@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
@@ -55,8 +57,11 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -93,7 +98,7 @@ internal fun HamburgerMenuSheet(
         delay(1500)
         noticeText = null
     }
-    BackHandler(enabled = visible && page == HamburgerMenuPage.Account) {
+    BackHandler(enabled = visible && page != HamburgerMenuPage.Menu) {
         page = HamburgerMenuPage.Menu
     }
     AnimatedVisibility(
@@ -116,7 +121,7 @@ internal fun HamburgerMenuSheet(
                 AnimatedContent(
                     targetState = page,
                     transitionSpec = {
-                        if (targetState == HamburgerMenuPage.Account) {
+                        if (targetState != HamburgerMenuPage.Menu) {
                             slideInHorizontally(
                                 initialOffsetX = { it },
                                 animationSpec = tween(durationMillis = HAMBURGER_PAGE_ENTER_MS)
@@ -145,11 +150,20 @@ internal fun HamburgerMenuSheet(
                                     performButtonHaptic()
                                     page = HamburgerMenuPage.Account
                                 },
+                                onOpenRedeem = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.Redeem
+                                },
                                 onPlaceholderClick = ::showNotice
                             )
                         }
                         HamburgerMenuPage.Account -> {
                             HamburgerAccountManagementPage(
+                                onPendingAction = ::showNotice
+                            )
+                        }
+                        HamburgerMenuPage.Redeem -> {
+                            HamburgerRedeemCodePage(
                                 onPendingAction = ::showNotice
                             )
                         }
@@ -170,7 +184,7 @@ internal fun HamburgerMenuSheet(
                             indication = null,
                             onClick = {
                                 performButtonHaptic()
-                                if (page == HamburgerMenuPage.Account) {
+                                if (page != HamburgerMenuPage.Menu) {
                                     page = HamburgerMenuPage.Menu
                                 } else {
                                     onDismiss()
@@ -214,6 +228,7 @@ internal fun HamburgerMenuSheet(
 private fun HamburgerMenuMainPage(
     onOpenMembership: () -> Unit,
     onOpenAccount: () -> Unit,
+    onOpenRedeem: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     Column(
@@ -232,6 +247,13 @@ private fun HamburgerMenuMainPage(
                 title = "会员中心",
                 subtitle = "套餐、额度和加油包",
                 onClick = onOpenMembership
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Redeem,
+                title = "兑换码",
+                subtitle = "兑换会员权益",
+                onClick = onOpenRedeem
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
@@ -304,6 +326,13 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                     icon = HamburgerMenuIcon.Membership,
                     title = "会员中心",
                     subtitle = "套餐、额度和加油包",
+                    onClick = {}
+                )
+                HamburgerMenuDivider()
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Redeem,
+                    title = "兑换码",
+                    subtitle = "兑换会员权益",
                     onClick = {}
                 )
                 HamburgerMenuDivider()
@@ -419,6 +448,127 @@ private fun HamburgerAccountManagementPage(
                 onClick = { onPendingAction("账号注销后续接入") }
             )
         }
+    }
+}
+
+@Composable
+private fun HamburgerRedeemCodePage(
+    onPendingAction: (String) -> Unit
+) {
+    var redeemCode by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
+    ) {
+        Text(
+            text = "兑换码",
+            color = Color(0xFF111111),
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(top = 14.dp)
+        )
+
+        Text(
+            text = "输入兑换码",
+            color = Color(0xFF8A8E96),
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.padding(start = 18.dp, top = 28.dp, bottom = 10.dp)
+        )
+
+        HamburgerAccountGroup {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp)
+                    .padding(start = 20.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (redeemCode.isBlank()) {
+                        Text(
+                            text = "输入英文或数字",
+                            color = Color(0xFFB0B4BC),
+                            fontSize = 17.sp,
+                            lineHeight = 24.sp,
+                            fontWeight = FontWeight.Normal,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    BasicTextField(
+                        value = redeemCode,
+                        onValueChange = { next ->
+                            redeemCode = next
+                                .uppercase()
+                                .filter { it.isLetterOrDigit() || it == '-' }
+                                .take(32)
+                        },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = Color(0xFF111111),
+                            fontSize = 17.sp,
+                            lineHeight = 24.sp,
+                            fontWeight = FontWeight.Normal
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Characters,
+                            keyboardType = KeyboardType.Text
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Surface(
+                    color = if (redeemCode.isBlank()) Color(0xFFE3E5E8) else Color(0xFF111111),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {
+                            if (redeemCode.isBlank()) {
+                                onPendingAction("请输入兑换码")
+                            } else {
+                                onPendingAction("兑换码功能后续接入")
+                            }
+                        }
+                    )
+                ) {
+                    Text(
+                        text = "兑换",
+                        color = if (redeemCode.isBlank()) Color(0xFF8A8E96) else Color.White,
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = "兑换码可用于领取会员权益，正式兑换规则以后端为准。",
+            color = Color(0xFF8A8E96),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 12.dp)
+        )
     }
 }
 
@@ -594,6 +744,7 @@ private fun HamburgerMenuRow(
 
 private enum class HamburgerMenuIcon {
     Membership,
+    Redeem,
     Account,
     Update,
     Document,
@@ -605,6 +756,7 @@ private enum class HamburgerMenuIcon {
 
 private enum class HamburgerMenuPage {
     Menu,
+    Redeem,
     Account
 }
 
@@ -683,6 +835,22 @@ private fun HamburgerMenuGlyph(
                 )
                 drawLine(tint, Offset(w * 0.35f, h * 0.50f), Offset(w * 0.65f, h * 0.50f), plusStrokeWidth, cap = StrokeCap.Round)
                 drawLine(tint, Offset(w * 0.50f, h * 0.35f), Offset(w * 0.50f, h * 0.65f), plusStrokeWidth, cap = StrokeCap.Round)
+            }
+            HamburgerMenuIcon.Redeem -> {
+                val path = Path().apply {
+                    moveTo(w * 0.17f, h * 0.30f)
+                    lineTo(w * 0.83f, h * 0.30f)
+                    lineTo(w * 0.83f, h * 0.44f)
+                    cubicTo(w * 0.72f, h * 0.44f, w * 0.72f, h * 0.56f, w * 0.83f, h * 0.56f)
+                    lineTo(w * 0.83f, h * 0.70f)
+                    lineTo(w * 0.17f, h * 0.70f)
+                    lineTo(w * 0.17f, h * 0.56f)
+                    cubicTo(w * 0.28f, h * 0.56f, w * 0.28f, h * 0.44f, w * 0.17f, h * 0.44f)
+                    close()
+                }
+                drawPath(path, tint, style = stroke)
+                drawLine(tint, Offset(w * 0.50f, h * 0.36f), Offset(w * 0.50f, h * 0.64f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.37f, h * 0.50f), Offset(w * 0.63f, h * 0.50f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Account -> {
                 drawCircle(tint, radius = w * 0.36f, center = Offset(w * 0.50f, h * 0.50f), style = stroke)
