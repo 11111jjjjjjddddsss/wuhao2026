@@ -1857,15 +1857,15 @@ private fun MembershipCenterAddIcon(
         )
         drawLine(
             color = Color(0xFF111111),
-            start = Offset(w * 0.39f, h * 0.50f),
-            end = Offset(w * 0.61f, h * 0.50f),
+            start = Offset(w * 0.37f, h * 0.50f),
+            end = Offset(w * 0.63f, h * 0.50f),
             strokeWidth = plusStroke,
             cap = StrokeCap.Round
         )
         drawLine(
             color = Color(0xFF111111),
-            start = Offset(w * 0.50f, h * 0.39f),
-            end = Offset(w * 0.50f, h * 0.61f),
+            start = Offset(w * 0.50f, h * 0.37f),
+            end = Offset(w * 0.50f, h * 0.63f),
             strokeWidth = plusStroke,
             cap = StrokeCap.Round
         )
