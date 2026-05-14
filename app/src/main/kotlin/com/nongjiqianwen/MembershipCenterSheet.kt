@@ -643,14 +643,14 @@ private fun MembershipTopupCard(
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = "额外100次",
+                        text = "额外80次",
                         color = Color(0xFF747881),
                         fontSize = 12.sp,
                         lineHeight = 17.sp
                     )
                 }
                 Text(
-                    text = "¥6 / 100次",
+                    text = "¥6 / 80次",
                     color = Color(0xFF111111),
                     fontSize = 18.sp,
                     lineHeight = 23.sp,

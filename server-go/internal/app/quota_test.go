@@ -16,6 +16,9 @@ func TestQuotaBusinessConstantsMatchCurrentRules(t *testing.T) {
 	if topupPackPrice != 6.0 {
 		t.Fatalf("topup pack price mismatch: %v", topupPackPrice)
 	}
+	if topupPackRemaining != 80 {
+		t.Fatalf("topup pack remaining mismatch: %d", topupPackRemaining)
+	}
 	if topupPackActiveLimit != 1 {
 		t.Fatalf("topup active limit mismatch: %d", topupPackActiveLimit)
 	}

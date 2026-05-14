@@ -12,7 +12,7 @@ import (
 
 const (
 	membershipTermDays   = 30
-	topupPackRemaining   = 100
+	topupPackRemaining   = 80
 	topupPackPrice       = 6.0
 	topupPackActiveLimit = 1
 	plusTierPrice        = 19.9

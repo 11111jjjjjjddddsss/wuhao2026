@@ -126,11 +126,12 @@ Android 构建链：
 - Pro：29.9 元 / 月，40 次 / 天
 - Plus / Pro 到期后，后端按有效权益自动降回 Free 计算；旧 `user_entitlement.tier` 可以保留历史值，但接口和额度消费只认 `tier_expire_at` 后的有效 tier
 - Plus / Pro 必须有有效 `tier_expire_at` 才算有效付费会员；若数据库出现 paid tier 但到期时间为空，后端按 Free 处理，避免脏数据变成永久会员
-- 加油包：6 元 / 100 次，仅 Plus / Pro 可买
+- 加油包：6 元 / 80 次，仅 Plus / Pro 可买
 - 同一时刻只允许 1 个 active 加油包，用完再续
 - 续费订单金额以后端 `orders.amount` 记账为准：Plus 19.9，Pro 29.9
 - 支付未接入前，后端开发期订单变更接口默认返回 `PAYMENT_NOT_CONFIGURED`；只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境不是 `APP_ENV / ENV / GO_ENV = prod / production` 时才允许用这些接口做本地 / 内测调试。正式支付必须走服务端验签后的支付回调 / 对账流程
 - 当前代码里的超额消耗顺序：先每日额度，再升级补偿额度，再加油包；如果后续业务口径调整，再单独同步改代码和本文
+- 当前成本核算口径：主对话是实时 SSE `qwen3.5-plus`，不吃 Batch Chat 半价；按当前公开价输入约 0.8 元 / 百万 tokens、输出约 4.8 元 / 百万 tokens 估算。现阶段不要再把 `0.018 ~ 0.019 元 / 轮` 称为“最保守”，更准确口径是：真实平均约 `0.008 ~ 0.015 元 / 轮`，偏重使用约 `0.018 ~ 0.022 元 / 轮`，连续 4 图 / 上一轮图片 / Pro 满 A 层 / 长输出 / 搜索等极重场景约 `0.025 ~ 0.030 元 / 轮`。后续上线后应记录每轮实际 `input_tokens / output_tokens / search` 再校准会员毛利
 
 ## 4. 提示词与后端真源
 
