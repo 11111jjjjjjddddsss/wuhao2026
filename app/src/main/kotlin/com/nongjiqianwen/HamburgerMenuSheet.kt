@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import android.view.HapticFeedbackConstants
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
@@ -91,6 +92,13 @@ internal fun HamburgerMenuSheet(
         if (noticeText == null) return@LaunchedEffect
         delay(1500)
         noticeText = null
+    }
+    BackHandler(enabled = visible) {
+        if (page == HamburgerMenuPage.Account) {
+            page = HamburgerMenuPage.Menu
+        } else {
+            onDismiss()
+        }
     }
     AnimatedVisibility(
         visible = visible,
