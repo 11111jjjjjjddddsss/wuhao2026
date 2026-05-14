@@ -93,12 +93,8 @@ internal fun HamburgerMenuSheet(
         delay(1500)
         noticeText = null
     }
-    BackHandler(enabled = visible) {
-        if (page == HamburgerMenuPage.Account) {
-            page = HamburgerMenuPage.Menu
-        } else {
-            onDismiss()
-        }
+    BackHandler(enabled = visible && page == HamburgerMenuPage.Account) {
+        page = HamburgerMenuPage.Menu
     }
     AnimatedVisibility(
         visible = visible,
