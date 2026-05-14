@@ -250,13 +250,6 @@ private fun HamburgerMenuMainPage(
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
-                icon = HamburgerMenuIcon.Redeem,
-                title = "兑换码",
-                subtitle = "兑换会员权益",
-                onClick = onOpenRedeem
-            )
-            HamburgerMenuDivider()
-            HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
                 onClick = onOpenAccount
@@ -274,6 +267,13 @@ private fun HamburgerMenuMainPage(
                 icon = HamburgerMenuIcon.Update,
                 title = "检查更新",
                 onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Redeem,
+                title = "兑换码",
+                subtitle = "兑换会员权益",
+                onClick = onOpenRedeem
             )
         }
 
@@ -330,13 +330,6 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 )
                 HamburgerMenuDivider()
                 HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Redeem,
-                    title = "兑换码",
-                    subtitle = "兑换会员权益",
-                    onClick = {}
-                )
-                HamburgerMenuDivider()
-                HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Account,
                     title = "账号管理",
                     onClick = {}
@@ -352,6 +345,13 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Update,
                     title = "检查更新",
+                    onClick = {}
+                )
+                HamburgerMenuDivider()
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Redeem,
+                    title = "兑换码",
+                    subtitle = "兑换会员权益",
                     onClick = {}
                 )
             }
@@ -837,20 +837,39 @@ private fun HamburgerMenuGlyph(
                 drawLine(tint, Offset(w * 0.50f, h * 0.35f), Offset(w * 0.50f, h * 0.65f), plusStrokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Redeem -> {
-                val path = Path().apply {
-                    moveTo(w * 0.17f, h * 0.30f)
-                    lineTo(w * 0.83f, h * 0.30f)
-                    lineTo(w * 0.83f, h * 0.44f)
-                    cubicTo(w * 0.72f, h * 0.44f, w * 0.72f, h * 0.56f, w * 0.83f, h * 0.56f)
-                    lineTo(w * 0.83f, h * 0.70f)
-                    lineTo(w * 0.17f, h * 0.70f)
-                    lineTo(w * 0.17f, h * 0.56f)
-                    cubicTo(w * 0.28f, h * 0.56f, w * 0.28f, h * 0.44f, w * 0.17f, h * 0.44f)
-                    close()
+                val giftStrokeWidth = strokeWidth * 0.92f
+                val giftStroke = Stroke(
+                    width = giftStrokeWidth,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round
+                )
+                val leftBow = Path().apply {
+                    moveTo(w * 0.50f, h * 0.39f)
+                    cubicTo(w * 0.40f, h * 0.20f, w * 0.23f, h * 0.26f, w * 0.31f, h * 0.39f)
+                    cubicTo(w * 0.37f, h * 0.47f, w * 0.45f, h * 0.43f, w * 0.50f, h * 0.39f)
                 }
-                drawPath(path, tint, style = stroke)
-                drawLine(tint, Offset(w * 0.50f, h * 0.36f), Offset(w * 0.50f, h * 0.64f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.37f, h * 0.50f), Offset(w * 0.63f, h * 0.50f), strokeWidth, cap = StrokeCap.Round)
+                val rightBow = Path().apply {
+                    moveTo(w * 0.50f, h * 0.39f)
+                    cubicTo(w * 0.60f, h * 0.20f, w * 0.77f, h * 0.26f, w * 0.69f, h * 0.39f)
+                    cubicTo(w * 0.63f, h * 0.47f, w * 0.55f, h * 0.43f, w * 0.50f, h * 0.39f)
+                }
+                drawPath(leftBow, tint, style = giftStroke)
+                drawPath(rightBow, tint, style = giftStroke)
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.17f, h * 0.43f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.66f, h * 0.16f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.05f, h * 0.05f),
+                    style = giftStroke
+                )
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.21f, h * 0.58f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.58f, h * 0.27f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.05f, h * 0.05f),
+                    style = giftStroke
+                )
+                drawLine(tint, Offset(w * 0.50f, h * 0.43f), Offset(w * 0.50f, h * 0.85f), giftStrokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Account -> {
                 drawCircle(tint, radius = w * 0.36f, center = Offset(w * 0.50f, h * 0.50f), style = stroke)
