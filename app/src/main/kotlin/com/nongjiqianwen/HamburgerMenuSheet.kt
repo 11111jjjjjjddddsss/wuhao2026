@@ -34,6 +34,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -60,10 +61,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Locale
 import kotlinx.coroutines.delay
 
 private const val HAMBURGER_PLACEHOLDER_HINT = "功能后续接入"
@@ -456,6 +459,7 @@ private fun HamburgerRedeemCodePage(
     onPendingAction: (String) -> Unit
 ) {
     var redeemCode by remember { mutableStateOf("") }
+    val canRedeem = redeemCode.isNotBlank()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -503,7 +507,7 @@ private fun HamburgerRedeemCodePage(
                 ) {
                     if (redeemCode.isBlank()) {
                         Text(
-                            text = "输入英文或数字",
+                            text = "输入英文、数字或短横线",
                             color = Color(0xFFB0B4BC),
                             fontSize = 17.sp,
                             lineHeight = 24.sp,
@@ -516,7 +520,7 @@ private fun HamburgerRedeemCodePage(
                         value = redeemCode,
                         onValueChange = { next ->
                             redeemCode = next
-                                .uppercase()
+                                .uppercase(Locale.US)
                                 .filter { it.isLetterOrDigit() || it == '-' }
                                 .take(32)
                         },
@@ -529,29 +533,32 @@ private fun HamburgerRedeemCodePage(
                         ),
                         keyboardOptions = KeyboardOptions(
                             capitalization = KeyboardCapitalization.Characters,
-                            keyboardType = KeyboardType.Text
+                            keyboardType = KeyboardType.Text,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                if (canRedeem) {
+                                    onPendingAction("兑换码功能后续接入")
+                                }
+                            }
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
                 Surface(
-                    color = if (redeemCode.isBlank()) Color(0xFFE3E5E8) else Color(0xFF111111),
+                    color = if (canRedeem) Color(0xFF111111) else Color(0xFFE3E5E8),
                     shape = RoundedCornerShape(999.dp),
                     modifier = Modifier.clickable(
+                        enabled = canRedeem,
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = {
-                            if (redeemCode.isBlank()) {
-                                onPendingAction("请输入兑换码")
-                            } else {
-                                onPendingAction("兑换码功能后续接入")
-                            }
-                        }
+                        onClick = { onPendingAction("兑换码功能后续接入") }
                     )
                 ) {
                     Text(
                         text = "兑换",
-                        color = if (redeemCode.isBlank()) Color(0xFF8A8E96) else Color.White,
+                        color = if (canRedeem) Color.White else Color(0xFF8A8E96),
                         fontSize = 15.sp,
                         lineHeight = 20.sp,
                         fontWeight = FontWeight.SemiBold,

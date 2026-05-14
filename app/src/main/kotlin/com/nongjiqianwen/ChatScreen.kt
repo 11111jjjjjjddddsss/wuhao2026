@@ -5990,6 +5990,7 @@ fun ChatScreen() {
                         clearInputSelectionToolbar()
                         clearMessageSelection()
                         focusManager.clearFocus(force = true)
+                        hamburgerMenuVisible = false
                         membershipCenterVisible = true
                     },
                     onPlaceholderClick = {

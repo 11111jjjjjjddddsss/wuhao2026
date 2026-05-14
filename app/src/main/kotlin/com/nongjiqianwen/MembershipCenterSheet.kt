@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 internal enum class MembershipLoadState { Idle, Loading, Loaded, Failed }
 
@@ -69,6 +71,11 @@ internal fun MembershipCenterBottomSheet(
     onPurchaseSuccessConfirm: () -> Unit
 ) {
     var paymentNoticeVisible by remember(visible) { mutableStateOf(false) }
+    LaunchedEffect(paymentNoticeVisible) {
+        if (!paymentNoticeVisible) return@LaunchedEffect
+        delay(1500)
+        paymentNoticeVisible = false
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
