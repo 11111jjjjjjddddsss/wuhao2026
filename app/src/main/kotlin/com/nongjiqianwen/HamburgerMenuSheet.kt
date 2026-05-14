@@ -1,9 +1,11 @@
 package com.nongjiqianwen
 
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -52,6 +54,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -73,6 +76,7 @@ internal fun HamburgerMenuSheet(
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     var noticeText by remember(visible) { mutableStateOf<String?>(null) }
+    var page by remember(visible) { mutableStateOf(HamburgerMenuPage.Menu) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -105,74 +109,46 @@ internal fun HamburgerMenuSheet(
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                        .statusBarsPadding()
-                        .navigationBarsPadding()
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 18.dp, end = 18.dp, top = 78.dp, bottom = 32.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    HamburgerMenuGroup {
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Membership,
-                            title = "会员中心",
-                            subtitle = "套餐、额度和加油包",
-                            onClick = onOpenMembership
-                        )
-                        HamburgerMenuDivider()
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Account,
-                            title = "账号管理",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                    }
-
-                    HamburgerMenuGroup {
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Feedback,
-                            title = "客服反馈",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                        HamburgerMenuDivider()
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Update,
-                            title = "检查更新",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                    }
-
-                    HamburgerMenuGroup {
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Document,
-                            title = "服务协议",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                        HamburgerMenuDivider()
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Privacy,
-                            title = "隐私政策",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                        HamburgerMenuDivider()
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Risk,
-                            title = "风险提示",
-                            subtitle = "AI 建议仅供参考",
-                            onClick = { showNotice(HAMBURGER_PLACEHOLDER_HINT) }
-                        )
-                    }
-
-                    HamburgerMenuGroup {
-                        HamburgerMenuRow(
-                            icon = HamburgerMenuIcon.Logout,
-                            title = "退出登录",
-                            subtitle = "登录功能后续接入",
-                            destructive = true,
-                            onClick = { showNotice("登录功能后续接入") }
-                        )
+                AnimatedContent(
+                    targetState = page,
+                    transitionSpec = {
+                        if (targetState == HamburgerMenuPage.Account) {
+                            slideInHorizontally(
+                                initialOffsetX = { it },
+                                animationSpec = tween(durationMillis = HAMBURGER_PAGE_ENTER_MS)
+                            ) togetherWith slideOutHorizontally(
+                                targetOffsetX = { -it },
+                                animationSpec = tween(durationMillis = HAMBURGER_PAGE_EXIT_MS)
+                            )
+                        } else {
+                            slideInHorizontally(
+                                initialOffsetX = { -it },
+                                animationSpec = tween(durationMillis = HAMBURGER_PAGE_ENTER_MS)
+                            ) togetherWith slideOutHorizontally(
+                                targetOffsetX = { it },
+                                animationSpec = tween(durationMillis = HAMBURGER_PAGE_EXIT_MS)
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    label = "hamburger_menu_page"
+                ) { currentPage ->
+                    when (currentPage) {
+                        HamburgerMenuPage.Menu -> {
+                            HamburgerMenuMainPage(
+                                onOpenMembership = onOpenMembership,
+                                onOpenAccount = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.Account
+                                },
+                                onPlaceholderClick = ::showNotice
+                            )
+                        }
+                        HamburgerMenuPage.Account -> {
+                            HamburgerAccountManagementPage(
+                                onPendingAction = ::showNotice
+                            )
+                        }
                     }
                 }
                 Surface(
@@ -190,7 +166,11 @@ internal fun HamburgerMenuSheet(
                             indication = null,
                             onClick = {
                                 performButtonHaptic()
-                                onDismiss()
+                                if (page == HamburgerMenuPage.Account) {
+                                    page = HamburgerMenuPage.Menu
+                                } else {
+                                    onDismiss()
+                                }
                             }
                         )
                 ) {
@@ -222,6 +202,84 @@ internal fun HamburgerMenuSheet(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HamburgerMenuMainPage(
+    onOpenMembership: () -> Unit,
+    onOpenAccount: () -> Unit,
+    onPlaceholderClick: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 78.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        HamburgerMenuGroup {
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Membership,
+                title = "会员中心",
+                subtitle = "套餐、额度和加油包",
+                onClick = onOpenMembership
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Account,
+                title = "账号管理",
+                onClick = onOpenAccount
+            )
+        }
+
+        HamburgerMenuGroup {
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Feedback,
+                title = "客服反馈",
+                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Update,
+                title = "检查更新",
+                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+            )
+        }
+
+        HamburgerMenuGroup {
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Document,
+                title = "服务协议",
+                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Privacy,
+                title = "隐私政策",
+                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Risk,
+                title = "风险提示",
+                subtitle = "AI 建议仅供参考",
+                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+            )
+        }
+
+        HamburgerMenuGroup {
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Logout,
+                title = "退出登录",
+                subtitle = "登录功能后续接入",
+                destructive = true,
+                onClick = { onPlaceholderClick("登录功能后续接入") }
+            )
         }
     }
 }
@@ -294,6 +352,162 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HamburgerAccountManagementPage(
+    onPendingAction: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
+    ) {
+        Text(
+            text = "账号管理",
+            color = Color(0xFF111111),
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(top = 14.dp)
+        )
+
+        Text(
+            text = "账户",
+            color = Color(0xFF8A8E96),
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Normal,
+            modifier = Modifier.padding(start = 18.dp, top = 28.dp, bottom = 10.dp)
+        )
+
+        HamburgerAccountGroup {
+            HamburgerAccountInfoRow(
+                title = "手机号",
+                value = "未绑定",
+                onClick = { onPendingAction("手机号登录后续接入") }
+            )
+        }
+
+        HamburgerAccountGroup(
+            modifier = Modifier.padding(top = 22.dp)
+        ) {
+            HamburgerAccountActionRow(
+                title = "退出设备",
+                onClick = { onPendingAction("登录功能后续接入") }
+            )
+        }
+
+        HamburgerAccountGroup(
+            modifier = Modifier.padding(top = 18.dp)
+        ) {
+            HamburgerAccountActionRow(
+                title = "注销账号",
+                onClick = { onPendingAction("账号注销后续接入") }
+            )
+        }
+    }
+}
+
+@Composable
+private fun HamburgerAccountGroup(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            content = content
+        )
+    }
+}
+
+@Composable
+private fun HamburgerAccountInfoRow(
+    title: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(start = 24.dp, end = 18.dp, top = 17.dp, bottom = 17.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = Color(0xFF111111),
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            color = Color(0xFF8A8E96),
+            fontSize = 17.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 16.dp)
+        )
+        HamburgerChevronIcon(
+            tint = Color(0xFFAAAEB5),
+            modifier = Modifier
+                .padding(start = 10.dp)
+                .size(18.dp)
+        )
+    }
+}
+
+@Composable
+private fun HamburgerAccountActionRow(
+    title: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 24.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = Color(0xFFD24646),
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -385,6 +599,11 @@ private enum class HamburgerMenuIcon {
     Logout
 }
 
+private enum class HamburgerMenuPage {
+    Menu,
+    Account
+}
+
 @Composable
 private fun HamburgerBackIcon(
     tint: Color,
@@ -403,6 +622,30 @@ private fun HamburgerBackIcon(
             color = tint,
             start = Offset(size.width * 0.28f, size.height * 0.5f),
             end = Offset(size.width * 0.72f, size.height * 0.82f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun HamburgerChevronIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.14f
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.34f, size.height * 0.20f),
+            end = Offset(size.width * 0.66f, size.height * 0.50f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.66f, size.height * 0.50f),
+            end = Offset(size.width * 0.34f, size.height * 0.80f),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )
