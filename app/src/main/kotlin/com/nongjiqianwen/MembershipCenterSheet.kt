@@ -544,11 +544,18 @@ private fun MembershipPlanSectionTitle(
                 .height(24.dp)
                 .wrapContentHeight(Alignment.CenterVertically)
         )
-        if (upgradeRemaining > 0) {
-            MembershipExtraCountPill(text = "升级补偿次数 ${upgradeRemaining}次")
-        }
-        if (topupRemaining > 0) {
-            MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
+        if (upgradeRemaining > 0 || topupRemaining > 0) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (upgradeRemaining > 0) {
+                    MembershipExtraCountPill(text = "升级补偿次数 ${upgradeRemaining}次")
+                }
+                if (topupRemaining > 0) {
+                    MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
+                }
+            }
         }
     }
 }
