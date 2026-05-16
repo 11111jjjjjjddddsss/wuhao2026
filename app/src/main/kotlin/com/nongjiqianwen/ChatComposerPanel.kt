@@ -666,6 +666,7 @@ internal fun ComposerAttachmentBottomSheet(
     visible: Boolean,
     limitReached: Boolean = false,
     limitHintText: String = "最多4张图片",
+    supportingHintText: String? = COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT,
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onCameraClick: () -> Unit,
@@ -708,10 +709,11 @@ internal fun ComposerAttachmentBottomSheet(
                 modifier = Modifier
                     .fillMaxWidth()
             ) {
+                val sheetMinHeight = if (supportingHintText == null) 220.dp else 270.dp
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 270.dp)
+                        .heightIn(min = sheetMinHeight)
                         .navigationBarsPadding()
                         .padding(start = 38.dp, end = 38.dp, top = 30.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -763,12 +765,14 @@ internal fun ComposerAttachmentBottomSheet(
                                 lineHeight = 20.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            Text(
-                                text = COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT,
-                                color = Color(0xFF8B8D93),
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp
-                            )
+                            supportingHintText?.let { hint ->
+                                Text(
+                                    text = hint,
+                                    color = Color(0xFF8B8D93),
+                                    fontSize = 13.sp,
+                                    lineHeight = 19.sp
+                                )
+                            }
                         }
                     }
                 }

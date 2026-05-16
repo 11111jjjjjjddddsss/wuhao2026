@@ -947,6 +947,7 @@ private fun HamburgerSupportFeedbackPage(
             visible = attachmentMenuVisible,
             limitReached = selectedImages.size >= 4,
             limitHintText = "最多4张图片",
+            supportingHintText = null,
             modifier = Modifier.fillMaxSize(),
             onDismiss = { attachmentMenuVisible = false },
             onCameraClick = ::launchSupportCamera,
@@ -1365,7 +1366,7 @@ private fun HamburgerRedeemCodePage(
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
     )
 }
@@ -1378,6 +1379,11 @@ private fun HamburgerRedeemCodeContent(
 ) {
     var redeemCode by remember(initialCode) { mutableStateOf(initialCode) }
     val canRedeem = redeemCode.isNotBlank()
+    fun submitRedeem() {
+        if (canRedeem) {
+            onPendingAction("礼品卡功能后续接入")
+        }
+    }
     Column(modifier = modifier) {
         Text(
             text = "礼品卡",
@@ -1392,73 +1398,75 @@ private fun HamburgerRedeemCodeContent(
                 .padding(top = 14.dp)
         )
 
-        HamburgerAccountGroup(
-            modifier = Modifier.padding(top = 28.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentAlignment = Alignment.Center
         ) {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 64.dp)
-                    .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .widthIn(max = 360.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Surface(
                     color = Color(0xFFFAFBFC),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(18.dp),
                     border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 42.dp)
-                            .padding(horizontal = 14.dp, vertical = 9.dp),
-                        contentAlignment = Alignment.CenterStart
+                            .heightIn(min = 52.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         BasicTextField(
                             value = redeemCode,
                             onValueChange = { next -> redeemCode = next },
                             singleLine = true,
-                            textStyle = TextStyle(
-                                color = Color(0xFF111111),
-                                fontSize = 17.sp,
-                                lineHeight = 24.sp,
-                                fontWeight = FontWeight.Normal
-                            ),
                             keyboardOptions = KeyboardOptions(
                                 imeAction = ImeAction.Done
                             ),
                             keyboardActions = KeyboardActions(
-                                onDone = {
-                                    if (canRedeem) {
-                                        onPendingAction("礼品卡功能后续接入")
-                                    }
-                                }
+                                onDone = { submitRedeem() }
                             ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(
+                                color = Color(0xFF111111),
+                                fontSize = 18.sp,
+                                lineHeight = 25.sp,
+                                fontWeight = FontWeight.Normal,
+                                textAlign = TextAlign.Center
+                            )
                         )
                     }
                 }
                 Surface(
                     color = if (canRedeem) Color(0xFF111111) else Color(0xFFE3E5E8),
                     shape = RoundedCornerShape(999.dp),
-                    modifier = Modifier.clickable(
-                        enabled = canRedeem,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onPendingAction("礼品卡功能后续接入") }
-                    )
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 54.dp)
+                        .clickable(
+                            enabled = canRedeem,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { submitRedeem() }
+                        )
                 ) {
-                    Text(
-                        text = "兑换",
-                        color = if (canRedeem) Color.White else Color(0xFF8A8E96),
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "兑换",
+                            color = if (canRedeem) Color.White else Color(0xFF8A8E96),
+                            fontSize = 18.sp,
+                            lineHeight = 24.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
