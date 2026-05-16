@@ -5,6 +5,8 @@
 
 ## 2026-05-16
 
+- 夜间代理巡检后收口两类非 UI 风险：`004/005/006/016` 迁移不再使用 MySQL 兼容性不稳的 `ADD COLUMN IF NOT EXISTS`，统一改成 `information_schema.COLUMNS` 检查后再动态执行 `ALTER TABLE`，并让新库的 `015_support_messages` 直接带 `image_urls_json` 字段；`AGENTS.md` 和 `docs/runbooks/android-edge-case-regression.md` 同步当前口径，debug-only 文案预览面板短期允许保留，但必须保持隐藏 / debug-only，release 不可见，阶段性不再需要时再删除。只改迁移兼容和文档口径，不改运行时接口、会员权益、聊天滚动链或客服 UI。
+
 - `HamburgerMenuSheet.kt` 继续收口客服反馈附件面板返回链：客服页把附件面板打开状态同步给汉堡浮层外层返回按钮，左上角圆形返回键现在和系统返回键同一优先级，附件面板可见时先收起“相机 / 照片”卡片，第二次才退回设置菜单。只改返回分发，不改客服消息接口、图片上传、红点已读、礼品卡或聊天滚动链。
 
 - `HamburgerMenuSheet.kt` / `ChatScreen.kt` 补客服反馈返回键和预览面板：客服反馈附件面板可见时新增本页 BackHandler，系统返回键优先收起“相机 / 照片”卡片，不再直接退回设置菜单；客服反馈发送前会检查后端是否配置，发送接口失败统一提示“发送失败，请检查网络后重试”。debug-only 预览面板新增“礼品卡兑换成功”卡片、“客服反馈图片面板”和“客服反馈发送失败”三项，其中礼品卡成功卡片下方有“确定”，点击后关闭；真实礼品卡页仍等待后端成功分支，不假弹兑换成功。

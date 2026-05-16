@@ -1,3 +1,31 @@
-ALTER TABLE session_ab
-  ADD COLUMN IF NOT EXISTS pending_retry_b TINYINT(1) NOT NULL DEFAULT 0 AFTER c_summary,
-  ADD COLUMN IF NOT EXISTS pending_retry_c TINYINT(1) NOT NULL DEFAULT 0 AFTER pending_retry_b;
+SET @column_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'session_ab'
+    AND COLUMN_NAME = 'pending_retry_b'
+);
+SET @ddl := IF(
+  @column_exists = 0,
+  'ALTER TABLE session_ab ADD COLUMN pending_retry_b TINYINT(1) NOT NULL DEFAULT 0 AFTER c_summary',
+  'SELECT 1'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @column_exists := (
+  SELECT COUNT(*)
+  FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE()
+    AND TABLE_NAME = 'session_ab'
+    AND COLUMN_NAME = 'pending_retry_c'
+);
+SET @ddl := IF(
+  @column_exists = 0,
+  'ALTER TABLE session_ab ADD COLUMN pending_retry_c TINYINT(1) NOT NULL DEFAULT 0 AFTER pending_retry_b',
+  'SELECT 1'
+);
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

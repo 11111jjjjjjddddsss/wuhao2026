@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS support_messages (
   user_id VARCHAR(191) NOT NULL,
   sender_type ENUM('user', 'admin', 'system') NOT NULL,
   body TEXT NOT NULL,
+  image_urls_json JSON NULL,
   created_at BIGINT NOT NULL,
   read_by_user_at BIGINT NULL,
   INDEX idx_support_messages_user_created (user_id, created_at, id),
