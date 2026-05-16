@@ -811,7 +811,7 @@ private fun RowScope.ComposerAttachmentBottomSheetTile(
 }
 
 @Composable
-private fun ComposerImagePreviewStrip(
+internal fun ComposerImagePreviewStrip(
     images: List<ComposerImageAttachment>,
     onRemoveImage: (ComposerImageAttachment) -> Unit
 ) {
@@ -1344,7 +1344,7 @@ private fun ComposerInputShell(
 }
 
 @Composable
-private fun ComposerChromeRow(
+internal fun ComposerChromeRow(
     modifier: Modifier = Modifier,
     addButtonSize: Dp,
     addIconSize: Dp,

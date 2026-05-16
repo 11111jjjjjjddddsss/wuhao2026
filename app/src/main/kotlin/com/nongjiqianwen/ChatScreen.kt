@@ -437,7 +437,7 @@ private const val NETWORK_UNAVAILABLE_HINT_TEXT = "当前网络不可用"
 private const val RATE_LIMIT_HINT_TEXT = "当前请求较多，请稍后重试"
 private const val INTERRUPTED_NETWORK_HINT_TEXT = "网络波动，回复未完成"
 private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请重试"
-private const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
+internal const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
 private const val ASSISTANT_RETRY_STATUS_TEXT = "回复未完成"
 private const val ASSISTANT_RETRY_ACTION_TEXT = "重试"
 private const val ASSISTANT_RETRYING_STATUS_TEXT = "正在重试..."
@@ -1508,7 +1508,7 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
             )
 }
 
-private fun Context.readImageBytes(uri: Uri): ByteArray? {
+internal fun Context.readImageBytes(uri: Uri): ByteArray? {
     return runCatching {
         if (uri.scheme == "file") {
             val path = uri.path ?: return@runCatching null
@@ -1519,7 +1519,7 @@ private fun Context.readImageBytes(uri: Uri): ByteArray? {
     }.getOrNull()
 }
 
-private fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImageAttachment? {
+internal fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImageAttachment? {
     return runCatching {
         val originalBytes = readImageBytes(uri) ?: return@runCatching null
         val uploadBytes = if (originalBytes.canUseOriginalJpegForComposerUpload()) {
@@ -1534,7 +1534,7 @@ private fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImage
     }.getOrNull()
 }
 
-private fun ByteArray.hasJpegStartMarker(): Boolean =
+internal fun ByteArray.hasJpegStartMarker(): Boolean =
     size >= 2 && this[0] == 0xFF.toByte() && this[1] == 0xD8.toByte()
 
 private fun ByteArray.canUseOriginalJpegForComposerUpload(): Boolean {
@@ -1553,11 +1553,11 @@ private fun ByteArray.canUseOriginalJpegForComposerUpload(): Boolean {
         orientation == ExifInterface.ORIENTATION_UNDEFINED
 }
 
-private fun Context.isPrivateComposerImage(uri: Uri): Boolean {
+internal fun Context.isPrivateComposerImage(uri: Uri): Boolean {
     return privateComposerImageFile(uri) != null
 }
 
-private fun Context.privateComposerImageFile(uri: Uri): File? {
+internal fun Context.privateComposerImageFile(uri: Uri): File? {
     return runCatching {
         if (uri.scheme != "file") return@runCatching null
         val path = uri.path ?: return@runCatching null
@@ -1569,7 +1569,7 @@ private fun Context.privateComposerImageFile(uri: Uri): File? {
     }.getOrNull()
 }
 
-private fun Context.deleteComposerImageAttachment(attachment: ComposerImageAttachment) {
+internal fun Context.deleteComposerImageAttachment(attachment: ComposerImageAttachment) {
     runCatching {
         privateComposerImageFile(Uri.parse(attachment.uri))?.delete()
     }
@@ -1602,7 +1602,7 @@ private fun chatPreviewInSampleSize(width: Int, height: Int, targetSize: Int): I
     return sampleSize.coerceAtLeast(1)
 }
 
-private fun Context.decodeChatImagePreview(
+internal fun Context.decodeChatImagePreview(
     source: String,
     targetSize: Int = 512
 ): ImageBitmap? {

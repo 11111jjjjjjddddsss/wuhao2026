@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -17,12 +18,13 @@ const (
 )
 
 type SupportMessage struct {
-	ID           int64  `json:"id"`
-	UserID       string `json:"user_id,omitempty"`
-	SenderType   string `json:"sender_type"`
-	Body         string `json:"body"`
-	CreatedAt    int64  `json:"created_at"`
-	ReadByUserAt *int64 `json:"read_by_user_at,omitempty"`
+	ID           int64    `json:"id"`
+	UserID       string   `json:"user_id,omitempty"`
+	SenderType   string   `json:"sender_type"`
+	Body         string   `json:"body"`
+	ImageURLs    []string `json:"image_urls,omitempty"`
+	CreatedAt    int64    `json:"created_at"`
+	ReadByUserAt *int64   `json:"read_by_user_at,omitempty"`
 }
 
 type SupportSummary struct {
@@ -31,12 +33,14 @@ type SupportSummary struct {
 }
 
 type supportMessageRequest struct {
-	Body string `json:"body"`
+	Body   string   `json:"body"`
+	Images []string `json:"images"`
 }
 
 type supportAdminMessageRequest struct {
-	UserID string `json:"user_id"`
-	Body   string `json:"body"`
+	UserID string   `json:"user_id"`
+	Body   string   `json:"body"`
+	Images []string `json:"images"`
 }
 
 func (s *Server) handleSupportSummary(w http.ResponseWriter, r *http.Request) {
@@ -87,8 +91,12 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusBadRequest, "invalid_json")
 		return
 	}
-	normalized, validationError := normalizeSupportMessageBody(body.Body)
+	normalized, imageURLs, validationError := normalizeSupportMessagePayload(body.Body, body.Images)
 	if validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	if validationError := s.validateChatStreamImageURLs(r, imageURLs); validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
@@ -97,7 +105,7 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	message, err := s.store.CreateSupportMessage(r.Context(), auth.UserID, "user", normalized, time.Now().UnixMilli())
+	message, err := s.store.CreateSupportMessage(r.Context(), auth.UserID, "user", normalized, imageURLs, time.Now().UnixMilli())
 	if err != nil {
 		s.logger.Error("create support message failed", "userId", auth.UserID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -151,8 +159,12 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusBadRequest, "user_id required")
 		return
 	}
-	normalized, validationError := normalizeSupportMessageBody(body.Body)
+	normalized, imageURLs, validationError := normalizeSupportMessagePayload(body.Body, body.Images)
 	if validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	if validationError := s.validateChatStreamImageURLs(r, imageURLs); validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
@@ -161,7 +173,7 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	message, err := s.store.CreateSupportMessage(r.Context(), userID, "admin", normalized, time.Now().UnixMilli())
+	message, err := s.store.CreateSupportMessage(r.Context(), userID, "admin", normalized, imageURLs, time.Now().UnixMilli())
 	if err != nil {
 		s.logger.Error("internal create support message failed", "userId", userID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -190,15 +202,19 @@ func (s *Server) requireSupportAdminSecret(w http.ResponseWriter, r *http.Reques
 	return true
 }
 
-func normalizeSupportMessageBody(raw string) (string, string) {
+func normalizeSupportMessagePayload(raw string, images []string) (string, []string, string) {
 	body := strings.TrimSpace(raw)
-	if body == "" {
-		return "", "body required"
-	}
+	imageURLs := normalizeImages(images)
 	if utf8.RuneCountInString(body) > supportMessageMaxRunes {
-		return "", "body too long"
+		return "", nil, "body too long"
 	}
-	return body, ""
+	if len(imageURLs) > 4 {
+		return "", nil, "single request supports up to 4 images"
+	}
+	if body == "" && len(imageURLs) == 0 {
+		return "", nil, "body or images required"
+	}
+	return body, imageURLs, ""
 }
 
 func (s *Store) GetSupportSummary(ctx context.Context, userID string) (*SupportSummary, error) {
@@ -230,7 +246,7 @@ func (s *Store) ListSupportMessages(ctx context.Context, userID string, limit in
 	}
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, user_id, sender_type, body, created_at, read_by_user_at
+		`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
 		   FROM support_messages
 		  WHERE user_id = ?
 		  ORDER BY created_at DESC, id DESC
@@ -260,14 +276,19 @@ func (s *Store) ListSupportMessages(ctx context.Context, userID string, limit in
 	return messages, nil
 }
 
-func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderType string, body string, createdAt int64) (*SupportMessage, error) {
+func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderType string, body string, imageURLs []string, createdAt int64) (*SupportMessage, error) {
+	imagesJSON, err := supportImageURLsJSON(imageURLs)
+	if err != nil {
+		return nil, err
+	}
 	result, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO support_messages(user_id, sender_type, body, created_at)
-		 VALUES (?, ?, ?, ?)`,
+		`INSERT INTO support_messages(user_id, sender_type, body, image_urls_json, created_at)
+		 VALUES (?, ?, ?, ?, ?)`,
 		userID,
 		senderType,
 		body,
+		imagesJSON,
 		createdAt,
 	)
 	if err != nil {
@@ -282,6 +303,7 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 		UserID:     userID,
 		SenderType: senderType,
 		Body:       body,
+		ImageURLs:  imageURLs,
 		CreatedAt:  createdAt,
 	}, nil
 }
@@ -303,7 +325,7 @@ func (s *Store) MarkSupportMessagesRead(ctx context.Context, userID string, read
 func (s *Store) getLatestSupportMessage(ctx context.Context, userID string) (*SupportMessage, error) {
 	row := s.db.QueryRowContext(
 		ctx,
-		`SELECT id, user_id, sender_type, body, created_at, read_by_user_at
+		`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
 		   FROM support_messages
 		  WHERE user_id = ?
 		  ORDER BY created_at DESC, id DESC
@@ -326,12 +348,14 @@ type supportMessageScanner interface {
 
 func scanSupportMessage(scanner supportMessageScanner) (SupportMessage, error) {
 	var message SupportMessage
+	var imagesJSON sql.NullString
 	var readByUserAt sql.NullInt64
 	err := scanner.Scan(
 		&message.ID,
 		&message.UserID,
 		&message.SenderType,
 		&message.Body,
+		&imagesJSON,
 		&message.CreatedAt,
 		&readByUserAt,
 	)
@@ -342,5 +366,23 @@ func scanSupportMessage(scanner supportMessageScanner) (SupportMessage, error) {
 		value := readByUserAt.Int64
 		message.ReadByUserAt = &value
 	}
+	if imagesJSON.Valid && strings.TrimSpace(imagesJSON.String) != "" {
+		var imageURLs []string
+		if err := json.Unmarshal([]byte(imagesJSON.String), &imageURLs); err == nil {
+			message.ImageURLs = normalizeImages(imageURLs)
+		}
+	}
 	return message, nil
+}
+
+func supportImageURLsJSON(imageURLs []string) (any, error) {
+	normalized := normalizeImages(imageURLs)
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+	data, err := json.Marshal(normalized)
+	if err != nil {
+		return nil, err
+	}
+	return string(data), nil
 }

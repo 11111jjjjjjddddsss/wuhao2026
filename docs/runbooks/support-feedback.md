@@ -9,6 +9,7 @@
 - 一条用户会话线按 `user_id` 聚合，不单独建 thread 表
 - `sender_type` 当前取值：`user`、`admin`、`system`
 - 设置页红点只看 `sender_type IN ('admin', 'system') AND read_by_user_at IS NULL`
+- 图片附件存储在 `image_urls_json`，只保存本后端 `/upload` 返回的公开 HTTPS 图片 URL
 
 ## 用户侧接口
 
@@ -21,9 +22,10 @@
   - 返回当前用户最近 100 条客服消息，按时间正序
   - Android 进入客服反馈页时拉取历史
 - `POST /api/support/messages`
-  - 请求体：`{"body":"..."}`
+  - 请求体：`{"body":"...","images":["https://.../uploads/xxx.jpg"]}`
   - 当前限制正文最多 2000 字
-  - 用于用户向后台发送反馈
+  - 支持纯文字、纯图片或图文混合；单次最多 4 张图片
+  - Android 先复用主聊天图片链压缩并上传到 `/upload`，再把返回 URL 写入客服消息
 - `POST /api/support/read`
   - 把当前用户所有未读客服 / 系统消息标记为已读
   - Android 成功拉取客服页历史后调用，随后设置页红点消失
@@ -35,7 +37,7 @@
 - `GET /internal/support/messages?user_id=<user_id>`
   - 读取指定用户最近 100 条客服消息
 - `POST /internal/support/messages`
-  - 请求体：`{"user_id":"<user_id>","body":"客服回复内容"}`
+  - 请求体：`{"user_id":"<user_id>","body":"客服回复内容","images":[]}`
   - 写入一条 `sender_type=admin` 消息
   - 用户下次打开 App 设置页或刷新摘要时会看到红点
 
@@ -44,7 +46,6 @@
 - 没有网页管理后台
 - 没有客服账号 / 坐席权限
 - 没有工单状态、分配、关闭、搜索和 SLA
-- 没有图片附件
 - 没有系统通知 / 推送
 
 后续做统一运营面板时，优先复用上述内部接口或在同一张表上扩展，不要把客服历史存到 Android 本地当真源。

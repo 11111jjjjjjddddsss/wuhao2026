@@ -97,6 +97,7 @@ object SessionApi {
         @SerializedName("user_id") val userId: String? = null,
         @SerializedName("sender_type") val senderType: String? = null,
         val body: String? = null,
+        @SerializedName("image_urls") val imageUrls: List<String>? = null,
         @SerializedName("created_at") val createdAt: Long? = null,
         @SerializedName("read_by_user_at") val readByUserAt: Long? = null
     )
@@ -339,13 +340,22 @@ object SessionApi {
         )
     }
 
-    fun sendSupportMessage(body: String, onResult: (SupportMessage?) -> Unit) {
+    fun sendSupportMessage(
+        body: String,
+        images: List<String> = emptyList(),
+        onResult: (SupportMessage?) -> Unit
+    ) {
         val base = baseUrl()
         if (base.isEmpty()) {
             postToMain { onResult(null) }
             return
         }
-        val requestBody = gson.toJson(mapOf("body" to body)).toRequestBody("application/json".toMediaType())
+        val requestBody = gson.toJson(
+            mapOf(
+                "body" to body,
+                "images" to images
+            )
+        ).toRequestBody("application/json".toMediaType())
         enqueueWithRetry401(
             requestFactory = { token ->
                 val builder = applyIdentityHeaders(

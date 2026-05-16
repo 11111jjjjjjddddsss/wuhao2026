@@ -1,7 +1,12 @@
 package com.nongjiqianwen
 
+import android.app.Activity
+import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
@@ -10,6 +15,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +29,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -43,18 +51,25 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -64,7 +79,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -622,12 +642,205 @@ private fun HamburgerSupportFeedbackPage(
     onPendingAction: (String) -> Unit,
     onConversationChanged: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var messages by remember { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
     var inputText by remember { mutableStateOf("") }
     var loading by remember { mutableStateOf(true) }
     var loadFailed by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var loadTick by remember { mutableStateOf(0) }
+    var attachmentMenuVisible by remember { mutableStateOf(false) }
+    val selectedImages = remember { mutableStateListOf<ComposerImageAttachment>() }
+    var pendingCameraImageUriString by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingCameraImageGalleryBacked by rememberSaveable { mutableStateOf(false) }
+    var pendingCameraImageTemporaryFilePath by rememberSaveable { mutableStateOf<String?>(null) }
+
+    fun addSupportImageUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val remainingSlots = 4 - selectedImages.size
+        if (remainingSlots <= 0) {
+            onPendingAction("最多4张图片")
+            return
+        }
+        attachmentMenuVisible = false
+        val selectedUris = uris.take(remainingSlots)
+        scope.launch {
+            val importedImages = withContext(Dispatchers.IO) {
+                selectedUris.mapNotNull { uri ->
+                    context.importComposerImageToPrivateStorage(uri)
+                }
+            }
+            if (importedImages.isEmpty()) {
+                onPendingAction(ImageUploader.DECODE_FAIL_MESSAGE)
+                return@launch
+            }
+            val latestRemainingSlots = 4 - selectedImages.size
+            if (latestRemainingSlots <= 0) {
+                withContext(Dispatchers.IO) {
+                    importedImages.forEach(context::deleteComposerImageAttachment)
+                }
+                onPendingAction("最多4张图片")
+                return@launch
+            }
+            val imagesToAdd = importedImages.take(latestRemainingSlots)
+            val overflowImages = importedImages.drop(latestRemainingSlots)
+            if (overflowImages.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    overflowImages.forEach(context::deleteComposerImageAttachment)
+                }
+            }
+            selectedImages.addAll(imagesToAdd)
+            if (overflowImages.isNotEmpty() || uris.size > remainingSlots) {
+                onPendingAction("最多4张图片")
+            }
+        }
+    }
+
+    val singlePhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) addSupportImageUris(listOf(uri))
+    }
+    val photoPickerTwoLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(2)
+    ) { uris ->
+        addSupportImageUris(uris)
+    }
+    val photoPickerThreeLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(3)
+    ) { uris ->
+        addSupportImageUris(uris)
+    }
+    val photoPickerFourLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(4)
+    ) { uris ->
+        addSupportImageUris(uris)
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = pendingCameraImageUriString?.let(Uri::parse)
+        val galleryBacked = pendingCameraImageGalleryBacked
+        val temporaryFilePath = pendingCameraImageTemporaryFilePath
+        pendingCameraImageUriString = null
+        pendingCameraImageGalleryBacked = false
+        pendingCameraImageTemporaryFilePath = null
+        if (uri != null) {
+            context.revokeComposerCameraUri(uri)
+        }
+        val success = result.resultCode == Activity.RESULT_OK
+        if (success && uri != null) {
+            scope.launch {
+                val importedImage = withContext(Dispatchers.IO) {
+                    val imported = context.importComposerImageToPrivateStorage(uri)
+                    if (imported != null) {
+                        if (galleryBacked) {
+                            if (!context.publishGalleryComposerCameraImage(uri)) {
+                                context.deleteGalleryComposerCameraImage(uri)
+                            }
+                        } else {
+                            context.saveComposerCameraImageToGallery(uri)
+                        }
+                    } else if (galleryBacked) {
+                        context.deleteGalleryComposerCameraImage(uri)
+                    }
+                    if (!galleryBacked) {
+                        deleteTemporaryComposerCameraImage(temporaryFilePath)
+                    }
+                    imported
+                }
+                if (importedImage == null) {
+                    onPendingAction(ImageUploader.DECODE_FAIL_MESSAGE)
+                    return@launch
+                }
+                val latestRemainingSlots = 4 - selectedImages.size
+                if (latestRemainingSlots <= 0) {
+                    withContext(Dispatchers.IO) {
+                        context.deleteComposerImageAttachment(importedImage)
+                    }
+                    onPendingAction("最多4张图片")
+                    return@launch
+                }
+                selectedImages.add(importedImage)
+            }
+        } else if (uri != null) {
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    if (galleryBacked) {
+                        context.deleteGalleryComposerCameraImage(uri)
+                    } else {
+                        deleteTemporaryComposerCameraImage(temporaryFilePath)
+                    }
+                }
+            }
+        }
+    }
+
+    fun launchSupportPhotoPicker() {
+        val remainingSlots = 4 - selectedImages.size
+        if (remainingSlots <= 0) {
+            onPendingAction("最多4张图片")
+            return
+        }
+        attachmentMenuVisible = false
+        val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        when (remainingSlots) {
+            1 -> singlePhotoPickerLauncher.launch(request)
+            2 -> photoPickerTwoLauncher.launch(request)
+            3 -> photoPickerThreeLauncher.launch(request)
+            else -> photoPickerFourLauncher.launch(request)
+        }
+    }
+
+    fun launchSupportCamera() {
+        if (selectedImages.size >= 4) {
+            onPendingAction("最多4张图片")
+            return
+        }
+        val target = context.createComposerCameraImageTarget()
+        if (target == null) {
+            onPendingAction(CAMERA_OPEN_FAILED_HINT_TEXT)
+            return
+        }
+        pendingCameraImageUriString = target.uri.toString()
+        pendingCameraImageGalleryBacked = target.galleryBacked
+        pendingCameraImageTemporaryFilePath = target.temporaryFilePath
+        attachmentMenuVisible = false
+        val cameraIntent = buildComposerCameraIntent(target.uri)
+        context.grantComposerCameraUri(target.uri, cameraIntent)
+        runCatching {
+            cameraLauncher.launch(cameraIntent)
+        }.onFailure {
+            context.revokeComposerCameraUri(target.uri)
+            pendingCameraImageUriString = null
+            pendingCameraImageGalleryBacked = false
+            pendingCameraImageTemporaryFilePath = null
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    if (target.galleryBacked) {
+                        context.deleteGalleryComposerCameraImage(target.uri)
+                    } else {
+                        deleteTemporaryComposerCameraImage(target.temporaryFilePath)
+                    }
+                }
+            }
+            onPendingAction(CAMERA_OPEN_FAILED_HINT_TEXT)
+        }
+    }
+
+    suspend fun uploadSupportImagesForSend(images: List<ComposerImageAttachment>): Pair<List<String>?, String?> =
+        withContext(Dispatchers.IO) {
+            if (images.isEmpty()) return@withContext emptyList<String>() to null
+            val uploadBytes = mutableListOf<ByteArray>()
+            for (image in images) {
+                val bytes = context.readImageBytes(Uri.parse(image.uri))
+                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                uploadBytes.add(bytes)
+            }
+            val urls = ImageUploader.uploadImages(uploadBytes)
+            if (urls == null) null to "图片上传失败，请稍后再试" else urls to null
+        }
 
     LaunchedEffect(loadTick) {
         loading = true
@@ -656,65 +869,112 @@ private fun HamburgerSupportFeedbackPage(
 
     fun sendMessage() {
         val body = inputText.trim()
-        if (body.isEmpty() || sending) return
+        val imageSnapshot = selectedImages.take(4)
+        if ((body.isEmpty() && imageSnapshot.isEmpty()) || sending) return
         if (body.length > SUPPORT_MESSAGE_MAX_CHARS) {
             onPendingAction("最多输入2000字")
             return
         }
+        attachmentMenuVisible = false
         sending = true
-        SessionApi.sendSupportMessage(body) { sent ->
-            sending = false
-            if (sent == null) {
-                onPendingAction("发送失败，请稍后再试")
-                return@sendSupportMessage
+        scope.launch {
+            val (imageUrls, uploadError) = uploadSupportImagesForSend(imageSnapshot)
+            if (imageUrls == null) {
+                sending = false
+                onPendingAction(uploadError ?: "图片上传失败，请稍后再试")
+                return@launch
             }
-            inputText = ""
-            loadFailed = false
-            messages = messages + sent
-            SessionApi.markSupportRead {
-                onConversationChanged()
+            SessionApi.sendSupportMessage(body = body, images = imageUrls) { sent ->
+                sending = false
+                if (sent == null) {
+                    onPendingAction("发送失败，请稍后再试")
+                    return@sendSupportMessage
+                }
+                inputText = ""
+                selectedImages.removeAll(imageSnapshot.toSet())
+                scope.launch(Dispatchers.IO) {
+                    imageSnapshot.forEach(context::deleteComposerImageAttachment)
+                }
+                loadFailed = false
+                messages = messages + sent
+                SessionApi.markSupportRead {
+                    onConversationChanged()
+                }
             }
         }
     }
 
-    HamburgerSupportFeedbackContent(
-        messages = messages,
-        inputText = inputText,
-        loading = loading,
-        loadFailed = loadFailed,
-        sending = sending,
-        onInputChange = { next ->
-            if (next.length <= SUPPORT_MESSAGE_MAX_CHARS) {
-                inputText = next
-            }
-        },
-        onSend = ::sendMessage,
-        onRetry = { loadTick += 1 },
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 18.dp)
-    )
+            .imePadding()
+    ) {
+        HamburgerSupportFeedbackContent(
+            messages = messages,
+            inputText = inputText,
+            selectedImages = selectedImages,
+            loading = loading,
+            loadFailed = loadFailed,
+            sending = sending,
+            onInputChange = { next ->
+                if (next.length <= SUPPORT_MESSAGE_MAX_CHARS) {
+                    inputText = next
+                }
+            },
+            onAddClick = {
+                if (!sending) {
+                    attachmentMenuVisible = true
+                }
+            },
+            onRemoveImage = { image ->
+                if (!sending) {
+                    selectedImages.remove(image)
+                    scope.launch(Dispatchers.IO) {
+                        context.deleteComposerImageAttachment(image)
+                    }
+                }
+            },
+            onSend = ::sendMessage,
+            onRetry = { loadTick += 1 },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 18.dp)
+        )
+        ComposerAttachmentBottomSheet(
+            visible = attachmentMenuVisible,
+            limitReached = selectedImages.size >= 4,
+            limitHintText = "最多4张图片",
+            modifier = Modifier.fillMaxSize(),
+            onDismiss = { attachmentMenuVisible = false },
+            onCameraClick = ::launchSupportCamera,
+            onPhotoClick = ::launchSupportPhotoPicker
+        )
+    }
 }
 
 @Composable
 private fun HamburgerSupportFeedbackContent(
     messages: List<SessionApi.SupportMessage>,
     inputText: String,
+    selectedImages: List<ComposerImageAttachment>,
     loading: Boolean,
     loadFailed: Boolean,
     sending: Boolean,
     onInputChange: (String) -> Unit,
+    onAddClick: () -> Unit,
+    onRemoveImage: (ComposerImageAttachment) -> Unit,
     onSend: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
-    val canSend = inputText.trim().isNotEmpty() && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
+    val hasContent = inputText.trim().isNotEmpty() || selectedImages.isNotEmpty()
+    val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
 
-    LaunchedEffect(messages.size, loading, loadFailed) {
+    LaunchedEffect(messages.size, loading, loadFailed, selectedImages.size) {
         delay(80)
         scrollState.animateScrollTo(scrollState.maxValue)
     }
@@ -797,29 +1057,41 @@ private fun HamburgerSupportFeedbackContent(
             }
         }
 
-        Surface(
-            color = Color.White,
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+        ComposerChromeRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+                .padding(top = 12.dp),
+            addButtonSize = 36.dp,
+            addIconSize = 25.dp,
+            sendButtonSize = 36.dp,
+            inputChromeSurface = Color.White,
+            inputChromeBorder = Color(0xFFE1E4E8),
+            inputFieldSurface = Color.White,
+            inputFieldBorder = Color(0xFFE1E4E8),
+            inputBarHeight = 96.dp,
+            inputBarMaxHeight = 214.dp,
+            onAddClick = onAddClick,
+            attachmentsContent = if (selectedImages.isNotEmpty()) {
+                {
+                    ComposerImagePreviewStrip(
+                        images = selectedImages,
+                        onRemoveImage = onRemoveImage
+                    )
+                }
+            } else {
+                null
+            },
+            inputContent = {
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 38.dp, max = 108.dp),
+                        .heightIn(min = if (selectedImages.isNotEmpty()) 86.dp else 0.dp, max = 112.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     if (inputText.isEmpty()) {
                         Text(
-                            text = "输入反馈内容",
-                            color = Color(0xFF9AA0A8),
+                            text = if (selectedImages.isNotEmpty()) "补充图片说明" else "输入反馈内容",
+                            color = Color(0xFFAEAFB4),
                             fontSize = 16.sp,
                             lineHeight = 22.sp
                         )
@@ -840,27 +1112,14 @@ private fun HamburgerSupportFeedbackContent(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                Surface(
-                    color = if (canSend) Color(0xFF111111) else Color(0xFFE3E5E8),
-                    shape = RoundedCornerShape(999.dp),
-                    modifier = Modifier.clickable(
-                        enabled = canSend,
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onSend
-                    )
-                ) {
-                    Text(
-                        text = if (sending) "发送中" else "发送",
-                        color = if (canSend) Color.White else Color(0xFF8A8E96),
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp)
-                    )
-                }
+            },
+            sendButtonEnabled = canSend,
+            sendButtonBackgroundColor = if (canSend) Color(0xFF111111) else Color(0xFFD3D4D6),
+            sendButtonTint = if (canSend) Color.White else Color(0xFF7F8083),
+            onSendClick = {
+                if (canSend) onSend()
             }
-        }
+        )
     }
 }
 
@@ -882,6 +1141,8 @@ private fun HamburgerSupportStatusText(text: String) {
 private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
     val isUser = message.senderType == "user"
     val timestamp = formatSupportMessageTime(message.createdAt)
+    val body = message.body.orEmpty()
+    val imageUrls = message.imageUrls.orEmpty()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -897,22 +1158,30 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                 fontSize = 11.sp,
                 lineHeight = 14.sp
             )
-            Surface(
-                color = if (isUser) Color(0xFF111111) else Color.White,
-                shape = RoundedCornerShape(
-                    topStart = 18.dp,
-                    topEnd = 18.dp,
-                    bottomEnd = if (isUser) 6.dp else 18.dp,
-                    bottomStart = if (isUser) 18.dp else 6.dp
-                ),
-                border = if (isUser) null else BorderStroke(0.7.dp, Color(0xFFE1E4E8))
-            ) {
-                Text(
-                    text = message.body.orEmpty(),
-                    color = if (isUser) Color.White else Color(0xFF111111),
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+            if (body.isNotBlank()) {
+                Surface(
+                    color = if (isUser) Color(0xFF111111) else Color.White,
+                    shape = RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomEnd = if (isUser) 6.dp else 18.dp,
+                        bottomStart = if (isUser) 18.dp else 6.dp
+                    ),
+                    border = if (isUser) null else BorderStroke(0.7.dp, Color(0xFFE1E4E8))
+                ) {
+                    Text(
+                        text = body,
+                        color = if (isUser) Color.White else Color(0xFF111111),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    )
+                }
+            }
+            if (imageUrls.isNotEmpty()) {
+                HamburgerSupportMessageImageStrip(
+                    imageUrls = imageUrls,
+                    isUser = isUser
                 )
             }
             if (timestamp.isNotEmpty()) {
@@ -923,6 +1192,125 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                     lineHeight = 13.sp
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun HamburgerSupportMessageImageStrip(
+    imageUrls: List<String>,
+    isUser: Boolean
+) {
+    val previewImages = imageUrls.take(4)
+    var previewIndex by remember { mutableStateOf<Int?>(null) }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        previewImages.forEachIndexed { index, imageUrl ->
+            HamburgerSupportMessageImageThumb(
+                imageUrl = imageUrl,
+                index = index,
+                isUser = isUser,
+                onClick = { previewIndex = index }
+            )
+        }
+    }
+    previewIndex?.let { index ->
+        Dialog(
+            onDismissRequest = { previewIndex = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xE6000000))
+            ) {
+                ImagePreviewPager(
+                    models = previewImages,
+                    initialPage = index,
+                    contentDescription = "图片预览",
+                    onDismiss = { previewIndex = null }
+                )
+                Surface(
+                    color = Color(0x99111111),
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 34.dp, end = 22.dp)
+                        .size(38.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { previewIndex = null }
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        HamburgerCloseIcon(tint = Color.White, modifier = Modifier.size(15.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HamburgerSupportMessageImageThumb(
+    imageUrl: String,
+    index: Int,
+    isUser: Boolean,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    var bitmap by remember(imageUrl) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(imageUrl) {
+        bitmap = withContext(Dispatchers.IO) {
+            context.decodeChatImagePreview(imageUrl, targetSize = 360)
+        }
+    }
+    Box(
+        modifier = Modifier
+            .size(70.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(if (isUser) Color(0xFF2A2A2A) else Color(0xFFE9EAED))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+    ) {
+        val previewBitmap = bitmap
+        if (previewBitmap != null) {
+            Image(
+                bitmap = previewBitmap,
+                contentDescription = "第${index + 1}张图片",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = "图片",
+                color = if (isUser) Color(0xFFD8DADF) else Color(0xFF777C85),
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+        Surface(
+            color = Color(0xAA111111),
+            shape = RoundedCornerShape(7.dp),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(5.dp)
+        ) {
+            Text(
+                text = "${index + 1}",
+                color = Color.White,
+                fontSize = 10.sp,
+                lineHeight = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+            )
         }
     }
 }
@@ -950,10 +1338,13 @@ internal fun HamburgerSupportFeedbackPagePreview() {
                 )
             ),
             inputText = "我再试一下",
+            selectedImages = emptyList(),
             loading = false,
             loadFailed = false,
             sending = false,
             onInputChange = {},
+            onAddClick = {},
+            onRemoveImage = {},
             onSend = {},
             onRetry = {},
             modifier = Modifier
@@ -1296,6 +1687,30 @@ private fun formatSupportMessageTime(createdAt: Long?): String {
         SimpleDateFormat(pattern, Locale.CHINA).format(Date(timestamp))
     } catch (_: Exception) {
         ""
+    }
+}
+
+@Composable
+private fun HamburgerCloseIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.13f
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.22f, size.height * 0.22f),
+            end = Offset(size.width * 0.78f, size.height * 0.78f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.78f, size.height * 0.22f),
+            end = Offset(size.width * 0.22f, size.height * 0.78f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
     }
 }
 
