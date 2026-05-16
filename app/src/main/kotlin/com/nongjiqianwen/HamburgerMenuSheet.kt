@@ -113,6 +113,8 @@ internal fun HamburgerMenuSheet(
     var page by remember(visible) { mutableStateOf(HamburgerMenuPage.Menu) }
     var supportSummary by remember(visible) { mutableStateOf<SessionApi.SupportSummary?>(null) }
     var supportRefreshTick by remember(visible) { mutableStateOf(0) }
+    var supportAttachmentMenuVisible by remember(visible) { mutableStateOf(false) }
+    var supportAttachmentCloseRequest by remember(visible) { mutableStateOf(0) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -122,6 +124,18 @@ internal fun HamburgerMenuSheet(
     fun showNotice(text: String) {
         noticeText = text
         onPlaceholderClick(text)
+    }
+    fun handleBackClick() {
+        if (page == HamburgerMenuPage.Support && supportAttachmentMenuVisible) {
+            supportAttachmentCloseRequest += 1
+            return
+        }
+        supportAttachmentMenuVisible = false
+        if (page != HamburgerMenuPage.Menu) {
+            page = HamburgerMenuPage.Menu
+        } else {
+            onDismiss()
+        }
     }
     LaunchedEffect(noticeText) {
         if (noticeText == null) return@LaunchedEffect
@@ -135,7 +149,7 @@ internal fun HamburgerMenuSheet(
         }
     }
     BackHandler(enabled = visible && page != HamburgerMenuPage.Menu) {
-        page = HamburgerMenuPage.Menu
+        handleBackClick()
     }
     AnimatedVisibility(
         visible = visible,
@@ -197,6 +211,7 @@ internal fun HamburgerMenuSheet(
                                 },
                                 onOpenSupport = {
                                     performButtonHaptic()
+                                    supportAttachmentMenuVisible = false
                                     page = HamburgerMenuPage.Support
                                 },
                                 onPlaceholderClick = ::showNotice
@@ -225,9 +240,13 @@ internal fun HamburgerMenuSheet(
                         }
                         HamburgerMenuPage.Support -> {
                             HamburgerSupportFeedbackPage(
+                                attachmentCloseRequest = supportAttachmentCloseRequest,
                                 onPendingAction = ::showNotice,
                                 onConversationChanged = {
                                     supportRefreshTick += 1
+                                },
+                                onAttachmentMenuVisibilityChanged = { visible ->
+                                    supportAttachmentMenuVisible = visible
                                 }
                             )
                         }
@@ -248,11 +267,7 @@ internal fun HamburgerMenuSheet(
                             indication = null,
                             onClick = {
                                 performButtonHaptic()
-                                if (page != HamburgerMenuPage.Menu) {
-                                    page = HamburgerMenuPage.Menu
-                                } else {
-                                    onDismiss()
-                                }
+                                handleBackClick()
                             }
                         )
                 ) {
@@ -640,8 +655,10 @@ internal fun HamburgerAccountManagementPagePreview() {
 
 @Composable
 private fun HamburgerSupportFeedbackPage(
+    attachmentCloseRequest: Int = 0,
     onPendingAction: (String) -> Unit,
-    onConversationChanged: () -> Unit
+    onConversationChanged: () -> Unit,
+    onAttachmentMenuVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -659,6 +676,14 @@ private fun HamburgerSupportFeedbackPage(
 
     BackHandler(enabled = attachmentMenuVisible) {
         attachmentMenuVisible = false
+    }
+    LaunchedEffect(attachmentMenuVisible) {
+        onAttachmentMenuVisibilityChanged(attachmentMenuVisible)
+    }
+    LaunchedEffect(attachmentCloseRequest) {
+        if (attachmentCloseRequest > 0) {
+            attachmentMenuVisible = false
+        }
     }
 
     fun addSupportImageUris(uris: List<Uri>) {
