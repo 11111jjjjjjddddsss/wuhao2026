@@ -528,9 +528,9 @@ private fun MembershipPlanSectionTitle(
     upgradeRemaining: Int,
     topupRemaining: Int
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(
             text = "套餐",
@@ -544,17 +544,11 @@ private fun MembershipPlanSectionTitle(
                 .height(24.dp)
                 .wrapContentHeight(Alignment.CenterVertically)
         )
-        Row(
-            modifier = Modifier.padding(start = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (upgradeRemaining > 0) {
-                MembershipExtraCountPill(text = "升级补偿次数 ${upgradeRemaining}次")
-            }
-            if (topupRemaining > 0) {
-                MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
-            }
+        if (upgradeRemaining > 0) {
+            MembershipExtraCountPill(text = "升级补偿次数 ${upgradeRemaining}次")
+        }
+        if (topupRemaining > 0) {
+            MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
         }
     }
 }
