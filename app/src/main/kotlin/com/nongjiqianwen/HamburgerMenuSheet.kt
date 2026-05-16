@@ -259,28 +259,33 @@ private fun HamburgerMembershipCenterPage(
             .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "会员中心",
-            color = Color(0xFF111111),
-            fontSize = 20.sp,
-            lineHeight = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 34.dp)
-                .padding(top = 14.dp)
-        )
-        Text(
-            text = "ID ${compactUserId(userId)}",
-            color = Color(0xFF8A8E96),
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.fillMaxWidth()
-        )
+                .padding(top = 14.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "会员中心",
+                color = Color(0xFF111111),
+                fontSize = 20.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "（ID ${compactUserId(userId)}）",
+                color = Color(0xFF8A8E96),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 6.dp)
+            )
+        }
         MembershipCenterBody(
             entitlement = entitlement,
             loadState = loadState,
@@ -552,37 +557,47 @@ private fun HamburgerRedeemCodePage(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 64.dp)
-                    .padding(start = 20.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
+                    .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
+                Surface(
+                    color = Color(0xFFFAFBFC),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
                     modifier = Modifier
                         .weight(1f)
-                        .padding(end = 12.dp),
-                    contentAlignment = Alignment.CenterStart
+                        .padding(end = 12.dp)
                 ) {
-                    BasicTextField(
-                        value = redeemCode,
-                        onValueChange = { next -> redeemCode = next },
-                        singleLine = true,
-                        textStyle = TextStyle(
-                            color = Color(0xFF111111),
-                            fontSize = 17.sp,
-                            lineHeight = 24.sp,
-                            fontWeight = FontWeight.Normal
-                        ),
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onDone = {
-                                if (canRedeem) {
-                                    onPendingAction("礼品卡功能后续接入")
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 42.dp)
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        BasicTextField(
+                            value = redeemCode,
+                            onValueChange = { next -> redeemCode = next },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                color = Color(0xFF111111),
+                                fontSize = 17.sp,
+                                lineHeight = 24.sp,
+                                fontWeight = FontWeight.Normal
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    if (canRedeem) {
+                                        onPendingAction("礼品卡功能后续接入")
+                                    }
                                 }
-                            }
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 }
                 Surface(
                     color = if (canRedeem) Color(0xFF111111) else Color(0xFFE3E5E8),
@@ -874,39 +889,39 @@ private fun HamburgerMenuGlyph(
                 drawLine(tint, Offset(w * 0.50f, h * 0.35f), Offset(w * 0.50f, h * 0.65f), plusStrokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Redeem -> {
-                val giftStrokeWidth = strokeWidth * 0.92f
+                val giftStrokeWidth = strokeWidth
                 val giftStroke = Stroke(
                     width = giftStrokeWidth,
                     cap = StrokeCap.Round,
                     join = StrokeJoin.Round
                 )
                 val leftBow = Path().apply {
-                    moveTo(w * 0.50f, h * 0.39f)
-                    cubicTo(w * 0.40f, h * 0.20f, w * 0.23f, h * 0.26f, w * 0.31f, h * 0.39f)
-                    cubicTo(w * 0.37f, h * 0.47f, w * 0.45f, h * 0.43f, w * 0.50f, h * 0.39f)
+                    moveTo(w * 0.50f, h * 0.38f)
+                    cubicTo(w * 0.39f, h * 0.16f, w * 0.20f, h * 0.24f, w * 0.28f, h * 0.38f)
+                    cubicTo(w * 0.35f, h * 0.48f, w * 0.45f, h * 0.43f, w * 0.50f, h * 0.38f)
                 }
                 val rightBow = Path().apply {
-                    moveTo(w * 0.50f, h * 0.39f)
-                    cubicTo(w * 0.60f, h * 0.20f, w * 0.77f, h * 0.26f, w * 0.69f, h * 0.39f)
-                    cubicTo(w * 0.63f, h * 0.47f, w * 0.55f, h * 0.43f, w * 0.50f, h * 0.39f)
+                    moveTo(w * 0.50f, h * 0.38f)
+                    cubicTo(w * 0.61f, h * 0.16f, w * 0.80f, h * 0.24f, w * 0.72f, h * 0.38f)
+                    cubicTo(w * 0.65f, h * 0.48f, w * 0.55f, h * 0.43f, w * 0.50f, h * 0.38f)
                 }
                 drawPath(leftBow, tint, style = giftStroke)
                 drawPath(rightBow, tint, style = giftStroke)
                 drawRoundRect(
                     color = tint,
-                    topLeft = Offset(w * 0.17f, h * 0.43f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.66f, h * 0.16f),
+                    topLeft = Offset(w * 0.13f, h * 0.41f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.74f, h * 0.17f),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.05f, h * 0.05f),
                     style = giftStroke
                 )
                 drawRoundRect(
                     color = tint,
-                    topLeft = Offset(w * 0.21f, h * 0.58f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.58f, h * 0.27f),
+                    topLeft = Offset(w * 0.17f, h * 0.57f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.66f, h * 0.30f),
                     cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.05f, h * 0.05f),
                     style = giftStroke
                 )
-                drawLine(tint, Offset(w * 0.50f, h * 0.43f), Offset(w * 0.50f, h * 0.85f), giftStrokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.50f, h * 0.41f), Offset(w * 0.50f, h * 0.87f), giftStrokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Account -> {
                 drawCircle(tint, radius = w * 0.36f, center = Offset(w * 0.50f, h * 0.50f), style = stroke)
