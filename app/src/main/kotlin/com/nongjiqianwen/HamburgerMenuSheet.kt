@@ -249,48 +249,70 @@ private fun HamburgerMembershipCenterPage(
     loadState: MembershipLoadState,
     onPaymentUnavailable: () -> Unit
 ) {
-    Column(
+    HamburgerMembershipCenterContent(
+        userId = userId,
+        entitlement = entitlement,
+        loadState = loadState,
+        onPaymentUnavailable = onPaymentUnavailable,
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp),
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
+    )
+}
+
+@Composable
+private fun HamburgerMembershipCenterContent(
+    userId: String,
+    entitlement: SessionApi.EntitlementSnapshot?,
+    loadState: MembershipLoadState,
+    onPaymentUnavailable: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 34.dp)
-                .padding(top = 14.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "会员中心",
-                color = Color(0xFF111111),
-                fontSize = 20.sp,
-                lineHeight = 28.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "（ID ${compactUserId(userId)}）",
-                color = Color(0xFF8A8E96),
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                fontWeight = FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(start = 6.dp)
-            )
-        }
+        HamburgerMembershipTitle(userId = userId)
         MembershipCenterBody(
             entitlement = entitlement,
             loadState = loadState,
             paymentNoticeResetKey = userId,
             onPaymentUnavailable = onPaymentUnavailable
+        )
+    }
+}
+
+@Composable
+private fun HamburgerMembershipTitle(userId: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 34.dp)
+            .padding(top = 14.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "会员中心",
+            color = Color(0xFF111111),
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = "（ID ${compactUserId(userId)}）",
+            color = Color(0xFF8A8E96),
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 6.dp)
         )
     }
 }
@@ -382,6 +404,29 @@ private fun HamburgerMenuMainPage(
 }
 
 @Composable
+internal fun HamburgerMembershipCenterPagePreview(userId: String) {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerMembershipCenterContent(
+            userId = userId,
+            entitlement = SessionApi.EntitlementSnapshot(
+                tier = "plus",
+                tierExpireAt = System.currentTimeMillis() + 24L * 24L * 60L * 60L * 1000L,
+                dailyRemaining = 18,
+                topupRemaining = 73,
+                upgradeRemaining = 12
+            ),
+            loadState = MembershipLoadState.Loaded,
+            onPaymentUnavailable = {},
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
 internal fun HamburgerMenuSheetPreview(userId: String) {
     Surface(
         color = Color(0xFFF8F9FA),
@@ -463,7 +508,8 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
 private fun HamburgerAccountManagementPage(
     onPendingAction: (String) -> Unit
 ) {
-    Column(
+    HamburgerAccountManagementContent(
+        onPendingAction = onPendingAction,
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -471,7 +517,15 @@ private fun HamburgerAccountManagementPage(
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
-    ) {
+    )
+}
+
+@Composable
+private fun HamburgerAccountManagementContent(
+    onPendingAction: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
         Text(
             text = "账号管理",
             color = Color(0xFF111111),
@@ -523,12 +577,25 @@ private fun HamburgerAccountManagementPage(
 }
 
 @Composable
+internal fun HamburgerAccountManagementPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerAccountManagementContent(
+            onPendingAction = {},
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
 private fun HamburgerRedeemCodePage(
     onPendingAction: (String) -> Unit
 ) {
-    var redeemCode by remember { mutableStateOf("") }
-    val canRedeem = redeemCode.isNotBlank()
-    Column(
+    HamburgerRedeemCodeContent(
+        onPendingAction = onPendingAction,
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -536,7 +603,18 @@ private fun HamburgerRedeemCodePage(
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
-    ) {
+    )
+}
+
+@Composable
+private fun HamburgerRedeemCodeContent(
+    onPendingAction: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    initialCode: String = ""
+) {
+    var redeemCode by remember(initialCode) { mutableStateOf(initialCode) }
+    val canRedeem = redeemCode.isNotBlank()
+    Column(modifier = modifier) {
         Text(
             text = "礼品卡",
             color = Color(0xFF111111),
@@ -620,6 +698,21 @@ private fun HamburgerRedeemCodePage(
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun HamburgerRedeemCodePagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerRedeemCodeContent(
+            onPendingAction = {},
+            initialCode = "NJQW2026",
+            modifier = Modifier.padding(14.dp)
+        )
     }
 }
 

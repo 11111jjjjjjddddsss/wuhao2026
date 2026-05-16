@@ -6514,7 +6514,10 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "汉堡菜单",
                 items = listOf(
-                    UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、客服和协议入口", UiCopyPreviewKind.HamburgerMenu)
+                    UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、客服和协议入口", UiCopyPreviewKind.HamburgerMenu),
+                    UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
+                    UiCopyPreviewItem("账号管理", "手机号、退出设备、注销账号", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("礼品卡", "浅边框输入框，无提示文案", UiCopyPreviewKind.HamburgerGiftCardPage)
                 )
             ),
             UiCopyPreviewGroup(
@@ -6576,13 +6579,18 @@ private fun UiCopyPreviewOverlay(
                 title = "预览面板",
                 items = listOf(
                     UiCopyPreviewItem("UI文案样式预览", "debug 面板标题和说明", UiCopyPreviewKind.DebugPanel),
-                    UiCopyPreviewItem("查看 / 预览中 / 样式预览", "debug 面板内部控件文案", UiCopyPreviewKind.DebugPanelControls)
+                    UiCopyPreviewItem("展开 / 收起 / 查看 / 预览中", "debug 面板分组和条目控件", UiCopyPreviewKind.DebugPanelControls)
                 )
             )
         )
     }
     val copyItems = remember(copyGroups) { copyGroups.flatMap { it.items } }
     var selectedIndex by remember { mutableIntStateOf(0) }
+    val expandedGroups = remember(copyGroups) {
+        mutableStateMapOf<String, Boolean>().apply {
+            copyGroups.firstOrNull()?.let { group -> put(group.title, true) }
+        }
+    }
     val selectedItem = copyItems[selectedIndex.coerceIn(0, copyItems.lastIndex)]
     Box(
         modifier = Modifier
@@ -6619,27 +6627,34 @@ private fun UiCopyPreviewOverlay(
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "点下面任意一条，查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。",
+                    text = "点一级标题展开或收起，点二级条目查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。",
                     color = Color(0xFF6D7178),
                     style = MaterialTheme.typography.bodySmall
                 )
-                var itemIndex = 0
                 copyGroups.forEach { group ->
-                    Text(
-                        text = group.title,
-                        color = Color(0xFF111111),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(top = 4.dp)
+                    val expanded = expandedGroups[group.title] == true
+                    UiCopyPreviewGroupHeader(
+                        title = group.title,
+                        count = group.items.size,
+                        expanded = expanded,
+                        onClick = {
+                            expandedGroups[group.title] = !expanded
+                        }
                     )
-                    group.items.forEach { item ->
-                        val rowIndex = itemIndex
-                        UiCopyPreviewListRow(
-                            item = item,
-                            selected = rowIndex == selectedIndex,
-                            onClick = { selectedIndex = rowIndex }
-                        )
-                        itemIndex += 1
+                    AnimatedVisibility(visible = expanded) {
+                        Column(
+                            modifier = Modifier.animateContentSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            group.items.forEach { item ->
+                                val rowIndex = copyItems.indexOf(item)
+                                UiCopyPreviewListRow(
+                                    item = item,
+                                    selected = rowIndex == selectedIndex,
+                                    onClick = { selectedIndex = rowIndex }
+                                )
+                            }
+                        }
                     }
                 }
                 HorizontalDivider(
@@ -6694,6 +6709,9 @@ private enum class UiCopyPreviewKind {
     MembershipPurchaseSuccess,
     MembershipRules,
     HamburgerMenu,
+    HamburgerMembershipPage,
+    HamburgerAccountPage,
+    HamburgerGiftCardPage,
     TodayAgriCard,
     AttachmentSheet,
     Disclaimer,
@@ -6719,6 +6737,52 @@ private enum class UiCopyPreviewKind {
     InputMenuPasteSelect,
     DebugPanel,
     DebugPanelControls
+}
+
+@Composable
+private fun UiCopyPreviewGroupHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (expanded) Color(0xFFF5F6F8) else Color.White,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(
+            width = 0.8.dp,
+            color = if (expanded) Color(0xFFDCE0E6) else Color(0xFFE8EAEE)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp)
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                color = Color(0xFF111111),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "${count}项",
+                color = Color(0xFF8A8E96),
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(end = 10.dp)
+            )
+            Text(
+                text = if (expanded) "收起" else "展开",
+                color = Color(0xFF111111),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
 }
 
 @Composable
@@ -6956,6 +7020,15 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerMenu -> {
                     HamburgerMenuSheetPreview(userId = IdManager.getUserId())
                 }
+                UiCopyPreviewKind.HamburgerMembershipPage -> {
+                    HamburgerMembershipCenterPagePreview(userId = IdManager.getUserId())
+                }
+                UiCopyPreviewKind.HamburgerAccountPage -> {
+                    HamburgerAccountManagementPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerGiftCardPage -> {
+                    HamburgerRedeemCodePagePreview()
+                }
                 UiCopyPreviewKind.TodayAgriCard -> {
                     TodayAgriNewsCard(
                         card = uiCopyPreviewTodayAgriCard(),
@@ -7023,10 +7096,10 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.InputMenuCopyOnly -> UiCopyPreviewInputActionMenu(listOf("复制"))
                 UiCopyPreviewKind.InputMenuPasteSelect -> UiCopyPreviewInputActionMenu(listOf("粘贴", "全选"))
                 UiCopyPreviewKind.DebugPanel -> UiCopyPreviewPlainText(
-                    listOf("UI文案样式预览", "点下面任意一条，查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。")
+                    listOf("UI文案样式预览", "点一级标题展开或收起，点二级条目查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。")
                 )
                 UiCopyPreviewKind.DebugPanelControls -> UiCopyPreviewPlainText(
-                    listOf("查看", "预览中", "样式预览")
+                    listOf("会员中心 18项 展开", "查看", "预览中", "样式预览")
                 )
             }
         }
