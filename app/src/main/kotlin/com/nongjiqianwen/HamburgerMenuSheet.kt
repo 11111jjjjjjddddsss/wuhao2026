@@ -62,11 +62,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.Locale
 import kotlinx.coroutines.delay
 
 private const val HAMBURGER_PLACEHOLDER_HINT = "功能后续接入"
@@ -274,8 +271,8 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
-                title = "兑换码",
-                subtitle = "兑换会员权益",
+                title = "礼品卡",
+                subtitle = "领取会员权益",
                 onClick = onOpenRedeem
             )
         }
@@ -353,8 +350,8 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 HamburgerMenuDivider()
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Redeem,
-                    title = "兑换码",
-                    subtitle = "兑换会员权益",
+                    title = "礼品卡",
+                    subtitle = "领取会员权益",
                     onClick = {}
                 )
             }
@@ -470,7 +467,7 @@ private fun HamburgerRedeemCodePage(
             .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
     ) {
         Text(
-            text = "兑换码",
+            text = "礼品卡",
             color = Color(0xFF111111),
             fontSize = 20.sp,
             lineHeight = 28.sp,
@@ -482,16 +479,9 @@ private fun HamburgerRedeemCodePage(
                 .padding(top = 14.dp)
         )
 
-        Text(
-            text = "输入兑换码",
-            color = Color(0xFF8A8E96),
-            fontSize = 15.sp,
-            lineHeight = 20.sp,
-            fontWeight = FontWeight.Normal,
-            modifier = Modifier.padding(start = 18.dp, top = 28.dp, bottom = 10.dp)
-        )
-
-        HamburgerAccountGroup {
+        HamburgerAccountGroup(
+            modifier = Modifier.padding(top = 28.dp)
+        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -505,25 +495,9 @@ private fun HamburgerRedeemCodePage(
                         .padding(end = 12.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    if (redeemCode.isBlank()) {
-                        Text(
-                            text = "输入英文、数字或短横线",
-                            color = Color(0xFFB0B4BC),
-                            fontSize = 17.sp,
-                            lineHeight = 24.sp,
-                            fontWeight = FontWeight.Normal,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
                     BasicTextField(
                         value = redeemCode,
-                        onValueChange = { next ->
-                            redeemCode = next
-                                .uppercase(Locale.US)
-                                .filter { it.isLetterOrDigit() || it == '-' }
-                                .take(32)
-                        },
+                        onValueChange = { next -> redeemCode = next },
                         singleLine = true,
                         textStyle = TextStyle(
                             color = Color(0xFF111111),
@@ -532,14 +506,12 @@ private fun HamburgerRedeemCodePage(
                             fontWeight = FontWeight.Normal
                         ),
                         keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.Characters,
-                            keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 if (canRedeem) {
-                                    onPendingAction("兑换码功能后续接入")
+                                    onPendingAction("礼品卡功能后续接入")
                                 }
                             }
                         ),
@@ -553,7 +525,7 @@ private fun HamburgerRedeemCodePage(
                         enabled = canRedeem,
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { onPendingAction("兑换码功能后续接入") }
+                        onClick = { onPendingAction("礼品卡功能后续接入") }
                     )
                 ) {
                     Text(
@@ -567,15 +539,6 @@ private fun HamburgerRedeemCodePage(
                 }
             }
         }
-
-        Text(
-            text = "兑换码可用于领取会员权益，正式兑换规则以后端为准。",
-            color = Color(0xFF8A8E96),
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
-            fontWeight = FontWeight.Normal,
-            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 12.dp)
-        )
     }
 }
 
