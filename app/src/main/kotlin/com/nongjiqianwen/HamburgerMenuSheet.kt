@@ -65,10 +65,14 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private const val HAMBURGER_PLACEHOLDER_HINT = "功能后续接入"
 private const val HAMBURGER_PAGE_ENTER_MS = 180
 private const val HAMBURGER_PAGE_EXIT_MS = 150
+private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
 
 @Composable
 internal fun HamburgerMenuSheet(
@@ -86,6 +90,8 @@ internal fun HamburgerMenuSheet(
     val haptic = LocalHapticFeedback.current
     var noticeText by remember(visible) { mutableStateOf<String?>(null) }
     var page by remember(visible) { mutableStateOf(HamburgerMenuPage.Menu) }
+    var supportSummary by remember(visible) { mutableStateOf<SessionApi.SupportSummary?>(null) }
+    var supportRefreshTick by remember(visible) { mutableStateOf(0) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -100,6 +106,12 @@ internal fun HamburgerMenuSheet(
         if (noticeText == null) return@LaunchedEffect
         delay(1500)
         noticeText = null
+    }
+    LaunchedEffect(visible, supportRefreshTick) {
+        if (!visible) return@LaunchedEffect
+        SessionApi.getSupportSummary { summary ->
+            supportSummary = summary
+        }
     }
     BackHandler(enabled = visible && page != HamburgerMenuPage.Menu) {
         page = HamburgerMenuPage.Menu
@@ -148,6 +160,7 @@ internal fun HamburgerMenuSheet(
                     when (currentPage) {
                         HamburgerMenuPage.Menu -> {
                             HamburgerMenuMainPage(
+                                supportUnread = (supportSummary?.unreadCount ?: 0) > 0,
                                 onOpenMembership = {
                                     performButtonHaptic()
                                     onRequestMembershipRefresh()
@@ -160,6 +173,10 @@ internal fun HamburgerMenuSheet(
                                 onOpenRedeem = {
                                     performButtonHaptic()
                                     page = HamburgerMenuPage.Redeem
+                                },
+                                onOpenSupport = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.Support
                                 },
                                 onPlaceholderClick = ::showNotice
                             )
@@ -183,6 +200,14 @@ internal fun HamburgerMenuSheet(
                         HamburgerMenuPage.Redeem -> {
                             HamburgerRedeemCodePage(
                                 onPendingAction = ::showNotice
+                            )
+                        }
+                        HamburgerMenuPage.Support -> {
+                            HamburgerSupportFeedbackPage(
+                                onPendingAction = ::showNotice,
+                                onConversationChanged = {
+                                    supportRefreshTick += 1
+                                }
                             )
                         }
                     }
@@ -319,9 +344,11 @@ private fun HamburgerMembershipTitle(userId: String) {
 
 @Composable
 private fun HamburgerMenuMainPage(
+    supportUnread: Boolean,
     onOpenMembership: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenRedeem: () -> Unit,
+    onOpenSupport: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     Column(
@@ -353,7 +380,8 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Feedback,
                 title = "客服反馈",
-                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+                showBadge = supportUnread,
+                onClick = onOpenSupport
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
@@ -365,7 +393,6 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
-                subtitle = "领取会员权益",
                 onClick = onOpenRedeem
             )
         }
@@ -455,6 +482,7 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Feedback,
                     title = "客服反馈",
+                    showBadge = true,
                     onClick = {}
                 )
                 HamburgerMenuDivider()
@@ -467,7 +495,6 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Redeem,
                     title = "礼品卡",
-                    subtitle = "领取会员权益",
                     onClick = {}
                 )
             }
@@ -586,6 +613,352 @@ internal fun HamburgerAccountManagementPagePreview() {
         HamburgerAccountManagementContent(
             onPendingAction = {},
             modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun HamburgerSupportFeedbackPage(
+    onPendingAction: (String) -> Unit,
+    onConversationChanged: () -> Unit
+) {
+    var messages by remember { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
+    var inputText by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var sending by remember { mutableStateOf(false) }
+    var loadTick by remember { mutableStateOf(0) }
+
+    LaunchedEffect(loadTick) {
+        loading = true
+        loadFailed = false
+        SessionApi.getSupportMessages { loaded ->
+            loading = false
+            if (loaded == null) {
+                loadFailed = true
+                return@getSupportMessages
+            }
+            messages = loaded
+            SessionApi.markSupportRead {
+                if (it) {
+                    messages = messages.map { message ->
+                        if (message.senderType == "user" || message.readByUserAt != null) {
+                            message
+                        } else {
+                            message.copy(readByUserAt = System.currentTimeMillis())
+                        }
+                    }
+                }
+                onConversationChanged()
+            }
+        }
+    }
+
+    fun sendMessage() {
+        val body = inputText.trim()
+        if (body.isEmpty() || sending) return
+        if (body.length > SUPPORT_MESSAGE_MAX_CHARS) {
+            onPendingAction("最多输入2000字")
+            return
+        }
+        sending = true
+        SessionApi.sendSupportMessage(body) { sent ->
+            sending = false
+            if (sent == null) {
+                onPendingAction("发送失败，请稍后再试")
+                return@sendSupportMessage
+            }
+            inputText = ""
+            loadFailed = false
+            messages = messages + sent
+            SessionApi.markSupportRead {
+                onConversationChanged()
+            }
+        }
+    }
+
+    HamburgerSupportFeedbackContent(
+        messages = messages,
+        inputText = inputText,
+        loading = loading,
+        loadFailed = loadFailed,
+        sending = sending,
+        onInputChange = { next ->
+            if (next.length <= SUPPORT_MESSAGE_MAX_CHARS) {
+                inputText = next
+            }
+        },
+        onSend = ::sendMessage,
+        onRetry = { loadTick += 1 },
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 18.dp)
+    )
+}
+
+@Composable
+private fun HamburgerSupportFeedbackContent(
+    messages: List<SessionApi.SupportMessage>,
+    inputText: String,
+    loading: Boolean,
+    loadFailed: Boolean,
+    sending: Boolean,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scrollState = rememberScrollState()
+    val canSend = inputText.trim().isNotEmpty() && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
+
+    LaunchedEffect(messages.size, loading, loadFailed) {
+        delay(80)
+        scrollState.animateScrollTo(scrollState.maxValue)
+    }
+
+    Column(modifier = modifier) {
+        Text(
+            text = "客服反馈",
+            color = Color(0xFF111111),
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(top = 14.dp)
+        )
+
+        Text(
+            text = "这里会保留你和客服的历史消息。",
+            color = Color(0xFF6D7178),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Surface(
+            color = Color(0xFFF0F1F2),
+            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(top = 18.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 14.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when {
+                    loading -> {
+                        HamburgerSupportStatusText(text = "正在同步消息...")
+                    }
+                    loadFailed -> {
+                        HamburgerSupportStatusText(text = "消息同步失败")
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(999.dp),
+                            border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onRetry
+                                )
+                        ) {
+                            Text(
+                                text = "重试",
+                                color = Color(0xFF111111),
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                    messages.isEmpty() -> {
+                        HamburgerSupportStatusText(text = "把问题发给我们，客服回复后会显示在这里。")
+                    }
+                    else -> {
+                        messages.forEach { message ->
+                            HamburgerSupportMessageBubble(message = message)
+                        }
+                    }
+                }
+            }
+        }
+
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 38.dp, max = 108.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (inputText.isEmpty()) {
+                        Text(
+                            text = "输入反馈内容",
+                            color = Color(0xFF9AA0A8),
+                            fontSize = 16.sp,
+                            lineHeight = 22.sp
+                        )
+                    }
+                    BasicTextField(
+                        value = inputText,
+                        onValueChange = onInputChange,
+                        textStyle = TextStyle(
+                            color = Color(0xFF111111),
+                            fontSize = 16.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Normal
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = {
+                            if (canSend) onSend()
+                        }),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Surface(
+                    color = if (canSend) Color(0xFF111111) else Color(0xFFE3E5E8),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier.clickable(
+                        enabled = canSend,
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onSend
+                    )
+                ) {
+                    Text(
+                        text = if (sending) "发送中" else "发送",
+                        color = if (canSend) Color.White else Color(0xFF8A8E96),
+                        fontSize = 14.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HamburgerSupportStatusText(text: String) {
+    Text(
+        text = text,
+        color = Color(0xFF737780),
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 24.dp)
+    )
+}
+
+@Composable
+private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
+    val isUser = message.senderType == "user"
+    val timestamp = formatSupportMessageTime(message.createdAt)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+    ) {
+        Column(
+            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.widthIn(max = 310.dp)
+        ) {
+            Text(
+                text = if (isUser) "我" else "客服",
+                color = Color(0xFF8A8E96),
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            )
+            Surface(
+                color = if (isUser) Color(0xFF111111) else Color.White,
+                shape = RoundedCornerShape(
+                    topStart = 18.dp,
+                    topEnd = 18.dp,
+                    bottomEnd = if (isUser) 6.dp else 18.dp,
+                    bottomStart = if (isUser) 18.dp else 6.dp
+                ),
+                border = if (isUser) null else BorderStroke(0.7.dp, Color(0xFFE1E4E8))
+            ) {
+                Text(
+                    text = message.body.orEmpty(),
+                    color = if (isUser) Color.White else Color(0xFF111111),
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+            if (timestamp.isNotEmpty()) {
+                Text(
+                    text = timestamp,
+                    color = Color(0xFF9AA0A8),
+                    fontSize = 10.5.sp,
+                    lineHeight = 13.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+internal fun HamburgerSupportFeedbackPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerSupportFeedbackContent(
+            messages = listOf(
+                SessionApi.SupportMessage(
+                    id = 1,
+                    senderType = "user",
+                    body = "我这边会员权益好像没有刷新，麻烦帮我看一下。",
+                    createdAt = System.currentTimeMillis() - 32L * 60L * 1000L
+                ),
+                SessionApi.SupportMessage(
+                    id = 2,
+                    senderType = "admin",
+                    body = "收到，我们已经帮你同步了一次。你重新打开会员中心看看，如果还不对，把截图发过来。",
+                    createdAt = System.currentTimeMillis() - 18L * 60L * 1000L
+                )
+            ),
+            inputText = "我再试一下",
+            loading = false,
+            loadFailed = false,
+            sending = false,
+            onInputChange = {},
+            onSend = {},
+            onRetry = {},
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(min = 520.dp, max = 620.dp)
         )
     }
 }
@@ -839,6 +1212,7 @@ private fun HamburgerMenuRow(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     destructive: Boolean = false,
+    showBadge: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
@@ -883,6 +1257,13 @@ private fun HamburgerMenuRow(
                 )
             }
         }
+        if (showBadge) {
+            Surface(
+                color = Color(0xFFE5484D),
+                shape = CircleShape,
+                modifier = Modifier.size(8.dp)
+            ) {}
+        }
     }
 }
 
@@ -902,7 +1283,20 @@ private enum class HamburgerMenuPage {
     Menu,
     Membership,
     Redeem,
-    Account
+    Account,
+    Support
+}
+
+private fun formatSupportMessageTime(createdAt: Long?): String {
+    val timestamp = createdAt ?: return ""
+    if (timestamp <= 0L) return ""
+    val now = System.currentTimeMillis()
+    val pattern = if (now - timestamp in 0L..24L * 60L * 60L * 1000L) "HH:mm" else "MM-dd HH:mm"
+    return try {
+        SimpleDateFormat(pattern, Locale.CHINA).format(Date(timestamp))
+    } catch (_: Exception) {
+        ""
+    }
 }
 
 @Composable

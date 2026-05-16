@@ -6517,6 +6517,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、客服和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号、退出设备、注销账号", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("客服反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("礼品卡", "浅边框输入框，无提示文案", UiCopyPreviewKind.HamburgerGiftCardPage)
                 )
             ),
@@ -6711,6 +6712,7 @@ private enum class UiCopyPreviewKind {
     HamburgerMenu,
     HamburgerMembershipPage,
     HamburgerAccountPage,
+    HamburgerSupportPage,
     HamburgerGiftCardPage,
     TodayAgriCard,
     AttachmentSheet,
@@ -7025,6 +7027,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.HamburgerAccountPage -> {
                     HamburgerAccountManagementPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerSupportPage -> {
+                    HamburgerSupportFeedbackPagePreview()
                 }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()

@@ -92,6 +92,20 @@ object SessionApi {
         @SerializedName("published_date") val publishedDate: String? = null
     )
 
+    data class SupportMessage(
+        val id: Long? = null,
+        @SerializedName("user_id") val userId: String? = null,
+        @SerializedName("sender_type") val senderType: String? = null,
+        val body: String? = null,
+        @SerializedName("created_at") val createdAt: Long? = null,
+        @SerializedName("read_by_user_at") val readByUserAt: Long? = null
+    )
+
+    data class SupportSummary(
+        @SerializedName("unread_count") val unreadCount: Int? = null,
+        @SerializedName("latest_message") val latestMessage: SupportMessage? = null
+    )
+
     private fun TodayAgriCard?.isValidTodayAgriCard(): Boolean {
         val candidate = this ?: return false
         val items = candidate.items.orEmpty()
@@ -250,6 +264,147 @@ object SessionApi {
                 }
             },
             onFailure = { onResult(null) }
+        )
+    }
+
+    fun getSupportSummary(onResult: (SupportSummary?) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(null) }
+            return
+        }
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(Request.Builder().url("$base/api/support/summary").get())
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    if (!it.isSuccessful) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val body = it.body?.string()
+                    if (body.isNullOrBlank()) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val parsed = try {
+                        gson.fromJson(body, SupportSummary::class.java)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse support summary", e)
+                        null
+                    }
+                    postToMain { onResult(parsed) }
+                }
+            },
+            onFailure = { postToMain { onResult(null) } }
+        )
+    }
+
+    fun getSupportMessages(onResult: (List<SupportMessage>?) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(null) }
+            return
+        }
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(Request.Builder().url("$base/api/support/messages").get())
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    if (!it.isSuccessful) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val body = it.body?.string()
+                    if (body.isNullOrBlank()) {
+                        postToMain { onResult(emptyList()) }
+                        return@use
+                    }
+                    val parsed = try {
+                        gson.fromJson(body, SupportMessagesResponse::class.java)?.messages.orEmpty()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse support messages", e)
+                        null
+                    }
+                    postToMain { onResult(parsed) }
+                }
+            },
+            onFailure = { postToMain { onResult(null) } }
+        )
+    }
+
+    fun sendSupportMessage(body: String, onResult: (SupportMessage?) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(null) }
+            return
+        }
+        val requestBody = gson.toJson(mapOf("body" to body)).toRequestBody("application/json".toMediaType())
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/support/messages")
+                        .addHeader("Content-Type", "application/json")
+                        .post(requestBody)
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    if (!it.isSuccessful) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val bodyText = it.body?.string()
+                    if (bodyText.isNullOrBlank()) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val parsed = try {
+                        gson.fromJson(bodyText, SupportMessageResponse::class.java)?.message
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse sent support message", e)
+                        null
+                    }
+                    postToMain { onResult(parsed) }
+                }
+            },
+            onFailure = { postToMain { onResult(null) } }
+        )
+    }
+
+    fun markSupportRead(onResult: (Boolean) -> Unit = {}) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(false) }
+            return
+        }
+        val requestBody = "{}".toRequestBody("application/json".toMediaType())
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/support/read")
+                        .addHeader("Content-Type", "application/json")
+                        .post(requestBody)
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    postToMain { onResult(it.isSuccessful) }
+                }
+            },
+            onFailure = { postToMain { onResult(false) } }
         )
     }
 
@@ -671,4 +826,20 @@ object SessionApi {
         @SerializedName("region_source") val region_source: String? = null,
         @SerializedName("region_reliability") val region_reliability: String? = null
     )
+
+    private data class SupportMessagesResponse(
+        val messages: List<SupportMessage>? = null
+    )
+
+    private data class SupportMessageResponse(
+        val message: SupportMessage? = null
+    )
+
+    private fun postToMain(block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            block()
+        } else {
+            mainHandler.post(block)
+        }
+    }
 }
