@@ -6518,7 +6518,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号、退出设备、注销账号", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("客服反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
-                    UiCopyPreviewItem("礼品卡", "浅边框输入框，无提示文案", UiCopyPreviewKind.HamburgerGiftCardPage)
+                    UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
+                    UiCopyPreviewItem("礼品卡兑换成功", "成功卡片和确定按钮", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )
             ),
             UiCopyPreviewGroup(
@@ -6535,6 +6536,7 @@ private fun UiCopyPreviewOverlay(
                         "+ 面板未满状态：紧凑入口和拍摄建议",
                         UiCopyPreviewKind.AttachmentSheet
                     ),
+                    UiCopyPreviewItem("客服反馈图片面板", "复用附件结构但不显示农业拍摄提示", UiCopyPreviewKind.SupportAttachmentSheet),
                     UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层", UiCopyPreviewKind.ImageCountHint),
                     UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "已满附件面板", UiCopyPreviewKind.ImageCountSheet)
                 )
@@ -6562,6 +6564,7 @@ private fun UiCopyPreviewOverlay(
                 title = "异常浮层",
                 items = listOf(
                     UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网络发送 / 重试浮层", UiCopyPreviewKind.Network),
+                    UiCopyPreviewItem(SUPPORT_SEND_FAILED_HINT, "客服反馈发送失败浮层", UiCopyPreviewKind.SupportSendFailed),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
                     UiCopyPreviewItem(INTERRUPTED_NETWORK_HINT_TEXT, "streaming 网络中断浮层", UiCopyPreviewKind.Interrupted),
                     UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback)
@@ -6714,14 +6717,17 @@ private enum class UiCopyPreviewKind {
     HamburgerAccountPage,
     HamburgerSupportPage,
     HamburgerGiftCardPage,
+    HamburgerGiftCardSuccess,
     TodayAgriCard,
     AttachmentSheet,
+    SupportAttachmentSheet,
     Disclaimer,
     AssistantRetry,
     AssistantRetrying,
     UserRetry,
     UserRetrying,
     Network,
+    SupportSendFailed,
     Quota,
     RateLimit,
     Interrupted,
@@ -7034,6 +7040,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
                 }
+                UiCopyPreviewKind.HamburgerGiftCardSuccess -> {
+                    HamburgerRedeemSuccessCardPreview()
+                }
                 UiCopyPreviewKind.TodayAgriCard -> {
                     TodayAgriNewsCard(
                         card = uiCopyPreviewTodayAgriCard(),
@@ -7042,6 +7051,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.AttachmentSheet -> {
                     UiCopyPreviewAttachmentSheet(limitReached = false)
+                }
+                UiCopyPreviewKind.SupportAttachmentSheet -> {
+                    UiCopyPreviewAttachmentSheet(limitReached = false, supportingHintText = null)
                 }
                 UiCopyPreviewKind.Disclaimer -> {
                     UiCopyPreviewDisclaimer()
@@ -7081,6 +7093,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     )
                 }
                 UiCopyPreviewKind.Network -> UiCopyPreviewHint(NETWORK_UNAVAILABLE_HINT_TEXT)
+                UiCopyPreviewKind.SupportSendFailed -> UiCopyPreviewHint(SUPPORT_SEND_FAILED_HINT)
                 UiCopyPreviewKind.Quota -> UiCopyPreviewHint(QUOTA_EXHAUSTED_HINT_TEXT)
                 UiCopyPreviewKind.RateLimit -> UiCopyPreviewHint(RATE_LIMIT_HINT_TEXT)
                 UiCopyPreviewKind.Interrupted -> UiCopyPreviewHint(INTERRUPTED_NETWORK_HINT_TEXT)
@@ -7213,7 +7226,10 @@ private fun UiCopyPreviewHint(text: String) {
 }
 
 @Composable
-private fun UiCopyPreviewAttachmentSheet(limitReached: Boolean) {
+private fun UiCopyPreviewAttachmentSheet(
+    limitReached: Boolean,
+    supportingHintText: String? = COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -7225,6 +7241,7 @@ private fun UiCopyPreviewAttachmentSheet(limitReached: Boolean) {
             visible = true,
             limitReached = limitReached,
             limitHintText = COMPOSER_IMAGE_COUNT_HINT,
+            supportingHintText = supportingHintText,
             modifier = Modifier.fillMaxSize(),
             onDismiss = {},
             onCameraClick = {},

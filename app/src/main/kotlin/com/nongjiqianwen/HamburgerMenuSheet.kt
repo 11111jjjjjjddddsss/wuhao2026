@@ -93,6 +93,7 @@ private const val HAMBURGER_PLACEHOLDER_HINT = "功能后续接入"
 private const val HAMBURGER_PAGE_ENTER_MS = 180
 private const val HAMBURGER_PAGE_EXIT_MS = 150
 private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
+internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后重试"
 
 @Composable
 internal fun HamburgerMenuSheet(
@@ -656,6 +657,10 @@ private fun HamburgerSupportFeedbackPage(
     var pendingCameraImageGalleryBacked by rememberSaveable { mutableStateOf(false) }
     var pendingCameraImageTemporaryFilePath by rememberSaveable { mutableStateOf<String?>(null) }
 
+    BackHandler(enabled = attachmentMenuVisible) {
+        attachmentMenuVisible = false
+    }
+
     fun addSupportImageUris(uris: List<Uri>) {
         if (uris.isEmpty()) return
         val remainingSlots = 4 - selectedImages.size
@@ -871,6 +876,10 @@ private fun HamburgerSupportFeedbackPage(
         val body = inputText.trim()
         val imageSnapshot = selectedImages.take(4)
         if ((body.isEmpty() && imageSnapshot.isEmpty()) || sending) return
+        if (!SessionApi.hasBackendConfigured()) {
+            onPendingAction(SUPPORT_SEND_FAILED_HINT)
+            return
+        }
         if (body.length > SUPPORT_MESSAGE_MAX_CHARS) {
             onPendingAction("最多输入2000字")
             return
@@ -887,7 +896,7 @@ private fun HamburgerSupportFeedbackPage(
             SessionApi.sendSupportMessage(body = body, images = imageUrls) { sent ->
                 sending = false
                 if (sent == null) {
-                    onPendingAction("发送失败，请稍后再试")
+                    onPendingAction(SUPPORT_SEND_FAILED_HINT)
                     return@sendSupportMessage
                 }
                 inputText = ""
@@ -1474,6 +1483,56 @@ private fun HamburgerRedeemCodeContent(
 }
 
 @Composable
+private fun HamburgerRedeemSuccessCard(
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color(0xFF111111),
+        shape = RoundedCornerShape(18.dp),
+        shadowElevation = 18.dp,
+        modifier = modifier.widthIn(max = 320.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Text(
+                text = "兑换成功",
+                color = Color.White,
+                fontSize = 18.sp,
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier
+                    .widthIn(min = 168.dp)
+                    .heightIn(min = 40.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onConfirm
+                    )
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "确定",
+                        color = Color(0xFF111111),
+                        fontSize = 15.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 internal fun HamburgerRedeemCodePagePreview() {
     Surface(
         color = Color(0xFFF8F9FA),
@@ -1485,6 +1544,31 @@ internal fun HamburgerRedeemCodePagePreview() {
             initialCode = "NJQW2026",
             modifier = Modifier.padding(14.dp)
         )
+    }
+}
+
+@Composable
+internal fun HamburgerRedeemSuccessCardPreview() {
+    var visible by remember { mutableStateOf(true) }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 136.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (visible) {
+            HamburgerRedeemSuccessCard(
+                onConfirm = { visible = false },
+                modifier = Modifier.padding(horizontal = 18.dp)
+            )
+        } else {
+            Text(
+                text = "已关闭",
+                color = Color(0xFF70747B),
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
+        }
     }
 }
 
