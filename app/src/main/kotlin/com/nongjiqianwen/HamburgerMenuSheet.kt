@@ -74,9 +74,12 @@ private const val HAMBURGER_PAGE_EXIT_MS = 150
 internal fun HamburgerMenuSheet(
     visible: Boolean,
     userId: String,
+    membershipEntitlement: SessionApi.EntitlementSnapshot?,
+    membershipLoadState: MembershipLoadState,
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
-    onOpenMembership: () -> Unit,
+    onRequestMembershipRefresh: () -> Unit,
+    onMembershipPaymentUnavailable: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     val view = LocalView.current
@@ -145,7 +148,11 @@ internal fun HamburgerMenuSheet(
                     when (currentPage) {
                         HamburgerMenuPage.Menu -> {
                             HamburgerMenuMainPage(
-                                onOpenMembership = onOpenMembership,
+                                onOpenMembership = {
+                                    performButtonHaptic()
+                                    onRequestMembershipRefresh()
+                                    page = HamburgerMenuPage.Membership
+                                },
                                 onOpenAccount = {
                                     performButtonHaptic()
                                     page = HamburgerMenuPage.Account
@@ -155,6 +162,17 @@ internal fun HamburgerMenuSheet(
                                     page = HamburgerMenuPage.Redeem
                                 },
                                 onPlaceholderClick = ::showNotice
+                            )
+                        }
+                        HamburgerMenuPage.Membership -> {
+                            HamburgerMembershipCenterPage(
+                                userId = userId,
+                                entitlement = membershipEntitlement,
+                                loadState = membershipLoadState,
+                                onPaymentUnavailable = {
+                                    performButtonHaptic()
+                                    onMembershipPaymentUnavailable()
+                                }
                             )
                         }
                         HamburgerMenuPage.Account -> {
@@ -221,6 +239,54 @@ internal fun HamburgerMenuSheet(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun HamburgerMembershipCenterPage(
+    userId: String,
+    entitlement: SessionApi.EntitlementSnapshot?,
+    loadState: MembershipLoadState,
+    onPaymentUnavailable: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "会员中心",
+            color = Color(0xFF111111),
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 34.dp)
+                .padding(top = 14.dp)
+        )
+        Text(
+            text = "ID ${compactUserId(userId)}",
+            color = Color(0xFF8A8E96),
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth()
+        )
+        MembershipCenterBody(
+            entitlement = entitlement,
+            loadState = loadState,
+            paymentNoticeResetKey = userId,
+            onPaymentUnavailable = onPaymentUnavailable
+        )
     }
 }
 
@@ -726,6 +792,7 @@ private enum class HamburgerMenuIcon {
 
 private enum class HamburgerMenuPage {
     Menu,
+    Membership,
     Redeem,
     Account
 }

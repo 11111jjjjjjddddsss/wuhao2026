@@ -2988,8 +2988,7 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(membershipCenterVisible, membershipRefreshNonce, uiRuntimeResetKey) {
-        if (!membershipCenterVisible) return@LaunchedEffect
+    suspend fun refreshMembershipEntitlement() {
         membershipLoadState = MembershipLoadState.Loading
         val entitlement = awaitMembershipEntitlement()
         membershipEntitlement = entitlement
@@ -3008,6 +3007,16 @@ fun ChatScreen() {
         } else {
             MembershipLoadState.Loaded
         }
+    }
+
+    LaunchedEffect(membershipCenterVisible, uiRuntimeResetKey) {
+        if (!membershipCenterVisible) return@LaunchedEffect
+        refreshMembershipEntitlement()
+    }
+
+    LaunchedEffect(membershipRefreshNonce, uiRuntimeResetKey) {
+        if (membershipRefreshNonce <= 0) return@LaunchedEffect
+        refreshMembershipEntitlement()
     }
 
     LaunchedEffect(uiRuntimeResetKey) {
@@ -5977,21 +5986,25 @@ fun ChatScreen() {
                 HamburgerMenuSheet(
                     visible = hamburgerMenuVisible,
                     userId = chatScopeId,
+                    membershipEntitlement = membershipEntitlement,
+                    membershipLoadState = membershipLoadState,
                     modifier = Modifier
                         .fillMaxSize()
                         .zIndex(78f),
                     onDismiss = {
                         hamburgerMenuVisible = false
                     },
-                    onOpenMembership = {
-                        performButtonHaptic()
+                    onRequestMembershipRefresh = {
                         attachmentMenuVisible = false
                         uiCopyPreviewVisible = false
                         clearInputSelectionToolbar()
                         clearMessageSelection()
                         focusManager.clearFocus(force = true)
-                        hamburgerMenuVisible = false
-                        membershipCenterVisible = true
+                        membershipRefreshNonce += 1
+                    },
+                    onMembershipPaymentUnavailable = {
+                        // The settings page already performs the tap haptic; keep this callback
+                        // side-effect free so the inline notice remains local to that page.
                     },
                     onPlaceholderClick = {
                         performButtonHaptic()

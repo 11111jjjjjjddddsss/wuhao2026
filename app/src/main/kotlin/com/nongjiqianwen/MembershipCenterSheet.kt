@@ -70,12 +70,6 @@ internal fun MembershipCenterBottomSheet(
     onPaymentUnavailable: () -> Unit,
     onPurchaseSuccessConfirm: () -> Unit
 ) {
-    var paymentNoticeVisible by remember(visible) { mutableStateOf(false) }
-    LaunchedEffect(paymentNoticeVisible) {
-        if (!paymentNoticeVisible) return@LaunchedEffect
-        delay(1500)
-        paymentNoticeVisible = false
-    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -123,32 +117,12 @@ internal fun MembershipCenterBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     MembershipCenterHeader(userId = userId, onDismiss = onDismiss)
-                    MembershipQuotaSummary(
+                    MembershipCenterBody(
                         entitlement = entitlement,
-                        loadState = loadState
+                        loadState = loadState,
+                        paymentNoticeResetKey = visible,
+                        onPaymentUnavailable = onPaymentUnavailable
                     )
-                    val loadedEntitlement = entitlement.takeIf { loadState == MembershipLoadState.Loaded }
-                    if (paymentNoticeVisible) {
-                        MembershipInlineNotice(text = "支付暂未接入")
-                    }
-                    MembershipPlanSection(
-                        activeTier = entitlement.activeMembershipTier(loadState),
-                        upgradeRemaining = loadedEntitlement?.upgradeRemaining ?: 0,
-                        topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
-                        onPaymentUnavailable = {
-                            paymentNoticeVisible = true
-                            onPaymentUnavailable()
-                        }
-                    )
-                    MembershipTopupCard(
-                        activeTier = entitlement.activeMembershipTier(loadState),
-                        topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
-                        onPaymentUnavailable = {
-                            paymentNoticeVisible = true
-                            onPaymentUnavailable()
-                        }
-                    )
-                    MembershipRulesSection()
                 }
             }
         }
@@ -228,6 +202,47 @@ internal fun MembershipCenterHeaderPreview(userId: String) {
         userId = userId,
         onDismiss = {}
     )
+}
+
+@Composable
+internal fun MembershipCenterBody(
+    entitlement: SessionApi.EntitlementSnapshot?,
+    loadState: MembershipLoadState,
+    paymentNoticeResetKey: Any?,
+    onPaymentUnavailable: () -> Unit
+) {
+    var paymentNoticeVisible by remember(paymentNoticeResetKey) { mutableStateOf(false) }
+    LaunchedEffect(paymentNoticeVisible) {
+        if (!paymentNoticeVisible) return@LaunchedEffect
+        delay(1500)
+        paymentNoticeVisible = false
+    }
+    MembershipQuotaSummary(
+        entitlement = entitlement,
+        loadState = loadState
+    )
+    val loadedEntitlement = entitlement.takeIf { loadState == MembershipLoadState.Loaded }
+    if (paymentNoticeVisible) {
+        MembershipInlineNotice(text = "支付暂未接入")
+    }
+    MembershipPlanSection(
+        activeTier = entitlement.activeMembershipTier(loadState),
+        upgradeRemaining = loadedEntitlement?.upgradeRemaining ?: 0,
+        topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
+        onPaymentUnavailable = {
+            paymentNoticeVisible = true
+            onPaymentUnavailable()
+        }
+    )
+    MembershipTopupCard(
+        activeTier = entitlement.activeMembershipTier(loadState),
+        topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
+        onPaymentUnavailable = {
+            paymentNoticeVisible = true
+            onPaymentUnavailable()
+        }
+    )
+    MembershipRulesSection()
 }
 
 @Composable
