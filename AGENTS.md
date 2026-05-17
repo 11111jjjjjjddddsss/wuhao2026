@@ -411,7 +411,7 @@ Markdown 表格：
 - 数据库：首版按 RDS MySQL / MySQL 兼容数据库口径准备；人工查看优先 DMS，Codex 优先只读查询、迁移脚本、备份脚本。若后续升级到 PolarDB，再同步修改本文和 runbook
 - 日志：优先脚本化查询，不靠临时手点控制台
 
-如果后续长期让 Codex 辅助发版、回滚、查日志、查库，应把入口固化进仓库，例如部署脚本、回滚脚本、日志脚本、数据库只读脚本。
+如果后续长期让 Codex 辅助发版、回滚、查日志、查库，应把入口固化进仓库，例如部署脚本、回滚脚本、日志脚本、数据库只读脚本。整体 App / 后端 / 管理后台的长期协助运维蓝图以 [docs/runbooks/operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 为入口；真实服务器、域名、数据库、SLS、OSS、后台账号和权限落地前，不伪造实例名或密钥，只记录待回填项。
 
 ## 10. 参考文档
 

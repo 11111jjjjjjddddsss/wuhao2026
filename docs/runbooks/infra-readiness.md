@@ -1,6 +1,6 @@
 # 上线前基础设施准备清单
 
-最后更新：2026-04-28
+最后更新：2026-05-17
 
 ## 目的
 
@@ -9,7 +9,7 @@
 ## 当前现状
 
 - Android 客户端与 `server-go` 后端代码主线已存在
-- 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架
+- 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
 - 正式云资源当前仍未采购；尚未形成真实环境名、账号、Region、实例规格、数据库实例或日志项目
 
 ## 最小上线资源清单
@@ -48,6 +48,7 @@
 - `docs/runbooks/rollback.md`：真实回滚入口
 - `docs/runbooks/logs-sls.md`：真实日志项目 / 查询入口
 - `docs/runbooks/db-readonly.md`：真实数据库只读连接方式
+- `docs/runbooks/operations-blueprint.md`：回填真实 App / 后端 / 管理后台运维入口和权限边界
 - `docs/project-state/current-status.md`：环境现状
 - `docs/project-state/open-risks.md`：关闭“未采购正式云资源”相关风险
 - `docs/project-state/pending-decisions.md`：移除已拍板项

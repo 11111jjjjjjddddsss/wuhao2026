@@ -5,6 +5,8 @@
 
 ## 2026-05-17
 
+- 新增 `docs/runbooks/operations-blueprint.md`，把后期 Codex 协助整体 App、Go 后端、RDS / 日志 / 成本、版本发布 / 回滚、帮助与反馈、礼品卡、会员和统一管理后台的运维范围先存进仓库；`AGENTS.md`、`infra-readiness.md`、`runbooks/README.md`、`current-status.md`、`open-risks.md` 和 `pending-decisions.md` 同步改口径。当前仍不伪造未购买的服务器实例、域名、数据库地址或密钥，真实环境落地后再把可执行入口回填到 deploy / rollback / logs / db / app-update 等 runbook。
+
 - `server-go` / `SessionApi.kt` / `HamburgerMenuSheet.kt` 接入自有服务器 APK 分发的“检查更新”：后端新增 `GET /api/app/update`，由环境变量 `APP_ANDROID_LATEST_VERSION_CODE / APP_ANDROID_LATEST_VERSION_NAME / APP_ANDROID_APK_URL / APP_ANDROID_RELEASE_NOTES / APP_ANDROID_FORCE_UPDATE / APP_ANDROID_FILE_SIZE_BYTES` 控制最新 Android 版本，且只接受 https APK 链接。Android 设置页“检查更新”不再是占位，点击后请求后端；无更新提示“已是最新版本”，有更新弹“发现新版本”卡片，按钮为“稍后 / 立即更新”，立即更新会下载 APK 到 App cache 并通过 FileProvider 调起系统安装确认。Android 8+ 如未允许本 App 安装未知应用，会先打开系统授权页。debug-only 预览面板同步补“检查更新 / 发现新版本”卡片预览；`docs/runbooks/app-update.md` 补了更直白的发布和回滚步骤。只接版本检查与下载安装壳，不接应用商店、不做静默安装、不改聊天滚动链或会员 / 礼品卡业务。
 
 - `HamburgerMenuSheet.kt` 微调帮助与反馈和礼品卡：帮助与反馈页后台消息气泡标签从“我们”改为“客服”，空态文案同步改成“把问题发给客服，回复会显示在这里。”，并移除标题下“这里会保留你的反馈和回复。”说明句；礼品卡输入框继续不放占位提示，边框改为纯黑。只改用户可见文案和边框视觉，不改 `/api/support/*`、图片附件、红点已读、礼品卡后端占位或聊天滚动链。
