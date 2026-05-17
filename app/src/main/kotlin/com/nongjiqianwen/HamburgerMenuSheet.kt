@@ -393,100 +393,137 @@ private fun HamburgerAppUpdateDialog(
                 .padding(horizontal = 28.dp),
             contentAlignment = Alignment.Center
         ) {
-            Surface(
-                color = Color.White,
-                shape = RoundedCornerShape(22.dp),
-                shadowElevation = 18.dp,
+            HamburgerAppUpdateCard(
+                versionText = versionText,
+                sizeText = sizeText,
+                notes = notes,
+                forceUpdate = forceUpdate,
+                downloading = downloading,
+                onDismiss = onDismiss,
+                onInstall = onInstall,
                 modifier = Modifier.widthIn(max = 340.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HamburgerAppUpdateCard(
+    versionText: String,
+    sizeText: String?,
+    notes: String,
+    forceUpdate: Boolean,
+    downloading: Boolean,
+    onDismiss: () -> Unit,
+    onInstall: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        shadowElevation = 18.dp,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "发现新版本",
+                color = Color(0xFF111111),
+                fontSize = 20.sp,
+                lineHeight = 27.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = listOfNotNull(versionText, sizeText).joinToString(" · "),
+                color = Color(0xFF6D7178),
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+            Text(
+                text = notes.ifBlank { "建议更新到最新版本。" },
+                color = Color(0xFF222222),
+                fontSize = 15.sp,
+                lineHeight = 22.sp
+            )
+            if (downloading) {
+                Text(
+                    text = "正在下载更新...",
+                    color = Color(0xFF6D7178),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Text(
-                        text = "发现新版本",
-                        color = Color(0xFF111111),
-                        fontSize = 20.sp,
-                        lineHeight = 27.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = listOfNotNull(versionText, sizeText).joinToString(" · "),
-                        color = Color(0xFF6D7178),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-                    Text(
-                        text = notes.ifBlank { "建议更新到最新版本。" },
-                        color = Color(0xFF222222),
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp
-                    )
-                    if (downloading) {
-                        Text(
-                            text = "正在下载更新...",
-                            color = Color(0xFF6D7178),
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp
-                        )
-                    }
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                if (!forceUpdate) {
+                    Surface(
+                        color = Color(0xFFF0F1F2),
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp)
+                            .clickable(
+                                enabled = !downloading,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onDismiss
+                            )
                     ) {
-                        if (!forceUpdate) {
-                            Surface(
-                                color = Color(0xFFF0F1F2),
-                                shape = RoundedCornerShape(999.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 44.dp)
-                                    .clickable(
-                                        enabled = !downloading,
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = onDismiss
-                                    )
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = "稍后",
-                                        color = Color(0xFF111111),
-                                        fontSize = 15.sp,
-                                        lineHeight = 20.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "稍后",
+                                color = Color(0xFF111111),
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
-                        Surface(
-                            color = if (downloading) Color(0xFFD6D8DC) else Color(0xFF111111),
-                            shape = RoundedCornerShape(999.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp)
-                                .clickable(
-                                    enabled = !downloading,
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = onInstall
-                                )
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = if (downloading) "下载中" else "立即更新",
-                                    color = if (downloading) Color(0xFF777B82) else Color.White,
-                                    fontSize = 15.sp,
-                                    lineHeight = 20.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
+                    }
+                }
+                Surface(
+                    color = if (downloading) Color(0xFFD6D8DC) else Color(0xFF111111),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !downloading,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onInstall
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (downloading) "下载中" else "立即更新",
+                            color = if (downloading) Color(0xFF777B82) else Color.White,
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+internal fun HamburgerAppUpdateDialogPreview() {
+    HamburgerAppUpdateCard(
+        versionText = "版本 1.0.1 (2)",
+        sizeText = "38.5MB",
+        notes = "优化检查更新流程，修复已知问题。",
+        forceUpdate = false,
+        downloading = false,
+        onDismiss = {},
+        onInstall = {},
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 private fun formatAppUpdateSize(bytes: Long?): String? {
