@@ -6520,6 +6520,9 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "发现新版本卡片，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
+                    UiCopyPreviewItem("服务协议", "本地内置协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
+                    UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
+                    UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
                     UiCopyPreviewItem("礼品卡兑换成功", "成功卡片和确定按钮", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )
             ),
@@ -6719,6 +6722,9 @@ private enum class UiCopyPreviewKind {
     HamburgerSupportPage,
     HamburgerAppUpdateDialog,
     HamburgerGiftCardPage,
+    HamburgerServiceAgreementPage,
+    HamburgerPrivacyPolicyPage,
+    HamburgerRiskNoticePage,
     HamburgerGiftCardSuccess,
     TodayAgriCard,
     AttachmentSheet,
@@ -7044,6 +7050,15 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
+                }
+                UiCopyPreviewKind.HamburgerServiceAgreementPage -> {
+                    HamburgerServiceAgreementPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerPrivacyPolicyPage -> {
+                    HamburgerPrivacyPolicyPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerRiskNoticePage -> {
+                    HamburgerRiskNoticePagePreview()
                 }
                 UiCopyPreviewKind.HamburgerGiftCardSuccess -> {
                     HamburgerRedeemSuccessCardPreview()

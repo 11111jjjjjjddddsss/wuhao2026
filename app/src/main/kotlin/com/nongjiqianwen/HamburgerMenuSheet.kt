@@ -89,7 +89,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private const val HAMBURGER_PLACEHOLDER_HINT = "功能后续接入"
 private const val HAMBURGER_PAGE_ENTER_MS = 180
 private const val HAMBURGER_PAGE_EXIT_MS = 150
 private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
@@ -256,6 +255,18 @@ internal fun HamburgerMenuSheet(
                                     supportAttachmentMenuVisible = false
                                     page = HamburgerMenuPage.Support
                                 },
+                                onOpenServiceAgreement = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.ServiceAgreement
+                                },
+                                onOpenPrivacyPolicy = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.PrivacyPolicy
+                                },
+                                onOpenRiskNotice = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.RiskNotice
+                                },
                                 onCheckUpdate = {
                                     performButtonHaptic()
                                     checkAppUpdate()
@@ -295,6 +306,15 @@ internal fun HamburgerMenuSheet(
                                     supportAttachmentMenuVisible = visible
                                 }
                             )
+                        }
+                        HamburgerMenuPage.ServiceAgreement -> {
+                            HamburgerServiceAgreementPage()
+                        }
+                        HamburgerMenuPage.PrivacyPolicy -> {
+                            HamburgerPrivacyPolicyPage()
+                        }
+                        HamburgerMenuPage.RiskNotice -> {
+                            HamburgerRiskNoticePage()
                         }
                     }
                 }
@@ -615,6 +635,9 @@ private fun HamburgerMenuMainPage(
     onOpenAccount: () -> Unit,
     onOpenRedeem: () -> Unit,
     onOpenSupport: () -> Unit,
+    onOpenServiceAgreement: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onOpenRiskNotice: () -> Unit,
     onCheckUpdate: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
@@ -668,20 +691,20 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
-                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+                onClick = onOpenServiceAgreement
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Privacy,
                 title = "隐私政策",
-                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+                onClick = onOpenPrivacyPolicy
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Risk,
                 title = "风险提示",
                 subtitle = "AI 建议仅供参考",
-                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+                onClick = onOpenRiskNotice
             )
         }
 
@@ -694,6 +717,331 @@ private fun HamburgerMenuMainPage(
                 onClick = { onPlaceholderClick("登录功能后续接入") }
             )
         }
+    }
+}
+
+@Composable
+private fun HamburgerServiceAgreementPage() {
+    HamburgerServiceAgreementContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 34.dp)
+    )
+}
+
+@Composable
+private fun HamburgerServiceAgreementContent(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        Text(
+            text = "服务协议",
+            color = Color(0xFF111111),
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(top = 14.dp)
+        )
+        Text(
+            text = "更新日期：2026年5月17日\n生效日期：2026年5月17日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
+            color = Color(0xFF5F646D),
+            fontSize = 14.sp,
+            lineHeight = 22.sp
+        )
+        HamburgerAgreementSection(
+            title = "一、特别提示",
+            body = "农技千问是一款农业 AI 问诊与技术参考工具。你可以通过文字、图片或图文混合方式咨询农作物相关问题，系统会基于你提供的信息生成农业技术参考建议。AI 输出不构成绝对诊断、行政认定、农资质量鉴定、处方或强制性操作指令。"
+        )
+        HamburgerAgreementSection(
+            title = "二、服务内容",
+            body = "我们提供农业问题咨询、图片辅助分析、历史对话展示、会员权益、礼品卡、帮助与反馈、今日农情和版本更新等功能。具体功能可能根据产品迭代、法规要求、服务器状态或运营安排进行调整。"
+        )
+        HamburgerAgreementSection(
+            title = "三、账号与使用规范",
+            body = "你应合法、合理使用本服务，不得上传违法违规、侵权、虚假、有害或与农业咨询无关的内容，不得攻击、干扰、爬取、逆向工程或以异常方式消耗系统资源。因你提供的信息不完整、不准确或现场条件变化导致建议偏差的，需要你自行结合实际情况判断。"
+        )
+        HamburgerAgreementSection(
+            title = "四、农业 AI 建议边界",
+            body = "本服务的回答仅用于农业技术参考。涉及农药、肥料、种子、检疫、补贴、备案、登记、审定、质量争议、赔付或重大生产决策时，请以产品标签、官方平台、当地农业农村部门、检测机构、农技人员或其他有资质主体的意见为准。"
+        )
+        HamburgerAgreementSection(
+            title = "五、用户内容与图片",
+            body = "你保留对自己上传内容依法享有的权利。为提供问诊、图片识别、历史记录、客服反馈和安全风控等必要服务，你同意我们在必要范围内处理你提交的文字、图片和使用记录。请勿上传他人隐私、商业秘密或你无权使用的内容。"
+        )
+        HamburgerAgreementSection(
+            title = "六、帮助与反馈",
+            body = "你可以通过 App 内“帮助与反馈”提交问题、截图或图片，客服回复会在站内展示。该入口用于产品问题和服务沟通，不是紧急农情、灾害处置或即时人工诊断通道。"
+        )
+        HamburgerAgreementSection(
+            title = "七、未成年人",
+            body = "未成年人应在监护人指导下使用本服务。未满十四周岁的儿童使用本服务并提交个人信息时，应取得监护人同意。请勿上传未成年人照片、身份信息或其他无关敏感内容。"
+        )
+        HamburgerAgreementSection(
+            title = "八、会员、次数与费用",
+            body = "会员套餐、每日次数、加油包、礼品卡、优惠和支付规则以 App 页面、后端记录及实际支付结果为准。若后续接入支付，订单、退款、权益生效和异常处理将按页面展示规则、支付平台规则及法律规定执行。"
+        )
+        HamburgerAgreementSection(
+            title = "九、服务变更与中断",
+            body = "因系统维护、网络故障、第三方服务异常、模型服务波动、设备兼容、不可抗力或安全风控需要，服务可能出现延迟、中断、失败或内容展示异常。我们会在合理范围内尽力修复，但不承诺服务永久不间断或完全无误。"
+        )
+        HamburgerAgreementSection(
+            title = "十、知识产权",
+            body = "本 App 的界面、程序、文案、标识、服务逻辑和相关内容的知识产权归我们或相关权利人所有。未经许可，你不得复制、改编、传播、抓取、反向工程或用于商业竞争目的。"
+        )
+        HamburgerAgreementSection(
+            title = "十一、隐私与个人信息保护",
+            body = "我们会按照法律法规和隐私政策处理你的个人信息。隐私政策将说明我们如何收集、使用、存储、保护和对外提供信息，以及你如何行使查询、更正、删除、注销等权利。"
+        )
+        HamburgerAgreementSection(
+            title = "十二、协议更新",
+            body = "我们可能根据产品变化、法律法规或运营需要更新本协议。更新后会在 App 内展示新版协议；如更新涉及你的重要权利义务，我们会以合理方式提示。你继续使用服务即表示接受更新后的协议。"
+        )
+        HamburgerAgreementSection(
+            title = "十三、法律适用与争议解决",
+            body = "本协议适用中华人民共和国法律。因本协议或服务产生争议，双方应先友好协商；协商不成的，任何一方可依法向有管辖权的人民法院提起诉讼。"
+        )
+        HamburgerAgreementSection(
+            title = "十四、联系我们",
+            body = "如果你对本协议、服务使用或权益处理有问题，可以通过邮箱 465989879@qq.com 联系我们。"
+        )
+    }
+}
+
+@Composable
+private fun HamburgerAgreementSection(
+    title: String,
+    body: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Text(
+            text = title,
+            color = Color(0xFF111111),
+            fontSize = 16.sp,
+            lineHeight = 23.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = body,
+            color = Color(0xFF30343A),
+            fontSize = 14.5.sp,
+            lineHeight = 23.sp
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerServiceAgreementPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerServiceAgreementContent(
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun HamburgerPrivacyPolicyPage() {
+    HamburgerPrivacyPolicyContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 34.dp)
+    )
+}
+
+@Composable
+private fun HamburgerPrivacyPolicyContent(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        HamburgerLegalPageTitle("隐私政策")
+        Text(
+            text = "更新日期：2026年5月17日\n生效日期：2026年5月17日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
+            color = Color(0xFF5F646D),
+            fontSize = 14.sp,
+            lineHeight = 22.sp
+        )
+        HamburgerAgreementSection(
+            title = "一、我们如何收集和使用信息",
+            body = "为提供农业 AI 问诊、图片分析、历史对话、会员权益、帮助与反馈、检查更新等功能，我们会在必要范围内处理你主动提交的文字、图片、反馈内容，以及服务运行产生的必要记录。"
+        )
+        HamburgerAgreementSection(
+            title = "二、你主动提供的信息",
+            body = "你在问诊、帮助与反馈或其他功能中输入的文字、上传的图片、选择的附件、发送的反馈和客服会话内容，会用于生成农业技术参考建议、展示历史记录、处理问题反馈和改进服务。请勿上传他人隐私、身份证件、银行卡、商业秘密或你无权使用的图片。"
+        )
+        HamburgerAgreementSection(
+            title = "三、账号、设备和使用记录",
+            body = "当前 App 主要使用本机生成的用户标识维持对话、额度和反馈归属；后续接入手机号或其他账号体系时，会按页面提示处理对应账号信息。服务器可能记录请求时间、接口路径、网络地址、错误日志、版本信息、额度消费和模型调用统计，用于安全风控、故障排查、成本核算和服务改进。"
+        )
+        HamburgerAgreementSection(
+            title = "四、图片、相机和相册",
+            body = "当前照片入口使用 Android 系统 Photo Picker，你只会授权本次主动选择的图片；当前拍照入口调用外部相机写入 App 创建的临时文件，并在导入后生成 App 私有图片副本用于上传和预览。当前 App 不申请相册读取权限，也不申请相机权限。"
+        )
+        HamburgerAgreementSection(
+            title = "五、定位和地区信息",
+            body = "当前 Android 客户端不申请定位权限，也不会读取 GPS 精确位置。后端可能基于网络情况获得粗略地区，或在未来由你主动选择 / 填写地区，用于让农业建议更贴近当地作物、气候和农时。若后续需要精确定位，会在使用前另行征得授权。"
+        )
+        HamburgerAgreementSection(
+            title = "六、当前权限说明",
+            body = "当前 App 声明的权限包括：网络访问，用于连接后端、上传图片、流式获取回答和检查更新；网络状态，用于判断网络可用性；安装未知应用相关权限，仅用于你主动点击“立即更新”后下载并调起系统安装页。当前不申请定位权限、相机权限、录音权限、通讯录权限、短信权限或读写存储权限。"
+        )
+        HamburgerAgreementSection(
+            title = "七、本地存储和缓存",
+            body = "App 会在本机保存必要运行缓存，例如本机用户标识、聊天窗口快照、未发送文字草稿、待上传图片副本、图片预览缓存和下载的更新 APK 缓存。你清除 App 数据后，这些本地缓存会被系统删除；已同步到后端的业务记录仍以后端保存规则为准。"
+        )
+        HamburgerAgreementSection(
+            title = "八、信息共享和第三方服务",
+            body = "为实现服务，我们可能使用云服务器、数据库、对象存储、日志服务、模型服务、支付服务或系统组件处理必要信息。我们不会出售你的个人信息；对外提供信息时会遵循合法、正当、必要原则，并要求相关服务方按约定保护数据安全。"
+        )
+        HamburgerAgreementSection(
+            title = "九、保存期限和安全措施",
+            body = "我们会在实现服务目的所需的最短合理期限内保存信息。当前成功完成的问答轮次会用于历史恢复和后续批量抽取，相关保存策略以后端真实规则为准。我们会采取访问控制、传输加密、日志审计等合理措施保护数据，但互联网环境下无法保证绝对安全。"
+        )
+        HamburgerAgreementSection(
+            title = "十、你的权利",
+            body = "你可以通过 App 内功能或联系邮箱 465989879@qq.com，要求查询、更正、删除相关信息，或咨询账号注销、撤回授权和投诉处理方式。具体处理会在核验身份和确认合法可行后进行。"
+        )
+        HamburgerAgreementSection(
+            title = "十一、未成年人保护",
+            body = "未成年人应在监护人指导下使用本服务。若你是未成年人的监护人，并发现未成年人向我们提交了不适当信息，可以通过联系邮箱要求处理。"
+        )
+        HamburgerAgreementSection(
+            title = "十二、政策更新",
+            body = "我们可能根据产品变化、法律法规或运营需要更新本政策。更新后会在 App 内展示新版政策；如涉及重要权利义务变化，我们会以合理方式提示。"
+        )
+    }
+}
+
+@Composable
+private fun HamburgerRiskNoticePage() {
+    HamburgerRiskNoticeContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 34.dp)
+    )
+}
+
+@Composable
+private fun HamburgerRiskNoticeContent(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        HamburgerLegalPageTitle("风险提示")
+        Text(
+            text = "更新日期：2026年5月17日\n生效日期：2026年5月17日",
+            color = Color(0xFF5F646D),
+            fontSize = 14.sp,
+            lineHeight = 22.sp
+        )
+        HamburgerAgreementSection(
+            title = "一、AI 建议仅供参考",
+            body = "农技千问会根据你提供的文字、图片和上下文生成农业技术参考建议。由于图片角度、清晰度、作物品种、地区、天气、土壤、用药史和管理条件可能不完整，AI 回答可能存在偏差、遗漏或误判。"
+        )
+        HamburgerAgreementSection(
+            title = "二、不能替代现场诊断",
+            body = "病虫害、药害、肥害、缺素、冻害、旱涝、根系问题和生理性障碍可能表现相似。重要生产决策前，请结合田间现场、当地农技人员、检测机构、产品标签和官方信息综合判断。"
+        )
+        HamburgerAgreementSection(
+            title = "三、图片/文字输入风险",
+            body = "一张图或少量描述不能替代现场调查；图片只反映拍摄瞬间和局部。不要只凭图片直接大面积用药、毁苗、停水停肥、索赔或投诉；重要操作前应补充现场信息并线下复核。"
+        )
+        HamburgerAgreementSection(
+            title = "四、农药、肥料和农资使用风险",
+            body = "涉及农药、肥料、调节剂、种子、基质、设备或其他农资时，请优先遵守产品标签、登记信息、当地法规和安全间隔期要求。不要仅凭 AI 建议超范围、超剂量、混配或在不适宜天气条件下使用农资。"
+        )
+        HamburgerAgreementSection(
+            title = "五、官方事项以主管部门为准",
+            body = "涉及检疫、补贴、备案、登记、审定、证件真伪、质量争议、赔付、处罚或行政流程的内容，AI 只能提供查询路径和一般性说明，不能替代主管部门、司法机关、检测机构或专业人员的结论。"
+        )
+        HamburgerAgreementSection(
+            title = "六、时效和联网信息风险",
+            body = "农业政策、天气、价格、病虫害预警和农资登记状态可能变化。即使系统使用联网搜索，也可能受到来源更新延迟、地区差异或信息质量影响。强时效事项请以官方或当地最新发布为准。"
+        )
+        HamburgerAgreementSection(
+            title = "七、图片和历史上下文限制",
+            body = "系统通常只重点参考当前轮和上一轮图片，更早图片可能不再进入模型上下文。若病斑、叶背、根系、果实、虫体或田间环境没有拍清，建议补充更清晰图片和关键背景。"
+        )
+        HamburgerAgreementSection(
+            title = "八、生产损失风险",
+            body = "农业生产受天气、土壤、水肥、品种、病虫害、人工操作和市场价格等多因素影响。使用本服务不代表保证防治效果、产量、品质、收益或避免损失。"
+        )
+        HamburgerAgreementSection(
+            title = "九、安全操作提醒",
+            body = "进行施药、施肥、修剪、采收、设备操作或其他现场作业时，请遵守安全规范，佩戴必要防护用品，避免污染水源、伤害人员或影响农产品安全。"
+        )
+        HamburgerAgreementSection(
+            title = "十、紧急情况",
+            body = "发生大面积突发病害、药害、灾害、食品安全或人身安全风险时，请及时联系当地农业农村部门、植保站、应急或监管机构以及线下专业人员，不要等待 AI 回复。"
+        )
+    }
+}
+
+@Composable
+private fun HamburgerLegalPageTitle(text: String) {
+    Text(
+        text = text,
+        color = Color(0xFF111111),
+        fontSize = 20.sp,
+        lineHeight = 28.sp,
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(top = 14.dp)
+    )
+}
+
+@Composable
+internal fun HamburgerPrivacyPolicyPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerPrivacyPolicyContent(
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerRiskNoticePagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerRiskNoticeContent(
+            modifier = Modifier.padding(14.dp)
+        )
     }
 }
 
@@ -2014,7 +2362,10 @@ private enum class HamburgerMenuPage {
     Membership,
     Redeem,
     Account,
-    Support
+    Support,
+    ServiceAgreement,
+    PrivacyPolicy,
+    RiskNotice
 }
 
 private fun formatSupportMessageTime(createdAt: Long?): String {

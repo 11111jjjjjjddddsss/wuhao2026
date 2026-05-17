@@ -5,6 +5,8 @@
 
 ## 2026-05-17
 
+- `HamburgerMenuSheet.kt` 接入本地内置“服务协议 / 隐私政策 / 风险提示”三份二级页：设置页点对应入口不再提示占位，而是右进左出打开正文；协议主体按“北京农技千问科技有限公司”和 `465989879@qq.com` 填写。隐私政策按当前真实权限写明只声明网络、网络状态、安装更新 APK 相关权限；照片走系统 Photo Picker，拍照走外部相机 + FileProvider 临时 URI，当前不申请定位、相机、相册 / 存储读写、录音、通讯录、短信或通知权限。风险提示覆盖 AI 建议仅供参考、图片/文字输入限制、农资使用、官方事项、时效信息、生产损失和紧急情况。debug-only 预览面板同步新增三份页面预览。只改协议/隐私/风险入口和本地文案，不改会员、礼品卡、后端接口或聊天滚动链。
+
 - `HamburgerMenuSheet.kt` 将“检查更新 / 发现新版本”卡片的更新说明统一为“优化产品体验”：真实弹窗在后端未返回 `release_notes` 时使用该兜底文案，debug-only 预览面板也同步展示同一句；`docs/runbooks/app-update.md` 同步推荐 `APP_ANDROID_RELEASE_NOTES` 使用同一文案。只改检查更新卡片文案，不改下载、安装、后端版本判断或回滚链路。
 
 - 新增 `docs/runbooks/operations-blueprint.md`，把后期 Codex 协助整体 App、Go 后端、RDS / 日志 / 成本、版本发布 / 回滚、帮助与反馈、礼品卡、会员和统一管理后台的运维范围先存进仓库；`AGENTS.md`、`infra-readiness.md`、`runbooks/README.md`、`current-status.md`、`open-risks.md` 和 `pending-decisions.md` 同步改口径。当前仍不伪造未购买的服务器实例、域名、数据库地址或密钥，真实环境落地后再把可执行入口回填到 deploy / rollback / logs / db / app-update 等 runbook。
