@@ -1448,7 +1448,7 @@ private fun HamburgerRedeemCodeContent(
                 Surface(
                     color = Color(0xFFFAFBFC),
                     shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, Color(0xFFC8CDD5)),
+                    border = BorderStroke(1.dp, Color(0xFFAEB6C0)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
