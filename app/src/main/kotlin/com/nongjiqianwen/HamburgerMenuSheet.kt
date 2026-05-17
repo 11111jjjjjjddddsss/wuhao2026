@@ -1081,7 +1081,7 @@ private fun HamburgerSupportFeedbackContent(
                         }
                     }
                     messages.isEmpty() -> {
-                        HamburgerSupportStatusText(text = "把问题发给我们，回复会显示在这里。")
+                        HamburgerSupportStatusText(text = "把问题发给客服，回复会显示在这里。")
                     }
                     else -> {
                         messages.forEach { message ->
@@ -1188,7 +1188,7 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
             modifier = Modifier.widthIn(max = 310.dp)
         ) {
             Text(
-                text = if (isUser) "我" else "我们",
+                text = if (isUser) "我" else "客服",
                 color = Color(0xFF8A8E96),
                 fontSize = 11.sp,
                 lineHeight = 14.sp
@@ -1368,7 +1368,7 @@ internal fun HamburgerSupportFeedbackPagePreview() {
                 SessionApi.SupportMessage(
                     id = 2,
                     senderType = "admin",
-                    body = "收到，我们已经帮你同步了一次。你重新打开会员中心看看，如果还不对，把截图发过来。",
+                    body = "收到，客服已经帮你同步了一次。你重新打开会员中心看看，如果还不对，把截图发过来。",
                     createdAt = System.currentTimeMillis() - 18L * 60L * 1000L
                 )
             ),
@@ -1448,7 +1448,7 @@ private fun HamburgerRedeemCodeContent(
                 Surface(
                     color = Color(0xFFFAFBFC),
                     shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+                    border = BorderStroke(1.dp, Color(0xFFC8CDD5)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
