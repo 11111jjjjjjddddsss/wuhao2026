@@ -107,14 +107,19 @@ internal fun HamburgerMenuSheet(
     onMembershipPaymentUnavailable: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
     var noticeText by remember(visible) { mutableStateOf<String?>(null) }
     var page by remember(visible) { mutableStateOf(HamburgerMenuPage.Menu) }
     var supportSummary by remember(visible) { mutableStateOf<SessionApi.SupportSummary?>(null) }
     var supportRefreshTick by remember(visible) { mutableStateOf(0) }
     var supportAttachmentMenuVisible by remember(visible) { mutableStateOf(false) }
     var supportAttachmentCloseRequest by remember(visible) { mutableStateOf(0) }
+    var updateChecking by remember(visible) { mutableStateOf(false) }
+    var updateDialogInfo by remember(visible) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
+    var updateDownloading by remember(visible) { mutableStateOf(false) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -124,6 +129,43 @@ internal fun HamburgerMenuSheet(
     fun showNotice(text: String) {
         noticeText = text
         onPlaceholderClick(text)
+    }
+    fun checkAppUpdate() {
+        if (updateChecking || updateDownloading) return
+        updateChecking = true
+        showNotice("正在检查更新...")
+        SessionApi.getAppUpdate { info ->
+            updateChecking = false
+            when {
+                info == null -> showNotice("检查更新失败，请稍后重试")
+                info.usableUpdate -> updateDialogInfo = info
+                else -> showNotice("已是最新版本")
+            }
+        }
+    }
+    fun startAppUpdate(update: SessionApi.AppUpdateInfo) {
+        if (updateDownloading) return
+        val appContext = context.applicationContext
+        if (!AppUpdateInstaller.canRequestInstallPackages(appContext)) {
+            val opened = AppUpdateInstaller.openInstallPermissionSettings(appContext)
+            showNotice(if (opened) "请允许安装未知应用后再继续更新" else "请先允许安装未知应用")
+            return
+        }
+        updateDownloading = true
+        showNotice("正在下载更新...")
+        scope.launch {
+            val apkFile = AppUpdateInstaller.downloadApk(appContext, update)
+            updateDownloading = false
+            if (apkFile == null) {
+                showNotice("更新下载失败，请稍后重试")
+                return@launch
+            }
+            updateDialogInfo = null
+            val started = AppUpdateInstaller.installApk(appContext, apkFile)
+            if (!started) {
+                showNotice("安装页面打开失败")
+            }
+        }
     }
     fun handleBackClick() {
         if (page == HamburgerMenuPage.Support && supportAttachmentMenuVisible) {
@@ -214,6 +256,10 @@ internal fun HamburgerMenuSheet(
                                     supportAttachmentMenuVisible = false
                                     page = HamburgerMenuPage.Support
                                 },
+                                onCheckUpdate = {
+                                    performButtonHaptic()
+                                    checkAppUpdate()
+                                },
                                 onPlaceholderClick = ::showNotice
                             )
                         }
@@ -298,9 +344,156 @@ internal fun HamburgerMenuSheet(
                         )
                     }
                 }
+                updateDialogInfo?.let { info ->
+                    HamburgerAppUpdateDialog(
+                        update = info,
+                        downloading = updateDownloading,
+                        onDismiss = {
+                            if (!updateDownloading) updateDialogInfo = null
+                        },
+                        onInstall = {
+                            performButtonHaptic()
+                            startAppUpdate(info)
+                        }
+                    )
+                }
             }
         }
     }
+}
+
+@Composable
+private fun HamburgerAppUpdateDialog(
+    update: SessionApi.AppUpdateInfo,
+    downloading: Boolean,
+    onDismiss: () -> Unit,
+    onInstall: () -> Unit
+) {
+    val latestName = update.latestVersionName?.takeIf { it.isNotBlank() }
+    val latestCode = update.latestVersionCode
+    val versionText = when {
+        latestName != null && latestCode != null -> "版本 $latestName ($latestCode)"
+        latestName != null -> "版本 $latestName"
+        latestCode != null -> "版本 $latestCode"
+        else -> "发现新版本"
+    }
+    val sizeText = formatAppUpdateSize(update.fileSizeBytes)
+    val notes = update.releaseNotes?.trim().orEmpty()
+    val forceUpdate = update.forceUpdate == true
+    Dialog(
+        onDismissRequest = {
+            if (!downloading && !forceUpdate) onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .padding(horizontal = 28.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(22.dp),
+                shadowElevation = 18.dp,
+                modifier = Modifier.widthIn(max = 340.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text(
+                        text = "发现新版本",
+                        color = Color(0xFF111111),
+                        fontSize = 20.sp,
+                        lineHeight = 27.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = listOfNotNull(versionText, sizeText).joinToString(" · "),
+                        color = Color(0xFF6D7178),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp
+                    )
+                    Text(
+                        text = notes.ifBlank { "建议更新到最新版本。" },
+                        color = Color(0xFF222222),
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    )
+                    if (downloading) {
+                        Text(
+                            text = "正在下载更新...",
+                            color = Color(0xFF6D7178),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        if (!forceUpdate) {
+                            Surface(
+                                color = Color(0xFFF0F1F2),
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 44.dp)
+                                    .clickable(
+                                        enabled = !downloading,
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = onDismiss
+                                    )
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "稍后",
+                                        color = Color(0xFF111111),
+                                        fontSize = 15.sp,
+                                        lineHeight = 20.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                        Surface(
+                            color = if (downloading) Color(0xFFD6D8DC) else Color(0xFF111111),
+                            shape = RoundedCornerShape(999.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 44.dp)
+                                .clickable(
+                                    enabled = !downloading,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onInstall
+                                )
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = if (downloading) "下载中" else "立即更新",
+                                    color = if (downloading) Color(0xFF777B82) else Color.White,
+                                    fontSize = 15.sp,
+                                    lineHeight = 20.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun formatAppUpdateSize(bytes: Long?): String? {
+    val value = bytes ?: return null
+    if (value <= 0L) return null
+    val mb = value / 1024.0 / 1024.0
+    return String.format(Locale.US, "%.1fMB", mb)
 }
 
 @Composable
@@ -385,6 +578,7 @@ private fun HamburgerMenuMainPage(
     onOpenAccount: () -> Unit,
     onOpenRedeem: () -> Unit,
     onOpenSupport: () -> Unit,
+    onCheckUpdate: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     Column(
@@ -423,7 +617,7 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Update,
                 title = "检查更新",
-                onClick = { onPlaceholderClick(HAMBURGER_PLACEHOLDER_HINT) }
+                onClick = onCheckUpdate
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(

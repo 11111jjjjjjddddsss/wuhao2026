@@ -131,6 +131,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/tier/renew_pro", s.handleRenewPro)
 	s.mux.HandleFunc("POST /api/tier/upgrade_plus_to_pro", s.handleUpgradePlusToPro)
 	s.mux.HandleFunc("GET /api/today-agri-card", s.handleTodayAgriCard)
+	s.mux.HandleFunc("GET /api/app/update", s.handleAppUpdate)
 	s.mux.HandleFunc("GET /api/support/summary", s.handleSupportSummary)
 	s.mux.HandleFunc("GET /api/support/messages", s.handleSupportMessages)
 	s.mux.HandleFunc("POST /api/support/messages", s.handleCreateSupportMessage)

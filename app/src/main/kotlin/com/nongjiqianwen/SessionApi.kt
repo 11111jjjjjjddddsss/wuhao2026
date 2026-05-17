@@ -8,6 +8,7 @@ import com.google.gson.JsonObject
 import com.google.gson.annotations.SerializedName
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -106,6 +107,22 @@ object SessionApi {
         @SerializedName("unread_count") val unreadCount: Int? = null,
         @SerializedName("latest_message") val latestMessage: SupportMessage? = null
     )
+
+    data class AppUpdateInfo(
+        val platform: String? = null,
+        @SerializedName("current_version_code") val currentVersionCode: Int? = null,
+        @SerializedName("current_version_name") val currentVersionName: String? = null,
+        @SerializedName("latest_version_code") val latestVersionCode: Int? = null,
+        @SerializedName("latest_version_name") val latestVersionName: String? = null,
+        @SerializedName("has_update") val hasUpdate: Boolean? = null,
+        @SerializedName("force_update") val forceUpdate: Boolean? = null,
+        @SerializedName("apk_url") val apkUrl: String? = null,
+        @SerializedName("release_notes") val releaseNotes: String? = null,
+        @SerializedName("file_size_bytes") val fileSizeBytes: Long? = null
+    ) {
+        val usableUpdate: Boolean
+            get() = hasUpdate == true && !apkUrl.isNullOrBlank() && apkUrl.trim().startsWith("https://")
+    }
 
     private fun TodayAgriCard?.isValidTodayAgriCard(): Boolean {
         val candidate = this ?: return false
@@ -415,6 +432,53 @@ object SessionApi {
                 }
             },
             onFailure = { postToMain { onResult(false) } }
+        )
+    }
+
+    fun getAppUpdate(onResult: (AppUpdateInfo?) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(null) }
+            return
+        }
+        val url = "$base/api/app/update"
+            .toHttpUrlOrNull()
+            ?.newBuilder()
+            ?.addQueryParameter("platform", "android")
+            ?.addQueryParameter("version_code", BuildConfig.VERSION_CODE.toString())
+            ?.addQueryParameter("version_name", BuildConfig.VERSION_NAME)
+            ?.build()
+        if (url == null) {
+            postToMain { onResult(null) }
+            return
+        }
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(Request.Builder().url(url).get())
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    if (!it.isSuccessful) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val body = it.body?.string()
+                    if (body.isNullOrBlank()) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val parsed = try {
+                        gson.fromJson(body, AppUpdateInfo::class.java)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse app update", e)
+                        null
+                    }
+                    postToMain { onResult(parsed) }
+                }
+            },
+            onFailure = { postToMain { onResult(null) } }
         )
     }
 

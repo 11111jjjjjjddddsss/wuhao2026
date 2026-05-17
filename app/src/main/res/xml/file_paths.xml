@@ -3,4 +3,7 @@
     <cache-path
         name="composer_camera"
         path="composer_camera/" />
+    <cache-path
+        name="app_updates"
+        path="app_updates/" />
 </paths>

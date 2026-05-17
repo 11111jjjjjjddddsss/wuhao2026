@@ -5,6 +5,8 @@
 
 ## 2026-05-17
 
+- `server-go` / `SessionApi.kt` / `HamburgerMenuSheet.kt` 接入自有服务器 APK 分发的“检查更新”：后端新增 `GET /api/app/update`，由环境变量 `APP_ANDROID_LATEST_VERSION_CODE / APP_ANDROID_LATEST_VERSION_NAME / APP_ANDROID_APK_URL / APP_ANDROID_RELEASE_NOTES / APP_ANDROID_FORCE_UPDATE / APP_ANDROID_FILE_SIZE_BYTES` 控制最新 Android 版本，且只接受 https APK 链接。Android 设置页“检查更新”不再是占位，点击后请求后端；无更新提示“已是最新版本”，有更新弹“发现新版本”卡片，按钮为“稍后 / 立即更新”，立即更新会下载 APK 到 App cache 并通过 FileProvider 调起系统安装确认。Android 8+ 如未允许本 App 安装未知应用，会先打开系统授权页。只接版本检查与下载安装壳，不接应用商店、不做静默安装、不改聊天滚动链或会员 / 礼品卡业务。
+
 - `HamburgerMenuSheet.kt` 微调帮助与反馈和礼品卡：帮助与反馈页后台消息气泡标签从“我们”改为“客服”，空态文案同步改成“把问题发给客服，回复会显示在这里。”，并移除标题下“这里会保留你的反馈和回复。”说明句；礼品卡输入框继续不放占位提示，边框改为纯黑。只改用户可见文案和边框视觉，不改 `/api/support/*`、图片附件、红点已读、礼品卡后端占位或聊天滚动链。
 
 ## 2026-05-16
