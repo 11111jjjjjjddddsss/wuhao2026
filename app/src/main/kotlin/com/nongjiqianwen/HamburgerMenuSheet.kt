@@ -1553,49 +1553,23 @@ private fun HamburgerDataManagementContent(
             modifier = Modifier.padding(top = 22.dp)
         ) {
             HamburgerAccountInfoRow(
-                title = "数据用于优化体验",
+                title = "优化体验",
                 value = "未开启",
-                onClick = { onPendingAction("数据优化开关后续接入") }
-            )
-        }
-        Text(
-            text = "当前不会将您的对话用于与本服务无关的模型训练。后续如果提供体验优化开关，会在这里单独说明并让您选择。",
-            color = Color(0xFF8A8E96),
-            fontSize = 14.sp,
-            lineHeight = 22.sp,
-            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 12.dp)
-        )
-
-        HamburgerAccountGroup(
-            modifier = Modifier.padding(top = 28.dp)
-        ) {
-            HamburgerAccountInfoRow(
-                title = "我的数据说明",
-                value = "查看",
-                onClick = { onPendingAction("请在服务协议中查看隐私政策和个人信息清单") }
+                onClick = { onPendingAction("优化体验开关后续接入") }
             )
             HamburgerMenuDivider()
-            HamburgerAccountInfoRow(
-                title = "申请查询个人信息",
-                value = "帮助与反馈",
-                onClick = { onPendingAction("请通过帮助与反馈或邮箱申请查询") }
-            )
-            HamburgerMenuDivider()
-            HamburgerAccountInfoRow(
-                title = "申请删除个人信息",
-                value = "帮助与反馈",
-                onClick = { onPendingAction("请通过帮助与反馈或邮箱申请删除") }
-            )
-        }
-
-        HamburgerAccountGroup(
-            modifier = Modifier.padding(top = 28.dp)
-        ) {
             HamburgerAccountActionRow(
                 title = "删除所有历史对话",
                 onClick = { onPendingAction("历史对话删除后续接入") }
             )
         }
+        Text(
+            text = "优化体验只用于后续改进产品体验，不影响问诊历史、上下文记忆和客服记录。",
+            color = Color(0xFF8A8E96),
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 12.dp)
+        )
     }
 }
 
