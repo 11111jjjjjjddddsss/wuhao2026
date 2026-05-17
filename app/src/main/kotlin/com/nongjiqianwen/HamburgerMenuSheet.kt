@@ -257,10 +257,6 @@ internal fun HamburgerMenuSheet(
                                     performButtonHaptic()
                                     page = HamburgerMenuPage.Account
                                 },
-                                onOpenDataManagement = {
-                                    performButtonHaptic()
-                                    page = HamburgerMenuPage.DataManagement
-                                },
                                 onOpenRedeem = {
                                     performButtonHaptic()
                                     page = HamburgerMenuPage.Redeem
@@ -295,11 +291,6 @@ internal fun HamburgerMenuSheet(
                         }
                         HamburgerMenuPage.Account -> {
                             HamburgerAccountManagementPage(
-                                onPendingAction = ::showNotice
-                            )
-                        }
-                        HamburgerMenuPage.DataManagement -> {
-                            HamburgerDataManagementPage(
                                 onPendingAction = ::showNotice
                             )
                         }
@@ -665,7 +656,6 @@ private fun HamburgerMenuMainPage(
     supportUnread: Boolean,
     onOpenMembership: () -> Unit,
     onOpenAccount: () -> Unit,
-    onOpenDataManagement: () -> Unit,
     onOpenRedeem: () -> Unit,
     onOpenSupport: () -> Unit,
     onOpenLegalHub: () -> Unit,
@@ -695,12 +685,6 @@ private fun HamburgerMenuMainPage(
                 title = "账号管理",
                 onClick = onOpenAccount
             )
-            HamburgerMenuDivider()
-            HamburgerMenuRow(
-                icon = HamburgerMenuIcon.Data,
-                title = "数据管理",
-                onClick = onOpenDataManagement
-            )
         }
 
         HamburgerMenuGroup {
@@ -722,9 +706,7 @@ private fun HamburgerMenuMainPage(
                 title = "礼品卡",
                 onClick = onOpenRedeem
             )
-        }
-
-        HamburgerMenuGroup {
+            HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
@@ -1392,12 +1374,6 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                     title = "账号管理",
                     onClick = {}
                 )
-                HamburgerMenuDivider()
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Data,
-                    title = "数据管理",
-                    onClick = {}
-                )
             }
             HamburgerMenuGroup {
                 HamburgerMenuRow(
@@ -1418,8 +1394,7 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                     title = "礼品卡",
                     onClick = {}
                 )
-            }
-            HamburgerMenuGroup {
+                HamburgerMenuDivider()
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Document,
                     title = "服务协议",
@@ -1495,6 +1470,11 @@ private fun HamburgerAccountManagementContent(
             modifier = Modifier.padding(top = 22.dp)
         ) {
             HamburgerAccountActionRow(
+                title = "删除所有历史对话",
+                onClick = { onPendingAction("历史对话删除后续接入") }
+            )
+            HamburgerMenuDivider()
+            HamburgerAccountActionRow(
                 title = "退出设备",
                 onClick = { onPendingAction("登录功能后续接入") }
             )
@@ -1519,68 +1499,6 @@ internal fun HamburgerAccountManagementPagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerAccountManagementContent(
-            onPendingAction = {},
-            modifier = Modifier.padding(14.dp)
-        )
-    }
-}
-
-@Composable
-private fun HamburgerDataManagementPage(
-    onPendingAction: (String) -> Unit
-) {
-    HamburgerDataManagementContent(
-        onPendingAction = onPendingAction,
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
-    )
-}
-
-@Composable
-private fun HamburgerDataManagementContent(
-    onPendingAction: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier) {
-        HamburgerLegalPageTitle("数据管理")
-
-        HamburgerAccountGroup(
-            modifier = Modifier.padding(top = 22.dp)
-        ) {
-            HamburgerAccountInfoRow(
-                title = "优化体验",
-                value = "未开启",
-                onClick = { onPendingAction("优化体验开关后续接入") }
-            )
-            HamburgerMenuDivider()
-            HamburgerAccountActionRow(
-                title = "删除所有历史对话",
-                onClick = { onPendingAction("历史对话删除后续接入") }
-            )
-        }
-        Text(
-            text = "优化体验只用于后续改进产品体验，不影响问诊历史、上下文记忆和客服记录。",
-            color = Color(0xFF8A8E96),
-            fontSize = 14.sp,
-            lineHeight = 22.sp,
-            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 12.dp)
-        )
-    }
-}
-
-@Composable
-internal fun HamburgerDataManagementPagePreview() {
-    Surface(
-        color = Color(0xFFF8F9FA),
-        shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
-    ) {
-        HamburgerDataManagementContent(
             onPendingAction = {},
             modifier = Modifier.padding(14.dp)
         )
@@ -2704,7 +2622,6 @@ private enum class HamburgerMenuIcon {
     Membership,
     Redeem,
     Account,
-    Data,
     Update,
     Document,
     Privacy,
@@ -2718,7 +2635,6 @@ private enum class HamburgerMenuPage {
     Membership,
     Redeem,
     Account,
-    DataManagement,
     Support,
     LegalHub,
     ServiceAgreement,
@@ -2896,39 +2812,6 @@ private fun HamburgerMenuGlyph(
                     size = androidx.compose.ui.geometry.Size(w * 0.46f, h * 0.30f),
                     style = stroke
                 )
-            }
-            HamburgerMenuIcon.Data -> {
-                drawOval(
-                    color = tint,
-                    topLeft = Offset(w * 0.18f, h * 0.18f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.22f),
-                    style = stroke
-                )
-                drawLine(tint, Offset(w * 0.18f, h * 0.29f), Offset(w * 0.18f, h * 0.70f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.66f, h * 0.29f), Offset(w * 0.66f, h * 0.58f), strokeWidth, cap = StrokeCap.Round)
-                drawArc(
-                    color = tint,
-                    startAngle = 0f,
-                    sweepAngle = 180f,
-                    useCenter = false,
-                    topLeft = Offset(w * 0.18f, h * 0.38f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.22f),
-                    style = stroke
-                )
-                drawArc(
-                    color = tint,
-                    startAngle = 0f,
-                    sweepAngle = 180f,
-                    useCenter = false,
-                    topLeft = Offset(w * 0.18f, h * 0.58f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.22f),
-                    style = stroke
-                )
-                drawCircle(tint, radius = w * 0.12f, center = Offset(w * 0.75f, h * 0.70f), style = stroke)
-                drawLine(tint, Offset(w * 0.75f, h * 0.54f), Offset(w * 0.75f, h * 0.58f), strokeWidth * 0.8f, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.75f, h * 0.82f), Offset(w * 0.75f, h * 0.86f), strokeWidth * 0.8f, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.59f, h * 0.70f), Offset(w * 0.63f, h * 0.70f), strokeWidth * 0.8f, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.87f, h * 0.70f), Offset(w * 0.91f, h * 0.70f), strokeWidth * 0.8f, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Update -> {
                 val updateStrokeWidth = strokeWidth * 0.92f
