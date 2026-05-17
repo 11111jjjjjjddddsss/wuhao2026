@@ -442,7 +442,7 @@ private fun HamburgerAppUpdateCard(
                 lineHeight = 18.sp
             )
             Text(
-                text = notes.ifBlank { "建议更新到最新版本。" },
+                text = notes.ifBlank { "优化产品体验" },
                 color = Color(0xFF222222),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -517,7 +517,7 @@ internal fun HamburgerAppUpdateDialogPreview() {
     HamburgerAppUpdateCard(
         versionText = "版本 1.0.1 (2)",
         sizeText = "38.5MB",
-        notes = "优化检查更新流程，修复已知问题。",
+        notes = "优化产品体验",
         forceUpdate = false,
         downloading = false,
         onDismiss = {},

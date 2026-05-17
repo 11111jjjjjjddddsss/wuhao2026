@@ -39,7 +39,7 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 - `APP_ANDROID_LATEST_VERSION_CODE`：最新 APK 的 `versionCode`，必须大于客户端当前 `versionCode` 才会返回有更新
 - `APP_ANDROID_LATEST_VERSION_NAME`：最新 APK 的展示版本名
 - `APP_ANDROID_APK_URL`：APK 下载地址，必须是公网 `https://` URL；非 https 会被后端视为无可用更新
-- `APP_ANDROID_RELEASE_NOTES`：更新说明，直接展示在更新卡片里
+- `APP_ANDROID_RELEASE_NOTES`：更新说明，直接展示在更新卡片里；当前默认建议写“优化产品体验”
 - `APP_ANDROID_FORCE_UPDATE`：可选，`true / 1 / yes / on` 表示强制更新；强制更新卡片不展示“稍后”
 - `APP_ANDROID_FILE_SIZE_BYTES`：可选，APK 字节大小，用于更新卡片展示
 
