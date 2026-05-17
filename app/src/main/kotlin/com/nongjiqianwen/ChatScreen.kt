@@ -6517,11 +6517,16 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号、退出设备、注销账号", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("数据管理", "个人信息查询/删除入口占位", UiCopyPreviewKind.HamburgerDataManagementPage),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "发现新版本卡片，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
-                    UiCopyPreviewItem("服务协议", "本地内置协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
+                    UiCopyPreviewItem("服务协议目录", "用户协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
+                    UiCopyPreviewItem("用户协议", "本地内置用户协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
+                    UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),
+                    UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
+                    UiCopyPreviewItem("应用权限", "当前权限和不申请权限", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
                     UiCopyPreviewItem("礼品卡兑换成功", "成功卡片和确定按钮", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )
@@ -6719,11 +6724,16 @@ private enum class UiCopyPreviewKind {
     HamburgerMenu,
     HamburgerMembershipPage,
     HamburgerAccountPage,
+    HamburgerDataManagementPage,
     HamburgerSupportPage,
     HamburgerAppUpdateDialog,
     HamburgerGiftCardPage,
+    HamburgerLegalHubPage,
     HamburgerServiceAgreementPage,
     HamburgerPrivacyPolicyPage,
+    HamburgerThirdPartyListPage,
+    HamburgerPersonalInfoListPage,
+    HamburgerPermissionListPage,
     HamburgerRiskNoticePage,
     HamburgerGiftCardSuccess,
     TodayAgriCard,
@@ -7042,6 +7052,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerAccountPage -> {
                     HamburgerAccountManagementPagePreview()
                 }
+                UiCopyPreviewKind.HamburgerDataManagementPage -> {
+                    HamburgerDataManagementPagePreview()
+                }
                 UiCopyPreviewKind.HamburgerSupportPage -> {
                     HamburgerSupportFeedbackPagePreview()
                 }
@@ -7051,11 +7064,23 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
                 }
+                UiCopyPreviewKind.HamburgerLegalHubPage -> {
+                    HamburgerLegalHubPagePreview()
+                }
                 UiCopyPreviewKind.HamburgerServiceAgreementPage -> {
                     HamburgerServiceAgreementPagePreview()
                 }
                 UiCopyPreviewKind.HamburgerPrivacyPolicyPage -> {
                     HamburgerPrivacyPolicyPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerThirdPartyListPage -> {
+                    HamburgerThirdPartyListPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerPersonalInfoListPage -> {
+                    HamburgerPersonalInfoListPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerPermissionListPage -> {
+                    HamburgerPermissionListPagePreview()
                 }
                 UiCopyPreviewKind.HamburgerRiskNoticePage -> {
                     HamburgerRiskNoticePagePreview()

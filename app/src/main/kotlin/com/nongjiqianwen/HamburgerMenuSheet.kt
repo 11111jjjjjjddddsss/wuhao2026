@@ -112,6 +112,7 @@ internal fun HamburgerMenuSheet(
     val scope = rememberCoroutineScope()
     var noticeText by remember(visible) { mutableStateOf<String?>(null) }
     var page by remember(visible) { mutableStateOf(HamburgerMenuPage.Menu) }
+    var legalSubpage by remember(visible) { mutableStateOf(false) }
     var supportSummary by remember(visible) { mutableStateOf<SessionApi.SupportSummary?>(null) }
     var supportRefreshTick by remember(visible) { mutableStateOf(0) }
     var supportAttachmentMenuVisible by remember(visible) { mutableStateOf(false) }
@@ -172,11 +173,21 @@ internal fun HamburgerMenuSheet(
             return
         }
         supportAttachmentMenuVisible = false
+        if (legalSubpage && page.isLegalDetailPage()) {
+            legalSubpage = false
+            page = HamburgerMenuPage.LegalHub
+            return
+        }
         if (page != HamburgerMenuPage.Menu) {
+            legalSubpage = false
             page = HamburgerMenuPage.Menu
         } else {
             onDismiss()
         }
+    }
+    fun openLegalDetail(target: HamburgerMenuPage) {
+        legalSubpage = true
+        page = target
     }
     LaunchedEffect(noticeText) {
         if (noticeText == null) return@LaunchedEffect
@@ -246,6 +257,10 @@ internal fun HamburgerMenuSheet(
                                     performButtonHaptic()
                                     page = HamburgerMenuPage.Account
                                 },
+                                onOpenDataManagement = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.DataManagement
+                                },
                                 onOpenRedeem = {
                                     performButtonHaptic()
                                     page = HamburgerMenuPage.Redeem
@@ -255,17 +270,10 @@ internal fun HamburgerMenuSheet(
                                     supportAttachmentMenuVisible = false
                                     page = HamburgerMenuPage.Support
                                 },
-                                onOpenServiceAgreement = {
+                                onOpenLegalHub = {
                                     performButtonHaptic()
-                                    page = HamburgerMenuPage.ServiceAgreement
-                                },
-                                onOpenPrivacyPolicy = {
-                                    performButtonHaptic()
-                                    page = HamburgerMenuPage.PrivacyPolicy
-                                },
-                                onOpenRiskNotice = {
-                                    performButtonHaptic()
-                                    page = HamburgerMenuPage.RiskNotice
+                                    legalSubpage = false
+                                    page = HamburgerMenuPage.LegalHub
                                 },
                                 onCheckUpdate = {
                                     performButtonHaptic()
@@ -290,6 +298,11 @@ internal fun HamburgerMenuSheet(
                                 onPendingAction = ::showNotice
                             )
                         }
+                        HamburgerMenuPage.DataManagement -> {
+                            HamburgerDataManagementPage(
+                                onPendingAction = ::showNotice
+                            )
+                        }
                         HamburgerMenuPage.Redeem -> {
                             HamburgerRedeemCodePage(
                                 onPendingAction = ::showNotice
@@ -307,11 +320,30 @@ internal fun HamburgerMenuSheet(
                                 }
                             )
                         }
+                        HamburgerMenuPage.LegalHub -> {
+                            HamburgerLegalHubPage(
+                                onOpenUserAgreement = { openLegalDetail(HamburgerMenuPage.ServiceAgreement) },
+                                onOpenPrivacyPolicy = { openLegalDetail(HamburgerMenuPage.PrivacyPolicy) },
+                                onOpenThirdPartyList = { openLegalDetail(HamburgerMenuPage.ThirdPartyList) },
+                                onOpenPersonalInfoList = { openLegalDetail(HamburgerMenuPage.PersonalInfoList) },
+                                onOpenPermissionList = { openLegalDetail(HamburgerMenuPage.PermissionList) },
+                                onOpenRiskNotice = { openLegalDetail(HamburgerMenuPage.RiskNotice) }
+                            )
+                        }
                         HamburgerMenuPage.ServiceAgreement -> {
                             HamburgerServiceAgreementPage()
                         }
                         HamburgerMenuPage.PrivacyPolicy -> {
                             HamburgerPrivacyPolicyPage()
+                        }
+                        HamburgerMenuPage.ThirdPartyList -> {
+                            HamburgerThirdPartyListPage()
+                        }
+                        HamburgerMenuPage.PersonalInfoList -> {
+                            HamburgerPersonalInfoListPage()
+                        }
+                        HamburgerMenuPage.PermissionList -> {
+                            HamburgerPermissionListPage()
                         }
                         HamburgerMenuPage.RiskNotice -> {
                             HamburgerRiskNoticePage()
@@ -633,11 +665,10 @@ private fun HamburgerMenuMainPage(
     supportUnread: Boolean,
     onOpenMembership: () -> Unit,
     onOpenAccount: () -> Unit,
+    onOpenDataManagement: () -> Unit,
     onOpenRedeem: () -> Unit,
     onOpenSupport: () -> Unit,
-    onOpenServiceAgreement: () -> Unit,
-    onOpenPrivacyPolicy: () -> Unit,
-    onOpenRiskNotice: () -> Unit,
+    onOpenLegalHub: () -> Unit,
     onCheckUpdate: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
@@ -663,6 +694,12 @@ private fun HamburgerMenuMainPage(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
                 onClick = onOpenAccount
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Data,
+                title = "数据管理",
+                onClick = onOpenDataManagement
             )
         }
 
@@ -691,20 +728,7 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
-                onClick = onOpenServiceAgreement
-            )
-            HamburgerMenuDivider()
-            HamburgerMenuRow(
-                icon = HamburgerMenuIcon.Privacy,
-                title = "隐私政策",
-                onClick = onOpenPrivacyPolicy
-            )
-            HamburgerMenuDivider()
-            HamburgerMenuRow(
-                icon = HamburgerMenuIcon.Risk,
-                title = "风险提示",
-                subtitle = "AI 建议仅供参考",
-                onClick = onOpenRiskNotice
+                onClick = onOpenLegalHub
             )
         }
 
@@ -717,6 +741,115 @@ private fun HamburgerMenuMainPage(
                 onClick = { onPlaceholderClick("登录功能后续接入") }
             )
         }
+    }
+}
+
+@Composable
+private fun HamburgerLegalHubPage(
+    onOpenUserAgreement: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onOpenThirdPartyList: () -> Unit,
+    onOpenPersonalInfoList: () -> Unit,
+    onOpenPermissionList: () -> Unit,
+    onOpenRiskNotice: () -> Unit
+) {
+    HamburgerLegalHubContent(
+        onOpenUserAgreement = onOpenUserAgreement,
+        onOpenPrivacyPolicy = onOpenPrivacyPolicy,
+        onOpenThirdPartyList = onOpenThirdPartyList,
+        onOpenPersonalInfoList = onOpenPersonalInfoList,
+        onOpenPermissionList = onOpenPermissionList,
+        onOpenRiskNotice = onOpenRiskNotice,
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
+    )
+}
+
+@Composable
+private fun HamburgerLegalHubContent(
+    onOpenUserAgreement: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onOpenThirdPartyList: () -> Unit,
+    onOpenPersonalInfoList: () -> Unit,
+    onOpenPermissionList: () -> Unit,
+    onOpenRiskNotice: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        HamburgerLegalPageTitle("服务协议")
+        HamburgerAccountGroup(
+            modifier = Modifier.padding(top = 22.dp)
+        ) {
+            HamburgerLegalHubRow("用户协议", onOpenUserAgreement)
+            HamburgerMenuDivider()
+            HamburgerLegalHubRow("隐私政策", onOpenPrivacyPolicy)
+            HamburgerMenuDivider()
+            HamburgerLegalHubRow("第三方信息共享清单", onOpenThirdPartyList)
+            HamburgerMenuDivider()
+            HamburgerLegalHubRow("个人信息收集清单", onOpenPersonalInfoList)
+            HamburgerMenuDivider()
+            HamburgerLegalHubRow("应用权限", onOpenPermissionList)
+            HamburgerMenuDivider()
+            HamburgerLegalHubRow("风险提示", onOpenRiskNotice)
+        }
+    }
+}
+
+@Composable
+private fun HamburgerLegalHubRow(
+    title: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 24.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = Color(0xFF111111),
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        HamburgerChevronIcon(
+            tint = Color(0xFFAAAEB5),
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerLegalHubPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerLegalHubContent(
+            onOpenUserAgreement = {},
+            onOpenPrivacyPolicy = {},
+            onOpenThirdPartyList = {},
+            onOpenPersonalInfoList = {},
+            onOpenPermissionList = {},
+            onOpenRiskNotice = {},
+            modifier = Modifier.padding(14.dp)
+        )
     }
 }
 
@@ -741,18 +874,7 @@ private fun HamburgerServiceAgreementContent(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        Text(
-            text = "服务协议",
-            color = Color(0xFF111111),
-            fontSize = 20.sp,
-            lineHeight = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .padding(top = 14.dp)
-        )
+        HamburgerLegalPageTitle("用户协议")
         Text(
             text = "更新日期：2026年5月17日\n生效日期：2026年5月17日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
             color = Color(0xFF5F646D),
@@ -1019,6 +1141,198 @@ internal fun HamburgerPrivacyPolicyPagePreview() {
 }
 
 @Composable
+private fun HamburgerThirdPartyListPage() {
+    HamburgerThirdPartyListContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 34.dp)
+    )
+}
+
+@Composable
+private fun HamburgerThirdPartyListContent(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        HamburgerLegalPageTitle("第三方信息共享清单")
+        Text(
+            text = "更新日期：2026年5月17日",
+            color = Color(0xFF5F646D),
+            fontSize = 14.sp,
+            lineHeight = 22.sp
+        )
+        HamburgerAgreementSection(
+            title = "一、基本原则",
+            body = "我们不会出售您的个人信息。除依法依规、取得授权、实现服务必要委托处理、处理投诉争议或保护安全外，不会向无关第三方提供您的个人信息。"
+        )
+        HamburgerAgreementSection(
+            title = "二、第三方大模型和云服务",
+            body = "我们可能通过服务端调用境内第三方云计算和大模型服务，用于生成农业技术参考建议、图片理解、摘要处理和今日农情生成。相关服务只在实现问诊、摘要或今日农情功能所必需的范围内处理您提交的文字、图片、必要上下文和必要日志。"
+        )
+        HamburgerAgreementSection(
+            title = "三、云资源和存储",
+            body = "云服务器、数据库、对象存储、日志和缓存用于后端运行、保存会话、图片、额度、反馈和必要日志。真实服务器、对象存储和日志服务商落地后，会按实际上线情况更新清单。"
+        )
+        HamburgerAgreementSection(
+            title = "四、系统能力",
+            body = "系统浏览器、系统安装器、外部相机和 Android Photo Picker 只在您主动点击相关功能时调用。它们属于系统能力，不是 App 内嵌的广告、统计或推送 SDK。"
+        )
+        HamburgerAgreementSection(
+            title = "五、当前未接入",
+            body = "当前未接入广告、地图、推送、统计 SDK、支付 SDK、第三方登录 SDK、友盟、Bugly、极光或 Firebase。后续如接入，会先更新清单和隐私政策。"
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerThirdPartyListPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerThirdPartyListContent(
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun HamburgerPersonalInfoListPage() {
+    HamburgerPersonalInfoListContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 34.dp)
+    )
+}
+
+@Composable
+private fun HamburgerPersonalInfoListContent(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        HamburgerLegalPageTitle("个人信息收集清单")
+        Text(
+            text = "更新日期：2026年5月17日",
+            color = Color(0xFF5F646D),
+            fontSize = 14.sp,
+            lineHeight = 22.sp
+        )
+        HamburgerAgreementSection(
+            title = "一、基础运行",
+            body = "为维持服务运行，我们会处理本机用户标识、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志和必要运行缓存。"
+        )
+        HamburgerAgreementSection(
+            title = "二、AI 问诊",
+            body = "为生成农业技术参考建议，我们会处理您输入的文字、上传图片、必要历史上下文、后端服务器时间、粗略地区信息、AI 回复和摘要。当前不读取手机 GPS 精确定位。"
+        )
+        HamburgerAgreementSection(
+            title = "三、图片上传",
+            body = "您主动选择或拍摄的图片会导入 App 私有目录，按图片规则压缩或直通为 JPEG 后上传，用于图片分析、历史展示、失败重试和帮助与反馈附件。"
+        )
+        HamburgerAgreementSection(
+            title = "四、会员、礼品卡和更新",
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿、加油包、订单或兑换记录。礼品卡和支付未正式接入前，不会产生真实支付或兑换权益。检查更新会使用当前版本号、平台信息和下载 APK 缓存。"
+        )
+        HamburgerAgreementSection(
+            title = "五、帮助与反馈",
+            body = "帮助与反馈会处理您提交的文字、图片、客服回复、已读状态和发送时间，用于站内沟通、问题排查和服务处理。"
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerPersonalInfoListPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerPersonalInfoListContent(
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun HamburgerPermissionListPage() {
+    HamburgerPermissionListContent(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 34.dp)
+    )
+}
+
+@Composable
+private fun HamburgerPermissionListContent(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        HamburgerLegalPageTitle("应用权限")
+        Text(
+            text = "更新日期：2026年5月17日",
+            color = Color(0xFF5F646D),
+            fontSize = 14.sp,
+            lineHeight = 22.sp
+        )
+        HamburgerAgreementSection(
+            title = "一、网络访问",
+            body = "用于连接后端、上传图片、流式回答、会员、帮助与反馈、今日农情和检查更新。"
+        )
+        HamburgerAgreementSection(
+            title = "二、网络状态",
+            body = "用于判断网络是否可用，并在网络异常时给出提示。"
+        )
+        HamburgerAgreementSection(
+            title = "三、安装更新 APK",
+            body = "仅用于您主动点击“立即更新”后下载 APK 并调起 Android 系统安装确认页；App 不做静默安装。"
+        )
+        HamburgerAgreementSection(
+            title = "四、相机和照片",
+            body = "当前照片入口使用 Android 系统 Photo Picker，只访问您本次主动选择的图片；拍照入口调用外部相机并通过 FileProvider 授权临时写入，不申请 App 相机权限。"
+        )
+        HamburgerAgreementSection(
+            title = "五、当前不申请的权限",
+            body = "当前不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限；当前也不做 App 外推送通知。"
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerPermissionListPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerPermissionListContent(
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
 internal fun HamburgerRiskNoticePagePreview() {
     Surface(
         color = Color(0xFFF8F9FA),
@@ -1078,6 +1392,12 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                     title = "账号管理",
                     onClick = {}
                 )
+                HamburgerMenuDivider()
+                HamburgerMenuRow(
+                    icon = HamburgerMenuIcon.Data,
+                    title = "数据管理",
+                    onClick = {}
+                )
             }
             HamburgerMenuGroup {
                 HamburgerMenuRow(
@@ -1103,19 +1423,6 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Document,
                     title = "服务协议",
-                    onClick = {}
-                )
-                HamburgerMenuDivider()
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Privacy,
-                    title = "隐私政策",
-                    onClick = {}
-                )
-                HamburgerMenuDivider()
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Risk,
-                    title = "风险提示",
-                    subtitle = "AI 建议仅供参考",
                     onClick = {}
                 )
             }
@@ -1212,6 +1519,94 @@ internal fun HamburgerAccountManagementPagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerAccountManagementContent(
+            onPendingAction = {},
+            modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
+private fun HamburgerDataManagementPage(
+    onPendingAction: (String) -> Unit
+) {
+    HamburgerDataManagementContent(
+        onPendingAction = onPendingAction,
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
+    )
+}
+
+@Composable
+private fun HamburgerDataManagementContent(
+    onPendingAction: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        HamburgerLegalPageTitle("数据管理")
+
+        HamburgerAccountGroup(
+            modifier = Modifier.padding(top = 22.dp)
+        ) {
+            HamburgerAccountInfoRow(
+                title = "数据用于优化体验",
+                value = "未开启",
+                onClick = { onPendingAction("数据优化开关后续接入") }
+            )
+        }
+        Text(
+            text = "当前不会将您的对话用于与本服务无关的模型训练。后续如果提供体验优化开关，会在这里单独说明并让您选择。",
+            color = Color(0xFF8A8E96),
+            fontSize = 14.sp,
+            lineHeight = 22.sp,
+            modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 12.dp)
+        )
+
+        HamburgerAccountGroup(
+            modifier = Modifier.padding(top = 28.dp)
+        ) {
+            HamburgerAccountInfoRow(
+                title = "我的数据说明",
+                value = "查看",
+                onClick = { onPendingAction("请在服务协议中查看隐私政策和个人信息清单") }
+            )
+            HamburgerMenuDivider()
+            HamburgerAccountInfoRow(
+                title = "申请查询个人信息",
+                value = "帮助与反馈",
+                onClick = { onPendingAction("请通过帮助与反馈或邮箱申请查询") }
+            )
+            HamburgerMenuDivider()
+            HamburgerAccountInfoRow(
+                title = "申请删除个人信息",
+                value = "帮助与反馈",
+                onClick = { onPendingAction("请通过帮助与反馈或邮箱申请删除") }
+            )
+        }
+
+        HamburgerAccountGroup(
+            modifier = Modifier.padding(top = 28.dp)
+        ) {
+            HamburgerAccountActionRow(
+                title = "删除所有历史对话",
+                onClick = { onPendingAction("历史对话删除后续接入") }
+            )
+        }
+    }
+}
+
+@Composable
+internal fun HamburgerDataManagementPagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerDataManagementContent(
             onPendingAction = {},
             modifier = Modifier.padding(14.dp)
         )
@@ -2335,6 +2730,7 @@ private enum class HamburgerMenuIcon {
     Membership,
     Redeem,
     Account,
+    Data,
     Update,
     Document,
     Privacy,
@@ -2348,11 +2744,24 @@ private enum class HamburgerMenuPage {
     Membership,
     Redeem,
     Account,
+    DataManagement,
     Support,
+    LegalHub,
     ServiceAgreement,
     PrivacyPolicy,
+    ThirdPartyList,
+    PersonalInfoList,
+    PermissionList,
     RiskNotice
 }
+
+private fun HamburgerMenuPage.isLegalDetailPage(): Boolean =
+    this == HamburgerMenuPage.ServiceAgreement ||
+        this == HamburgerMenuPage.PrivacyPolicy ||
+        this == HamburgerMenuPage.ThirdPartyList ||
+        this == HamburgerMenuPage.PersonalInfoList ||
+        this == HamburgerMenuPage.PermissionList ||
+        this == HamburgerMenuPage.RiskNotice
 
 private fun formatSupportMessageTime(createdAt: Long?): String {
     val timestamp = createdAt ?: return ""
@@ -2513,6 +2922,39 @@ private fun HamburgerMenuGlyph(
                     size = androidx.compose.ui.geometry.Size(w * 0.46f, h * 0.30f),
                     style = stroke
                 )
+            }
+            HamburgerMenuIcon.Data -> {
+                drawOval(
+                    color = tint,
+                    topLeft = Offset(w * 0.18f, h * 0.18f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.22f),
+                    style = stroke
+                )
+                drawLine(tint, Offset(w * 0.18f, h * 0.29f), Offset(w * 0.18f, h * 0.70f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.66f, h * 0.29f), Offset(w * 0.66f, h * 0.58f), strokeWidth, cap = StrokeCap.Round)
+                drawArc(
+                    color = tint,
+                    startAngle = 0f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.18f, h * 0.38f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.22f),
+                    style = stroke
+                )
+                drawArc(
+                    color = tint,
+                    startAngle = 0f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.18f, h * 0.58f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.22f),
+                    style = stroke
+                )
+                drawCircle(tint, radius = w * 0.12f, center = Offset(w * 0.75f, h * 0.70f), style = stroke)
+                drawLine(tint, Offset(w * 0.75f, h * 0.54f), Offset(w * 0.75f, h * 0.58f), strokeWidth * 0.8f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.75f, h * 0.82f), Offset(w * 0.75f, h * 0.86f), strokeWidth * 0.8f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.59f, h * 0.70f), Offset(w * 0.63f, h * 0.70f), strokeWidth * 0.8f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.87f, h * 0.70f), Offset(w * 0.91f, h * 0.70f), strokeWidth * 0.8f, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Update -> {
                 val updateStrokeWidth = strokeWidth * 0.92f
