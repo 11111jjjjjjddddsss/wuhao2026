@@ -415,7 +415,7 @@ private fun HamburgerMenuMainPage(
         HamburgerMenuGroup {
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Feedback,
-                title = "客服反馈",
+                title = "帮助与反馈",
                 showBadge = supportUnread,
                 onClick = onOpenSupport
             )
@@ -517,7 +517,7 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
             HamburgerMenuGroup {
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Feedback,
-                    title = "客服反馈",
+                    title = "帮助与反馈",
                     showBadge = true,
                     onClick = {}
                 )
@@ -1016,7 +1016,7 @@ private fun HamburgerSupportFeedbackContent(
 
     Column(modifier = modifier) {
         Text(
-            text = "客服反馈",
+            text = "帮助与反馈",
             color = Color(0xFF111111),
             fontSize = 20.sp,
             lineHeight = 28.sp,
@@ -1029,7 +1029,7 @@ private fun HamburgerSupportFeedbackContent(
         )
 
         Text(
-            text = "这里会保留你和客服的历史消息。",
+            text = "这里会保留你的反馈和回复。",
             color = Color(0xFF6D7178),
             fontSize = 13.sp,
             lineHeight = 18.sp,
@@ -1081,7 +1081,7 @@ private fun HamburgerSupportFeedbackContent(
                         }
                     }
                     messages.isEmpty() -> {
-                        HamburgerSupportStatusText(text = "把问题发给我们，客服回复后会显示在这里。")
+                        HamburgerSupportStatusText(text = "把问题发给我们，回复会显示在这里。")
                     }
                     else -> {
                         messages.forEach { message ->
@@ -1188,7 +1188,7 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
             modifier = Modifier.widthIn(max = 310.dp)
         ) {
             Text(
-                text = if (isUser) "我" else "客服",
+                text = if (isUser) "我" else "我们",
                 color = Color(0xFF8A8E96),
                 fontSize = 11.sp,
                 lineHeight = 14.sp

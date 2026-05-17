@@ -6514,10 +6514,10 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "汉堡菜单",
                 items = listOf(
-                    UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、客服和协议入口", UiCopyPreviewKind.HamburgerMenu),
+                    UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号、退出设备、注销账号", UiCopyPreviewKind.HamburgerAccountPage),
-                    UiCopyPreviewItem("客服反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
+                    UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("礼品卡兑换成功", "成功卡片和确定按钮", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )
@@ -6536,7 +6536,7 @@ private fun UiCopyPreviewOverlay(
                         "+ 面板未满状态：紧凑入口和拍摄建议",
                         UiCopyPreviewKind.AttachmentSheet
                     ),
-                    UiCopyPreviewItem("客服反馈图片面板", "复用附件结构但不显示农业拍摄提示", UiCopyPreviewKind.SupportAttachmentSheet),
+                    UiCopyPreviewItem("帮助与反馈图片面板", "复用附件结构但不显示农业拍摄提示", UiCopyPreviewKind.SupportAttachmentSheet),
                     UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层", UiCopyPreviewKind.ImageCountHint),
                     UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "已满附件面板", UiCopyPreviewKind.ImageCountSheet)
                 )
@@ -6564,7 +6564,7 @@ private fun UiCopyPreviewOverlay(
                 title = "异常浮层",
                 items = listOf(
                     UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网络发送 / 重试浮层", UiCopyPreviewKind.Network),
-                    UiCopyPreviewItem(SUPPORT_SEND_FAILED_HINT, "客服反馈发送失败浮层", UiCopyPreviewKind.SupportSendFailed),
+                    UiCopyPreviewItem(SUPPORT_SEND_FAILED_HINT, "帮助与反馈发送失败浮层", UiCopyPreviewKind.SupportSendFailed),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
                     UiCopyPreviewItem(INTERRUPTED_NETWORK_HINT_TEXT, "streaming 网络中断浮层", UiCopyPreviewKind.Interrupted),
                     UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback)

@@ -5,7 +5,9 @@
 
 ## 2026-05-16
 
-- 夜间代理巡检后收口两类非 UI 风险：`004/005/006/016` 迁移不再使用 MySQL 兼容性不稳的 `ADD COLUMN IF NOT EXISTS`，统一改成 `information_schema.COLUMNS` 检查后再动态执行 `ALTER TABLE`，并让新库的 `015_support_messages` 直接带 `image_urls_json` 字段；`AGENTS.md` 和 `docs/runbooks/android-edge-case-regression.md` 同步当前口径，debug-only 文案预览面板短期允许保留，但必须保持隐藏 / debug-only，release 不可见，阶段性不再需要时再删除。只改迁移兼容和文档口径，不改运行时接口、会员权益、聊天滚动链或客服 UI。
+- `HamburgerMenuSheet.kt` / `ChatScreen.kt` 将设置页用户可见入口从“客服反馈”统一改名为“帮助与反馈”：主设置页入口、二级页标题、页面说明、空态文案、后台消息气泡标签和 debug-only 预览面板同步改名；后端接口、数据库表和 Android 内部 `Support*` 命名保持不变，避免重命名影响既有 `/api/support/*` 主链。同步更新锚点提示词和帮助与反馈 runbook / 项目记忆。
+
+- 夜间代理巡检后收口两类非 UI 风险：`004/005/006/016` 迁移不再使用 MySQL 兼容性不稳的 `ADD COLUMN IF NOT EXISTS`，统一改成 `information_schema.COLUMNS` 检查后再动态执行 `ALTER TABLE`，并让新库的 `015_support_messages` 直接带 `image_urls_json` 字段；`AGENTS.md` 和 `docs/runbooks/android-edge-case-regression.md` 同步当前口径，debug-only 文案预览面板短期允许保留，但必须保持隐藏 / debug-only，release 不可见，阶段性不再需要时再删除。只改迁移兼容和文档口径，不改运行时接口、会员权益、聊天滚动链或帮助与反馈 UI。
 
 - `HamburgerMenuSheet.kt` 继续收口客服反馈附件面板返回链：客服页把附件面板打开状态同步给汉堡浮层外层返回按钮，左上角圆形返回键现在和系统返回键同一优先级，附件面板可见时先收起“相机 / 照片”卡片，第二次才退回设置菜单。只改返回分发，不改客服消息接口、图片上传、红点已读、礼品卡或聊天滚动链。
 
