@@ -1028,15 +1028,6 @@ private fun HamburgerSupportFeedbackContent(
                 .padding(top = 14.dp)
         )
 
-        Text(
-            text = "这里会保留你的反馈和回复。",
-            color = Color(0xFF6D7178),
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
-
         Surface(
             color = Color(0xFFF0F1F2),
             shape = RoundedCornerShape(22.dp),
