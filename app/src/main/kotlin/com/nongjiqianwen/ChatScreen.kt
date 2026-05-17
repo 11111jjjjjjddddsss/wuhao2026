@@ -6527,7 +6527,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
                     UiCopyPreviewItem("应用权限", "当前权限和不申请权限", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
-                    UiCopyPreviewItem("礼品卡兑换成功", "成功卡片和确定按钮", UiCopyPreviewKind.HamburgerGiftCardSuccess)
+                    UiCopyPreviewItem("礼品卡成功样式", "后端成功后的卡片样式", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )
             ),
             UiCopyPreviewGroup(

@@ -670,7 +670,7 @@ private fun HamburgerMenuMainPage(
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 78.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         HamburgerMenuGroup {
             HamburgerMenuRow(
@@ -790,20 +790,20 @@ private fun HamburgerLegalHubRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
+            .heightIn(min = 58.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 24.dp, vertical = 18.dp),
+            .padding(horizontal = 20.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = title,
             color = Color(0xFF111111),
-            fontSize = 18.sp,
-            lineHeight = 24.sp,
+            fontSize = 17.sp,
+            lineHeight = 23.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -811,7 +811,7 @@ private fun HamburgerLegalHubRow(
         )
         HamburgerChevronIcon(
             tint = Color(0xFFAAAEB5),
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
 }
@@ -2447,7 +2447,7 @@ private fun HamburgerAccountGroup(
 ) {
     Surface(
         color = Color.White,
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(18.dp),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
@@ -2466,20 +2466,20 @@ private fun HamburgerAccountInfoRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
+            .heightIn(min = 58.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(start = 24.dp, end = 18.dp, top = 17.dp, bottom = 17.dp),
+            .padding(start = 20.dp, end = 16.dp, top = 15.dp, bottom = 15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = title,
             color = Color(0xFF111111),
-            fontSize = 18.sp,
-            lineHeight = 24.sp,
+            fontSize = 17.sp,
+            lineHeight = 23.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -2488,8 +2488,8 @@ private fun HamburgerAccountInfoRow(
         Text(
             text = value,
             color = Color(0xFF8A8E96),
-            fontSize = 17.sp,
-            lineHeight = 24.sp,
+            fontSize = 16.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -2499,7 +2499,7 @@ private fun HamburgerAccountInfoRow(
             tint = Color(0xFFAAAEB5),
             modifier = Modifier
                 .padding(start = 10.dp)
-                .size(18.dp)
+                .size(16.dp)
         )
     }
 }
@@ -2512,20 +2512,20 @@ private fun HamburgerAccountActionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
+            .heightIn(min = 58.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 24.dp, vertical = 18.dp),
+            .padding(horizontal = 20.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = title,
             color = Color(0xFFD24646),
-            fontSize = 18.sp,
-            lineHeight = 24.sp,
+            fontSize = 17.sp,
+            lineHeight = 23.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -2537,7 +2537,7 @@ private fun HamburgerAccountActionRow(
 private fun HamburgerMenuGroup(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         color = Color(0xFFF0F1F2),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(18.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -2550,7 +2550,7 @@ private fun HamburgerMenuGroup(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun HamburgerMenuDivider() {
     HorizontalDivider(
-        thickness = 2.dp,
+        thickness = 1.dp,
         color = Color(0xFFF8F9FA),
         modifier = Modifier.fillMaxWidth()
     )
@@ -2569,20 +2569,20 @@ private fun HamburgerMenuRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 60.dp)
+            .heightIn(min = 54.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         HamburgerMenuGlyph(
             icon = icon,
             tint = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(22.dp)
         )
         Column(
             modifier = Modifier.weight(1f),
@@ -2591,8 +2591,8 @@ private fun HamburgerMenuRow(
             Text(
                 text = title,
                 color = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-                fontSize = 18.sp,
-                lineHeight = 23.sp,
+                fontSize = 17.sp,
+                lineHeight = 22.sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2601,8 +2601,8 @@ private fun HamburgerMenuRow(
                 Text(
                     text = subtitle,
                     color = if (destructive) Color(0xFFD24646).copy(alpha = 0.72f) else Color(0xFF686C74),
-                    fontSize = 12.5.sp,
-                    lineHeight = 17.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2612,7 +2612,7 @@ private fun HamburgerMenuRow(
             Surface(
                 color = Color(0xFFE5484D),
                 shape = CircleShape,
-                modifier = Modifier.size(8.dp)
+                modifier = Modifier.size(7.dp)
             ) {}
         }
     }
