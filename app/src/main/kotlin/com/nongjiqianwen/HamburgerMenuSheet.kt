@@ -105,6 +105,7 @@ internal fun HamburgerMenuSheet(
     onDismiss: () -> Unit,
     onRequestMembershipRefresh: () -> Unit,
     onMembershipPaymentUnavailable: () -> Unit,
+    onClearChatHistory: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     val context = LocalContext.current
@@ -298,7 +299,8 @@ internal fun HamburgerMenuSheet(
                         }
                         HamburgerMenuPage.Account -> {
                             HamburgerAccountManagementPage(
-                                onPendingAction = ::showNotice
+                                onPendingAction = ::showNotice,
+                                onClearChatHistory = onClearChatHistory
                             )
                         }
                         HamburgerMenuPage.Redeem -> {
@@ -1440,10 +1442,12 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
 
 @Composable
 private fun HamburgerAccountManagementPage(
-    onPendingAction: (String) -> Unit
+    onPendingAction: (String) -> Unit,
+    onClearChatHistory: () -> Unit
 ) {
     HamburgerAccountManagementContent(
         onPendingAction = onPendingAction,
+        onClearChatHistory = onClearChatHistory,
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -1457,8 +1461,12 @@ private fun HamburgerAccountManagementPage(
 @Composable
 private fun HamburgerAccountManagementContent(
     onPendingAction: (String) -> Unit,
+    onClearChatHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var deleteHistoryDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var deleteHistorySubmitting by remember { mutableStateOf(false) }
+
     Column(modifier = modifier) {
         Text(
             text = "账号管理",
@@ -1495,7 +1503,7 @@ private fun HamburgerAccountManagementContent(
         ) {
             HamburgerAccountActionRow(
                 title = "删除所有历史对话",
-                onClick = { onPendingAction("历史对话删除后续接入") }
+                onClick = { deleteHistoryDialogVisible = true }
             )
             HamburgerMenuDivider()
             HamburgerAccountActionRow(
@@ -1513,6 +1521,35 @@ private fun HamburgerAccountManagementContent(
             )
         }
     }
+
+    if (deleteHistoryDialogVisible) {
+        HamburgerDeleteHistoryConfirmDialog(
+            deleting = deleteHistorySubmitting,
+            onDismiss = {
+                if (!deleteHistorySubmitting) deleteHistoryDialogVisible = false
+            },
+            onConfirm = {
+                if (deleteHistorySubmitting) return@HamburgerDeleteHistoryConfirmDialog
+                deleteHistorySubmitting = true
+                SessionApi.clearSessionHistory { result ->
+                    deleteHistorySubmitting = false
+                    when (result) {
+                        SessionApi.ClearSessionHistoryResult.Success -> {
+                            deleteHistoryDialogVisible = false
+                            onClearChatHistory()
+                            onPendingAction("历史对话已删除")
+                        }
+                        SessionApi.ClearSessionHistoryResult.ActiveStream -> {
+                            onPendingAction("当前有回复生成中，稍后再删除")
+                        }
+                        SessionApi.ClearSessionHistoryResult.Failure -> {
+                            onPendingAction("删除失败，请检查网络后重试")
+                        }
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -1524,6 +1561,7 @@ internal fun HamburgerAccountManagementPagePreview() {
     ) {
         HamburgerAccountManagementContent(
             onPendingAction = {},
+            onClearChatHistory = {},
             modifier = Modifier.padding(14.dp)
         )
     }
@@ -2254,6 +2292,130 @@ internal fun HamburgerSupportFeedbackPagePreview() {
                 .heightIn(min = 520.dp, max = 620.dp)
         )
     }
+}
+
+@Composable
+private fun HamburgerDeleteHistoryConfirmDialog(
+    deleting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {
+            if (!deleting) onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .padding(horizontal = 28.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            HamburgerDeleteHistoryConfirmCard(
+                deleting = deleting,
+                onDismiss = onDismiss,
+                onConfirm = onConfirm,
+                modifier = Modifier.widthIn(max = 340.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HamburgerDeleteHistoryConfirmCard(
+    deleting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        shadowElevation = 18.dp,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "删除所有历史对话？",
+                color = Color(0xFF111111),
+                fontSize = 20.sp,
+                lineHeight = 27.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "会清空聊天记录、问诊摘要和长期记忆。会员、加油包、礼品卡和帮助与反馈不会删除。此操作不可恢复。",
+                color = Color(0xFF33363D),
+                fontSize = 15.sp,
+                lineHeight = 22.sp
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Surface(
+                    color = Color(0xFFF0F1F2),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !deleting,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "取消",
+                            color = Color(0xFF111111),
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Surface(
+                    color = if (deleting) Color(0xFFD8DADF) else Color(0xFFD24646),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !deleting,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onConfirm
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (deleting) "删除中" else "确定",
+                            color = if (deleting) Color(0xFF777B82) else Color.White,
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun HamburgerDeleteHistoryConfirmPreview() {
+    HamburgerDeleteHistoryConfirmCard(
+        deleting = false,
+        onDismiss = {},
+        onConfirm = {},
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable

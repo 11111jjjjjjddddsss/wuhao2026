@@ -1419,6 +1419,15 @@ private fun Context.saveLocalChatWindowSync(chatScopeId: String, snapshot: Local
         .commit()
 }
 
+private suspend fun Context.clearLocalChatHistoryState(chatScopeId: String) = withContext(Dispatchers.IO) {
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .remove("$CHAT_CACHE_KEY_PREFIX$chatScopeId")
+        .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
+        .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+        .commit()
+}
+
 private fun Context.loadLocalStreamingDraftSync(chatScopeId: String): LocalStreamingDraft? {
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId", null)
@@ -3700,6 +3709,37 @@ fun ChatScreen() {
             snackbarScope.launch {
                 context.clearLocalStreamingDraft(chatScopeId)
             }
+        }
+    }
+
+    fun applyChatHistoryCleared() {
+        SessionApi.resetUiRuntimeForCleanState()
+        PendingChatSendWorkScheduler.cancelAllForScope(context, chatScopeId)
+        resetStreamingUiState(clearVisibleContent = true)
+        messages.clear()
+        failedUserMessageStates.clear()
+        failedAssistantMessageStates.clear()
+        retryingUserMessageIds.clear()
+        retryingAssistantMessageIds.clear()
+        selectedComposerImages.clear()
+        input.value = TextFieldValue("")
+        startupRecoverableUserMessageId = null
+        remoteRecoverySourceUserMessageId = null
+        clearMessageSelection()
+        clearInputSelectionToolbar()
+        focusManager.clearFocus(force = true)
+        messageSelectionBoundsCacheById.clear()
+        messageSelectionBoundsById.clear()
+        messageContentBoundsById.clear()
+        synchronized(inlineMarkdownCache) {
+            inlineMarkdownCache.clear()
+        }
+        synchronized(blockMarkdownCache) {
+            blockMarkdownCache.clear()
+        }
+        snackbarScope.launch {
+            context.clearLocalChatHistoryState(chatScopeId)
+            context.deleteUnreferencedComposerImages(emptySet())
         }
     }
 
@@ -6006,6 +6046,9 @@ fun ChatScreen() {
                         // The settings page already performs the tap haptic; keep this callback
                         // side-effect free so the inline notice remains local to that page.
                     },
+                    onClearChatHistory = {
+                        applyChatHistoryCleared()
+                    },
                     onPlaceholderClick = {
                         performButtonHaptic()
                     }
@@ -6514,9 +6557,10 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "汉堡菜单",
                 items = listOf(
-                    UiCopyPreviewItem("设置入口", "无标题设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
+                    UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号、删除历史对话、退出/注销", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("删除历史确认", "取消 / 确定二次确认卡片", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "发现新版本卡片，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
@@ -6723,6 +6767,7 @@ private enum class UiCopyPreviewKind {
     HamburgerMenu,
     HamburgerMembershipPage,
     HamburgerAccountPage,
+    HamburgerDeleteHistoryConfirm,
     HamburgerSupportPage,
     HamburgerAppUpdateDialog,
     HamburgerGiftCardPage,
@@ -7049,6 +7094,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.HamburgerAccountPage -> {
                     HamburgerAccountManagementPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerDeleteHistoryConfirm -> {
+                    HamburgerDeleteHistoryConfirmPreview()
                 }
                 UiCopyPreviewKind.HamburgerSupportPage -> {
                     HamburgerSupportFeedbackPagePreview()

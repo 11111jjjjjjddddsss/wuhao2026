@@ -124,6 +124,12 @@ object SessionApi {
             get() = hasUpdate == true && !apkUrl.isNullOrBlank() && apkUrl.trim().startsWith("https://")
     }
 
+    enum class ClearSessionHistoryResult {
+        Success,
+        ActiveStream,
+        Failure
+    }
+
     private fun TodayAgriCard?.isValidTodayAgriCard(): Boolean {
         val candidate = this ?: return false
         val items = candidate.items.orEmpty()
@@ -432,6 +438,38 @@ object SessionApi {
                 }
             },
             onFailure = { postToMain { onResult(false) } }
+        )
+    }
+
+    fun clearSessionHistory(onResult: (ClearSessionHistoryResult) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(ClearSessionHistoryResult.Failure) }
+            return
+        }
+        val requestBody = "{}".toRequestBody("application/json".toMediaType())
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/session/clear")
+                        .addHeader("Content-Type", "application/json")
+                        .post(requestBody)
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    val result = when {
+                        it.isSuccessful -> ClearSessionHistoryResult.Success
+                        it.code == 409 -> ClearSessionHistoryResult.ActiveStream
+                        else -> ClearSessionHistoryResult.Failure
+                    }
+                    postToMain { onResult(result) }
+                }
+            },
+            onFailure = { postToMain { onResult(ClearSessionHistoryResult.Failure) } }
         )
     }
 

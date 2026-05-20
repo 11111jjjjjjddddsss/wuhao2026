@@ -125,6 +125,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/session/b", s.handleSessionB)
 	s.mux.HandleFunc("POST /api/session/c", s.handleSessionC)
 	s.mux.HandleFunc("GET /api/session/snapshot", s.handleSessionSnapshot)
+	s.mux.HandleFunc("POST /api/session/clear", s.handleSessionClear)
 	s.mux.HandleFunc("POST /api/session/round_complete", s.handleSessionRoundComplete)
 	s.mux.HandleFunc("POST /api/topup/buy", s.handleTopupBuy)
 	s.mux.HandleFunc("POST /api/tier/renew_plus", s.handleRenewPlus)
@@ -250,6 +251,31 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		"round_total":     safe.RoundTotal,
 		"updated_at":      safe.UpdatedAt,
 	})
+}
+
+func (s *Server) handleSessionClear(w http.ResponseWriter, r *http.Request) {
+	auth, ok := s.requireAuth(w, r)
+	if !ok {
+		return
+	}
+
+	hasActiveStream, err := s.store.HasAnyActiveChatStreamInflight(r.Context(), auth.UserID, time.Now())
+	if err != nil {
+		s.logger.Error("check active stream before clear failed", "userId", auth.UserID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if hasActiveStream {
+		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "ACTIVE_CHAT_STREAM"})
+		return
+	}
+
+	if err := s.store.ClearSessionHistory(r.Context(), auth.UserID); err != nil {
+		s.logger.Error("clear session history failed", "userId", auth.UserID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Request) {

@@ -205,6 +205,22 @@ func (s *Store) GetSessionSnapshot(ctx context.Context, userID string) (*Session
 	)
 }
 
+func (s *Store) ClearSessionHistory(ctx context.Context, userID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackQuietly(tx)
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM session_round_archive WHERE user_id = ?", userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM session_ab WHERE user_id = ?", userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) TouchSessionContext(
 	ctx context.Context,
 	userID string,

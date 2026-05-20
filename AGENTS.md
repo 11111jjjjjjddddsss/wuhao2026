@@ -88,6 +88,7 @@ Android 构建链：
 - 锚点信息：约 1000 tokens，每轮必注入
 - 待评估方向：后续可能把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`；在代码落地前，当前真实实现仍以 `server-go` 的 `session_ab.c_summary` 为准
 - 原始问诊归档：成功完成的问答轮次会写入 `session_round_archive`，先按 30 天滚动保留；`/api/session/snapshot` 给 UI 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档。该归档只服务换机 / 重装后的 UI 历史恢复和后续批量抽取，不进入每轮主模型上下文，不替代 A/B/C
+- 删除所有历史对话：账号管理页会先弹“取消 / 确定”二次确认；确认后 Android 调 `POST /api/session/clear`，后端删除当前用户的 `session_ab`（A 层滑窗、B 摘要、C 长期记忆）和 `session_round_archive` 归档，前端成功后清当前聊天 UI、本地聊天快照、输入草稿、streaming draft、待发送 WorkManager 任务和本地私有 composer 图片。该操作不删除会员 / 额度 / 加油包 / 礼品卡、帮助与反馈、`quota_ledger` 或本机 `user_id`。若同一用户当前有活跃主对话流，后端返回 `409 ACTIVE_CHAT_STREAM`，前端提示稍后再删除，避免正在生成的旧回复在删除后重新归档
 - 时间 / 地点：后端每轮主对话必须注入当前时间、用户地点和地点可信度；历史轮次如果有后端 `created_at / region / region_source / region_reliability`，进入模型上下文时也要带轻量时间 / 地点前缀。时间以后端服务器时间为准，不用前端手机时间当业务真相；前端暂不显示每条消息时间戳或地点条。当前 Android 尚未接定位权限 / 地区选择，真实地点需要后续单独做；未传地点时后端只能走 IP / 未知兜底
 
 图片规则：

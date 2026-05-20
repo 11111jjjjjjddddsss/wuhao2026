@@ -94,6 +94,31 @@ internal object PendingChatSendStore {
         }
     }
 
+    fun userMessageIdsForScope(context: Context, chatScopeId: String): Set<String> {
+        if (chatScopeId.isBlank()) return emptySet()
+        val expectedPrefix = key(chatScopeId, "")
+        val all = prefs(context).all
+        if (all.isEmpty()) return emptySet()
+        return buildSet {
+            all.forEach { (storedKey, value) ->
+                val raw = value as? String ?: return@forEach
+                val pending = try {
+                    gson.fromJson(raw, PendingChatSend::class.java)
+                } catch (_: JsonSyntaxException) {
+                    null
+                }
+                when {
+                    pending?.chatScopeId == chatScopeId && pending.userMessageId.isNotBlank() -> {
+                        add(pending.userMessageId)
+                    }
+                    storedKey.startsWith(expectedPrefix) -> {
+                        storedKey.removePrefix(expectedPrefix).takeIf { it.isNotBlank() }?.let(::add)
+                    }
+                }
+            }
+        }
+    }
+
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 

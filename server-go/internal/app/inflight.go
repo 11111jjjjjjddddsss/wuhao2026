@@ -81,6 +81,23 @@ func (s *Store) HasActiveChatStreamInflight(ctx context.Context, userID string, 
 	return true, nil
 }
 
+func (s *Store) HasAnyActiveChatStreamInflight(ctx context.Context, userID string, now time.Time) (bool, error) {
+	var leaseToken string
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT lease_token FROM chat_stream_inflight WHERE user_id = ? AND lease_until > ? LIMIT 1",
+		userID,
+		now.UnixMilli(),
+	).Scan(&leaseToken)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func newChatStreamInflightToken() (string, error) {
 	var raw [16]byte
 	if _, err := rand.Read(raw[:]); err != nil {
