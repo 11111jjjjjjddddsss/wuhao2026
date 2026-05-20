@@ -5,6 +5,8 @@
 
 ## 2026-05-20
 
+- `HamburgerMenuSheet.kt` / `ChatScreen.kt` 同步删除历史确认文案：确认卡片标题从“删除所有历史对话？”改为“是否删除所有历史对话”，debug-only 预览面板对应入口也改为同一句。只改用户可见文案和预览入口，不改删除接口、清理范围、确认按钮、取消按钮、账号数据或聊天滚动链。
+
 - `server-go` / `SessionApi.kt` / `HamburgerMenuSheet.kt` / `ChatScreen.kt` 接入“删除所有历史对话”真链路：账号管理页点击后先弹取消 / 确定确认卡片；确定后调用 `POST /api/session/clear`，后端删除当前用户 `session_ab`（A 层滑窗、B 摘要、C 长期记忆）和 `session_round_archive` 归档，前端成功后清当前聊天 UI、本地聊天快照、草稿、streaming draft、待发送 WorkManager 任务和本地私有 composer 图片。该操作不删除会员、额度、加油包、礼品卡、帮助与反馈、`quota_ledger` 或本机 `user_id`；若当前有活跃生成流，后端返回 `409 ACTIVE_CHAT_STREAM`，前端提示稍后再删。debug-only 预览面板新增删除历史确认卡片。
 
 - `HamburgerMenuSheet.kt` 继续把设置首页卡片本体放大：主菜单内容左右外边距从 18dp 收窄到 14dp，让白色卡片更接近屏幕两侧，和上一轮放大的文字、图标、行高匹配；二级页仍保留原阅读边距，避免协议 / 账号等页面过满。只调设置首页卡片宽度，不改业务入口或返回逻辑。
