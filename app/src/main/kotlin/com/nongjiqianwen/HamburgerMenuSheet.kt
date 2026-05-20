@@ -2341,7 +2341,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "删除所有历史对话？",
+                text = "是否删除所有历史对话",
                 color = Color(0xFF111111),
                 fontSize = 20.sp,
                 lineHeight = 27.sp,
