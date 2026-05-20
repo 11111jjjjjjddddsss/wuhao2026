@@ -351,13 +351,13 @@ internal fun HamburgerMenuSheet(
                 Surface(
                     shape = CircleShape,
                     color = Color.White,
-                    shadowElevation = 2.dp,
+                    shadowElevation = 2.5.dp,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                         .statusBarsPadding()
                         .padding(start = 18.dp, top = 10.dp)
-                        .size(46.dp)
+                        .size(48.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -370,7 +370,7 @@ internal fun HamburgerMenuSheet(
                     Box(contentAlignment = Alignment.Center) {
                         HamburgerBackIcon(
                             tint = Color(0xFF111111),
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(23.dp)
                         )
                     }
                 }
@@ -378,8 +378,8 @@ internal fun HamburgerMenuSheet(
                     Text(
                         text = "设置",
                         color = Color(0xFF111111),
-                        fontSize = 20.sp,
-                        lineHeight = 28.sp,
+                        fontSize = 21.sp,
+                        lineHeight = 29.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
@@ -692,7 +692,7 @@ private fun HamburgerMenuMainPage(
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(start = 18.dp, end = 18.dp, top = 84.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
         HamburgerMenuGroup {
             HamburgerMenuRow(
@@ -701,7 +701,7 @@ private fun HamburgerMenuMainPage(
                 subtitle = "套餐、额度和加油包",
                 onClick = onOpenMembership
             )
-            HamburgerMenuDivider(startIndent = 50.dp)
+            HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
@@ -716,19 +716,19 @@ private fun HamburgerMenuMainPage(
                 showBadge = supportUnread,
                 onClick = onOpenSupport
             )
-            HamburgerMenuDivider(startIndent = 50.dp)
+            HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Update,
                 title = "检查更新",
                 onClick = onCheckUpdate
             )
-            HamburgerMenuDivider(startIndent = 50.dp)
+            HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
                 onClick = onOpenRedeem
             )
-            HamburgerMenuDivider(startIndent = 50.dp)
+            HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
@@ -1391,7 +1391,7 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                     subtitle = "套餐、额度和加油包",
                     onClick = {}
                 )
-                HamburgerMenuDivider(startIndent = 50.dp)
+                HamburgerMenuDivider(startIndent = 52.dp)
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Account,
                     title = "账号管理",
@@ -1405,19 +1405,19 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
                     showBadge = true,
                     onClick = {}
                 )
-                HamburgerMenuDivider(startIndent = 50.dp)
+                HamburgerMenuDivider(startIndent = 52.dp)
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Update,
                     title = "检查更新",
                     onClick = {}
                 )
-                HamburgerMenuDivider(startIndent = 50.dp)
+                HamburgerMenuDivider(startIndent = 52.dp)
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Redeem,
                     title = "礼品卡",
                     onClick = {}
                 )
-                HamburgerMenuDivider(startIndent = 50.dp)
+                HamburgerMenuDivider(startIndent = 52.dp)
                 HamburgerMenuRow(
                     icon = HamburgerMenuIcon.Document,
                     title = "服务协议",
@@ -2561,7 +2561,7 @@ private fun HamburgerAccountActionRow(
 private fun HamburgerMenuGroup(content: @Composable ColumnScope.() -> Unit) {
     Surface(
         color = Color.White,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(17.dp),
         border = BorderStroke(0.6.dp, Color(0xFFEDEFF2)),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -2597,19 +2597,19 @@ private fun HamburgerMenuRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 50.dp)
+            .heightIn(min = 52.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 9.dp),
+            .padding(horizontal = 17.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         HamburgerMenuGlyph(
             icon = icon,
             tint = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-            modifier = Modifier.size(21.dp)
+            modifier = Modifier.size(22.dp)
         )
         Column(
             modifier = Modifier
@@ -2620,8 +2620,8 @@ private fun HamburgerMenuRow(
             Text(
                 text = title,
                 color = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-                fontSize = 16.sp,
-                lineHeight = 21.sp,
+                fontSize = 17.sp,
+                lineHeight = 22.sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -2630,8 +2630,8 @@ private fun HamburgerMenuRow(
                 Text(
                     text = subtitle,
                     color = if (destructive) Color(0xFFD24646).copy(alpha = 0.72f) else Color(0xFF686C74),
-                    fontSize = 11.5.sp,
-                    lineHeight = 15.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2643,7 +2643,7 @@ private fun HamburgerMenuRow(
                 shape = CircleShape,
                 modifier = Modifier
                     .padding(start = 8.dp)
-                    .size(6.dp)
+                    .size(7.dp)
             ) {}
         }
         if (showChevron) {
@@ -2651,7 +2651,7 @@ private fun HamburgerMenuRow(
                 tint = Color(0xFFB7BBC2),
                 modifier = Modifier
                     .padding(start = 10.dp)
-                    .size(15.dp)
+                    .size(16.dp)
             )
         }
     }
