@@ -691,7 +691,7 @@ private fun HamburgerMenuMainPage(
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(start = 18.dp, end = 18.dp, top = 84.dp, bottom = 32.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 84.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
         HamburgerMenuGroup {
