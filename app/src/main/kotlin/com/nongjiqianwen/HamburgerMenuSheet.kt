@@ -223,7 +223,13 @@ internal fun HamburgerMenuSheet(
                 AnimatedContent(
                     targetState = page,
                     transitionSpec = {
-                        if (targetState != HamburgerMenuPage.Menu) {
+                        val isForwardNavigation = when {
+                            initialState == HamburgerMenuPage.LegalHub && targetState.isLegalDetailPage() -> true
+                            initialState.isLegalDetailPage() && targetState == HamburgerMenuPage.LegalHub -> false
+                            targetState != HamburgerMenuPage.Menu -> true
+                            else -> false
+                        }
+                        if (isForwardNavigation) {
                             slideInHorizontally(
                                 initialOffsetX = { it },
                                 animationSpec = tween(durationMillis = HAMBURGER_PAGE_ENTER_MS)
