@@ -58,6 +58,9 @@ func TestExtractSummaryUsesQwen35FlashWithThinkingDisabled(t *testing.T) {
 	if got := captured["stream"]; got != false {
 		t.Fatalf("stream mismatch: %#v", got)
 	}
+	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
+		t.Fatalf("temperature mismatch: %#v", captured["temperature"])
+	}
 	extraBody, ok := captured["extra_body"].(map[string]any)
 	if !ok {
 		t.Fatalf("missing extra_body: %#v", captured["extra_body"])

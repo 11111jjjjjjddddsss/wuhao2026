@@ -17,6 +17,8 @@ type BailianClient struct {
 	keyCursor  uint64
 }
 
+const unifiedModelTemperature = 0.8
+
 func NewBailianClient() *BailianClient {
 	return &BailianClient{
 		httpClient: &http.Client{},
@@ -29,8 +31,9 @@ func (c *BailianClient) HasKeyConfigured() bool {
 
 func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
 	body := map[string]any{
-		"model":  "qwen3.5-plus",
-		"stream": true,
+		"model":       "qwen3.5-plus",
+		"stream":      true,
+		"temperature": unifiedModelTemperature,
 		"extra_body": map[string]any{
 			"enable_thinking": false,
 			"enable_search":   true,
@@ -60,7 +63,7 @@ func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []Ba
 		},
 		"parameters": map[string]any{
 			"result_format":   "message",
-			"temperature":     0.2,
+			"temperature":     unifiedModelTemperature,
 			"enable_thinking": false,
 			"enable_search":   true,
 			"search_options": map[string]any{

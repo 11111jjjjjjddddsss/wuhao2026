@@ -80,6 +80,7 @@ Android 构建链：
 模型：
 - 主模型：Qwen3.5-Plus，用于农业问诊分析、图片理解、推理判断
 - 摘要模型：Qwen3.5-Flash，用于 B 层摘要、C 层摘要；摘要请求显式关闭思考模式
+- 当前所有真实模型调用统一显式设置 `temperature=0.8`：主对话、B/C 摘要、今日农情生成都走后端同一个温度常量；`top_p / max_tokens / penalty` 等其他采样参数暂不显式设置，继续走模型服务默认值
 
 上下文结构：
 - A 层历史滑窗：Free / Plus 6 轮，Pro 9 轮
@@ -116,7 +117,7 @@ Android 构建链：
 - 后端数据真源是 `daily_agri_cards`，按 `day_cn + scope` 唯一保存；当前 scope 固定为 `CN`
 - 用户侧只读接口是 `GET /api/today-agri-card`，需要用户鉴权，只读取已生成缓存，缺失 / pending / failed 时前端静默不展示，不在用户打开 App 时临时触发模型
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只给定时任务 / 运维调用，必须携带 `DAILY_AGRI_JOB_SECRET`；生成前用数据库 lease 防并发
-- 生成链路使用 DashScope 原生 Generation 协议调用 `qwen3.5-plus`，显式关闭思考模式，开启强制联网搜索，`search_strategy=max`，`enable_source=true`，并要求只产出“今日农情”3 条事实类农业资讯
+- 生成链路使用 DashScope 原生 Generation 协议调用 `qwen3.5-plus`，显式设置 `temperature=0.8`，显式关闭思考模式，开启强制联网搜索，`search_strategy=max`，`enable_source=true`，并要求只产出“今日农情”3 条事实类农业资讯
 - 生成时会读取过去 7 天已 ready 的今日农情卡片，把标题 / 摘要 / 来源 / 链接喂给模型，要求今天不要重复同链接、同标题或同一事件；后端也会硬过滤过去 7 天和当天候选里的重复链接 / 重复标题
 - 今日农情提示词按农业实用价值排序，优先具体地区、具体作物 / 品类、明确风险 / 农时 / 价格 / 补贴 / 流通影响的信息；标题和摘要必须是自然资讯口吻，禁止“值得看 / 参考意义 / 对农户有用 / 根据搜索结果”等元表达、推荐理由和标题党话术
 - 后端只发布可解析 JSON、严格 3 条、https、近 7 天、来源 URL 来自 DashScope 搜索结果且域名可信的结果；广告、导购、软文、模型 / 提示词泄露、前端元表达、推荐理由和标题党类内容直接过滤，过滤后不足 3 条则不发布新卡片
