@@ -43,6 +43,26 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", captured["temperature"])
 	}
+	extraBody, ok := captured["extra_body"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing extra_body: %#v", captured["extra_body"])
+	}
+	if got := extraBody["enable_thinking"]; got != false {
+		t.Fatalf("enable_thinking mismatch: %#v", got)
+	}
+	if got := extraBody["enable_search"]; got != true {
+		t.Fatalf("enable_search mismatch: %#v", got)
+	}
+	searchOptions, ok := extraBody["search_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing search_options: %#v", extraBody["search_options"])
+	}
+	if got := searchOptions["search_strategy"]; got != "turbo" {
+		t.Fatalf("search_strategy mismatch: %#v", got)
+	}
+	if got := searchOptions["forced_search"]; got != false {
+		t.Fatalf("forced_search mismatch: %#v", got)
+	}
 }
 
 func TestGenerateDailyAgriCardUsesUnifiedTemperature(t *testing.T) {
@@ -79,5 +99,27 @@ func TestGenerateDailyAgriCardUsesUnifiedTemperature(t *testing.T) {
 	}
 	if got, ok := parameters["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", parameters["temperature"])
+	}
+	if got := parameters["enable_thinking"]; got != false {
+		t.Fatalf("enable_thinking mismatch: %#v", got)
+	}
+	if got := parameters["enable_search"]; got != true {
+		t.Fatalf("enable_search mismatch: %#v", got)
+	}
+	searchOptions, ok := parameters["search_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing search_options: %#v", parameters["search_options"])
+	}
+	if got := searchOptions["search_strategy"]; got != dailyAgriSearchStrategy {
+		t.Fatalf("search_strategy mismatch: %#v", got)
+	}
+	if got := searchOptions["forced_search"]; got != true {
+		t.Fatalf("forced_search mismatch: %#v", got)
+	}
+	if got := searchOptions["enable_source"]; got != true {
+		t.Fatalf("enable_source mismatch: %#v", got)
+	}
+	if got, ok := searchOptions["freshness"].(float64); !ok || got != 7 {
+		t.Fatalf("freshness mismatch: %#v", searchOptions["freshness"])
 	}
 }

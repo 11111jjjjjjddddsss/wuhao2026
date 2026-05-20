@@ -49,6 +49,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -82,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -1587,6 +1589,18 @@ private fun HamburgerSupportFeedbackPage(
     var pendingCameraImageUriString by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCameraImageGalleryBacked by rememberSaveable { mutableStateOf(false) }
     var pendingCameraImageTemporaryFilePath by rememberSaveable { mutableStateOf<String?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (!sending && selectedImages.isNotEmpty()) {
+                val contextForCleanup = context.applicationContext
+                val imagesForCleanup = selectedImages.toList()
+                CoroutineScope(Dispatchers.IO).launch {
+                    imagesForCleanup.forEach(contextForCleanup::deleteComposerImageAttachment)
+                }
+            }
+        }
+    }
 
     BackHandler(enabled = attachmentMenuVisible) {
         attachmentMenuVisible = false
