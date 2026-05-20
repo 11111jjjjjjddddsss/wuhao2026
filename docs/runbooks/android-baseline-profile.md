@@ -1,6 +1,6 @@
 # Android Baseline Profile Runbook
 
-本 runbook 记录农技千问 Android 客户端的 Baseline Profile / Macrobenchmark 入口。它服务的是“刚启动 App、首次进入聊天页、首次滑长文本、首次点输入框时有轻微帧感”的系统性预热问题，不替代业务 UI 修 bug。
+本 runbook 记录农技千查 Android 客户端的 Baseline Profile / Macrobenchmark 入口。它服务的是“刚启动 App、首次进入聊天页、首次滑长文本、首次点输入框时有轻微帧感”的系统性预热问题，不替代业务 UI 修 bug。
 
 ## 目标
 

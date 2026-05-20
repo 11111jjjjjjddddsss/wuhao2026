@@ -1,4 +1,4 @@
-﻿# 农技千问
+# 农技千查
 
 当前客户端入口为原生 Android（Jetpack Compose），不再依赖 WebView 模板页面。
 

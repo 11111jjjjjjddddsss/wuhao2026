@@ -1,5 +1,5 @@
 @rem Gradle startup script for Windows.
-@rem Project: 农技千问
+@rem Project: 农技千查
 
 @if "%DEBUG%"=="" @echo off
 

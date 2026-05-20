@@ -8,7 +8,7 @@ Accepted
 
 ## 背景
 
-农技千问聊天页在 2026 年 4 月经历过多轮方案切换：
+农技千查聊天页在 2026 年 4 月经历过多轮方案切换：
 
 - 正向列表 + 高度补偿
 - streaming overlay / bottom active zone

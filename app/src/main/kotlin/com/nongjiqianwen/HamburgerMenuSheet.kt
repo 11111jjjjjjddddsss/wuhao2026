@@ -890,7 +890,7 @@ private fun HamburgerServiceAgreementContent(
         )
         HamburgerAgreementSection(
             title = "一、服务性质",
-            body = "农技千问是农业 AI 问诊和农业技术参考工具，支持文字、图片和图文混合咨询。AI 回复不是正式诊断、检测报告、行政结论、专家签字意见或收益承诺。"
+            body = "农技千查是农业 AI 问诊和农业技术参考工具，支持文字、图片和图文混合咨询。AI 回复不是正式诊断、检测报告、行政结论、专家签字意见或收益承诺。"
         )
         HamburgerAgreementSection(
             title = "二、我们提供的功能",
@@ -996,7 +996,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "一、基本功能与必要信息",
-            body = "农技千问的基本功能包括农业 AI 问诊、图文咨询、历史恢复、会员额度、帮助与反馈和检查更新。为实现这些功能，我们会在必要范围内处理文本问题、用户上传图片、AI 回复、本机用户标识、请求时间、接口路径、版本号、网络地址、额度 / 会员状态和错误日志。"
+            body = "农技千查的基本功能包括农业 AI 问诊、图文咨询、历史恢复、会员额度、帮助与反馈和检查更新。为实现这些功能，我们会在必要范围内处理文本问题、用户上传图片、AI 回复、本机用户标识、请求时间、接口路径、版本号、网络地址、额度 / 会员状态和错误日志。"
         )
         HamburgerAgreementSection(
             title = "二、AI 问诊场景",
@@ -1086,7 +1086,7 @@ private fun HamburgerRiskNoticeContent(
             lineHeight = 22.sp
         )
         Text(
-            text = "农技千问只能提供农业技术参考，不能替代现场诊断、官方认定或检测结论。涉及用药用肥、重大损失、赔付争议或安全风险，请先线下复核。",
+            text = "农技千查只能提供农业技术参考，不能替代现场诊断、官方认定或检测结论。涉及用药用肥、重大损失、赔付争议或安全风险，请先线下复核。",
             color = Color(0xFF30343A),
             fontSize = 14.5.sp,
             lineHeight = 23.sp

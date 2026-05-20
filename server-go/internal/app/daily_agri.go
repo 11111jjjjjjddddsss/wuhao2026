@@ -185,7 +185,7 @@ func buildDailyAgriMessages(now time.Time, recentCards []DailyAgriCard) []Bailia
 	return []BailianMessage{
 		{
 			Role:    "system",
-			Content: "你是“农技千问”的今日农情编辑。只输出 JSON，不输出 Markdown、解释、代码块或额外文字。",
+			Content: "你是“农技千查”的今日农情编辑。只输出 JSON，不输出 Markdown、解释、代码块或额外文字。",
 		},
 		{
 			Role: "user",

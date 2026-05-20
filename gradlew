@@ -1,6 +1,6 @@
 #!/bin/sh
 # Gradle startup script for UNIX.
-# Project: 农技千问
+# Project: 农技千查
 
 APP_HOME=$( cd "$( dirname "$0" )" && pwd )
 JAVA_EXE=java
