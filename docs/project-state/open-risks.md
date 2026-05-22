@@ -97,7 +97,8 @@
 - 说明：Android 会员中心当前只展示支付占位提示，不会调用后端下单 / 续费 / 升级 / 加油包接口；`server-go` 里现有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍是开发期直接变更接口，但默认已返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境不是 `APP_ENV / ENV / GO_ENV = prod / production` 时才允许本地 / 内测调试使用
 - 风险：这些接口仍不是正式支付真源；如果内测环境误开 `ALLOW_DEV_ORDER_ENDPOINTS=true`，非 App 客户端理论上仍可绕过真实支付直接请求会员变更。这不影响当前 Android UI 展示，也不影响每日额度 / 升级补偿 / 加油包扣次顺序本身，但属于上线前必须继续收口的业务安全风险
 - 补充：会员/额度巡检结论已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前 Android 开通 / 升级 / 加油包按钮只提示“支付暂未接入”，没有调用订单接口；因此现阶段能继续作为占位展示，但买服务器本身不等于会员可以直接开卖
-- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false，并配置 `APP_ENV=production` 或等价环境变量作为额外保险。真实收费前还要接手机号登录 / token，把本机 `user_id` 与账号绑定，并开启 `AUTH_STRICT=true`
+- 补充：买服务器前“支付真实接入”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，并新增 [payments.md](D:/wuhao/docs/runbooks/payments.md)。当前没有真实支付渠道、SDK、自动续费、退款或对账；`orders` 表也只是开发期成功结果记录，不是正式支付订单表
+- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false，并配置 `APP_ENV=production` 或等价环境变量作为额外保险。真实收费前还要接手机号登录 / token，把本机 `user_id` 与账号绑定，并开启 `AUTH_STRICT=true`。正式订单表需覆盖渠道订单号、金额、商品、状态、回调、退款和幂等发放结果
 
 ## R13 今日农情生成质量和调度仍需上线观察
 

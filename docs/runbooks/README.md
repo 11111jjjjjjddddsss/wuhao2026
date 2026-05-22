@@ -20,6 +20,7 @@
 - [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)：礼品卡占位状态与后续兑换系统入口
 - [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)：服务协议、隐私政策、风险提示、第三方清单和权限口径
 - [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)：统一管理后台分期、权限和审计入口
+- [payments.md](D:/wuhao/docs/runbooks/payments.md)：真实支付、会员订单、回调验签和对账入口
 
 维护规则：
 
