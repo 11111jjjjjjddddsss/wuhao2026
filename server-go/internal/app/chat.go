@@ -591,7 +591,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		{Role: "system", Content: contextHeader},
 	}
 	if hasBSummary {
-		messages = append(messages, BailianMessage{Role: "system", Content: "B层累计摘要（仅供参考）\n" + strings.TrimSpace(snapshot.BSummary)})
+		messages = append(messages, BailianMessage{Role: "system", Content: "B层短期记忆（仅供参考）\n" + strings.TrimSpace(snapshot.BSummary)})
 	}
 	if hasCSummary {
 		messages = append(messages, BailianMessage{Role: "system", Content: "C层长期记忆（仅供参考）\n" + strings.TrimSpace(snapshot.CSummary)})

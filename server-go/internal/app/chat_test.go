@@ -110,6 +110,12 @@ func TestBuildPromptMessagesAddsBCSummariesWhenPresent(t *testing.T) {
 	if messages[2].Role != "system" || messages[3].Role != "system" {
 		t.Fatalf("expected summary prompts to be inserted as system messages")
 	}
+	if !strings.HasPrefix(messages[2].Content.(string), "B层短期记忆（仅供参考）\n") {
+		t.Fatalf("expected B short-term memory label, got %#v", messages[2].Content)
+	}
+	if !strings.HasPrefix(messages[3].Content.(string), "C层长期记忆（仅供参考）\n") {
+		t.Fatalf("expected C long-term memory label, got %#v", messages[3].Content)
+	}
 	if messages[4].Content != "hello" {
 		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
 	}

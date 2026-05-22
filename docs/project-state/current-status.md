@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-05-20
+最后更新：2026-05-22
 
 ## 项目概况
 
@@ -13,13 +13,13 @@
 - Android 端当前使用 Jetpack Compose 聊天界面，不再依赖 WebView 模板页面
 - Android 客户端已清理旧直连模型链：不再包含 `QwenClient.kt` / `ModelService.kt` / `ModelParams.kt`，也不再从 `local.properties`、`BAILIAN_API_KEY` 或 Gradle property 注入模型 `API_KEY`。主对话和图片问诊只能通过后端 `/api/chat/stream` 发起模型调用
 - Android Auto Backup / Data Extraction 当前已关闭并显式排除：`allowBackup=false`，同时通过 `backup_rules.xml` / `data_extraction_rules.xml` 排除 cloud backup、device transfer、credential-protected / device-protected shared preferences、files、databases 和 external 数据。本地聊天窗口快照、流式草稿、`app_ids`、旧 UI metrics 等都只作为本机运行时缓存，不允许被系统云备份 / 设备迁移在清数据 / 重装后恢复成旧 UI 状态。后端仍是业务真相来源
-- Go 后端当前同时保存两类资产：`session_ab.a_json` 仍是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` / `c_summary` 仍是摘要文本；成功完成的问答轮次会额外写入 `session_round_archive`，按 30 天滚动保留，用于 UI 历史恢复和后续批量抽取。`/api/chat/stream` 允许纯文字、纯图片、图文混合；纯图片且用户未输入文字时，后端会给模型补一条内部说明，引导先基于图片可见信息做农业技术参考判断并追问必要信息，该说明不作为用户可见消息。当前尚未实现 C+ 的用户农业画像 / 用户农业档案字段
+- Go 后端当前同时保存两类资产：`session_ab.a_json` 仍是 A 层滑窗，写入新轮次后会裁剪到 Free / Plus 6 轮、Pro 9 轮；`b_summary` 当前承载 B 层短期工作记忆，定位是当前主线 / 当前病例短期承接，不承载长期画像；`c_summary` 仍是 C 层长期摘要文本；成功完成的问答轮次会额外写入 `session_round_archive`，按 30 天滚动保留，用于 UI 历史恢复和后续批量抽取。`/api/chat/stream` 允许纯文字、纯图片、图文混合；纯图片且用户未输入文字时，后端会给模型补一条内部说明，引导先基于图片可见信息做农业技术参考判断并追问必要信息，该说明不作为用户可见消息。当前尚未实现 C+ 的用户农业画像 / 用户农业档案字段
 - `/api/session/snapshot` 当前继续返回 `a_json` / `a_rounds_full` 作为 A 层窗口，同时 `a_rounds_for_ui` 会优先返回 30 天内最近 30 轮 `session_round_archive`。前端本地仍会用 `LOCAL_RENDER_ROUND_LIMIT = 30` 裁 UI 窗口；换机 / 重装后只要用户身份能对上后端 `user_id`，UI 可拉到最近 30 轮业务聊天记录。当前项目还没有手机号 / 账号登录体系，实际主要依赖本机 `user_id`；若清数据后本机 `user_id` 丢失并生成新身份，则不会恢复旧记录
 - Android 聊天页在后端历史模式下不再把本地 30 轮聊天窗口作为首帧同步启动数据：`ChatScreen.kt` 首次组合先用空本地快照放出页面壳，随后在 `LaunchedEffect` 内异步读取本地快照并等待远端 `/api/session/snapshot`。远端快照成功时仍以后端历史为主，并把本地失败消息 / 待恢复用户尾巴并回去；远端快照失败时才异步回退到本地窗口，避免首屏被 SharedPreferences + Gson 解析阻塞，同时不丢失败 / 中断恢复入口
 - Android 普通输入框草稿当前会写入本机 `chat_ui_cache` 的 `composer_draft_*` 键：用户切 App、锁屏或后台被系统回收后，未发送文字下次进入仍会回填；发送成功 / 清空运行时会清掉该草稿。图片缩略图暂不做跨进程草稿恢复，避免本地 URI 权限和临时文件生命周期带来脏状态
 - 主对话每轮都会由后端注入当前时间和地点：`chat.go` 组装 `当前时间：yyyy-MM-dd HH:mm:ss（Asia/Shanghai）；用户地点：...；地点可信度：...`。历史轮次当前也会携带 `created_at / region / region_source / region_reliability`，进入模型上下文时以前缀“历史轮次时间：...”和“历史轮次地点：...”注入，让模型知道这轮距离当前大概多久、当时大概在哪里；前端暂不显示每条消息时间戳或地点条。当前 Android 还没有定位权限 / 地区选择主链，若请求里未带 `X-User-Region`，后端只能用 IP / 未知兜底，因此“地点详细点”需要后续单独做用户地区采集。天气 API 暂不接入，后续只在确有强需求和成本预算时再评估
-- 当前所有真实模型调用统一显式设置 `temperature=0.8`：主对话 `qwen3.5-plus`、B/C 摘要 `qwen3.5-flash` 和今日农情 `qwen3.5-plus` 生成都引用后端同一个 `unifiedModelTemperature` 常量；`top_p / max_tokens / frequency_penalty / presence_penalty` 等其他采样参数暂不显式设置，继续走模型服务默认值。主对话仍是流式、关闭思考、可联网但不强制搜索；B/C 摘要仍是非流式、关闭思考、不联网；今日农情仍是原生 Generation、关闭思考、强制联网搜索
-- 主对话锚点真源仍是 `server-go/assets/system_anchor.txt`，当前版本已按“农技千查”产品名收口：强调当前轮优先，历史 / 摘要 / 长期记忆 / 联网只作参考且不是定论；同一作物 / 同一地块可承接仍有效信息，新问题不能直接套旧判断；信息不足必须列 2 到 3 种可能性并追问 1 到 2 个关键问题；图片先客观详细描述再分析判断；混配、浓度、倍数、亩用量、兑水量、面积换算先核对关键参数；会员和 App 使用问题允许回答通用入口 / 通用规则，但不编造个人账户、订单、扣费或权益异常信息；商业相关内容不做品牌背书或导购，但允许按成分、用途、适用场景、风险点和标签信息做技术性比较；联网同轮最多一次，证件 / 登记 / 备案 / 审定类只给疑点和查询方法，不做真伪裁决。B/C 摘要提示词本次未改
+- 当前所有真实模型调用统一显式设置 `temperature=0.8`：主对话 `qwen3.5-plus`、B 层短期记忆 / C 层摘要 `qwen3.5-flash` 和今日农情 `qwen3.5-plus` 生成都引用后端同一个 `unifiedModelTemperature` 常量；`top_p / max_tokens / frequency_penalty / presence_penalty` 等其他采样参数暂不显式设置，继续走模型服务默认值。主对话仍是流式、关闭思考、可联网但不强制搜索；B 层短期记忆 / C 层摘要仍是非流式、关闭思考、不联网；今日农情仍是原生 Generation、关闭思考、强制联网搜索
+- 主对话锚点真源仍是 `server-go/assets/system_anchor.txt`，当前版本已按“农技千查”产品名收口：强调当前轮优先，历史 / 摘要 / 长期记忆 / 联网只作参考且不是定论；同一作物 / 同一地块可承接仍有效信息，新问题不能直接套旧判断；信息不足必须列 2 到 3 种可能性并追问 1 到 2 个关键问题；图片先客观详细描述再分析判断；混配、浓度、倍数、亩用量、兑水量、面积换算先核对关键参数；会员和 App 使用问题允许回答通用入口 / 通用规则，但不编造个人账户、订单、扣费或权益异常信息；商业相关内容不做品牌背书或导购，但允许按成分、用途、适用场景、风险点和标签信息做技术性比较；联网同轮最多一次，证件 / 登记 / 备案 / 审定类只给疑点和查询方法，不做真伪裁决。B 层提示词本次改为短期工作记忆口径，C 层摘要提示词未改
 - 当前产品策略倾向已记录为待决策：C 层后续可能升级为 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`；在代码落地前，当前真实实现仍是现有 `c_summary`
 - 基础设施首版采购倾向已调整为 `SAE + RDS MySQL`：SAE 继续适合当前无运维团队阶段，数据库首版倾向使用阿里云 RDS MySQL 以降低成本和运维复杂度；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
 - 后期整体运维协助入口已沉淀到 `docs/runbooks/operations-blueprint.md`：范围覆盖 Android 整体 App、Go 后端 `server-go`、RDS / 日志 / 成本 / 发布回滚、帮助与反馈、礼品卡、会员和未来统一管理后台。当前仍不伪造未购买的服务器实例、域名、数据库地址或密钥；真实资源落地后必须把可执行入口回填到 deploy / rollback / logs / db / app-update 等 runbook
@@ -39,7 +39,7 @@
 - 后端图片入口同步收紧：`POST /upload` 现在要求同一套用户身份头 / token，只接受单张 `<=1MB` JPEG；服务端必须配置 `BASE_PUBLIC_URL` 或 `UPLOAD_BASE_URL` 为公开 `https` 基地址后才会返回图片 URL；`/api/chat/stream` 会校验图片 URL 必须来自该公开基地址下的 `/uploads/*.jpg`，不再信任客户端任意外部图片 URL，也不再用请求转发头临时推导图片可信域名。Android 上传会给 `/upload` 带 `X-User-Id` 和可选 `Authorization`，仍只上传前端生成的私有 JPEG 副本
 - 图片 pending 远端恢复只用于补旧答案：如果恢复轮询期间用户又发起了新的活跃 SSE，这条补旧答案链不会取消或打断当前新对话流
 - SSE 完成态当前以轮次归档为用户可恢复真相：服务端只在 `AppendSessionRoundComplete(...)` 成功写入 ledger / 归档后才发送 `[DONE]`；`ConsumeOnDone` 在归档成功后执行，若临时失败会按同一 `client_msg_id` 短重试，重复扣由 `quota_ledger` 唯一键防住。replay 只恢复已归档答案，不再补扣旧轮次，且会在 prompt 组装、模型 Key 检查、进行中锁和额度检查之前优先返回；若首查未完成但随后成功拿到 inflight 锁，开主模型前还会二次复查完成态，降低同一 `client_msg_id` 在完成临界点重复开流的机会。每日额度按后端上海时区自然日计算，请求开始时记录 `day_cn`，23:59 发起但 00:00 后完成仍扣发起当天，00:00 后新发起的请求走新一天额度。主模型上游开流当前不再自动二次重试，Android 前台流和 WorkManager 也不再对模型开流失败做静默多次重试，避免同一轮极端情况下多调 Qwen3.5-Plus。`chat_stream_inflight` 获取结果以 lease token 为准，并新增同一用户活跃流唯一约束：同一用户同一时间只允许一条活跃主流式请求，重复 / 并发请求优先返回进行中或失败恢复，不再并行启动多条模型流。旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 已废弃并返回 410，避免旧接口绕过扣次或重复触发摘要模型。这样优先避免“回答已归档但用户收不到完成态”的卡死，同时收紧重复调模型 / 重复扣费风险；连续数据库异常或进程在归档后扣减前崩溃且短重试也失败时，仍可能漏记一次成本，列入未关闭风险观察
-- B / C 摘要当前由后端 `SummaryService` 异步触发 Qwen3.5-Flash，并显式设置 `temperature=0.8`、显式关闭思考模式：同一用户同一层有本进程内运行中保护，避免并发重复抽取；摘要写回时会校验 `session_ab.round_total` 必须仍等于触发时快照轮次，旧快照结果不会覆盖更新轮次。若摘要过程中又有新轮次完成，旧摘要写入会被跳过，pending 状态保留到后续触发继续处理
+- B 层短期记忆 / C 层摘要当前由后端 `SummaryService` 异步触发 Qwen3.5-Flash，并显式设置 `temperature=0.8`、显式关闭思考模式：B 层仍按 Free / Plus 每 6 轮、Pro 每 9 轮触发，C 层仍每 25 轮触发；同一用户同一层有本进程内运行中保护，避免并发重复抽取；写回时会校验 `session_ab.round_total` 必须仍等于触发时快照轮次，旧快照结果不会覆盖更新轮次。若处理过程中又有新轮次完成，旧结果写入会被跳过，pending 状态保留到后续触发继续处理
 - 当前工作线视觉 gap 为 `96.dp`，也就是小球、streaming 正文底边、开机历史态和完成态尾部都应落在 composer 折叠外壳上方约 96dp 的位置；工作线以下的空白必须露出来，用于免责声明 / 极端说明 / 底部呼吸区，不能把尾部文字压到输入框后面
 
 ## 聊天 UI 主链
