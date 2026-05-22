@@ -235,9 +235,49 @@
 
 详情入口见 [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)。
 
+### 7. 主聊天与图片发送
+
+结论：当前主聊天和图片发送链路可以继续作为首版主链推进，没有发现旧 Android 直连模型、旧完成接口、旧 active-zone、旧图片手势或旧上传通道在运行时并存。买服务器前不用因为 Go 语言本身做盲目性能优化，真正需要提前拍板的是鉴权、公开图片域名、单实例 / OSS 和真实监控。
+
+当前代码真相：
+
+- 文字、图片和图文混合问诊都只通过后端 `/api/chat/stream` 发起；Android 不保存模型 API Key，也不直连 Qwen / DashScope。
+- Android 发送时先把用户消息和 assistant placeholder 插入 UI，再走 `SessionApi.streamChat`；图片发送会先把本地图片消息上屏并清空输入框，上传成功后复用同一个 `client_msg_id` 进入主对话。
+- 图片先进入 App 私有 `files/composer_images` 稳定副本；合格 JPEG 直通，其他可解码图片转 JPEG 并压到最长边 / 单张 `<=1MB` 规则内。
+- Android 上传入口是后端 `POST /upload`，请求带 `X-User-Id` 和可选 bearer token；后端只接受单张 `<=1MB` JPEG，并返回配置公开基地址下的 `https://.../uploads/*.jpg`。
+- `/api/chat/stream` 会再次校验图片 URL：必须来自同一公开基地址、路径为 `/uploads/*.jpg`，不接受外部域名、非 jpg、query 或 fragment。
+- 带图发送会排一个唯一 WorkManager 兜底任务；前台活跃或远端启动保护窗内不抢跑，只在 App 被杀或前台未可靠完成时补发。
+- 后端用 `chat_stream_inflight` 的同一用户活跃流唯一约束和 `client_msg_id + lease_token` 降低重复开流；轮次归档成功后才发 SSE `[DONE]`，扣次也在归档成功后执行。
+- 历史恢复走 `/api/session/snapshot`；`a_rounds_for_ui` 优先来自 30 天归档，远端失败才回退本地窗口。
+- 删除所有历史对话走 `POST /api/session/clear`；有活跃流时后端返回 409，成功后前端清 UI、本地快照、草稿、streaming draft、待发送 WorkManager 和私有 composer 图片。
+
+已排查的旧方案：
+
+- 未发现 `QwenClient / ModelService / ModelParams / BuildConfig.API_KEY / BAILIAN_API_KEY` 等 Android 直连模型主链。
+- 旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 路由仍在，但只返回 `410 DEPRECATED_ENDPOINT`，不参与主链。
+- 旧 `StreamingLocation / BottomActiveZone / renderBottomActiveZone / requestSendStartBottomSnap / followStreamingByDelta / dispatchRawDelta` 没有运行时残留；当前只有 composer 自己的 collapse overlay 命名，不是旧消息 active-zone。
+- 旧 `ImagePreviewGesture.kt` 已删除；当前图片全屏预览走 Telephoto `ZoomableAsyncImage + HorizontalPager`。
+- Android 端没有 OSS AK/SK；本轮只把 `ImageUploader.kt` 里仍写“上传 OSS”的过期注释改成当前真实 `/upload` 口径。
+
+上线前必须注意：
+
+- 生产环境必须配置 `APP_SECRET + AUTH_STRICT=true`，不能公开环境继续只靠裸 `X-User-Id`。
+- `BASE_PUBLIC_URL / UPLOAD_BASE_URL` 必须是公网 https，且能被模型服务访问；否则图片上传成功也可能无法被主模型拉取。
+- 如果首版不接 OSS，SAE 必须明确单实例运行；多实例前必须先把 `/upload` 和 `/uploads/` 迁到 OSS 或等价共享对象存储。
+- 数据库迁移应在发布流程中只执行一次，或补迁移锁；不要让多个 SAE 实例首次启动同时抢跑迁移。
+- 模型 Key 池可以短期填 2 到 3 把不同主账号 Key，但朋友账号只能早期兜底，长期生产需要收回到自己可控账单和权限体系。
+- 真实收费前仍必须补支付回调验签、账号绑定和对账，不能打开开发期订单直改接口。
+
+买服务器后必须补：
+
+- 决定图片是否首版接 OSS；如果接 OSS，补上传改造、访问策略、生命周期、图片删除策略和 SLS 监控。
+- 配置并验证 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`、HTTPS 证书、模型公网拉图、`/upload`、`/uploads/`、`/api/chat/stream` 全链路。
+- 用真机跑弱网、多图、图片上传中杀 App、上传成功但流式未完成时杀 App、后台 WorkManager 恢复、删除历史时活跃流 409、冷启动 snapshot 恢复等回归。
+- 多实例前把 B/C 摘要 running guard、聊天限流等进程内保护升级为数据库 lease / Redis / 网关级保护，或明确首版单实例观察。
+- 观察 `append session round after stream failed`、`quota consume on DONE failed`、`summary extraction failed`、图片上传失败、图片 URL 404、前台 SSE 中断率和上游 429 / 5xx。
+
 ## 后续待巡检功能队列
 
-- 主聊天与图片发送：SSE、WorkManager、上传失败、历史恢复、删除历史对话。
 - B/C 记忆与模型调用：摘要触发、失败重试、C 层 20 轮归档、锚点注入。
 - 今日农情：生成任务、强制搜索、来源过滤、失败静默。
 - 账号 / 手机号登录：本机 `user_id` 迁移、token、`AUTH_STRICT`。

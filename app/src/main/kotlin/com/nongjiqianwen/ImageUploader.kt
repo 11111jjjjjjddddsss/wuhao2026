@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 图片上传工具类
- * 负责：压缩图片 → 上传OSS → 返回https URL
+ * 负责：压缩图片 → 上传后端 /upload → 返回 https URL
  */
 object ImageUploader {
     private const val TAG = "ImageUploader"
@@ -271,8 +271,9 @@ object ImageUploader {
     )
     
     /**
-     * 上传图片：走后端 POST /upload（multipart）-> 后端写入 OSS -> 返回 https 公网 URL
-     * 禁止在 APP 内写 OSS AK/SK。未配置 UPLOAD_BASE_URL 时回调 onError。
+     * 上传图片：走后端 POST /upload（multipart）-> 返回 https 公网 URL。
+     * 当前存储位置由后端控制；未来接 OSS 也只能放在后端，APP 内禁止写 OSS AK/SK。
+     * 未配置 UPLOAD_BASE_URL 时回调 onError。
      */
     fun uploadImage(
         imageBytes: ByteArray,
@@ -287,7 +288,7 @@ object ImageUploader {
         val baseUrl = BuildConfig.UPLOAD_BASE_URL?.trim() ?: ""
         if (baseUrl.isEmpty()) {
             Log.e(TAG, "上传失败：UPLOAD_BASE_URL 未配置（请在 gradle.properties 或 buildConfig 中配置后端地址）")
-            Log.e(TAG, "HTTP状态码=未配置, 错误=OSS/后端接口未配置")
+            Log.e(TAG, "HTTP状态码=未配置, 错误=上传接口未配置")
             onError("未配置上传服务")
             return
         }

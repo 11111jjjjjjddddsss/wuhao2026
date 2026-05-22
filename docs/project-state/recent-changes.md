@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 巡检“主聊天与图片发送”主链：确认 Android 端仍只通过后端 `/api/chat/stream` 发起文字 / 图片 / 图文混合问诊，图片先进入 App 私有 `composer_images` 稳定副本并经 `/upload` 换成同一公开基地址下的 `https /uploads/*.jpg`，后端再次校验图片 URL 后才进模型；带图发送的唯一 WorkManager 兜底、后端 `chat_stream_inflight` 同用户活跃流约束、归档成功后才发 `[DONE]` 和扣次、`/api/session/snapshot` 历史恢复、`/api/session/clear` 删除历史 409 防活跃流都和当前口径一致。没有发现旧 Android 直连模型、旧 `/api/session/round_complete` 主链、旧 active-zone、旧图片手势或旧上传通道并存；本轮只把 `ImageUploader.kt` 里“上传 OSS”的过期注释改为当前真实“上传后端 /upload，未来 OSS 只能由后端接入”，并把买服务器后必须验证公网 https 图片链、单实例 / OSS、弱网多图、后台恢复和 SLS 指标写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
+
 - 巡检“服务协议 / 隐私政策 / 风险提示”组：确认当前设置页只有一个“服务协议”目录入口，下面 6 个本地内置二级页面（用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示）都走设置页右进左出页面栈；没有发现旧 WebView、外部协议网页、旧平铺三行入口或用户可见具体模型平台名残留。Manifest 当前只声明 `INTERNET / ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES`，正文口径和当前不申请定位、App 相机、相册 / 存储读写、录音、通讯录、短信、通知权限一致；同时补充 Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，避免只写 App 私有目录导致保存位置说明不完整。新增 [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)，并把买服务器后必须补的真实云服务商、第三方服务、数据保存期限、账号注销 / 查询 / 删除入口、备案号和隐私政策 URL 写入巡检记录。
 
 - 巡检“检查更新 / 自有 APK 分发”链路：确认当前没有应用商店跳转、浏览器下载或旧占位方案并存，主链是 Android 设置页请求 `GET /api/app/update`，后端由 `APP_ANDROID_*` 环境变量返回 https APK，Android 下载到 cache 后通过 FileProvider 调起系统安装页。后端新增可选 `APP_ANDROID_APK_SHA256` 并透出 `apk_sha256`；Android 下载后新增最终 https、文件大小、SHA-256、包名和 `versionCode` 校验，避免错包、坏包、半截包或低版本包进入系统安装页。同步更新 [app-update.md](D:/wuhao/docs/runbooks/app-update.md)、[pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md) 和风险记忆，明确 APK 建议放 OSS / CDN / 静态 HTTPS，发布时记录文件大小、SHA-256、签名指纹，回滚只能停更或发更高 `versionCode` 修复包。
