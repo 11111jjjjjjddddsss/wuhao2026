@@ -9,24 +9,32 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type BailianClient struct {
-	httpClient *http.Client
-	keyCursor  uint64
+	httpClient  *http.Client
+	keyCursor   uint64
+	cooldownMu  sync.Mutex
+	keyCooldown map[string]time.Time
 }
 
-const unifiedModelTemperature = 0.8
+const (
+	unifiedModelTemperature = 0.8
+	bailianKeyCooldown      = 60 * time.Second
+)
 
 func NewBailianClient() *BailianClient {
 	return &BailianClient{
-		httpClient: &http.Client{},
+		httpClient:  &http.Client{},
+		keyCooldown: map[string]time.Time{},
 	}
 }
 
 func (c *BailianClient) HasKeyConfigured() bool {
-	return len(c.keys()) > 0
+	return len(c.keyEntries()) > 0
 }
 
 func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
@@ -52,10 +60,6 @@ func (c *BailianClient) OpenCompletion(ctx context.Context, body map[string]any)
 }
 
 func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []BailianMessage) (string, []DailyAgriSearchSource, error) {
-	apiKey, err := c.pickNextKey()
-	if err != nil {
-		return "", nil, err
-	}
 	body := map[string]any{
 		"model": dailyAgriCardModel,
 		"input": map[string]any{
@@ -78,15 +82,7 @@ func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []Ba
 	if err != nil {
 		return "", nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildDashScopeGenerationURL(), bytes.NewReader(payload))
-	if err != nil {
-		return "", nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.doJSONPayloadRequest(ctx, c.buildDashScopeGenerationURL(), "application/json", payload)
 	if err != nil {
 		return "", nil, err
 	}
@@ -130,17 +126,62 @@ func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []Ba
 }
 
 func (c *BailianClient) doJSONRequest(ctx context.Context, accept string, body map[string]any) (*http.Response, error) {
-	apiKey, err := c.pickNextKey()
-	if err != nil {
-		return nil, err
-	}
-
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
+	return c.doJSONPayloadRequest(ctx, c.buildURL(), accept, payload)
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.buildURL(), bytes.NewReader(payload))
+func (c *BailianClient) doJSONPayloadRequest(ctx context.Context, url string, accept string, payload []byte) (*http.Response, error) {
+	keys := c.keyEntries()
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("DASHSCOPE_API_KEY(S) is missing")
+	}
+
+	attempted := map[string]bool{}
+	var lastResponse *http.Response
+	for attempt := 0; attempt < len(keys); attempt++ {
+		key, ok := c.pickNextKeyEntry(keys, attempted)
+		if !ok {
+			break
+		}
+		attempted[key.Value] = true
+
+		resp, err := c.sendJSONPayload(ctx, url, accept, payload, key.Value)
+		if err != nil {
+			return nil, err
+		}
+		if !isBailianFailoverCandidateStatus(resp.StatusCode) {
+			return resp, nil
+		}
+
+		remaining := len(attempted) < len(keys)
+		if !remaining {
+			c.coolDownKey(key.Value)
+			return resp, nil
+		}
+
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		snapshot := cloneHTTPResponse(resp, bodyBytes)
+		if !shouldFailoverBailianResponse(resp.StatusCode, bodyBytes) {
+			return snapshot, nil
+		}
+		c.coolDownKey(key.Value)
+		lastResponse = snapshot
+	}
+	if lastResponse != nil {
+		return lastResponse, nil
+	}
+	return nil, fmt.Errorf("DASHSCOPE_API_KEY(S) is missing")
+}
+
+func (c *BailianClient) sendJSONPayload(ctx context.Context, url string, accept string, payload []byte, apiKey string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
@@ -168,37 +209,134 @@ func (c *BailianClient) buildDashScopeGenerationURL() string {
 	return strings.TrimRight(baseURL, "/") + "/services/aigc/text-generation/generation"
 }
 
-func (c *BailianClient) pickNextKey() (string, error) {
-	keys := c.keys()
-	if len(keys) == 0 {
-		return "", fmt.Errorf("DASHSCOPE_API_KEY(S) is missing")
-	}
-	index := atomic.AddUint64(&c.keyCursor, 1) - 1
-	return keys[index%uint64(len(keys))], nil
-}
-
 func (c *BailianClient) keys() []string {
-	result := []string{}
-	if single := strings.TrimSpace(os.Getenv("DASHSCOPE_API_KEY")); single != "" {
-		result = append(result, single)
-	}
-	for _, item := range strings.Split(os.Getenv("DASHSCOPE_API_KEYS"), ",") {
-		key := strings.TrimSpace(item)
-		if key == "" {
-			continue
-		}
-		exists := false
-		for _, current := range result {
-			if current == key {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			result = append(result, key)
-		}
+	entries := c.keyEntries()
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		result = append(result, entry.Value)
 	}
 	return result
+}
+
+type bailianAPIKeyEntry struct {
+	Value string
+}
+
+func (c *BailianClient) keyEntries() []bailianAPIKeyEntry {
+	result := []bailianAPIKeyEntry{}
+	addKey := func(value string) {
+		key := strings.TrimSpace(value)
+		if key == "" {
+			return
+		}
+		for _, current := range result {
+			if current.Value == key {
+				return
+			}
+		}
+		result = append(result, bailianAPIKeyEntry{Value: key})
+	}
+
+	addKey(os.Getenv("DASHSCOPE_API_KEY"))
+	for i := 1; i <= 3; i++ {
+		name := fmt.Sprintf("DASHSCOPE_API_KEY_%d", i)
+		addKey(os.Getenv(name))
+	}
+	for _, key := range splitConfiguredKeys(os.Getenv("DASHSCOPE_API_KEYS")) {
+		addKey(key)
+	}
+	return result
+}
+
+func splitConfiguredKeys(value string) []string {
+	return strings.FieldsFunc(value, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r'
+	})
+}
+
+func (c *BailianClient) pickNextKeyEntry(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
+	if len(keys) == 0 {
+		return bailianAPIKeyEntry{}, false
+	}
+	start := int(atomic.AddUint64(&c.keyCursor, 1)-1) % len(keys)
+	now := time.Now()
+	var fallback *bailianAPIKeyEntry
+	for offset := 0; offset < len(keys); offset++ {
+		key := keys[(start+offset)%len(keys)]
+		if attempted[key.Value] {
+			continue
+		}
+		if fallback == nil {
+			candidate := key
+			fallback = &candidate
+		}
+		if !c.isKeyCoolingDown(key.Value, now) {
+			return key, true
+		}
+	}
+	if fallback != nil {
+		return *fallback, true
+	}
+	return bailianAPIKeyEntry{}, false
+}
+
+func (c *BailianClient) isKeyCoolingDown(key string, now time.Time) bool {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	until, ok := c.keyCooldown[key]
+	if !ok {
+		return false
+	}
+	if !now.Before(until) {
+		delete(c.keyCooldown, key)
+		return false
+	}
+	return true
+}
+
+func (c *BailianClient) coolDownKey(key string) {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	c.keyCooldown[key] = time.Now().Add(bailianKeyCooldown)
+}
+
+func isBailianFailoverCandidateStatus(status int) bool {
+	return status == http.StatusBadRequest ||
+		status == http.StatusUnauthorized ||
+		status == http.StatusForbidden ||
+		status == http.StatusTooManyRequests
+}
+
+func shouldFailoverBailianResponse(status int, body []byte) bool {
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusTooManyRequests:
+		return true
+	case http.StatusBadRequest:
+		lower := strings.ToLower(string(body))
+		for _, marker := range []string{
+			"rate limit",
+			"requests rate",
+			"current requests",
+			"current quota",
+			"allocated quota",
+			"quota exceeded",
+			"too quickly",
+			"throttl",
+		} {
+			if strings.Contains(lower, marker) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func cloneHTTPResponse(resp *http.Response, body []byte) *http.Response {
+	cloned := new(http.Response)
+	*cloned = *resp
+	cloned.Body = io.NopCloser(bytes.NewReader(body))
+	cloned.ContentLength = int64(len(body))
+	return cloned
 }
 
 type dashScopeGenerationResponse struct {

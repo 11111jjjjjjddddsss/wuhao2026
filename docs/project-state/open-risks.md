@@ -53,7 +53,8 @@
 - 状态：未关闭
 - 说明：当前仓库已经有 `server-go` 主线和 SAE / 回滚 / 日志 / 数据库只读 runbook 骨架，但正式服务器、数据库、域名、HTTPS 和日志项目都还未真正落地。首版采购倾向已从 PolarDB 调整为 RDS MySQL，PolarDB 暂作为后续高规格升级选项
 - 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，容易因为真实环境参数缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节
-- 后续动作：采购前先按 `docs/runbooks/infra-readiness.md` 把 Region、环境命名、RDS MySQL 规格 / 备份 / 白名单、SAE、域名/HTTPS、OSS/SLS/Redis 是否首版接入这些问题拍板；第一套真实环境落地后，同次回填 deploy / rollback / logs / db-readonly runbook
+- 补充：后端已支持 `DASHSCOPE_API_KEY_1/2/3` 多 Key 池和限流前置切 Key，但真实并发扩容必须使用不同阿里云主账号的 Key；同一主账号多个 API Key 共享 RPM / TPM 限流。朋友账号 Key 可短期兜底，但长期生产会带来账单、权限、密钥轮换和数据处理责任不在自己名下的运维风险
+- 后续动作：采购前先按 `docs/runbooks/infra-readiness.md` 把 Region、环境命名、RDS MySQL 规格 / 备份 / 白名单、SAE、域名/HTTPS、OSS/SLS/Redis 是否首版接入这些问题拍板；第一套真实环境落地后，同次回填 deploy / rollback / logs / db-readonly runbook，并按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任
 
 ## R8 C+ 长期资产抽取尚未落地
 

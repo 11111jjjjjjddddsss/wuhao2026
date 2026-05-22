@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 )
 
@@ -62,6 +64,102 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	}
 	if got := searchOptions["forced_search"]; got != false {
 		t.Fatalf("forced_search mismatch: %#v", got)
+	}
+}
+
+func TestBailianKeysSupportDedicatedSlotsAndDeduplicate(t *testing.T) {
+	t.Setenv("DASHSCOPE_API_KEY", "primary")
+	t.Setenv("DASHSCOPE_API_KEY_1", "primary")
+	t.Setenv("DASHSCOPE_API_KEY_2", "second")
+	t.Setenv("DASHSCOPE_API_KEY_3", "third")
+	t.Setenv("DASHSCOPE_API_KEYS", "second, fourth; fifth\nsixth")
+
+	got := NewBailianClient().keys()
+	want := []string{"primary", "second", "third", "fourth", "fifth", "sixth"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("keys mismatch:\n got %#v\nwant %#v", got, want)
+	}
+}
+
+func TestOpenStreamFailsOverToNextKeyOnRateLimit(t *testing.T) {
+	authHeaders := []string{}
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "Bearer primary-key" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"Throttling","message":"Requests rate limit exceeded"}`))
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer secondary-key" {
+			t.Fatalf("unexpected authorization: %s", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "")
+	t.Setenv("DASHSCOPE_API_KEY_1", "primary-key")
+	t.Setenv("DASHSCOPE_API_KEY_2", "secondary-key")
+	t.Setenv("DASHSCOPE_API_KEY_3", "")
+	t.Setenv("DASHSCOPE_API_KEYS", "")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	response, err := NewBailianClient().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "hello"}},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", response.StatusCode, string(body))
+	}
+	wantAuthHeaders := []string{"Bearer primary-key", "Bearer secondary-key"}
+	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
+		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)
+	}
+}
+
+func TestOpenStreamSkipsCoolingKeyOnNextRequest(t *testing.T) {
+	authHeaders := []string{}
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "Bearer primary-key" {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"Throttling","message":"Requests rate limit exceeded"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "")
+	t.Setenv("DASHSCOPE_API_KEY_1", "primary-key")
+	t.Setenv("DASHSCOPE_API_KEY_2", "secondary-key")
+	t.Setenv("DASHSCOPE_API_KEY_3", "")
+	t.Setenv("DASHSCOPE_API_KEYS", "")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	client := NewBailianClient()
+	for i := 0; i < 2; i++ {
+		response, err := client.OpenStream(
+			context.Background(),
+			[]BailianMessage{{Role: "user", Content: "hello"}},
+		)
+		if err != nil {
+			t.Fatalf("open stream %d: %v", i+1, err)
+		}
+		_ = response.Body.Close()
+	}
+
+	wantAuthHeaders := []string{"Bearer primary-key", "Bearer secondary-key", "Bearer secondary-key"}
+	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
+		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)
 	}
 }
 

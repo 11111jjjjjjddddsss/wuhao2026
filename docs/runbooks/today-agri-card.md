@@ -13,7 +13,7 @@
 
 ## 环境变量
 
-- `DASHSCOPE_API_KEY` 或 `DASHSCOPE_API_KEYS`：百炼模型 Key
+- `DASHSCOPE_API_KEY`、`DASHSCOPE_API_KEY_1/2/3` 或 `DASHSCOPE_API_KEYS`：百炼模型 Key 池；多账号配置和限流口径见 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)
 - `DASHSCOPE_BASE_URL`：可选，默认 `https://dashscope.aliyuncs.com/api/v1`
 - `DAILY_AGRI_JOB_SECRET`：内部生成接口密钥，必须配置；不要写入仓库
 
@@ -108,7 +108,7 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 
 ## 失败处理
 
-1. 确认 `DASHSCOPE_API_KEY(S)` 存在，且模型联网搜索权限可用。
+1. 确认模型 Key 池存在，且对应账号的模型联网搜索权限可用；多账号限流排查见 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)。
 2. 确认 `DAILY_AGRI_JOB_SECRET` 已配置，调用头和服务端环境一致。
 3. 确认迁移 `014_daily_agri_cards.sql` 已执行。
 4. 查询 `daily_agri_cards` 当天状态和 `error`。
