@@ -356,7 +356,46 @@
 - [阿里云百炼 DashScope API 参考](https://help.aliyun.com/zh/model-studio/qwen-api-via-dashscope)
 - [阿里云百炼深度思考参数](https://help.aliyun.com/zh/model-studio/deep-thinking)
 
+### 10. 账号 / 手机号登录与生产鉴权
+
+结论：当前账号链路能支撑早期内测，但还不是公开生产账号体系。后端已有严格鉴权开关和签名 token 校验，真正上线前缺的是手机号登录 / token 动态签发 / 旧本机身份迁移，不是 Go 语言性能问题。
+
+当前代码真相：
+
+- Android 启动时由 `IdManager` 在本机 `SharedPreferences("app_ids")` 生成或读取 UUID 形式的 `user_id`；清 App 数据后会丢失并生成新身份。
+- Android 主要用户接口都会带 `X-User-Id: <本机 UUID>`；如果 `BuildConfig.SESSION_API_TOKEN` 非空，还会附加 `Authorization: Bearer <token>`。
+- 图片上传 `/upload` 同样带 `X-User-Id` 和可选 bearer token。
+- 后端 `ResolveAuthUserID` 优先验证 bearer token；验证成功时以 token 内的 `userID` 为准，不再使用 Android 传来的 `X-User-Id`。
+- `AUTH_STRICT=true` 时，裸 `X-User-Id` 会被拒绝；必须配置 `APP_SECRET` 并提供可验证 bearer token 才能访问需要鉴权的接口。
+- `SESSION_API_TOKEN` 目前只是 Gradle 静态注入字段，不是登录后按真实用户动态签发 / 刷新的 token。
+- 设置页“账号管理”里手机号、退出设备、注销账号目前都是占位提示；真实可用动作只有“删除所有历史对话”，且只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
+
+已排查的旧方案：
+
+- 没有发现后端手机号登录、短信验证码、退出登录或注销账号接口并存。
+- 没有发现 Android 端真实登录 / 退出 / 注销逻辑并存；相关入口当前不调用后端，也不清 `IdManager`。
+- 没有发现第二套用户身份来源；当前真实身份仍是本机 `user_id` + 可选服务端签名 token。
+
+上线前必须注意：
+
+- 不能把一个静态 `SESSION_API_TOKEN` 打进正式 APK 当作生产登录方案。后端会优先认 bearer token；如果所有设备共用同一个静态 token，严格模式下会被解析成同一个 token 用户，反而把不同设备身份合并到一起。
+- 公开生产不能长期依赖裸 `X-User-Id`；它适合本地开发和早期闭环内测，不适合开放互联网环境。
+- 如果直接开启 `AUTH_STRICT=true`，现有无登录 App 必须已经有 per-user token 获取链路，否则用户接口会 401。
+- 手机号登录上线时，要决定是否把旧本机 UUID 用户的数据迁移 / 绑定到手机号账号；否则老用户清数据、换机或登录后可能看不到原本的历史、额度和反馈。
+
+买服务器后必须补：
+
+- 手机号登录或等价账号体系：短信验证码服务、验证码限流、防刷、登录 / 绑定 / 换绑流程、手机号唯一性和隐私告知。
+- 后端 token 签发 / 刷新 / 过期 / 吊销机制；Android 保存 per-user token，不能继续靠共享静态 token。
+- 本机 `user_id` 到账号 `user_id` 的迁移策略，至少覆盖 `session_ab`、`session_round_archive`、会员 / 额度 / 加油包、帮助与反馈、订单 / 礼品卡未来表。
+- 账号注销和个人信息查询 / 删除入口，明确聊天、图片、摘要、归档、反馈、会员权益、订单、礼品卡和日志的删除 / 匿名化 / 法定留存范围。
+- 最小管理后台或只读脚本：能按手机号 / user_id 查身份绑定、会员、额度、反馈、订单、礼品卡和注销处理记录。
+
+建议上线观察指标：
+
+- 401 / 403 比例、token 验证失败原因、验证码发送失败 / 频率、同手机号多设备绑定冲突、旧本机 `user_id` 迁移失败。
+- 严格模式切换前后，`/api/me`、`/api/chat/stream`、`/upload`、帮助与反馈、删除历史对话是否都能正常通过同一身份链。
+
 ## 后续待巡检功能队列
 
-- 账号 / 手机号登录：本机 `user_id` 迁移、token、`AUTH_STRICT`。
 - 统一管理后台：客服、用户、会员、礼品卡、更新、今日农情和日志入口。

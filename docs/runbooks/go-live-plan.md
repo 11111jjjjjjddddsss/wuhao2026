@@ -47,7 +47,7 @@
 - 部署 `server-go` 到 SAE，配置健康检查、环境变量和基础日志。
 - 接 RDS MySQL，跑迁移，确认备份、白名单和只读排查方式。
 - 配置两把或多把不同阿里云主账号的 DashScope Key，按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化来源、充值、告警和轮换责任。
-- 接手机号登录 / 服务端可验证 token，并在公开生产环境开启 `AUTH_STRICT=true`，逐步关闭裸 `X-User-Id` 兜底。
+- 接手机号登录 / 服务端可验证 token，并在公开生产环境开启 `AUTH_STRICT=true`，逐步关闭裸 `X-User-Id` 兜底；正式 release APK 不使用共享静态 `SESSION_API_TOKEN`，由后端按真实用户动态签发 per-user token。
 - 接 OSS 图片存储，配置 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`，确保模型能访问 https 图片。
 - 接 SLS 日志，至少覆盖主对话、上传、帮助与反馈、今日农情、检查更新和模型调用失败。
 - 若首版暂不接 OSS，则 SAE 必须先保持单实例；计划多实例前必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储。

@@ -79,8 +79,9 @@
 
 - 状态：未关闭
 - 说明：当前后端业务接口和 `/upload` 都要求身份头 / token，但默认仍兼容 Android 早期阶段的裸 `X-User-Id` 本机身份兜底；这方便单机开发和无登录阶段联调，但不适合作为公开生产鉴权。服务端现在支持 `APP_SECRET + Authorization: Bearer <签名token>`，且显式设置 `AUTH_STRICT=true` 时会关闭裸 `X-User-Id` 兜底，只接受可验证 token
-- 风险：如果公开生产环境仍未接入正式账号体系，且没有开启 `AUTH_STRICT=true`，理论上仍存在冒充 user_id 读取 / 污染会话、会员和额度状态的风险
-- 后续动作：正式公开上线前必须接入手机号 / token / HMAC 等服务端可验证身份，并在生产环境配置 `APP_SECRET` 与 `AUTH_STRICT=true`；后续真实登录体系上线后，再移除或隔离裸 `X-User-Id` 兜底
+- 补充：买服务器前“账号 / 手机号登录与生产鉴权”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前 Android 的 `SESSION_API_TOKEN` 只是 Gradle 静态注入字段，不是正式登录 token；如果把一个共享静态 token 打进正式 APK，后端严格模式下会优先认 token 内的同一个 `userID`，导致不同设备身份被合并
+- 风险：如果公开生产环境仍未接入正式账号体系，且没有开启 `AUTH_STRICT=true`，理论上仍存在冒充 user_id 读取 / 污染会话、会员和额度状态的风险；如果直接开启 `AUTH_STRICT=true` 但没有 per-user token 签发链路，现有无登录 App 会 401；如果用共享静态 token 兜底，则会产生同 token 用户串号风险
+- 后续动作：正式公开上线前必须接入手机号 / token / HMAC 等服务端可验证身份，并在生产环境配置 `APP_SECRET` 与 `AUTH_STRICT=true`。同时设计本机 `user_id` 到手机号账号的迁移 / 绑定策略，覆盖聊天归档、B/C 记忆、会员 / 额度、帮助与反馈、订单和后续礼品卡；真实登录体系上线后，再移除或隔离裸 `X-User-Id` 兜底
 
 ## R11 历史模型 Key 轮换确认
 

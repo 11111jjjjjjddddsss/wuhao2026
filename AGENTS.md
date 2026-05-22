@@ -60,6 +60,7 @@
 - 以下业务逻辑必须由后端控制：用户鉴权、会员等级、调用次数、上下文组装、模型调用、成本统计
 - Android 客户端禁止保存、注入或使用模型服务 API Key；主模型和摘要模型调用只能由后端发起，不允许重新引入客户端直连模型链
 - 当前无完整账号体系前，后端默认仍兼容 Android 早期阶段的 `X-User-Id` 本机身份兜底；服务端也支持 `APP_SECRET` 签名 bearer token。生产若配置 `AUTH_STRICT=true`，必须同时配置 `APP_SECRET`，此时裸 `X-User-Id` 会被拒绝，只接受可验证 token
+- Android `SESSION_API_TOKEN` 只允许作为本地 / 内测固定用户调试桥接，不是正式登录方案；正式 release APK 不应打入共享静态 token。公开生产必须由后端按真实用户动态签发 per-user token，并规划本机 `user_id` 到账号身份的数据迁移
 
 Android 构建链：
 - Gradle wrapper：8.13
