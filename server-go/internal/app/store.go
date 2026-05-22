@@ -266,16 +266,35 @@ func (s *Store) TouchSessionContext(
 
 func (s *Store) GetSessionRoundsForUI(ctx context.Context, userID string) ([]SessionRound, error) {
 	cutoffMs := time.Now().Add(-sessionRoundArchiveRetention).UnixMilli()
-	rows, err := s.db.QueryContext(
-		ctx,
-		`SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
+	return s.listSessionRoundArchive(ctx, userID, sessionRoundArchiveUILimit, cutoffMs)
+}
+
+func (s *Store) GetRecentSessionRoundsForSummary(ctx context.Context, userID string, limit int) ([]SessionRound, error) {
+	return s.listSessionRoundArchive(ctx, userID, limit, 0)
+}
+
+func (s *Store) listSessionRoundArchive(ctx context.Context, userID string, limit int, cutoffMs int64) ([]SessionRound, error) {
+	if limit <= 0 {
+		return []SessionRound{}, nil
+	}
+	query := `SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
+		 FROM session_round_archive
+		 WHERE user_id = ?
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT ?`
+	args := []any{userID, limit}
+	if cutoffMs > 0 {
+		query = `SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
 		 FROM session_round_archive
 		 WHERE user_id = ? AND created_at >= ?
 		 ORDER BY created_at DESC, id DESC
-		 LIMIT ?`,
-		userID,
-		cutoffMs,
-		sessionRoundArchiveUILimit,
+		 LIMIT ?`
+		args = []any{userID, cutoffMs, limit}
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		query,
+		args...,
 	)
 	if err != nil {
 		return nil, err

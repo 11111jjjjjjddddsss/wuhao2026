@@ -320,11 +320,11 @@ func TestTierWindowsAndSummaryIntervalsMatchBusinessRules(t *testing.T) {
 	}
 
 	b, c := GetSummaryIntervals(TierFree)
-	if b != 6 || c != 25 {
+	if b != 6 || c != 20 {
 		t.Fatalf("free/plus summary intervals mismatch: b=%d c=%d", b, c)
 	}
 	b, c = GetSummaryIntervals(TierPro)
-	if b != 9 || c != 25 {
+	if b != 9 || c != 20 {
 		t.Fatalf("pro summary intervals mismatch: b=%d c=%d", b, c)
 	}
 }

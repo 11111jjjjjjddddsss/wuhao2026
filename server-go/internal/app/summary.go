@@ -11,13 +11,25 @@ import (
 	"sync"
 )
 
+type summaryStore interface {
+	WriteUserBSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error)
+	WriteUserCSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error)
+	SetUserSummaryPending(ctx context.Context, userID string, layer SummaryLayer, pending bool) error
+	GetRecentSessionRoundsForSummary(ctx context.Context, userID string, limit int) ([]SessionRound, error)
+}
+
 type SummaryService struct {
-	store   *Store
+	store   summaryStore
 	prompts *PromptLoader
 	bailian *BailianClient
 	logger  *slog.Logger
 	running sync.Map
 }
+
+const (
+	cSummaryEveryRounds   = 20
+	cSummaryArchiveRounds = 20
+)
 
 func NewSummaryService(store *Store, prompts *PromptLoader, bailian *BailianClient, logger *slog.Logger) *SummaryService {
 	return &SummaryService{
@@ -30,9 +42,9 @@ func NewSummaryService(store *Store, prompts *PromptLoader, bailian *BailianClie
 
 func GetSummaryIntervals(tier Tier) (int, int) {
 	if tier == TierPro {
-		return 9, 25
+		return 9, cSummaryEveryRounds
 	}
-	return 6, 25
+	return 6, cSummaryEveryRounds
 }
 
 func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *SessionSnapshot) {
@@ -61,7 +73,23 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 		return
 	}
 
-	dialogueText := buildDialogueText(snapshot.ARoundsFull)
+	dialogueRounds := snapshot.ARoundsFull
+	if layer == SummaryLayerC && s.store != nil {
+		archivedRounds, err := s.store.GetRecentSessionRoundsForSummary(ctx, userID, cSummaryArchiveRounds)
+		if err != nil {
+			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
+			s.logger.Error("C summary archive load failed", "userId", userID, "roundTotal", snapshot.RoundTotal, "error", err)
+			return
+		}
+		if len(archivedRounds) < cSummaryArchiveRounds {
+			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
+			s.logger.Info("C summary extraction skipped: insufficient archived rounds", "userId", userID, "roundTotal", snapshot.RoundTotal, "rounds", len(archivedRounds), "required", cSummaryArchiveRounds)
+			return
+		}
+		dialogueRounds = archivedRounds
+	}
+
+	dialogueText := buildDialogueText(dialogueRounds)
 	if dialogueText == "" {
 		s.logger.Warn("summary extraction skipped: empty dialogue", "userId", userID, "layer", layer)
 		return
