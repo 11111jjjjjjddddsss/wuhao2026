@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 巡检“检查更新 / 自有 APK 分发”链路：确认当前没有应用商店跳转、浏览器下载或旧占位方案并存，主链是 Android 设置页请求 `GET /api/app/update`，后端由 `APP_ANDROID_*` 环境变量返回 https APK，Android 下载到 cache 后通过 FileProvider 调起系统安装页。后端新增可选 `APP_ANDROID_APK_SHA256` 并透出 `apk_sha256`；Android 下载后新增最终 https、文件大小、SHA-256、包名和 `versionCode` 校验，避免错包、坏包、半截包或低版本包进入系统安装页。同步更新 [app-update.md](D:/wuhao/docs/runbooks/app-update.md)、[pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md) 和风险记忆，明确 APK 建议放 OSS / CDN / 静态 HTTPS，发布时记录文件大小、SHA-256、签名指纹，回滚只能停更或发更高 `versionCode` 修复包。
+
 - 巡检礼品卡占位链路：确认当前没有后端兑换接口、兑换码旧链路或会误改会员权益的并存方案，Android 礼品卡页输入后只提示“礼品卡功能后续接入”，不调用后端、不发权益、不假弹真实成功；debug-only “兑换成功 / 确定”仅是未来成功态样式预览。新增 [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)，并在 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md) 和风险记忆里固定后续真实接入原则：后端是唯一真相，真实接入前要先补礼品卡主表、兑换记录、幂等兑换接口、后台生成 / 发放 / 作废 / 查询、审计、限流和日志。
 
 - 继续按“一个功能一个功能”巡检帮助与反馈：确认当前没有新旧方案并存，用户侧主链是 `/api/support/summary`、`/api/support/messages`、`/api/support/read`，后台回复先走 `SUPPORT_ADMIN_SECRET` 保护的 `/internal/support/*`，Android 红点进入页后会标记已读，附件面板返回优先级和 IME padding 已按现有主链收口。新增 `server-go/internal/app/support_test.go` 覆盖 payload 校验、图片 URL JSON 序列化和内部后台 secret 校验；同步把公开生产前必须补账号 token / `AUTH_STRICT=true`、多实例前必须上 OSS 或单实例、后续管理后台要补账号权限 / 审计 / 未处理列表、账号注销要明确帮助与反馈消息和图片保存删除规则，写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md) 和项目风险记忆。

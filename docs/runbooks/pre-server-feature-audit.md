@@ -161,9 +161,44 @@
 
 - 礼品卡兑换成功率、失败原因分布、同用户 / 同 IP 连续失败次数、权益发放失败、重复兑换冲突。
 
+### 5. 检查更新
+
+结论：当前检查更新主链已经从占位变成自有服务器 APK 分发，没有发现应用商店跳转、浏览器下载或旧占位方案并存。`/api/app/update` 本身是轻接口，高并发压力主要不在后端接口，而在 APK 下载带宽和发布配置准确性。
+
+当前代码真相：
+
+- Android 设置页点击“检查更新”后，请求 `GET /api/app/update?platform=android&version_code=<当前versionCode>&version_name=<当前versionName>`。
+- 无更新时提示“已是最新版本”；有更新时弹“发现新版本”卡片，按钮为“稍后 / 立即更新”，更新说明兜底为“优化产品体验”。
+- 后端由 `APP_ANDROID_LATEST_VERSION_CODE / APP_ANDROID_LATEST_VERSION_NAME / APP_ANDROID_APK_URL / APP_ANDROID_APK_SHA256 / APP_ANDROID_RELEASE_NOTES / APP_ANDROID_FORCE_UPDATE / APP_ANDROID_FILE_SIZE_BYTES` 控制 Android 最新版本；只有新版本号大于客户端当前版本号，且 APK 链接是公网 https，才返回可用更新。
+- Android 下载 APK 到 App cache 后，会在调起系统安装页前校验最终响应仍是 https、可选文件大小、可选 SHA-256、包名等于当前 App 包名、APK `versionCode` 等于后端最新版本号且大于当前安装版本。
+- Android 8+ 未授权安装未知应用时，会先打开系统授权页；普通 Android App 不能静默安装，最终仍由系统安装器让用户确认。
+
+本轮已补的保护：
+
+- 后端新增可选 `APP_ANDROID_APK_SHA256` 并透出 `apk_sha256`；无更新或 APK 链接无效时不会下发哈希。
+- Android 下载后新增文件大小 / SHA-256 / 包名 / versionCode 校验，避免错包、坏包、半截包或低版本包进入系统安装页。
+
+上线前必须注意：
+
+- APK 建议放 OSS / CDN / 自有静态 HTTPS，不建议让 Go / SAE 动态服务大 APK。
+- 签名证书必须固定；如果新 APK 换签名，Android 系统会拒绝覆盖安装。
+- `versionCode` 必须单调递增；已经安装坏包的用户不能用低版本覆盖，只能再发更高 `versionCode` 的修复包。
+- `force_update` 只是 App 内弹窗不显示“稍后”，不是系统级强制升级，仍不能绕过用户安装确认。
+- 国内不同 ROM 的未知来源授权页、系统安装器、下载失败表现都可能不同，第一版正式更新必须真机验证。
+
+买服务器后必须补：
+
+- 配置正式域名 / HTTPS 和 APK 静态分发位置。
+- 发布每个 APK 时记录 `versionCode`、版本名、文件大小、SHA-256、签名证书指纹、下载链接和发布时间。
+- SAE 环境变量配置 `APP_ANDROID_*` 后，用旧包真机跑完整链路：检查更新 -> 发现新版本 -> 授权安装未知应用 -> 下载 -> 校验 -> 系统安装页 -> 覆盖安装成功。
+- 管理后台后续补“当前发布版本 / APK 链接 / 哈希 / 是否启用更新 / 一键停更 / 发布审计”。
+
+建议上线观察指标：
+
+- `/api/app/update` 5xx、配置了新版本但客户端无更新、APK 下载失败、文件大小或 SHA-256 校验失败、包名 / versionCode 校验失败、系统安装页打开失败。
+
 ## 后续待巡检功能队列
 
-- 检查更新：APK 下载、未知来源安装授权、版本回滚。
 - 服务协议 / 隐私政策 / 风险提示：权限、第三方清单、删除 / 注销入口。
 - 主聊天与图片发送：SSE、WorkManager、上传失败、历史恢复、删除历史对话。
 - B/C 记忆与模型调用：摘要触发、失败重试、C 层 20 轮归档、锚点注入。

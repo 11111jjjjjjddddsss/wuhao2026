@@ -17,6 +17,7 @@ type AppUpdateInfo struct {
 	HasUpdate          bool   `json:"has_update"`
 	ForceUpdate        bool   `json:"force_update"`
 	APKURL             string `json:"apk_url,omitempty"`
+	APKChecksumSHA256  string `json:"apk_sha256,omitempty"`
 	ReleaseNotes       string `json:"release_notes,omitempty"`
 	FileSizeBytes      int64  `json:"file_size_bytes,omitempty"`
 }
@@ -25,6 +26,7 @@ type androidUpdateConfig struct {
 	LatestVersionCode int
 	LatestVersionName string
 	APKURL            string
+	APKChecksumSHA256 string
 	ReleaseNotes      string
 	ForceUpdate       bool
 	FileSizeBytes     int64
@@ -54,6 +56,7 @@ func readAndroidUpdateConfig(getenv func(string) string) androidUpdateConfig {
 		LatestVersionCode: parsePositiveInt(getenv("APP_ANDROID_LATEST_VERSION_CODE")),
 		LatestVersionName: strings.TrimSpace(getenv("APP_ANDROID_LATEST_VERSION_NAME")),
 		APKURL:            strings.TrimSpace(getenv("APP_ANDROID_APK_URL")),
+		APKChecksumSHA256: normalizeSHA256Hex(getenv("APP_ANDROID_APK_SHA256")),
 		ReleaseNotes:      strings.TrimSpace(getenv("APP_ANDROID_RELEASE_NOTES")),
 		ForceUpdate:       parseBoolEnv(getenv("APP_ANDROID_FORCE_UPDATE")),
 		FileSizeBytes:     parsePositiveInt64(getenv("APP_ANDROID_FILE_SIZE_BYTES")),
@@ -71,8 +74,10 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 	}
 	apkURL := cfg.APKURL
 	hasUpdate := latestVersionCode > currentVersionCode && apkURL != "" && isHTTPSURL(apkURL)
+	apkChecksumSHA256 := cfg.APKChecksumSHA256
 	if !hasUpdate {
 		apkURL = ""
+		apkChecksumSHA256 = ""
 	}
 	return AppUpdateInfo{
 		Platform:           "android",
@@ -83,6 +88,7 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 		HasUpdate:          hasUpdate,
 		ForceUpdate:        hasUpdate && cfg.ForceUpdate,
 		APKURL:             apkURL,
+		APKChecksumSHA256:  apkChecksumSHA256,
 		ReleaseNotes:       cfg.ReleaseNotes,
 		FileSizeBytes:      cfg.FileSizeBytes,
 	}
@@ -116,4 +122,17 @@ func parseBoolEnv(raw string) bool {
 	default:
 		return false
 	}
+}
+
+func normalizeSHA256Hex(raw string) string {
+	value := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(raw), ":", ""))
+	if len(value) != 64 {
+		return ""
+	}
+	for _, ch := range value {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+			return ""
+		}
+	}
+	return value
 }

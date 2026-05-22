@@ -117,6 +117,7 @@ object SessionApi {
         @SerializedName("has_update") val hasUpdate: Boolean? = null,
         @SerializedName("force_update") val forceUpdate: Boolean? = null,
         @SerializedName("apk_url") val apkUrl: String? = null,
+        @SerializedName("apk_sha256") val apkSha256: String? = null,
         @SerializedName("release_notes") val releaseNotes: String? = null,
         @SerializedName("file_size_bytes") val fileSizeBytes: Long? = null
     ) {

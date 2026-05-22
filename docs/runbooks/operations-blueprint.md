@@ -22,7 +22,7 @@
 
 - 版本号和 `versionCode` 管理
 - debug / release 构建、签名、APK 产物检查
-- 自有服务器 APK 检查更新：`GET /api/app/update`、APK 下载链接、SAE `APP_ANDROID_*` 环境变量
+- 自有服务器 APK 检查更新：`GET /api/app/update`、APK 下载链接、SHA-256、SAE `APP_ANDROID_*` 环境变量
 - 真机回归：聊天、图片、会员中心、帮助与反馈、礼品卡、检查更新、设置页、预览面板
 - Baseline Profile / 关键路径性能回归
 - 崩溃、弱网、清数据、后台恢复、输入法和不同导航模式检查

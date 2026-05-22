@@ -74,7 +74,7 @@ Android 构建链：
 - 数据库：首版倾向阿里云 RDS MySQL；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
 - Go 后端数据库连接池可用 `MYSQL_MAX_OPEN_CONNS`、`MYSQL_MAX_IDLE_CONNS`、`MYSQL_CONN_MAX_IDLE_SECONDS`、`MYSQL_CONN_MAX_LIFETIME_SECONDS` 调整；默认仍为 10 open / 10 idle / 5 分钟 idle / 30 分钟 lifetime。买服务器前不盲目调参，等 RDS 规格、SAE 实例数和真实监控数据确定后再改环境变量
 - 可选组件：Redis、OSS、SLS
-- Android “检查更新”走自有服务器 APK 分发：后端 `GET /api/app/update` 由 `APP_ANDROID_*` 环境变量控制最新版本和 APK 下载地址，Android 端下载 https APK 后只调起系统安装确认，不做静默安装，不走应用商店主链
+- Android “检查更新”走自有服务器 APK 分发：后端 `GET /api/app/update` 由 `APP_ANDROID_*` 环境变量控制最新版本、APK 下载地址和可选 APK SHA-256；Android 端下载 https APK 后会先校验最终 https、可选文件大小、可选 SHA-256、包名和 `versionCode`，通过后才调起系统安装确认，不做静默安装，不走应用商店主链
 
 ## 3. 模型、上下文与会员
 
