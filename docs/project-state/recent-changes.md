@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 巡检“B/C 记忆与模型调用”链路：确认主对话完成归档后才异步触发 `SummaryService`，B 层 Free / Plus 每 6 轮、Pro 每 9 轮，用当前 A 层窗口 + 旧 B 摘要生成短期工作记忆；C 层每 20 轮，用 `session_round_archive` 最近 20 轮完整问答 + 旧 C 生成用户长期农业记忆，不再用 6/9 轮 A 窗口冒充长期输入。B/C 均走 `qwen3.5-flash`、非流式、`temperature=0.8`、关闭思考、不联网；模型失败、超时、归档不足或写回失败都会保留 `pending_retry_b/c`，写回带 `round_total` 校验，旧快照不会覆盖新轮次。旧 `/api/session/b`、`/api/session/c`、`/api/session/round_complete` 仍只返回 410，Android 没有摘要模型直连。本轮不改提示词和触发频率，只把多实例前需补摘要数据库 claim / lease、SLS 观察项和只读查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
+
 - 巡检“主聊天与图片发送”主链：确认 Android 端仍只通过后端 `/api/chat/stream` 发起文字 / 图片 / 图文混合问诊，图片先进入 App 私有 `composer_images` 稳定副本并经 `/upload` 换成同一公开基地址下的 `https /uploads/*.jpg`，后端再次校验图片 URL 后才进模型；带图发送的唯一 WorkManager 兜底、后端 `chat_stream_inflight` 同用户活跃流约束、归档成功后才发 `[DONE]` 和扣次、`/api/session/snapshot` 历史恢复、`/api/session/clear` 删除历史 409 防活跃流都和当前口径一致。没有发现旧 Android 直连模型、旧 `/api/session/round_complete` 主链、旧 active-zone、旧图片手势或旧上传通道并存；本轮只把 `ImageUploader.kt` 里“上传 OSS”的过期注释改为当前真实“上传后端 /upload，未来 OSS 只能由后端接入”，并把买服务器后必须验证公网 https 图片链、单实例 / OSS、弱网多图、后台恢复和 SLS 指标写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
 - 巡检“服务协议 / 隐私政策 / 风险提示”组：确认当前设置页只有一个“服务协议”目录入口，下面 6 个本地内置二级页面（用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示）都走设置页右进左出页面栈；没有发现旧 WebView、外部协议网页、旧平铺三行入口或用户可见具体模型平台名残留。Manifest 当前只声明 `INTERNET / ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES`，正文口径和当前不申请定位、App 相机、相册 / 存储读写、录音、通讯录、短信、通知权限一致；同时补充 Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，避免只写 App 私有目录导致保存位置说明不完整。新增 [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)，并把买服务器后必须补的真实云服务商、第三方服务、数据保存期限、账号注销 / 查询 / 删除入口、备案号和隐私政策 URL 写入巡检记录。

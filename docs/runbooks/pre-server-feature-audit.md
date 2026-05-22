@@ -276,9 +276,45 @@
 - 多实例前把 B/C 摘要 running guard、聊天限流等进程内保护升级为数据库 lease / Redis / 网关级保护，或明确首版单实例观察。
 - 观察 `append session round after stream failed`、`quota consume on DONE failed`、`summary extraction failed`、图片上传失败、图片 URL 404、前台 SSE 中断率和上游 429 / 5xx。
 
+### 8. B/C 记忆与模型调用
+
+结论：当前 B/C 记忆链路与现行口径一致，可以进入首版内测观察。B 层是短期工作记忆，C 层是长期农业记忆，不是通用农技知识库；没有发现 Android 端直连摘要模型或旧摘要接口仍在主链生效。买服务器前不需要继续盲改提示词，买服务器后重点补多实例下的摘要 claim / lease、日志告警和真实效果抽查。
+
+当前代码真相：
+
+- 主对话完成并成功归档后，后端在 goroutine 中调用 `SummaryService.ProcessSessionSummaries`，不会阻塞当前 SSE 完成态。
+- B 层短期工作记忆由 `b_extraction_prompt.txt` 控制，默认 `<=350` 字，复杂最多 `<=500` 字，定位是当前主线 / 当前病例短期承接。
+- C 层长期农业记忆由 `c_extraction_prompt.txt` 控制，默认 `<=260` 字，复杂最多 `<=320` 字，定位是用户自己的长期农业画像、稳定种植档案和历史踩坑，不保存通用农技知识、标准防治流程、具体剂量配方或品牌背书。
+- B 层触发频率：Free / Plus 每 6 轮，Pro 每 9 轮；输入使用当前 A 层窗口。
+- C 层触发频率：每 20 轮；输入使用旧 C 层长期农业记忆 + `session_round_archive` 最近 20 轮完整问答，不再用 A 层 6/9 轮窗口冒充 20 轮归档。
+- 如果 C 层归档不足 20 轮，会保持 `pending_retry_c=true`，后续轮次完成后继续补提取。
+- 摘要模型统一使用 `qwen3.5-flash`，非流式，显式 `temperature=0.8`，显式 `enable_thinking=false`，不联网。
+- 单次摘要提取有 60 秒超时；模型失败、超时、写回失败或归档读取失败都会保持对应 `pending_retry_b / pending_retry_c`。
+- 写回摘要时必须匹配触发快照的 `round_total`；如果处理期间已有新轮次完成，旧快照结果不会覆盖新轮次。
+
+已排查的旧方案：
+
+- Android 端没有摘要模型 API Key、摘要模型直连或 B/C 本地抽取逻辑；Android 只读取 `/api/session/snapshot` 返回的摘要字段用于本地快照结构兼容，不组装模型上下文。
+- 旧 `/api/session/b`、`/api/session/c` 路由仍注册，但返回 `410 DEPRECATED_ENDPOINT`，不能绕过 `/api/chat/stream` 主链触发摘要。
+- C 层已不再使用“旧 C + 当前 A 窗口 6/9 轮”作为长期记忆输入；当前代码会读取 `session_round_archive` 最近 20 轮完整问答。
+- B/C 提示词没有引入外部知识库，也没有把通用农技规则库写进 C 层；当前仍是用户自身记忆，不是 RAG。
+
+上线前必须注意：
+
+- 多 SAE 实例前，B/C 的 `running` guard 仍是进程内保护；同一用户同一层可能被多个实例同时提取，主要风险是重复调用 Qwen3.5-Flash 和同一 `round_total` 下最后写入者覆盖，通常不是用户会话数据错乱。
+- `pending_retry_b / pending_retry_c` 只会在后续轮次完成后继续被处理；如果用户长期不再发问，失败摘要不会自己定时补账。
+- C 层依赖 `session_round_archive` 30 天滚动保留；如果用户 20 轮间隔太久且旧轮次已过保存期，C 层可能因归档不足继续 pending。
+- B/C 摘要质量最终取决于提示词和真实问诊内容，当前代码只能保证不丢账、不旧快照覆盖新轮次，不能保证每次抽取得完美。
+
+买服务器后必须补：
+
+- 多实例部署前，为 B/C 摘要增加数据库 claim / lease，或确认首版 SAE 单实例运行。
+- 在 SLS 中监控 `summary extraction failed`、`summary extraction skipped: already running`、`C summary extraction skipped: insufficient archived rounds`、`B/C summary write skipped: snapshot is stale`。
+- 增加运维只读查询：按 `user_id` 查看 `round_total`、`pending_retry_b/c`、`b_summary`、`c_summary`、最近归档轮次和最近摘要错误日志。
+- 上线后抽查真实用户的 B/C 输出，确认 B 不把长期画像写满、C 不吸收一次性病例 / 通用农技知识 / 具体剂量配方；必要时只调提示词，不先改主链。
+
 ## 后续待巡检功能队列
 
-- B/C 记忆与模型调用：摘要触发、失败重试、C 层 20 轮归档、锚点注入。
 - 今日农情：生成任务、强制搜索、来源过滤、失败静默。
 - 账号 / 手机号登录：本机 `user_id` 迁移、token、`AUTH_STRICT`。
 - 统一管理后台：客服、用户、会员、礼品卡、更新、今日农情和日志入口。
