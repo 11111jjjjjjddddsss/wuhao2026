@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 随机巡检所有模型调用链后，给 B/C 摘要提取补 60 秒超时保护：`SummaryService` 调 `qwen3.5-flash` 时用独立 `context.WithTimeout` 包住非流式摘要请求，避免网络层极端挂起导致同一用户同一层的进程内 `running` guard 长期占用、后续摘要一直跳过。超时仍按失败处理，保持 `pending_retry_b / pending_retry_c`，后续轮次完成后继续补提取；主对话 SSE 和今日农情链路不跟随改全局 `http.Client.Timeout`，避免影响流式回答。新增单测覆盖摘要超时后会释放 running guard。
+
 - `server-go/internal/app/bailian.go` 将百炼模型 Key 池从单纯 `DASHSCOPE_API_KEYS` 逗号轮询扩展为 `DASHSCOPE_API_KEY_1/2/3` 三个独立账号槽位，并继续兼容旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS`；后端会自动去重、轮询，主对话、B/C 摘要和今日农情共用同一池。模型请求打开阶段若遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400`，会在流开始前切下一把 Key，并对触发限流的 Key 做 60 秒冷却；SSE 一旦成功打开，不在同一条回复中途切 Key。新增单测覆盖专用槽位去重、429 切 Key 和冷却跳过；新增 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 记录同一阿里云主账号多 Key 共享限流、扩容必须用不同主账号 Key 的运维口径。
 
 - `server-go` 将 C 层从“旧 C + 当前 A 窗口 6/9 轮”的滚动摘要输入，改为每 20 轮从 `session_round_archive` 读取最近 20 轮完整问答并融合旧 C 重写；归档不足 20 轮时不凑合提取，保持 `pending_retry_c`，后续轮次完成后继续补提取。C 层提示词同步收口为“用户长期农业记忆”，只保留用户自己的长期农业画像、稳定种植档案、历史高频问题、用户纠正和踩坑经验，明确不做通用农技知识库、不保存通用病害常识、标准防治流程、剂量配方或品牌背书。B 层仍按 Free / Plus 每 6 轮、Pro 每 9 轮用 A 窗口更新；B/C 失败仍保留 `pending_retry_b / pending_retry_c`。同步更新根规则、项目记忆和后端单测。

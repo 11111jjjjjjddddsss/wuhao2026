@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestExtractSummaryUsesQwen35FlashWithThinkingDisabled(t *testing.T) {
@@ -179,6 +180,58 @@ func TestProcessCSummaryKeepsPendingWhenArchiveHasFewerThanTwentyRounds(t *testi
 	if store.cSummary != "" {
 		t.Fatalf("C summary should not be written with insufficient archive rounds: %q", store.cSummary)
 	}
+}
+
+func TestProcessSummaryTimeoutReleasesRunningGuard(t *testing.T) {
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"迟到摘要"}}]}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	previousTimeout := summaryExtractionTimeout
+	summaryExtractionTimeout = 30 * time.Millisecond
+	defer func() {
+		summaryExtractionTimeout = previousTimeout
+	}()
+
+	assetDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(assetDir, "b_extraction_prompt.txt"), []byte("B prompt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "c_extraction_prompt.txt"), []byte("C prompt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	store := &fakeSummaryStore{}
+	service := &SummaryService{
+		store:   store,
+		prompts: NewPromptLoader(assetDir),
+		bailian: NewBailianClient(),
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	started := time.Now()
+	service.ProcessSessionSummaries("u1", &SessionSnapshot{
+		UserID:        "u1",
+		ARoundsFull:   []SessionRound{{User: "用户问题", Assistant: "助手回复"}},
+		PendingRetryB: true,
+		RoundTotal:    6,
+	})
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("summary timeout took too long: %s", elapsed)
+	}
+	if store.pendingLayer != SummaryLayerB || !store.pendingValue {
+		t.Fatalf("expected B pending retry to remain true, got layer=%q pending=%v", store.pendingLayer, store.pendingValue)
+	}
+	if !service.tryStartLayer("u1", SummaryLayerB) {
+		t.Fatal("summary running guard should be released after timeout")
+	}
+	service.finishLayer("u1", SummaryLayerB)
 }
 
 type fakeSummaryStore struct {

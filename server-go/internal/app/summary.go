@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 type summaryStore interface {
@@ -30,6 +31,8 @@ const (
 	cSummaryEveryRounds   = 20
 	cSummaryArchiveRounds = 20
 )
+
+var summaryExtractionTimeout = 60 * time.Second
 
 func NewSummaryService(store *Store, prompts *PromptLoader, bailian *BailianClient, logger *slog.Logger) *SummaryService {
 	return &SummaryService{
@@ -95,7 +98,9 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 		return
 	}
 
-	nextSummary, err := s.extractSummary(ctx, layer, oldSummary, dialogueText)
+	extractCtx, cancelExtract := context.WithTimeout(ctx, summaryExtractionTimeout)
+	nextSummary, err := s.extractSummary(extractCtx, layer, oldSummary, dialogueText)
+	cancelExtract()
 	if err != nil {
 		_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
 		s.logger.Error("summary extraction failed", "userId", userID, "layer", layer, "error", err)
