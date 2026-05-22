@@ -1,6 +1,6 @@
 # 上线前基础设施准备清单
 
-最后更新：2026-05-17
+最后更新：2026-05-22
 
 ## 目的
 
@@ -11,6 +11,7 @@
 - Android 客户端与 `server-go` 后端代码主线已存在
 - 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
 - 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、SAE、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进
+- 买服务器前功能巡检记录已开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：当前已巡检会员中心 / 额度体系，以及 Go 后端高并发 / 性能边界
 - 正式云资源当前仍未采购；尚未形成真实环境名、账号、Region、实例规格、数据库实例或日志项目
 
 ## 最小上线资源清单
@@ -42,6 +43,9 @@
 - 图片是否首版就落 OSS；如果不是，前端图片能力要不要先受限
 - 日志是否首版就接 SLS；如果不是，后端最小日志保留方案是什么
 - 是否一开始就拆测试 / 生产两套环境，还是先单环境跑通
+- 首版若不接 OSS，SAE 是否明确保持单实例；若计划多实例，图片上传必须先接 OSS 或等价共享对象存储
+- 多实例发布前，数据库迁移是否改成单独发布步骤或加迁移锁，避免多个实例首次启动同时跑迁移
+- RDS 规格确认后，`MYSQL_MAX_OPEN_CONNS`、`MYSQL_MAX_IDLE_CONNS`、`MYSQL_CONN_MAX_IDLE_SECONDS`、`MYSQL_CONN_MAX_LIFETIME_SECONDS` 是否按实例数和连接数上限重新配置
 
 ## 资源买完后必须回填仓库的地方
 
@@ -59,3 +63,4 @@
 - 在正式资源落地前，不把任何假定的实例名、域名、密钥来源写成既成事实
 - 真正采购完成前，runbook 只记录“要拍板什么”和“买完后补哪里”，不伪造部署命令
 - 一旦出现第一套真实环境，必须同次把对应 runbook 补成可执行入口
+- Go 后端首版不做盲目性能调参；先用默认连接池和单实例 / 小规格跑通，接入 SLS / RDS 监控后再按真实连接数、慢查询、SSE 中断率和模型限流调参

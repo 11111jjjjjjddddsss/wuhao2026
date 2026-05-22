@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 买服务器前功能巡检开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：首轮收口会员中心 / 额度体系和 Go 后端高并发 / 性能边界。会员/额度当前确认没有新旧方案并存，Android 只做“支付暂未接入”占位展示，后端仍是 `/api/me`、`quota_ledger`、`topup_packs`、`upgrade_credits` 等真相；真实收费前必须补账号 token、生产 `AUTH_STRICT=true`、正式支付回调验签和对账。后端高并发结论是 Go 语言本身不是当前瓶颈，首版单实例可跑早期；多 SAE 实例前必须先处理本机图片存储迁 OSS、迁移抢跑、本进程限流 / B-C running guard 等边界。`server-go/internal/app/mysql.go` 同步把数据库连接池从固定 10 个连接改为可用 `MYSQL_MAX_OPEN_CONNS / MYSQL_MAX_IDLE_CONNS / MYSQL_CONN_MAX_IDLE_SECONDS / MYSQL_CONN_MAX_LIFETIME_SECONDS` 配置，默认值保持原样，并新增单测锁住默认值、环境变量覆盖和 idle 不超过 open 的回退逻辑。
+
 - 新增 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)，把下一阶段上线推进顺序固化为：先定 App 名称 / 图标 / 包名 / 签名 / 协议 / 软著材料，买域名和中国内地云资源后立即启动 ICP / App 备案；手机号登录、SAE、RDS、OSS、SLS、帮助与反馈、检查更新、模型 Key 池和真机联调在备案等待期间并行推进；备案通过后补备案号、正式域名 / HTTPS、公安联网备案和应用商店物料。同步更新 runbook 入口、当前状态、待决策和风险记忆，避免后续把“做完手机登录再备案”误当成主顺序。
 
 - 随机巡检所有模型调用链后，给 B/C 摘要提取补 60 秒超时保护：`SummaryService` 调 `qwen3.5-flash` 时用独立 `context.WithTimeout` 包住非流式摘要请求，避免网络层极端挂起导致同一用户同一层的进程内 `running` guard 长期占用、后续摘要一直跳过。超时仍按失败处理，保持 `pending_retry_b / pending_retry_c`，后续轮次完成后继续补提取；主对话 SSE 和今日农情链路不跟随改全局 `http.Client.Timeout`，避免影响流式回答。新增单测覆盖摘要超时后会释放 running guard。

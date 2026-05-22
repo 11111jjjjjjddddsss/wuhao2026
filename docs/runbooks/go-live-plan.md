@@ -50,6 +50,8 @@
 - 接手机号登录 / 服务端可验证 token，并在公开生产环境开启 `AUTH_STRICT=true`，逐步关闭裸 `X-User-Id` 兜底。
 - 接 OSS 图片存储，配置 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`，确保模型能访问 https 图片。
 - 接 SLS 日志，至少覆盖主对话、上传、帮助与反馈、今日农情、检查更新和模型调用失败。
+- 若首版暂不接 OSS，则 SAE 必须先保持单实例；计划多实例前必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储。
+- 数据库迁移不要在多实例首次启动时抢跑；多实例发布前应把迁移改成单独发布步骤或补迁移锁。
 - 验证主聊天 SSE、图片上传、B 层短期记忆、C 层长期农业记忆、今日农情、会员额度、帮助与反馈、礼品卡占位、检查更新 APK 链路。
 - 准备应用商店物料：软著 / 电子版权、隐私政策链接或页面、测试账号、截图、应用描述、权限说明和备案信息占位。
 
@@ -78,6 +80,7 @@
 
 - 观察主聊天成功率、SSE 中断、图片上传失败、模型限流、B/C 摘要失败、今日农情生成失败、检查更新下载失败。
 - 记录真实 tokens、搜索次数、图片量和单轮成本，校准会员价格与加油包规则。
+- 观察 RDS 会话连接、连接数利用率、TPS / QPS、慢查询、行锁、IOPS、CPU / 内存，再决定是否调整 `MYSQL_MAX_OPEN_CONNS` 等连接池参数、SAE 实例数或 Redis / 网关限流。
 - 帮助与反馈先用内部接口或最小后台处理，后续再做统一管理后台。
 - 后台第一阶段优先做：按用户查看反馈 / 回复、用户额度查询、检查更新状态、今日农情状态、基础日志入口。
 - 每次真实发版、回滚、查日志、查库、补权益或处理客服，都要把可执行入口回填到对应 runbook。
@@ -93,6 +96,7 @@
 ## 相关入口
 
 - [infra-readiness.md](D:/wuhao/docs/runbooks/infra-readiness.md)：云资源采购前检查单
+- [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：买服务器前功能巡检记录
 - [operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md)：后期 Codex 协助运维总蓝图
 - [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 部署入口
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：自有 APK 检查更新入口

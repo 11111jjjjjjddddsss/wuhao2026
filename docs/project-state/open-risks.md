@@ -54,7 +54,8 @@
 - 说明：当前仓库已经有 `server-go` 主线和 SAE / 回滚 / 日志 / 数据库只读 runbook 骨架，但正式服务器、数据库、域名、HTTPS 和日志项目都还未真正落地。首版采购倾向已从 PolarDB 调整为 RDS MySQL，PolarDB 暂作为后续高规格升级选项
 - 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，容易因为真实环境参数缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节
 - 补充：后端已支持 `DASHSCOPE_API_KEY_1/2/3` 多 Key 池和限流前置切 Key，但真实并发扩容必须使用不同阿里云主账号的 Key；同一主账号多个 API Key 共享 RPM / TPM 限流。朋友账号 Key 可短期兜底，但长期生产会带来账单、权限、密钥轮换和数据处理责任不在自己名下的运维风险
-- 后续动作：采购前先按 `docs/runbooks/infra-readiness.md` 把 Region、环境命名、RDS MySQL 规格 / 备份 / 白名单、SAE、域名/HTTPS、OSS/SLS/Redis 是否首版接入这些问题拍板；第一套真实环境落地后，同次回填 deploy / rollback / logs / db-readonly runbook，并按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任
+- 补充：买服务器前高并发巡检结论已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。Go 语言本身不是当前瓶颈；首版单实例可跑早期。若首版不接 OSS，SAE 必须先保持单实例；若要多实例，必须先把图片上传和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储，否则上传落到 A 实例、后续请求或模型公网拉图打到 B 实例时可能 404。多实例发布前还要把数据库迁移改成单独发布步骤或补迁移锁，避免多个实例首次启动同时跑迁移
+- 后续动作：采购前先按 `docs/runbooks/infra-readiness.md` 把 Region、环境命名、RDS MySQL 规格 / 备份 / 白名单、SAE、域名/HTTPS、OSS/SLS/Redis 是否首版接入这些问题拍板；第一套真实环境落地后，同次回填 deploy / rollback / logs / db-readonly runbook，并按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任；RDS 规格确认后再按真实连接数配置 `MYSQL_MAX_OPEN_CONNS` 等连接池环境变量
 
 ## R8 C+ 长期资产抽取尚未落地
 
@@ -91,7 +92,8 @@
 - 状态：未关闭
 - 说明：Android 会员中心当前只展示支付占位提示，不会调用后端下单 / 续费 / 升级 / 加油包接口；`server-go` 里现有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍是开发期直接变更接口，但默认已返回 `PAYMENT_NOT_CONFIGURED`，只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境不是 `APP_ENV / ENV / GO_ENV = prod / production` 时才允许本地 / 内测调试使用
 - 风险：这些接口仍不是正式支付真源；如果内测环境误开 `ALLOW_DEV_ORDER_ENDPOINTS=true`，非 App 客户端理论上仍可绕过真实支付直接请求会员变更。这不影响当前 Android UI 展示，也不影响每日额度 / 升级补偿 / 加油包扣次顺序本身，但属于上线前必须继续收口的业务安全风险
-- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false，并配置 `APP_ENV=production` 或等价环境变量作为额外保险
+- 补充：会员/额度巡检结论已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前 Android 开通 / 升级 / 加油包按钮只提示“支付暂未接入”，没有调用订单接口；因此现阶段能继续作为占位展示，但买服务器本身不等于会员可以直接开卖
+- 后续动作：接入真实支付时，把会员变更收敛到服务端验签后的支付回调 / 对账流程，并移除或彻底隔离开发期直接变更接口；生产环境保持 `ALLOW_DEV_ORDER_ENDPOINTS` 未设置 / false，并配置 `APP_ENV=production` 或等价环境变量作为额外保险。真实收费前还要接手机号登录 / token，把本机 `user_id` 与账号绑定，并开启 `AUTH_STRICT=true`
 
 ## R13 今日农情生成质量和调度仍需上线观察
 

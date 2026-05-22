@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,10 +33,12 @@ func OpenDB() (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(10)
-	db.SetMaxIdleConns(10)
-	db.SetConnMaxIdleTime(5 * time.Minute)
-	db.SetConnMaxLifetime(30 * time.Minute)
+
+	pool := resolveDBPoolConfig()
+	db.SetMaxOpenConns(pool.MaxOpenConns)
+	db.SetMaxIdleConns(pool.MaxIdleConns)
+	db.SetConnMaxIdleTime(pool.ConnMaxIdleTime)
+	db.SetConnMaxLifetime(pool.ConnMaxLifetime)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -44,6 +47,52 @@ func OpenDB() (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+type dbPoolConfig struct {
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxIdleTime time.Duration
+	ConnMaxLifetime time.Duration
+}
+
+func resolveDBPoolConfig() dbPoolConfig {
+	maxOpen := envIntWithDefault("MYSQL_MAX_OPEN_CONNS", 10)
+	maxIdle := envIntWithDefault("MYSQL_MAX_IDLE_CONNS", 10)
+	if maxIdle > maxOpen && maxOpen > 0 {
+		maxIdle = maxOpen
+	}
+
+	return dbPoolConfig{
+		MaxOpenConns:    maxOpen,
+		MaxIdleConns:    maxIdle,
+		ConnMaxIdleTime: envDurationWithDefault("MYSQL_CONN_MAX_IDLE_SECONDS", 5*time.Minute),
+		ConnMaxLifetime: envDurationWithDefault("MYSQL_CONN_MAX_LIFETIME_SECONDS", 30*time.Minute),
+	}
+}
+
+func envIntWithDefault(name string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return fallback
+	}
+	return value
+}
+
+func envDurationWithDefault(name string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds < 0 {
+		return fallback
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 func InitMySQL(ctx context.Context, db *sql.DB, migrationsDir string) error {
