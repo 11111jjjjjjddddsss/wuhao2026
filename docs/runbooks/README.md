@@ -5,6 +5,7 @@
 当前 runbook：
 
 - [chat-ui-regression.md](D:/wuhao/docs/runbooks/chat-ui-regression.md)：聊天 UI 回归与接手入口
+- [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：下一阶段上线推进计划
 - [infra-readiness.md](D:/wuhao/docs/runbooks/infra-readiness.md)：正式云资源采购前的基础设施准备清单
 - [operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md)：Codex 协助整体 App / 后端 / 管理后台运维的总蓝图
 - [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 发版入口

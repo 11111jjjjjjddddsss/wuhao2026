@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 新增 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)，把下一阶段上线推进顺序固化为：先定 App 名称 / 图标 / 包名 / 签名 / 协议 / 软著材料，买域名和中国内地云资源后立即启动 ICP / App 备案；手机号登录、SAE、RDS、OSS、SLS、帮助与反馈、检查更新、模型 Key 池和真机联调在备案等待期间并行推进；备案通过后补备案号、正式域名 / HTTPS、公安联网备案和应用商店物料。同步更新 runbook 入口、当前状态、待决策和风险记忆，避免后续把“做完手机登录再备案”误当成主顺序。
+
 - 随机巡检所有模型调用链后，给 B/C 摘要提取补 60 秒超时保护：`SummaryService` 调 `qwen3.5-flash` 时用独立 `context.WithTimeout` 包住非流式摘要请求，避免网络层极端挂起导致同一用户同一层的进程内 `running` guard 长期占用、后续摘要一直跳过。超时仍按失败处理，保持 `pending_retry_b / pending_retry_c`，后续轮次完成后继续补提取；主对话 SSE 和今日农情链路不跟随改全局 `http.Client.Timeout`，避免影响流式回答。新增单测覆盖摘要超时后会释放 running guard。
 
 - `server-go/internal/app/bailian.go` 将百炼模型 Key 池从单纯 `DASHSCOPE_API_KEYS` 逗号轮询扩展为 `DASHSCOPE_API_KEY_1/2/3` 三个独立账号槽位，并继续兼容旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS`；后端会自动去重、轮询，主对话、B/C 摘要和今日农情共用同一池。模型请求打开阶段若遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400`，会在流开始前切下一把 Key，并对触发限流的 Key 做 60 秒冷却；SSE 一旦成功打开，不在同一条回复中途切 Key。新增单测覆盖专用槽位去重、429 切 Key 和冷却跳过；新增 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 记录同一阿里云主账号多 Key 共享限流、扩容必须用不同主账号 Key 的运维口径。

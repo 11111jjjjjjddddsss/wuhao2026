@@ -108,6 +108,7 @@
 ## 已有入口
 
 - [infra-readiness.md](D:/wuhao/docs/runbooks/infra-readiness.md)：正式云资源采购前准备清单
+- [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：下一阶段上线推进计划
 - [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 后端发版入口
 - [rollback.md](D:/wuhao/docs/runbooks/rollback.md)：后端回滚入口
 - [logs-sls.md](D:/wuhao/docs/runbooks/logs-sls.md)：日志排查入口

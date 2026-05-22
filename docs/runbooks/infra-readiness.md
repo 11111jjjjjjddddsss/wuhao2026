@@ -10,6 +10,7 @@
 
 - Android 客户端与 `server-go` 后端代码主线已存在
 - 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
+- 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、SAE、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进
 - 正式云资源当前仍未采购；尚未形成真实环境名、账号、Region、实例规格、数据库实例或日志项目
 
 ## 最小上线资源清单
