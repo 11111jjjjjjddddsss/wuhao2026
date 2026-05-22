@@ -102,6 +102,7 @@
 - 状态：未关闭
 - 说明：今日农情首版已接入独立后端链路和 Android UI-only 卡片；它不影响聊天主链、不扣用户问诊次数、不进入 A/B/C 或归档。当前生成依赖 `qwen3.5-plus + forced_search + search_strategy=max + enable_source`，生成前会把过去 7 天已 ready 的今日农情喂给模型要求去重，服务端会校验搜索来源、可信域名、近 7 天日期、广告 / 导购 / 泄露词，并硬过滤过去 7 天和当天候选里的重复链接 / 重复标题，过滤后不足 3 条则不发布新卡片
 - 风险：`max` 搜索比主对话默认 Turbo 更慢且成本更高；如果当天搜索结果来源质量不足或 DashScope 未返回 `search_info.search_results`，后端会不发布，前端静默不展示。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；云端 05:30 定时触发、失败重试、告警和人工补生成还需要真实 SAE / 调度环境落地后验证
+- 补充：买服务器前今日农情巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前没有发现用户打开 App 临时生成、写 A/B/C、写归档、扣次或伪装成 `ChatMessage` 的旧链路；残余风险主要是质量运营，比如同一事件换标题只能靠提示词和人工抽查约束、可信域名白名单偏严可能导致当天不足 3 条
 - 后续动作：上线前按 `docs/runbooks/today-agri-card.md` 配置 `DAILY_AGRI_JOB_SECRET` 和定时触发；观察 SLS 日志关键词 `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error`。若连续失败，再评估放宽可信域名、切 `turbo + assigned_site_list` 或做人工审核入口，不把失败转成用户打开 App 时临时多次调模型
 
 ## R14 帮助与反馈首版还没有完整管理后台

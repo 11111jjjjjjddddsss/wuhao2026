@@ -132,3 +132,16 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 - 标题和摘要必须是自然资讯口吻，禁止“值得看 / 参考意义 / 对农户有用 / 根据搜索结果”等元表达、推荐理由和标题党话术
 
 过滤后不足 3 条时，不发布新卡片。不要为了当天一定有卡片而放宽到任意链接或用户打开 App 时临时多次调模型。
+
+## 上线前检查
+
+- 内部生成接口只允许定时任务 / 运维调用，不能由 Android 用户打开 App 时触发。
+- 生成接口要配置 `DAILY_AGRI_JOB_SECRET`，并在 SAE / 定时任务侧保存，不进入 APK 或仓库。
+- 首版后台至少能查看当天 `status/error/content_json/sources_json/lease_until`，能手动补跑或停用当天卡片。
+- 如果连续失败，先查模型 Key、联网搜索权限、搜索来源返回、可信域名过滤和近 7 天去重，不要直接放宽到广告、软文或任意来源。
+
+## 参考资料
+
+- [阿里云百炼联网搜索](https://help.aliyun.com/zh/model-studio/web-search/)
+- [阿里云百炼 DashScope API 参考](https://help.aliyun.com/zh/model-studio/qwen-api-via-dashscope)
+- [阿里云百炼深度思考参数](https://help.aliyun.com/zh/model-studio/deep-thinking)

@@ -313,8 +313,50 @@
 - 增加运维只读查询：按 `user_id` 查看 `round_total`、`pending_retry_b/c`、`b_summary`、`c_summary`、最近归档轮次和最近摘要错误日志。
 - 上线后抽查真实用户的 B/C 输出，确认 B 不把长期画像写满、C 不吸收一次性病例 / 通用农技知识 / 具体剂量配方；必要时只调提示词，不先改主链。
 
+### 9. 今日农情
+
+结论：当前“今日农情”可以作为独立每日资讯卡片继续推进，没有进入主聊天消息、A/B/C 上下文、摘要或扣次链路。后端生成链路已用数据库 lease 防同一天并发生成，用户打开 App 只读缓存，缺失 / pending / failed 时 Android 静默不展示，不会临时多次调模型。
+
+当前代码真相：
+
+- 后端数据真源是 `daily_agri_cards`，主键为 `day_cn + scope`，当前 `scope=CN`。
+- 用户侧接口是 `GET /api/today-agri-card`，需要普通用户鉴权，只读取当天 ready 卡片；没有 ready 卡片时返回 `missing / pending / failed` 状态。
+- 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只接受 `DAILY_AGRI_JOB_SECRET`，支持 `X-Internal-Job-Secret` 或 `Authorization: Bearer ...`。
+- 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
+- 生成链路使用 DashScope 原生 Generation 协议调用 `qwen3.5-plus`，显式 `temperature=0.8`，显式 `enable_thinking=false`，强制联网搜索，`search_strategy=max`，`forced_search=true`，`enable_source=true`，`freshness=7`。
+- 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
+- 后端解析时要求 JSON 可解析、`card_name=今日农情`、严格 3 条有效 item、https 链接、发布时间近 7 天、URL 来自 DashScope 搜索来源、域名在可信官方 / 权威大站范围内。
+- 后端会硬过滤广告、导购、联系方式、模型 / 提示词泄露、搜索参数、元表达、标题党词，以及过去 7 天和当天候选里的重复 URL / 重复标题；过滤后不足 3 条则不发布新卡片。
+- Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 插入展示层；真实 `messages` 仍只包含用户 / assistant，不写本地聊天快照，不参与发送、重试、复制、滚动工作线真值或后端上下文。
+
+已排查的旧方案：
+
+- 没有发现用户打开聊天页时临时触发今日农情模型生成的路径；Android 只调用用户侧只读接口。
+- 没有发现今日农情写入 `session_ab`、`session_round_archive`、A/B/C 摘要或 quota 扣次的路径。
+- 没有发现旧的本地静态假卡片作为真实主链；debug-only 文案预览里的示例卡片只用于隐藏预览。
+
+上线前必须注意：
+
+- `DAILY_AGRI_JOB_SECRET` 必须只放服务端环境变量和定时任务配置，不能进 APK 或仓库。
+- 需要给内部生成接口配置真实定时触发，例如每天中国时间早上固定时间跑一次；用户打开 App 不负责补生成。
+- 官方 / 权威域名白名单偏保守，可能导致某天过滤后不足 3 条而不展示，这是刻意选择，不要为了“每天必有”放宽到广告、软文或任意链接。
+- 后端目前硬过滤重复 URL 和重复标题；“同一事件换标题”主要靠提示词和人工抽查约束，后续如果重复感强，再增加更强的事件指纹或人工审核，不先把今日农情塞进聊天上下文。
+
+买服务器后必须补：
+
+- 配置 `DAILY_AGRI_JOB_SECRET`、定时任务、SLS 日志和失败告警。
+- 用内部生成接口跑一遍真实链路，检查 `daily_agri_cards.status/content_json/sources_json/error/lease_until`。
+- 在管理后台第一版里补今日农情状态页：查看当天状态、失败原因、来源链接、手动补跑、停用当天卡片。
+- 观察 `daily agri card generated`、`generate today agri card failed`、`get today agri card failed`、模型联网搜索失败、过滤后不足 3 条。
+- 后续若做地区 / 作物个性化，必须新增 scope 或独立表设计，不能直接把今日农情混入用户聊天记忆。
+
+参考资料：
+
+- [阿里云百炼联网搜索](https://help.aliyun.com/zh/model-studio/web-search/)
+- [阿里云百炼 DashScope API 参考](https://help.aliyun.com/zh/model-studio/qwen-api-via-dashscope)
+- [阿里云百炼深度思考参数](https://help.aliyun.com/zh/model-studio/deep-thinking)
+
 ## 后续待巡检功能队列
 
-- 今日农情：生成任务、强制搜索、来源过滤、失败静默。
 - 账号 / 手机号登录：本机 `user_id` 迁移、token、`AUTH_STRICT`。
 - 统一管理后台：客服、用户、会员、礼品卡、更新、今日农情和日志入口。
