@@ -61,6 +61,7 @@
 - 用户查询：按 `user_id` 查会员等级、剩余额度、最近请求和最近反馈
 - 检查更新：查看当前发布版本、APK 链接、是否启用更新
 - 今日农情：查看当天生成状态、失败原因、手动补跑
+- 后台账号、最小角色权限和操作审计必须同阶段规划；不能长期只靠共享 secret 当后台权限体系
 
 ### P2：接支付和礼品卡后
 
@@ -118,6 +119,7 @@
 - [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)：礼品卡占位状态与后续兑换系统入口
 - [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)：服务协议、隐私政策、风险提示和权限清单入口
 - [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情生成与排查入口
+- [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)：统一管理后台分期、权限和审计入口
 
 ## 参考资料
 

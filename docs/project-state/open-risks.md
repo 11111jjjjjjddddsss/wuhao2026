@@ -7,7 +7,8 @@
 - 状态：未关闭
 - 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来，但仓库内尚未沉淀完整的 SAE 部署、回滚、日志、数据库只读脚本、管理后台和实际命令
 - 风险：换窗口时能知道要看哪里，但真正执行运维仍可能依赖人工补充；服务器未采购前也不能把实例名、域名、密钥或后台入口写成既成事实
-- 后续动作：后面一旦发生真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营，就把实际可执行入口补进 runbook、脚本或统一管理后台
+- 补充：买服务器前“统一管理后台”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，并新增 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)。当前没有网页后台、`/admin` 或 `/internal/admin` 路由；只有帮助与反馈内部接口、今日农情内部生成接口和若干环境变量 / runbook 规划
+- 后续动作：后面一旦发生真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营，就把实际可执行入口补进 runbook、脚本或统一管理后台。第一版后台优先补后台账号、角色权限、操作审计、帮助与反馈、用户查询、检查更新、今日农情状态页，不提前做重
 
 ## R2 项目记忆已有程序化检查，但覆盖仍偏粗
 

@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 巡检“统一管理后台 / 内部运营入口”：确认当前没有网页后台、`/admin`、`/internal/admin` 或 Android 后台入口；真实内部入口只有帮助与反馈读取 / 回复、今日农情内部生成、检查更新环境变量配置，以及仍关闭的会员开发期接口。`SUPPORT_ADMIN_SECRET` 和 `DAILY_AGRI_JOB_SECRET` 只是共享密钥，不是后台账号、权限或审计体系；礼品卡成功卡片只是 debug-only 样式预览。本轮新增 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，并把买服务器后最小后台范围固定为：后台账号 / 角色 / 审计、帮助与反馈、用户详情、检查更新发布、今日农情状态、审计日志；支付和礼品卡接入后再补订单、对账、礼品卡生成 / 发放 / 作废。
+
 - 巡检“账号 / 手机号登录与生产鉴权”链路：确认当前真实身份仍是 Android 本机 `IdManager` 生成的 UUID，经 `X-User-Id` 传给后端；后端支持 `APP_SECRET + Authorization: Bearer <签名token>`，`AUTH_STRICT=true` 时会关闭裸 `X-User-Id`，但 Android 还没有手机号登录、短信验证码、动态 token 签发、退出或注销账号主链。设置页账号管理里的手机号 / 退出设备 / 注销账号仍是占位，只有“删除所有历史对话”是真实动作。本轮不改业务代码，只把 `SESSION_API_TOKEN` 不能作为正式 release 共享静态 token、公开生产必须补 per-user token、本机 `user_id` 到账号迁移、账号注销 / 查询 / 删除入口和最小后台查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 和风险记忆。
 
 - 巡检“今日农情”链路并对照阿里云百炼官方文档校准参数：确认用户侧 `GET /api/today-agri-card` 只读当天 ready 缓存，缺失 / pending / failed 时 Android 静默不展示，不会在用户打开 App 时临时触发模型；内部 `POST /internal/jobs/today-agri-card/generate` 由 `DAILY_AGRI_JOB_SECRET` 保护并用 `daily_agri_cards(day_cn, scope)` 数据库 lease 防同一天并发生成。今日农情走 DashScope 原生 Generation 的 `qwen3.5-plus`，显式 `temperature=0.8`、关闭思考、强制联网搜索、`search_strategy=max`、`enable_source=true`、`freshness=7`；后端要求 JSON、严格 3 条、https、近 7 天、URL 来自搜索来源、可信域名、过滤广告 / 导购 / 泄露词 / 标题党并对近 7 天 URL / 标题去重。Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 展示层插入，不进 `messages`、本地快照、A/B/C、摘要或扣次。本轮不改业务代码，只把定时任务、SLS 告警、后台状态页、同一事件语义去重和可信域名偏严风险写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md) 和风险记忆。
