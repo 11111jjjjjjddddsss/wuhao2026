@@ -93,9 +93,45 @@
 - [RDS MySQL 监控指标](https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/view-the-metrics-of-an-apsaradb-rds-for-mysql-instance)
 - [RDS MySQL 错误日志和慢日志](https://help.aliyun.com/zh/rds/apsaradb-rds-for-mysql/view-error-logs-and-slow-logs)
 
+### 3. 帮助与反馈
+
+结论：当前主链能过早期内测，没有发现新旧方案并存。用户侧入口是设置页“帮助与反馈”，内部代码仍沿用 `support` 命名，不影响用户文案。
+
+当前代码真相：
+
+- Android 进入帮助与反馈页时拉 `GET /api/support/messages`，成功后调用 `POST /api/support/read` 标记后台 / 系统消息已读。
+- 设置页红点由 `GET /api/support/summary` 的 `unread_count` 决定，只统计 `sender_type IN ('admin', 'system') AND read_by_user_at IS NULL`。
+- 用户发送走 `POST /api/support/messages`；后台回复走 `POST /internal/support/messages`，后台读取走 `GET /internal/support/messages?user_id=...`。
+- 内部后台接口由 `SUPPORT_ADMIN_SECRET` 保护，支持 `X-Support-Admin-Secret` 或 `Authorization: Bearer <secret>`。
+- 帮助与反馈图片复用主聊天图片链：相机 / Photo Picker -> App 私有 JPEG 副本 -> `/upload` -> support 消息保存 URL；单次最多 4 张。
+- 附件面板打开时，系统返回、手势返回和左上角返回都会优先收起附件面板；页面使用 `imePadding()`，输入框不会被键盘盖住。
+- “删除所有历史对话”不会删除帮助与反馈消息。
+
+本轮已补的保护：
+
+- 新增 `server-go/internal/app/support_test.go`，覆盖帮助与反馈 payload 校验、图片 URL JSON 序列化、内部后台 secret 缺失 / 正确 / 错误三种情况。
+
+上线前必须注意：
+
+- 公开生产前仍必须接账号 token 并启用 `AUTH_STRICT=true`；否则裸 `X-User-Id` 能读写某个用户的帮助与反馈。
+- 多 SAE 实例前必须先上 OSS 或保持单实例；帮助与反馈图片同样依赖当前 `/upload` 本机磁盘和 `/uploads/` 静态读取。
+- `SUPPORT_ADMIN_SECRET` 只能配置在服务端环境变量或未来管理后台后端，不能进 APK，不能写仓库。
+- 当前内部后台接口只有共享 secret，没有后台账号、角色权限、IP 限制和审计；公开运营前至少要补最小后台或内网脚本。
+
+买服务器后必须补：
+
+- 配置 `SUPPORT_ADMIN_SECRET`、正式 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`、SLS 日志。
+- 管理后台最小版优先做：按用户查看会话、回复、未读 / 未处理列表、搜索、处理状态、审计日志。
+- 账号注销 / 数据删除规则里明确帮助与反馈消息和图片是否删除、保留多久、由谁操作。
+- 如果图片进入 OSS，补 OSS 生命周期策略；若涉及支付截图 / 隐私截图，后续评估私有读或后台受控查看。
+
+建议上线观察指标：
+
+- `get support summary failed`、`list support messages failed`、`create support message failed`、`mark support messages read failed`。
+- 帮助与反馈图片上传失败、support 图片 URL 404、内部后台回复失败。
+
 ## 后续待巡检功能队列
 
-- 帮助与反馈：站内消息、图片附件、红点已读、后台回复入口。
 - 礼品卡：当前前端占位、后端兑换接口、规则和成功提示。
 - 检查更新：APK 下载、未知来源安装授权、版本回滚。
 - 服务协议 / 隐私政策 / 风险提示：权限、第三方清单、删除 / 注销入口。

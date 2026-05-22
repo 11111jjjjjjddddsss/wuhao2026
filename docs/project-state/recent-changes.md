@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 继续按“一个功能一个功能”巡检帮助与反馈：确认当前没有新旧方案并存，用户侧主链是 `/api/support/summary`、`/api/support/messages`、`/api/support/read`，后台回复先走 `SUPPORT_ADMIN_SECRET` 保护的 `/internal/support/*`，Android 红点进入页后会标记已读，附件面板返回优先级和 IME padding 已按现有主链收口。新增 `server-go/internal/app/support_test.go` 覆盖 payload 校验、图片 URL JSON 序列化和内部后台 secret 校验；同步把公开生产前必须补账号 token / `AUTH_STRICT=true`、多实例前必须上 OSS 或单实例、后续管理后台要补账号权限 / 审计 / 未处理列表、账号注销要明确帮助与反馈消息和图片保存删除规则，写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md) 和项目风险记忆。
+
 - 买服务器前功能巡检开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：首轮收口会员中心 / 额度体系和 Go 后端高并发 / 性能边界。会员/额度当前确认没有新旧方案并存，Android 只做“支付暂未接入”占位展示，后端仍是 `/api/me`、`quota_ledger`、`topup_packs`、`upgrade_credits` 等真相；真实收费前必须补账号 token、生产 `AUTH_STRICT=true`、正式支付回调验签和对账。后端高并发结论是 Go 语言本身不是当前瓶颈，首版单实例可跑早期；多 SAE 实例前必须先处理本机图片存储迁 OSS、迁移抢跑、本进程限流 / B-C running guard 等边界。`server-go/internal/app/mysql.go` 同步把数据库连接池从固定 10 个连接改为可用 `MYSQL_MAX_OPEN_CONNS / MYSQL_MAX_IDLE_CONNS / MYSQL_CONN_MAX_IDLE_SECONDS / MYSQL_CONN_MAX_LIFETIME_SECONDS` 配置，默认值保持原样，并新增单测锁住默认值、环境变量覆盖和 idle 不超过 open 的回退逻辑。
 
 - 新增 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)，把下一阶段上线推进顺序固化为：先定 App 名称 / 图标 / 包名 / 签名 / 协议 / 软著材料，买域名和中国内地云资源后立即启动 ICP / App 备案；手机号登录、SAE、RDS、OSS、SLS、帮助与反馈、检查更新、模型 Key 池和真机联调在备案等待期间并行推进；备案通过后补备案号、正式域名 / HTTPS、公安联网备案和应用商店物料。同步更新 runbook 入口、当前状态、待决策和风险记忆，避免后续把“做完手机登录再备案”误当成主顺序。
