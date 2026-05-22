@@ -1006,7 +1006,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "三、图片上传和反馈场景",
-            body = "您主动选择或拍摄的图片会导入 App 私有目录，按当前图片规则压缩或直通为 JPEG 后上传，用于图片分析、历史展示、失败重试和帮助与反馈附件。图片可能包含拍摄设备生成的元数据，请尽量避免上传无关人像、身份证件、银行卡、车牌、位置痕迹、他人隐私或商业秘密。"
+            body = "您主动选择或拍摄的图片会导入 App 私有目录，按当前图片规则压缩或直通为 JPEG 后上传，用于图片分析、历史展示、失败重试和帮助与反馈附件。Android Q 及以上系统，拍照成功后会把原始照片另存到系统相册 Pictures/农技千查，便于您找回现场照片。图片可能包含拍摄设备生成的元数据，请尽量避免上传无关人像、身份证件、银行卡、车牌、位置痕迹、他人隐私或商业秘密。"
         )
         HamburgerAgreementSection(
             title = "四、会员、礼品卡和检查更新",
@@ -1251,7 +1251,7 @@ private fun HamburgerPersonalInfoListContent(
         )
         HamburgerAgreementSection(
             title = "三、图片上传",
-            body = "您主动选择或拍摄的图片会导入 App 私有目录，按图片规则压缩或直通为 JPEG 后上传，用于图片分析、历史展示、失败重试和帮助与反馈附件。"
+            body = "您主动选择或拍摄的图片会导入 App 私有目录，按图片规则压缩或直通为 JPEG 后上传，用于图片分析、历史展示、失败重试和帮助与反馈附件。Android Q 及以上系统，拍照成功后会把原始照片另存到系统相册 Pictures/农技千查。"
         )
         HamburgerAgreementSection(
             title = "四、会员、礼品卡和更新",
@@ -1319,7 +1319,7 @@ private fun HamburgerPermissionListContent(
         )
         HamburgerAgreementSection(
             title = "四、相机和照片",
-            body = "当前照片入口使用 Android 系统 Photo Picker，只访问您本次主动选择的图片；拍照入口调用外部相机并通过 FileProvider 授权临时写入，不申请 App 相机权限。"
+            body = "当前照片入口使用 Android 系统 Photo Picker，只访问您本次主动选择的图片；拍照入口调用外部相机并通过 FileProvider 授权临时写入，不申请 App 相机权限。Android Q 及以上系统，拍照成功后会把原始照片另存到系统相册 Pictures/农技千查。"
         )
         HamburgerAgreementSection(
             title = "五、当前不申请的权限",

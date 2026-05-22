@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 巡检“服务协议 / 隐私政策 / 风险提示”组：确认当前设置页只有一个“服务协议”目录入口，下面 6 个本地内置二级页面（用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示）都走设置页右进左出页面栈；没有发现旧 WebView、外部协议网页、旧平铺三行入口或用户可见具体模型平台名残留。Manifest 当前只声明 `INTERNET / ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES`，正文口径和当前不申请定位、App 相机、相册 / 存储读写、录音、通讯录、短信、通知权限一致；同时补充 Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，避免只写 App 私有目录导致保存位置说明不完整。新增 [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)，并把买服务器后必须补的真实云服务商、第三方服务、数据保存期限、账号注销 / 查询 / 删除入口、备案号和隐私政策 URL 写入巡检记录。
+
 - 巡检“检查更新 / 自有 APK 分发”链路：确认当前没有应用商店跳转、浏览器下载或旧占位方案并存，主链是 Android 设置页请求 `GET /api/app/update`，后端由 `APP_ANDROID_*` 环境变量返回 https APK，Android 下载到 cache 后通过 FileProvider 调起系统安装页。后端新增可选 `APP_ANDROID_APK_SHA256` 并透出 `apk_sha256`；Android 下载后新增最终 https、文件大小、SHA-256、包名和 `versionCode` 校验，避免错包、坏包、半截包或低版本包进入系统安装页。同步更新 [app-update.md](D:/wuhao/docs/runbooks/app-update.md)、[pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md) 和风险记忆，明确 APK 建议放 OSS / CDN / 静态 HTTPS，发布时记录文件大小、SHA-256、签名指纹，回滚只能停更或发更高 `versionCode` 修复包。
 
 - 巡检礼品卡占位链路：确认当前没有后端兑换接口、兑换码旧链路或会误改会员权益的并存方案，Android 礼品卡页输入后只提示“礼品卡功能后续接入”，不调用后端、不发权益、不假弹真实成功；debug-only “兑换成功 / 确定”仅是未来成功态样式预览。新增 [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)，并在 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md) 和风险记忆里固定后续真实接入原则：后端是唯一真相，真实接入前要先补礼品卡主表、兑换记录、幂等兑换接口、后台生成 / 发放 / 作废 / 查询、审计、限流和日志。

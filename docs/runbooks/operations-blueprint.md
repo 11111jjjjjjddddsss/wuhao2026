@@ -116,6 +116,7 @@
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：Android APK 检查更新和停更入口
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈站内消息入口
 - [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)：礼品卡占位状态与后续兑换系统入口
+- [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)：服务协议、隐私政策、风险提示和权限清单入口
 - [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情生成与排查入口
 
 ## 参考资料
