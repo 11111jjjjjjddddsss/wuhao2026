@@ -5,6 +5,8 @@
 
 ## 2026-05-22
 
+- 巡检礼品卡占位链路：确认当前没有后端兑换接口、兑换码旧链路或会误改会员权益的并存方案，Android 礼品卡页输入后只提示“礼品卡功能后续接入”，不调用后端、不发权益、不假弹真实成功；debug-only “兑换成功 / 确定”仅是未来成功态样式预览。新增 [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)，并在 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md) 和风险记忆里固定后续真实接入原则：后端是唯一真相，真实接入前要先补礼品卡主表、兑换记录、幂等兑换接口、后台生成 / 发放 / 作废 / 查询、审计、限流和日志。
+
 - 继续按“一个功能一个功能”巡检帮助与反馈：确认当前没有新旧方案并存，用户侧主链是 `/api/support/summary`、`/api/support/messages`、`/api/support/read`，后台回复先走 `SUPPORT_ADMIN_SECRET` 保护的 `/internal/support/*`，Android 红点进入页后会标记已读，附件面板返回优先级和 IME padding 已按现有主链收口。新增 `server-go/internal/app/support_test.go` 覆盖 payload 校验、图片 URL JSON 序列化和内部后台 secret 校验；同步把公开生产前必须补账号 token / `AUTH_STRICT=true`、多实例前必须上 OSS 或单实例、后续管理后台要补账号权限 / 审计 / 未处理列表、账号注销要明确帮助与反馈消息和图片保存删除规则，写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md) 和项目风险记忆。
 
 - 买服务器前功能巡检开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：首轮收口会员中心 / 额度体系和 Go 后端高并发 / 性能边界。会员/额度当前确认没有新旧方案并存，Android 只做“支付暂未接入”占位展示，后端仍是 `/api/me`、`quota_ledger`、`topup_packs`、`upgrade_credits` 等真相；真实收费前必须补账号 token、生产 `AUTH_STRICT=true`、正式支付回调验签和对账。后端高并发结论是 Go 语言本身不是当前瓶颈，首版单实例可跑早期；多 SAE 实例前必须先处理本机图片存储迁 OSS、迁移抢跑、本进程限流 / B-C running guard 等边界。`server-go/internal/app/mysql.go` 同步把数据库连接池从固定 10 个连接改为可用 `MYSQL_MAX_OPEN_CONNS / MYSQL_MAX_IDLE_CONNS / MYSQL_CONN_MAX_IDLE_SECONDS / MYSQL_CONN_MAX_LIFETIME_SECONDS` 配置，默认值保持原样，并新增单测锁住默认值、环境变量覆盖和 idle 不超过 open 的回退逻辑。

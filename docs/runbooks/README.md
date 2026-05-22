@@ -17,6 +17,7 @@
 - [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情每日卡片生成与排查入口
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈站内消息和后台回复入口
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：自有服务器 APK 分发与检查更新入口
+- [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)：礼品卡占位状态与后续兑换系统入口
 
 维护规则：
 
