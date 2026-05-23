@@ -5041,15 +5041,11 @@ fun ChatScreen() {
             else -> maxWidth
         }
         val chromeHorizontalPadding = when {
-            maxWidth < 360.dp -> 12.dp
-            maxWidth < 600.dp -> 16.dp
+            maxWidth < 360.dp -> 10.dp
+            maxWidth < 600.dp -> 14.dp
             else -> 24.dp
         }
-        val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 18.dp
-            maxWidth < 600.dp -> 24.dp
-            else -> 24.dp
-        }
+        val listHorizontalPadding = chromeHorizontalPadding
         val inputBarHeight = if (maxWidth < 360.dp) 100.dp else 104.dp
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp
         val chromeButtonSize = if (maxWidth < 360.dp) 42.dp else 44.dp
