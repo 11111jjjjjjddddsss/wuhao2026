@@ -5,6 +5,8 @@
 
 ## 2026-05-23
 
+- `HamburgerMenuSheet.kt` 对齐设置页返回按钮和主聊天页汉堡按钮的顶部高度：设置页返回按钮保持 48dp 点击尺寸、左侧位置、标题和卡片布局不变，只把相对状态栏的顶部偏移统一到 4dp，并让 debug-only“设置外层”预览复用同一高度常量，避免正式页和预览页再次分叉。主聊天正文横向宽度本轮不再调整，先保留上一轮左右对称收窄后的视觉。
+
 - 复巡“清数据 / 清缓存后 UI 状态回退”与 debug-only 预览面板：确认当前 Android 已关闭 Auto Backup / Data Extraction，本地 `app_ids`、`chat_ui_cache`、`pending_chat_sends`、`files/composer_images` 不会被系统云备份 / 设备迁移回灌；清 App 数据后无稳定账号应进入 clean-state，清缓存只影响 `cacheDir` 临时文件。`ChatScreen.kt` 同步把 App 内“删除所有历史对话”成功后的本地 `render_window / stream_draft / composer_draft` 清理改成先同步 `commit()` 收口，再异步删私有图片，避免 UI 已清空但进程立刻被杀时旧本地快照在远端 snapshot 失败后短暂回灌。debug-only 预览面板新增“清数据回归”分组，并补“设置外层”预览，能看到返回键、标题和设置首页整体位置。
 
 - `HamburgerMenuSheet.kt` 只微调设置页左上返回按钮位置：在保持 48dp 点击尺寸、标题位置、首页卡片大小、行高和业务入口不变的前提下，把返回按钮相对状态栏下移 4dp，降低单手点左上角时“顶得太高”的感觉。卡片密度本轮不再继续压缩，避免破坏当前已经确认合适的设置首页视觉。

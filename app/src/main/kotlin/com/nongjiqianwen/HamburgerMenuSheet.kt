@@ -96,6 +96,7 @@ private const val HAMBURGER_PAGE_ENTER_MS = 180
 private const val HAMBURGER_PAGE_EXIT_MS = 150
 private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
 internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后重试"
+private val HamburgerBackButtonTopPadding = 4.dp
 
 @Composable
 internal fun HamburgerMenuSheet(
@@ -360,7 +361,7 @@ internal fun HamburgerMenuSheet(
                         .align(Alignment.TopStart)
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                         .statusBarsPadding()
-                        .padding(start = 18.dp, top = 14.dp)
+                        .padding(start = 18.dp, top = HamburgerBackButtonTopPadding)
                         .size(48.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -1412,7 +1413,7 @@ internal fun HamburgerMenuShellPreview(userId: String) {
                 shadowElevation = 2.5.dp,
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 18.dp, top = 14.dp)
+                    .padding(start = 18.dp, top = HamburgerBackButtonTopPadding)
                     .size(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
