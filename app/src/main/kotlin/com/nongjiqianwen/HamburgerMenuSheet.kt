@@ -360,7 +360,7 @@ internal fun HamburgerMenuSheet(
                         .align(Alignment.TopStart)
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                         .statusBarsPadding()
-                        .padding(start = 18.dp, top = 10.dp)
+                        .padding(start = 18.dp, top = 14.dp)
                         .size(48.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
