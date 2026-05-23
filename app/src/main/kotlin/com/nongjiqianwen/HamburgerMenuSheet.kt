@@ -1388,57 +1388,114 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            HamburgerMenuGroup {
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Membership,
-                    title = "会员中心",
-                    subtitle = "套餐、额度和加油包",
-                    onClick = {}
-                )
-                HamburgerMenuDivider(startIndent = 52.dp)
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Account,
-                    title = "账号管理",
-                    onClick = {}
-                )
+            HamburgerMenuPreviewGroups()
+        }
+    }
+}
+
+@Composable
+internal fun HamburgerMenuShellPreview(userId: String) {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 560.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color.White,
+                shadowElevation = 2.5.dp,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 18.dp, top = 14.dp)
+                    .size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    HamburgerBackIcon(
+                        tint = Color(0xFF111111),
+                        modifier = Modifier.size(23.dp)
+                    )
+                }
             }
-            HamburgerMenuGroup {
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Feedback,
-                    title = "帮助与反馈",
-                    showBadge = true,
-                    onClick = {}
-                )
-                HamburgerMenuDivider(startIndent = 52.dp)
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Update,
-                    title = "检查更新",
-                    onClick = {}
-                )
-                HamburgerMenuDivider(startIndent = 52.dp)
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Redeem,
-                    title = "礼品卡",
-                    onClick = {}
-                )
-                HamburgerMenuDivider(startIndent = 52.dp)
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Document,
-                    title = "服务协议",
-                    onClick = {}
-                )
-            }
-            HamburgerMenuGroup {
-                HamburgerMenuRow(
-                    icon = HamburgerMenuIcon.Logout,
-                    title = "退出登录",
-                    subtitle = "登录功能后续接入",
-                    destructive = true,
-                    showChevron = false,
-                    onClick = {}
-                )
+            Text(
+                text = "设置",
+                color = Color(0xFF111111),
+                fontSize = 21.sp,
+                lineHeight = 29.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 18.dp)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, top = 84.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(13.dp)
+            ) {
+                HamburgerMenuPreviewGroups()
             }
         }
+    }
+}
+
+@Composable
+private fun HamburgerMenuPreviewGroups() {
+    HamburgerMenuGroup {
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Membership,
+            title = "会员中心",
+            subtitle = "套餐、额度和加油包",
+            onClick = {}
+        )
+        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Account,
+            title = "账号管理",
+            onClick = {}
+        )
+    }
+    HamburgerMenuGroup {
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Feedback,
+            title = "帮助与反馈",
+            showBadge = true,
+            onClick = {}
+        )
+        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Update,
+            title = "检查更新",
+            onClick = {}
+        )
+        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Redeem,
+            title = "礼品卡",
+            onClick = {}
+        )
+        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Document,
+            title = "服务协议",
+            onClick = {}
+        )
+    }
+    HamburgerMenuGroup {
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Logout,
+            title = "退出登录",
+            subtitle = "登录功能后续接入",
+            destructive = true,
+            showChevron = false,
+            onClick = {}
+        )
     }
 }
 

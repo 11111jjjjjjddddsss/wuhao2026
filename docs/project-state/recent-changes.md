@@ -5,6 +5,8 @@
 
 ## 2026-05-23
 
+- 复巡“清数据 / 清缓存后 UI 状态回退”与 debug-only 预览面板：确认当前 Android 已关闭 Auto Backup / Data Extraction，本地 `app_ids`、`chat_ui_cache`、`pending_chat_sends`、`files/composer_images` 不会被系统云备份 / 设备迁移回灌；清 App 数据后无稳定账号应进入 clean-state，清缓存只影响 `cacheDir` 临时文件。`ChatScreen.kt` 同步把 App 内“删除所有历史对话”成功后的本地 `render_window / stream_draft / composer_draft` 清理改成先同步 `commit()` 收口，再异步删私有图片，避免 UI 已清空但进程立刻被杀时旧本地快照在远端 snapshot 失败后短暂回灌。debug-only 预览面板新增“清数据回归”分组，并补“设置外层”预览，能看到返回键、标题和设置首页整体位置。
+
 - `HamburgerMenuSheet.kt` 只微调设置页左上返回按钮位置：在保持 48dp 点击尺寸、标题位置、首页卡片大小、行高和业务入口不变的前提下，把返回按钮相对状态栏下移 4dp，降低单手点左上角时“顶得太高”的感觉。卡片密度本轮不再继续压缩，避免破坏当前已经确认合适的设置首页视觉。
 
 - `ChatScreen.kt` 轻调主聊天消息区横向边距：手机宽度下消息列表左右对称收窄，`<360dp` 从 14dp 调到 18dp，`360~600dp` 从 18dp 调到 24dp，让正文左边界更接近顶部左右图标形成的视觉轨道。只改列表内容区 padding，不改顶部图标、输入框、composer reserve、96dp 工作线、AutoFollow、发送起步或 streaming / finalize 主链；按 baseline profile runbook 判断属于小视觉参数，不需要更新 baselineprofile 脚本。

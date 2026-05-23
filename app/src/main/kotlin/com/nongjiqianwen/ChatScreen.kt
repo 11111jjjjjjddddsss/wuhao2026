@@ -1420,6 +1420,10 @@ private fun Context.saveLocalChatWindowSync(chatScopeId: String, snapshot: Local
 }
 
 private suspend fun Context.clearLocalChatHistoryState(chatScopeId: String) = withContext(Dispatchers.IO) {
+    clearLocalChatHistoryStateSync(chatScopeId)
+}
+
+private fun Context.clearLocalChatHistoryStateSync(chatScopeId: String) {
     getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .edit()
         .remove("$CHAT_CACHE_KEY_PREFIX$chatScopeId")
@@ -3716,6 +3720,7 @@ fun ChatScreen() {
         SessionApi.resetUiRuntimeForCleanState()
         PendingChatSendWorkScheduler.cancelAllForScope(context, chatScopeId)
         resetStreamingUiState(clearVisibleContent = true)
+        context.clearLocalChatHistoryStateSync(chatScopeId)
         messages.clear()
         failedUserMessageStates.clear()
         failedAssistantMessageStates.clear()
@@ -3738,7 +3743,6 @@ fun ChatScreen() {
             blockMarkdownCache.clear()
         }
         snackbarScope.launch {
-            context.clearLocalChatHistoryState(chatScopeId)
             context.deleteUnreferencedComposerImages(emptySet())
         }
     }
@@ -6507,6 +6511,14 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
+                title = "清数据回归",
+                items = listOf(
+                    UiCopyPreviewItem("清数据首次启动", "空本地状态下的欢迎态和输入框", UiCopyPreviewKind.CleanStateFirstLaunch),
+                    UiCopyPreviewItem("清数据首次发送", "用户短文本 + waiting 小球", UiCopyPreviewKind.CleanStateFirstSend),
+                    UiCopyPreviewItem("清数据检查点", "不恢复旧聊天 / 旧高度 / 旧滚动位置", UiCopyPreviewKind.CleanStateChecklist)
+                )
+            ),
+            UiCopyPreviewGroup(
                 title = "输入区",
                 items = listOf(
                     UiCopyPreviewItem(
@@ -6558,6 +6570,7 @@ private fun UiCopyPreviewOverlay(
                 title = "汉堡菜单",
                 items = listOf(
                     UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
+                    UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
                     UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号、删除历史对话、退出/注销", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("是否删除所有历史对话", "取消 / 确定二次确认卡片", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
@@ -6744,6 +6757,9 @@ private data class UiCopyPreviewItem(
 private enum class UiCopyPreviewKind {
     AppTitle,
     Welcome,
+    CleanStateFirstLaunch,
+    CleanStateFirstSend,
+    CleanStateChecklist,
     ComposerPlaceholder,
     ComposerImagePlaceholder,
     MembershipHeader,
@@ -6765,6 +6781,7 @@ private enum class UiCopyPreviewKind {
     MembershipPurchaseSuccess,
     MembershipRules,
     HamburgerMenu,
+    HamburgerMenuShell,
     HamburgerMembershipPage,
     HamburgerAccountPage,
     HamburgerDeleteHistoryConfirm,
@@ -6949,6 +6966,21 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         )
                     }
                 }
+                UiCopyPreviewKind.CleanStateFirstLaunch -> {
+                    UiCopyPreviewCleanStateFirstLaunch()
+                }
+                UiCopyPreviewKind.CleanStateFirstSend -> {
+                    UiCopyPreviewCleanStateFirstSend()
+                }
+                UiCopyPreviewKind.CleanStateChecklist -> {
+                    UiCopyPreviewPlainText(
+                        listOf(
+                            "清除 App 数据后应视为 clean-state。",
+                            "不从本地恢复旧聊天、旧输入框高度或旧滚动位置。",
+                            "未登录阶段 user_id 可重置；以后账号恢复历史属于后端业务恢复。"
+                        )
+                    )
+                }
                 UiCopyPreviewKind.ComposerPlaceholder -> {
                     Surface(
                         color = Color.White,
@@ -7089,6 +7121,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerMenu -> {
                     HamburgerMenuSheetPreview(userId = IdManager.getUserId())
                 }
+                UiCopyPreviewKind.HamburgerMenuShell -> {
+                    HamburgerMenuShellPreview(userId = IdManager.getUserId())
+                }
                 UiCopyPreviewKind.HamburgerMembershipPage -> {
                     HamburgerMembershipCenterPagePreview(userId = IdManager.getUserId())
                 }
@@ -7205,10 +7240,97 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     listOf("UI文案样式预览", "点一级标题展开或收起，点二级条目查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。")
                 )
                 UiCopyPreviewKind.DebugPanelControls -> UiCopyPreviewPlainText(
-                    listOf("会员中心 18项 展开", "查看", "预览中", "样式预览")
+                    listOf("清数据回归 3项 展开", "会员中心 18项 展开", "查看", "预览中", "样式预览")
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewCleanStateFirstLaunch() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = WELCOME_EMPTY_STATE_TEXT,
+                color = Color(0xFF202124),
+                fontSize = 22.sp,
+                lineHeight = 31.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 22.dp)
+            )
+        }
+        UiCopyPreviewComposerShell(placeholder = COMPOSER_DEFAULT_PLACEHOLDER_TEXT)
+    }
+}
+
+@Composable
+private fun UiCopyPreviewCleanStateFirstSend() {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.End
+        ) {
+            Surface(
+                color = Color(0xFFE9F4FF),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, Color(0xFFDCEEFF)),
+                shadowElevation = 1.dp,
+                modifier = Modifier.widthIn(max = 260.dp)
+            ) {
+                Text(
+                    text = "刚清数据后，第一次发送一条短问题",
+                    color = Color(0xFF161616),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                )
+            }
+        }
+        ChatStreamingRenderer(
+            content = "",
+            renderMode = StreamingRenderMode.Waiting,
+            freshSuffixEnabled = false,
+            showWaitingBall = true,
+            streamingFreshStart = -1,
+            streamingFreshEnd = -1,
+            streamingFreshTick = 0,
+            selectionEnabled = false,
+            showDisclaimer = false,
+            onStreamingContentBoundsChanged = null,
+            modifier = Modifier.fillMaxWidth()
+        )
+        UiCopyPreviewComposerShell(placeholder = COMPOSER_DEFAULT_PLACEHOLDER_TEXT)
+    }
+}
+
+@Composable
+private fun UiCopyPreviewComposerShell(placeholder: String) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(30.dp),
+        shadowElevation = 6.dp,
+        border = BorderStroke(0.6.dp, Color(0xFFE6E8EC)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = placeholder,
+            color = Color(0xFFB7BAC1),
+            fontSize = 18.sp,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp)
+        )
     }
 }
 
