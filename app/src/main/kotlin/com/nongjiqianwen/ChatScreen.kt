@@ -5042,8 +5042,8 @@ fun ChatScreen() {
             else -> 24.dp
         }
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 14.dp
-            maxWidth < 600.dp -> 18.dp
+            maxWidth < 360.dp -> 18.dp
+            maxWidth < 600.dp -> 24.dp
             else -> 24.dp
         }
         val inputBarHeight = if (maxWidth < 360.dp) 100.dp else 104.dp

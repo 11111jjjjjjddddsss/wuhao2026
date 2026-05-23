@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-23
+
+- `ChatScreen.kt` 轻调主聊天消息区横向边距：手机宽度下消息列表左右对称收窄，`<360dp` 从 14dp 调到 18dp，`360~600dp` 从 18dp 调到 24dp，让正文左边界更接近顶部左右图标形成的视觉轨道。只改列表内容区 padding，不改顶部图标、输入框、composer reserve、96dp 工作线、AutoFollow、发送起步或 streaming / finalize 主链；按 baseline profile runbook 判断属于小视觉参数，不需要更新 baselineprofile 脚本。
+
 ## 2026-05-22
 
 - 巡检“支付真实接入 / 会员订单”链路：确认 Android 会员开通、升级和加油包按钮仍只提示“支付暂未接入”，不会调用后端订单接口；后端 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍只是本地 / 内测开发期直改接口，默认返回 `PAYMENT_NOT_CONFIGURED`，且生产环境会强制关闭。当前没有真实支付渠道、SDK、自动续费、退款或对账，`orders` 表也不是正式支付订单表。本轮新增 [payments.md](D:/wuhao/docs/runbooks/payments.md)，固定后续真实接入必须走服务端创建订单、支付渠道异步通知、验签 / 解密、金额 / 商品 / 用户校验、幂等发权益和对账，不能打开开发接口当正式收费。
