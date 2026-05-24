@@ -5035,8 +5035,8 @@ fun ChatScreen() {
         val topMenuIconSize = if (maxWidth < 360.dp) 27.dp else 28.dp
         val topChromeIconVisualInset = (chromeButtonSize - topMenuIconSize) / 2f
         val listHorizontalPadding = when {
-            maxWidth < 360.dp -> 10.dp
-            maxWidth < 600.dp -> 14.dp
+            maxWidth < 360.dp -> 12.dp
+            maxWidth < 600.dp -> 16.dp
             else -> 24.dp
         }
         val chromeHorizontalPadding =
