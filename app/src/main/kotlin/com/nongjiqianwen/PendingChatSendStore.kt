@@ -13,7 +13,8 @@ internal data class PendingChatSend(
     val imageUrls: List<String> = emptyList(),
     val createdAtMs: Long = System.currentTimeMillis(),
     val updatedAtMs: Long = System.currentTimeMillis(),
-    val remoteStartedAtMs: Long = 0L
+    val remoteStartedAtMs: Long = 0L,
+    val recoverableFailureCount: Int = 0
 )
 
 internal object PendingChatSendRuntime {
@@ -70,6 +71,17 @@ internal object PendingChatSendStore {
     fun markRemoteStarted(context: Context, chatScopeId: String, userMessageId: String) {
         val pending = get(context, chatScopeId, userMessageId) ?: return
         upsert(context, pending.copy(remoteStartedAtMs = System.currentTimeMillis()))
+    }
+
+    fun incrementRecoverableFailureCount(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String
+    ): Int? {
+        val pending = get(context, chatScopeId, userMessageId) ?: return null
+        val nextCount = pending.recoverableFailureCount + 1
+        upsert(context, pending.copy(recoverableFailureCount = nextCount))
+        return nextCount
     }
 
     fun remove(context: Context, chatScopeId: String, userMessageId: String) {

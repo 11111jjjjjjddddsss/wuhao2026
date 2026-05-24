@@ -4375,6 +4375,11 @@ fun ChatScreen() {
                 val userId = existingUserMessageId
                     ?: findFailedUserMessageIdByText(text)
                     ?: "user_${UUID.randomUUID()}"
+                if (existingUserMessageId == null) {
+                    input.value = TextFieldValue("")
+                    context.clearLocalComposerDraftSync(chatScopeId)
+                    clearInputSelectionToolbar()
+                }
                 upsertUserMessage(
                     messageId = userId,
                     content = text,
@@ -4387,7 +4392,7 @@ fun ChatScreen() {
                 trimMessagesInPlace()
                 sendUiSettling = false
                 persistTick++
-                context.saveLocalChatWindow(
+                context.saveLocalChatWindowSync(
                     chatScopeId,
                     persistableLocalChatWindowSnapshot()
                 )
@@ -4458,6 +4463,7 @@ fun ChatScreen() {
         sendUiSettling = false
         persistTick++
         val stagedSnapshot = persistableLocalChatWindowSnapshot()
+        context.saveLocalChatWindowSync(chatScopeId, stagedSnapshot)
         if (hasRemoteHistorySource) {
             PendingChatSendRuntime.markActive(userId)
             PendingChatSendWorkScheduler.enqueue(
@@ -4469,14 +4475,6 @@ fun ChatScreen() {
                     imageUris = previewImageUris
                 )
             )
-        }
-        snackbarScope.launch {
-            val stagedMessageStillPendingUpload = messages.any { message ->
-                message.id == userId && message.isLocalImageUploadPendingUserMessage()
-            }
-            if (stagedMessageStillPendingUpload) {
-                context.saveLocalChatWindow(chatScopeId, stagedSnapshot)
-            }
         }
         return userId
     }
@@ -4601,21 +4599,10 @@ fun ChatScreen() {
                 )
             }
         }
-        val shouldPersistImageUrlsBeforeRemoteStream =
-            hasRemoteHistorySource &&
-                existingUserMessageId != null &&
-                uploadedImageUrls.isNotEmpty()
         val sendStartSnapshot = persistableLocalChatWindowSnapshot()
-        if (!shouldPersistImageUrlsBeforeRemoteStream) {
-            snackbarScope.launch {
-                context.saveLocalChatWindow(chatScopeId, sendStartSnapshot)
-            }
-        }
+        context.saveLocalChatWindowSync(chatScopeId, sendStartSnapshot)
         snackbarScope.launch {
             try {
-                if (shouldPersistImageUrlsBeforeRemoteStream) {
-                    context.saveLocalChatWindow(chatScopeId, sendStartSnapshot)
-                }
                 if (hasRemoteHistorySource) {
                     SessionApi.cancelCurrentStream()
                     if (hasPendingBackgroundSend) {

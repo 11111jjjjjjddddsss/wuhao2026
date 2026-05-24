@@ -246,7 +246,7 @@
 - 图片先进入 App 私有 `files/composer_images` 稳定副本；合格 JPEG 直通，其他可解码图片转 JPEG 并压到最长边 / 单张 `<=1MB` 规则内。
 - Android 上传入口是后端 `POST /upload`，请求带 `X-User-Id` 和可选 bearer token；后端只接受单张 `<=1MB` JPEG，并返回配置公开基地址下的 `https://.../uploads/*.jpg`。
 - `/api/chat/stream` 会再次校验图片 URL：必须来自同一公开基地址、路径为 `/uploads/*.jpg`，不接受外部域名、非 jpg、query 或 fragment。
-- 带图发送会排一个唯一 WorkManager 兜底任务；前台活跃或远端启动保护窗内不抢跑，只在 App 被杀或前台未可靠完成时补发。
+- 带图发送会排一个唯一 WorkManager 兜底任务；前台活跃或远端启动保护窗内不抢跑，只在 App 被杀或前台未可靠完成时补发。后台兜底遇到图片上传失败、网络中断、流异常结束、`409`、限流或临时上游错误时，会用同一 `client_msg_id` 指数退避重试；普通可恢复失败最多重试 5 次后移除 pending。
 - 后端用 `chat_stream_inflight` 的同一用户活跃流唯一约束和 `client_msg_id + lease_token` 降低重复开流；轮次归档成功后才发 SSE `[DONE]`，扣次也在归档成功后执行。
 - 历史恢复走 `/api/session/snapshot`；`a_rounds_for_ui` 优先来自 30 天归档，远端失败才回退本地窗口。
 - 删除所有历史对话走 `POST /api/session/clear`；有活跃流时后端返回 409，成功后前端清 UI、本地快照、草稿、streaming draft、待发送 WorkManager 和私有 composer 图片。

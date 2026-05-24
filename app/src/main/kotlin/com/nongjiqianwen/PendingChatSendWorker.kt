@@ -49,7 +49,7 @@ class PendingChatSendWorker(
                     return@withContext Result.failure()
                 }
             ImageUploader.uploadImages(uploadBytes)
-                ?: return@withContext Result.retry()
+                ?: return@withContext retryRecoverableOrFail(chatScopeId, userMessageId)
         }
         if (isStopped) return@withContext Result.retry()
 
@@ -76,14 +76,11 @@ class PendingChatSendWorker(
                 Result.success()
             }
             SessionApi.StreamCompletionStatus.RetryableFailure -> {
-                if (result.reason == "http_409" || result.reason == "stopped") {
-                    Result.retry()
-                } else {
-                    PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-                    Result.failure()
-                }
+                retryRecoverableOrFail(chatScopeId, userMessageId)
             }
-            SessionApi.StreamCompletionStatus.RateLimited -> Result.retry()
+            SessionApi.StreamCompletionStatus.RateLimited -> {
+                retryRecoverableOrFail(chatScopeId, userMessageId)
+            }
             SessionApi.StreamCompletionStatus.Quota,
             SessionApi.StreamCompletionStatus.Auth,
             SessionApi.StreamCompletionStatus.BadRequest,
@@ -91,6 +88,20 @@ class PendingChatSendWorker(
                 PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
                 Result.failure()
             }
+        }
+    }
+
+    private fun retryRecoverableOrFail(chatScopeId: String, userMessageId: String): Result {
+        val failureCount = PendingChatSendStore.incrementRecoverableFailureCount(
+            applicationContext,
+            chatScopeId,
+            userMessageId
+        ) ?: return Result.success()
+        return if (failureCount > MAX_RECOVERABLE_FAILURES) {
+            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+            Result.failure()
+        } else {
+            Result.retry()
         }
     }
 
@@ -124,5 +135,6 @@ class PendingChatSendWorker(
 
     private companion object {
         const val MAX_IMAGE_SIZE_BYTES = 1024 * 1024
+        const val MAX_RECOVERABLE_FAILURES = 5
     }
 }
