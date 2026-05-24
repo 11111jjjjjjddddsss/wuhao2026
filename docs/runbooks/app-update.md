@@ -17,7 +17,7 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 
 1. 让 Codex 帮你把 Android `versionCode` 加 1，并构建 release APK
 2. 把这个 APK 上传到你自己的服务器 / OSS，拿到一个 `https://...apk` 下载链接
-3. 让 Codex 或运维把 SAE 里的 `APP_ANDROID_*` 环境变量改成新版本和新 APK 链接
+3. 让 Codex 或运维把后端运行环境里的 `APP_ANDROID_*` 环境变量改成新版本和新 APK 链接
 4. 用旧版 App 点“检查更新”，看到“发现新版本”就对了
 
 这件事不需要你手写接口，也不需要你自己拼 JSON。
@@ -25,7 +25,7 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 ## 回滚时你只做这几步
 
 1. 如果新 APK 有问题，先告诉 Codex 或运维“停掉这个更新”
-2. 把 SAE 里的 `APP_ANDROID_APK_URL` 清空，或者把 `APP_ANDROID_LATEST_VERSION_CODE` 改回稳定版本号
+2. 把后端运行环境里的 `APP_ANDROID_APK_URL` 清空，或者把 `APP_ANDROID_LATEST_VERSION_CODE` 改回稳定版本号
 3. 后端会返回“无更新”，旧版 App 就不会继续提示下载那个坏包
 
 已经点进系统安装页并完成安装的用户，需要后续再发一个更高 `versionCode` 的修复包来覆盖。
@@ -55,8 +55,8 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 
 1. 构建 release APK，并确认 `app/build.gradle.kts` 里的 `versionCode` 比线上旧包更大
 2. 记录 APK 文件大小和 SHA-256
-3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go / SAE 动态服务大 APK
-4. 在 SAE 环境变量里配置上述 `APP_ANDROID_*` 值
+3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK
+4. 在后端运行环境变量里配置上述 `APP_ANDROID_*` 值
 5. 重启 / 重新部署后端服务
 6. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
 7. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开

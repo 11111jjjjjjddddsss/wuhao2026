@@ -22,9 +22,9 @@
 
 ## D4 正式云资源首版怎么落
 
-- 当前选项：首版按 `SAE + RDS MySQL + 域名/HTTPS` 跑最小生产链；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；短期先单环境跑通，是否拆测试 / 生产等真实联调后再评估
-- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地；标准版 SAE 应用 `nongjiqiancha` 已创建，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，当前仍是默认 demo 镜像；域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和 SAE 绑定。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`；SAE 默认交换机是北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`。仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也已补 `docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI 读取 SAE / RDS
-- 待定原因：RDS MySQL 数据库账号、库名、白名单 / 安全组、默认 7 天备份策略是否调整、是否首版接 OSS / SLS、数据库迁移是否独立执行、真实后端镜像构建 / 推送 / 回滚入口、域名解析和备案流程仍未拍板 / 落地
+- 当前选项：首版优先评估 `ECS + RDS MySQL + OSS + 域名/HTTPS` 跑最小生产链；`SAE + ACR` 镜像托管路线已暂时降级为备选。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；短期先单环境跑通，是否拆测试 / 生产等真实联调后再评估
+- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地；此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，但该应用只是默认 demo 镜像，未部署真实后端，已于 2026-05-24 21:50 左右先停止，并于 2026-05-24 21:51 左右通过 CLI 删除，删除后 `ListApplications` 返回空列表。域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和正式入口绑定。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`；原 SAE 默认交换机是北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`。仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也已补 `docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI 读取 RDS，SAE 应用列表当前为空
+- 待定原因：ECS 规格 / 镜像 / 系统盘 / 安全组、RDS MySQL 数据库账号、库名、白名单 / 安全组、默认 7 天备份策略是否调整、是否首版接 OSS / SLS、数据库迁移是否独立执行、ECS 部署脚本 / systemd / 反向代理 / 回滚入口、域名解析和备案流程仍未拍板 / 落地
 
 ## D5 C+ 长期记忆怎么落地
 
@@ -46,5 +46,5 @@
 ## D7 今日农情生产调度怎么落
 
 - 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card` 和内部 `POST /internal/jobs/today-agri-card/generate`。生成链路已有数据库 lease、secret 校验、来源 / 日期 / 广告词过滤；Android 只展示已 ready 的 3 条“今日农情”，缺失时静默不展示
-- 当前倾向：每天 05:30（Asia/Shanghai）由 SAE 定时任务、云工作流、函数计算或外部 cron 调内部生成接口；失败后最多补跑少量次数，不能让用户打开 App 时触发生成风暴
+- 当前倾向：每天 05:30（Asia/Shanghai）由 ECS cron、云工作流、函数计算或外部 cron 调内部生成接口；失败后最多补跑少量次数，不能让用户打开 App 时触发生成风暴
 - 仍待决策：真实云端用哪种调度器、失败是否自动重试、告警走 SLS 还是先人工巡检、是否允许后台人工补生成 / 下架单条、未来是否做地区 / 作物个性化。当前首版只做全国 `CN` 卡片，不做按用户画像推送

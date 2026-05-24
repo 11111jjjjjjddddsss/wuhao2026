@@ -5,7 +5,7 @@
 ## R1 运维入口仍以文档骨架为主
 
 - 状态：未关闭
-- 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来，但仓库内尚未沉淀完整的 SAE 部署、回滚、日志、数据库只读脚本、管理后台和实际命令
+- 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来，但仓库内尚未沉淀完整的 ECS / SAE 部署、回滚、日志、数据库只读脚本、管理后台和实际命令
 - 风险：换窗口时能知道要看哪里，但真正执行运维仍可能依赖人工补充；服务器未采购前也不能把实例名、域名、密钥或后台入口写成既成事实
 - 补充：买服务器前“统一管理后台”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，并新增 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)。当前没有网页后台、`/admin` 或 `/internal/admin` 路由；只有帮助与反馈内部接口、今日农情内部生成接口和若干环境变量 / runbook 规划
 - 后续动作：后面一旦发生真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营，就把实际可执行入口补进 runbook、脚本或统一管理后台。第一版后台优先补后台账号、角色权限、操作审计、帮助与反馈、用户查询、检查更新、今日农情状态页，不提前做重
@@ -52,11 +52,11 @@
 ## R7 正式云资源部分落地，真实后端仍未部署
 
 - 状态：未关闭
-- 说明：当前已在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；当前仍是 SAE 默认 demo 镜像，尚未部署 `server-go`。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`，SAE 默认交换机为北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`；RDS MySQL 使用同一 VPC 下北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`、到期时间 2027-05-24；当前自动备份保留 7 天，默认每周二 / 四 / 六 17:00-18:00 北京时间左右执行；当前白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / SAE 环境变量尚未配置。域名 `nongjiqiancha.cn` 已购买，但实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和 SAE 域名绑定仍未完成。OSS、SLS 和真实日志项目尚未落地；PolarDB 暂作为后续高规格升级选项
-- 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，仍可能因为 RDS 白名单 / 账号 / 环境变量、OSS / SLS、域名绑定 / 备案状态缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节；当前 SAE 只有单实例且本机 uploads 仍未迁 OSS，多实例或自动弹性开启前仍有图片 404 和摘要重复提取风险
+- 说明：首版部署路线已从“SAE 镜像托管优先”转向“优先评估 / 准备 ECS 传统部署”，真实 ECS 尚未购买或部署。此前曾在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；该 SAE 应用只是默认 demo 镜像，尚未部署 `server-go`，已于 2026-05-24 21:50 左右先停止，并于 2026-05-24 21:51 左右通过 CLI 删除，删除后 `ListApplications` 返回空列表。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`，原 SAE 默认交换机为北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`；RDS MySQL 使用同一 VPC 下北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`、到期时间 2027-05-24；当前自动备份保留 7 天，默认每周二 / 四 / 六 17:00-18:00 北京时间左右执行；当前白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / 后端运行环境变量尚未配置。域名 `nongjiqiancha.cn` 已购买，但实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和正式后端入口绑定仍未完成。OSS、SLS 和真实日志项目尚未落地；PolarDB 暂作为后续高规格升级选项
+- 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，仍可能因为 ECS 规格 / 安全组 / 运维脚本、RDS 白名单 / 账号 / 环境变量、OSS / SLS、域名绑定 / 备案状态缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节；如果首版不接 OSS，单台 ECS 本机 uploads 也只能服务单机，后续加第二台 ECS 或回到 SAE 多实例前必须迁 OSS 或等价共享对象存储，否则会出现图片 404；多实例前摘要和迁移仍需要跨实例保护
 - 补充：后端已支持 `DASHSCOPE_API_KEY_1/2/3` 多 Key 池和限流前置切 Key，但真实并发扩容必须使用不同阿里云主账号的 Key；同一主账号多个 API Key 共享 RPM / TPM 限流。朋友账号 Key 可短期兜底，但长期生产会带来账单、权限、密钥轮换和数据处理责任不在自己名下的运维风险
-- 补充：买服务器前高并发巡检结论已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。Go 语言本身不是当前瓶颈；首版单实例可跑早期。若首版不接 OSS，SAE 必须先保持单实例；若要多实例，必须先把图片上传和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储，否则上传落到 A 实例、后续请求或模型公网拉图打到 B 实例时可能 404。多实例发布前还要把数据库迁移改成单独发布步骤或补迁移锁，避免多个实例首次启动同时跑迁移
-- 后续动作：下一步优先配置 RDS MySQL 数据库账号、库名、白名单 / 安全组和 SAE 环境变量；备份当前有 7 天默认策略，正式数据进入后再确认是否延长保留时间或加密 / 跨地域备份；随后决定 OSS / SLS 是否首版一起接入。部署真实后端镜像前，回填 [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 的镜像构建、环境变量、健康检查和回滚入口；按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任；RDS 规格确认后再按真实连接数配置 `MYSQL_MAX_OPEN_CONNS` 等连接池环境变量。当前本机阿里云 CLI 可读 SAE 应用，但真实 AccessKey 不进入仓库或文档，后续稳定后应轮换已暴露过的主账号 Key
+- 补充：买服务器前高并发巡检结论已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。Go 语言本身不是当前瓶颈；首版单实例可跑早期。若首版不接 OSS，ECS 必须先保持单台；若要多后端实例，必须先把图片上传和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储，否则上传落到 A 实例、后续请求或模型公网拉图打到 B 实例时可能 404。多实例发布前还要把数据库迁移改成单独发布步骤或补迁移锁，避免多个实例首次启动同时跑迁移
+- 后续动作：下一步优先拍板 / 购买 ECS 规格，随后配置 ECS 安全组、系统用户、部署目录、systemd、反向代理和 HTTPS 入口；同时配置 RDS MySQL 数据库账号、库名、白名单 / 安全组和后端环境变量。备份当前有 7 天默认策略，正式数据进入后再确认是否延长保留时间或加密 / 跨地域备份；随后决定 OSS / SLS 是否首版一起接入。若后续重新启用 SAE，则再回填 [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 的镜像构建、环境变量、健康检查和回滚入口；当前优先把 ECS 部署入口固化到新的 runbook / 脚本。按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任；RDS 规格确认后再按真实连接数配置 `MYSQL_MAX_OPEN_CONNS` 等连接池环境变量。当前本机阿里云 CLI 可读 RDS，SAE 应用列表为空；真实 AccessKey 不进入仓库或文档，后续稳定后应轮换已暴露过的主账号 Key
 
 ## R8 C+ 长期资产抽取尚未落地
 
@@ -73,7 +73,7 @@
 - 补充：主模型自动开流重试已从 2 次收紧为 1 次，Android 前台流的自动 stream retry 已关闭。WorkManager 后台兜底只针对同一条 pending 图片消息，在图片上传失败、网络中断、流异常结束、`409 STREAM_IN_PROGRESS`、限流或临时上游错误时用同一 `client_msg_id` 退避重试；普通可恢复失败最多重试 5 次后移除 pending，避免弱网一抖就丢消息，也避免无限反复开流。`chat_stream_inflight` 获取结果改为校验 lease token，数据库新增同一 `user_id` 活跃流唯一约束，降低不同 `client_msg_id` 并发绕过额度预检查并多开 Qwen3.5-Plus 的风险；旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 已返回 410，不再参与主链
 - 补充：买服务器前“主聊天与图片发送”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，当前没有发现旧直连模型、旧完成接口、旧 active-zone、旧图片手势或旧上传通道在运行时并存；后续风险主要集中在真实公网 https 图片链、首版单实例 / OSS 取舍、弱网多图、后台恢复和多实例进程内保护迁移
 - 补充：买服务器前“B/C 记忆与模型调用”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，当前 B/C 提取频率、`pending_retry_b/c`、60 秒超时和 `round_total` 写回校验都与现行口径一致；多实例前仍要补摘要数据库 claim / lease，避免重复调用 Qwen3.5-Flash 和同一 `round_total` 下的非确定性覆盖
-- 风险：WorkManager 不是实时任务，系统可能延后执行；后端进行中锁当前用 30 分钟租约防死锁，若服务进程极端卡死且租约过期，后续请求才会重新接管。这个设计优先保护成本，不承诺像前台直播一样立刻可见；如果主模型上游已经被调用、但轮次还没归档就发生进程崩溃 / 上游断流 / 归档失败，同一 `client_msg_id` 后续仍可能重新开一次 Qwen3.5-Plus；当前已把自动开流重试限制在后台同一 pending 消息的有限次数内，但正式上线前若要进一步压成本风险，需要增加持久化 attempt / status 表或更完整的后端任务恢复链。如果模型已经吐完但归档写库本身失败，客户端不会收到完成态，该轮仍可能需要用户重试或人工排障。若服务进程在归档后、扣减前崩溃且短重试也失败，仍可能出现单轮成本漏记；后续若真实上线，应补后台对账任务或按业务日志做周期性巡检。B 层短期记忆 / C 层用户长期记忆当前已有 60 秒单次提取超时、本进程运行中保护和 `round_total` 写回校验，但多 SAE 实例下仍可能重复调用 Qwen3.5-Flash，后续需要数据库 claim / lease 或确认首版单实例部署
+- 风险：WorkManager 不是实时任务，系统可能延后执行；后端进行中锁当前用 30 分钟租约防死锁，若服务进程极端卡死且租约过期，后续请求才会重新接管。这个设计优先保护成本，不承诺像前台直播一样立刻可见；如果主模型上游已经被调用、但轮次还没归档就发生进程崩溃 / 上游断流 / 归档失败，同一 `client_msg_id` 后续仍可能重新开一次 Qwen3.5-Plus；当前已把自动开流重试限制在后台同一 pending 消息的有限次数内，但正式上线前若要进一步压成本风险，需要增加持久化 attempt / status 表或更完整的后端任务恢复链。如果模型已经吐完但归档写库本身失败，客户端不会收到完成态，该轮仍可能需要用户重试或人工排障。若服务进程在归档后、扣减前崩溃且短重试也失败，仍可能出现单轮成本漏记；后续若真实上线，应补后台对账任务或按业务日志做周期性巡检。B 层短期记忆 / C 层用户长期记忆当前已有 60 秒单次提取超时、本进程运行中保护和 `round_total` 写回校验，但多后端实例下仍可能重复调用 Qwen3.5-Flash，后续需要数据库 claim / lease 或确认首版单实例部署
 - 后续动作：短期把这版作为保守兜底真机观察，重点看切后台 / 杀进程后的图片消息是否能恢复、UI 是否不会消失；如果后续要做到 App 被杀后也像前台一样实时可见，需要后端提供更完整的进行中状态查询 / 结果缓存，再决定是否升级成长任务或服务通知方案
 
 ## R10 生产鉴权仍需上线前收口
@@ -104,7 +104,7 @@
 
 - 状态：未关闭
 - 说明：今日农情首版已接入独立后端链路和 Android UI-only 卡片；它不影响聊天主链、不扣用户问诊次数、不进入 A/B/C 或归档。当前生成依赖 `qwen3.5-plus + forced_search + search_strategy=max + enable_source`，生成前会把过去 7 天已 ready 的今日农情喂给模型要求去重，服务端会校验搜索来源、可信域名、近 7 天日期、广告 / 导购 / 泄露词，并硬过滤过去 7 天和当天候选里的重复链接 / 重复标题，过滤后不足 3 条则不发布新卡片
-- 风险：`max` 搜索比主对话默认 Turbo 更慢且成本更高；如果当天搜索结果来源质量不足或 DashScope 未返回 `search_info.search_results`，后端会不发布，前端静默不展示。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；云端 05:30 定时触发、失败重试、告警和人工补生成还需要真实 SAE / 调度环境落地后验证
+- 风险：`max` 搜索比主对话默认 Turbo 更慢且成本更高；如果当天搜索结果来源质量不足或 DashScope 未返回 `search_info.search_results`，后端会不发布，前端静默不展示。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；云端 05:30 定时触发、失败重试、告警和人工补生成还需要真实后端 / 调度环境落地后验证
 - 补充：买服务器前今日农情巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前没有发现用户打开 App 临时生成、写 A/B/C、写归档、扣次或伪装成 `ChatMessage` 的旧链路；残余风险主要是质量运营，比如同一事件换标题只能靠提示词和人工抽查约束、可信域名白名单偏严可能导致当天不足 3 条
 - 后续动作：上线前按 `docs/runbooks/today-agri-card.md` 配置 `DAILY_AGRI_JOB_SECRET` 和定时触发；观察 SLS 日志关键词 `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error`。若连续失败，再评估放宽可信域名、切 `turbo + assigned_site_list` 或做人工审核入口，不把失败转成用户打开 App 时临时多次调模型
 
@@ -112,7 +112,7 @@
 
 - 状态：未关闭
 - 说明：帮助与反馈当前已具备后端消息表、用户侧历史 / 发送 / 已读接口，以及 `SUPPORT_ADMIN_SECRET` 保护的内部读取会话和发送后台回复接口；Android 也能展示历史、发送文字 / 图片反馈，并在设置页“帮助与反馈”行用红点提示未读后台 / 系统消息
-- 风险：当前还不是完整客服系统，没有网页管理后台、后台账号 / 权限、工单分配、站外推送、消息搜索或未回复队列。后台想回复用户时需要先通过内部接口或未来管理后台调用，同步依赖真实服务器、数据库、上传公开域名和密钥配置。公开生产前仍必须接账号 token 并启用 `AUTH_STRICT=true`，否则裸 `X-User-Id` 能读写某个用户的帮助与反馈；多 SAE 实例前也必须先上 OSS 或保持单实例，否则帮助与反馈图片同样受本机 `/upload` 存储影响
+- 风险：当前还不是完整客服系统，没有网页管理后台、后台账号 / 权限、工单分配、站外推送、消息搜索或未回复队列。后台想回复用户时需要先通过内部接口或未来管理后台调用，同步依赖真实服务器、数据库、上传公开域名和密钥配置。公开生产前仍必须接账号 token 并启用 `AUTH_STRICT=true`，否则裸 `X-User-Id` 能读写某个用户的帮助与反馈；多后端实例前也必须先上 OSS 或保持单实例，否则帮助与反馈图片同样受本机 `/upload` 存储影响
 - 后续动作：正式服务器和管理后台规划落地后，再把帮助与反馈接入统一运营面板；优先补“按用户查看会话、发送回复、未读 / 未处理列表、基础权限和审计日志”，不要在 Android 端塞后台逻辑。账号注销 / 数据删除规则还要明确帮助与反馈消息和图片是否删除、保留多久、由谁操作
 
 ## R15 自有 APK 更新链路需要上线实机验证
@@ -142,4 +142,4 @@
 - 状态：未关闭
 - 说明：当前 App 名称按“农技千查”推进，公司主体仍是“北京农技千问科技有限公司”；但最终图标仍需重做以避开应用商店“图标重复 / 混淆”类打回，软著 / 电子版权、域名、备案号、正式截图、测试账号和应用商店物料还未全部落地
 - 风险：备案和应用商店审核虽然不是同一个流程，但 App 名称、图标、包名、签名、公钥、协议、隐私政策和展示物料如果反复变化，可能导致备案变更、应用市场反复打回或上架材料互相不一致
-- 后续动作：按 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md) 先定最终图标、包名、签名证书和软著 / 电子版权材料；买域名和中国内地云资源后立即启动 ICP / App 备案；备案等待期间并行做手机号登录、SAE / RDS / OSS / SLS 联调和应用商店物料准备；备案通过后补备案号和公安联网备案
+- 后续动作：按 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md) 先定最终图标、包名、签名证书和软著 / 电子版权材料；买域名和中国内地云资源后立即启动 ICP / App 备案；备案等待期间并行做手机号登录、后端部署 / RDS / OSS / SLS 联调和应用商店物料准备；备案通过后补备案号和公安联网备案

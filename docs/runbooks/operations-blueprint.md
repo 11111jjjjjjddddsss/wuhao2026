@@ -1,6 +1,6 @@
 # Codex 协助运维总蓝图
 
-最后更新：2026-05-17
+最后更新：2026-05-24
 
 ## 目的
 
@@ -22,14 +22,14 @@
 
 - 版本号和 `versionCode` 管理
 - debug / release 构建、签名、APK 产物检查
-- 自有服务器 APK 检查更新：`GET /api/app/update`、APK 下载链接、SHA-256、SAE `APP_ANDROID_*` 环境变量
+- 自有服务器 APK 检查更新：`GET /api/app/update`、APK 下载链接、SHA-256、后端 `APP_ANDROID_*` 环境变量
 - 真机回归：聊天、图片、会员中心、帮助与反馈、礼品卡、检查更新、设置页、预览面板
 - Baseline Profile / 关键路径性能回归
 - 崩溃、弱网、清数据、后台恢复、输入法和不同导航模式检查
 
 ### Go 后端 `server-go`
 
-- SAE 部署、环境变量、域名、HTTPS、健康检查
+- ECS 部署、环境变量、域名、HTTPS、健康检查；SAE 当前仅保留历史备选文档
 - `/api/chat/stream`、图片上传、会员额度、摘要、今日农情、帮助与反馈、检查更新等接口运维
 - 日志、错误率、模型调用失败、SSE 中断、上传失败、摘要失败、今日农情生成失败排查
 - 回滚、停更、临时降级开关和灰度策略
@@ -43,7 +43,7 @@
 
 ### 日志、监控和成本
 
-- SAE / SLS / ARMS 或后续等价监控入口
+- ECS / SLS / ARMS 或后续等价监控入口
 - 每日请求量、失败率、模型 tokens、搜索调用、图片上传量、成本估算
 - 关键告警：接口 5xx、SSE 大量中断、上传失败、额度扣减异常、数据库连接异常、今日农情连续失败、检查更新 APK 下载异常
 
@@ -90,7 +90,7 @@
 ## 买服务器后必须回填
 
 - 阿里云 Region、账号归属、命名规范
-- SAE 应用名 / 应用 ID、部署方式、健康检查、实例数、环境变量来源
+- ECS 实例 ID / 规格 / 部署方式 / 健康检查 / 实例数 / 环境变量来源；若后续重新启用 SAE，再补新的 SAE 应用名 / 应用 ID
 - RDS MySQL 实例、库名、只读账号、备份策略、白名单
 - 域名、HTTPS 证书、公开 API 基地址
 - OSS bucket、上传目录、公开访问策略或签名访问策略
@@ -110,7 +110,8 @@
 
 - [infra-readiness.md](D:/wuhao/docs/runbooks/infra-readiness.md)：正式云资源采购前准备清单
 - [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：下一阶段上线推进计划
-- [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 后端发版入口
+- [deploy-ecs.md](D:/wuhao/docs/runbooks/deploy-ecs.md)：ECS 后端发版入口
+- [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 历史备选入口
 - [rollback.md](D:/wuhao/docs/runbooks/rollback.md)：后端回滚入口
 - [logs-sls.md](D:/wuhao/docs/runbooks/logs-sls.md)：日志排查入口
 - [db-readonly.md](D:/wuhao/docs/runbooks/db-readonly.md)：数据库只读排查入口
@@ -124,6 +125,8 @@
 
 ## 参考资料
 
+- 当前首版优先 ECS，后续补 ECS 部署和日志入口时再把真实官方链接回填到本文。
+- 以下 SAE 资料仅作为历史备选路线参考；若后续重新启用 SAE，需重新按官方文档复核并更新 runbook：
 - [阿里云 SAE 应用托管概述](https://help.aliyun.com/zh/sae/application-deployment-overview)：SAE 支持应用生命周期管理、部署、升级回滚、日志和监控等运维能力
 - [阿里云 SAE 分批发布和回滚](https://help.aliyun.com/zh/sae/perform-a-phased-release-for-an-application)：多实例时可分批发布，异常时可回滚；单实例或早期低成本阶段仍要优先用低峰发布和明确回滚入口兜底
 - [阿里云 SAE 日志收集到 SLS](https://help.aliyun.com/zh/sae/serverless-app-engine-classic/user-guide/configure-log-collection-to-log-service)：真实接入日志前需要按当前官方文档复核 Project / Logstore / 采集配置

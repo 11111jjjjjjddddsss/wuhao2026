@@ -1,6 +1,6 @@
 # 下一阶段上线推进计划
 
-最后更新：2026-05-22
+最后更新：2026-05-24
 
 ## 目的
 
@@ -11,7 +11,7 @@
 ## 总判断
 
 - 备案不要等手机号登录做完后才开始；买好符合备案条件的中国内地云资源和域名后，应立即启动 ICP / App 备案。
-- 手机号登录、SAE 部署、RDS、OSS、SLS、帮助与反馈、检查更新、模型 Key 池等技术联调，可以在备案审核等待期间并行推进。
+- 手机号登录、ECS 后端部署、RDS、OSS、SLS、帮助与反馈、检查更新、模型 Key 池等技术联调，可以在备案审核等待期间并行推进。
 - 应用商店审核和备案不是同一个口：商标注册通常不是上架硬前置，但 App 名称、图标、软著 / 电子版权、备案号、隐私合规和截图物料需要尽量一致。
 - 当前 App 名称按“农技千查”推进；公司主体仍是“北京农技千问科技有限公司”，不要把公司名机械改成产品名。
 
@@ -31,10 +31,10 @@
 目标：先把等待周期最长的备案跑起来。
 
 1. 买域名，并完成企业实名认证。
-2. 买中国内地云资源，优先按 `SAE + RDS MySQL + 域名 / HTTPS` 落最小生产链。
+2. 买中国内地云资源，优先按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链。
 3. 进入阿里云 ICP / App 备案流程，提交主体、域名、App 名称、图标、包名、签名、公钥、指纹、负责人和服务内容。
 4. 完成短信核验，等待阿里云初审和管局审核。
-5. 如果备案控制台提示当前资源不满足备案校验，再补最低成本的可备案云产品兜底；后端仍可继续部署在 SAE。
+5. 如果备案控制台提示当前资源不满足备案校验，再补最低成本的可备案云产品兜底；后端当前优先部署在 ECS，若后续因平台能力重新启用 SAE，必须同步更新 runbook。
 
 注意：
 - 不要把未备案域名直接解析到中国内地生产资源对外提供服务。
@@ -44,13 +44,13 @@
 
 目标：不要干等备案，把真实后端链路补齐。
 
-- 部署 `server-go` 到 SAE，配置健康检查、环境变量和基础日志。
+- 部署 `server-go` 到 ECS，配置 `systemd`、反向代理、健康检查、环境变量和基础日志。
 - 接 RDS MySQL，跑迁移，确认备份、白名单和只读排查方式。
 - 配置两把或多把不同阿里云主账号的 DashScope Key，按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化来源、充值、告警和轮换责任。
 - 接手机号登录 / 服务端可验证 token，并在公开生产环境开启 `AUTH_STRICT=true`，逐步关闭裸 `X-User-Id` 兜底；正式 release APK 不使用共享静态 `SESSION_API_TOKEN`，由后端按真实用户动态签发 per-user token。
 - 接 OSS 图片存储，配置 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`，确保模型能访问 https 图片。
 - 接 SLS 日志，至少覆盖主对话、上传、帮助与反馈、今日农情、检查更新和模型调用失败。
-- 若首版暂不接 OSS，则 SAE 必须先保持单实例；计划多实例前必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储。
+- 若首版暂不接 OSS，则 ECS 必须先保持单台；计划多后端实例前必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储。
 - 数据库迁移不要在多实例首次启动时抢跑；多实例发布前应把迁移改成单独发布步骤或补迁移锁。
 - 验证主聊天 SSE、图片上传、B 层短期记忆、C 层用户长期记忆、今日农情、会员额度、帮助与反馈、礼品卡占位、检查更新 APK 链路。
 - 准备应用商店物料：软著 / 电子版权、隐私政策链接或页面、测试账号、截图、应用描述、权限说明和备案信息占位。
@@ -80,7 +80,7 @@
 
 - 观察主聊天成功率、SSE 中断、图片上传失败、模型限流、B/C 摘要失败、今日农情生成失败、检查更新下载失败。
 - 记录真实 tokens、搜索次数、图片量和单轮成本，校准会员价格与加油包规则。
-- 观察 RDS 会话连接、连接数利用率、TPS / QPS、慢查询、行锁、IOPS、CPU / 内存，再决定是否调整 `MYSQL_MAX_OPEN_CONNS` 等连接池参数、SAE 实例数或 Redis / 网关限流。
+- 观察 RDS 会话连接、连接数利用率、TPS / QPS、慢查询、行锁、IOPS、ECS CPU / 内存，再决定是否调整 `MYSQL_MAX_OPEN_CONNS` 等连接池参数、ECS 规格 / 实例数或 Redis / 网关限流。
 - 帮助与反馈先用内部接口或最小后台处理，后续再做统一管理后台。
 - 后台第一阶段优先做：按用户查看反馈 / 回复、用户额度查询、检查更新状态、今日农情状态、基础日志入口。
 - 每次真实发版、回滚、查日志、查库、补权益或处理客服，都要把可执行入口回填到对应 runbook。
@@ -98,6 +98,7 @@
 - [infra-readiness.md](D:/wuhao/docs/runbooks/infra-readiness.md)：云资源采购前检查单
 - [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：买服务器前功能巡检记录
 - [operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md)：后期 Codex 协助运维总蓝图
-- [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 部署入口
+- [deploy-ecs.md](D:/wuhao/docs/runbooks/deploy-ecs.md)：ECS 部署入口
+- [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 历史备选入口
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：自有 APK 检查更新入口
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈入口

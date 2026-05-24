@@ -11,7 +11,7 @@
 
 ## 环境变量
 
-推荐在 SAE 环境变量里预留 2 到 3 个独立账号 Key：
+推荐在后端运行环境变量里预留 2 到 3 个独立账号 Key；ECS 路线可放在服务器环境文件 / systemd EnvironmentFile 中，若后续重新启用 SAE 再放到 SAE 环境变量：
 
 ```text
 DASHSCOPE_API_KEY_1=<账号A的Key>
@@ -55,7 +55,7 @@ DASHSCOPE_API_KEYS
 
 ## 排查
 
-1. 确认 SAE 环境变量已配置至少一把 Key，且没有把真实 Key 写进仓库。
+1. 确认后端运行环境变量已配置至少一把 Key，且没有把真实 Key 写进仓库。
 2. 如果仍频繁限流，先确认 Key 是否来自不同阿里云主账号；同主账号多个 Key 不会增加真实 RPM / TPM。
 3. 查看后端日志里的上游状态码：`429` 通常是请求或 token 限流，`401 / 403` 多数是 Key 权限、状态或账号问题。
 4. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情强制 `enable_search=true`、`search_strategy=max`。
