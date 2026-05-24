@@ -81,18 +81,18 @@ Android 构建链：
 
 模型：
 - 主模型：Qwen3.5-Plus，用于农业问诊分析、图片理解、推理判断
-- 摘要模型：Qwen3.5-Flash，用于 B 层短期记忆、C 层长期农业记忆；摘要请求显式关闭思考模式
-- 当前所有真实模型调用统一显式设置 `temperature=0.8`：主对话、B 层短期记忆、C 层长期农业记忆、今日农情生成都走后端同一个温度常量；`top_p / max_tokens / penalty` 等其他采样参数暂不显式设置，继续走模型服务默认值
+- 摘要模型：Qwen3.5-Flash，用于 B 层短期记忆、C 层用户长期记忆；摘要请求显式关闭思考模式
+- 当前所有真实模型调用统一显式设置 `temperature=0.8`：主对话、B 层短期记忆、C 层用户长期记忆、今日农情生成都走后端同一个温度常量；`top_p / max_tokens / penalty` 等其他采样参数暂不显式设置，继续走模型服务默认值
 - 后端模型 Key 池支持 `DASHSCOPE_API_KEY`、`DASHSCOPE_API_KEY_1/2/3` 和 `DASHSCOPE_API_KEYS` 逗号 / 分号 / 换行列表，自动去重并轮询使用；主对话、B/C 摘要和今日农情共用该池。若模型请求打开阶段遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400`，后端会在流开始前切到下一把 Key，并把触发限流的 Key 冷却 60 秒；一旦 SSE 流已经成功开始，不在同一条回复中途切 Key。扩真实并发必须使用不同阿里云主账号的 Key；同一主账号下多个 API Key 共享该账号 RPM / TPM 限流，只适合轮换或应急，不算扩容
 
 上下文结构：
 - A 层历史滑窗：Free / Plus 6 轮，Pro 9 轮
-- B 层短期工作记忆：默认≤350字，复杂场景最多≤500字；定位是当前主线 / 当前病例短期承接，不承载长期画像
-- C 层长期农业记忆：默认≤260字，复杂场景最多≤320字；每 20 轮更新一次，提取输入为旧 C 层长期农业记忆 + `session_round_archive` 最近 20 轮完整问答，不使用 A 层 6/9 轮窗口替代 20 轮归档；如果归档不足 20 轮，则保持 `pending_retry_c`，后续轮次完成后继续补提取
+- B 层短期工作记忆：默认≤350字，复杂场景最多≤500字；定位是全场景当前主线 / 当前事务短期承接，不承载长期画像
+- C 层用户长期记忆：默认≤260字，复杂场景最多≤320字；每 20 轮更新一次，提取输入为旧 C 层用户长期记忆 + `session_round_archive` 最近 20 轮完整问答，不使用 A 层 6/9 轮窗口替代 20 轮归档；如果归档不足 20 轮，则保持 `pending_retry_c`，后续轮次完成后继续补提取。C 层定位是农业长期档案 + 通用用户画像 / 偏好，不是通用知识库、病例流水账、平台规则库或账户记录
 - 锚点信息：约 1000 tokens，每轮必注入
-- 待评估方向：后续可能把 C 层升级成 `C+ = 长期摘要 + 用户农业画像 + 用户农业档案`；在代码落地前，当前真实实现仍以 `server-go` 的 `session_ab.c_summary` 为准
+- 待评估方向：后续可能把 C 层升级成结构化 `C+ = 通用用户画像 + 农业长期档案 + 使用偏好`；在代码落地前，当前真实实现仍以 `server-go` 的 `session_ab.c_summary` 文本为准
 - 原始问诊归档：成功完成的问答轮次会写入 `session_round_archive`，先按 30 天滚动保留；`/api/session/snapshot` 给 UI 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档。该归档只服务换机 / 重装后的 UI 历史恢复和后续批量抽取，不进入每轮主模型上下文，不替代 A/B/C
-- 删除所有历史对话：账号管理页会先弹“取消 / 确定”二次确认；确认后 Android 调 `POST /api/session/clear`，后端删除当前用户的 `session_ab`（A 层滑窗、B 层短期记忆、C 层长期农业记忆）和 `session_round_archive` 归档，前端成功后清当前聊天 UI、本地聊天快照、输入草稿、streaming draft、待发送 WorkManager 任务和本地私有 composer 图片。该操作不删除会员 / 额度 / 加油包 / 礼品卡、帮助与反馈、`quota_ledger` 或本机 `user_id`。`/api/chat/stream` 会在读取 A/B/C 快照和组装 prompt 前先获取同用户活跃流锁；若同一用户当前有活跃主对话流，后端返回 `409 ACTIVE_CHAT_STREAM`，前端提示稍后再删除，避免正在生成的旧回复或旧快照在删除后重新归档
+- 删除所有历史对话：账号管理页会先弹“取消 / 确定”二次确认；确认后 Android 调 `POST /api/session/clear`，后端删除当前用户的 `session_ab`（A 层滑窗、B 层短期记忆、C 层用户长期记忆）和 `session_round_archive` 归档，前端成功后清当前聊天 UI、本地聊天快照、输入草稿、streaming draft、待发送 WorkManager 任务和本地私有 composer 图片。该操作不删除会员 / 额度 / 加油包 / 礼品卡、帮助与反馈、`quota_ledger` 或本机 `user_id`。`/api/chat/stream` 会在读取 A/B/C 快照和组装 prompt 前先获取同用户活跃流锁；若同一用户当前有活跃主对话流，后端返回 `409 ACTIVE_CHAT_STREAM`，前端提示稍后再删除，避免正在生成的旧回复或旧快照在删除后重新归档
 - 时间 / 地点：后端每轮主对话必须注入当前时间、用户地点和地点可信度；历史轮次如果有后端 `created_at / region / region_source / region_reliability`，进入模型上下文时也要带轻量时间 / 地点前缀。时间以后端服务器时间为准，不用前端手机时间当业务真相；前端暂不显示每条消息时间戳或地点条。当前 Android 尚未接定位权限 / 地区选择，真实地点需要后续单独做；未传地点时后端只能走 IP / 未知兜底
 
 图片规则：
@@ -106,7 +106,7 @@ Android 构建链：
 - 输入框图片预览和聊天区用户图片预览共用 `ImagePreviewPager.kt`，内部使用 Telephoto `ZoomableAsyncImage` + `HorizontalPager`，支持单击图片关闭、左右滑动切换同组图片、双指缩放、放大后拖动查看细节以及 Telephoto 的边界阻尼 / 嵌套滚动 handoff；旧 `ImagePreviewGesture.kt` 手写手势链已删除，不允许和 Telephoto 链并存。图片预览只属于 composer / 消息内容内部，不能进入聊天列表 bottom reserve 或工作线计算
 - 带图发送会按 `chatScopeId + userMessageId` 排一个唯一 WorkManager 延迟兜底任务：前台仍是正常流式显示主人，后台只在前台不活跃且远端启动保护窗已过时才补发；前台一旦开始 `/api/chat/stream` 会写入 10 分钟保护窗；若后台兜底遇到图片上传失败、网络中断、流异常结束、`409 STREAM_IN_PROGRESS`、限流或临时上游错误，会用同一 `client_msg_id` 走 WorkManager 指数退避重试，普通可恢复失败最多重试 5 次后移除 pending，避免无限烧模型成本；若 assistant 失败态已存在远端图片 URL，用户点击重试也会重新登记同一条 pending，让 App 随后被杀时仍能由 WorkManager 兜底；后端 `chat_stream_inflight` 会按 `user_id` 限制同一用户同时只有一条活跃主流式请求，并用 `user_id + client_msg_id + lease_token` 做同消息幂等锁，确保活跃租约内只有一个上游模型流启动；重复同消息返回 `409 STREAM_IN_PROGRESS` 给前端走长窗口 snapshot 恢复，不同消息并发会被同一用户活跃锁拒掉，优先保护模型成本和扣次一致性
 - 后端完成后的 replay 真源以 `session_round_ledger` / 归档成功为准，服务端只在轮次归档成功后才向客户端发送 SSE `[DONE]`；额度扣减在归档成功后执行，若 `ConsumeOnDone` 临时失败会按同一 `client_msg_id` 短重试，重复扣由 `quota_ledger` 唯一键防住；replay 只用于恢复已归档答案，不再根据当前档位 / 当前日期补扣旧轮次，避免会员档位变化或跨日后误扣。主模型上游开流不做服务端自动二次重试，Android 前台流也不对模型开流失败做静默多次重试；后台 WorkManager 只对同一条 pending 图片消息做带上限的可恢复失败重试。如果 App 在图片上传阶段或上传成功但尚未可靠完成远端请求时被系统杀掉，后台任务会复用本地稳定图片副本或已上传 URL 继续补发；若后端已用同一 `client_msg_id` 完成归档，则按 replay / snapshot 恢复收口；如果前台已经显示“发送失败”，后台任务会同步取消，不允许 UI 失败态和后台自动发送并存
-- B 层短期记忆 / C 层长期农业记忆由后端 Qwen3.5-Flash 异步处理，摘要请求显式设置 `enable_thinking=false`，单次提取请求有 60 秒超时保护；B 层使用当前 A 层 6/9 轮窗口更新，C 层使用 `session_round_archive` 最近 20 轮完整问答更新；同一用户同一层有本进程运行中保护；摘要写回必须匹配触发时的 `round_total`，旧快照结果不能覆盖更新轮次。提取失败或超时会保持对应 `pending_retry_b / pending_retry_c`，后续轮次完成后继续补提取
+- B 层短期记忆 / C 层用户长期记忆由后端 Qwen3.5-Flash 异步处理，摘要请求显式设置 `enable_thinking=false`，单次提取请求有 60 秒超时保护；B 层使用当前 A 层 6/9 轮窗口更新，C 层使用 `session_round_archive` 最近 20 轮完整问答更新；同一用户同一层有本进程运行中保护；摘要写回必须匹配触发时的 `round_total`，旧快照结果不能覆盖更新轮次。提取失败或超时会保持对应 `pending_retry_b / pending_retry_c`，后续轮次完成后继续补提取
 - App 内相机优先让外部相机写入 App cache 下的 `NongjiFileProvider` 临时 URI；manifest 声明 `ACTION_IMAGE_CAPTURE` 查询，启动外部相机时会给输出 URI 加读写 grant flags、ClipData，并按可解析相机包显式授权，回调或启动失败后撤销授权。导入 App 私有 `composer_images` 成功后，Android Q+ 再把原始拍照结果复制到系统相册 `Pictures/农技千查`。临时文件、拍照取消和相机启动失败都会清理；只有 FileProvider 目标创建失败时才回退到直接创建相册 URI。相机待回调 URI、是否相册保存和临时文件路径当前用可保存状态暂存，降低外部相机期间 Activity 重建导致拍照结果丢失的概率
 - 当前图片入口不额外申请相册 / 相机 / 存储权限：照片入口使用系统 Photo Picker，拍照入口使用外部相机写入 App 创建的 FileProvider URI，Android Q+ 复制到本 App 创建的相册图片不需要存储权限。定位采集尚未接入，不顺手声明定位权限
 
@@ -144,7 +144,7 @@ Android 构建链：
 当前真源文件：
 - 主对话锚点：[server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
 - B 层短期记忆提示词：[server-go/assets/b_extraction_prompt.txt](D:/wuhao/server-go/assets/b_extraction_prompt.txt)
-- C 层长期农业记忆提示词：[server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
+- C 层用户长期记忆提示词：[server-go/assets/c_extraction_prompt.txt](D:/wuhao/server-go/assets/c_extraction_prompt.txt)
 
 规则：
 - 三个文件职责不同，不允许合并
@@ -412,7 +412,7 @@ Markdown 表格：
 - 图片上传、会员、上下文、模型、摘要、恢复等后端能力，默认都以 `server-go` 为准
 - `/api/chat/stream` 当前允许纯文字、纯图片、图文混合；只有文字和图片都为空时才拒绝
 - `/api/chat/stream` 在纯图片且用户未输入文字时，会由后端给模型补一条内部说明：“用户本轮只上传了图片，未补充文字描述……”，让模型先基于图片可见信息给农业技术参考判断并追问必要信息；该说明不作为用户可见消息展示
-- 旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 已废弃并返回 `410 DEPRECATED_ENDPOINT`；当前轮次归档、B 层短期记忆 / C 层长期农业记忆和图片上下文都必须走 `/api/chat/stream` 后端主链，避免旧接口绕过额度扣减或重复触发摘要模型
+- 旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 已废弃并返回 `410 DEPRECATED_ENDPOINT`；当前轮次归档、B 层短期记忆 / C 层用户长期记忆和图片上下文都必须走 `/api/chat/stream` 后端主链，避免旧接口绕过额度扣减或重复触发摘要模型
 - 以后如需 Codex 参与运维，优先走脚本、CLI、OpenAPI 这类可审计入口
 
 优先级：
