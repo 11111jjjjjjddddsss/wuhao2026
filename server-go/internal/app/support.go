@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -35,6 +36,10 @@ type SupportSummary struct {
 type supportMessageRequest struct {
 	Body   string   `json:"body"`
 	Images []string `json:"images"`
+}
+
+type supportReadRequest struct {
+	LastSeenMessageID int64 `json:"last_seen_message_id"`
 }
 
 type supportAdminMessageRequest struct {
@@ -119,7 +124,12 @@ func (s *Server) handleMarkSupportRead(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := s.store.MarkSupportMessagesRead(r.Context(), auth.UserID, time.Now().UnixMilli()); err != nil {
+	var body supportReadRequest
+	if err := decodeJSONBody(r, &body); err != nil && err != io.EOF {
+		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	if err := s.store.MarkSupportMessagesRead(r.Context(), auth.UserID, time.Now().UnixMilli(), body.LastSeenMessageID); err != nil {
 		s.logger.Error("mark support messages read failed", "userId", auth.UserID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
@@ -308,17 +318,18 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 	}, nil
 }
 
-func (s *Store) MarkSupportMessagesRead(ctx context.Context, userID string, readAt int64) error {
-	_, err := s.db.ExecContext(
-		ctx,
-		`UPDATE support_messages
+func (s *Store) MarkSupportMessagesRead(ctx context.Context, userID string, readAt int64, lastSeenMessageID int64) error {
+	query := `UPDATE support_messages
 		    SET read_by_user_at = ?
 		  WHERE user_id = ?
 		    AND sender_type IN ('admin', 'system')
-		    AND read_by_user_at IS NULL`,
-		readAt,
-		userID,
-	)
+		    AND read_by_user_at IS NULL`
+	args := []any{readAt, userID}
+	if lastSeenMessageID > 0 {
+		query += " AND id <= ?"
+		args = append(args, lastSeenMessageID)
+	}
+	_, err := s.db.ExecContext(ctx, query, args...)
 	return err
 }
 

@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -1635,6 +1636,7 @@ private fun HamburgerSupportFeedbackPage(
     onAttachmentMenuVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     var messages by remember { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
     var inputText by remember { mutableStateOf("") }
@@ -1868,10 +1870,24 @@ private fun HamburgerSupportFeedbackPage(
                 return@getSupportMessages
             }
             messages = loaded
-            SessionApi.markSupportRead {
+            val lastSeenMessageId = loaded
+                .asSequence()
+                .filter { it.senderType == "admin" || it.senderType == "system" }
+                .mapNotNull { it.id }
+                .maxOrNull()
+            if (lastSeenMessageId == null) {
+                onConversationChanged()
+                return@getSupportMessages
+            }
+            SessionApi.markSupportRead(lastSeenMessageId = lastSeenMessageId) {
                 if (it) {
                     messages = messages.map { message ->
-                        if (message.senderType == "user" || message.readByUserAt != null) {
+                        val messageId = message.id
+                        if (message.senderType == "user" ||
+                            message.readByUserAt != null ||
+                            messageId == null ||
+                            messageId > lastSeenMessageId
+                        ) {
                             message
                         } else {
                             message.copy(readByUserAt = System.currentTimeMillis())
@@ -1917,9 +1933,7 @@ private fun HamburgerSupportFeedbackPage(
                 }
                 loadFailed = false
                 messages = messages + sent
-                SessionApi.markSupportRead {
-                    onConversationChanged()
-                }
+                onConversationChanged()
             }
         }
     }
@@ -1946,6 +1960,7 @@ private fun HamburgerSupportFeedbackPage(
             },
             onAddClick = {
                 if (!sending) {
+                    focusManager.clearFocus(force = true)
                     attachmentMenuVisible = true
                 }
             },

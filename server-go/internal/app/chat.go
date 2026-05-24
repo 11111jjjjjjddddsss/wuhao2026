@@ -111,6 +111,46 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !s.bailian.HasKeyConfigured() {
+		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"error":   "MODEL_BACKEND_NOT_CONFIGURED",
+			"message": "后端未配置大模型服务，当前无法使用真实流式对话",
+		})
+		return
+	}
+
+	acquiredInflight, inflightToken, err := s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
+	if err != nil {
+		s.logger.Error("acquire chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !acquiredInflight {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STREAM_IN_PROGRESS",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
+	defer func() {
+		if err := s.store.ReleaseChatStreamInflight(context.Background(), auth.UserID, clientMsgID, inflightToken); err != nil {
+			s.logger.Warn("release chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		}
+	}()
+
+	completed, err = s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
+	if err != nil {
+		s.logger.Error("recheck session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if completed {
+		s.writeSSEHeaders(w)
+		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
+		s.writeSSEString(w, "data: [DONE]\n\n")
+		return
+	}
+
 	tier, _, err := s.store.GetTierForUser(ctx, auth.UserID, TierFree)
 	if err != nil {
 		s.logger.Error("get tier failed", "userId", auth.UserID, "error", err)
@@ -155,46 +195,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"region_source", region.Source,
 		"region_reliability", region.Reliability,
 	)
-
-	if !s.bailian.HasKeyConfigured() {
-		s.writeJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"error":   "MODEL_BACKEND_NOT_CONFIGURED",
-			"message": "后端未配置大模型服务，当前无法使用真实流式对话",
-		})
-		return
-	}
-
-	acquiredInflight, inflightToken, err := s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
-	if err != nil {
-		s.logger.Error("acquire chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if !acquiredInflight {
-		s.writeJSON(w, http.StatusConflict, map[string]any{
-			"error":         "STREAM_IN_PROGRESS",
-			"client_msg_id": clientMsgID,
-		})
-		return
-	}
-	defer func() {
-		if err := s.store.ReleaseChatStreamInflight(context.Background(), auth.UserID, clientMsgID, inflightToken); err != nil {
-			s.logger.Warn("release chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		}
-	}()
-
-	completed, err = s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
-	if err != nil {
-		s.logger.Error("recheck session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if completed {
-		s.writeSSEHeaders(w)
-		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
-		s.writeSSEString(w, "data: [DONE]\n\n")
-		return
-	}
 
 	allowed, retryAfterSec := s.rateLimiter.Consume(auth.UserID, time.Now())
 	if !allowed {

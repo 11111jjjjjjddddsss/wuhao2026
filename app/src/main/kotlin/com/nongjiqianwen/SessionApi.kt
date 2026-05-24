@@ -415,13 +415,18 @@ object SessionApi {
         )
     }
 
-    fun markSupportRead(onResult: (Boolean) -> Unit = {}) {
+    fun markSupportRead(lastSeenMessageId: Long = 0L, onResult: (Boolean) -> Unit = {}) {
         val base = baseUrl()
         if (base.isEmpty()) {
             postToMain { onResult(false) }
             return
         }
-        val requestBody = "{}".toRequestBody("application/json".toMediaType())
+        val payload = JsonObject().apply {
+            if (lastSeenMessageId > 0L) {
+                addProperty("last_seen_message_id", lastSeenMessageId)
+            }
+        }
+        val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
         enqueueWithRetry401(
             requestFactory = { token ->
                 val builder = applyIdentityHeaders(

@@ -3436,6 +3436,8 @@ fun ChatScreen() {
             ?.takeIf { message ->
                 message.role == ChatRole.USER &&
                     message.content == text &&
+                    message.imageUris.orEmpty().isEmpty() &&
+                    message.imageUrls.orEmpty().isEmpty() &&
                     failedUserMessageStates.containsKey(message.id)
             }
             ?.id
@@ -5235,6 +5237,19 @@ fun ChatScreen() {
             if (existingAssistantIndex >= 0) {
                 messages.removeAt(existingAssistantIndex)
             }
+            if (hasRemoteHistorySource && uploadedImageUrls.isNotEmpty()) {
+                PendingChatSendRuntime.markActive(sourceUserMessage.id)
+                PendingChatSendWorkScheduler.enqueue(
+                    context = context,
+                    pending = PendingChatSend(
+                        chatScopeId = chatScopeId,
+                        userMessageId = sourceUserMessage.id,
+                        text = sourceUserMessage.content,
+                        imageUris = previewImageUris,
+                        imageUrls = uploadedImageUrls
+                    )
+                )
+            }
             commitSendMessage(
                 text = sourceUserMessage.content,
                 uploadedImageUrls = uploadedImageUrls,
@@ -5268,7 +5283,10 @@ fun ChatScreen() {
                 return
             }
             if (imageSnapshot.isEmpty()) {
-                commitSendMessage(text = trimmedText)
+                commitSendMessage(
+                    text = trimmedText,
+                    existingUserMessageId = findFailedUserMessageIdByText(trimmedText)
+                )
                 return
             }
             val previewImageUris = imageSnapshot.map { it.uri }
