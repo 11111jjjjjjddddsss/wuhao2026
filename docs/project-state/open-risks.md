@@ -49,14 +49,14 @@
 - 风险：如果外发内容不自包含，对方仍可能脑补仓库结构、假设不存在的接口，导致方案听起来合理但无法直接落地
 - 后续动作：继续坚持“问题说明 + 关键代码片段 + 明确追问 + 已排除项 + 限制条件”的短稿格式；尤其发给小米 / MiMo 时要把当前真实代码结构、关键函数 / 状态和不能碰的旧方案写清楚。收到方案后先由 Codex 对照当前代码核验再下刀
 
-## R7 正式云资源尚未采购
+## R7 正式云资源部分落地，真实后端仍未部署
 
 - 状态：未关闭
-- 说明：当前仓库已经有 `server-go` 主线和 SAE / 回滚 / 日志 / 数据库只读 runbook 骨架，但正式服务器、数据库、域名、HTTPS 和日志项目都还未真正落地。首版采购倾向已从 PolarDB 调整为 RDS MySQL，PolarDB 暂作为后续高规格升级选项
-- 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，容易因为真实环境参数缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节
+- 说明：当前已在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；当前仍是 SAE 默认 demo 镜像，尚未部署 `server-go`。域名 `nongjiqiancha.cn` 已购买，但实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和 SAE 域名绑定仍未完成。RDS MySQL、OSS、SLS 和真实日志项目尚未落地；PolarDB 暂作为后续高规格升级选项
+- 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，仍可能因为 RDS / OSS / SLS / 域名绑定 / 备案状态缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节；当前 SAE 只有单实例且本机 uploads 仍未迁 OSS，多实例或自动弹性开启前仍有图片 404 和摘要重复提取风险
 - 补充：后端已支持 `DASHSCOPE_API_KEY_1/2/3` 多 Key 池和限流前置切 Key，但真实并发扩容必须使用不同阿里云主账号的 Key；同一主账号多个 API Key 共享 RPM / TPM 限流。朋友账号 Key 可短期兜底，但长期生产会带来账单、权限、密钥轮换和数据处理责任不在自己名下的运维风险
 - 补充：买服务器前高并发巡检结论已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。Go 语言本身不是当前瓶颈；首版单实例可跑早期。若首版不接 OSS，SAE 必须先保持单实例；若要多实例，必须先把图片上传和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储，否则上传落到 A 实例、后续请求或模型公网拉图打到 B 实例时可能 404。多实例发布前还要把数据库迁移改成单独发布步骤或补迁移锁，避免多个实例首次启动同时跑迁移
-- 后续动作：采购前先按 `docs/runbooks/infra-readiness.md` 把 Region、环境命名、RDS MySQL 规格 / 备份 / 白名单、SAE、域名/HTTPS、OSS/SLS/Redis 是否首版接入这些问题拍板；第一套真实环境落地后，同次回填 deploy / rollback / logs / db-readonly runbook，并按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任；RDS 规格确认后再按真实连接数配置 `MYSQL_MAX_OPEN_CONNS` 等连接池环境变量
+- 后续动作：下一步优先购买并配置北京区 RDS MySQL，确认同 VPC / 白名单 / 备份策略；随后决定 OSS / SLS 是否首版一起接入。部署真实后端镜像前，回填 [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 的镜像构建、环境变量、健康检查和回滚入口；按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任；RDS 规格确认后再按真实连接数配置 `MYSQL_MAX_OPEN_CONNS` 等连接池环境变量。当前本机阿里云 CLI 可读 SAE 应用，但真实 AccessKey 不进入仓库或文档，后续稳定后应轮换已暴露过的主账号 Key
 
 ## R8 C+ 长期资产抽取尚未落地
 

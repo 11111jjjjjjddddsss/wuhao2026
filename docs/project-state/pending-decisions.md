@@ -22,9 +22,9 @@
 
 ## D4 正式云资源首版怎么落
 
-- 当前选项：首版倾向 `SAE + RDS MySQL + 域名/HTTPS` 跑最小生产链；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；仍可选择先上一套测试/预发环境再买正式规格
-- 现状：仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也已补 `docs/runbooks/infra-readiness.md` 作为采购前检查单；`docs/runbooks/go-live-plan.md` 已固定下一阶段顺序：买域名 / 云资源后立即启动 ICP / App 备案，手机号登录和真实后端联调在备案等待期间并行推进；买服务器前功能巡检记录已开始沉淀到 `docs/runbooks/pre-server-feature-audit.md`；但真实云资源、Region、环境命名和实例规格都还没定
-- 待定原因：你现在还没买服务器，正式环境资源一旦落地，就会影响后续部署、日志、数据库、域名、环境变量和 runbook 的真实入口；RDS 规格、备份策略、白名单、是否拆测试 / 生产、首版是否接 OSS、SAE 是否先单实例、数据库迁移是否独立执行仍需采购前确认
+- 当前选项：首版按 `SAE + RDS MySQL + 域名/HTTPS` 跑最小生产链；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；短期先单环境跑通，是否拆测试 / 生产等真实联调后再评估
+- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地；标准版 SAE 应用 `nongjiqiancha` 已创建，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，当前仍是默认 demo 镜像；域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和 SAE 绑定。仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也已补 `docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI 读取 SAE 应用
+- 待定原因：RDS MySQL 规格、备份策略、白名单 / 同 VPC 配置、是否首版接 OSS / SLS、数据库迁移是否独立执行、真实后端镜像构建 / 推送 / 回滚入口、域名解析和备案流程仍未拍板 / 落地
 
 ## D5 C+ 长期记忆怎么落地
 

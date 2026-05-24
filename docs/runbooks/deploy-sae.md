@@ -1,6 +1,6 @@
 # SAE 发版 Runbook
 
-最后更新：2026-05-22
+最后更新：2026-05-24
 
 ## 目的
 
@@ -9,6 +9,9 @@
 ## 当前现状
 
 - 主规则已明确 SAE 优先走脚本、CLI、OpenAPI 等可审计入口
+- 当前已在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启
+- 当前 SAE 仍运行默认 demo 镜像：`cn-beijing.online-vpc.cr.sae.aliyuncs.com/sae-serverless-public/sae-demo:microservice-java-provider-v1.0`，尚未部署 `server-go` 真实后端镜像
+- 本机已安装阿里云 CLI 到 `C:/Users/Administrator/AppData/Local/Programs/AliyunCLI/aliyun.exe`，默认 Region 为 `cn-beijing`。查询 SAE 时当前需要显式 endpoint：`--endpoint sae.cn-beijing.aliyuncs.com`
 - 本仓库当前尚未固化正式发版脚本或标准化发布命令
 
 ## 后续补充要求
@@ -19,6 +22,14 @@
   - 成功判定方式
   - 回滚触发条件
   - 相关环境变量来源
+
+## 当前可用检查命令
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\AliyunCLI\aliyun.exe" sae ListApplications --RegionId cn-beijing --endpoint sae.cn-beijing.aliyuncs.com
+```
+
+该命令只能说明 CLI 能访问 SAE 和当前应用壳子存在，不代表 `server-go` 已部署成功。
 
 ## 当前必须确认的环境变量
 

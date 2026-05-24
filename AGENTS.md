@@ -71,9 +71,10 @@ Android 构建链：
 - 带图片发送的延迟后台兜底使用 AndroidX WorkManager `work-runtime-ktx:2.11.2`
 
 部署与基础设施：
-- 部署：阿里云 SAE
-- 数据库：首版倾向阿里云 RDS MySQL；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
-- Go 后端数据库连接池可用 `MYSQL_MAX_OPEN_CONNS`、`MYSQL_MAX_IDLE_CONNS`、`MYSQL_CONN_MAX_IDLE_SECONDS`、`MYSQL_CONN_MAX_LIFETIME_SECONDS` 调整；默认仍为 10 open / 10 idle / 5 分钟 idle / 30 分钟 lifetime。买服务器前不盲目调参，等 RDS 规格、SAE 实例数和真实监控数据确定后再改环境变量
+- 部署：阿里云 SAE。当前已在 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；当前仍是 SAE 默认 demo 镜像，尚未部署 `server-go` 真实后端镜像。运维侧本机已安装阿里云 CLI，默认 Region 为 `cn-beijing`；真实 AccessKey 只允许保存在本机 CLI 配置或云端密钥管理中，不允许写入仓库、聊天记忆或文档
+- 域名：`nongjiqiancha.cn` 已在阿里云购买，用作后续 `api.nongjiqiancha.cn`、下载域名和管理后台域名的基础；当前仍需完成域名实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和 SAE 域名绑定后才能对外正式服务
+- 数据库：首版倾向阿里云 RDS MySQL；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项。当前 RDS 尚未购买 / 配置
+- Go 后端数据库连接池可用 `MYSQL_MAX_OPEN_CONNS`、`MYSQL_MAX_IDLE_CONNS`、`MYSQL_CONN_MAX_IDLE_SECONDS`、`MYSQL_CONN_MAX_LIFETIME_SECONDS` 调整；默认仍为 10 open / 10 idle / 5 分钟 idle / 30 分钟 lifetime。RDS 规格、SAE 实例数和真实监控数据确定前不盲目调参
 - 可选组件：Redis、OSS、SLS
 - Android “检查更新”走自有服务器 APK 分发：后端 `GET /api/app/update` 由 `APP_ANDROID_*` 环境变量控制最新版本、APK 下载地址和可选 APK SHA-256；Android 端下载 https APK 后会先校验最终 https、可选文件大小、可选 SHA-256、包名和 `versionCode`，通过后才调起系统安装确认，不做静默安装，不走应用商店主链
 
