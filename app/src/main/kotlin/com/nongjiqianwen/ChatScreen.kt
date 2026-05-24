@@ -2579,6 +2579,7 @@ fun ChatScreen() {
     var membershipEntitlement by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.EntitlementSnapshot?>(null) }
     var membershipPurchaseSuccessVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipRefreshNonce by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var membershipRefreshEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete) {
         if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
         val card = awaitTodayAgriCard()
@@ -3002,8 +3003,13 @@ fun ChatScreen() {
     }
 
     suspend fun refreshMembershipEntitlement() {
+        val requestEpoch = membershipRefreshEpoch + 1
+        membershipRefreshEpoch = requestEpoch
         membershipLoadState = MembershipLoadState.Loading
         val entitlement = awaitMembershipEntitlement()
+        if (requestEpoch != membershipRefreshEpoch) {
+            return
+        }
         membershipEntitlement = entitlement
         if (
             entitlement != null &&

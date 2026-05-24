@@ -26,6 +26,7 @@
 - Android 主界面会员入口和设置页会员入口复用 `MembershipCenterBody`。
 - Android 的开通 Plus、开通 Pro、升级 Pro、购买加油包按钮当前只提示“支付暂未接入”，不会调用后端订单接口。
 - 后端 `/api/me` 是会员等级、到期时间、每日剩余次数、升级补偿次数和加油包次数的当前真相。
+- Android `/api/me` 会员信息刷新带本地 request epoch；底部会员中心打开、设置页会员中心刷新或订购成功刷新重叠时，旧慢请求晚回来不会覆盖最新 UI 状态。
 - 后端有效会员等级按 `tier_expire_at` 实时计算；Plus / Pro 到期或付费 tier 缺失到期时间时按 Free 处理。
 - 扣次主链在回答归档成功后执行：先每日额度，再升级补偿，再加油包；`quota_ledger` 用 `user_id + client_msg_id` 防重复扣。
 - 旧 `6元/100次` 只存在近期变更历史记录里；当前 Android 文案、后端常量和根规则都是 `6元/80次`。
