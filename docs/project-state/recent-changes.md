@@ -5,6 +5,8 @@
 
 ## 2026-05-24
 
+- 记录夜间云资源采购状态：ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，VPC / 交换机与 RDS 同在北京可用区 L；RDS `rm-2zes3vmj76p85n8g1` 继续运行但白名单 / 数据库账号 / 库名尚未配置；OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`，但 Bucket 尚未创建，`server-go` 图片上传链也尚未接 OSS；域名 `nongjiqiancha.cn` 用户口头确认实名认证 / 模板审核已通过。同步更新根规则、当前状态、风险、待决策、ECS / SAE / OSS / infra runbook，明确今晚不再需要购买 ACR 企业版、Redis、CDN、SLS 或下行流量包，下一步是配置安全组、RDS 白名单 / 账号、创建 OSS Bucket、部署后端和推进备案 / HTTPS。
+
 - 按用户确认删除 SAE demo 应用并收口部署路线口径：先通过阿里云 CLI 停止北京 SAE 应用 `nongjiqiancha` / AppId `366147d5-3760-4548-bd68-f38debbc5f23`，随后删除该应用，删除变更单 `14a360d3-e2b4-4b93-9701-b76dfcc7bfd9` 提交成功，验证 `ListApplications` 返回空列表、`TotalSize=0`。该 SAE 应用此前只是默认 demo 镜像，未部署 `server-go`，不承载对外流量。首版后端部署路线从“SAE 镜像托管优先”转向“优先评估 / 准备 ECS 传统部署”；ACR 企业版暂不作为当前必买项，ECS 尚未购买，后续真实部署入口仍待固化。同步更新根规则、当前状态、待决策、风险和 infra / SAE runbook，避免 SAE 与 ECS 两套方案并列误判为同时生效。
 
 - 阿里云北京区 RDS MySQL 已落地到首版最小规格：在 VPC `vpc-2zeax2zowza2398b9dzot` 下创建北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`，并创建 RDS MySQL 实例 `rm-2zes3vmj76p85n8g1`，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`、到期时间 2027-05-24，当前自动备份保留 7 天。当前白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / 后端环境变量、默认备份策略是否调整和真实后端部署入口仍待配置。同步更新根规则、当前状态、待决策、风险和 infra / SAE runbook。

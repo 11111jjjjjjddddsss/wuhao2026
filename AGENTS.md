@@ -71,11 +71,11 @@ Android 构建链：
 - 带图片发送的延迟后台兜底使用 AndroidX WorkManager `work-runtime-ktx:2.11.2`
 
 部署与基础设施：
-- 部署：首版线上后端路线已从“SAE 镜像托管优先”转向“优先评估 / 准备 ECS 传统部署”，真实 ECS 尚未购买或部署。此前曾在 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；该 SAE 应用只是默认 demo 镜像，未部署 `server-go` 真实后端，已于 2026-05-24 21:50 左右先停止，并于 2026-05-24 21:51 左右通过阿里云 CLI 删除，删除变更单 `14a360d3-e2b4-4b93-9701-b76dfcc7bfd9` 已提交成功；删除后 `ListApplications` 返回空列表，`TotalSize=0`。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`，原 SAE 默认交换机为北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`；RDS MySQL 使用同一 VPC 下北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`。运维侧本机已安装阿里云 CLI，默认 Region 为 `cn-beijing`；真实 AccessKey 只允许保存在本机 CLI 配置或云端密钥管理中，不允许写入仓库、聊天记忆或文档
-- 域名：`nongjiqiancha.cn` 已在阿里云购买，用作后续 `api.nongjiqiancha.cn`、下载域名和管理后台域名的基础；当前仍需完成域名实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和正式后端入口绑定（优先按 ECS + 反向代理规划，若后续回到 SAE 再同步改本文和 runbook）后才能对外正式服务
+- 部署：首版线上后端路线已从“SAE 镜像托管优先”转向“ECS 传统部署优先”。当前已购买阿里云 ECS `i-2ze5nrem0jrchln4f0eh`，位于 `华北2（北京）/ cn-beijing` 可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，包年包月到期 `2027-05-24`，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，VPC `vpc-2zeax2zowza2398b9dzot`，交换机 `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps；Cloud Assistant 在线，后续可优先用 CLI / 云助手初始化。该 ECS 尚未部署 `server-go`。此前曾在 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；该 SAE 应用只是默认 demo 镜像，未部署 `server-go` 真实后端，已于 2026-05-24 21:50 左右先停止，并于 2026-05-24 21:51 左右通过阿里云 CLI 删除，删除变更单 `14a360d3-e2b4-4b93-9701-b76dfcc7bfd9` 已提交成功；删除后 `ListApplications` 返回空列表，`TotalSize=0`。运维侧本机已安装阿里云 CLI，默认 Region 为 `cn-beijing`；真实 AccessKey 只允许保存在本机 CLI 配置或云端密钥管理中，不允许写入仓库、聊天记忆或文档
+- 域名：`nongjiqiancha.cn` 已在阿里云购买，用户口头确认域名实名认证 / 模板审核已通过；后续用于 `api.nongjiqiancha.cn`、下载域名和管理后台域名。当前仍需完成 DNS 解析、ICP / App 备案、HTTPS 证书和正式后端入口绑定（优先按 ECS + 反向代理规划，若后续回到 SAE 再同步改本文和 runbook）后才能对外正式服务
 - 数据库：首版使用阿里云 RDS MySQL，当前实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`、VPC `vpc-2zeax2zowza2398b9dzot`、交换机 `vsw-2zemsq82lj2kp8za90aky`、到期时间 2027-05-24；当前自动备份保留 7 天，默认每周二 / 四 / 六 17:00-18:00 北京时间左右执行；当前白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / 后端运行环境变量尚未配置。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项
 - Go 后端数据库连接池可用 `MYSQL_MAX_OPEN_CONNS`、`MYSQL_MAX_IDLE_CONNS`、`MYSQL_CONN_MAX_IDLE_SECONDS`、`MYSQL_CONN_MAX_LIFETIME_SECONDS` 调整；默认仍为 10 open / 10 idle / 5 分钟 idle / 30 分钟 lifetime。RDS 规格、后端实例数和真实监控数据确定前不盲目调参
-- 可选组件：Redis、OSS、SLS
+- OSS：已购买阿里云 OSS 标准-本地冗余存储包（华北2 / 北京）100GB，资源包实例 `OSSBAG-cn-mqq4sqfvr001`，有效期 `2026-05-24T15:00:00Z` 至 `2027-05-24T15:00:00Z`，用于抵扣标准存储容量费用；当前尚未创建 OSS Bucket，也尚未把 `server-go` 图片上传链从本机 `/uploads` 接到 OSS。后续 Bucket 应建在 `cn-beijing`，标准存储、本地冗余、私有读写，配生命周期短周期清理旧问诊图片；下行流量包、CDN、SLS、Redis 暂未购买或接入
 - Android “检查更新”走自有服务器 APK 分发：后端 `GET /api/app/update` 由 `APP_ANDROID_*` 环境变量控制最新版本、APK 下载地址和可选 APK SHA-256；Android 端下载 https APK 后会先校验最终 https、可选文件大小、可选 SHA-256、包名和 `versionCode`，通过后才调起系统安装确认，不做静默安装，不走应用商店主链
 
 ## 3. 模型、上下文与会员
@@ -417,11 +417,11 @@ Markdown 表格：
 - 以后如需 Codex 参与运维，优先走脚本、CLI、OpenAPI 这类可审计入口
 
 优先级：
-- ECS / SAE：脚本 / CLI / OpenAPI 优先；当前 SAE 应用已删除，首版部署优先评估 ECS，若后续重新启用 SAE 必须重新创建资源并同步更新本文和 runbook
+- ECS / SAE：脚本 / CLI / OpenAPI 优先；当前 SAE 应用已删除，首版部署优先 ECS，若后续重新启用 SAE 必须重新创建资源并同步更新本文和 runbook
 - 数据库：首版按 RDS MySQL / MySQL 兼容数据库口径准备；人工查看优先 DMS，Codex 优先只读查询、迁移脚本、备份脚本。若后续升级到 PolarDB，再同步修改本文和 runbook
 - 日志：优先脚本化查询，不靠临时手点控制台
 
-如果后续长期让 Codex 辅助发版、回滚、查日志、查库，应把入口固化进仓库，例如部署脚本、回滚脚本、日志脚本、数据库只读脚本。整体 App / 后端 / 管理后台的长期协助运维蓝图以 [docs/runbooks/operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 为入口；真实服务器、域名、数据库、SLS、OSS、后台账号和权限落地前，不伪造实例名或密钥，只记录待回填项。
+如果后续长期让 Codex 辅助发版、回滚、查日志、查库，应把入口固化进仓库，例如部署脚本、回滚脚本、日志脚本、数据库只读脚本。整体 App / 后端 / 管理后台的长期协助运维蓝图以 [docs/runbooks/operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 为入口；真实 ECS / RDS / OSS 资源已部分落地，但真实后端部署、域名绑定、SLS、后台账号和权限落地前，不伪造服务地址、密钥或后台入口，只记录待回填项。
 
 ## 10. 参考文档
 

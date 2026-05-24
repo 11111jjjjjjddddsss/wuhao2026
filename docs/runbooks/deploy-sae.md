@@ -4,11 +4,11 @@
 
 ## 目的
 
-记录农技千查后端部署到阿里云 SAE 的历史入口。当前首版部署路线已转向优先评估 / 准备 ECS，旧 SAE demo 应用已经删除；如果后续重新启用 SAE，必须重新创建资源并同步更新本文，不得按旧 AppId 继续操作。
+记录农技千查后端部署到阿里云 SAE 的历史入口。当前首版部署路线已转向 ECS，旧 SAE demo 应用已经删除；如果后续重新启用 SAE，必须重新创建资源并同步更新本文，不得按旧 AppId 继续操作。
 
 ## 当前现状
 
-- 主规则已明确 ECS / SAE 运维优先走脚本、CLI、OpenAPI 等可审计入口；当前 SAE 已删除，首版优先 ECS
+- 主规则已明确 ECS / SAE 运维优先走脚本、CLI、OpenAPI 等可审计入口；当前 SAE 已删除，首版优先 ECS，现有 ECS 实例为 `i-2ze5nrem0jrchln4f0eh`
 - 此前曾在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；该应用只是默认 demo 镜像，未部署真实后端，已于 2026-05-24 21:50 左右先停止，并于 2026-05-24 21:51 左右通过 CLI 删除，删除变更单 `14a360d3-e2b4-4b93-9701-b76dfcc7bfd9` 已提交成功；删除后 `ListApplications` 返回空列表，`TotalSize=0`
 - 当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`；原 SAE 默认交换机为北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`；RDS MySQL 使用同 VPC 下北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`
 - 当前 RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`；当前自动备份保留 7 天，默认每周二 / 四 / 六 17:00-18:00 北京时间左右执行；白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / 后端环境变量尚未配置

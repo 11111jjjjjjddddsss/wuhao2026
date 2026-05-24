@@ -1,6 +1,6 @@
 # 待决策事项
 
-最后更新：2026-05-22
+最后更新：2026-05-24
 
 ## D1 运维入口优先固化到什么形式
 
@@ -22,9 +22,9 @@
 
 ## D4 正式云资源首版怎么落
 
-- 当前选项：首版优先评估 `ECS + RDS MySQL + OSS + 域名/HTTPS` 跑最小生产链；`SAE + ACR` 镜像托管路线已暂时降级为备选。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；短期先单环境跑通，是否拆测试 / 生产等真实联调后再评估
-- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地；此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，但该应用只是默认 demo 镜像，未部署真实后端，已于 2026-05-24 21:50 左右先停止，并于 2026-05-24 21:51 左右通过 CLI 删除，删除后 `ListApplications` 返回空列表。域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和正式入口绑定。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`；原 SAE 默认交换机是北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`。仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也已补 `docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI 读取 RDS，SAE 应用列表当前为空
-- 待定原因：ECS 规格 / 镜像 / 系统盘 / 安全组、RDS MySQL 数据库账号、库名、白名单 / 安全组、默认 7 天备份策略是否调整、是否首版接 OSS / SLS、数据库迁移是否独立执行、ECS 部署脚本 / systemd / 反向代理 / 回滚入口、域名解析和备案流程仍未拍板 / 落地
+- 当前选项：首版已按 `ECS + RDS MySQL + OSS + 域名/HTTPS` 跑最小生产链推进；`SAE + ACR` 镜像托管路线已降级为备选。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；短期先单环境跑通，是否拆测试 / 生产等真实联调后再评估
+- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，VPC `vpc-2zeax2zowza2398b9dzot`，交换机 `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps；尚未初始化部署 `server-go`。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，只是默认 demo 镜像，未部署真实后端，已于 2026-05-24 删除，删除后 `ListApplications` 返回空列表。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过，仍待 DNS、备案、HTTPS 和正式入口绑定。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；当前还没有 Bucket。仓库已有 `docs/runbooks/deploy-ecs.md`、`docs/runbooks/deploy-sae.md`、`docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI 读取 ECS / RDS / OSS 资源包，SAE 应用列表当前为空
+- 待定原因：RDS MySQL 数据库账号、库名、白名单 / 安全组、默认 7 天备份策略是否调整、OSS Bucket / 访问策略 / 生命周期、SLS 是否首版接入、数据库迁移是否独立执行、ECS 部署脚本 / systemd / 反向代理 / 回滚入口、域名解析和备案流程仍未拍板 / 落地
 
 ## D5 C+ 长期记忆怎么落地
 
