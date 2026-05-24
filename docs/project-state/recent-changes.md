@@ -5,6 +5,8 @@
 
 ## 2026-05-24
 
+- 阿里云北京区 RDS MySQL 已落地到首版最小规格：在 SAE 应用 `nongjiqiancha` 所在 VPC `vpc-2zeax2zowza2398b9dzot` 下创建北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`，并创建 RDS MySQL 实例 `rm-2zes3vmj76p85n8g1`，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`、到期时间 2027-05-24，当前自动备份保留 7 天。当前白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / SAE 环境变量、默认备份策略是否调整和真实后端镜像仍待配置。同步更新根规则、当前状态、待决策、风险和 infra / SAE runbook。
+
 - 首版云资源进入真实落地阶段：阿里云 `华北2（北京）/ cn-beijing` 标准版 SAE 应用 `nongjiqiancha` 已创建，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；当前仍是 SAE 默认 demo 镜像，尚未部署 `server-go`。域名 `nongjiqiancha.cn` 已购买，仍需实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和 SAE 绑定。用户本机已安装阿里云 CLI，默认 Region 为 `cn-beijing`，可通过 OpenAPI 读取 SAE 应用；真实 AccessKey 只保存在本机 CLI 配置中，不写入仓库、聊天记忆或项目文档，后续稳定后建议轮换已暴露过的主账号 Key。同步更新根规则、当前状态、待决策、风险、infra readiness 和 SAE 发版 runbook。
 
 - 会员中心弱网动态小修：`ChatScreen.kt` 给 `/api/me` 会员信息刷新增加本地 request epoch，底部会员中心打开、设置页会员中心刷新或订购成功刷新发生重叠时，只允许最新一次请求写回 `membershipEntitlement / membershipLoadState`，避免旧慢请求晚回来覆盖新状态导致“刚同步成功又变未同步 / 旧额度”的 UI 闪动。只改会员 UI 状态收口，不改 `/api/me`、会员权益、扣次顺序、支付占位或后端真相；按 baseline profile 规则判断不需要更新预热脚本。

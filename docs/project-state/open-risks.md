@@ -52,11 +52,11 @@
 ## R7 正式云资源部分落地，真实后端仍未部署
 
 - 状态：未关闭
-- 说明：当前已在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；当前仍是 SAE 默认 demo 镜像，尚未部署 `server-go`。域名 `nongjiqiancha.cn` 已购买，但实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和 SAE 域名绑定仍未完成。RDS MySQL、OSS、SLS 和真实日志项目尚未落地；PolarDB 暂作为后续高规格升级选项
-- 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，仍可能因为 RDS / OSS / SLS / 域名绑定 / 备案状态缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节；当前 SAE 只有单实例且本机 uploads 仍未迁 OSS，多实例或自动弹性开启前仍有图片 404 和摘要重复提取风险
+- 说明：当前已在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启；当前仍是 SAE 默认 demo 镜像，尚未部署 `server-go`。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`，SAE 默认交换机为北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`；RDS MySQL 使用同一 VPC 下北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`、到期时间 2027-05-24；当前自动备份保留 7 天，默认每周二 / 四 / 六 17:00-18:00 北京时间左右执行；当前白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / SAE 环境变量尚未配置。域名 `nongjiqiancha.cn` 已购买，但实名认证 / 模板审核、DNS 解析、ICP / App 备案、HTTPS 证书和 SAE 域名绑定仍未完成。OSS、SLS 和真实日志项目尚未落地；PolarDB 暂作为后续高规格升级选项
+- 风险：后续一旦开始后端联调、真实发版、环境变量注入或图片存储接入，仍可能因为 RDS 白名单 / 账号 / 环境变量、OSS / SLS、域名绑定 / 备案状态缺失而临时拍脑袋，导致 runbook 和实际入口再次脱节；当前 SAE 只有单实例且本机 uploads 仍未迁 OSS，多实例或自动弹性开启前仍有图片 404 和摘要重复提取风险
 - 补充：后端已支持 `DASHSCOPE_API_KEY_1/2/3` 多 Key 池和限流前置切 Key，但真实并发扩容必须使用不同阿里云主账号的 Key；同一主账号多个 API Key 共享 RPM / TPM 限流。朋友账号 Key 可短期兜底，但长期生产会带来账单、权限、密钥轮换和数据处理责任不在自己名下的运维风险
 - 补充：买服务器前高并发巡检结论已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。Go 语言本身不是当前瓶颈；首版单实例可跑早期。若首版不接 OSS，SAE 必须先保持单实例；若要多实例，必须先把图片上传和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储，否则上传落到 A 实例、后续请求或模型公网拉图打到 B 实例时可能 404。多实例发布前还要把数据库迁移改成单独发布步骤或补迁移锁，避免多个实例首次启动同时跑迁移
-- 后续动作：下一步优先购买并配置北京区 RDS MySQL，确认同 VPC / 白名单 / 备份策略；随后决定 OSS / SLS 是否首版一起接入。部署真实后端镜像前，回填 [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 的镜像构建、环境变量、健康检查和回滚入口；按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任；RDS 规格确认后再按真实连接数配置 `MYSQL_MAX_OPEN_CONNS` 等连接池环境变量。当前本机阿里云 CLI 可读 SAE 应用，但真实 AccessKey 不进入仓库或文档，后续稳定后应轮换已暴露过的主账号 Key
+- 后续动作：下一步优先配置 RDS MySQL 数据库账号、库名、白名单 / 安全组和 SAE 环境变量；备份当前有 7 天默认策略，正式数据进入后再确认是否延长保留时间或加密 / 跨地域备份；随后决定 OSS / SLS 是否首版一起接入。部署真实后端镜像前，回填 [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 的镜像构建、环境变量、健康检查和回滚入口；按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化模型 Key 所属账号、充值告警和轮换责任；RDS 规格确认后再按真实连接数配置 `MYSQL_MAX_OPEN_CONNS` 等连接池环境变量。当前本机阿里云 CLI 可读 SAE 应用，但真实 AccessKey 不进入仓库或文档，后续稳定后应轮换已暴露过的主账号 Key
 
 ## R8 C+ 长期资产抽取尚未落地
 

@@ -12,15 +12,15 @@
 - 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
 - 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、SAE、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进
 - 买服务器前功能巡检记录已开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：当前已巡检会员中心 / 额度体系，以及 Go 后端高并发 / 性能边界
-- 正式云资源已部分落地：Region 选定 `华北2（北京）/ cn-beijing`；标准版 SAE 应用 `nongjiqiancha` 已创建，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，当前仍是默认 demo 镜像；域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和 SAE 绑定
-- 当前尚未购买 / 接入：RDS MySQL、OSS、SLS、Redis、真实后端镜像仓库 / 部署流水线
+- 正式云资源已部分落地：Region 选定 `华北2（北京）/ cn-beijing`；标准版 SAE 应用 `nongjiqiancha` 已创建，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，当前仍是默认 demo 镜像；当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`，SAE 默认交换机为北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`；RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，当前自动备份保留 7 天；域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和 SAE 绑定
+- 当前尚未购买 / 接入：OSS、SLS、Redis、真实后端镜像仓库 / 部署流水线；RDS 已购买但尚未配置数据库账号、库名、白名单 / 安全组和 SAE 环境变量，默认 7 天备份策略是否调整仍待确认
 
 ## 最小上线资源清单
 
 ### 必需
 
 - 阿里云 SAE：部署 `server-go`。当前 SAE 壳子已创建，但还没部署真实后端镜像
-- 阿里云 RDS MySQL：首版主业务数据。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项。当前 RDS 尚未购买
+- 阿里云 RDS MySQL：首版主业务数据。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项。当前实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，配置为 MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、VPC `vpc-2zeax2zowza2398b9dzot`、交换机 `vsw-2zemsq82lj2kp8za90aky`，内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，自动备份保留 7 天
 - 域名与 HTTPS 证书：对外 API 入口。当前 `nongjiqiancha.cn` 已购买，但正式 API 域名、证书和 SAE 绑定尚未完成
 - 基础密钥与环境变量托管：模型 Key、数据库连接、JWT / Session 密钥等
 
@@ -32,8 +32,8 @@
 
 ## 建议采购顺序
 
-1. 已完成：Region 选定 `cn-beijing`，SAE 壳子已创建，域名 `nongjiqiancha.cn` 已购买
-2. 下一步：购买 RDS MySQL，并确认与 SAE 同 Region / 同 VPC 或可连通网络
+1. 已完成：Region 选定 `cn-beijing`，SAE 壳子已创建，域名 `nongjiqiancha.cn` 已购买，RDS MySQL 实例已创建
+2. 下一步：完成 RDS MySQL 数据库账号、库名、白名单 / 安全组和 SAE 环境变量配置；正式数据进入前确认默认 7 天备份是否够用
 3. 然后补域名解析、HTTPS、真实后端镜像部署、OSS、SLS
 4. 最后再看 Redis 是否要在首版一起上
 
@@ -47,6 +47,14 @@
 - 首版若不接 OSS，SAE 是否明确保持单实例；若计划多实例，图片上传必须先接 OSS 或等价共享对象存储
 - 多实例发布前，数据库迁移是否改成单独发布步骤或加迁移锁，避免多个实例首次启动同时跑迁移
 - RDS 规格确认后，`MYSQL_MAX_OPEN_CONNS`、`MYSQL_MAX_IDLE_CONNS`、`MYSQL_CONN_MAX_IDLE_SECONDS`、`MYSQL_CONN_MAX_LIFETIME_SECONDS` 是否按实例数和连接数上限重新配置
+
+## 扩容与升级判断
+
+- 首版 RDS MySQL 1 核 2GB / 50GB 先服务早期真实联调和小流量内测；图片二进制不进数据库，后续应优先落 OSS
+- 优先看监控再升级：CPU 长期超过 70%、活跃连接接近连接上限、慢查询持续增加、IOPS / 磁盘使用率接近上限、接口 P95/P99 延迟明显变差
+- 存储空间不足时优先扩容存储；计算资源不足时从 1 核 2GB 升到 2 核 4GB 或更高；读多写少且主库压力明显后再考虑只读实例或 PolarDB
+- 变配前先确认自动备份、低峰期执行、应用连接池和自动重连；RDS 变配通常不改实例 ID 和连接地址，但可能出现短暂连接闪断，生产变配必须提前公告或避开高峰
+- SAE 同理先单实例跑通；需要扩容时先确保图片已迁 OSS、数据库迁移不抢跑、摘要和限流有跨实例保护，再提高规格或增加实例数
 
 ## 资源买完后必须回填仓库的地方
 

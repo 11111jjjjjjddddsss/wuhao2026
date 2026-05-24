@@ -10,6 +10,8 @@
 
 - 主规则已明确 SAE 优先走脚本、CLI、OpenAPI 等可审计入口
 - 当前已在阿里云 `华北2（北京）/ cn-beijing` 创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启
+- 当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`；SAE 默认交换机为北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`；RDS MySQL 使用同 VPC 下北京可用区 L 交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`
+- 当前 RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`；当前自动备份保留 7 天，默认每周二 / 四 / 六 17:00-18:00 北京时间左右执行；白名单仍是默认 `127.0.0.1`，数据库账号 / 库名 / SAE 环境变量尚未配置
 - 当前 SAE 仍运行默认 demo 镜像：`cn-beijing.online-vpc.cr.sae.aliyuncs.com/sae-serverless-public/sae-demo:microservice-java-provider-v1.0`，尚未部署 `server-go` 真实后端镜像
 - 本机已安装阿里云 CLI 到 `C:/Users/Administrator/AppData/Local/Programs/AliyunCLI/aliyun.exe`，默认 Region 为 `cn-beijing`。查询 SAE 时当前需要显式 endpoint：`--endpoint sae.cn-beijing.aliyuncs.com`
 - 本仓库当前尚未固化正式发版脚本或标准化发布命令

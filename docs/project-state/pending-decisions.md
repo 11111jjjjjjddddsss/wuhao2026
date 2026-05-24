@@ -23,8 +23,8 @@
 ## D4 正式云资源首版怎么落
 
 - 当前选项：首版按 `SAE + RDS MySQL + 域名/HTTPS` 跑最小生产链；PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；短期先单环境跑通，是否拆测试 / 生产等真实联调后再评估
-- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地；标准版 SAE 应用 `nongjiqiancha` 已创建，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，当前仍是默认 demo 镜像；域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和 SAE 绑定。仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也已补 `docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI 读取 SAE 应用
-- 待定原因：RDS MySQL 规格、备份策略、白名单 / 同 VPC 配置、是否首版接 OSS / SLS、数据库迁移是否独立执行、真实后端镜像构建 / 推送 / 回滚入口、域名解析和备案流程仍未拍板 / 落地
+- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地；标准版 SAE 应用 `nongjiqiancha` 已创建，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，当前仍是默认 demo 镜像；域名 `nongjiqiancha.cn` 已购买，仍待实名认证 / 模板审核、DNS、备案、HTTPS 和 SAE 绑定。当前 VPC 为 `vpc-2zeax2zowza2398b9dzot`；SAE 默认交换机是北京可用区 F `vsw-2ze3elcd2iad6n1madi5g`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`。仓库已有 `docs/runbooks/deploy-sae.md` 等运维骨架，也已补 `docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI 读取 SAE / RDS
+- 待定原因：RDS MySQL 数据库账号、库名、白名单 / 安全组、默认 7 天备份策略是否调整、是否首版接 OSS / SLS、数据库迁移是否独立执行、真实后端镜像构建 / 推送 / 回滚入口、域名解析和备案流程仍未拍板 / 落地
 
 ## D5 C+ 长期记忆怎么落地
 
