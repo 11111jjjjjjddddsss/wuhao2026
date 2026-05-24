@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-25
+
+- 完成 ECS 首版后端部署准备并跑起 `server-go`：通过 Cloud Assistant 初始化 `nongji` 系统用户、部署目录、`/etc/nongjiqiancha/server.env`、`nongji-server.service`、Nginx 反向代理、基础限流、fail2ban 和 logrotate；RDS 创建库 `nongjiqiancha`、账号 `nongji_app` 并放通 ECS 私网 IP `192.168.1.237`，服务启动已完成当前 MySQL 迁移，`/healthz` 返回 `ok=true / auth_strict=true / bailian=missing_key / dev_order_endpoints=false`。当前未配置 DashScope 模型 Key，真实聊天会安全返回 `MODEL_BACKEND_NOT_CONFIGURED`，未授权请求返回 401；公网正式可用仍待 DNS、HTTPS、备案、模型 Key 和 Android 登录 token 链。部署时修复 `007_single_user_session_ab.sql`、`008_single_user_round_ledger.sql` 的 MySQL 不兼容 `DROP COLUMN IF EXISTS` 写法，改为仓库既有的 `information_schema + PREPARE` 动态 DDL 风格。OSS Bucket 创建仍被 OSS 返回 `UserDisable` 阻塞，SLS 服务已开通但只看到阿里云系统 / 产品托管项目，暂不删除也不购买节省计划。
+
 ## 2026-05-24
 
 - 记录夜间云资源采购状态：ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，VPC / 交换机与 RDS 同在北京可用区 L；RDS `rm-2zes3vmj76p85n8g1` 继续运行但白名单 / 数据库账号 / 库名尚未配置；OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`，但 Bucket 尚未创建，`server-go` 图片上传链也尚未接 OSS；域名 `nongjiqiancha.cn` 用户口头确认实名认证 / 模板审核已通过。同步更新根规则、当前状态、风险、待决策、ECS / SAE / OSS / infra runbook，明确今晚不再需要购买 ACR 企业版、Redis、CDN、SLS 或下行流量包，下一步是配置安全组、RDS 白名单 / 账号、创建 OSS Bucket、部署后端和推进备案 / HTTPS。

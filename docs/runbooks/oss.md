@@ -1,6 +1,6 @@
 # OSS 图片存储 Runbook
 
-最后更新：2026-05-24
+最后更新：2026-05-25
 
 ## 目的
 
@@ -13,8 +13,8 @@
 - 生效时间：`2026-05-24T15:00:00Z`
 - 到期时间：`2027-05-24T15:00:00Z`
 - 当前剩余额度：100GB
-- 当前 OSS Bucket 数量为 0，尚未创建真实 Bucket
-- `server-go` 当前图片上传仍是后端 `/upload` 接收 JPEG 后写本机 `/uploads`，尚未接 OSS
+- 当前 OSS Bucket 数量为 0，尚未创建真实 Bucket；2026-05-25 通过 CLI 尝试创建 `cn-beijing` 私有 Bucket 时 OSS 返回 `UserDisable`，换全局唯一名称和显式 endpoint 仍同样失败，需要到 OSS 控制台确认服务开通 / 账号状态后再重试
+- `server-go` 当前图片上传仍是后端 `/upload` 接收 JPEG 后写 ECS 本机 `/var/lib/nongjiqiancha/uploads`，尚未接 OSS；因此首版只能保持单台 ECS
 
 ## 存储包口径
 
@@ -48,3 +48,8 @@
 - 多台 ECS 或回到 SAE 多实例前，必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储
 - 若 APK 分发也放 OSS，应单独配置下载域名、HTTPS、文件大小和 SHA-256，不建议让 Go 后端动态服务大 APK
 
+## 当前阻塞
+
+- OSS 资源包已买，但 Bucket 创建被 `UserDisable` 阻塞；这不是“存储空间不够”，更像 OSS 服务开通 / 账号状态层面的限制
+- 下一步先在对象存储 OSS 控制台确认是否仍需要点击“开通 / 免费试用 / 立即使用”，或检查账号是否存在服务禁用状态；确认后再重试创建私有 Bucket
+- Bucket 创建前不要把后端改成 OSS 链路，也不要扩到多台 ECS

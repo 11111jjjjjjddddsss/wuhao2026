@@ -1,6 +1,6 @@
 # 上线前基础设施准备清单
 
-最后更新：2026-05-24
+最后更新：2026-05-25
 
 ## 目的
 
@@ -12,8 +12,8 @@
 - 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
 - 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、后端部署、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进
 - 买服务器前功能巡检记录已开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：当前已巡检会员中心 / 额度体系，以及 Go 后端高并发 / 性能边界
-- 正式云资源已部分落地：Region 选定 `华北2（北京）/ cn-beijing`；首版后端部署路线已从“SAE 镜像托管优先”转向“ECS 传统部署优先”。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，VPC `vpc-2zeax2zowza2398b9dzot`，交换机 `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps，到期时间 2027-05-24；当前尚未部署真实后端。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，但该应用只是默认 demo 镜像且已删除；删除后 SAE `ListApplications` 返回空列表，`TotalSize=0`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、同一交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，当前自动备份保留 7 天。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过，仍待 DNS、备案、HTTPS 和正式后端入口绑定。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；当前尚未创建 Bucket
-- 当前尚未购买 / 接入：SLS、Redis、真实后端部署流水线；RDS 已购买但尚未配置数据库账号、库名、白名单 / 安全组和后端运行环境变量；OSS 资源包已购买但尚未创建 Bucket、访问策略和生命周期；默认 7 天备份策略是否调整仍待确认
+- 正式云资源已部分落地：Region 选定 `华北2（北京）/ cn-beijing`；首版后端部署路线已从“SAE 镜像托管优先”转向“ECS 传统部署优先”。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，VPC `vpc-2zeax2zowza2398b9dzot`，交换机 `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps，到期时间 2027-05-24；已部署真实 `server-go`，当前健康检查 OK，但模型 Key 未配置。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，但该应用只是默认 demo 镜像且已删除；删除后 SAE `ListApplications` 返回空列表，`TotalSize=0`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、同一交换机 `nongjiqiancha-rds-beijing-l` / `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，当前自动备份保留 7 天；已创建库 `nongjiqiancha`、账号 `nongji_app`，白名单放通 ECS 私网 IP `192.168.1.237`。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过，仍待 DNS、备案、HTTPS 和正式后端入口绑定。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；当前尚未创建 Bucket，CLI 创建返回 `UserDisable`。SLS 服务本体已开通，但未创建农技千查专用日志项目
+- 当前尚未购买 / 接入：Redis、SLS 节省计划 / 资源包、OSS Bucket、CDN / OSS 下行流量包。当前尚未完成：DashScope 模型 Key、DNS、HTTPS、备案、Android 正式 per-user token 登录链、OSS 图片存储代码链、真实后端部署流水线和回滚脚本；默认 7 天 RDS 备份策略是否调整仍待确认
 
 ## 最小上线资源清单
 
@@ -33,8 +33,8 @@
 ## 建议采购顺序
 
 1. 已完成：Region 选定 `cn-beijing`，旧 SAE demo 应用已删除，域名 `nongjiqiancha.cn` 已购买并口头确认过审，ECS / RDS MySQL / OSS 100GB 存储包已购买
-2. 下一步：配置 ECS 安全组和系统环境，完成 RDS MySQL 数据库账号、库名、白名单 / 安全组和后端环境变量配置；正式数据进入前确认默认 7 天备份是否够用
-3. 然后创建 OSS Bucket、补域名解析、HTTPS、真实后端部署脚本、日志方案；SLS 是否首版接入再按成本和排障需求确认
+2. 已完成：ECS 基础系统环境、Nginx、systemd、RDS 数据库 / 账号 / 白名单和 `server-go` 首版部署
+3. 下一步：补 DashScope 模型 Key、创建 OSS Bucket、补域名解析、HTTPS、真实后端部署脚本、日志方案；SLS 是否首版接入再按成本和排障需求确认
 4. 最后再看 Redis 是否要在首版一起上；手机号验证码第一版也可以先用 MySQL 表跑通，再按盗刷 / 限流压力补 Redis
 
 ## 采购前必须拍板的问题
@@ -42,7 +42,7 @@
 - 生产环境当前优先按北京 ECS 单环境跑通；北京 SAE demo 应用已删除，是否后续重新启用 SAE / 拆测试或预发环境仍待真实联调后确认
 - 数据库首版倾向直接使用 RDS MySQL；当前只需确认规格、备份策略、连接白名单 / VPC 连接和后续是否需要平滑升级 PolarDB
 - 图片是否首版就把后端上传链落到 OSS；资源包已买，但 Bucket、权限、生命周期和代码改造还未做
-- 日志是否首版就接 SLS；如果不是，后端最小日志保留方案是什么
+- 日志是否首版就接农技千查专用 SLS；如果不是，后端先用 `journalctl` / Nginx 本地日志过渡
 - 是否一开始就拆测试 / 生产两套环境，还是先单环境跑通
 - 首版若不接 OSS，ECS 是否明确保持单台；若计划两台 ECS 或回到 SAE 多实例，图片上传必须先接 OSS 或等价共享对象存储
 - 多实例发布前，数据库迁移是否改成单独发布步骤或加迁移锁，避免多个实例首次启动同时跑迁移
@@ -58,7 +58,7 @@
 
 ## 资源买完后必须回填仓库的地方
 
-- `docs/runbooks/deploy-sae.md`：仅在后续重新启用 SAE 时补真实发版入口、命令、成功判定；当前优先新增 / 固化 ECS 部署入口
+- `docs/runbooks/deploy-sae.md`：仅在后续重新启用 SAE 时补真实发版入口、命令、成功判定；当前已固化 ECS 部署入口
 - `docs/runbooks/rollback.md`：真实回滚入口
 - `docs/runbooks/logs-sls.md`：真实日志项目 / 查询入口
 - `docs/runbooks/db-readonly.md`：真实数据库只读连接方式
@@ -69,7 +69,7 @@
 
 ## 暂行原则
 
-- 只把已真实落地的资源写成既成事实：当前可写旧 SAE demo 应用已删除、ECS 实例 `i-2ze5nrem0jrchln4f0eh`、RDS 实例 `rm-2zes3vmj76p85n8g1`、域名 `nongjiqiancha.cn` 和 OSS 100GB 存储包；OSS Bucket、SLS、HTTPS 证书、备案号和后台地址仍不得伪造
+- 只把已真实落地的资源写成既成事实：当前可写旧 SAE demo 应用已删除、ECS 实例 `i-2ze5nrem0jrchln4f0eh`、RDS 实例 `rm-2zes3vmj76p85n8g1`、RDS 库 / 账号 / 白名单、ECS 上运行中的 `server-go`、域名 `nongjiqiancha.cn`、OSS 100GB 存储包和 SLS 服务开通状态；OSS Bucket、HTTPS 证书、备案号、模型 Key 已配置和后台地址仍不得伪造
 - 未真正采购 / 配置完成前，runbook 只记录“要拍板什么”和“买完后补哪里”，不伪造部署命令
 - 一旦出现第一套真实环境，必须同次把对应 runbook 补成可执行入口
 - Go 后端首版不做盲目性能调参；先用默认连接池和单实例 / 小规格跑通，接入 SLS / RDS 监控后再按真实连接数、慢查询、SSE 中断率和模型限流调参

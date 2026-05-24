@@ -1,6 +1,6 @@
 # 数据库只读排查 Runbook
 
-最后更新：2026-04-14
+最后更新：2026-05-25
 
 ## 目的
 
@@ -8,8 +8,20 @@
 
 ## 当前现状
 
+- RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已运行，数据库 `nongjiqiancha` 和应用账号 `nongji_app` 已创建，RDS 白名单当前只放 `127.0.0.1,192.168.1.237`
+- `server-go` 已从 ECS 通过内网连接 RDS 并完成迁移，当前可见业务表包括 `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits`、`session_ab`、`session_round_ledger`、`session_round_archive`、`chat_stream_inflight`、`daily_agri_cards`、`orders`、`support_messages`
 - 主规则已明确人工查看优先 DMS；Codex 优先只读查询、迁移脚本、备份脚本
-- 当前仓库尚未提供统一的只读查询脚本或固定 SQL 清单
+- 当前仓库尚未提供统一的只读查询脚本或固定 SQL 清单；在只读账号创建前，不要把应用账号密码写入脚本或文档
+
+## 当前临时查询方式
+
+短期可通过 Cloud Assistant 在 ECS 内用 `/etc/nongjiqiancha/server.env` 的连接信息做临时只读查询，但命令不得打印数据库密码。
+
+示例只查表名：
+
+```bash
+SHOW TABLES;
+```
 
 ## 后续补充要求
 
