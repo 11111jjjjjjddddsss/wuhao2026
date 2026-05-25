@@ -14,8 +14,9 @@
 - 已安装并启用：Nginx、fail2ban、logrotate、MariaDB client、Go 1.26.2
 - `server-go` 已部署为 `systemd` 服务 `nongji-server.service`，监听本机 `127.0.0.1:3000`，由 Nginx 按 `api.nongjiqiancha.cn` 反代
 - 当前健康检查：`curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=missing_key`、`dev_order_endpoints=false`
+- 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 和域名 HTTP healthz 均已解析到本机并返回 200；本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - 当前未配置 DashScope 模型 Key，真实聊天接口会返回 `MODEL_BACKEND_NOT_CONFIGURED`，不会开模型流或消耗模型费用
-- 当前还没有 DNS、HTTPS、ICP备案 / App 备案闭环；正式 App 不应切到生产域名直到这些完成
+- 当前还没有 HTTPS、ICP备案 / App 备案闭环；正式 App 不应切到生产域名直到这些完成
 
 ## 安全组
 
@@ -83,13 +84,14 @@ Android 生产域名构建前提：
 ## Nginx
 
 - 当前 Nginx 只监听 HTTP 80；HTTPS 证书未配置
+- 服务器环境变量 `BASE_PUBLIC_URL / UPLOAD_BASE_URL` 当前已配置为 `https://api.nongjiqiancha.cn`，所以图片上传和 Android 生产链路必须等 443 证书配置完成后才算真正可用
 - `/api/chat/stream` 关闭 proxy buffering，`proxy_read_timeout=600s`
 - 已配置基础 IP 级限流：
   - 普通 API：`60r/m`，burst 80
   - 主聊天流：`6r/m`，burst 3
   - 上传：`20r/m`，burst 8
   - 单 IP 连接数：聊天 2，上传 4，普通 API 20
-- 未命中 `api.nongjiqiancha.cn` 的 Host 默认返回 444；DNS / HTTPS 正式就绪前，公网直连 IP 不作为稳定验证入口
+- 未命中 `api.nongjiqiancha.cn` 的 Host 默认返回 444；HTTPS 正式就绪前，公网直连 IP 不作为稳定验证入口
 
 ## 当前禁止
 
@@ -102,7 +104,7 @@ Android 生产域名构建前提：
 ## 下一步
 
 1. 配置 DashScope 模型 Key 到 ECS 环境文件并重启服务。
-2. 完成 `api.nongjiqiancha.cn` DNS、HTTPS 证书、ICP备案 / App 备案。
+2. 完成 `api.nongjiqiancha.cn` HTTPS 证书、ICP备案 / App 备案。
 3. 到 OSS 控制台确认服务开通 / 账号状态，解决 `UserDisable` 后创建私有北京 Bucket。
 4. 评估 `/upload` 从本机磁盘迁到 OSS；迁移前保持单台 ECS。
 5. 形成可复用发布脚本和回滚脚本。

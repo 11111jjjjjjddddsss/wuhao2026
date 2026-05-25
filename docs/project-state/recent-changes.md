@@ -5,6 +5,8 @@
 
 ## 2026-05-25
 
+- 用阿里云 CLI / Cloud Assistant 复查 ECS 接通链路并补齐 DNS：确认 `nongji-server.service` 已运行，Nginx 本机带 `Host: api.nongjiqiancha.cn` 访问 `/healthz` 返回 `ok=true / auth_strict=true / bailian=missing_key / dev_order_endpoints=false`，`APP_ENV/ENV/GO_ENV=production`、`AUTH_STRICT=true`、开发期订单接口关闭，RDS 已支撑服务启动和迁移；通过阿里云 DNS 创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内解析域名和 HTTP healthz 已生效。本机 Windows 当前可能因代理 / fake DNS 显示 `198.18.x.x`，不能作为云端解析失败依据。当前仍未配置 DashScope 模型 Key，Nginx 也只监听 HTTP 80，服务器环境里的 `BASE_PUBLIC_URL / UPLOAD_BASE_URL` 虽已是 `https://api.nongjiqiancha.cn`，但 HTTPS 证书 / 备案未闭环前，图片上传返回的 https 图片 URL 和 Android 生产 HTTPS 链路还不能算正式可用。用户发来的阿里云 `ARMSStopped` 和安全评分截图属于监控 / 安全治理项，不代表 ECS 或 Go 后端已停止。
+
 - 多代理全量复查 Android UI 后继续补边界护栏：输入框图片/字数提示层改到输入框壳体之后绘制并显式置顶，避免有图片时被白色输入卡遮住；纯文字发送失败会主动请求列表底部锚点，用户/助手失败 footer 也纳入消息底部测量，避免失败态露不全或底部工作线误判；今日农情卡片横向轨道改为复用聊天列表 / 输入框边界；图片全屏预览页码和关闭按钮改走状态栏安全区；检查更新弹窗补纵向安全区和长说明滚动；无后端地址时的本地假流式回答收口为 debug-only，正式包只走失败态，避免绕开后端真相。只改现有运行时 UI 组件，不引入旧 active-zone / 反向列表 / 手写图片手势链；按 baseline profile runbook 判断为边界视觉和测量修复，不需要更新预热脚本。
 
 - 多代理复查清数据后 Android UI 回归：设置首页标题从外层浮层收进 `HamburgerMenuMainPage` 自己的内容区，删除运行时第二处“设置”标题源，避免标题和设置列表在 clean-state / 动画重组时分层错位或看起来丢失；主聊天页顶部左右按钮统一使用 48dp 真实触控尺寸参与遮罩高度和视觉边界计算，并给左上设置入口补语义标签。只改 `ChatScreen.kt` / `HamburgerMenuSheet.kt` 的 UI 归属和尺寸参数，不改聊天滚动、输入框、远端历史恢复、会员 / 反馈 / 检查更新业务链路；按 baseline profile runbook 判断属于小视觉修复，不需要更新预热脚本。
