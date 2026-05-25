@@ -6638,6 +6638,15 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
+                title = "适配与回退",
+                items = listOf(
+                    UiCopyPreviewItem("远端快照失败兜底", "只保留 pending / 失败态，不回灌普通本地历史", UiCopyPreviewKind.RemoteSnapshotFallback),
+                    UiCopyPreviewItem("删除历史 hydrate 拦截", "旧请求晚回来不覆盖 clean-state", UiCopyPreviewKind.ClearHistoryHydrateGuard),
+                    UiCopyPreviewItem("图片预览安全区", "页码和关闭按钮避开横向 cutout", UiCopyPreviewKind.ImagePreviewTopChrome),
+                    UiCopyPreviewItem("会员面板短屏安全区", "顶部 safe drawing 限制最大高度", UiCopyPreviewKind.MembershipSheetSafeArea)
+                )
+            ),
+            UiCopyPreviewGroup(
                 title = "输入区",
                 items = listOf(
                     UiCopyPreviewItem(
@@ -6676,10 +6685,12 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("套餐区：Free", "Plus / Pro 开通按钮", UiCopyPreviewKind.MembershipPlanFree),
                     UiCopyPreviewItem("套餐区：Plus", "Plus 当前 / Pro 升级", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Plus 显示当前为 Pro", UiCopyPreviewKind.MembershipPlanPro),
+                    UiCopyPreviewItem("套餐区：窄屏挤压", "280dp 下标题、胶囊和价格不互撞", UiCopyPreviewKind.MembershipPlanNarrow),
                     UiCopyPreviewItem("加油包：Free不可订购", "Plus / Pro 可订购置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
                     UiCopyPreviewItem("加油包：Free剩余", "按钮显示“剩余次数可用”", UiCopyPreviewKind.MembershipTopupFreeActive),
                     UiCopyPreviewItem("加油包：可订购", "Plus / Pro 可订购，用完再续", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
+                    UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付暂未接入", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
                     UiCopyPreviewItem("订购成功", "支付成功后的确认卡片", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
@@ -6767,7 +6778,7 @@ private fun UiCopyPreviewOverlay(
                 title = "预览面板",
                 items = listOf(
                     UiCopyPreviewItem("UI文案样式预览", "debug 面板标题和说明", UiCopyPreviewKind.DebugPanel),
-                    UiCopyPreviewItem("展开 / 收起 / 查看 / 预览中", "debug 面板分组和条目控件", UiCopyPreviewKind.DebugPanelControls)
+                    UiCopyPreviewItem("右上关闭 / 展开 / 查看", "debug 面板关闭和条目控件", UiCopyPreviewKind.DebugPanelControls)
                 )
             )
         )
@@ -6808,12 +6819,36 @@ private fun UiCopyPreviewOverlay(
                     .padding(horizontal = 18.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "UI文案样式预览",
-                    color = Color(0xFF111111),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "UI文案样式预览",
+                        color = Color(0xFF111111),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFFF1F3F6))
+                            .semantics { contentDescription = "关闭预览面板" }
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onDismiss
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        UserMessagePreviewCloseIcon(
+                            tint = Color(0xFF111111),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
                 Text(
                     text = "点一级标题展开或收起，点二级条目查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。",
                     color = Color(0xFF6D7178),
@@ -6879,6 +6914,10 @@ private enum class UiCopyPreviewKind {
     CleanStateFirstLaunch,
     CleanStateFirstSend,
     CleanStateChecklist,
+    RemoteSnapshotFallback,
+    ClearHistoryHydrateGuard,
+    ImagePreviewTopChrome,
+    MembershipSheetSafeArea,
     ComposerPlaceholder,
     ComposerImagePlaceholder,
     MembershipHeader,
@@ -6892,10 +6931,12 @@ private enum class UiCopyPreviewKind {
     MembershipPlanFree,
     MembershipPlanPlus,
     MembershipPlanPro,
+    MembershipPlanNarrow,
     MembershipTopupUnavailable,
     MembershipTopupFreeActive,
     MembershipTopupBuyable,
     MembershipTopupActive,
+    MembershipTopupNarrow,
     MembershipPaymentNotice,
     MembershipPurchaseSuccess,
     MembershipRules,
@@ -7100,6 +7141,18 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         )
                     )
                 }
+                UiCopyPreviewKind.RemoteSnapshotFallback -> {
+                    UiCopyPreviewRemoteSnapshotFallback()
+                }
+                UiCopyPreviewKind.ClearHistoryHydrateGuard -> {
+                    UiCopyPreviewClearHistoryHydrateGuard()
+                }
+                UiCopyPreviewKind.ImagePreviewTopChrome -> {
+                    UiCopyPreviewImageTopChrome()
+                }
+                UiCopyPreviewKind.MembershipSheetSafeArea -> {
+                    UiCopyPreviewMembershipSheetSafeArea()
+                }
                 UiCopyPreviewKind.ComposerPlaceholder -> {
                     Surface(
                         color = Color.White,
@@ -7204,6 +7257,15 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.MembershipPlanPro -> {
                     MembershipPlanSectionPreview(activeTier = "pro")
                 }
+                UiCopyPreviewKind.MembershipPlanNarrow -> {
+                    UiCopyPreviewNarrowFrame {
+                        MembershipPlanSectionPreview(
+                            activeTier = "plus",
+                            upgradeRemaining = 88,
+                            topupRemaining = 80
+                        )
+                    }
+                }
                 UiCopyPreviewKind.MembershipTopupUnavailable -> {
                     MembershipTopupCardPreview(
                         activeTier = "free",
@@ -7227,6 +7289,14 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         activeTier = "pro",
                         topupRemaining = 73
                     )
+                }
+                UiCopyPreviewKind.MembershipTopupNarrow -> {
+                    UiCopyPreviewNarrowFrame {
+                        MembershipTopupCardPreview(
+                            activeTier = "pro",
+                            topupRemaining = 73
+                        )
+                    }
                 }
                 UiCopyPreviewKind.MembershipPaymentNotice -> {
                     MembershipPaymentNoticePreview()
@@ -7359,7 +7429,168 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     listOf("UI文案样式预览", "点一级标题展开或收起，点二级条目查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。")
                 )
                 UiCopyPreviewKind.DebugPanelControls -> UiCopyPreviewPlainText(
-                    listOf("清数据回归 3项 展开", "会员中心 18项 展开", "查看", "预览中", "样式预览")
+                    listOf("右上角 X 关闭", "适配与回退 4项 展开", "会员中心 20项 展开", "查看", "预览中", "样式预览")
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewNarrowFrame(
+    width: Dp = 280.dp,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(modifier = Modifier.width(width)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewRemoteSnapshotFallback() {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            UiCopyPreviewGuardRow("远端 snapshot 成功", "以后端最近 30 轮为真")
+            UiCopyPreviewGuardRow("远端 snapshot 失败", "普通本地历史不回灌")
+            UiCopyPreviewGuardRow("pending / 失败态", "保留恢复入口")
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewClearHistoryHydrateGuard() {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            UiCopyPreviewGuardRow("用户确认删除", "清 UI / 草稿 / 本地快照")
+            UiCopyPreviewGuardRow("clear epoch +1", "标记当前 clean-state")
+            UiCopyPreviewGuardRow("旧 hydrate 晚回来", "epoch 不匹配，丢弃")
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewGuardRow(
+    title: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            color = Color(0xFF17191C),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = value,
+            color = Color(0xFF666A72),
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1.2f)
+        )
+    }
+}
+
+@Composable
+private fun UiCopyPreviewImageTopChrome() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(138.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xE6000000))
+    ) {
+        Text(
+            text = "1/4",
+            color = Color.White,
+            fontSize = 14.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .padding(top = 24.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0x66111111))
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                .padding(top = 18.dp, end = 20.dp)
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(Color(0x99111111)),
+            contentAlignment = Alignment.Center
+        ) {
+            UserMessagePreviewCloseIcon(tint = Color.White, modifier = Modifier.size(14.dp))
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewMembershipSheetSafeArea() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFE7E9ED))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(28.dp)
+                .background(Color(0xFFD2D6DD))
+        )
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+            shadowElevation = 8.dp,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(184.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                MembershipCenterHeaderPreview(userId = IdManager.getUserId())
+                MembershipQuotaSummary(
+                    entitlement = SessionApi.EntitlementSnapshot(
+                        tier = "plus",
+                        tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 18),
+                        dailyRemaining = 16
+                    ),
+                    loadState = MembershipLoadState.Loaded
                 )
             }
         }
