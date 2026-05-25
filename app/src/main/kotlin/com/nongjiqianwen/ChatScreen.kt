@@ -5037,9 +5037,9 @@ fun ChatScreen() {
         }
         val inputBarHeight = if (maxWidth < 360.dp) 100.dp else 104.dp
         val inputBarMaxHeight = if (maxWidth < 360.dp) 232.dp else 248.dp
-        val chromeButtonSize = if (maxWidth < 360.dp) 42.dp else 44.dp
+        val topButtonTouchSize = 48.dp
         val topMenuIconSize = if (maxWidth < 360.dp) 27.dp else 28.dp
-        val topChromeIconVisualInset = (chromeButtonSize - topMenuIconSize) / 2f
+        val topChromeIconVisualInset = (topButtonTouchSize - topMenuIconSize) / 2f
         val listHorizontalPadding = when {
             maxWidth < 360.dp -> 12.dp
             maxWidth < 600.dp -> 16.dp
@@ -5055,7 +5055,7 @@ fun ChatScreen() {
         val addIconSize = if (maxWidth < 360.dp) 24.dp else 26.dp
         val sendButtonSize = actionCircleSize
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
-        val topBarReservedHeight = topInset + chromeButtonSize + TOP_CHROME_MASK_EXTRA
+        val topBarReservedHeight = topInset + topButtonTouchSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
         suspend fun uploadComposerImagesForSend(
             images: List<ComposerImageAttachment>
@@ -6144,7 +6144,9 @@ fun ChatScreen() {
                             focusManager.clearFocus(force = true)
                             hamburgerMenuVisible = true
                         },
-                        modifier = Modifier.size(chromeButtonSize)
+                        modifier = Modifier
+                            .size(topButtonTouchSize)
+                            .semantics { contentDescription = "设置" }
                     ) {
                         MenuBarsIcon(
                             tint = Color(0xFF1E1E1E),
@@ -6188,7 +6190,7 @@ fun ChatScreen() {
                             focusManager.clearFocus(force = true)
                             membershipCenterVisible = true
                         },
-                        modifier = Modifier.size(chromeButtonSize)
+                        modifier = Modifier.size(topButtonTouchSize)
                     ) {
                         MembershipCenterAddIcon(
                             size = membershipIconSize

@@ -74,6 +74,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -364,6 +366,10 @@ internal fun HamburgerMenuSheet(
                         .statusBarsPadding()
                         .padding(start = 18.dp, top = HamburgerBackButtonTopPadding)
                         .size(48.dp)
+                        .semantics {
+                            contentDescription =
+                                if (page == HamburgerMenuPage.Menu) "关闭设置" else "返回设置"
+                        }
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -379,21 +385,6 @@ internal fun HamburgerMenuSheet(
                             modifier = Modifier.size(23.dp)
                         )
                     }
-                }
-                if (page == HamburgerMenuPage.Menu) {
-                    Text(
-                        text = "设置",
-                        color = Color(0xFF111111),
-                        fontSize = 21.sp,
-                        lineHeight = 29.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                            .statusBarsPadding()
-                            .padding(top = 18.dp)
-                    )
                 }
                 noticeText?.let { text ->
                     Surface(
@@ -697,9 +688,24 @@ private fun HamburgerMenuMainPage(
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 84.dp, bottom = 32.dp),
+            .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(13.dp)
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 53.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Text(
+                text = "设置",
+                color = Color(0xFF111111),
+                fontSize = 21.sp,
+                lineHeight = 29.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+        }
         HamburgerMenuGroup {
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Membership,
