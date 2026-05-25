@@ -32,6 +32,7 @@
 - ECS 部署、环境变量、域名、HTTPS、健康检查；SAE 当前仅保留历史备选文档
 - `/api/chat/stream`、图片上传、会员额度、摘要、今日农情、帮助与反馈、检查更新等接口运维
 - 日志、错误率、模型调用失败、SSE 中断、上传失败、摘要失败、今日农情生成失败排查
+- App 自动日志接收：`POST /api/app/logs`、`client_app_logs`、后续后台监控面板 / SLS 接入
 - 回滚、停更、临时降级开关和灰度策略
 
 ### 数据和后台业务
@@ -44,6 +45,7 @@
 ### 日志、监控和成本
 
 - ECS / SLS / ARMS 或后续等价监控入口
+- Android 关键失败事件自动上报：SSE 中断、上传失败、快照失败、帮助与反馈失败、检查更新失败
 - 每日请求量、失败率、模型 tokens、搜索调用、图片上传量、成本估算
 - 关键告警：接口 5xx、SSE 大量中断、上传失败、额度扣减异常、数据库连接异常、今日农情连续失败、检查更新 APK 下载异常
 
@@ -114,6 +116,7 @@
 - [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 历史备选入口
 - [rollback.md](D:/wuhao/docs/runbooks/rollback.md)：后端回滚入口
 - [logs-sls.md](D:/wuhao/docs/runbooks/logs-sls.md)：日志排查入口
+- [app-client-logs.md](D:/wuhao/docs/runbooks/app-client-logs.md)：App 自动日志接收入口
 - [db-readonly.md](D:/wuhao/docs/runbooks/db-readonly.md)：数据库只读排查入口
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：Android APK 检查更新和停更入口
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈站内消息入口

@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -15,6 +16,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -26,6 +28,7 @@ object SessionApi {
     private const val TAG = "SessionApi"
     private const val SNAPSHOT_NETWORK_RETRY_MAX = 2
     private const val STREAM_NETWORK_RETRY_MAX = 0
+    private const val CLIENT_LOG_THROTTLE_MS = 60_000L
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
@@ -35,6 +38,7 @@ object SessionApi {
         .build()
     private val currentStreamCall = AtomicReference<Call?>(null)
     private val runtimeGeneration = AtomicInteger(0)
+    private val clientLogLastSentAtMs = ConcurrentHashMap<String, Long>()
 
     data class StreamOptions(
         val clientMsgId: String,
@@ -160,6 +164,98 @@ object SessionApi {
         mainHandler.removeCallbacksAndMessages(null)
         currentStreamCall.getAndSet(null)?.cancel()
     }
+
+    fun reportClientLog(
+        level: String,
+        event: String,
+        message: String,
+        attrs: Map<String, Any?> = emptyMap()
+    ) {
+        val base = baseUrl()
+        if (base.isEmpty()) return
+        val normalizedLevel = when (level.trim().lowercase()) {
+            "info", "warn", "error" -> level.trim().lowercase()
+            else -> "warn"
+        }
+        val normalizedEvent = normalizeClientLogIdentifier(event, maxLength = 96)
+        if (normalizedEvent.isEmpty()) return
+        if (!shouldSendClientLog(normalizedEvent)) return
+        val payload = mapOf(
+            "level" to normalizedLevel,
+            "event" to normalizedEvent,
+            "message" to message.trim().take(255).ifEmpty { normalizedEvent },
+            "attrs" to sanitizeClientLogAttrs(attrs),
+            "platform" to "android",
+            "app_version_code" to BuildConfig.VERSION_CODE,
+            "app_version_name" to BuildConfig.VERSION_NAME,
+            "os_version" to "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
+            "device_model" to listOf(Build.MANUFACTURER, Build.MODEL)
+                .joinToString(" ")
+                .trim()
+                .take(128),
+            "client_time_ms" to System.currentTimeMillis()
+        )
+        val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
+        authedRequest(
+            builderFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/app/logs")
+                        .addHeader("Content-Type", "application/json")
+                        .post(requestBody)
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onReady = { request ->
+                client.newCall(request).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        if (BuildConfig.DEBUG) Log.d(TAG, "client log upload failed: ${e.javaClass.simpleName}")
+                    }
+
+                    override fun onResponse(call: Call, response: Response) {
+                        response.close()
+                    }
+                })
+            }
+        )
+    }
+
+    private fun shouldSendClientLog(event: String): Boolean {
+        val now = System.currentTimeMillis()
+        val previous = clientLogLastSentAtMs[event]
+        if (previous != null && now - previous < CLIENT_LOG_THROTTLE_MS) return false
+        clientLogLastSentAtMs[event] = now
+        return true
+    }
+
+    private fun normalizeClientLogIdentifier(raw: String, maxLength: Int): String =
+        raw.trim()
+            .lowercase()
+            .filter { it.isLetterOrDigit() || it == '_' || it == '-' || it == '.' || it == ':' }
+            .take(maxLength)
+
+    private fun sanitizeClientLogAttrs(attrs: Map<String, Any?>): Map<String, Any?> {
+        if (attrs.isEmpty()) return emptyMap()
+        return attrs.entries
+            .asSequence()
+            .mapNotNull { (key, value) ->
+                val normalizedKey = normalizeClientLogIdentifier(key, maxLength = 64)
+                if (normalizedKey.isEmpty()) return@mapNotNull null
+                normalizedKey to sanitizeClientLogValue(value)
+            }
+            .take(20)
+            .toMap()
+    }
+
+    private fun sanitizeClientLogValue(value: Any?): Any? =
+        when (value) {
+            null -> null
+            is Boolean -> value
+            is Number -> value
+            is String -> value.trim().take(160)
+            else -> value.toString().trim().take(160)
+        }
 
     private fun ensureAuthToken(onResult: (String?) -> Unit) {
         val staticToken = BuildConfig.SESSION_API_TOKEN.trim()
@@ -394,6 +490,16 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = "warn",
+                            event = "support.send_failed",
+                            message = "Support message send failed",
+                            attrs = mapOf(
+                                "http_status" to it.code,
+                                "image_count" to images.size,
+                                "body_length" to body.length
+                            )
+                        )
                         postToMain { onResult(null) }
                         return@use
                     }
@@ -411,7 +517,20 @@ object SessionApi {
                     postToMain { onResult(parsed) }
                 }
             },
-            onFailure = { postToMain { onResult(null) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "support.send_failed",
+                    message = "Support message send failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName,
+                        "image_count" to images.size,
+                        "body_length" to body.length
+                    )
+                )
+                postToMain { onResult(null) }
+            }
         )
     }
 
@@ -505,6 +624,12 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = "warn",
+                            event = "app_update.check_failed",
+                            message = "App update check failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
                         postToMain { onResult(null) }
                         return@use
                     }
@@ -517,12 +642,29 @@ object SessionApi {
                         gson.fromJson(body, AppUpdateInfo::class.java)
                     } catch (e: Exception) {
                         Log.e(TAG, "parse app update", e)
+                        reportClientLog(
+                            level = "warn",
+                            event = "app_update.parse_failed",
+                            message = "App update parse failed",
+                            attrs = mapOf("exception" to e.javaClass.simpleName)
+                        )
                         null
                     }
                     postToMain { onResult(parsed) }
                 }
             },
-            onFailure = { postToMain { onResult(null) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "app_update.check_failed",
+                    message = "App update check failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(null) }
+            }
         )
     }
 
@@ -593,6 +735,12 @@ object SessionApi {
                             onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi))
                         } catch (e: Exception) {
                             Log.e(TAG, "parse snapshot", e)
+                            reportClientLog(
+                                level = "warn",
+                                event = "session.snapshot_parse_failed",
+                                message = "Session snapshot parse failed",
+                                attrs = mapOf("exception" to e.javaClass.simpleName)
+                            )
                             onResult(null)
                         }
                     }
@@ -607,6 +755,15 @@ object SessionApi {
                         }, retryDelayMs)
                     } else {
                         Log.w(TAG, "getSnapshot failed", error)
+                        reportClientLog(
+                            level = "warn",
+                            event = "session.snapshot_failed",
+                            message = "Session snapshot failed",
+                            attrs = mapOf(
+                                "reason" to "network",
+                                "exception" to error.javaClass.simpleName
+                            )
+                        )
                         onResult(null)
                     }
                 }
@@ -630,7 +787,21 @@ object SessionApi {
             if (!isRuntimeStale()) onComplete()
         }
         fun deliverInterrupted(reason: String) {
-            if (!isRuntimeStale()) onInterrupted(reason)
+            if (!isRuntimeStale()) {
+                if (reason !in setOf("canceled", "quota", "replay", "stream_in_progress")) {
+                    reportClientLog(
+                        level = "warn",
+                        event = "chat.stream_interrupted",
+                        message = "Chat stream interrupted",
+                        attrs = mapOf(
+                            "reason" to reason,
+                            "image_count" to options.images.size,
+                            "text_length" to options.text.length
+                        )
+                    )
+                }
+                onInterrupted(reason)
+            }
         }
         val base = baseUrl()
         if (base.isEmpty()) {
@@ -922,7 +1093,24 @@ object SessionApi {
             }
         }
 
-        return runRequest(hasRetriedAuth = false, networkRetry = 0)
+        val result = runRequest(hasRetriedAuth = false, networkRetry = 0)
+        if (
+            result.status !in setOf(StreamCompletionStatus.Complete, StreamCompletionStatus.Replay, StreamCompletionStatus.Quota) &&
+            result.reason != "stopped"
+        ) {
+            reportClientLog(
+                level = "warn",
+                event = "chat.background_stream_failed",
+                message = "Background chat stream failed",
+                attrs = mapOf(
+                    "status" to result.status.name,
+                    "reason" to result.reason.orEmpty(),
+                    "image_count" to options.images.size,
+                    "text_length" to options.text.length
+                )
+            )
+        }
+        return result
     }
 
     private data class SessionSnapshotJson(

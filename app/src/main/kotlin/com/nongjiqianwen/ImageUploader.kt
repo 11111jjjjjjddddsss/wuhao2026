@@ -332,6 +332,15 @@ object ImageUploader {
                             "HTTP $code"
                         }
                         Log.e(TAG, "上传失败：HTTP状态码=$code, error=$errorMsg")
+                        SessionApi.reportClientLog(
+                            level = "warn",
+                            event = "image.upload_failed",
+                            message = "Image upload failed",
+                            attrs = mapOf(
+                                "http_status" to code,
+                                "image_bytes" to imageBytes.size
+                            )
+                        )
                         onError(errorMsg)
                         return@use
                     }
@@ -347,12 +356,31 @@ object ImageUploader {
                         onSuccess(url)
                     } else {
                         Log.e(TAG, if (BuildConfig.DEBUG) "上传失败：响应无根级 url, body=${bodyStr.take(200)}" else "上传失败：响应无根级 url")
+                        SessionApi.reportClientLog(
+                            level = "warn",
+                            event = "image.upload_failed",
+                            message = "Image upload failed",
+                            attrs = mapOf(
+                                "reason" to "response_format",
+                                "image_bytes" to imageBytes.size
+                            )
+                        )
                         onError("上传失败：响应格式错误")
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "上传异常", e)
                 Log.e(TAG, "上传失败：异常=${e.message}")
+                SessionApi.reportClientLog(
+                    level = "warn",
+                    event = "image.upload_failed",
+                    message = "Image upload failed",
+                    attrs = mapOf(
+                        "reason" to "exception",
+                        "exception" to e.javaClass.simpleName,
+                        "image_bytes" to imageBytes.size
+                    )
+                )
                 onError("上传异常: ${e.message}")
             } finally {
                 tempFile?.delete()
