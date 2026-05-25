@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -271,29 +272,6 @@ internal fun ChatComposerBottomBar(
     val actionTint = if (sendGate.activeAppearance) Color.White else Color(0xFF7F8083)
 
     Box(modifier = hostModifier.background(Color.Transparent)) {
-        if (overlayHintText != null) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xEE111111),
-                border = BorderStroke(0.8.dp, Color.Black),
-                shadowElevation = 1.2.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .widthIn(max = chromeMaxWidth)
-                    .padding(
-                        start = inputChromeHorizontalPadding,
-                        end = inputChromeHorizontalPadding
-                    )
-                    .offset { IntOffset(0, -inputLimitHintOffsetPx) }
-            ) {
-                Text(
-                    text = overlayHintText,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                    color = Color.White,
-                    fontSize = 12.sp
-                )
-            }
-        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -416,6 +394,30 @@ internal fun ChatComposerBottomBar(
                 }
             }
         )
+        }
+        if (overlayHintText != null) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color(0xEE111111),
+                border = BorderStroke(0.8.dp, Color.Black),
+                shadowElevation = 1.2.dp,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .widthIn(max = chromeMaxWidth)
+                    .padding(
+                        start = inputChromeHorizontalPadding,
+                        end = inputChromeHorizontalPadding
+                    )
+                    .offset { IntOffset(0, -inputLimitHintOffsetPx) }
+                    .zIndex(1f)
+            ) {
+                Text(
+                    text = overlayHintText,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    color = Color.White,
+                    fontSize = 12.sp
+                )
+            }
         }
     }
 }
@@ -954,7 +956,8 @@ private fun ComposerImagePreviewDialog(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 34.dp, end = 22.dp)
+                    .statusBarsPadding()
+                    .padding(top = 10.dp, end = 22.dp)
                     .size(38.dp)
                     .clip(CircleShape)
                     .background(Color(0x99111111))

@@ -435,6 +435,7 @@ internal const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参�
 private const val QUOTA_EXHAUSTED_HINT_TEXT = "今日额度已用完，请明天再试"
 private const val NETWORK_UNAVAILABLE_HINT_TEXT = "当前网络不可用"
 private const val RATE_LIMIT_HINT_TEXT = "当前请求较多，请稍后重试"
+private const val SERVICE_UNAVAILABLE_HINT_TEXT = "服务暂不可用，请稍后再试"
 private const val INTERRUPTED_NETWORK_HINT_TEXT = "网络波动，回复未完成"
 private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请重试"
 internal const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
@@ -3453,6 +3454,7 @@ fun ChatScreen() {
             "network" -> INTERRUPTED_NETWORK_HINT_TEXT
             "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
             "rate_limit" -> RATE_LIMIT_HINT_TEXT
+            "backend_not_configured", "model_unavailable" -> SERVICE_UNAVAILABLE_HINT_TEXT
             else -> INTERRUPTED_FALLBACK_HINT_TEXT
         }
 
@@ -4260,6 +4262,7 @@ fun ChatScreen() {
             if (!isStreaming) return@post
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             if (hasRemoteHistorySource) return@post
+            if (!BuildConfig.DEBUG) return@post
             resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
             if (streamRevealJob?.isActive == true) {
                 streamRevealJob?.cancel()
@@ -4355,6 +4358,7 @@ fun ChatScreen() {
                         "network" -> INTERRUPTED_NETWORK_HINT_TEXT
                         "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
                         "rate_limit" -> RATE_LIMIT_HINT_TEXT
+                        "backend_not_configured", "model_unavailable" -> SERVICE_UNAVAILABLE_HINT_TEXT
                         else -> INTERRUPTED_FALLBACK_HINT_TEXT
                     }
                 )
@@ -4398,6 +4402,9 @@ fun ChatScreen() {
                 clearFailedAssistantStateForUser(userId)
                 anchoredUserMessageId = userId
                 trimMessagesInPlace()
+                if (latestMessageIndexOrMinusOne() >= 0) {
+                    requestProgrammaticForwardListBottomAnchor()
+                }
                 sendUiSettling = false
                 persistTick++
                 context.saveLocalChatWindowSync(
@@ -4684,8 +4691,10 @@ fun ChatScreen() {
                             }
                         }
                     )
-                } else {
+                } else if (BuildConfig.DEBUG) {
                     launchLocalFakeStream(applyInitialDelay = true)
+                } else {
+                    handleAssistantInterrupted(userId, "backend_not_configured")
                 }
             } finally {
                 sendUiSettling = false
@@ -4947,7 +4956,11 @@ fun ChatScreen() {
                 suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true
-                    if (!hasRemoteHistorySource && pendingStreamingFinalizeMessageId.isNullOrBlank()) {
+                    if (
+                        BuildConfig.DEBUG &&
+                        !hasRemoteHistorySource &&
+                        pendingStreamingFinalizeMessageId.isNullOrBlank()
+                    ) {
                         completeStreamingImmediatelyFromBackground()
                     }
                 }
@@ -4961,6 +4974,7 @@ fun ChatScreen() {
                 if (
                     isStreaming &&
                     pendingStreamingFinalizeMessageId.isNullOrBlank() &&
+                    BuildConfig.DEBUG &&
                     !hasRemoteHistorySource &&
                     fakeStreamJob?.isActive != true &&
                     streamRevealJob?.isActive != true
@@ -5449,7 +5463,20 @@ fun ChatScreen() {
                     val failedAssistantState = failedAssistantMessageStates[msg.id]
                     if (msg.role == ChatRole.ASSISTANT) {
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (failedAssistantState != null) {
+                                        Modifier.onGloballyPositioned { coordinates ->
+                                            updateMessageContentBounds(
+                                                msg.id,
+                                                coordinates.boundsInWindow()
+                                            )
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             CompositionLocalProvider(
@@ -5483,17 +5510,19 @@ fun ChatScreen() {
                                                 !isActiveStreamingAssistant,
                                         showDisclaimer = true,
                                         onStreamingContentBoundsChanged = { bounds ->
-                                            if (bounds != null) {
-                                                updateMessageContentBounds(msg.id, bounds)
-                                                if (isActiveStreamingAssistant) {
-                                                    val nextStreamingContentBottomPx =
-                                                        (bounds.bottom - messageViewportTopPx).roundToInt()
-                                                    if (streamingContentBottomPx != nextStreamingContentBottomPx) {
-                                                        streamingContentBottomPx = nextStreamingContentBottomPx
+                                            if (failedAssistantState == null) {
+                                                if (bounds != null) {
+                                                    updateMessageContentBounds(msg.id, bounds)
+                                                    if (isActiveStreamingAssistant) {
+                                                        val nextStreamingContentBottomPx =
+                                                            (bounds.bottom - messageViewportTopPx).roundToInt()
+                                                        if (streamingContentBottomPx != nextStreamingContentBottomPx) {
+                                                            streamingContentBottomPx = nextStreamingContentBottomPx
+                                                        }
                                                     }
+                                                } else {
+                                                    updateMessageContentBounds(msg.id, null)
                                                 }
-                                            } else {
-                                                updateMessageContentBounds(msg.id, null)
                                             }
                                         },
                                         modifier = Modifier.fillMaxWidth()
@@ -5523,7 +5552,20 @@ fun ChatScreen() {
                         }
                     } else {
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (failedUserState != null) {
+                                        Modifier.onGloballyPositioned { coordinates ->
+                                            updateMessageContentBounds(
+                                                msg.id,
+                                                coordinates.boundsInWindow()
+                                            )
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -5546,7 +5588,9 @@ fun ChatScreen() {
                                         if (bounds != null) {
                                             updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
                                         }
-                                        updateMessageContentBounds(msg.id, bounds)
+                                        if (failedUserState == null) {
+                                            updateMessageContentBounds(msg.id, bounds)
+                                        }
                                         if (bounds != null) {
                                             applyPendingMessageSelectionToolbarIfReady(
                                                 messageId = msg.id,
@@ -5556,7 +5600,9 @@ fun ChatScreen() {
                                     }
                                 )
                             } else {
-                                updateMessageContentBounds(msg.id, null)
+                                if (failedUserState == null) {
+                                    updateMessageContentBounds(msg.id, null)
+                                }
                             }
                             if (failedUserState != null) {
                                 val userRetrying = retryingUserMessageIds[msg.id] == true
@@ -5664,6 +5710,8 @@ fun ChatScreen() {
                         is ChatTimelineItem.Message -> renderConversationMessage(msg.message)
                         is ChatTimelineItem.TodayAgriCard -> TodayAgriNewsCard(
                             card = msg.card,
+                            horizontalPadding = listHorizontalPadding,
+                            maxCardWidth = chromeMaxWidth,
                             onOpenUrl = { url -> openExternalUrl(url) }
                         )
                     }
@@ -7572,6 +7620,8 @@ private fun UiCopyPreviewPlainText(lines: List<String>) {
 private fun TodayAgriNewsCard(
     card: SessionApi.TodayAgriCard,
     onOpenUrl: (String) -> Unit,
+    horizontalPadding: Dp = 20.dp,
+    maxCardWidth: Dp = 560.dp,
     modifier: Modifier = Modifier
 ) {
     val items = card.items.orEmpty()
@@ -7579,7 +7629,7 @@ private fun TodayAgriNewsCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = horizontalPadding, vertical = 12.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -7587,7 +7637,7 @@ private fun TodayAgriNewsCard(
             shape = RoundedCornerShape(22.dp),
             border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
             modifier = Modifier
-                .widthIn(max = 560.dp)
+                .widthIn(max = maxCardWidth)
                 .fillMaxWidth()
         ) {
             Column(
@@ -7850,7 +7900,8 @@ private fun UserMessageImagePreviewDialog(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(top = 34.dp, end = 22.dp)
+                    .statusBarsPadding()
+                    .padding(top = 10.dp, end = 22.dp)
                     .size(38.dp)
                     .clip(CircleShape)
                     .background(Color(0x99111111))

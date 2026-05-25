@@ -452,7 +452,8 @@ private fun HamburgerAppUpdateDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0x66000000))
-                .padding(horizontal = 28.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
+                .padding(horizontal = 28.dp, vertical = 20.dp),
             contentAlignment = Alignment.Center
         ) {
             HamburgerAppUpdateCard(
@@ -487,7 +488,9 @@ private fun HamburgerAppUpdateCard(
         modifier = modifier
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 22.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
@@ -2270,7 +2273,8 @@ private fun HamburgerSupportMessageImageStrip(
                     shape = CircleShape,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(top = 34.dp, end = 22.dp)
+                        .statusBarsPadding()
+                        .padding(top = 10.dp, end = 22.dp)
                         .size(38.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },

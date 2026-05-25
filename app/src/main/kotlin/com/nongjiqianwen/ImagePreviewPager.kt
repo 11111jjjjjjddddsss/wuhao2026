@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -76,7 +77,8 @@ internal fun ImagePreviewPager(
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 44.dp)
+                    .statusBarsPadding()
+                    .padding(top = 20.dp)
                     .clip(RoundedCornerShape(999.dp))
                     .background(Color(0x66111111))
                     .padding(horizontal = 10.dp, vertical = 5.dp)

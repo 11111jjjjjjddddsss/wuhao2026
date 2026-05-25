@@ -5,6 +5,8 @@
 
 ## 2026-05-25
 
+- 多代理全量复查 Android UI 后继续补边界护栏：输入框图片/字数提示层改到输入框壳体之后绘制并显式置顶，避免有图片时被白色输入卡遮住；纯文字发送失败会主动请求列表底部锚点，用户/助手失败 footer 也纳入消息底部测量，避免失败态露不全或底部工作线误判；今日农情卡片横向轨道改为复用聊天列表 / 输入框边界；图片全屏预览页码和关闭按钮改走状态栏安全区；检查更新弹窗补纵向安全区和长说明滚动；无后端地址时的本地假流式回答收口为 debug-only，正式包只走失败态，避免绕开后端真相。只改现有运行时 UI 组件，不引入旧 active-zone / 反向列表 / 手写图片手势链；按 baseline profile runbook 判断为边界视觉和测量修复，不需要更新预热脚本。
+
 - 多代理复查清数据后 Android UI 回归：设置首页标题从外层浮层收进 `HamburgerMenuMainPage` 自己的内容区，删除运行时第二处“设置”标题源，避免标题和设置列表在 clean-state / 动画重组时分层错位或看起来丢失；主聊天页顶部左右按钮统一使用 48dp 真实触控尺寸参与遮罩高度和视觉边界计算，并给左上设置入口补语义标签。只改 `ChatScreen.kt` / `HamburgerMenuSheet.kt` 的 UI 归属和尺寸参数，不改聊天滚动、输入框、远端历史恢复、会员 / 反馈 / 检查更新业务链路；按 baseline profile runbook 判断属于小视觉修复，不需要更新预热脚本。
 
 - 完成 ECS 首版后端部署准备并跑起 `server-go`：通过 Cloud Assistant 初始化 `nongji` 系统用户、部署目录、`/etc/nongjiqiancha/server.env`、`nongji-server.service`、Nginx 反向代理、基础限流、fail2ban 和 logrotate；RDS 创建库 `nongjiqiancha`、账号 `nongji_app` 并放通 ECS 私网 IP `192.168.1.237`，服务启动已完成当前 MySQL 迁移，`/healthz` 返回 `ok=true / auth_strict=true / bailian=missing_key / dev_order_endpoints=false`。当前未配置 DashScope 模型 Key，真实聊天会安全返回 `MODEL_BACKEND_NOT_CONFIGURED`，未授权请求返回 401；公网正式可用仍待 DNS、HTTPS、备案、模型 Key 和 Android 登录 token 链。部署时修复 `007_single_user_session_ab.sql`、`008_single_user_round_ledger.sql` 的 MySQL 不兼容 `DROP COLUMN IF EXISTS` 写法，改为仓库既有的 `information_schema + PREPARE` 动态 DDL 风格。OSS Bucket 创建仍被 OSS 返回 `UserDisable` 阻塞，SLS 服务已开通但只看到阿里云系统 / 产品托管项目，暂不删除也不购买节省计划。
