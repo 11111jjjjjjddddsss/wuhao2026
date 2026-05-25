@@ -11,7 +11,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-internal const val TARGET_PACKAGE = "com.nongjiqianwen"
+internal const val TARGET_PACKAGE = "com.nongjiqiancha"
 
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = 33)
@@ -33,7 +33,7 @@ internal fun MacrobenchmarkScope.exerciseChatCriticalPath() {
     device.waitForIdle()
     scrollChatContent(device)
     focusComposer(device)
-    device.executeShellCommand("input text nongjiqianwen")
+    device.executeShellCommand("input text nongjiqiancha")
     device.waitForIdle()
     device.pressBack()
     device.waitForIdle()

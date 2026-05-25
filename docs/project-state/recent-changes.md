@@ -5,9 +5,15 @@
 
 ## 2026-05-25
 
+- 按用户拍板固定 App 对外身份：App 名称继续“农技千查”，Android `applicationId` 从旧内测口径 `com.nongjiqianwen` 切到 `com.nongjiqiancha`；Kotlin 源码包 / Gradle namespace 暂保留 `com.nongjiqianwen` 作为内部代码命名空间，避免无意义大搬家。同步更新检查更新下载文件名、相机相册导出文件名前缀和 baseline profile 目标包名；本机生成固定 release 签名，备案用 MD5 / SHA1 / SHA256 / RSA 公钥信息写到 `%USERPROFILE%\\.nongjiqiancha\\android-release-public-info.txt`，签名配置写到 `%USERPROFILE%\\.nongjiqiancha\\android-release-signing.properties`，私钥和密码不进仓库。release 任务增加签名配置和 https `UPLOAD_BASE_URL` fail-fast，避免正式包没接后端；旧内测包 `com.nongjiqianwen` 不能通过检查更新覆盖安装成新包，测试机需卸旧包重装，后续自更新只支持 `com.nongjiqiancha` 同包名升级。
+
+- 按用户要求把设置页“服务协议”6 个页面重写为成品口径：用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示统一更新到 2026-05-25。新文案按当前真实功能说明网络、图片、会员额度、帮助与反馈、检查更新、第三方大模型和云服务，不再使用“买服务器前 / 后续再补”的半成品语气；同时不把未来肥料等农资交易写死为不开展，也不虚构当前已经接入支付、手机号登录、礼品卡兑换、农资商品交易、OSS 图片链、SLS 业务日志或 Redis。同步更新 [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)、[go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)、[app-update.md](D:/wuhao/docs/runbooks/app-update.md) 和项目记忆。
+
+- 前后端巡检后收紧 ECS 后端监听口径：`server-go` 默认监听地址从 `:PORT` 改为 `127.0.0.1:${PORT:-3000}`，只让 Nginx 暴露公网入口；若后续 SAE / 容器平台需要全网卡监听，必须显式设置 `LISTEN_ADDR` 或 `LISTEN_HOST`。同步补单测锁住默认回环监听、host+port 和完整地址覆盖逻辑，并清理 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)、[deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)、[backend-boundaries.md](D:/wuhao/docs/backend-boundaries.md) 里的旧 DNS / RDS / SAE 口径，避免后续窗口把历史方案当主链。
+
 - 新增 App 自动日志最小接收骨架：后端新增 `POST /api/app/logs` 和 `client_app_logs` 表，走现有用户鉴权，限制请求大小、事件名、消息和 attrs 长度，并同步打一条结构化服务日志；Android 在远端快照失败 / 解析失败、前台 SSE 中断、后台图片消息流失败、图片上传失败、帮助与反馈发送失败、检查更新失败 / 解析失败等关键失败点自动 fire-and-forget 上报。当前不做用户手动上传日志，不上传聊天正文、AI 回复全文、图片内容 / URL、手机号、token 或模型 Key；这只是后续后台监控面板 / SLS 接入前的轻量骨架。新增 [app-client-logs.md](D:/wuhao/docs/runbooks/app-client-logs.md) 固定事件、隐私边界和后续查询口径。
 
-- 更新 debug-only UI 文案样式预览面板：标题栏右上角新增关闭按钮，仍保留点空白关闭，避免只能点外层空白退出；新增“适配与回退”分组，覆盖远端快照失败兜底、删除历史 hydrate 拦截、图片预览安全区和会员面板短屏安全区；会员中心分组补窄屏套餐 / 加油包挤压样例，方便小屏和大字体风险快速核对。该入口仍挂在 debug 包顶部标题点击，不进入 release 可见主界面。
+- 更新 debug-only UI 文案样式预览面板：标题栏右上角新增关闭按钮，仍保留点空白关闭，避免只能点外层空白退出；面板外层补 safe drawing，降低横屏 / 刘海屏 debug QA 时贴边风险；新增“适配与回退”分组，覆盖远端快照失败兜底、删除历史 hydrate 拦截、图片预览安全区和会员面板短屏安全区；会员中心分组补窄屏套餐 / 加油包挤压样例，方便小屏和大字体风险快速核对。该入口仍挂在 debug 包顶部标题点击，不进入 release 可见主界面。
 
 - 按用户要求拉多路会诊复查 Android 小屏 / 横屏适配和“UI 回退”风险后，补一组最小护栏：会员中心底部面板按顶部 safe drawing 限制最大高度，套餐 / 加油包标题和价格行增加权重与省略，避免小屏或大字体挤出；输入框图片预览、聊天图片预览、帮助与反馈图片预览和全屏页码补横向 safe drawing，删除历史确认弹窗补纵向安全区。`ChatScreen.kt` 的远端历史 hydrate 在 `/api/session/snapshot` 失败时不再把普通本地 30 轮窗口整段回灌，只保留 pending 图片发送和失败态恢复入口；删除所有历史对话成功后用清除 epoch 拦截并发中的旧 hydrate 结果，避免旧本地快照晚回来制造“清了又回退”的观感。复查未发现运行时旧 active-zone、反向列表、手写图片手势链或 Android 直连模型链复活；本轮不触碰聊天滚动主链。
 

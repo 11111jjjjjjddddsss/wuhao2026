@@ -2,16 +2,18 @@
 
 本文件只保留历史分析，不再承担当前后端主规则职责。
 
+注意：本文正文中的 `SAE + RDS` 是历史阶段口径。当前首版部署真相已经改为 `ECS + RDS MySQL`，OSS 尚未接入上传链，详见当前项目记忆文件；不要按本文的 SAE 顺序执行部署。
+
 当前唯一 active 真相只认：
 - [AGENTS.md](D:/wuhao/AGENTS.md)
 - [server-go/AGENTS.md](D:/wuhao/server-go/AGENTS.md)
 - [docs/project-state/current-status.md](D:/wuhao/docs/project-state/current-status.md)
 
-## 当前主形态
+## 历史主形态（已过期，仅供理解边界）
 
 - 当前只保留一套主后端：[server-go](D:/wuhao/server-go)
 - 图片上传能力并入主后端，不再单独维护第二套上传服务
-- 当前阶段的最小生产组合以 `SAE + RDS MySQL` 为主，图片正式上线时再补 `OSS`；PolarDB 暂作为后续高并发 / 更高规格升级选项
+- 历史阶段曾设想最小生产组合以 `SAE + RDS MySQL` 为主，图片正式上线时再补 `OSS`；该口径已被当前 `ECS + RDS MySQL` 首版路线取代，不能按此条执行部署
 
 ## 为什么现在不提前搭商城框架
 
@@ -38,14 +40,14 @@
 
 - 你当前只有文字和图片，没有大文件、没有视频转码，一套主后端足够扛早期和中期量级
 - 前端继续做图片压缩，减少上传体积和后端压力
-- 主后端保持无状态，方便后续在 SAE 水平扩容
+- 主后端保持无状态，方便后续在 ECS / 容器平台水平扩容；如果未来重新启用 SAE，需要重新沉淀新的 SAE runbook
 - RDS MySQL 存用户、会话、额度、订单；图片正式上线后交给 OSS
 - 真到商城流量明显独立于聊天流量时，再考虑把商城或上传链路拆出去
 
-## 后续落地顺序
+## 历史落地顺序（已过期）
 
 1. 先稳定主后端的聊天、上传、会员、额度
-2. 上 SAE 和 RDS MySQL
-3. 图片正式上线时补 OSS
+2. 当时计划上 SAE 和 RDS MySQL；当前已改为 ECS + RDS MySQL
+3. 图片正式上线时补 OSS；当前首版仍是 ECS 本机上传，OSS Bucket 尚未创建
 4. 商城启动时，在主后端里新增 `shop` 模块和对应数据表
 5. 只有出现独立扩容或独立安全隔离需求时，才拆第二套服务

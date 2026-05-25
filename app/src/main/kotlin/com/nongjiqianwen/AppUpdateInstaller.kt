@@ -54,7 +54,7 @@ object AppUpdateInstaller {
                 }
             }
             val versionCode = update.latestVersionCode ?: 0
-            val outputFile = File(outputDir, "nongjiqianwen-$versionCode.apk")
+            val outputFile = File(outputDir, "nongjiqiancha-$versionCode.apk")
             val tempFile = File(outputDir, "${outputFile.name}.tmp")
             val request = Request.Builder().url(apkUrl).get().build()
             try {

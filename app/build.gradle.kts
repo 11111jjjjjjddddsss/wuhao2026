@@ -1,3 +1,6 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,29 +8,68 @@ plugins {
     id("androidx.baselineprofile")
 }
 
+val releaseSigningProperties = Properties()
+val releaseSigningPropertiesFile = File(
+    System.getProperty("user.home"),
+    ".nongjiqiancha/android-release-signing.properties",
+)
+if (releaseSigningPropertiesFile.isFile) {
+    releaseSigningPropertiesFile.inputStream().use { releaseSigningProperties.load(it) }
+}
+
+fun releaseSigningValue(name: String): String? =
+    (project.findProperty(name) as String?)
+        ?: System.getenv(name)
+        ?: releaseSigningProperties.getProperty(name)
+
+fun optionalBuildValue(name: String): String =
+    ((project.findProperty(name) as String?) ?: System.getenv(name) ?: "").trim()
+
+val releaseStoreFile = releaseSigningValue("NONGJI_ANDROID_RELEASE_STORE_FILE")
+val releaseStorePassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_PASSWORD")
+val uploadBaseUrl = optionalBuildValue("UPLOAD_BASE_URL")
+val sessionApiToken = optionalBuildValue("SESSION_API_TOKEN")
+val releaseSigningConfigured =
+    !releaseStoreFile.isNullOrBlank() &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseKeyAlias.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank()
+
 android {
     namespace = "com.nongjiqianwen"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.nongjiqianwen"
+        applicationId = "com.nongjiqiancha"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val uploadBaseUrl = project.findProperty("UPLOAD_BASE_URL") as String? ?: ""
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
-        val sessionApiToken = (project.findProperty("SESSION_API_TOKEN") as String?) ?: ""
         buildConfigField("String", "SESSION_API_TOKEN", "\"$sessionApiToken\"")
 
         val useBackendAb = (project.findProperty("USE_BACKEND_AB") as String?)?.toBooleanStrictOrNull() ?: true
         buildConfigField("boolean", "USE_BACKEND_AB", useBackendAb.toString())
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -44,6 +86,23 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+tasks.configureEach {
+    if (name == "assembleRelease" || name == "bundleRelease" || name == "packageRelease") {
+        doFirst {
+            if (!releaseSigningConfigured) {
+                throw org.gradle.api.GradleException(
+                    "Release signing is not configured. Create ~/.nongjiqiancha/android-release-signing.properties or pass NONGJI_ANDROID_RELEASE_* properties.",
+                )
+            }
+            if (!uploadBaseUrl.startsWith("https://")) {
+                throw org.gradle.api.GradleException(
+                    "Release UPLOAD_BASE_URL must be configured as an https URL, for example -PUPLOAD_BASE_URL=https://api.nongjiqiancha.cn.",
+                )
+            }
+        }
     }
 }
 

@@ -36,7 +36,7 @@ private fun Context.createGalleryComposerCameraImageUri(): Uri? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
     return runCatching {
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "nongjiqianwen_${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "nongjiqiancha_${System.currentTimeMillis()}.jpg")
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             put(
                 MediaStore.Images.Media.RELATIVE_PATH,
@@ -117,7 +117,7 @@ internal fun Context.saveComposerCameraImageToGallery(sourceUri: Uri) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
     runCatching {
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "nongjiqianwen_${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "nongjiqiancha_${System.currentTimeMillis()}.jpg")
             put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
             put(
                 MediaStore.Images.Media.RELATIVE_PATH,

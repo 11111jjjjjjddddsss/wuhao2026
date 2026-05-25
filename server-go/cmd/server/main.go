@@ -27,15 +27,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	port := strings.TrimSpace(os.Getenv("PORT"))
-	if port == "" {
-		port = "3000"
-	}
-
-	addr := ":" + port
+	addr := resolveListenAddr()
 	logger.Info("server listening", "addr", addr)
 	if err := http.ListenAndServe(addr, server.Handler()); err != nil {
 		logger.Error("server stopped", "error", err)
 		os.Exit(1)
 	}
+}
+
+func resolveListenAddr() string {
+	if addr := strings.TrimSpace(os.Getenv("LISTEN_ADDR")); addr != "" {
+		return addr
+	}
+
+	host := strings.TrimSpace(os.Getenv("LISTEN_HOST"))
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := strings.TrimSpace(os.Getenv("PORT"))
+	if port == "" {
+		port = "3000"
+	}
+
+	return host + ":" + port
 }

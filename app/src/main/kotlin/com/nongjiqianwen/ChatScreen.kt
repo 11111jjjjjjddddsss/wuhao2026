@@ -6806,6 +6806,7 @@ private fun UiCopyPreviewOverlay(
             shape = RoundedCornerShape(18.dp),
             shadowElevation = 12.dp,
             modifier = Modifier
+                .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(horizontal = 12.dp, vertical = 28.dp)
                 .widthIn(max = 480.dp)
                 .heightIn(max = 760.dp)
