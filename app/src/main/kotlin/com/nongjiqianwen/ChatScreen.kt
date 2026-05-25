@@ -1275,6 +1275,49 @@ private fun mergeHydratedMessagesWithLocalPendingState(
     )
 }
 
+private fun retainLocalRecoverySnapshotForRemoteFallback(
+    localSnapshot: LocalChatWindowSnapshot,
+    shouldKeepPendingUserMessage: (String) -> Boolean
+): LocalChatWindowSnapshot {
+    val localFailedSnapshot = markLocalImageUploadPendingAsFailed(
+        snapshot = localSnapshot,
+        shouldKeepPending = shouldKeepPendingUserMessage
+    )
+    val retainedMessageIds = linkedSetOf<String>()
+    localFailedSnapshot.messages.forEach { message ->
+        if (
+            message.isLocalImageUploadPendingUserMessage() &&
+            shouldKeepPendingUserMessage(message.id)
+        ) {
+            retainedMessageIds.add(message.id)
+            return@forEach
+        }
+        if (message.id in localFailedSnapshot.failedUserMessageStates) {
+            retainedMessageIds.add(message.id)
+        }
+    }
+    localFailedSnapshot.failedAssistantMessageStates.forEach { (assistantMessageId, state) ->
+        retainedMessageIds.add(state.sourceUserMessageId)
+        retainedMessageIds.add(assistantMessageId)
+    }
+    val retainedMessages = localFailedSnapshot.messages.filter { message ->
+        message.id in retainedMessageIds
+    }
+    val retainedFailedUserStates = localFailedSnapshot.failedUserMessageStates.filterKeys { messageId ->
+        messageId in retainedMessageIds
+    }
+    val retainedFailedAssistantStates = localFailedSnapshot.failedAssistantMessageStates.filter { (messageId, state) ->
+        messageId in retainedMessageIds && state.sourceUserMessageId in retainedMessageIds
+    }
+    return sanitizeLocalChatWindowSnapshot(
+        LocalChatWindowSnapshot(
+            messages = retainedMessages,
+            failedUserMessageStates = retainedFailedUserStates,
+            failedAssistantMessageStates = retainedFailedAssistantStates
+        )
+    )
+}
+
 private fun shouldApplyHydratedSnapshot(
     currentMessages: List<ChatMessage>,
     currentFailedUserMessageStates: Map<String, String>,
@@ -2474,6 +2517,9 @@ fun ChatScreen() {
     }
     var historyHydrationComplete by remember(uiRuntimeResetKey) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
+    }
+    var chatHistoryClearEpoch by remember(uiRuntimeResetKey) {
+        mutableIntStateOf(0)
     }
     val startupHydrationBarrierSatisfied by remember(
         historyHydrationComplete,
@@ -3728,6 +3774,7 @@ fun ChatScreen() {
 
     fun applyChatHistoryCleared() {
         SessionApi.resetUiRuntimeForCleanState()
+        chatHistoryClearEpoch++
         PendingChatSendWorkScheduler.cancelAllForScope(context, chatScopeId)
         resetStreamingUiState(clearVisibleContent = true)
         context.clearLocalChatHistoryStateSync(chatScopeId)
@@ -3772,27 +3819,36 @@ fun ChatScreen() {
             }
         }
         if (shouldHydrateRemoteHistory) {
+            val hydrateClearEpoch = chatHistoryClearEpoch
             val localSnapshotForMergeDeferred = async {
                 context.loadLocalChatWindow(chatScopeId)
             }
             val snapshot = awaitRemoteSnapshot()
             val localSnapshotForMerge = localSnapshotForMergeDeferred.await()
-            startupRecoverableUserMessageId = trailingRecoverableUserMessageId(
-                source = localSnapshotForMerge.messages,
-                ignoredUserMessageIds = localSnapshotForMerge.failedUserMessageStates.keys
-            )
+            if (hydrateClearEpoch != chatHistoryClearEpoch) {
+                historyHydrationComplete = true
+                return@LaunchedEffect
+            }
+            val shouldKeepPendingUserMessage: (String) -> Boolean = { messageId ->
+                PendingChatSendStore.has(context, chatScopeId, messageId)
+            }
             val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
             val hydratedSnapshot = if (snapshot == null) {
-                sanitizeLocalChatWindowSnapshot(localSnapshotForMerge)
+                retainLocalRecoverySnapshotForRemoteFallback(
+                    localSnapshot = localSnapshotForMerge,
+                    shouldKeepPendingUserMessage = shouldKeepPendingUserMessage
+                )
             } else {
                 mergeHydratedMessagesWithLocalPendingState(
                     remoteMessages = remoteMessages,
                     localSnapshot = localSnapshotForMerge,
-                    shouldKeepPendingUserMessage = { messageId ->
-                        PendingChatSendStore.has(context, chatScopeId, messageId)
-                    }
+                    shouldKeepPendingUserMessage = shouldKeepPendingUserMessage
                 )
             }
+            startupRecoverableUserMessageId = trailingRecoverableUserMessageId(
+                source = hydratedSnapshot.messages,
+                ignoredUserMessageIds = hydratedSnapshot.failedUserMessageStates.keys
+            )
             val prewarmMessages = if (snapshot == null) hydratedSnapshot.messages else remoteMessages
             if (prewarmMessages.isNotEmpty()) {
                 snackbarScope.launch {
@@ -3820,6 +3876,10 @@ fun ChatScreen() {
                         append(", isStreaming=").append(isStreaming)
                     }
                 )
+            }
+            if (hydrateClearEpoch != chatHistoryClearEpoch) {
+                historyHydrationComplete = true
+                return@LaunchedEffect
             }
             if (
                 !hasStartedConversation &&
@@ -7900,6 +7960,7 @@ private fun UserMessageImagePreviewDialog(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                     .statusBarsPadding()
                     .padding(top = 10.dp, end = 22.dp)
                     .size(38.dp)

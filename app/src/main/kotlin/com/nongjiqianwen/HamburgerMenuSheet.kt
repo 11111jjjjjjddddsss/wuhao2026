@@ -2273,6 +2273,7 @@ private fun HamburgerSupportMessageImageStrip(
                     shape = CircleShape,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                         .statusBarsPadding()
                         .padding(top = 10.dp, end = 22.dp)
                         .size(38.dp)
@@ -2407,7 +2408,8 @@ private fun HamburgerDeleteHistoryConfirmDialog(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color(0x66000000))
-                .padding(horizontal = 28.dp),
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
+                .padding(horizontal = 28.dp, vertical = 20.dp),
             contentAlignment = Alignment.Center
         ) {
             HamburgerDeleteHistoryConfirmCard(

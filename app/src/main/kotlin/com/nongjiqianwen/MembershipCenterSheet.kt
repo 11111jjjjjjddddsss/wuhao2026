@@ -11,14 +11,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -40,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -100,29 +106,37 @@ internal fun MembershipCenterBottomSheet(
             exit = ExitTransition.None,
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
-            Surface(
-                color = Color.White,
-                shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
-                shadowElevation = 14.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 720.dp)
-            ) {
-                Column(
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val density = LocalDensity.current
+                val topSafeInset = with(density) {
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top).getTop(this).toDp()
+                }
+                val sheetMaxHeight = (maxHeight - topSafeInset).coerceAtMost(720.dp)
+
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+                    shadowElevation = 14.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .navigationBarsPadding()
-                        .padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .heightIn(max = sheetMaxHeight)
                 ) {
-                    MembershipCenterHeader(userId = userId, onDismiss = onDismiss)
-                    MembershipCenterBody(
-                        entitlement = entitlement,
-                        loadState = loadState,
-                        paymentNoticeResetKey = visible,
-                        onPaymentUnavailable = onPaymentUnavailable
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
+                            .navigationBarsPadding()
+                            .padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        MembershipCenterHeader(userId = userId, onDismiss = onDismiss)
+                        MembershipCenterBody(
+                            entitlement = entitlement,
+                            loadState = loadState,
+                            paymentNoticeResetKey = visible,
+                            onPaymentUnavailable = onPaymentUnavailable
+                        )
+                    }
                 }
             }
         }
@@ -590,6 +604,9 @@ private fun MembershipPlanCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -598,7 +615,10 @@ private fun MembershipPlanCard(
                         color = Color(0xFF111111),
                         fontSize = 19.sp,
                         lineHeight = 24.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     if (active) {
                         MembershipPill(text = "当前")
@@ -611,7 +631,10 @@ private fun MembershipPlanCard(
                     color = Color(0xFF111111),
                     fontSize = 18.sp,
                     lineHeight = 23.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End
                 )
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -657,19 +680,28 @@ private fun MembershipTopupCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
                         text = "加油包",
                         color = Color(0xFF111111),
                         fontSize = 18.sp,
                         lineHeight = 23.sp,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "额外80次",
                         color = Color(0xFF747881),
                         fontSize = 12.sp,
-                        lineHeight = 17.sp
+                        lineHeight = 17.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
@@ -677,7 +709,10 @@ private fun MembershipTopupCard(
                     color = Color(0xFF111111),
                     fontSize = 18.sp,
                     lineHeight = 23.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End
                 )
             }
             Text(
