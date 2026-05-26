@@ -1077,10 +1077,10 @@ private fun ComposerPhotoIcon(
     Canvas(modifier = modifier) {
         val stroke = size.minDimension * 0.085f
         val corner = size.minDimension * 0.14f
-        val left = size.width * 0.16f
-        val top = size.height * 0.18f
-        val right = size.width * 0.84f
-        val bottom = size.height * 0.82f
+        val left = size.width * 0.1f
+        val top = size.height * 0.2f
+        val right = size.width * 0.9f
+        val bottom = size.height * 0.84f
         drawRoundRect(
             color = tint,
             topLeft = Offset(left, top),
