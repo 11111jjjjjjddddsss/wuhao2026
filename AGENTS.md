@@ -308,6 +308,7 @@ Clean-State 必做回归的范围：
   - `messages` 作为 oldest -> newest 的唯一业务消息数据源；列表显示层可以包一层 `ChatTimelineItem` 承接 UI-only 今日农情卡片，但不再通过 `chatListItems` 派生 streaming block item
   - `currentLastMessageContentBottomPx()` 的 fallback 按正向列表使用最新真实消息的 UI index
   - `currentBottomOverflowPx()` 按正向列表单主人口径计算最新消息底边与统一底部目标之间的绝对误差
+- clean-state / 删除所有历史后的稀疏首屏是当前 96dp 工作线规则的唯一例外：当本轮发送前没有任何用户 / assistant 业务消息时，`ChatScreen.kt` 会临时启用 `cleanStateSparseLayoutActive`，让 `ChatRecyclerViewHost.kt` 用 `Arrangement.Top` 加轻量 top offset 展示早期内容，并暂停普通底部锚点；只有最新真实消息的实测底边已经到达或超过正常 96dp 工作线，或列表已经可滚动时，才退出稀疏模式并恢复默认 `Arrangement.Bottom`、正向底部锚点和 96dp 工作线。退出判断必须使用真实布局坐标，文字、图片、图片与文字间距、失败态 footer 等都算，不允许按第几轮、字数或有没有图片做估算
 - 发送起步当前保留的旧保护只有两样：
   - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`
   - `sendStartAnchorActive`

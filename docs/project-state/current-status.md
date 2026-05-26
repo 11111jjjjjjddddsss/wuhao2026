@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-05-25
+最后更新：2026-05-26
 
 ## 项目概况
 
@@ -51,7 +51,7 @@
 ## 聊天 UI 主链
 
 - `ChatRecyclerViewHost.kt` 当前是正向 `LazyColumn`，没有 `reverseLayout`，没有 `items.asReversed()`
-- `ChatRecyclerViewHost.kt` 使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，而不是停在顶部 padding
+- `ChatRecyclerViewHost.kt` 默认使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，而不是停在顶部 padding。唯一例外是 clean-state / 删除所有历史后的稀疏首屏：如果发送前没有用户 / assistant 业务消息，`ChatScreen.kt` 会临时启用稀疏布局，用 `Arrangement.Top` 加轻量 top offset 让早期文字 / 图片内容从上方自然往下长，并暂停普通底部锚点；当最新真实消息的实测底边到达或超过正常 96dp 工作线，或列表已经可滚动时，立即恢复默认 `Arrangement.Bottom` 和正向底部锚点。退出判断只看真实布局坐标，文字、图片、图片与文字间距、失败态 footer 都算，不按第几轮、字数或是否有图估算
 - `ChatScreen.kt` 当前使用 `ChatTimelineItem` 作为列表展示层，允许插入一个 UI-only 今日农情卡片；真实业务消息仍只来自 `messages`，不再通过 `chatListItems` 派生 streaming block item
 - streaming 小分割 / block item 化已撤掉：`StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex / streaming_tail` 等符号在主链无残留
 - mixed active-zone / overlay 运行时已退出主链：

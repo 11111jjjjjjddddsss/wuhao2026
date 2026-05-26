@@ -19,6 +19,7 @@ internal fun <T> ChatRecyclerViewHost(
     itemContentType: (T) -> Any? = { null },
     topPaddingPx: Int,
     bottomPaddingPx: Int,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Bottom,
     itemContent: @Composable (T) -> Unit
 ) {
     val density = LocalDensity.current
@@ -35,7 +36,7 @@ internal fun <T> ChatRecyclerViewHost(
         modifier = modifier,
         state = listState,
         contentPadding = contentPadding,
-        verticalArrangement = Arrangement.Bottom,
+        verticalArrangement = verticalArrangement,
         userScrollEnabled = true
     ) {
         items(
