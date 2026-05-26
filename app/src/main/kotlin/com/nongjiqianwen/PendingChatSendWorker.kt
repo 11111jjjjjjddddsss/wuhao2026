@@ -25,6 +25,10 @@ class PendingChatSendWorker(
 
         val pending = PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId)
             ?: return@withContext Result.success()
+        if (PendingChatSendStore.isStaleForCurrentSession(pending)) {
+            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+            return@withContext Result.success()
+        }
         val now = System.currentTimeMillis()
         if (
             pending.remoteStartedAtMs > 0 &&
@@ -52,6 +56,9 @@ class PendingChatSendWorker(
                 ?: return@withContext retryRecoverableOrFail(chatScopeId, userMessageId)
         }
         if (isStopped) return@withContext Result.retry()
+        if (PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId) == null) {
+            return@withContext Result.success()
+        }
 
         PendingChatSendStore.updateImageUrls(
             applicationContext,
@@ -59,15 +66,22 @@ class PendingChatSendWorker(
             userMessageId,
             imageUrls
         )
+        if (PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId) == null) {
+            return@withContext Result.success()
+        }
         PendingChatSendStore.markRemoteStarted(applicationContext, chatScopeId, userMessageId)
+        if (PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId) == null) {
+            return@withContext Result.success()
+        }
         val result = SessionApi.streamChatToCompletion(
             SessionApi.StreamOptions(
                 clientMsgId = userMessageId,
                 text = pending.text,
-                images = imageUrls
+                images = imageUrls,
+                sessionGeneration = pending.sessionGeneration
             )
         ) {
-            !isStopped
+            !isStopped && PendingChatSendStore.has(applicationContext, chatScopeId, userMessageId)
         }
         when (result.status) {
             SessionApi.StreamCompletionStatus.Complete,

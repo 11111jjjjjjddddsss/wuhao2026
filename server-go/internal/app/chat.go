@@ -68,6 +68,7 @@ func (l *chatRateLimiter) Consume(userID string, now time.Time) (bool, int) {
 }
 
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	requestReceivedAtMs := time.Now().UnixMilli()
 	auth, ok := s.requireAuth(w, r)
 	if !ok {
 		return
@@ -98,6 +99,18 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if stale, err := s.isStaleChatStreamRequest(ctx, auth.UserID, body.SessionGeneration, requestReceivedAtMs); err != nil {
+		s.logger.Error("check session generation failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	} else if stale {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STALE_SESSION_GENERATION",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
+
 	completed, err := s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
 	if err != nil {
 		s.logger.Error("check session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
@@ -119,8 +132,21 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	acquiredInflight, inflightToken, err := s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
+	var acquiredInflight bool
+	var inflightToken string
+	err = s.store.WithUserChatStreamGate(ctx, auth.UserID, func(ctx context.Context) error {
+		var acquireErr error
+		acquiredInflight, inflightToken, acquireErr = s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
+		return acquireErr
+	})
 	if err != nil {
+		if err == ErrChatStreamGateBusy {
+			s.writeJSON(w, http.StatusConflict, map[string]any{
+				"error":         "STREAM_IN_PROGRESS",
+				"client_msg_id": clientMsgID,
+			})
+			return
+		}
 		s.logger.Error("acquire chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
@@ -148,6 +174,18 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
+		return
+	}
+
+	if stale, err := s.isStaleChatStreamRequest(ctx, auth.UserID, body.SessionGeneration, requestReceivedAtMs); err != nil {
+		s.logger.Error("recheck session generation failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	} else if stale {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STALE_SESSION_GENERATION",
+			"client_msg_id": clientMsgID,
+		})
 		return
 	}
 
@@ -335,38 +373,45 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	if doneReceived.Load() {
 		replyText := strings.TrimSpace(assistantText.String())
 		if replyText != "" {
-			replay, updatedSnapshot, appendErr := s.store.AppendSessionRoundComplete(
-				context.Background(),
-				auth.UserID,
-				clientMsgID,
-				SessionRound{
-					ClientMsgID:       clientMsgID,
-					User:              text,
-					UserImages:        images,
-					Assistant:         replyText,
-					Region:            region.Region,
-					RegionSource:      region.Source,
-					RegionReliability: region.Reliability,
-				},
-				aWindowRounds,
-				bEveryRounds,
-				cEveryRounds,
-				"stream_done",
-			)
+			stale, appendErr := s.isStaleChatStreamRequest(context.Background(), auth.UserID, body.SessionGeneration, requestReceivedAtMs)
 			if appendErr != nil {
 				s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
+			} else if stale {
+				s.logger.Info("drop stale chat stream after session clear", "userId", auth.UserID, "clientMsgId", clientMsgID)
 			} else {
-				consume, consumeErr := s.store.ConsumeOnDone(context.Background(), auth.UserID, tier, clientMsgID, dayCN)
-				if consumeErr != nil {
-					s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
-					go s.retryQuotaConsumeOnDone(auth.UserID, tier, clientMsgID, dayCN)
+				replay, updatedSnapshot, appendErr := s.store.AppendSessionRoundComplete(
+					context.Background(),
+					auth.UserID,
+					clientMsgID,
+					SessionRound{
+						ClientMsgID:       clientMsgID,
+						User:              text,
+						UserImages:        images,
+						Assistant:         replyText,
+						Region:            region.Region,
+						RegionSource:      region.Source,
+						RegionReliability: region.Reliability,
+					},
+					aWindowRounds,
+					bEveryRounds,
+					cEveryRounds,
+					"stream_done",
+				)
+				if appendErr != nil {
+					s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
 				} else {
-					s.logger.Info("quota consume on DONE", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)
-				}
-				sendDoneAfterArchive = true
-				if !replay && updatedSnapshot != nil {
-					snapshotCopy := cloneSessionSnapshot(*updatedSnapshot)
-					go s.summary.ProcessSessionSummaries(auth.UserID, &snapshotCopy)
+					consume, consumeErr := s.store.ConsumeOnDone(context.Background(), auth.UserID, tier, clientMsgID, dayCN)
+					if consumeErr != nil {
+						s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
+						go s.retryQuotaConsumeOnDone(auth.UserID, tier, clientMsgID, dayCN)
+					} else {
+						s.logger.Info("quota consume on DONE", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)
+					}
+					sendDoneAfterArchive = true
+					if !replay && updatedSnapshot != nil {
+						snapshotCopy := cloneSessionSnapshot(*updatedSnapshot)
+						go s.summary.ProcessSessionSummaries(auth.UserID, &snapshotCopy)
+					}
 				}
 			}
 		}
@@ -394,6 +439,20 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"done_received", doneReceived.Load(),
 		"client_disconnected", clientDisconnected.Load(),
 	)
+}
+
+func (s *Server) isStaleChatStreamRequest(ctx context.Context, userID string, expectedGeneration *int, requestReceivedAtMs int64) (bool, error) {
+	state, err := s.store.GetSessionGenerationState(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if expectedGeneration != nil && *expectedGeneration != state.Generation {
+		return true, nil
+	}
+	if expectedGeneration == nil && state.ClearedAt > 0 && requestReceivedAtMs <= state.ClearedAt {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID string, dayCN string) {

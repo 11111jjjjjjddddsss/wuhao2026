@@ -11,6 +11,7 @@ internal data class PendingChatSend(
     val text: String,
     val imageUris: List<String>,
     val imageUrls: List<String> = emptyList(),
+    val sessionGeneration: Int? = null,
     val createdAtMs: Long = System.currentTimeMillis(),
     val updatedAtMs: Long = System.currentTimeMillis(),
     val remoteStartedAtMs: Long = 0L,
@@ -57,6 +58,12 @@ internal object PendingChatSendStore {
 
     fun has(context: Context, chatScopeId: String, userMessageId: String): Boolean =
         get(context, chatScopeId, userMessageId) != null
+
+    fun isStaleForCurrentSession(pending: PendingChatSend): Boolean {
+        val currentGeneration = SessionApi.currentSessionGenerationOrNull() ?: return false
+        val pendingGeneration = pending.sessionGeneration ?: return true
+        return pendingGeneration != currentGeneration
+    }
 
     fun updateImageUrls(
         context: Context,

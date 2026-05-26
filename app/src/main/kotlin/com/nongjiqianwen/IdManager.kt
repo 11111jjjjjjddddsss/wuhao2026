@@ -12,6 +12,7 @@ import java.util.UUID
 object IdManager {
     private const val PREFS_NAME = "app_ids"
     private const val KEY_USER_ID = "user_id"
+    private const val KEY_SESSION_GENERATION = "session_generation"
 
     private var appContext: Context? = null
 
@@ -33,8 +34,17 @@ object IdManager {
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_USER_ID, newUserId)
+            .remove(KEY_SESSION_GENERATION)
             .apply()
         return newUserId
+    }
+
+    fun getSessionGeneration(): Int =
+        prefs()?.getInt(KEY_SESSION_GENERATION, -1) ?: -1
+
+    fun setSessionGeneration(generation: Int) {
+        val prefs = prefs() ?: return
+        prefs.edit().putInt(KEY_SESSION_GENERATION, generation).apply()
     }
 
     private fun ensureUserId(): String {

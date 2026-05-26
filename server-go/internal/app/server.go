@@ -236,6 +236,13 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	safe := safeSnapshot(auth.UserID, snapshot)
+	generationState, err := s.store.GetSessionGenerationState(r.Context(), auth.UserID)
+	if err != nil {
+		s.logger.Error("get session generation failed", "userId", auth.UserID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	safe.SessionGeneration = generationState.Generation
 	uiRounds := safe.ARoundsFull
 	if archivedRounds, err := s.store.GetSessionRoundsForUI(r.Context(), auth.UserID); err != nil {
 		s.logger.Warn("get session ui archive failed", "userId", auth.UserID, "error", err)
@@ -243,14 +250,15 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		uiRounds = mergeSessionRoundsForUI(safe.ARoundsFull, archivedRounds)
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"user_id":         safe.UserID,
-		"a_json":          safe.ARoundsFull,
-		"a_rounds_full":   safe.ARoundsFull,
-		"a_rounds_for_ui": uiRounds,
-		"b_summary":       safe.BSummary,
-		"c_summary":       safe.CSummary,
-		"round_total":     safe.RoundTotal,
-		"updated_at":      safe.UpdatedAt,
+		"user_id":            safe.UserID,
+		"a_json":             safe.ARoundsFull,
+		"a_rounds_full":      safe.ARoundsFull,
+		"a_rounds_for_ui":    uiRounds,
+		"b_summary":          safe.BSummary,
+		"c_summary":          safe.CSummary,
+		"round_total":        safe.RoundTotal,
+		"updated_at":         safe.UpdatedAt,
+		"session_generation": safe.SessionGeneration,
 	})
 }
 
@@ -260,9 +268,23 @@ func (s *Server) handleSessionClear(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hasActiveStream, err := s.store.HasAnyActiveChatStreamInflight(r.Context(), auth.UserID, time.Now())
+	var hasActiveStream bool
+	var sessionGeneration int
+	err := s.store.WithUserChatStreamGate(r.Context(), auth.UserID, func(ctx context.Context) error {
+		var checkErr error
+		hasActiveStream, checkErr = s.store.HasAnyActiveChatStreamInflight(ctx, auth.UserID, time.Now())
+		if checkErr != nil || hasActiveStream {
+			return checkErr
+		}
+		sessionGeneration, checkErr = s.store.ClearSessionHistory(ctx, auth.UserID)
+		return checkErr
+	})
 	if err != nil {
-		s.logger.Error("check active stream before clear failed", "userId", auth.UserID, "error", err)
+		if err == ErrChatStreamGateBusy {
+			s.writeJSON(w, http.StatusConflict, map[string]any{"error": "ACTIVE_CHAT_STREAM"})
+			return
+		}
+		s.logger.Error("clear session history failed", "userId", auth.UserID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -270,13 +292,10 @@ func (s *Server) handleSessionClear(w http.ResponseWriter, r *http.Request) {
 		s.writeJSON(w, http.StatusConflict, map[string]any{"error": "ACTIVE_CHAT_STREAM"})
 		return
 	}
-
-	if err := s.store.ClearSessionHistory(r.Context(), auth.UserID); err != nil {
-		s.logger.Error("clear session history failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"ok":                 true,
+		"session_generation": sessionGeneration,
+	})
 }
 
 func (s *Server) handleSessionRoundComplete(w http.ResponseWriter, r *http.Request) {
@@ -563,12 +582,13 @@ func safeSnapshot(userID string, snapshot *SessionSnapshot) SessionSnapshot {
 		return cloneSessionSnapshot(*snapshot)
 	}
 	return SessionSnapshot{
-		UserID:      userID,
-		ARoundsFull: []SessionRound{},
-		BSummary:    "",
-		CSummary:    "",
-		RoundTotal:  0,
-		UpdatedAt:   time.Now().UnixMilli(),
+		UserID:            userID,
+		ARoundsFull:       []SessionRound{},
+		BSummary:          "",
+		CSummary:          "",
+		RoundTotal:        0,
+		UpdatedAt:         time.Now().UnixMilli(),
+		SessionGeneration: 0,
 	}
 }
 

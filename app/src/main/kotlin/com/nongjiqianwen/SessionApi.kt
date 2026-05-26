@@ -38,12 +38,14 @@ object SessionApi {
         .build()
     private val currentStreamCall = AtomicReference<Call?>(null)
     private val runtimeGeneration = AtomicInteger(0)
+    private val sessionGeneration = AtomicInteger(-1)
     private val clientLogLastSentAtMs = ConcurrentHashMap<String, Long>()
 
     data class StreamOptions(
         val clientMsgId: String,
         val text: String,
         val images: List<String>,
+        val sessionGeneration: Int? = null,
         val region: String? = null,
         val regionSource: String? = null,
         val regionReliability: String? = null
@@ -163,6 +165,23 @@ object SessionApi {
         runtimeGeneration.incrementAndGet()
         mainHandler.removeCallbacksAndMessages(null)
         currentStreamCall.getAndSet(null)?.cancel()
+    }
+
+    fun currentSessionGenerationOrNull(): Int? {
+        val inMemory = sessionGeneration.get()
+        if (inMemory >= 0) return inMemory
+        val persisted = IdManager.getSessionGeneration()
+        if (persisted >= 0) {
+            sessionGeneration.compareAndSet(-1, persisted)
+            return persisted
+        }
+        return null
+    }
+
+    private fun updateSessionGeneration(generation: Int) {
+        if (generation < 0) return
+        sessionGeneration.set(generation)
+        IdManager.setSessionGeneration(generation)
     }
 
     fun reportClientLog(
@@ -586,6 +605,12 @@ object SessionApi {
             },
             onResult = { response ->
                 response.use {
+                    if (it.isSuccessful) {
+                        val body = it.body?.string().orEmpty()
+                        runCatching {
+                            gson.fromJson(body, SessionClearResponse::class.java)?.sessionGeneration
+                        }.getOrNull()?.let(::updateSessionGeneration)
+                    }
                     val result = when {
                         it.isSuccessful -> ClearSessionHistoryResult.Success
                         it.code == 409 -> ClearSessionHistoryResult.ActiveStream
@@ -732,7 +757,9 @@ object SessionApi {
                                     region_reliability = r.region_reliability
                                 )
                             }
-                            onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi))
+                            val snapshotGeneration = json.session_generation ?: 0
+                            updateSessionGeneration(snapshotGeneration)
+                            onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi, snapshotGeneration))
                         } catch (e: Exception) {
                             Log.e(TAG, "parse snapshot", e)
                             reportClientLog(
@@ -788,7 +815,7 @@ object SessionApi {
         }
         fun deliverInterrupted(reason: String) {
             if (!isRuntimeStale()) {
-                if (reason !in setOf("canceled", "quota", "replay", "stream_in_progress")) {
+                if (reason !in setOf("canceled", "quota", "replay", "stream_in_progress", "stale_session")) {
                     reportClientLog(
                         level = "warn",
                         event = "chat.stream_interrupted",
@@ -808,13 +835,13 @@ object SessionApi {
             deliverInterrupted("server")
             return
         }
-        val body = gson.toJson(
-            mapOf(
-                "client_msg_id" to options.clientMsgId,
-                "text" to options.text,
-                "images" to options.images
-            )
+        val streamBody = mutableMapOf<String, Any>(
+            "client_msg_id" to options.clientMsgId,
+            "text" to options.text,
+            "images" to options.images
         )
+        (options.sessionGeneration ?: currentSessionGenerationOrNull())?.let { streamBody["session_generation"] = it }
+        val body = gson.toJson(streamBody)
         fun buildRequest(token: String?): Request {
             val builder = applyIdentityHeaders(
                 Request.Builder()
@@ -876,11 +903,18 @@ object SessionApi {
                                         }, retryDelayMs)
                                         return
                                     }
-                                    val reason = when (res.code) {
-                                        409 -> "stream_in_progress"
-                                        503 -> "model_unavailable"
-                                        429 -> "rate_limit"
-                                        402 -> "quota"
+                                    val errorCode = runCatching {
+                                        gson.fromJson(res.body?.string().orEmpty(), JsonObject::class.java)
+                                            ?.get("error")
+                                            ?.takeIf { it.isJsonPrimitive }
+                                            ?.asString
+                                    }.getOrNull()
+                                    val reason = when {
+                                        res.code == 409 && errorCode == "STALE_SESSION_GENERATION" -> "stale_session"
+                                        res.code == 409 -> "stream_in_progress"
+                                        res.code == 503 -> "model_unavailable"
+                                        res.code == 429 -> "rate_limit"
+                                        res.code == 402 -> "quota"
                                         else -> "server"
                                     }
                                     deliverInterrupted(reason)
@@ -986,13 +1020,13 @@ object SessionApi {
         if (base.isEmpty()) {
             return StreamCompletionResult(StreamCompletionStatus.ServerFailure, "server")
         }
-        val body = gson.toJson(
-            mapOf(
-                "client_msg_id" to options.clientMsgId,
-                "text" to options.text,
-                "images" to options.images
-            )
+        val streamBody = mutableMapOf<String, Any>(
+            "client_msg_id" to options.clientMsgId,
+            "text" to options.text,
+            "images" to options.images
         )
+        (options.sessionGeneration ?: currentSessionGenerationOrNull())?.let { streamBody["session_generation"] = it }
+        val body = gson.toJson(streamBody)
         fun buildRequest(token: String?): Request {
             val builder = applyIdentityHeaders(
                 Request.Builder()
@@ -1029,12 +1063,19 @@ object SessionApi {
                             Thread.sleep(350L * (networkRetry + 1))
                             return runRequest(hasRetriedAuth = hasRetriedAuth, networkRetry = networkRetry + 1)
                         }
-                        val status = when (res.code) {
-                            400 -> StreamCompletionStatus.BadRequest
-                            409 -> StreamCompletionStatus.RetryableFailure
-                            402 -> StreamCompletionStatus.Quota
-                            429 -> StreamCompletionStatus.RateLimited
-                            500, 502, 503, 504 -> StreamCompletionStatus.RetryableFailure
+                        val errorCode = runCatching {
+                            gson.fromJson(res.body?.string().orEmpty(), JsonObject::class.java)
+                                ?.get("error")
+                                ?.takeIf { it.isJsonPrimitive }
+                                ?.asString
+                        }.getOrNull()
+                        val status = when {
+                            res.code == 400 -> StreamCompletionStatus.BadRequest
+                            res.code == 409 && errorCode == "STALE_SESSION_GENERATION" -> StreamCompletionStatus.BadRequest
+                            res.code == 409 -> StreamCompletionStatus.RetryableFailure
+                            res.code == 402 -> StreamCompletionStatus.Quota
+                            res.code == 429 -> StreamCompletionStatus.RateLimited
+                            res.code in setOf(500, 502, 503, 504) -> StreamCompletionStatus.RetryableFailure
                             else -> StreamCompletionStatus.ServerFailure
                         }
                         return StreamCompletionResult(status, "http_${res.code}")
@@ -1119,7 +1160,12 @@ object SessionApi {
         @SerializedName("a_json") val a_json: List<ARoundJson>? = null,
         @SerializedName("a_rounds_full") val a_rounds_full: List<ARoundJson>?,
         @SerializedName("a_rounds_for_ui") val a_rounds_for_ui: List<ARoundJson>?,
-        @SerializedName("a_rounds") val a_rounds: List<ARoundJson>? = null
+        @SerializedName("a_rounds") val a_rounds: List<ARoundJson>? = null,
+        @SerializedName("session_generation") val session_generation: Int? = null
+    )
+
+    private data class SessionClearResponse(
+        @SerializedName("session_generation") val sessionGeneration: Int? = null
     )
 
     private data class ARoundJson(

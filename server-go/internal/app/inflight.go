@@ -3,12 +3,38 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"time"
 )
 
 const chatStreamInflightLease = 30 * time.Minute
+
+var ErrChatStreamGateBusy = errors.New("chat stream gate busy")
+
+func (s *Store) WithUserChatStreamGate(ctx context.Context, userID string, fn func(context.Context) error) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	lockName := chatStreamGateLockName(userID)
+	var acquired sql.NullInt64
+	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 5)", lockName).Scan(&acquired); err != nil {
+		return err
+	}
+	if !acquired.Valid || acquired.Int64 != 1 {
+		return ErrChatStreamGateBusy
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), "SELECT RELEASE_LOCK(?)", lockName)
+	}()
+
+	return fn(ctx)
+}
 
 func (s *Store) TryAcquireChatStreamInflight(ctx context.Context, userID string, clientMsgID string, now time.Time) (bool, string, error) {
 	nowMs := now.UnixMilli()
@@ -104,4 +130,9 @@ func newChatStreamInflightToken() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(raw[:]), nil
+}
+
+func chatStreamGateLockName(userID string) string {
+	sum := sha1.Sum([]byte(userID))
+	return "nongji_chat_" + hex.EncodeToString(sum[:])
 }

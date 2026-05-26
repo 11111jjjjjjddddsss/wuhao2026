@@ -205,20 +205,62 @@ func (s *Store) GetSessionSnapshot(ctx context.Context, userID string) (*Session
 	)
 }
 
-func (s *Store) ClearSessionHistory(ctx context.Context, userID string) error {
+func (s *Store) GetSessionGenerationState(ctx context.Context, userID string) (SessionGenerationState, error) {
+	var state SessionGenerationState
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT generation, cleared_at FROM session_generation WHERE user_id = ? LIMIT 1",
+		userID,
+	).Scan(&state.Generation, &state.ClearedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return SessionGenerationState{}, nil
+		}
+		return SessionGenerationState{}, err
+	}
+	return state, nil
+}
+
+func (s *Store) ClearSessionHistory(ctx context.Context, userID string) (int, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer rollbackQuietly(tx)
 
 	if _, err := tx.ExecContext(ctx, "DELETE FROM session_round_archive WHERE user_id = ?", userID); err != nil {
-		return err
+		return 0, err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM session_ab WHERE user_id = ?", userID); err != nil {
-		return err
+		return 0, err
 	}
-	return tx.Commit()
+	nowMs := time.Now().UnixMilli()
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO session_generation(user_id, generation, cleared_at, updated_at)
+		 VALUES (?, 1, ?, ?)
+		 ON DUPLICATE KEY UPDATE
+		   generation = generation + 1,
+		   cleared_at = VALUES(cleared_at),
+		   updated_at = VALUES(updated_at)`,
+		userID,
+		nowMs,
+		nowMs,
+	); err != nil {
+		return 0, err
+	}
+	var generation int
+	if err := tx.QueryRowContext(
+		ctx,
+		"SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1",
+		userID,
+	).Scan(&generation); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return generation, nil
 }
 
 func (s *Store) TouchSessionContext(

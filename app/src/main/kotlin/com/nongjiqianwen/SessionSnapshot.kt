@@ -10,7 +10,8 @@ data class SessionSnapshot(
     val b_summary: String,
     val c_summary: String,
     val a_rounds_full: List<ARound>,
-    val a_rounds_for_ui: List<ARound>
+    val a_rounds_for_ui: List<ARound>,
+    val session_generation: Int = 0
 ) {
     /** 兼容旧接口只返回 a_rounds 时：视为 for_ui，full 用 for_ui */
     constructor(b_summary: String, a_rounds: List<ARound>) : this(b_summary, "", a_rounds, a_rounds)

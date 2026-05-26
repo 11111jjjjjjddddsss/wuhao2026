@@ -213,6 +213,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.net.URL
 import java.util.LinkedHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
@@ -254,7 +255,8 @@ private data class LocalChatWindowSnapshot(
 private data class LocalChatWindowSnapshotPayload(
     val messages: List<ChatMessage>? = null,
     val failedUserMessageStates: Map<String, String>? = null,
-    val failedAssistantMessageStates: Map<String, FailedAssistantMessageState>? = null
+    val failedAssistantMessageStates: Map<String, FailedAssistantMessageState>? = null,
+    val sessionGeneration: Int? = null
 )
 
 private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
@@ -320,7 +322,8 @@ private data class LocalStreamingDraft(
     val content: String,
     val revealBuffer: String,
     val anchoredUserMessageId: String?,
-    val savedAtMs: Long
+    val savedAtMs: Long,
+    val sessionGeneration: Int? = null
 )
 
 private data class MessageSelectionToolbarState(
@@ -368,6 +371,8 @@ private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
 private const val CHAT_COMPOSER_DRAFT_KEY_PREFIX = "composer_draft_"
+private const val CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX = "composer_draft_gen_"
+private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
@@ -456,6 +461,7 @@ private val chatImagePreviewCache = object : LruCache<String, ImageBitmap>(CHAT_
 }
 private val chatImagePreviewCacheLock = Any()
 private val chatCacheGson = Gson()
+private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
 private val headingRegex = Regex("^#{1,6}\\s+.*$")
 private val bulletRegex = Regex("^[*-]\\s+.*$")
@@ -1372,6 +1378,11 @@ private fun normalizeLocalChatWindowSnapshot(
         )
     )
 
+private fun isStoredSessionGenerationCurrent(storedGeneration: Int?): Boolean {
+    val currentGeneration = SessionApi.currentSessionGenerationOrNull() ?: return true
+    return storedGeneration == currentGeneration
+}
+
 private fun mergeHydratedMessagesWithLocalPendingState(
     remoteMessages: List<ChatMessage>,
     localSnapshot: LocalChatWindowSnapshot,
@@ -1553,6 +1564,7 @@ private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatW
     if (raw.isBlank()) return@withContext LocalChatWindowSnapshot()
     runCatching {
         if (raw.trimStart().startsWith("[")) {
+            if (!isStoredSessionGenerationCurrent(null)) return@runCatching LocalChatWindowSnapshot()
             @Suppress("UNCHECKED_CAST")
             markLocalImageUploadPendingAsFailed(
                 snapshot = LocalChatWindowSnapshot(
@@ -1563,10 +1575,12 @@ private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatW
                 }
             )
         } else {
+            val payload = chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+            if (!isStoredSessionGenerationCurrent(payload?.sessionGeneration)) {
+                return@runCatching LocalChatWindowSnapshot()
+            }
             markLocalImageUploadPendingAsFailed(
-                snapshot = normalizeLocalChatWindowSnapshot(
-                    chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
-                ),
+                snapshot = normalizeLocalChatWindowSnapshot(payload),
                 shouldKeepPending = { messageId ->
                     PendingChatSendStore.has(appContext, chatScopeId, messageId)
                 }
@@ -1583,6 +1597,7 @@ private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindo
     if (raw.isBlank()) return LocalChatWindowSnapshot()
     return runCatching {
         if (raw.trimStart().startsWith("[")) {
+            if (!isStoredSessionGenerationCurrent(null)) return@runCatching LocalChatWindowSnapshot()
             @Suppress("UNCHECKED_CAST")
             markLocalImageUploadPendingAsFailed(
                 snapshot = LocalChatWindowSnapshot(
@@ -1593,10 +1608,12 @@ private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindo
                 }
             )
         } else {
+            val payload = chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
+            if (!isStoredSessionGenerationCurrent(payload?.sessionGeneration)) {
+                return@runCatching LocalChatWindowSnapshot()
+            }
             markLocalImageUploadPendingAsFailed(
-                snapshot = normalizeLocalChatWindowSnapshot(
-                    chatCacheGson.fromJson(raw, LocalChatWindowSnapshotPayload::class.java)
-                ),
+                snapshot = normalizeLocalChatWindowSnapshot(payload),
                 shouldKeepPending = { messageId ->
                     PendingChatSendStore.has(appContext, chatScopeId, messageId)
                 }
@@ -1605,17 +1622,26 @@ private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindo
     }.getOrDefault(LocalChatWindowSnapshot())
 }
 
-private suspend fun Context.saveLocalChatWindow(chatScopeId: String, snapshot: LocalChatWindowSnapshot) = withContext(Dispatchers.IO) {
+private suspend fun Context.saveLocalChatWindowIfEpoch(
+    chatScopeId: String,
+    snapshot: LocalChatWindowSnapshot,
+    expectedEpoch: Int,
+    epochRef: AtomicInteger
+) = withContext(Dispatchers.IO) {
     val sanitizedSnapshot = sanitizeLocalChatWindowSnapshot(snapshot)
     val payload = LocalChatWindowSnapshotPayload(
         messages = sanitizedSnapshot.messages,
         failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates,
-        failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates
+        failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates,
+        sessionGeneration = SessionApi.currentSessionGenerationOrNull()
     )
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(payload))
-        .commit()
+    synchronized(chatCacheWriteLock) {
+        if (epochRef.get() != expectedEpoch) return@synchronized
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(payload))
+            .commit()
+    }
 }
 
 private fun Context.saveLocalChatWindowSync(chatScopeId: String, snapshot: LocalChatWindowSnapshot) {
@@ -1623,12 +1649,15 @@ private fun Context.saveLocalChatWindowSync(chatScopeId: String, snapshot: Local
     val payload = LocalChatWindowSnapshotPayload(
         messages = sanitizedSnapshot.messages,
         failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates,
-        failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates
+        failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates,
+        sessionGeneration = SessionApi.currentSessionGenerationOrNull()
     )
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(payload))
-        .commit()
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString("$CHAT_CACHE_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(payload))
+            .commit()
+    }
 }
 
 private suspend fun Context.clearLocalChatHistoryState(chatScopeId: String) = withContext(Dispatchers.IO) {
@@ -1636,12 +1665,15 @@ private suspend fun Context.clearLocalChatHistoryState(chatScopeId: String) = wi
 }
 
 private fun Context.clearLocalChatHistoryStateSync(chatScopeId: String) {
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .remove("$CHAT_CACHE_KEY_PREFIX$chatScopeId")
-        .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
-        .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
-        .commit()
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove("$CHAT_CACHE_KEY_PREFIX$chatScopeId")
+            .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
+            .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+            .remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
+            .commit()
+    }
 }
 
 private fun Context.loadLocalStreamingDraftSync(chatScopeId: String): LocalStreamingDraft? {
@@ -1651,74 +1683,125 @@ private fun Context.loadLocalStreamingDraftSync(chatScopeId: String): LocalStrea
     if (raw.isBlank()) return null
     return runCatching {
         chatCacheGson.fromJson(raw, LocalStreamingDraft::class.java)
-    }.getOrNull()
+    }.getOrNull()?.takeIf { draft ->
+        isStoredSessionGenerationCurrent(draft.sessionGeneration)
+    }
 }
 
 private fun Context.hasLocalStreamingDraft(chatScopeId: String): Boolean {
-    return !getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .getString("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId", null)
-        .isNullOrBlank()
+    return loadLocalStreamingDraftSync(chatScopeId) != null
 }
 
-private suspend fun Context.saveLocalStreamingDraft(chatScopeId: String, draft: LocalStreamingDraft) = withContext(Dispatchers.IO) {
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(draft))
-        .commit()
+private suspend fun Context.saveLocalStreamingDraftIfEpoch(
+    chatScopeId: String,
+    draft: LocalStreamingDraft,
+    expectedEpoch: Int,
+    epochRef: AtomicInteger
+) = withContext(Dispatchers.IO) {
+    synchronized(chatCacheWriteLock) {
+        if (epochRef.get() != expectedEpoch) return@synchronized
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(
+                "$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId",
+                chatCacheGson.toJson(draft.copy(sessionGeneration = SessionApi.currentSessionGenerationOrNull()))
+            )
+            .commit()
+    }
 }
 
 private fun Context.saveLocalStreamingDraftSync(chatScopeId: String, draft: LocalStreamingDraft) {
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putString("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId", chatCacheGson.toJson(draft))
-        .commit()
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(
+                "$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId",
+                chatCacheGson.toJson(draft.copy(sessionGeneration = SessionApi.currentSessionGenerationOrNull()))
+            )
+            .commit()
+    }
 }
 
 private fun Context.clearLocalStreamingDraftSync(chatScopeId: String) {
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
-        .commit()
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
+            .commit()
+    }
 }
 
 private suspend fun Context.clearLocalStreamingDraft(chatScopeId: String) = withContext(Dispatchers.IO) {
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
-        .commit()
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
+            .commit()
+    }
 }
 
 private fun Context.loadLocalComposerDraftSync(chatScopeId: String): String {
-    return getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .getString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", null)
-        .orEmpty()
+    val prefs = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+    val storedGeneration = prefs.getInt(
+        "$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId",
+        UNKNOWN_SESSION_GENERATION
+    ).takeIf { it != UNKNOWN_SESSION_GENERATION }
+    if (!isStoredSessionGenerationCurrent(storedGeneration)) return ""
+    return prefs.getString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", null).orEmpty()
 }
 
-private suspend fun Context.saveLocalComposerDraft(chatScopeId: String, text: String) = withContext(Dispatchers.IO) {
-    val editor = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE).edit()
-    if (text.isBlank()) {
-        editor.remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
-    } else {
-        editor.putString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", text)
+private suspend fun Context.saveLocalComposerDraftIfEpoch(
+    chatScopeId: String,
+    text: String,
+    expectedEpoch: Int,
+    epochRef: AtomicInteger
+) = withContext(Dispatchers.IO) {
+    synchronized(chatCacheWriteLock) {
+        if (epochRef.get() != expectedEpoch) return@synchronized
+        val editor = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE).edit()
+        if (text.isBlank()) {
+            editor.remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+            editor.remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
+        } else {
+            editor.putString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", text)
+            val generation = SessionApi.currentSessionGenerationOrNull()
+            if (generation == null) {
+                editor.remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
+            } else {
+                editor.putInt("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId", generation)
+            }
+        }
+        editor.commit()
     }
-    editor.commit()
 }
 
 private fun Context.saveLocalComposerDraftSync(chatScopeId: String, text: String) {
-    val editor = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE).edit()
-    if (text.isBlank()) {
-        editor.remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
-    } else {
-        editor.putString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", text)
+    synchronized(chatCacheWriteLock) {
+        val editor = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE).edit()
+        if (text.isBlank()) {
+            editor.remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+            editor.remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
+        } else {
+            editor.putString("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId", text)
+            val generation = SessionApi.currentSessionGenerationOrNull()
+            if (generation == null) {
+                editor.remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
+            } else {
+                editor.putInt("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId", generation)
+            }
+        }
+        editor.commit()
     }
-    editor.commit()
 }
 
 private fun Context.clearLocalComposerDraftSync(chatScopeId: String) {
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
-        .commit()
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
+            .remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
+            .commit()
+    }
 }
 
 private fun Context.hasActiveNetworkConnection(): Boolean {
@@ -2339,6 +2422,8 @@ fun ChatScreen() {
     var observedCollapsedBottomReservePx by remember(uiRuntimeResetKey) { mutableIntStateOf(-1) }
     var remoteRecoveryJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var remoteRecoverySourceUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var imageSendJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
+    var imageSendGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
     val failedUserMessageStates = remember(uiRuntimeResetKey) {
         mutableStateMapOf<String, String>().apply {
@@ -2355,16 +2440,23 @@ fun ChatScreen() {
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
-    val chatListItems by remember(todayAgriCard, messages.size) {
+    val cleanStateSparseLayoutEligible by remember {
+        derivedStateOf {
+            if (!cleanStateSparseLayoutActive) return@derivedStateOf false
+            if (messages.isEmpty()) return@derivedStateOf false
+            messages.any { it.role == ChatRole.USER }
+        }
+    }
+    val chatListItems by remember(todayAgriCard, messages.size, cleanStateSparseLayoutEligible) {
         derivedStateOf {
             buildChatTimelineItems(
                 messages = messages,
-                todayAgriCard = todayAgriCard
+                todayAgriCard = todayAgriCard.takeUnless { cleanStateSparseLayoutEligible }
             )
         }
     }
-    val hasTodayAgriCard by remember(todayAgriCard) {
-        derivedStateOf { todayAgriCard?.isRenderableTodayAgriCard() == true }
+    val hasTodayAgriCard by remember(todayAgriCard, cleanStateSparseLayoutEligible) {
+        derivedStateOf { !cleanStateSparseLayoutEligible && todayAgriCard?.isRenderableTodayAgriCard() == true }
     }
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2381,13 +2473,6 @@ fun ChatScreen() {
             isStreaming &&
                 !messageId.isNullOrBlank() &&
                 messages.any { it.id == messageId }
-        }
-    }
-    val cleanStateSparseLayoutEligible by remember {
-        derivedStateOf {
-            if (!cleanStateSparseLayoutActive) return@derivedStateOf false
-            if (messages.isEmpty()) return@derivedStateOf false
-            messages.any { it.role == ChatRole.USER }
         }
     }
     val isComposerSettling by remember(
@@ -2698,6 +2783,11 @@ fun ChatScreen() {
     }
     var chatHistoryClearEpoch by remember(uiRuntimeResetKey) {
         mutableIntStateOf(0)
+    }
+    val chatHistoryClearEpochRef = remember(uiRuntimeResetKey) { AtomicInteger(0) }
+    fun advanceChatHistoryClearEpoch() {
+        chatHistoryClearEpoch++
+        chatHistoryClearEpochRef.incrementAndGet()
     }
     val startupHydrationBarrierSatisfied by remember(
         historyHydrationComplete,
@@ -3680,11 +3770,12 @@ fun ChatScreen() {
             "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
             "rate_limit" -> RATE_LIMIT_HINT_TEXT
             "backend_not_configured", "model_unavailable" -> SERVICE_UNAVAILABLE_HINT_TEXT
+            "stale_session" -> ""
             else -> INTERRUPTED_FALLBACK_HINT_TEXT
         }
 
     fun canAttemptRemoteAssistantRecovery(reason: String): Boolean =
-        hasRemoteHistorySource && reason !in setOf("quota", "rate_limit", "auth", "model_unavailable")
+        hasRemoteHistorySource && reason !in setOf("quota", "rate_limit", "auth", "model_unavailable", "stale_session")
 
     fun finalizeInterruptedAssistant(
         sourceUserMessageId: String,
@@ -3723,8 +3814,10 @@ fun ChatScreen() {
         sourceUserMessageId: String,
         recoveredRound: ARound,
         resetRecoveryJob: Boolean = true,
-        interruptActiveStream: Boolean = true
+        interruptActiveStream: Boolean = true,
+        expectedClearEpoch: Int = chatHistoryClearEpoch
     ) {
+        if (expectedClearEpoch != chatHistoryClearEpoch) return
         if (resetRecoveryJob) {
             remoteRecoveryJob?.cancel()
             remoteRecoveryJob = null
@@ -3764,9 +3857,17 @@ fun ChatScreen() {
         val persistedSnapshot = persistableLocalChatWindowSnapshot()
         val persistedMessages = persistedSnapshot.messages
         val prewarmMessages = persistedMessages.takeLast(2)
+        val persistClearEpoch = expectedClearEpoch
         snackbarScope.launch {
-            context.saveLocalChatWindow(chatScopeId, persistedSnapshot)
+            context.saveLocalChatWindowIfEpoch(
+                chatScopeId = chatScopeId,
+                snapshot = persistedSnapshot,
+                expectedEpoch = persistClearEpoch,
+                epochRef = chatHistoryClearEpochRef
+            )
+            if (persistClearEpoch != chatHistoryClearEpoch) return@launch
             context.clearLocalStreamingDraft(chatScopeId)
+            if (persistClearEpoch != chatHistoryClearEpoch) return@launch
             prewarmAssistantMarkdown(prewarmMessages)
         }
     }
@@ -3787,9 +3888,11 @@ fun ChatScreen() {
         }
         remoteRecoveryJob?.cancel()
         remoteRecoverySourceUserMessageId = sourceUserMessageId
+        val recoveryClearEpoch = chatHistoryClearEpoch
         remoteRecoveryJob = snackbarScope.launch {
             var recoveredRound: ARound? = null
             for (attempt in 0 until maxAttempts.coerceAtLeast(1)) {
+                if (recoveryClearEpoch != chatHistoryClearEpoch) return@launch
                 val snapshot = awaitRemoteSnapshot()
                 recoveredRound = snapshot
                     ?.findRoundByClientMessageId(sourceUserMessageId)
@@ -3799,9 +3902,14 @@ fun ChatScreen() {
                     delay(delayMs)
                 }
             }
+            if (recoveryClearEpoch != chatHistoryClearEpoch) return@launch
             val matchedRound = recoveredRound
             if (matchedRound != null) {
-                applyRecoveredAssistantRound(sourceUserMessageId, matchedRound)
+                applyRecoveredAssistantRound(
+                    sourceUserMessageId = sourceUserMessageId,
+                    recoveredRound = matchedRound,
+                    expectedClearEpoch = recoveryClearEpoch
+                )
             } else {
                 remoteRecoverySourceUserMessageId = null
                 finalizeInterruptedAssistant(
@@ -3845,9 +3953,11 @@ fun ChatScreen() {
         }
         remoteRecoveryJob?.cancel()
         remoteRecoverySourceUserMessageId = recoveryKey
+        val recoveryClearEpoch = chatHistoryClearEpoch
         remoteRecoveryJob = snackbarScope.launch {
             val remainingSourceUserMessageIds = pendingSourceUserMessageIds.toMutableSet()
             for (attempt in 0 until REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS) {
+                if (recoveryClearEpoch != chatHistoryClearEpoch) return@launch
                 val snapshot = awaitRemoteSnapshot()
                 val recoveredRounds = remainingSourceUserMessageIds
                     .mapNotNull { sourceUserMessageId ->
@@ -3861,7 +3971,8 @@ fun ChatScreen() {
                         sourceUserMessageId = sourceUserMessageId,
                         recoveredRound = recoveredRound,
                         resetRecoveryJob = false,
-                        interruptActiveStream = false
+                        interruptActiveStream = false,
+                        expectedClearEpoch = recoveryClearEpoch
                     )
                     remainingSourceUserMessageIds.remove(sourceUserMessageId)
                 }
@@ -3873,6 +3984,7 @@ fun ChatScreen() {
                     delay(REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS)
                 }
             }
+            if (recoveryClearEpoch != chatHistoryClearEpoch) return@launch
             if (remoteRecoverySourceUserMessageId == recoveryKey) {
                 remoteRecoverySourceUserMessageId = null
                 remoteRecoveryJob = null
@@ -3953,12 +4065,17 @@ fun ChatScreen() {
 
     fun applyChatHistoryCleared() {
         SessionApi.resetUiRuntimeForCleanState()
-        chatHistoryClearEpoch++
+        advanceChatHistoryClearEpoch()
+        imageSendGeneration++
+        imageSendJob?.cancel()
+        imageSendJob = null
         PendingChatSendWorkScheduler.cancelAllForScope(context, chatScopeId)
+        mainHandler.removeCallbacksAndMessages(null)
         resetStreamingUiState(clearVisibleContent = true)
         context.clearLocalChatHistoryStateSync(chatScopeId)
         messages.clear()
         cleanStateSparseLayoutActive = false
+        imageSendInProgress = false
         failedUserMessageStates.clear()
         failedAssistantMessageStates.clear()
         retryingUserMessageIds.clear()
@@ -4083,7 +4200,14 @@ fun ChatScreen() {
     LaunchedEffect(uiRuntimeResetKey, initialStreamingDraft) {
         if (initialStreamingDraft == null) return@LaunchedEffect
         if (!context.hasLocalStreamingDraft(chatScopeId)) return@LaunchedEffect
-        context.saveLocalChatWindow(chatScopeId, initialLocalSnapshot)
+        val persistClearEpoch = chatHistoryClearEpoch
+        context.saveLocalChatWindowIfEpoch(
+            chatScopeId = chatScopeId,
+            snapshot = initialLocalSnapshot,
+            expectedEpoch = persistClearEpoch,
+            epochRef = chatHistoryClearEpochRef
+        )
+        if (persistClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
         context.clearLocalStreamingDraft(chatScopeId)
     }
 
@@ -4092,13 +4216,19 @@ fun ChatScreen() {
         if (!hasRemoteHistorySource || !historyHydrationComplete) return@LaunchedEffect
         if (hasStartedConversation || isStreaming) return@LaunchedEffect
         if (hasSettledAssistantMessageForUser(sourceUserMessageId)) return@LaunchedEffect
+        val recoveryClearEpoch = chatHistoryClearEpoch
         repeat(REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS) { attempt ->
+            if (recoveryClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
             val snapshot = awaitRemoteSnapshot()
             val recoveredRound = snapshot
                 ?.findRoundByClientMessageId(sourceUserMessageId)
                 ?.takeIf { it.assistant.isNotBlank() }
             if (recoveredRound != null) {
-                applyRecoveredAssistantRound(sourceUserMessageId, recoveredRound)
+                applyRecoveredAssistantRound(
+                    sourceUserMessageId = sourceUserMessageId,
+                    recoveredRound = recoveredRound,
+                    expectedClearEpoch = recoveryClearEpoch
+                )
                 initialBottomSnapDone = false
                 return@LaunchedEffect
             }
@@ -4107,6 +4237,7 @@ fun ChatScreen() {
             }
         }
         if (!hasSettledAssistantMessageForUser(sourceUserMessageId)) {
+            if (recoveryClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
             finalizeInterruptedAssistant(
                 sourceUserMessageId = sourceUserMessageId,
                 assistantMessageId = assistantMessageIdForSourceUser(sourceUserMessageId),
@@ -4134,10 +4265,18 @@ fun ChatScreen() {
 
     LaunchedEffect(persistTick) {
         if (persistTick == 0) return@LaunchedEffect
+        val persistClearEpoch = chatHistoryClearEpoch
         delay(if (isStreaming) 220 else 80)
+        if (persistClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
         val snapshot = persistableLocalChatWindowSnapshot()
         val retainedImageUris = currentRetainedComposerImageUris()
-        context.saveLocalChatWindow(chatScopeId, snapshot)
+        if (persistClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
+        context.saveLocalChatWindowIfEpoch(
+            chatScopeId = chatScopeId,
+            snapshot = snapshot,
+            expectedEpoch = persistClearEpoch,
+            epochRef = chatHistoryClearEpochRef
+        )
         withContext(Dispatchers.IO) {
             context.deleteUnreferencedComposerImages(retainedImageUris)
         }
@@ -4148,7 +4287,13 @@ fun ChatScreen() {
             .debounce(250)
             .distinctUntilChanged()
             .collect { draftText ->
-                context.saveLocalComposerDraft(chatScopeId, draftText)
+                val draftClearEpoch = chatHistoryClearEpoch
+                context.saveLocalComposerDraftIfEpoch(
+                    chatScopeId = chatScopeId,
+                    text = draftText,
+                    expectedEpoch = draftClearEpoch,
+                    epochRef = chatHistoryClearEpochRef
+                )
             }
     }
 
@@ -4181,6 +4326,7 @@ fun ChatScreen() {
         streamingRevealBuffer.length,
         anchoredUserMessageId
     ) {
+        val draftClearEpoch = chatHistoryClearEpoch
         if (!isStreaming || streamingMessageId.isNullOrBlank()) {
             if (streamingMessageContent.isBlank() && streamingRevealBuffer.isBlank()) {
                 context.clearLocalStreamingDraft(chatScopeId)
@@ -4188,7 +4334,8 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         delay(STREAM_DRAFT_SAVE_DEBOUNCE_MS)
-        context.saveLocalStreamingDraft(
+        if (draftClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
+        context.saveLocalStreamingDraftIfEpoch(
             chatScopeId = chatScopeId,
             draft = LocalStreamingDraft(
                 messageId = streamingMessageId.orEmpty(),
@@ -4196,7 +4343,9 @@ fun ChatScreen() {
                 revealBuffer = streamingRevealBuffer,
                 anchoredUserMessageId = anchoredUserMessageId,
                 savedAtMs = SystemClock.uptimeMillis()
-            )
+            ),
+            expectedEpoch = draftClearEpoch,
+            epochRef = chatHistoryClearEpochRef
         )
     }
 
@@ -4219,6 +4368,7 @@ fun ChatScreen() {
 
     fun requestProgrammaticForwardListBottomAnchor() {
         if (latestMessageIndexOrMinusOne() < 0) return
+        if (cleanStateSparseLayoutEligible) return
         programmaticBottomAnchorGeneration += 1
         val requestGeneration = programmaticBottomAnchorGeneration
         scrollRuntime.programmaticScroll.value = true
@@ -4236,7 +4386,7 @@ fun ChatScreen() {
         cleanStateSparseLayoutActive,
         cleanStateSparseLayoutEligible,
         messages.size,
-        chatListState.canScrollBackward,
+        chatListState.canScrollForward,
         currentLastMessageContentBottomPx(),
         currentStaticBottomTargetPx()
     ) {
@@ -4245,7 +4395,7 @@ fun ChatScreen() {
         val normalWorklineBottomPx = currentStaticBottomTargetPx()
         // Count the measured message bottom, so text, images, and their spacing decide when sparse mode exits.
         val reachedNormalWorkline =
-            chatListState.canScrollBackward ||
+            chatListState.canScrollForward ||
                 (
                     latestContentBottomPx > 0 &&
                         normalWorklineBottomPx > 0 &&
@@ -4254,13 +4404,7 @@ fun ChatScreen() {
         if (!reachedNormalWorkline) return@LaunchedEffect
         cleanStateSparseLayoutActive = false
         withFrameNanos { }
-        val targetIndex = latestMessageIndexOrMinusOne()
-        if (targetIndex >= 0) {
-            chatListState.requestScrollToItem(
-                index = targetIndex,
-                scrollOffset = FORWARD_LIST_BOTTOM_SCROLL_OFFSET
-            )
-        }
+        requestProgrammaticForwardListBottomAnchor()
     }
 
     val shouldAnchorStreamingBottomThisFrame =
@@ -4423,9 +4567,17 @@ fun ChatScreen() {
     }
 
     fun finishStreaming() {
+        val finishClearEpoch = chatHistoryClearEpoch
         mainHandler.post {
+            if (finishClearEpoch != chatHistoryClearEpoch) return@post
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             val completedSourceUserMessageId = anchoredUserMessageId
+            if (
+                !completedSourceUserMessageId.isNullOrBlank() &&
+                messages.none { it.id == completedSourceUserMessageId }
+            ) {
+                return@post
+            }
             remoteRecoveryJob?.cancel()
             remoteRecoveryJob = null
             remoteRecoverySourceUserMessageId = null
@@ -4468,9 +4620,17 @@ fun ChatScreen() {
                 val persistedSnapshot = persistableLocalChatWindowSnapshot()
                 val persistedMessages = persistedSnapshot.messages
                 val prewarmMessages = persistedMessages.takeLast(2)
+                val persistClearEpoch = finishClearEpoch
                 snackbarScope.launch {
-                    context.saveLocalChatWindow(chatScopeId, persistedSnapshot)
+                    context.saveLocalChatWindowIfEpoch(
+                        chatScopeId = chatScopeId,
+                        snapshot = persistedSnapshot,
+                        expectedEpoch = persistClearEpoch,
+                        epochRef = chatHistoryClearEpochRef
+                    )
+                    if (persistClearEpoch != chatHistoryClearEpoch) return@launch
                     context.clearLocalStreamingDraft(chatScopeId)
+                    if (persistClearEpoch != chatHistoryClearEpoch) return@launch
                     prewarmAssistantMarkdown(prewarmMessages)
                 }
             } else {
@@ -4530,7 +4690,9 @@ fun ChatScreen() {
     }
 
     fun recoverStreamingAfterLifecycleLoss() {
+        val recoveryClearEpoch = chatHistoryClearEpoch
         mainHandler.post {
+            if (recoveryClearEpoch != chatHistoryClearEpoch) return@post
             if (!isStreaming) return@post
             if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
             if (hasRemoteHistorySource) return@post
@@ -4563,7 +4725,12 @@ fun ChatScreen() {
     }
 
     fun handleAssistantInterrupted(sourceUserMessageId: String, reason: String) {
+        val interruptedClearEpoch = chatHistoryClearEpoch
         mainHandler.post {
+            if (interruptedClearEpoch != chatHistoryClearEpoch) return@post
+            if (sourceUserMessageId.isNotBlank() && messages.none { it.id == sourceUserMessageId }) {
+                return@post
+            }
             if (reason == "quota") {
                 quotaExhaustedDayKey = currentQuotaDayKey()
             }
@@ -4613,6 +4780,12 @@ fun ChatScreen() {
                 PendingChatSendWorkScheduler.complete(context, chatScopeId, sourceUserMessageId)
             } else {
                 PendingChatSendWorkScheduler.cancelAndRemove(context, chatScopeId, sourceUserMessageId)
+            }
+            if (reason == "stale_session" && finalContent.isBlank()) {
+                removeMessageById(finalId)
+                removeMessageById(sourceUserMessageId)
+                persistTick++
+                return@post
             }
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
@@ -4766,7 +4939,8 @@ fun ChatScreen() {
                     chatScopeId = chatScopeId,
                     userMessageId = userId,
                     text = text,
-                    imageUris = previewImageUris
+                    imageUris = previewImageUris,
+                    sessionGeneration = SessionApi.currentSessionGenerationOrNull()
                 )
             )
         }
@@ -5409,17 +5583,23 @@ fun ChatScreen() {
                             chatScopeId = chatScopeId,
                             userMessageId = failedMessage.id,
                             text = failedMessage.content,
-                            imageUris = previewImageUris
+                            imageUris = previewImageUris,
+                            sessionGeneration = SessionApi.currentSessionGenerationOrNull()
                         )
                     )
                 }
                 retryingUserMessageIds[failedMessage.id] = true
                 imageSendInProgress = true
-                snackbarScope.launch {
+                val uploadClearEpoch = chatHistoryClearEpoch
+                imageSendGeneration++
+                val uploadGeneration = imageSendGeneration
+                imageSendJob?.cancel()
+                imageSendJob = snackbarScope.launch {
                     try {
                         val (uploadedUrls, uploadError) = uploadComposerImagesForSend(
                             previewImageUris.map(::ComposerImageAttachment)
                         )
+                        if (uploadClearEpoch != chatHistoryClearEpoch) return@launch
                         if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
                             PendingChatSendWorkScheduler.cancelAndRemove(
                                 context,
@@ -5430,6 +5610,12 @@ fun ChatScreen() {
                             retryingUserMessageIds.remove(failedMessage.id)
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
+                            return@launch
+                        }
+                        if (
+                            hasRemoteHistorySource &&
+                            !PendingChatSendStore.has(context, chatScopeId, failedMessage.id)
+                        ) {
                             return@launch
                         }
                         PendingChatSendStore.updateImageUrls(
@@ -5446,8 +5632,11 @@ fun ChatScreen() {
                             collapseComposer = false
                         )
                     } finally {
-                        retryingUserMessageIds.remove(failedMessage.id)
-                        imageSendInProgress = false
+                        if (imageSendGeneration == uploadGeneration) {
+                            retryingUserMessageIds.remove(failedMessage.id)
+                            imageSendInProgress = false
+                            imageSendJob = null
+                        }
                     }
                 }
                 return
@@ -5488,17 +5677,23 @@ fun ChatScreen() {
                             chatScopeId = chatScopeId,
                             userMessageId = sourceUserMessage.id,
                             text = sourceUserMessage.content,
-                            imageUris = previewImageUris
+                            imageUris = previewImageUris,
+                            sessionGeneration = SessionApi.currentSessionGenerationOrNull()
                         )
                     )
                 }
                 retryingAssistantMessageIds[assistantMessageId] = true
                 imageSendInProgress = true
-                snackbarScope.launch {
+                val uploadClearEpoch = chatHistoryClearEpoch
+                imageSendGeneration++
+                val uploadGeneration = imageSendGeneration
+                imageSendJob?.cancel()
+                imageSendJob = snackbarScope.launch {
                     try {
                         val (retryUploadedUrls, uploadError) = uploadComposerImagesForSend(
                             previewImageUris.map(::ComposerImageAttachment)
                         )
+                        if (uploadClearEpoch != chatHistoryClearEpoch) return@launch
                         if (uploadError != null || retryUploadedUrls.isNullOrEmpty()) {
                             PendingChatSendWorkScheduler.cancelAndRemove(
                                 context,
@@ -5509,6 +5704,12 @@ fun ChatScreen() {
                             retryingAssistantMessageIds.remove(assistantMessageId)
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
+                            return@launch
+                        }
+                        if (
+                            hasRemoteHistorySource &&
+                            !PendingChatSendStore.has(context, chatScopeId, sourceUserMessage.id)
+                        ) {
                             return@launch
                         }
                         PendingChatSendStore.updateImageUrls(
@@ -5530,8 +5731,11 @@ fun ChatScreen() {
                             collapseComposer = false
                         )
                     } finally {
-                        retryingAssistantMessageIds.remove(assistantMessageId)
-                        imageSendInProgress = false
+                        if (imageSendGeneration == uploadGeneration) {
+                            retryingAssistantMessageIds.remove(assistantMessageId)
+                            imageSendInProgress = false
+                            imageSendJob = null
+                        }
                     }
                 }
                 return
@@ -5550,7 +5754,8 @@ fun ChatScreen() {
                         userMessageId = sourceUserMessage.id,
                         text = sourceUserMessage.content,
                         imageUris = previewImageUris,
-                        imageUrls = uploadedImageUrls
+                        imageUrls = uploadedImageUrls,
+                        sessionGeneration = SessionApi.currentSessionGenerationOrNull()
                     )
                 )
             }
@@ -5599,9 +5804,14 @@ fun ChatScreen() {
                 previewImageUris = previewImageUris
             ) ?: return
             imageSendInProgress = true
-            snackbarScope.launch {
+            val uploadClearEpoch = chatHistoryClearEpoch
+            imageSendGeneration++
+            val uploadGeneration = imageSendGeneration
+            imageSendJob?.cancel()
+            imageSendJob = snackbarScope.launch {
                 try {
                     val (uploadedUrls, uploadError) = uploadComposerImagesForSend(imageSnapshot)
+                    if (uploadClearEpoch != chatHistoryClearEpoch) return@launch
                     if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
                         PendingChatSendWorkScheduler.cancelAndRemove(
                             context,
@@ -5610,9 +5820,20 @@ fun ChatScreen() {
                         )
                         failedUserMessageStates[stagedUserMessageId] = "network"
                         persistTick++
-                        context.saveLocalChatWindow(chatScopeId, persistableLocalChatWindowSnapshot())
+                        context.saveLocalChatWindowIfEpoch(
+                            chatScopeId = chatScopeId,
+                            snapshot = persistableLocalChatWindowSnapshot(),
+                            expectedEpoch = uploadClearEpoch,
+                            epochRef = chatHistoryClearEpochRef
+                        )
                         uploadError?.let(::showComposerStatusHint)
                     } else {
+                        if (
+                            hasRemoteHistorySource &&
+                            !PendingChatSendStore.has(context, chatScopeId, stagedUserMessageId)
+                        ) {
+                            return@launch
+                        }
                         PendingChatSendStore.updateImageUrls(
                             context = context,
                             chatScopeId = chatScopeId,
@@ -5629,7 +5850,10 @@ fun ChatScreen() {
                         )
                     }
                 } finally {
-                    imageSendInProgress = false
+                    if (imageSendGeneration == uploadGeneration) {
+                        imageSendInProgress = false
+                        imageSendJob = null
+                    }
                 }
             }
         }
@@ -5979,11 +6203,23 @@ fun ChatScreen() {
                             if (isStreaming || hasStreamingItem) {
                                 Modifier.pointerInput(isStreaming, hasStreamingItem) {
                                     awaitEachGesture {
-                                        awaitFirstDown(
+                                        val down = awaitFirstDown(
                                             requireUnconsumed = false,
                                             pass = PointerEventPass.Initial
                                         )
-                                        markStreamingUserBrowsingFromPointer()
+                                        var markedBrowsing = false
+                                        while (!markedBrowsing) {
+                                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                                            val change = event.changes.firstOrNull { it.id == down.id }
+                                                ?: event.changes.firstOrNull()
+                                                ?: break
+                                            if (!change.pressed) break
+                                            val movedPx = (change.position - down.position).getDistance()
+                                            if (movedPx > viewConfiguration.touchSlop) {
+                                                markStreamingUserBrowsingFromPointer()
+                                                markedBrowsing = true
+                                            }
+                                        }
                                     }
                                 }
                             } else {

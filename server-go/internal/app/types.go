@@ -9,10 +9,11 @@ const (
 )
 
 type ChatStreamRequest struct {
-	UserID      string   `json:"user_id,omitempty"`
-	ClientMsgID string   `json:"client_msg_id"`
-	Text        string   `json:"text"`
-	Images      []string `json:"images,omitempty"`
+	UserID            string   `json:"user_id,omitempty"`
+	ClientMsgID       string   `json:"client_msg_id"`
+	Text              string   `json:"text"`
+	Images            []string `json:"images,omitempty"`
+	SessionGeneration *int     `json:"session_generation,omitempty"`
 }
 
 type BailianMessage struct {
@@ -54,14 +55,20 @@ type SessionRound struct {
 }
 
 type SessionSnapshot struct {
-	UserID        string         `json:"user_id"`
-	ARoundsFull   []SessionRound `json:"a_rounds_full"`
-	BSummary      string         `json:"b_summary"`
-	CSummary      string         `json:"c_summary"`
-	PendingRetryB bool           `json:"pending_retry_b"`
-	PendingRetryC bool           `json:"pending_retry_c"`
-	RoundTotal    int            `json:"round_total"`
-	UpdatedAt     int64          `json:"updated_at"`
+	UserID            string         `json:"user_id"`
+	ARoundsFull       []SessionRound `json:"a_rounds_full"`
+	BSummary          string         `json:"b_summary"`
+	CSummary          string         `json:"c_summary"`
+	PendingRetryB     bool           `json:"pending_retry_b"`
+	PendingRetryC     bool           `json:"pending_retry_c"`
+	RoundTotal        int            `json:"round_total"`
+	UpdatedAt         int64          `json:"updated_at"`
+	SessionGeneration int            `json:"session_generation"`
+}
+
+type SessionGenerationState struct {
+	Generation int
+	ClearedAt  int64
 }
 
 type AuthMode string
