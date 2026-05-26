@@ -10,7 +10,7 @@
 
 ## 当前代码真相
 
-- Android 会员中心和设置页会员中心里的开通 Plus、开通 Pro、升级 Pro、购买加油包按钮都只提示“支付暂未接入”。
+- Android 会员中心和设置页会员中心里的开通 Plus、开通 Pro、升级 Pro、购买加油包按钮都只提示“支付功能暂不可用”。
 - Android 不调用 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro` 或 `/api/topup/buy`。
 - 后端这 4 个接口仍存在，但只是本地 / 内测开发期直改接口。
 - 开发期订单接口默认返回 `PAYMENT_NOT_CONFIGURED`。

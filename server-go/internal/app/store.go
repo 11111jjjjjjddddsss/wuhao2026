@@ -92,21 +92,22 @@ func (s *Store) AppendSessionRoundComplete(
 	return false, snapshot, nil
 }
 
-func (s *Store) WasSessionRoundCompleted(ctx context.Context, userID string, clientMsgID string) (bool, error) {
-	var id int64
+func (s *Store) GetSessionRoundCompletion(ctx context.Context, userID string, clientMsgID string) (SessionRoundCompletion, error) {
+	var completion SessionRoundCompletion
 	err := s.db.QueryRowContext(
 		ctx,
-		"SELECT id FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		"SELECT created_at FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
 		userID,
 		clientMsgID,
-	).Scan(&id)
+	).Scan(&completion.CreatedAt)
 	if err == sql.ErrNoRows {
-		return false, nil
+		return SessionRoundCompletion{}, nil
 	}
 	if err != nil {
-		return false, err
+		return SessionRoundCompletion{}, err
 	}
-	return true, nil
+	completion.Completed = true
+	return completion, nil
 }
 
 func (s *Store) WriteUserBSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error) {

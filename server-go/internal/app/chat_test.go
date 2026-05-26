@@ -308,6 +308,68 @@ func TestValidateChatStreamImageURLsRequiresConfiguredPublicBase(t *testing.T) {
 	}
 }
 
+func TestSessionGenerationRejectsMissingGenerationAfterClear(t *testing.T) {
+	state := SessionGenerationState{Generation: 2, ClearedAt: 1000}
+
+	if !isStaleForSessionGenerationState(state, nil) {
+		t.Fatalf("missing generation after a clear should be stale")
+	}
+
+	expected := 2
+	if isStaleForSessionGenerationState(state, &expected) {
+		t.Fatalf("matching generation should not be stale")
+	}
+
+	expected = 1
+	if !isStaleForSessionGenerationState(state, &expected) {
+		t.Fatalf("old generation should be stale")
+	}
+}
+
+func TestSessionRoundReplayRequiresCurrentGenerationAfterClear(t *testing.T) {
+	state := SessionGenerationState{Generation: 2, ClearedAt: 1000}
+	completion := SessionRoundCompletion{Completed: true, CreatedAt: 1001}
+
+	if !isSessionRoundCompletionStaleForSessionGeneration(completion, state, nil) {
+		t.Fatalf("replay without generation after clear should be stale")
+	}
+
+	expected := 1
+	if !isSessionRoundCompletionStaleForSessionGeneration(completion, state, &expected) {
+		t.Fatalf("replay with old generation should be stale")
+	}
+
+	expected = 2
+	if isSessionRoundCompletionStaleForSessionGeneration(completion, state, &expected) {
+		t.Fatalf("replay with current generation and post-clear completion should be allowed")
+	}
+}
+
+func TestSessionRoundCompletionBeforeClearIsStale(t *testing.T) {
+	state := SessionGenerationState{Generation: 1, ClearedAt: 1000}
+
+	if !isSessionRoundCompletionBeforeClear(
+		SessionRoundCompletion{Completed: true, CreatedAt: 999},
+		state,
+	) {
+		t.Fatalf("completion before clear should be treated as stale replay")
+	}
+
+	if !isSessionRoundCompletionBeforeClear(
+		SessionRoundCompletion{Completed: true, CreatedAt: 1000},
+		state,
+	) {
+		t.Fatalf("completion at clear timestamp should be treated as stale replay")
+	}
+
+	if isSessionRoundCompletionBeforeClear(
+		SessionRoundCompletion{Completed: true, CreatedAt: 1001},
+		state,
+	) {
+		t.Fatalf("completion after clear should be replayable")
+	}
+}
+
 func TestTierWindowsAndSummaryIntervalsMatchBusinessRules(t *testing.T) {
 	if got := getAWindowByTier(TierFree); got != 6 {
 		t.Fatalf("free a-window mismatch: %d", got)

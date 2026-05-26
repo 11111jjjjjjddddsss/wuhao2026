@@ -2414,6 +2414,7 @@ fun ChatScreen() {
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var cleanStateSparseLayoutActive by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var cleanStateSparseTopAnchored by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
@@ -4075,6 +4076,11 @@ fun ChatScreen() {
         context.clearLocalChatHistoryStateSync(chatScopeId)
         messages.clear()
         cleanStateSparseLayoutActive = false
+        cleanStateSparseTopAnchored = false
+        hasStartedConversation = false
+        initialBottomSnapDone = false
+        postInitialSnapCorrectionDone = false
+        scrollMode = ScrollMode.AutoFollow
         imageSendInProgress = false
         failedUserMessageStates.clear()
         failedAssistantMessageStates.clear()
@@ -4386,11 +4392,13 @@ fun ChatScreen() {
         cleanStateSparseLayoutActive,
         cleanStateSparseLayoutEligible,
         messages.size,
+        cleanStateSparseTopAnchored,
         chatListState.canScrollForward,
         currentLastMessageContentBottomPx(),
         currentStaticBottomTargetPx()
     ) {
         if (!cleanStateSparseLayoutEligible) return@LaunchedEffect
+        if (!cleanStateSparseTopAnchored) return@LaunchedEffect
         val latestContentBottomPx = currentLastMessageContentBottomPx()
         val normalWorklineBottomPx = currentStaticBottomTargetPx()
         // Count the measured message bottom, so text, images, and their spacing decide when sparse mode exits.
@@ -4403,8 +4411,19 @@ fun ChatScreen() {
                     )
         if (!reachedNormalWorkline) return@LaunchedEffect
         cleanStateSparseLayoutActive = false
+        cleanStateSparseTopAnchored = false
         withFrameNanos { }
         requestProgrammaticForwardListBottomAnchor()
+    }
+
+    LaunchedEffect(cleanStateSparseLayoutEligible) {
+        if (!cleanStateSparseLayoutEligible) {
+            cleanStateSparseTopAnchored = false
+            return@LaunchedEffect
+        }
+        cleanStateSparseTopAnchored = false
+        chatListState.scrollToItem(0, 0)
+        cleanStateSparseTopAnchored = true
     }
 
     val shouldAnchorStreamingBottomThisFrame =
@@ -7160,7 +7179,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：可订购", "Plus / Pro 可订购，用完再续", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
-                    UiCopyPreviewItem("支付暂未接入", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
+                    UiCopyPreviewItem("支付功能暂不可用", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
                     UiCopyPreviewItem("订购成功", "支付成功后的确认卡片", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
                 )

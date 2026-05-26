@@ -237,7 +237,7 @@ internal fun MembershipCenterBody(
     )
     val loadedEntitlement = entitlement.takeIf { loadState == MembershipLoadState.Loaded }
     if (paymentNoticeVisible) {
-        MembershipInlineNotice(text = "支付暂未接入")
+        MembershipInlineNotice(text = "支付功能暂不可用")
     }
     MembershipPlanSection(
         activeTier = entitlement.activeMembershipTier(loadState),
@@ -442,7 +442,7 @@ internal fun MembershipTopupCardPreview(
 
 @Composable
 internal fun MembershipPaymentNoticePreview() {
-    MembershipInlineNotice(text = "支付暂未接入")
+    MembershipInlineNotice(text = "支付功能暂不可用")
 }
 
 @Composable

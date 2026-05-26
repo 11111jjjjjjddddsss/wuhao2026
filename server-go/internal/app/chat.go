@@ -111,13 +111,20 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	completed, err := s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
+	completion, staleCompletion, err := s.getSessionRoundCompletionForCurrentGeneration(ctx, auth.UserID, clientMsgID, body.SessionGeneration)
 	if err != nil {
 		s.logger.Error("check session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if completed {
+	if staleCompletion {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STALE_SESSION_GENERATION",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
+	if completion.Completed {
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
@@ -164,13 +171,20 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	completed, err = s.store.WasSessionRoundCompleted(ctx, auth.UserID, clientMsgID)
+	completion, staleCompletion, err = s.getSessionRoundCompletionForCurrentGeneration(ctx, auth.UserID, clientMsgID, body.SessionGeneration)
 	if err != nil {
 		s.logger.Error("recheck session replay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if completed {
+	if staleCompletion {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "STALE_SESSION_GENERATION",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
+	if completion.Completed {
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
@@ -441,18 +455,45 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-func (s *Server) isStaleChatStreamRequest(ctx context.Context, userID string, expectedGeneration *int, requestReceivedAtMs int64) (bool, error) {
+func (s *Server) isStaleChatStreamRequest(ctx context.Context, userID string, expectedGeneration *int, _ int64) (bool, error) {
 	state, err := s.store.GetSessionGenerationState(ctx, userID)
 	if err != nil {
 		return false, err
 	}
-	if expectedGeneration != nil && *expectedGeneration != state.Generation {
-		return true, nil
+	return isStaleForSessionGenerationState(state, expectedGeneration), nil
+}
+
+func (s *Server) getSessionRoundCompletionForCurrentGeneration(ctx context.Context, userID string, clientMsgID string, expectedGeneration *int) (SessionRoundCompletion, bool, error) {
+	completion, err := s.store.GetSessionRoundCompletion(ctx, userID, clientMsgID)
+	if err != nil || !completion.Completed {
+		return completion, false, err
 	}
-	if expectedGeneration == nil && state.ClearedAt > 0 && requestReceivedAtMs <= state.ClearedAt {
-		return true, nil
+	state, err := s.store.GetSessionGenerationState(ctx, userID)
+	if err != nil {
+		return SessionRoundCompletion{}, false, err
 	}
-	return false, nil
+	if isSessionRoundCompletionStaleForSessionGeneration(completion, state, expectedGeneration) {
+		return completion, true, nil
+	}
+	return completion, false, nil
+}
+
+func isStaleForSessionGenerationState(state SessionGenerationState, expectedGeneration *int) bool {
+	if expectedGeneration != nil {
+		return *expectedGeneration != state.Generation
+	}
+	return state.ClearedAt > 0
+}
+
+func isSessionRoundCompletionStaleForSessionGeneration(completion SessionRoundCompletion, state SessionGenerationState, expectedGeneration *int) bool {
+	if isStaleForSessionGenerationState(state, expectedGeneration) {
+		return true
+	}
+	return isSessionRoundCompletionBeforeClear(completion, state)
+}
+
+func isSessionRoundCompletionBeforeClear(completion SessionRoundCompletion, state SessionGenerationState) bool {
+	return completion.Completed && state.ClearedAt > 0 && completion.CreatedAt <= state.ClearedAt
 }
 
 func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID string, dayCN string) {

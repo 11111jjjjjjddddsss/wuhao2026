@@ -812,10 +812,10 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Logout,
                 title = "退出登录",
-                subtitle = "登录功能后续接入",
+                subtitle = "登录后可用",
                 destructive = true,
                 showChevron = false,
-                onClick = { onPlaceholderClick("登录功能后续接入") }
+                onClick = { onPlaceholderClick("登录能力暂不可用") }
             )
         }
     }
@@ -964,7 +964,7 @@ private fun HamburgerServiceAgreementContent(
         )
         HamburgerAgreementSection(
             title = "二、我们提供的功能",
-            body = "本服务包括农业问答、图片辅助分析、历史恢复、会员额度、加油包、礼品卡入口、帮助与反馈、今日农情和检查更新等功能。具体可用范围、次数、价格、权益、适用条件和展示内容，以 App 页面、服务端记录和当时生效规则为准。未开通或显示为占位的功能，不产生实际收费、兑换或权益变更。"
+            body = "本服务包括农业问答、图片辅助分析、历史恢复、会员额度、加油包规则展示、礼品卡入口、帮助与反馈、今日农情和检查更新等功能。具体可用范围、次数、价格、权益、适用条件和展示内容，以 App 页面、服务端记录和当时生效规则为准。未开放或仅作规则展示的功能，不产生实际收费、兑换或权益变更。"
         )
         HamburgerAgreementSection(
             title = "三、您提交的内容与图片",
@@ -976,11 +976,11 @@ private fun HamburgerServiceAgreementContent(
         )
         HamburgerAgreementSection(
             title = "五、会员、支付、加油包和礼品卡",
-            body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、后端记录、实际支付或兑换结果及法律规定为准。当前未接入真实支付的入口仅用于展示服务规则，不会向您扣费；如本服务开通支付、自动续费、礼品卡兑换或农资交易服务，会在开通前或使用前明确价格、商品或服务内容、支付方式、退款规则、权益生效方式和必要资质信息。"
+            body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、后端记录、实际支付或兑换结果及法律规定为准。本版本不提供真实支付、自动续费或礼品卡兑换；相关入口仅展示服务规则，不会向您扣费，也不会发放兑换权益。服务范围变化时，以届时明确展示的价格、商品或服务内容、支付方式、退款规则、权益生效方式和必要资质信息为准。"
         )
         HamburgerAgreementSection(
             title = "六、农资信息和交易边界",
-            body = "本服务可能展示农资相关标签解读、登记信息查询路径、使用注意事项、价格或市场信息整理等内容。相关信息仅供参考，不构成购买建议、效果保证或质量背书。若开通肥料等农资交易服务，我们会依法按实际经营范围、商品资质、平台规则、支付和售后流程提供服务；未开通交易前，App 内相关内容不等同于商品销售。"
+            body = "本服务可能展示农资相关标签解读、登记信息查询路径、使用注意事项、价格或市场信息整理等内容。相关信息仅供参考，不构成购买建议、效果保证或质量背书。本版本不提供农资商品交易；App 内关于肥料、农药、种子等农资的信息整理不等同于商品销售、质量承诺或售后承诺。"
         )
         HamburgerAgreementSection(
             title = "七、帮助与反馈、检查更新",
@@ -1070,7 +1070,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "二、基础运行和身份标识",
-            body = "为维持服务运行和区分会话，我们会处理本机用户标识、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。当前版本主要使用本机生成的用户标识承接聊天、额度、反馈和权益；接入账号登录后，相关身份信息会按登录页面和本政策说明处理。"
+            body = "为维持服务运行和区分会话，我们会处理本机用户标识、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。本版本主要使用本机生成的用户标识承接聊天、额度、反馈和权益，不要求手机号登录，不读取通讯录或短信。"
         )
         HamburgerAgreementSection(
             title = "三、AI 问诊和图片处理",
@@ -1082,7 +1082,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "五、会员、支付、农资交易和检查更新",
-            body = "会员和额度功能当前会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。当前未接入真实支付的入口不会向您扣费；如本服务开通支付、礼品卡兑换或农资交易服务，会按实际功能处理订单号、支付状态、兑换记录、商品或服务信息、售后记录和必要客服沟通信息。检查更新会使用当前版本号、平台信息和下载 APK 缓存，用于判断是否有新版本并调起系统安装页。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。本版本不提供真实支付、礼品卡兑换或农资商品交易，不会处理支付账号、支付状态、兑换记录或商品订单。检查更新会使用当前版本号、平台信息和下载 APK 缓存，用于判断是否有新版本并调起系统安装页。"
         )
         HamburgerAgreementSection(
             title = "六、帮助与反馈",
@@ -1094,7 +1094,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "八、第三方大模型和云服务",
-            body = "我们通过服务端调用境内云服务器、数据库和大模型服务，用于后端运行、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。上传图片当前由后端服务器保存；对象存储、业务日志采集或缓存服务如实际接入，只会在实现对应功能所必需的范围内处理相关信息。"
+            body = "我们通过服务端调用境内云服务器、数据库和大模型服务，用于后端运行、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。上传图片由后端服务器保存；必要运行日志用于排查故障和保障服务安全。"
         )
         HamburgerAgreementSection(
             title = "九、本地缓存和后端保存",
@@ -1102,7 +1102,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十、第三方和系统能力清单",
-            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。当前未接入广告、地图、推送、统计 SDK、支付 SDK、第三方登录 SDK、友盟、Bugly、极光或 Firebase。"
+            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。本版本不包含广告、地图、推送、统计 SDK、支付 SDK、第三方登录 SDK、友盟、Bugly、极光或 Firebase。"
         )
         HamburgerAgreementSection(
             title = "十一、共享和公开",
@@ -1179,7 +1179,7 @@ private fun HamburgerRiskNoticeContent(
         )
         HamburgerAgreementSection(
             title = "五、交易和权益风险",
-            body = "当前版本未开放农资商品交易入口。会员、加油包、礼品卡、支付、农资交易或售后服务如开通，应以 App 页面、订单记录、支付平台、商品标签和商家规则为准。请不要相信 App 外私下收款、代充、代兑换、非官方客服或承诺包治包赔的信息。"
+            body = "本版本不提供农资商品交易、真实支付或礼品卡兑换。会员、加油包、礼品卡、支付、农资交易或售后服务的权益，以 App 页面、服务端记录、订单记录、支付平台、商品标签和商家规则为准。请不要相信 App 外私下收款、代充、代兑换、非官方客服或承诺包治包赔的信息。"
         )
         HamburgerAgreementSection(
             title = "六、未成年人需监护",
@@ -1259,15 +1259,15 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "三、云资源和存储",
-            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈、更新信息和必要日志。上传图片当前由后端服务器保存；对象存储、业务日志采集或缓存服务只在实际接入并用于对应功能时处理相关信息。"
+            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈、更新信息和必要日志。上传图片由后端服务器保存，必要运行日志用于排查故障和保障服务安全。"
         )
         HamburgerAgreementSection(
             title = "四、系统能力",
             body = "系统浏览器、系统安装器、外部相机和 Android Photo Picker 只在您主动点击相关功能时调用。它们属于系统能力，不是 App 内嵌的广告、统计或推送 SDK。"
         )
         HamburgerAgreementSection(
-            title = "五、当前未接入",
-            body = "当前未接入广告、地图、推送、统计 SDK、支付 SDK、第三方登录 SDK、友盟、Bugly、极光或 Firebase。若后续接入手机号登录、支付、统计、推送、定位或农资交易相关服务，会按实际服务商和处理目的更新清单与隐私政策。"
+            title = "五、本版本未使用的第三方 SDK",
+            body = "本版本不包含广告、地图、推送、统计 SDK、支付 SDK、第三方登录 SDK、友盟、Bugly、极光或 Firebase；不申请定位、通讯录、短信、录音或通知权限。服务范围或第三方处理方式发生变化时，我们会更新清单和隐私政策。"
         )
     }
 }
@@ -1327,7 +1327,7 @@ private fun HamburgerPersonalInfoListContent(
         )
         HamburgerAgreementSection(
             title = "四、会员、礼品卡和更新",
-            body = "会员和额度功能当前会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。当前未接入真实支付的入口不会向您扣费；如本服务开通支付、礼品卡兑换或农资交易服务，会处理订单号、支付状态、兑换记录、商品或服务信息、售后记录和必要客服沟通信息。检查更新会使用当前版本号、平台信息和下载 APK 缓存。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。本版本不提供真实支付、礼品卡兑换或农资商品交易，不会处理支付账号、支付状态、兑换记录或商品订单。检查更新会使用当前版本号、平台信息和下载 APK 缓存。"
         )
         HamburgerAgreementSection(
             title = "五、帮助与反馈",
@@ -1395,7 +1395,7 @@ private fun HamburgerPermissionListContent(
         )
         HamburgerAgreementSection(
             title = "五、当前不申请的权限",
-            body = "当前不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限；当前也不做 App 外推送通知。"
+            body = "本版本不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限；也不做 App 外推送通知。"
         )
     }
 }
@@ -1563,7 +1563,7 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Logout,
             title = "退出登录",
-            subtitle = "登录功能后续接入",
+            subtitle = "登录后可用",
             destructive = true,
             showChevron = false,
             onClick = {}
@@ -1625,7 +1625,7 @@ private fun HamburgerAccountManagementContent(
             HamburgerAccountInfoRow(
                 title = "手机号",
                 value = "未绑定",
-                onClick = { onPendingAction("手机号登录后续接入") }
+                onClick = { onPendingAction("手机号绑定暂不可用") }
             )
         }
 
@@ -1639,7 +1639,7 @@ private fun HamburgerAccountManagementContent(
             HamburgerMenuDivider()
             HamburgerAccountActionRow(
                 title = "退出设备",
-                onClick = { onPendingAction("登录功能后续接入") }
+                onClick = { onPendingAction("登录能力暂不可用") }
             )
         }
 
@@ -1648,7 +1648,7 @@ private fun HamburgerAccountManagementContent(
         ) {
             HamburgerAccountActionRow(
                 title = "注销账号",
-                onClick = { onPendingAction("账号注销后续接入") }
+                onClick = { onPendingAction("账号注销暂不可用，可通过帮助与反馈联系我们") }
             )
         }
     }
@@ -2656,7 +2656,7 @@ private fun HamburgerRedeemCodeContent(
     val canRedeem = redeemCode.isNotBlank()
     fun submitRedeem() {
         if (canRedeem) {
-            onPendingAction("礼品卡功能后续接入")
+            onPendingAction("礼品卡兑换暂不可用")
         }
     }
     Column(modifier = modifier) {

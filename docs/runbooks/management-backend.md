@@ -17,7 +17,7 @@
   - 帮助与反馈后台读取 / 回复：`GET /internal/support/messages`、`POST /internal/support/messages`，由 `SUPPORT_ADMIN_SECRET` 保护。
   - 今日农情生成：`POST /internal/jobs/today-agri-card/generate`，由 `DAILY_AGRI_JOB_SECRET` 保护。
   - 检查更新：用户侧 `GET /api/app/update` 读取 `APP_ANDROID_*` 环境变量，没有发布后台。
-  - 会员 / 加油包 / 升级：Android 当前只展示“支付暂未接入”；后端开发期直改接口默认关闭，不是正式支付后台。
+  - 会员 / 加油包 / 升级：Android 当前只展示“支付功能暂不可用”；后端开发期直改接口默认关闭，不是正式支付后台。
   - 礼品卡：当前没有后端表、兑换接口或后台，只是 Android 占位页。
 
 ## 当前不要误解

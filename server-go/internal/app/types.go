@@ -71,6 +71,11 @@ type SessionGenerationState struct {
 	ClearedAt  int64
 }
 
+type SessionRoundCompletion struct {
+	Completed bool
+	CreatedAt int64
+}
+
 type AuthMode string
 
 const (
