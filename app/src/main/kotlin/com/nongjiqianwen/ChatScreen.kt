@@ -171,6 +171,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
@@ -852,6 +853,21 @@ private fun markdownInlineSpanStyle(
     )
 }
 
+private fun chatLinkSpanStyle(
+    isBold: Boolean = false,
+    isItalic: Boolean = false,
+    isCode: Boolean = false
+): SpanStyle {
+    return markdownInlineSpanStyle(
+        isBold = isBold,
+        isItalic = isItalic,
+        isCode = isCode
+    ).copy(
+        color = Color(0xFF1463D9),
+        textDecoration = TextDecoration.Underline
+    )
+}
+
 private fun normalizeLinkTarget(raw: String): String {
     val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
     if (trimmed.isBlank()) return raw.trim()
@@ -889,7 +905,9 @@ private fun buildMarkdownAnnotatedStringInternal(
         fun appendLinked(displayText: String, url: String) {
             if (displayText.isEmpty()) return
             withLink(LinkAnnotation.Url(normalizeLinkTarget(url))) {
-                appendStyled(displayText)
+                withStyle(chatLinkSpanStyle(bold, italic, code)) {
+                    append(displayText)
+                }
             }
         }
 
@@ -952,6 +970,34 @@ private fun buildMarkdownAnnotatedStringInternal(
                     index = nextSpecial
                 }
             }
+        }
+    }
+}
+
+private fun buildPlainLinkedAnnotatedString(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        var index = 0
+        while (index < text.length) {
+            val bareUrl = bareUrlRegex.find(text, index)
+            if (bareUrl == null) {
+                append(text.substring(index))
+                break
+            }
+            if (bareUrl.range.first > index) {
+                append(text.substring(index, bareUrl.range.first))
+            }
+            val displayText = trimBareUrlDisplayText(bareUrl.value)
+            if (displayText.isEmpty()) {
+                append(bareUrl.value)
+                index = bareUrl.range.last + 1
+                continue
+            }
+            withLink(LinkAnnotation.Url(normalizeLinkTarget(displayText))) {
+                withStyle(chatLinkSpanStyle()) {
+                    append(displayText)
+                }
+            }
+            index = bareUrl.range.first + displayText.length
         }
     }
 }
@@ -6724,6 +6770,14 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
+                title = "文本渲染",
+                items = listOf(
+                    UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
+                    UiCopyPreviewItem("AI 简单表格", "Markdown 表格转为手机友好的条目", UiCopyPreviewKind.AssistantTableSample),
+                    UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
+                )
+            ),
+            UiCopyPreviewGroup(
                 title = "附件面板",
                 items = listOf(
                     UiCopyPreviewItem(
@@ -6909,6 +6963,23 @@ private data class UiCopyPreviewItem(
     val kind: UiCopyPreviewKind
 )
 
+private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
+    "# 叶片发黄排查\n" +
+        "建议先看 **叶背虫体**、`pH` 和近期浇水。\n" +
+        "- 拍叶片正反面\n" +
+        "- 拍根系和土壤湿度\n" +
+        "1. 先停用高浓度叶面肥\n" +
+        "2. 再按标签复核用药\n" +
+        "> AI 只能提供参考，现场仍要复核。\n" +
+        "官方查询可看 https://www.moa.gov.cn/ 或 [植保中心](https://www.natesc.org.cn/)。"
+
+private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
+    "| 作物 | 现象 | 先做什么 |\n" +
+        "| --- | --- | --- |\n" +
+        "| 番茄 | 叶片斑点 | 摘病叶并拍叶背 |\n" +
+        "| 小麦 | 大片发黄 | 查根系和土壤湿度 |\n" +
+        "| 辣椒 | 新叶卷曲 | 排查蚜虫和药害 |"
+
 private enum class UiCopyPreviewKind {
     AppTitle,
     Welcome,
@@ -6958,6 +7029,9 @@ private enum class UiCopyPreviewKind {
     HamburgerRiskNoticePage,
     HamburgerGiftCardSuccess,
     TodayAgriCard,
+    AssistantMarkdownSample,
+    AssistantTableSample,
+    UserLinkBubbleSample,
     AttachmentSheet,
     SupportAttachmentSheet,
     Disclaimer,
@@ -7360,6 +7434,50 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     TodayAgriNewsCard(
                         card = uiCopyPreviewTodayAgriCard(),
                         onOpenUrl = {}
+                    )
+                }
+                UiCopyPreviewKind.AssistantMarkdownSample -> {
+                    ChatStreamingRenderer(
+                        content = UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE,
+                        renderMode = StreamingRenderMode.Settled,
+                        freshSuffixEnabled = false,
+                        showWaitingBall = false,
+                        streamingFreshStart = -1,
+                        streamingFreshEnd = -1,
+                        streamingFreshTick = 0,
+                        selectionEnabled = true,
+                        showDisclaimer = true,
+                        onStreamingContentBoundsChanged = null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                UiCopyPreviewKind.AssistantTableSample -> {
+                    ChatStreamingRenderer(
+                        content = UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE,
+                        renderMode = StreamingRenderMode.Settled,
+                        freshSuffixEnabled = false,
+                        showWaitingBall = false,
+                        streamingFreshStart = -1,
+                        streamingFreshEnd = -1,
+                        streamingFreshTick = 0,
+                        selectionEnabled = true,
+                        showDisclaimer = true,
+                        onStreamingContentBoundsChanged = null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                UiCopyPreviewKind.UserLinkBubbleSample -> {
+                    SelectableRenderedUserMessageBubble(
+                        content = "看看这个链接 www.moa.gov.cn，还有 https://www.natesc.org.cn/ 可以点吗",
+                        textSelectionColors = TextSelectionColors(
+                            handleColor = CHAT_SELECTION_HANDLE_COLOR,
+                            backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
+                        ),
+                        textToolbar = LocalTextToolbar.current,
+                        selectionResetKey = 0,
+                        userBubbleMaxWidth = 280.dp,
+                        userBubbleColor = Color(0xFFF7F8FA),
+                        userBubbleBorderColor = Color(0xFFE0E4EA)
                     )
                 }
                 UiCopyPreviewKind.AttachmentSheet -> {
@@ -8298,6 +8416,7 @@ private fun SelectableRenderedUserMessageBubble(
     onBubbleBoundsChanged: (Rect?) -> Unit = {}
 ) {
     val bubbleShape = RoundedCornerShape(20.dp)
+    val renderedContent = remember(content) { buildPlainLinkedAnnotatedString(content) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -8329,7 +8448,7 @@ private fun SelectableRenderedUserMessageBubble(
                         modifier = Modifier.wrapContentWidth(Alignment.Start)
                     ) {
                         Text(
-                            text = content,
+                            text = renderedContent,
                             modifier = Modifier.wrapContentWidth(Alignment.Start),
                             style = MaterialTheme.typography.bodyLarge,
                             color = Color(0xFF161616)

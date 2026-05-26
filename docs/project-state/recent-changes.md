@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-26
+
+- 主聊天正文渲染巡检并补齐链接可见性：AI 回复的轻量 Markdown 链接和裸网址继续走 `LinkAnnotation.Url`，现在统一显示蓝色下划线；用户消息气泡从纯文本改为识别 `http://`、`https://` 和 `www.` 裸网址，保持可选择复制的同时可点击打开。同步在 debug-only UI 文案预览面板新增“文本渲染”分组，用主界面真实组件预览 AI Markdown、简单 Markdown 表格和用户链接气泡。当前简单表格仍按手机窄屏友好的条目形式展示，不渲染横向网格，避免聊天页小屏溢出；复杂 Markdown、HTML、代码块高亮和图片 Markdown 不作为主链支持范围。
+
 ## 2026-05-25
 
 - 按用户拍板固定 App 对外身份：App 名称继续“农技千查”，Android `applicationId` 从旧内测口径 `com.nongjiqianwen` 切到 `com.nongjiqiancha`；Kotlin 源码包 / Gradle namespace 暂保留 `com.nongjiqianwen` 作为内部代码命名空间，避免无意义大搬家。同步更新检查更新下载文件名、相机相册导出文件名前缀和 baseline profile 目标包名；本机生成固定 release 签名，备案用 MD5 / SHA1 / SHA256 / RSA 公钥信息写到 `%USERPROFILE%\\.nongjiqiancha\\android-release-public-info.txt`，签名配置写到 `%USERPROFILE%\\.nongjiqiancha\\android-release-signing.properties`，私钥和密码不进仓库。release 任务增加签名配置和 https `UPLOAD_BASE_URL` fail-fast，避免正式包没接后端；旧内测包 `com.nongjiqianwen` 不能通过检查更新覆盖安装成新包，测试机需卸旧包重装，后续自更新只支持 `com.nongjiqiancha` 同包名升级。
