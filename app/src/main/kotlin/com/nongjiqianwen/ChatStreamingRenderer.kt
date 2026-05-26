@@ -185,7 +185,27 @@ private val rendererQuoteRegex = Regex("^>\\s+.*$")
 private fun splitRendererMarkdownTableCells(line: String): List<String> {
     val trimmed = line.trim().removePrefix("|").removeSuffix("|")
     if (trimmed.isBlank()) return emptyList()
-    return trimmed.split('|').map { it.trim() }
+    val cells = mutableListOf<String>()
+    val current = StringBuilder()
+    var escaped = false
+    trimmed.forEach { ch ->
+        when {
+            escaped -> {
+                if (ch != '|') current.append('\\')
+                current.append(ch)
+                escaped = false
+            }
+            ch == '\\' -> escaped = true
+            ch == '|' -> {
+                cells += current.toString().trim()
+                current.clear()
+            }
+            else -> current.append(ch)
+        }
+    }
+    if (escaped) current.append('\\')
+    cells += current.toString().trim()
+    return cells
 }
 
 private fun isRendererMarkdownTableSeparatorLine(line: String): Boolean {

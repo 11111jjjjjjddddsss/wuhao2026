@@ -708,7 +708,27 @@ private fun StringBuilder.appendParagraphLine(line: String) {
 private fun splitMarkdownTableCells(line: String): List<String> {
     val trimmed = line.trim().removePrefix("|").removeSuffix("|")
     if (trimmed.isBlank()) return emptyList()
-    return trimmed.split('|').map { it.trim() }
+    val cells = mutableListOf<String>()
+    val current = StringBuilder()
+    var escaped = false
+    trimmed.forEach { ch ->
+        when {
+            escaped -> {
+                if (ch != '|') current.append('\\')
+                current.append(ch)
+                escaped = false
+            }
+            ch == '\\' -> escaped = true
+            ch == '|' -> {
+                cells += current.toString().trim()
+                current.clear()
+            }
+            else -> current.append(ch)
+        }
+    }
+    if (escaped) current.append('\\')
+    cells += current.toString().trim()
+    return cells
 }
 
 private fun isMarkdownTableSeparatorLine(line: String): Boolean {
@@ -7073,15 +7093,16 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
         "2. 再按标签复核用药\n" +
         "公式里的 亩数*亩用量*浓度 会保持原样。\n" +
         "特殊符号：EC≤2.0、25~30°C、0.2%、1:800、20kg/亩、±10%、N-P-K、2**3**4。\n" +
+        "通用符号：@#$%^&+=~、()[]{}<>、《》“”'\"、→←↑↓、√×÷≈≠≤≥、😀。\n" +
         "> AI 只能提供参考，现场仍要复核。\n" +
         "官方查询可看 https://www.moa.gov.cn/，或 [植保中心](https://www.natesc.org.cn/)。"
 
 private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
-    "| 作物 | 现象 | 先做什么 |\n" +
+    "| 名称 | 符号 | 说明 |\n" +
         "| --- | --- | --- |\n" +
-        "| 番茄 | 叶片斑点 | 摘病叶并拍叶背 |\n" +
-        "| 小麦 | 大片发黄 | 查根系和土壤湿度 |\n" +
-        "| 辣椒 | 新叶卷曲 | 排查蚜虫和药害 |"
+        "| 普通竖线 | A\\|B | 单元格里的竖线保留 |\n" +
+        "| 比例 | 1:800 | 冒号不影响表格 |\n" +
+        "| 括号 | [A](B) | 普通括号按文本显示 |"
 
 private enum class UiCopyPreviewKind {
     AppTitle,
