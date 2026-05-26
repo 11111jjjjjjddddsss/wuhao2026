@@ -886,6 +886,74 @@ private fun trimBareUrlDisplayText(raw: String): String {
     return raw.trimEnd { it in trailingPunctuation }
 }
 
+private fun Char.isMarkdownDelimiterBoundary(): Boolean {
+    return isWhitespace() ||
+        this in ".,;:!?，。；：！？、（）()[]{}<>《》“”\"'"
+}
+
+private fun isSingleAsterisk(text: String, index: Int): Boolean {
+    return text.getOrNull(index) == '*' &&
+        text.getOrNull(index - 1) != '*' &&
+        text.getOrNull(index + 1) != '*'
+}
+
+private fun isItalicOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!isSingleAsterisk(text, index)) return false
+    val previous = text.getOrNull(index - 1)
+    val next = text.getOrNull(index + 1)
+    if (next == null || next.isWhitespace()) return false
+    return previous == null || previous.isMarkdownDelimiterBoundary()
+}
+
+private fun isItalicClosingDelimiter(text: String, index: Int): Boolean {
+    if (!isSingleAsterisk(text, index)) return false
+    val previous = text.getOrNull(index - 1)
+    val next = text.getOrNull(index + 1)
+    if (previous == null || previous.isWhitespace()) return false
+    return next == null || next.isMarkdownDelimiterBoundary()
+}
+
+private fun hasItalicClosingDelimiter(text: String, fromIndex: Int): Boolean {
+    var cursor = text.indexOf('*', fromIndex)
+    while (cursor >= 0) {
+        if (isItalicClosingDelimiter(text, cursor)) return true
+        cursor = text.indexOf('*', cursor + 1)
+    }
+    return false
+}
+
+private fun findNextBoldDelimiterIndex(text: String, startIndex: Int, isBold: Boolean): Int? {
+    var cursor = text.indexOf("**", startIndex)
+    while (cursor >= 0) {
+        if (isBold || text.indexOf("**", cursor + 2) >= 0) return cursor
+        cursor = text.indexOf("**", cursor + 2)
+    }
+    return null
+}
+
+private fun findNextCodeDelimiterIndex(text: String, startIndex: Int, isCode: Boolean): Int? {
+    var cursor = text.indexOf('`', startIndex)
+    while (cursor >= 0) {
+        if (isCode || text.indexOf('`', cursor + 1) >= 0) return cursor
+        cursor = text.indexOf('`', cursor + 1)
+    }
+    return null
+}
+
+private fun findNextItalicDelimiterIndex(text: String, startIndex: Int, isItalic: Boolean): Int? {
+    var cursor = text.indexOf('*', startIndex)
+    while (cursor >= 0) {
+        val matches = if (isItalic) {
+            isItalicClosingDelimiter(text, cursor)
+        } else {
+            isItalicOpeningDelimiter(text, cursor) && hasItalicClosingDelimiter(text, cursor + 1)
+        }
+        if (matches) return cursor
+        cursor = text.indexOf('*', cursor + 1)
+    }
+    return null
+}
+
 private fun buildMarkdownAnnotatedStringInternal(
     text: String
 ): AnnotatedString {
@@ -933,15 +1001,15 @@ private fun buildMarkdownAnnotatedStringInternal(
                 }
             }
             when {
-                !code && text.startsWith("**", index) -> {
+                !code && text.startsWith("**", index) && findNextBoldDelimiterIndex(text, index, bold) == index -> {
                     bold = !bold
                     index += 2
                 }
-                text[index] == '`' -> {
+                text[index] == '`' && findNextCodeDelimiterIndex(text, index, code) == index -> {
                     code = !code
                     index += 1
                 }
-                !code && text[index] == '*' -> {
+                !code && text[index] == '*' && findNextItalicDelimiterIndex(text, index, italic) == index -> {
                     italic = !italic
                     index += 1
                 }
@@ -957,9 +1025,9 @@ private fun buildMarkdownAnnotatedStringInternal(
                         } else {
                             null
                         }
-                        val boldIndex = if (!code) text.indexOf("**", index).takeIf { it >= 0 } else null
-                        val codeIndex = text.indexOf('`', index).takeIf { it >= 0 }
-                        val italicIndex = if (!code) text.indexOf('*', index).takeIf { it >= 0 } else null
+                        val boldIndex = if (!code) findNextBoldDelimiterIndex(text, index, bold) else null
+                        val codeIndex = findNextCodeDelimiterIndex(text, index, code)
+                        val italicIndex = if (!code) findNextItalicDelimiterIndex(text, index, italic) else null
                         if (markdownLinkIndex != null) add(markdownLinkIndex)
                         if (bareUrlIndex != null) add(bareUrlIndex)
                         if (boldIndex != null) add(boldIndex)
@@ -6970,6 +7038,7 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
         "- 拍根系和土壤湿度\n" +
         "1. 先停用高浓度叶面肥\n" +
         "2. 再按标签复核用药\n" +
+        "公式里的 亩数*亩用量*浓度 会保持原样。\n" +
         "> AI 只能提供参考，现场仍要复核。\n" +
         "官方查询可看 https://www.moa.gov.cn/ 或 [植保中心](https://www.natesc.org.cn/)。"
 
