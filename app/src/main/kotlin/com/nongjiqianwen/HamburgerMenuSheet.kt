@@ -44,6 +44,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
@@ -61,6 +62,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -76,11 +78,18 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -100,6 +109,53 @@ private const val HAMBURGER_PAGE_EXIT_MS = 150
 private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
 internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后重试"
 private val HamburgerBackButtonTopPadding = 4.dp
+private val supportBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
+
+private fun normalizeSupportLinkTarget(raw: String): String {
+    val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
+    if (trimmed.isBlank()) return raw.trim()
+    return if (
+        trimmed.startsWith("http://", ignoreCase = true) ||
+        trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        trimmed
+    } else {
+        "https://$trimmed"
+    }
+}
+
+private fun trimSupportBareUrlDisplayText(raw: String): String {
+    val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
+    return raw.trimEnd { it in trailingPunctuation }
+}
+
+private fun buildSupportLinkedText(text: String, linkColor: Color): AnnotatedString {
+    return buildAnnotatedString {
+        var index = 0
+        while (index < text.length) {
+            val bareUrl = supportBareUrlRegex.find(text, index)
+            if (bareUrl == null) {
+                append(text.substring(index))
+                break
+            }
+            if (bareUrl.range.first > index) {
+                append(text.substring(index, bareUrl.range.first))
+            }
+            val displayText = trimSupportBareUrlDisplayText(bareUrl.value)
+            if (displayText.isEmpty()) {
+                append(bareUrl.value)
+                index = bareUrl.range.last + 1
+                continue
+            }
+            withLink(LinkAnnotation.Url(normalizeSupportLinkTarget(displayText))) {
+                withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
+                    append(displayText)
+                }
+            }
+            index = bareUrl.range.first + displayText.length
+        }
+    }
+}
 
 @Composable
 internal fun HamburgerMenuSheet(
@@ -2022,8 +2078,9 @@ private fun HamburgerSupportFeedbackContent(
     val scrollState = rememberScrollState()
     val hasContent = inputText.trim().isNotEmpty() || selectedImages.isNotEmpty()
     val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
+    var inputFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(messages.size, loading, loadFailed, selectedImages.size) {
+    LaunchedEffect(messages.size, loading, loadFailed, selectedImages.size, inputFocused) {
         delay(80)
         scrollState.animateScrollTo(scrollState.maxValue)
     }
@@ -2149,7 +2206,9 @@ private fun HamburgerSupportFeedbackContent(
                         keyboardActions = KeyboardActions(onSend = {
                             if (canSend) onSend()
                         }),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { inputFocused = it.isFocused }
                     )
                 }
             },
@@ -2183,6 +2242,9 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
     val timestamp = formatSupportMessageTime(message.createdAt)
     val body = message.body.orEmpty()
     val imageUrls = message.imageUrls.orEmpty()
+    val bodyColor = if (isUser) Color.White else Color(0xFF111111)
+    val linkColor = if (isUser) Color.White else Color(0xFF1463D9)
+    val renderedBody = remember(body, linkColor) { buildSupportLinkedText(body, linkColor) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -2209,13 +2271,15 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                     ),
                     border = if (isUser) null else BorderStroke(0.7.dp, Color(0xFFE1E4E8))
                 ) {
-                    Text(
-                        text = body,
-                        color = if (isUser) Color.White else Color(0xFF111111),
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = renderedBody,
+                            color = bodyColor,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        )
+                    }
                 }
             }
             if (imageUrls.isNotEmpty()) {
@@ -2375,7 +2439,7 @@ internal fun HamburgerSupportFeedbackPagePreview() {
                 SessionApi.SupportMessage(
                     id = 2,
                     senderType = "admin",
-                    body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。",
+                    body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。也可以看 https://api.nongjiqiancha.cn/help。",
                     createdAt = System.currentTimeMillis() - 18L * 60L * 1000L
                 )
             ),
