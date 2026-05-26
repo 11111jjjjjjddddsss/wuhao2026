@@ -2145,7 +2145,7 @@ private fun HamburgerSupportFeedbackContent(
                         }
                     }
                     messages.isEmpty() -> {
-                        HamburgerSupportStatusText(text = "把问题发给客服，回复会显示在这里。")
+                        HamburgerSupportStatusText(text = "提交反馈后，客服回复和处理进展会在这里显示。")
                     }
                     else -> {
                         messages.forEach { message ->
