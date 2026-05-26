@@ -2427,33 +2427,72 @@ private fun HamburgerSupportMessageImageThumb(
     }
 }
 
+internal enum class HamburgerSupportFeedbackPreviewVariant {
+    Normal,
+    Empty,
+    Loading,
+    Failed,
+    ImageInput,
+    LongInput
+}
+
 @Composable
-internal fun HamburgerSupportFeedbackPagePreview() {
+internal fun HamburgerSupportFeedbackPagePreview(
+    variant: HamburgerSupportFeedbackPreviewVariant = HamburgerSupportFeedbackPreviewVariant.Normal
+) {
+    val now = System.currentTimeMillis()
+    val baseMessages = listOf(
+        SessionApi.SupportMessage(
+            id = 1,
+            senderType = "user",
+            body = "我这边会员权益好像没有刷新，麻烦帮我看一下。",
+            imageUrls = listOf("support-preview-user-image-1"),
+            createdAt = now - 32L * 60L * 1000L
+        ),
+        SessionApi.SupportMessage(
+            id = 2,
+            senderType = "admin",
+            body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。也可以看 https://api.nongjiqiancha.cn/help。",
+            createdAt = now - 18L * 60L * 1000L
+        )
+    )
+    val messages = when (variant) {
+        HamburgerSupportFeedbackPreviewVariant.Normal,
+        HamburgerSupportFeedbackPreviewVariant.ImageInput,
+        HamburgerSupportFeedbackPreviewVariant.LongInput -> baseMessages
+        HamburgerSupportFeedbackPreviewVariant.Empty,
+        HamburgerSupportFeedbackPreviewVariant.Loading,
+        HamburgerSupportFeedbackPreviewVariant.Failed -> emptyList()
+    }
+    val selectedImages = when (variant) {
+        HamburgerSupportFeedbackPreviewVariant.ImageInput -> listOf(
+            ComposerImageAttachment("support-preview-composer-image-1"),
+            ComposerImageAttachment("support-preview-composer-image-2")
+        )
+        else -> emptyList()
+    }
+    val inputValue = when (variant) {
+        HamburgerSupportFeedbackPreviewVariant.Empty,
+        HamburgerSupportFeedbackPreviewVariant.Loading,
+        HamburgerSupportFeedbackPreviewVariant.Failed -> TextFieldValue("")
+        HamburgerSupportFeedbackPreviewVariant.ImageInput -> TextFieldValue("补充截图说明，会员中心显示的剩余次数和首页不一致。")
+        HamburgerSupportFeedbackPreviewVariant.LongInput -> TextFieldValue(
+            "我把情况详细说一下：昨天清除数据后重新打开 App，会员中心显示正常，但是回到主界面以后又提示次数不足；我尝试退出设置页再进入，消息还能复制，网址也能点开。请帮我确认是不是后台同步延迟。"
+        )
+        HamburgerSupportFeedbackPreviewVariant.Normal -> TextFieldValue("我再试一下")
+    }
     Surface(
         color = Color(0xFFF8F9FA),
         shape = RoundedCornerShape(18.dp),
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerSupportFeedbackContent(
-            messages = listOf(
-                SessionApi.SupportMessage(
-                    id = 1,
-                    senderType = "user",
-                    body = "我这边会员权益好像没有刷新，麻烦帮我看一下。",
-                    createdAt = System.currentTimeMillis() - 32L * 60L * 1000L
-                ),
-                SessionApi.SupportMessage(
-                    id = 2,
-                    senderType = "admin",
-                    body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。也可以看 https://api.nongjiqiancha.cn/help。",
-                    createdAt = System.currentTimeMillis() - 18L * 60L * 1000L
-                )
-            ),
-            inputValue = TextFieldValue("我再试一下"),
-            selectedImages = emptyList(),
-            loading = false,
-            loadFailed = false,
-            sending = false,
+            messages = messages,
+            inputValue = inputValue,
+            selectedImages = selectedImages,
+            loading = variant == HamburgerSupportFeedbackPreviewVariant.Loading,
+            loadFailed = variant == HamburgerSupportFeedbackPreviewVariant.Failed,
+            sending = variant == HamburgerSupportFeedbackPreviewVariant.ImageInput,
             onInputChange = {},
             onAddClick = {},
             onRemoveImage = {},

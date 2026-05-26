@@ -6885,6 +6885,17 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
+                title = "帮助与反馈",
+                items = listOf(
+                    UiCopyPreviewItem("对话与链接", "客服消息、用户消息、图片和网址点击", UiCopyPreviewKind.HamburgerSupportPage),
+                    UiCopyPreviewItem("空消息", "无历史反馈时的空态", UiCopyPreviewKind.HamburgerSupportEmpty),
+                    UiCopyPreviewItem("同步中", "进入页面后的加载状态", UiCopyPreviewKind.HamburgerSupportLoading),
+                    UiCopyPreviewItem("同步失败", "加载失败和重试按钮", UiCopyPreviewKind.HamburgerSupportFailed),
+                    UiCopyPreviewItem("图片输入", "图片预览条、输入框抬高和发送中态", UiCopyPreviewKind.HamburgerSupportImageInput),
+                    UiCopyPreviewItem("长文本输入", "多行输入不收缩，最多显示 6 行", UiCopyPreviewKind.HamburgerSupportLongInput)
+                )
+            ),
+            UiCopyPreviewGroup(
                 title = "今日农情",
                 items = listOf(
                     UiCopyPreviewItem("今日农情", "三条农情卡片，整条点击跳转来源", UiCopyPreviewKind.TodayAgriCard)
@@ -7142,6 +7153,11 @@ private enum class UiCopyPreviewKind {
     HamburgerAccountPage,
     HamburgerDeleteHistoryConfirm,
     HamburgerSupportPage,
+    HamburgerSupportEmpty,
+    HamburgerSupportLoading,
+    HamburgerSupportFailed,
+    HamburgerSupportImageInput,
+    HamburgerSupportLongInput,
     HamburgerAppUpdateDialog,
     HamburgerGiftCardPage,
     HamburgerLegalHubPage,
@@ -7524,6 +7540,21 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerSupportPage -> {
                     HamburgerSupportFeedbackPagePreview()
                 }
+                UiCopyPreviewKind.HamburgerSupportEmpty -> {
+                    HamburgerSupportFeedbackPagePreview(HamburgerSupportFeedbackPreviewVariant.Empty)
+                }
+                UiCopyPreviewKind.HamburgerSupportLoading -> {
+                    HamburgerSupportFeedbackPagePreview(HamburgerSupportFeedbackPreviewVariant.Loading)
+                }
+                UiCopyPreviewKind.HamburgerSupportFailed -> {
+                    HamburgerSupportFeedbackPagePreview(HamburgerSupportFeedbackPreviewVariant.Failed)
+                }
+                UiCopyPreviewKind.HamburgerSupportImageInput -> {
+                    HamburgerSupportFeedbackPagePreview(HamburgerSupportFeedbackPreviewVariant.ImageInput)
+                }
+                UiCopyPreviewKind.HamburgerSupportLongInput -> {
+                    HamburgerSupportFeedbackPagePreview(HamburgerSupportFeedbackPreviewVariant.LongInput)
+                }
                 UiCopyPreviewKind.HamburgerAppUpdateDialog -> {
                     HamburgerAppUpdateDialogPreview()
                 }
@@ -7672,7 +7703,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     listOf("UI文案样式预览", "点一级标题展开或收起，点二级条目查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。")
                 )
                 UiCopyPreviewKind.DebugPanelControls -> UiCopyPreviewPlainText(
-                    listOf("右上角 X 关闭", "适配与回退 4项 展开", "会员中心 20项 展开", "查看", "预览中", "样式预览")
+                    listOf("右上角 X 关闭", "适配与回退 4项 展开", "帮助与反馈 6项 展开", "会员中心 20项 展开", "查看", "预览中", "样式预览")
                 )
             }
         }
