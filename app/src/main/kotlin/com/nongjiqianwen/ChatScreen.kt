@@ -882,13 +882,40 @@ private fun normalizeLinkTarget(raw: String): String {
 }
 
 private fun trimBareUrlDisplayText(raw: String): String {
-    val trailingPunctuation = ".,;:!?，。；：！？"
+    val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
     return raw.trimEnd { it in trailingPunctuation }
+}
+
+private fun Char.isAsciiLetterOrDigit(): Boolean {
+    return this in '0'..'9' ||
+        this in 'a'..'z' ||
+        this in 'A'..'Z'
 }
 
 private fun Char.isMarkdownDelimiterBoundary(): Boolean {
     return isWhitespace() ||
         this in ".,;:!?，。；：！？、（）()[]{}<>《》“”\"'"
+}
+
+private fun isAsciiInlineOperatorRun(text: String, index: Int, length: Int): Boolean {
+    val previous = text.getOrNull(index - 1)
+    val next = text.getOrNull(index + length)
+    return previous?.isAsciiLetterOrDigit() == true &&
+        next?.isAsciiLetterOrDigit() == true
+}
+
+private fun isBoldOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("**", index)) return false
+    if (isAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val next = text.getOrNull(index + 2)
+    return next != null && !next.isWhitespace()
+}
+
+private fun isBoldClosingDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("**", index)) return false
+    if (isAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val previous = text.getOrNull(index - 1)
+    return previous != null && !previous.isWhitespace()
 }
 
 private fun isSingleAsterisk(text: String, index: Int): Boolean {
@@ -925,7 +952,13 @@ private fun hasItalicClosingDelimiter(text: String, fromIndex: Int): Boolean {
 private fun findNextBoldDelimiterIndex(text: String, startIndex: Int, isBold: Boolean): Int? {
     var cursor = text.indexOf("**", startIndex)
     while (cursor >= 0) {
-        if (isBold || text.indexOf("**", cursor + 2) >= 0) return cursor
+        val matches = if (isBold) {
+            isBoldClosingDelimiter(text, cursor)
+        } else {
+            isBoldOpeningDelimiter(text, cursor) &&
+                findNextBoldDelimiterIndex(text, cursor + 2, isBold = true) != null
+        }
+        if (matches) return cursor
         cursor = text.indexOf("**", cursor + 2)
     }
     return null
@@ -7039,8 +7072,9 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
         "1. 先停用高浓度叶面肥\n" +
         "2. 再按标签复核用药\n" +
         "公式里的 亩数*亩用量*浓度 会保持原样。\n" +
+        "特殊符号：EC≤2.0、25~30°C、0.2%、1:800、20kg/亩、±10%、N-P-K、2**3**4。\n" +
         "> AI 只能提供参考，现场仍要复核。\n" +
-        "官方查询可看 https://www.moa.gov.cn/ 或 [植保中心](https://www.natesc.org.cn/)。"
+        "官方查询可看 https://www.moa.gov.cn/，或 [植保中心](https://www.natesc.org.cn/)。"
 
 private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
     "| 作物 | 现象 | 先做什么 |\n" +
