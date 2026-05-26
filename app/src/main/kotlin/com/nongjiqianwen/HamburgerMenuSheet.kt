@@ -88,6 +88,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -1708,7 +1709,7 @@ private fun HamburgerSupportFeedbackPage(
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     var messages by remember { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
-    var inputText by remember { mutableStateOf("") }
+    var inputValue by remember { mutableStateOf(TextFieldValue("")) }
     var loading by remember { mutableStateOf(true) }
     var loadFailed by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
@@ -1969,14 +1970,14 @@ private fun HamburgerSupportFeedbackPage(
     }
 
     fun sendMessage() {
-        val body = inputText.trim()
+        val body = inputValue.text.trim()
         val imageSnapshot = selectedImages.take(4)
         if ((body.isEmpty() && imageSnapshot.isEmpty()) || sending) return
         if (!SessionApi.hasBackendConfigured()) {
             onPendingAction(SUPPORT_SEND_FAILED_HINT)
             return
         }
-        if (body.length > SUPPORT_MESSAGE_MAX_CHARS) {
+        if (inputValue.text.length > SUPPORT_MESSAGE_MAX_CHARS) {
             onPendingAction("最多输入2000字")
             return
         }
@@ -1995,7 +1996,7 @@ private fun HamburgerSupportFeedbackPage(
                     onPendingAction(SUPPORT_SEND_FAILED_HINT)
                     return@sendSupportMessage
                 }
-                inputText = ""
+                inputValue = TextFieldValue("")
                 selectedImages.removeAll(imageSnapshot.toSet())
                 scope.launch(Dispatchers.IO) {
                     imageSnapshot.forEach(context::deleteComposerImageAttachment)
@@ -2017,14 +2018,14 @@ private fun HamburgerSupportFeedbackPage(
     ) {
         HamburgerSupportFeedbackContent(
             messages = messages,
-            inputText = inputText,
+            inputValue = inputValue,
             selectedImages = selectedImages,
             loading = loading,
             loadFailed = loadFailed,
             sending = sending,
             onInputChange = { next ->
-                if (next.length <= SUPPORT_MESSAGE_MAX_CHARS) {
-                    inputText = next
+                if (next.text.length <= SUPPORT_MESSAGE_MAX_CHARS) {
+                    inputValue = next
                 }
             },
             onAddClick = {
@@ -2063,12 +2064,12 @@ private fun HamburgerSupportFeedbackPage(
 @Composable
 private fun HamburgerSupportFeedbackContent(
     messages: List<SessionApi.SupportMessage>,
-    inputText: String,
+    inputValue: TextFieldValue,
     selectedImages: List<ComposerImageAttachment>,
     loading: Boolean,
     loadFailed: Boolean,
     sending: Boolean,
-    onInputChange: (String) -> Unit,
+    onInputChange: (TextFieldValue) -> Unit,
     onAddClick: () -> Unit,
     onRemoveImage: (ComposerImageAttachment) -> Unit,
     onSend: () -> Unit,
@@ -2076,6 +2077,7 @@ private fun HamburgerSupportFeedbackContent(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val inputText = inputValue.text
     val hasContent = inputText.trim().isNotEmpty() || selectedImages.isNotEmpty()
     val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
     var inputFocused by remember { mutableStateOf(false) }
@@ -2182,7 +2184,7 @@ private fun HamburgerSupportFeedbackContent(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = if (selectedImages.isNotEmpty()) 86.dp else 0.dp, max = 112.dp),
+                        .heightIn(min = if (selectedImages.isNotEmpty()) 86.dp else 22.dp, max = 132.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     if (inputText.isEmpty()) {
@@ -2194,8 +2196,11 @@ private fun HamburgerSupportFeedbackContent(
                         )
                     }
                     BasicTextField(
-                        value = inputText,
+                        value = inputValue,
                         onValueChange = onInputChange,
+                        singleLine = false,
+                        minLines = 1,
+                        maxLines = 6,
                         textStyle = TextStyle(
                             color = Color(0xFF111111),
                             fontSize = 16.sp,
@@ -2208,6 +2213,7 @@ private fun HamburgerSupportFeedbackContent(
                         }),
                         modifier = Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 22.dp)
                             .onFocusChanged { inputFocused = it.isFocused }
                     )
                 }
@@ -2443,7 +2449,7 @@ internal fun HamburgerSupportFeedbackPagePreview() {
                     createdAt = System.currentTimeMillis() - 18L * 60L * 1000L
                 )
             ),
-            inputText = "我再试一下",
+            inputValue = TextFieldValue("我再试一下"),
             selectedImages = emptyList(),
             loading = false,
             loadFailed = false,
