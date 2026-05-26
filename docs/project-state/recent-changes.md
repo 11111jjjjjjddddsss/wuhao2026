@@ -5,6 +5,7 @@
 
 ## 2026-05-26
 
+- 按用户“是不是只检测有没有到工作线”的思路又拉 3 路会诊复查 clean-state 稀疏首屏：结论是当前方案本质已经是“首次业务消息前进入稀疏；真实内容底边没到 96dp 工作线就自然增长；到达工作线或内容可滚动后恢复正常工作线”，不建议推倒成一次性发送前 / 发送后检测。基于极端场景会诊只补两处小护栏：稀疏态退出后只有在用户未拖动、未浏览且列表滚动已停止时才主动请求正向底部锚点，避免首轮长回答跨工作线时把正在浏览的用户拉回底部；纯图片用户消息会用消息 Column 真实 bounds 参与底边判断，减少对 LazyList item fallback 的依赖。本轮继续确认没有恢复旧 active-zone、反向列表、overlay 或 raw delta 链。
 - 深度复查 clean-state / 删除历史链路后继续补护栏：`ChatScreen.kt` 删除历史成功会把 `hasStartedConversation`、首屏贴底完成标记和滚动模式一并归回 clean-state；稀疏布局启用后先把正向列表钉回顶部，再允许 `canScrollForward` 触发退出，避免删除前旧滚动位置把首轮短内容提前拉回底部。后端 replay 链同步收紧：用户存在 `session_generation` 清空代际后，缺失 generation 的 `/api/chat/stream` 直接按 stale 拒绝；`session_round_ledger` replay 会检查完成时间，清空前完成的同 `client_msg_id` 不允许在清空后幽灵回放。新增后端单测锁住缺失 generation 和清空前 ledger replay 的判定。
 - 服务协议 6 个板块再复核成备案 / 上架前更像成品的口径：用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限和风险提示不再使用“后续接入 / 当前未接入”式阶段性正文；统一按“本版本不提供真实支付、自动续费、礼品卡兑换或农资商品交易”表达当前边界，同时保留服务范围变化时按页面、协议、订单和资质信息明确展示的口径。会员中心支付提示改为“支付功能暂不可用”，账号 / 礼品卡等未开放入口改为“暂不可用 / 登录后可用”类用户文案，不再展示开发占位感。
 - 主聊天 clean-state / 删除历史后的首屏稀疏布局按用户确认收口：发送前若没有用户 / assistant 业务消息，`ChatScreen.kt` 会临时启用 `cleanStateSparseLayoutActive`，让正向 `LazyColumn` 从默认 `Arrangement.Bottom` 切到 `Arrangement.Top` 加轻量 top offset，避免首条用户消息和短回答硬贴在底部工作线；最新真实消息的实测底边到达或超过正常 96dp 工作线、或正向列表从顶部还能继续向下滚动（`canScrollForward`）时，自动恢复默认底部工作线和 AutoFollow 锚点。退出判断使用真实布局坐标，文字、图片、图文间距和失败 footer 都算，不按第几轮、文本长度或是否有图片做猜测；本轮没有恢复旧 active-zone、反向列表、overlay 或 raw delta 链。

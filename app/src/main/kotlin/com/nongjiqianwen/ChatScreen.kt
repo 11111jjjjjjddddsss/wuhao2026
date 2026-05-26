@@ -4387,6 +4387,12 @@ fun ChatScreen() {
             }
         }
     }
+    fun shouldRestoreBottomAnchorAfterCleanStateSparseExit(): Boolean {
+        return scrollMode != ScrollMode.UserBrowsing &&
+            !scrollRuntime.userInteracting.value &&
+            !chatListUserDragging &&
+            !recyclerScrollInProgress
+    }
 
     LaunchedEffect(
         cleanStateSparseLayoutActive,
@@ -4413,7 +4419,9 @@ fun ChatScreen() {
         cleanStateSparseLayoutActive = false
         cleanStateSparseTopAnchored = false
         withFrameNanos { }
-        requestProgrammaticForwardListBottomAnchor()
+        if (shouldRestoreBottomAnchorAfterCleanStateSparseExit()) {
+            requestProgrammaticForwardListBottomAnchor()
+        }
     }
 
     LaunchedEffect(cleanStateSparseLayoutEligible) {
@@ -6078,11 +6086,17 @@ fun ChatScreen() {
                             }
                         }
                     } else {
+                        val userImageUris = msg.imageUris.orEmpty()
+                        val userImageUrls = msg.imageUrls.orEmpty()
+                        val userMessageHasImages = userImageUris.isNotEmpty() || userImageUrls.isNotEmpty()
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .then(
-                                    if (failedUserState != null) {
+                                    if (
+                                        failedUserState != null ||
+                                        (msg.content.isBlank() && userMessageHasImages)
+                                    ) {
                                         Modifier.onGloballyPositioned { coordinates ->
                                             updateMessageContentBounds(
                                                 msg.id,
@@ -6096,10 +6110,9 @@ fun ChatScreen() {
                             horizontalAlignment = Alignment.End,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val userImageUris = msg.imageUris.orEmpty()
                             UserMessageImageStrip(
                                 imageUris = userImageUris,
-                                imageUrls = msg.imageUrls.orEmpty(),
+                                imageUrls = userImageUrls,
                                 userBubbleMaxWidth = userBubbleMaxWidth
                             )
                             if (msg.content.isNotBlank()) {
@@ -6127,7 +6140,7 @@ fun ChatScreen() {
                                     }
                                 )
                             } else {
-                                if (failedUserState == null) {
+                                if (failedUserState == null && !userMessageHasImages) {
                                     updateMessageContentBounds(msg.id, null)
                                 }
                             }

@@ -51,7 +51,7 @@
 ## 聊天 UI 主链
 
 - `ChatRecyclerViewHost.kt` 当前是正向 `LazyColumn`，没有 `reverseLayout`，没有 `items.asReversed()`
-- `ChatRecyclerViewHost.kt` 默认使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，而不是停在顶部 padding。唯一例外是 clean-state / 删除所有历史后的稀疏首屏：如果发送前没有用户 / assistant 业务消息，`ChatScreen.kt` 会临时启用稀疏布局，用 `Arrangement.Top` 加轻量 top offset 让早期文字 / 图片内容从上方自然往下长，并暂停普通底部锚点；稀疏模式启用后会先把列表钉回顶部，再允许 `canScrollForward` 参与退出判断。当最新真实消息的实测底边到达或超过正常 96dp 工作线，或正向列表从顶部还能继续向下滚动时，立即恢复默认 `Arrangement.Bottom` 和正向底部锚点。退出判断只看真实布局坐标，文字、图片、图片与文字间距、失败态 footer 都算，不按第几轮、字数或是否有图估算；`canScrollBackward` 不参与稀疏退出，避免删除历史前残留滚动位置造成提前贴底
+- `ChatRecyclerViewHost.kt` 默认使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，而不是停在顶部 padding。唯一例外是 clean-state / 删除所有历史后的稀疏首屏：如果发送前没有用户 / assistant 业务消息，`ChatScreen.kt` 会临时启用稀疏布局，用 `Arrangement.Top` 加轻量 top offset 让早期文字 / 图片内容从上方自然往下长，并暂停普通底部锚点；稀疏模式启用后会先把列表钉回顶部，再允许 `canScrollForward` 参与退出判断。当最新真实消息的实测底边到达或超过正常 96dp 工作线，或正向列表从顶部还能继续向下滚动时，立即恢复默认 `Arrangement.Bottom`；若此时用户没有拖动 / 浏览且列表滚动已停止，再请求正向底部锚点，否则尊重用户当前浏览位置。退出判断只看真实布局坐标，文字、图片、图片与文字间距、失败态 footer 都算，不按第几轮、字数或是否有图估算；纯图片用户消息会用消息 Column 真实 bounds 参与底边判断，不长期依赖 LazyList item fallback；`canScrollBackward` 不参与稀疏退出，避免删除历史前残留滚动位置造成提前贴底
 - `ChatScreen.kt` 当前使用 `ChatTimelineItem` 作为列表展示层，允许插入一个 UI-only 今日农情卡片；真实业务消息仍只来自 `messages`，不再通过 `chatListItems` 派生 streaming block item
 - streaming 小分割 / block item 化已撤掉：`StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex / streaming_tail` 等符号在主链无残留
 - mixed active-zone / overlay 运行时已退出主链：
