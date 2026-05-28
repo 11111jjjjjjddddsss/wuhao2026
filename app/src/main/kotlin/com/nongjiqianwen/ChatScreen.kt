@@ -64,7 +64,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -142,7 +141,6 @@ import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -162,14 +160,12 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -178,7 +174,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
@@ -243,11 +238,6 @@ private sealed interface ChatTimelineItem {
     data class TodayAgriCard(val card: SessionApi.TodayAgriCard) : ChatTimelineItem {
         override val stableKey: String = "today-agri-card-${card.dateCn.orEmpty()}"
     }
-
-    @Immutable
-    data class SparseBottomSpacer(val heightPx: Int) : ChatTimelineItem {
-        override val stableKey: String = "clean-state-sparse-bottom-spacer"
-    }
 }
 @Immutable
 private data class FailedAssistantMessageState(val sourceUserMessageId: String)
@@ -272,19 +262,15 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
 
 private fun buildChatTimelineItems(
     messages: List<ChatMessage>,
-    todayAgriCard: SessionApi.TodayAgriCard?,
-    sparseBottomSpacerHeightPx: Int = 0
+    todayAgriCard: SessionApi.TodayAgriCard?
 ): List<ChatTimelineItem> {
-    val items = ArrayList<ChatTimelineItem>(messages.size + 2)
+    val items = ArrayList<ChatTimelineItem>(messages.size + 1)
     val validTodayAgriCard = todayAgriCard?.takeIf { it.isRenderableTodayAgriCard() }
     if (validTodayAgriCard != null) {
         items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
     }
     messages.forEach { message ->
         items += ChatTimelineItem.Message(message)
-    }
-    if (sparseBottomSpacerHeightPx > 0) {
-        items += ChatTimelineItem.SparseBottomSpacer(sparseBottomSpacerHeightPx)
     }
     return items
 }
@@ -417,9 +403,6 @@ internal const val GPT_BALL_PULSE_MS = 720
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 96.dp
-private val CLEAN_STATE_SPARSE_TOP_OFFSET = 32.dp
-private val CLEAN_STATE_SPARSE_TEXT_ESTIMATE_HEIGHT = 72.dp
-private val CLEAN_STATE_SPARSE_IMAGE_ESTIMATE_HEIGHT = 188.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
@@ -2348,8 +2331,6 @@ fun ChatScreen() {
     val snackbarScope = rememberCoroutineScope()
     var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
-    val cleanStateSparseTextMeasurer = rememberTextMeasurer()
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
@@ -2358,16 +2339,9 @@ fun ChatScreen() {
         .asPaddingValues()
         .calculateTopPadding()
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
-    val cleanStateSparseTopOffsetPx = with(density) { CLEAN_STATE_SPARSE_TOP_OFFSET.roundToPx() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val staticBottomPositionTolerancePx = with(density) { STATIC_BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val chatMessageItemVerticalPaddingPx = with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
-    val cleanStateSparseTopPaddingPx = with(density) {
-        (topInset + 48.dp + TOP_CHROME_MASK_EXTRA).roundToPx()
-    }
-    val cleanStateSparseViewportEstimatePx = with(density) {
-        (configuration.screenHeightDp.dp * 0.72f).roundToPx()
-    }
     val streamingRuntime = rememberChatStreamingRuntimeState(uiRuntimeResetKey)
     var isStreaming by streamingRuntime.isStreaming
     var streamingMessageId by streamingRuntime.streamingMessageId
@@ -2442,8 +2416,6 @@ fun ChatScreen() {
     }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
-    var cleanStateSparseLayoutActive by remember(uiRuntimeResetKey) { mutableStateOf(false) }
-    var cleanStateSparseContentHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
@@ -2470,214 +2442,19 @@ fun ChatScreen() {
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
-    fun hasBusinessChatMessages(): Boolean =
-        messages.any { it.role == ChatRole.USER || it.role == ChatRole.ASSISTANT }
-    fun hasSettledConversationMessages(): Boolean =
-        messages.any { message ->
-            message.role == ChatRole.ASSISTANT &&
-                message.content.isNotBlank() &&
-                !failedAssistantMessageStates.containsKey(message.id)
-        }
-    fun shouldStartCleanStateSparseLayout(): Boolean =
-        !hasSettledConversationMessages()
-    fun isCleanStateSparseRuntimeActive(): Boolean =
-        cleanStateSparseLayoutActive && hasBusinessChatMessages()
-    val cleanStateSparseLayoutEligible by remember {
-        derivedStateOf {
-            isCleanStateSparseRuntimeActive()
-        }
-    }
-    fun cleanStateSparseEstimatedContentHeightPx(): Int {
-        if (!isCleanStateSparseRuntimeActive()) return 0
-        val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
-        val viewportWidthPx = chatRootWidthPx.takeIf { it > 0 } ?: screenWidthPx
-        val viewportWidthDp = with(density) { viewportWidthPx.toDp() }
-        val horizontalPaddingPx = with(density) {
-            when {
-                viewportWidthDp < 360.dp -> 12.dp.roundToPx()
-                viewportWidthDp < 600.dp -> 16.dp.roundToPx()
-                else -> 24.dp.roundToPx()
-            }
-        }
-        val chromeMaxWidthPx = with(density) {
-            when {
-                viewportWidthDp >= 900.dp -> 900.dp.roundToPx()
-                viewportWidthDp >= 700.dp -> 760.dp.roundToPx()
-                else -> viewportWidthPx
-            }
-        }
-        val assistantTextWidthPx =
-            minOf(chromeMaxWidthPx, viewportWidthPx - horizontalPaddingPx * 2)
-                .coerceAtLeast(1)
-        val streamingParagraphStyle = assistantStreamingParagraphTextStyle()
-        val streamingLineHeightPx = with(density) { streamingParagraphStyle.lineHeight.roundToPx() }
-        val markdownBlockSpacingPx = with(density) { MARKDOWN_BLOCK_SPACING.roundToPx() }
-        val sectionDividerHeightPx = with(density) {
-            SECTION_DIVIDER_TOP_EXTRA_GAP.roundToPx() +
-                1.dp.roundToPx() +
-                SECTION_DIVIDER_GAP.roundToPx()
-        }
-        val disclaimerHeightPx = with(density) {
-            assistantDisclaimerTextStyle().lineHeight.roundToPx() + 8.dp.roundToPx()
-        }
-        fun measureTextHeightPx(
-            text: String,
-            style: TextStyle,
-            widthPx: Int
-        ): Int {
-            val minHeightPx = with(density) { style.lineHeight.roundToPx() }
-            if (text.isBlank()) return minHeightPx
-            return cleanStateSparseTextMeasurer.measure(
-                text = AnnotatedString(text),
-                style = style,
-                constraints = Constraints(maxWidth = widthPx.coerceAtLeast(1))
-            ).size.height.coerceAtLeast(minHeightPx)
-        }
-        fun measureTextWidthPx(
-            text: String,
-            style: TextStyle
-        ): Int {
-            if (text.isBlank()) return 0
-            return cleanStateSparseTextMeasurer.measure(
-                text = AnnotatedString(text),
-                style = style,
-                constraints = Constraints(maxWidth = assistantTextWidthPx)
-            ).size.width
-        }
-        fun estimateStreamingLineModelHeightPx(model: StreamingLineModel): Int {
-            return when (model) {
-                StreamingLineModel.Blank -> 0
-                is StreamingLineModel.Heading -> {
-                    val headingStyle = assistantStreamingHeadingTextStyle(model.level)
-                    measureTextHeightPx(model.text, headingStyle, assistantTextWidthPx)
-                }
-                is StreamingLineModel.Bullet -> {
-                    val bulletStyle = streamingParagraphStyle.copy(fontSize = 18.sp)
-                    val bodyWidthPx =
-                        assistantTextWidthPx -
-                            measureTextWidthPx("\u2022", bulletStyle) -
-                            with(density) { 8.dp.roundToPx() }
-                    maxOf(
-                        measureTextHeightPx("\u2022", bulletStyle, assistantTextWidthPx),
-                        measureTextHeightPx(model.text, streamingParagraphStyle, bodyWidthPx)
-                    )
-                }
-                is StreamingLineModel.Numbered -> {
-                    val numberStyle = streamingParagraphStyle.copy(fontWeight = FontWeight.SemiBold)
-                    val numberText = "${model.number}."
-                    val bodyWidthPx =
-                        assistantTextWidthPx -
-                            measureTextWidthPx(numberText, numberStyle) -
-                            with(density) { 8.dp.roundToPx() }
-                    maxOf(
-                        measureTextHeightPx(numberText, numberStyle, assistantTextWidthPx),
-                        measureTextHeightPx(model.text, streamingParagraphStyle, bodyWidthPx)
-                    )
-                }
-                is StreamingLineModel.Quote -> {
-                    measureTextHeightPx(model.text, streamingParagraphStyle, assistantTextWidthPx)
-                }
-                is StreamingLineModel.Paragraph -> {
-                    measureTextHeightPx(model.text, streamingParagraphStyle, assistantTextWidthPx)
-                }
-            }
-        }
-        fun estimateActiveAssistantHeightPx(content: String): Int {
-            val textHeightPx = if (content.isBlank()) {
-                streamingLineHeightPx
-            } else {
-                val blockState = splitStreamingBlockState(content)
-                val completedModels = blockState.completedBlocks.map(::classifyStreamingLine)
-                val activeModel = blockState.activeBlock?.let(::classifyActiveStreamingLine)
-                val unifiedModels = buildList<StreamingLineModel> {
-                    addAll(completedModels)
-                    activeModel?.let { add(it) }
-                }
-                if (unifiedModels.isEmpty()) {
-                    streamingLineHeightPx
-                } else {
-                    unifiedModels.foldIndexed(0) { index, totalHeightPx, model ->
-                        val previous = unifiedModels.getOrNull(index - 1)
-                        val blockSpacingPx = if (index > 0) markdownBlockSpacingPx else 0
-                        val dividerPx =
-                            if (shouldShowStreamingSectionDivider(previous, model)) {
-                                sectionDividerHeightPx
-                            } else {
-                                0
-                            }
-                        totalHeightPx +
-                            blockSpacingPx +
-                            dividerPx +
-                            estimateStreamingLineModelHeightPx(model)
-                    }.coerceAtLeast(streamingLineHeightPx)
-                }
-            }
-            val disclaimerReservePx =
-                if (shouldShowAiDisclaimerRefined(content)) disclaimerHeightPx else 0
-            return textHeightPx + disclaimerReservePx + chatMessageItemVerticalPaddingPx * 2
-        }
-        return messages.sumOf { message ->
-            val hasImages = !message.imageUris.isNullOrEmpty() || !message.imageUrls.isNullOrEmpty()
-            when {
-                message.role == ChatRole.ASSISTANT &&
-                    message.id == streamingMessageId &&
-                    (isStreaming || streamingMessageContent.isNotBlank()) -> {
-                    estimateActiveAssistantHeightPx(streamingMessageContent)
-                }
-                hasImages -> with(density) { CLEAN_STATE_SPARSE_IMAGE_ESTIMATE_HEIGHT.roundToPx() }
-                else -> with(density) { CLEAN_STATE_SPARSE_TEXT_ESTIMATE_HEIGHT.roundToPx() }
-            }
-        }
-    }
-    val cleanStateSparseEstimatedContentHeightPx = cleanStateSparseEstimatedContentHeightPx()
-    val cleanStateSparseBaseBottomPaddingPx =
-        (
-            observedCollapsedBottomReservePx.takeIf { it > 0 }
-                ?: startupBottomBarHeightEstimatePx
-            ) + streamVisibleBottomGapPx
-    val cleanStateSparseNormalForwardBottomPaddingPx =
-        (cleanStateSparseBaseBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
-    val cleanStateSparseViewportHeightPx =
-        messageViewportHeightPx.takeIf { it > 0 }
-            ?: chatRootHeightPx.takeIf { it > 0 }
-            ?: cleanStateSparseViewportEstimatePx
-    val cleanStateSparseMeasuredOrEstimatedHeightPx =
-        if (cleanStateSparseLayoutEligible && isStreaming) {
-            cleanStateSparseContentHeightPx.coerceAtLeast(cleanStateSparseEstimatedContentHeightPx)
-        } else {
-            cleanStateSparseContentHeightPx.takeIf { it > 0 }
-                ?: cleanStateSparseEstimatedContentHeightPx
-        }
-    val cleanStateSparseBottomSpacerHeightPx =
-        if (isCleanStateSparseRuntimeActive() && cleanStateSparseViewportHeightPx > 0) {
-            val availableHeightPx =
-                cleanStateSparseViewportHeightPx -
-                    cleanStateSparseTopPaddingPx -
-                    cleanStateSparseNormalForwardBottomPaddingPx
-            val targetSpacerHeightPx =
-                availableHeightPx -
-                    cleanStateSparseTopOffsetPx -
-                    cleanStateSparseMeasuredOrEstimatedHeightPx
-            targetSpacerHeightPx.coerceAtLeast(0)
-        } else {
-            0
-        }
     val chatListItems by remember(
         todayAgriCard,
-        messages.size,
-        cleanStateSparseLayoutEligible,
-        cleanStateSparseBottomSpacerHeightPx
+        messages.size
     ) {
         derivedStateOf {
             buildChatTimelineItems(
                 messages = messages,
-                todayAgriCard = todayAgriCard.takeUnless { cleanStateSparseLayoutEligible },
-                sparseBottomSpacerHeightPx = cleanStateSparseBottomSpacerHeightPx
+                todayAgriCard = todayAgriCard
             )
         }
     }
-    val hasTodayAgriCard by remember(todayAgriCard, cleanStateSparseLayoutEligible) {
-        derivedStateOf { !cleanStateSparseLayoutEligible && todayAgriCard?.isRenderableTodayAgriCard() == true }
+    val hasTodayAgriCard by remember(todayAgriCard) {
+        derivedStateOf { todayAgriCard?.isRenderableTodayAgriCard() == true }
     }
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2900,7 +2677,6 @@ fun ChatScreen() {
         return latestMessageIndex()
     }
     fun requestForwardListBottomAnchor() {
-        if (isCleanStateSparseRuntimeActive()) return
         val targetIndex = latestMessageIndexOrMinusOne()
         if (targetIndex >= 0) {
             chatListState.requestScrollToItem(
@@ -3608,8 +3384,6 @@ fun ChatScreen() {
         sendUiSettling = false
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
-        cleanStateSparseLayoutActive = false
-        cleanStateSparseContentHeightPx = 0
         initialBottomSnapDone = false
         suppressJumpButtonForLifecycleResume = false
         clearInputSelectionToolbar()
@@ -4291,8 +4065,6 @@ fun ChatScreen() {
         recyclerFirstVisibleItemIndex = 0
         recyclerFirstVisibleItemScrollOffset = 0
         recyclerScrollInProgress = false
-        cleanStateSparseLayoutActive = false
-        cleanStateSparseContentHeightPx = 0
         hasStartedConversation = false
         initialBottomSnapDone = false
         postInitialSnapCorrectionDone = false
@@ -4590,7 +4362,6 @@ fun ChatScreen() {
 
     fun requestProgrammaticForwardListBottomAnchor() {
         if (latestMessageIndexOrMinusOne() < 0) return
-        if (isCleanStateSparseRuntimeActive()) return
         programmaticBottomAnchorGeneration += 1
         val requestGeneration = programmaticBottomAnchorGeneration
         scrollRuntime.programmaticScroll.value = true
@@ -4603,71 +4374,9 @@ fun ChatScreen() {
             }
         }
     }
-    fun shouldRestoreBottomAnchorAfterCleanStateSparseExit(): Boolean {
-        return scrollMode != ScrollMode.UserBrowsing &&
-            !scrollRuntime.userInteracting.value &&
-            !chatListUserDragging &&
-            !recyclerScrollInProgress
-    }
-
-    LaunchedEffect(
-        cleanStateSparseLayoutActive,
-        cleanStateSparseLayoutEligible,
-        messages.size,
-        chatListState.canScrollForward,
-        cleanStateSparseContentHeightPx,
-        cleanStateSparseBottomSpacerHeightPx,
-        currentLastMessageContentBottomPx(),
-        currentStaticBottomTargetPx()
-    ) {
-        if (!cleanStateSparseLayoutEligible) return@LaunchedEffect
-        val latestContentBottomPx = currentLastMessageContentBottomPx()
-        val normalWorklineBottomPx = currentStaticBottomTargetPx()
-        // Count the measured message bottom, so text, images, and their spacing decide when sparse mode exits.
-        // The spacer is a real list item, so canScrollForward can be true because of the spacer itself.
-        // Do not use it as an exit signal; otherwise failed first images can snap back to the workline.
-        val reachedNormalWorkline =
-            latestContentBottomPx > 0 &&
-                normalWorklineBottomPx > 0 &&
-                latestContentBottomPx >= normalWorklineBottomPx &&
-                cleanStateSparseBottomSpacerHeightPx <= bottomPositionTolerancePx
-        if (!reachedNormalWorkline) return@LaunchedEffect
-        cleanStateSparseLayoutActive = false
-        cleanStateSparseContentHeightPx = 0
-        if (shouldRestoreBottomAnchorAfterCleanStateSparseExit()) {
-            requestProgrammaticForwardListBottomAnchor()
-        }
-    }
-
-    LaunchedEffect(cleanStateSparseLayoutEligible) {
-        if (!cleanStateSparseLayoutEligible) {
-            cleanStateSparseContentHeightPx = 0
-            return@LaunchedEffect
-        }
-        snapshotFlow {
-            val visibleItems = chatListState.layoutInfo.visibleItemsInfo
-            val contentItems = visibleItems.filter { itemInfo ->
-                chatListItems.getOrNull(itemInfo.index) !is ChatTimelineItem.SparseBottomSpacer
-            }
-            if (contentItems.isEmpty()) {
-                0
-            } else {
-                val firstTopPx = contentItems.minOf { it.offset }
-                val lastBottomPx = contentItems.maxOf { it.offset + it.size }
-                (lastBottomPx - firstTopPx).coerceAtLeast(0)
-            }
-        }
-            .distinctUntilChanged()
-            .collect { measuredHeightPx ->
-                if (measuredHeightPx > cleanStateSparseContentHeightPx) {
-                    cleanStateSparseContentHeightPx = measuredHeightPx
-                }
-            }
-    }
 
     val shouldAnchorStreamingBottomThisFrame =
         (isStreaming || hasStreamingItem) &&
-            !isCleanStateSparseRuntimeActive() &&
             scrollMode == ScrollMode.AutoFollow &&
             !scrollRuntime.userInteracting.value &&
             !chatListUserDragging &&
@@ -5080,13 +4789,11 @@ fun ChatScreen() {
         existingUserMessageId: String? = null
     ) {
         if ((text.isEmpty() && imageUris.isEmpty() && imageUrls.isEmpty()) || isStreaming || sendUiSettling) return
-        val shouldUseCleanStateSparseLayout = shouldStartCleanStateSparseLayout()
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         snackbarScope.launch {
             try {
                 hasStartedConversation = true
-                cleanStateSparseLayoutActive = cleanStateSparseLayoutActive || shouldUseCleanStateSparseLayout
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
                 val userId = existingUserMessageId
@@ -5128,7 +4835,6 @@ fun ChatScreen() {
         previewImageUris: List<String>
     ): String? {
         if ((text.isEmpty() && previewImageUris.isEmpty()) || isStreaming || sendUiSettling) return null
-        val shouldUseCleanStateSparseLayout = shouldStartCleanStateSparseLayout()
         val preSendStableCollapsedReservePx =
             if (!listShouldTrackRealtimeComposerGeometry) {
                 (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
@@ -5140,7 +4846,6 @@ fun ChatScreen() {
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
-        cleanStateSparseLayoutActive = cleanStateSparseLayoutActive || shouldUseCleanStateSparseLayout
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
 
@@ -5210,7 +4915,6 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if ((text.isEmpty() && uploadedImageUrls.isEmpty()) || isStreaming || sendUiSettling) return
-        val shouldUseCleanStateSparseLayout = shouldStartCleanStateSparseLayout()
         val preSendStableCollapsedReservePx =
             if (!listShouldTrackRealtimeComposerGeometry) {
                 (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
@@ -5222,7 +4926,6 @@ fun ChatScreen() {
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
-        cleanStateSparseLayoutActive = cleanStateSparseLayoutActive || shouldUseCleanStateSparseLayout
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
         if (collapseComposer) {
@@ -5309,11 +5012,7 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        val shouldProtectSendStartBottomAnchor = !isCleanStateSparseRuntimeActive()
-        sendStartAnchorActive = shouldProtectSendStartBottomAnchor
-        if (!shouldProtectSendStartBottomAnchor) {
-            lockedConversationBottomPaddingPx = -1
-        }
+        sendStartAnchorActive = true
         if (latestMessageIndexOrMinusOne() >= 0) {
             requestProgrammaticForwardListBottomAnchor()
         }
@@ -5438,7 +5137,6 @@ fun ChatScreen() {
         )
     }
     suspend fun scrollForwardListToBottom() {
-        if (isCleanStateSparseRuntimeActive()) return
         val targetIndex = latestMessageIndexOrMinusOne()
         if (targetIndex < 0) return
         beginProgrammaticChatListScroll()
@@ -5453,7 +5151,7 @@ fun ChatScreen() {
         }
     }
     fun shouldTrackChatListBrowsingFromPointer(): Boolean {
-        return isStreaming || hasStreamingItem || isCleanStateSparseRuntimeActive() || imageSendInProgress
+        return isStreaming || hasStreamingItem || imageSendInProgress
     }
     fun markChatListUserBrowsingFromPointer() {
         if (!shouldTrackChatListBrowsingFromPointer()) return
@@ -5470,7 +5168,6 @@ fun ChatScreen() {
             !chatListUserDragging
     }
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
-        if (isCleanStateSparseRuntimeActive()) return@scrollToBottom
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
             targetBottomIndex = latestMessageIndexOrMinusOne(),
@@ -6408,10 +6105,9 @@ fun ChatScreen() {
             }
         }
         val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
-            val sparseRuntimeActive = isCleanStateSparseRuntimeActive()
             val effectiveBottomPaddingPx =
                 lockedConversationBottomPaddingPx
-                    .takeIf { sendStartBottomPaddingLockActive && !sparseRuntimeActive && it >= 0 }
+                    .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
                     ?.let { lockedPaddingPx -> lockedPaddingPx }
                     ?: listBottomPaddingPx
             val forwardListBottomPaddingPx =
@@ -6449,7 +6145,6 @@ fun ChatScreen() {
                         when (item) {
                             is ChatTimelineItem.Message -> item.message.role
                             is ChatTimelineItem.TodayAgriCard -> "today_agri_card"
-                            is ChatTimelineItem.SparseBottomSpacer -> "clean_state_sparse_bottom_spacer"
                         }
                     },
                     topPaddingPx = chatListTopPaddingPx,
@@ -6468,7 +6163,6 @@ fun ChatScreen() {
                                 Modifier.pointerInput(
                                     isStreaming,
                                     hasStreamingItem,
-                                    cleanStateSparseLayoutEligible,
                                     imageSendInProgress
                                 ) {
                                     awaitEachGesture {
@@ -6511,11 +6205,6 @@ fun ChatScreen() {
                             horizontalPadding = listHorizontalPadding,
                             maxCardWidth = chromeMaxWidth,
                             onOpenUrl = { url -> openExternalUrl(url) }
-                        )
-                        is ChatTimelineItem.SparseBottomSpacer -> Spacer(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(with(density) { msg.heightPx.toDp() })
                         )
                     }
                 }
