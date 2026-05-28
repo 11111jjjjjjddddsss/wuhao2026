@@ -2349,6 +2349,7 @@ fun ChatScreen() {
     var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
+    val cleanStateSparseTextMeasurer = rememberTextMeasurer()
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputContentHeightEstimatePx = with(density) { 22.sp.roundToPx() }
@@ -2479,15 +2480,148 @@ fun ChatScreen() {
         }
     }
     fun cleanStateSparseEstimatedContentHeightPx(): Int {
+        if (!isCleanStateSparseRuntimeActive()) return 0
+        val screenWidthPx = with(density) { configuration.screenWidthDp.dp.roundToPx() }
+        val viewportWidthPx = chatRootWidthPx.takeIf { it > 0 } ?: screenWidthPx
+        val viewportWidthDp = with(density) { viewportWidthPx.toDp() }
+        val horizontalPaddingPx = with(density) {
+            when {
+                viewportWidthDp < 360.dp -> 12.dp.roundToPx()
+                viewportWidthDp < 600.dp -> 16.dp.roundToPx()
+                else -> 24.dp.roundToPx()
+            }
+        }
+        val chromeMaxWidthPx = with(density) {
+            when {
+                viewportWidthDp >= 900.dp -> 900.dp.roundToPx()
+                viewportWidthDp >= 700.dp -> 760.dp.roundToPx()
+                else -> viewportWidthPx
+            }
+        }
+        val assistantTextWidthPx =
+            minOf(chromeMaxWidthPx, viewportWidthPx - horizontalPaddingPx * 2)
+                .coerceAtLeast(1)
+        val streamingParagraphStyle = assistantStreamingParagraphTextStyle()
+        val streamingLineHeightPx = with(density) { streamingParagraphStyle.lineHeight.roundToPx() }
+        val markdownBlockSpacingPx = with(density) { MARKDOWN_BLOCK_SPACING.roundToPx() }
+        val sectionDividerHeightPx = with(density) {
+            SECTION_DIVIDER_TOP_EXTRA_GAP.roundToPx() +
+                1.dp.roundToPx() +
+                SECTION_DIVIDER_GAP.roundToPx()
+        }
+        val disclaimerHeightPx = with(density) {
+            assistantDisclaimerTextStyle().lineHeight.roundToPx() + 8.dp.roundToPx()
+        }
+        fun measureTextHeightPx(
+            text: String,
+            style: TextStyle,
+            widthPx: Int
+        ): Int {
+            val minHeightPx = with(density) { style.lineHeight.roundToPx() }
+            if (text.isBlank()) return minHeightPx
+            return cleanStateSparseTextMeasurer.measure(
+                text = AnnotatedString(text),
+                style = style,
+                constraints = Constraints(maxWidth = widthPx.coerceAtLeast(1))
+            ).size.height.coerceAtLeast(minHeightPx)
+        }
+        fun measureTextWidthPx(
+            text: String,
+            style: TextStyle
+        ): Int {
+            if (text.isBlank()) return 0
+            return cleanStateSparseTextMeasurer.measure(
+                text = AnnotatedString(text),
+                style = style,
+                constraints = Constraints(maxWidth = assistantTextWidthPx)
+            ).size.width
+        }
+        fun estimateStreamingLineModelHeightPx(model: StreamingLineModel): Int {
+            return when (model) {
+                StreamingLineModel.Blank -> 0
+                is StreamingLineModel.Heading -> {
+                    val headingStyle = assistantStreamingHeadingTextStyle(model.level)
+                    measureTextHeightPx(model.text, headingStyle, assistantTextWidthPx)
+                }
+                is StreamingLineModel.Bullet -> {
+                    val bulletStyle = streamingParagraphStyle.copy(fontSize = 18.sp)
+                    val bodyWidthPx =
+                        assistantTextWidthPx -
+                            measureTextWidthPx("\u2022", bulletStyle) -
+                            with(density) { 8.dp.roundToPx() }
+                    maxOf(
+                        measureTextHeightPx("\u2022", bulletStyle, assistantTextWidthPx),
+                        measureTextHeightPx(model.text, streamingParagraphStyle, bodyWidthPx)
+                    )
+                }
+                is StreamingLineModel.Numbered -> {
+                    val numberStyle = streamingParagraphStyle.copy(fontWeight = FontWeight.SemiBold)
+                    val numberText = "${model.number}."
+                    val bodyWidthPx =
+                        assistantTextWidthPx -
+                            measureTextWidthPx(numberText, numberStyle) -
+                            with(density) { 8.dp.roundToPx() }
+                    maxOf(
+                        measureTextHeightPx(numberText, numberStyle, assistantTextWidthPx),
+                        measureTextHeightPx(model.text, streamingParagraphStyle, bodyWidthPx)
+                    )
+                }
+                is StreamingLineModel.Quote -> {
+                    measureTextHeightPx(model.text, streamingParagraphStyle, assistantTextWidthPx)
+                }
+                is StreamingLineModel.Paragraph -> {
+                    measureTextHeightPx(model.text, streamingParagraphStyle, assistantTextWidthPx)
+                }
+            }
+        }
+        fun estimateActiveAssistantHeightPx(content: String): Int {
+            val textHeightPx = if (content.isBlank()) {
+                streamingLineHeightPx
+            } else {
+                val blockState = splitStreamingBlockState(content)
+                val completedModels = blockState.completedBlocks.map(::classifyStreamingLine)
+                val activeModel = blockState.activeBlock?.let(::classifyActiveStreamingLine)
+                val unifiedModels = buildList<StreamingLineModel> {
+                    addAll(completedModels)
+                    activeModel?.let { add(it) }
+                }
+                if (unifiedModels.isEmpty()) {
+                    streamingLineHeightPx
+                } else {
+                    unifiedModels.foldIndexed(0) { index, totalHeightPx, model ->
+                        val previous = unifiedModels.getOrNull(index - 1)
+                        val blockSpacingPx = if (index > 0) markdownBlockSpacingPx else 0
+                        val dividerPx =
+                            if (shouldShowStreamingSectionDivider(previous, model)) {
+                                sectionDividerHeightPx
+                            } else {
+                                0
+                            }
+                        totalHeightPx +
+                            blockSpacingPx +
+                            dividerPx +
+                            estimateStreamingLineModelHeightPx(model)
+                    }.coerceAtLeast(streamingLineHeightPx)
+                }
+            }
+            val disclaimerReservePx =
+                if (shouldShowAiDisclaimerRefined(content)) disclaimerHeightPx else 0
+            return textHeightPx + disclaimerReservePx + chatMessageItemVerticalPaddingPx * 2
+        }
         return messages.sumOf { message ->
             val hasImages = !message.imageUris.isNullOrEmpty() || !message.imageUrls.isNullOrEmpty()
-            if (hasImages) {
-                with(density) { CLEAN_STATE_SPARSE_IMAGE_ESTIMATE_HEIGHT.roundToPx() }
-            } else {
-                with(density) { CLEAN_STATE_SPARSE_TEXT_ESTIMATE_HEIGHT.roundToPx() }
+            when {
+                message.role == ChatRole.ASSISTANT &&
+                    message.id == streamingMessageId &&
+                    (isStreaming || streamingMessageContent.isNotBlank()) -> {
+                    estimateActiveAssistantHeightPx(streamingMessageContent)
+                }
+                hasImages -> with(density) { CLEAN_STATE_SPARSE_IMAGE_ESTIMATE_HEIGHT.roundToPx() }
+                else -> with(density) { CLEAN_STATE_SPARSE_TEXT_ESTIMATE_HEIGHT.roundToPx() }
             }
         }
     }
+    val cleanStateSparseEstimatedContentHeightPx = cleanStateSparseEstimatedContentHeightPx()
     val cleanStateSparseBaseBottomPaddingPx =
         latestConversationBottomPaddingPx.takeIf { it > 0 }
             ?: (
@@ -2503,8 +2637,12 @@ fun ChatScreen() {
             ?: chatRootHeightPx.takeIf { it > 0 }
             ?: cleanStateSparseViewportEstimatePx
     val cleanStateSparseMeasuredOrEstimatedHeightPx =
-        cleanStateSparseContentHeightPx.takeIf { it > 0 }
-            ?: cleanStateSparseEstimatedContentHeightPx()
+        if (cleanStateSparseLayoutEligible && isStreaming) {
+            cleanStateSparseContentHeightPx.coerceAtLeast(cleanStateSparseEstimatedContentHeightPx)
+        } else {
+            cleanStateSparseContentHeightPx.takeIf { it > 0 }
+                ?: cleanStateSparseEstimatedContentHeightPx
+        }
     val cleanStateSparseBottomSpacerHeightPx =
         if (isCleanStateSparseRuntimeActive() && cleanStateSparseViewportHeightPx > 0) {
             val availableHeightPx =
