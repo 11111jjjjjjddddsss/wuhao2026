@@ -5,6 +5,7 @@
 
 ## 2026-05-28
 
+- 收到小米 / MiMo 会诊后复核 clean-state 首轮“用户消息下掉再上抬”根因：旧稀疏主链确实会在内容到达工作线时从 `Arrangement.Top` 切回 `Arrangement.Bottom`，存在一拍 layout jump 风险。本轮移除稀疏态 arrangement 切换，`ChatRecyclerViewHost.kt` 全程保持 `Arrangement.Bottom`；`ChatScreen.kt` 改为按稀疏态实测内容高度临时加大 bottom padding，并随文字 / 图片 / 间距 / 失败 footer 真实高度增长自然缩回正常 96dp 工作线。没有照抄会诊稿里的 dynamic top padding，因为在 `Arrangement.Bottom` 下额外 top padding 对短内容位置会被抵消；本轮使用 bottom padding 承接同一目标，避免新旧两套锚点并存。
 - 用户真机反馈清数据后首发消息仍落在大屏手机中上位置，不够靠近顶部，并且首轮 streaming 吐字到一部分时顶部用户消息会先往下掉一下再往上抬。确认稀疏首屏在顶部栏保留高度外还叠加固定呼吸区，先把 `CLEAN_STATE_SPARSE_TOP_OFFSET` 收到 `32dp`，让 clean-state 首条内容更接近顶部栏下方；同时 clean-state 稀疏首发不再启用普通发送起步 bottom-lock / `sendStartAnchorActive`，避免内容刚到工作线时和锁释放叠加造成一拍下掉再上抬。正常有历史消息发送仍保留发送起步锁；“未到工作线不拉底、到工作线恢复 AutoFollow / 小球工作线”的主规则不变。
 - 再拉 3 路代理专项复查 clean-state 首轮工作线逻辑：两路确认当前主链已经符合“空白首屏自然往下排，内容底边到 96dp 工作线后恢复正常 AutoFollow / 小球工作线”，且没有旧 active-zone、反向列表、raw delta、overlay 第二主人或旧图片手势链并存；一轮极端场景会诊指出首轮长回复跨工作线可能多等一帧才锚底、删除历史后旧 LazyListState 可提前归零、图片上传等待期拖动意图可能被 streaming start 重置。已按最小改动补护栏：删除历史成功立即请求列表归零；稀疏退出后若用户未浏览则同拍请求正向底部锚点，不再先等一帧；稀疏态 / 图片上传等待态的真实拖动会标记 `UserBrowsing`，进入 streaming 时保留该浏览意图。IME / 输入框展开不抬升消息工作线的既定规则未改。
 

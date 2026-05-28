@@ -408,6 +408,8 @@ private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 96.dp
 private val CLEAN_STATE_SPARSE_TOP_OFFSET = 32.dp
+private val CLEAN_STATE_SPARSE_TEXT_ESTIMATE_HEIGHT = 72.dp
+private val CLEAN_STATE_SPARSE_IMAGE_ESTIMATE_HEIGHT = 188.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
@@ -2414,7 +2416,7 @@ fun ChatScreen() {
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var cleanStateSparseLayoutActive by remember(uiRuntimeResetKey) { mutableStateOf(false) }
-    var cleanStateSparseTopAnchored by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var cleanStateSparseContentHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
@@ -3398,6 +3400,7 @@ fun ChatScreen() {
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
         cleanStateSparseLayoutActive = false
+        cleanStateSparseContentHeightPx = 0
         initialBottomSnapDone = false
         suppressJumpButtonForLifecycleResume = false
         clearInputSelectionToolbar()
@@ -4080,7 +4083,7 @@ fun ChatScreen() {
         recyclerFirstVisibleItemScrollOffset = 0
         recyclerScrollInProgress = false
         cleanStateSparseLayoutActive = false
-        cleanStateSparseTopAnchored = false
+        cleanStateSparseContentHeightPx = 0
         hasStartedConversation = false
         initialBottomSnapDone = false
         postInitialSnapCorrectionDone = false
@@ -4402,13 +4405,12 @@ fun ChatScreen() {
         cleanStateSparseLayoutActive,
         cleanStateSparseLayoutEligible,
         messages.size,
-        cleanStateSparseTopAnchored,
         chatListState.canScrollForward,
+        cleanStateSparseContentHeightPx,
         currentLastMessageContentBottomPx(),
         currentStaticBottomTargetPx()
     ) {
         if (!cleanStateSparseLayoutEligible) return@LaunchedEffect
-        if (!cleanStateSparseTopAnchored) return@LaunchedEffect
         val latestContentBottomPx = currentLastMessageContentBottomPx()
         val normalWorklineBottomPx = currentStaticBottomTargetPx()
         // Count the measured message bottom, so text, images, and their spacing decide when sparse mode exits.
@@ -4421,7 +4423,7 @@ fun ChatScreen() {
                     )
         if (!reachedNormalWorkline) return@LaunchedEffect
         cleanStateSparseLayoutActive = false
-        cleanStateSparseTopAnchored = false
+        cleanStateSparseContentHeightPx = 0
         if (shouldRestoreBottomAnchorAfterCleanStateSparseExit()) {
             requestProgrammaticForwardListBottomAnchor()
         }
@@ -4429,12 +4431,25 @@ fun ChatScreen() {
 
     LaunchedEffect(cleanStateSparseLayoutEligible) {
         if (!cleanStateSparseLayoutEligible) {
-            cleanStateSparseTopAnchored = false
+            cleanStateSparseContentHeightPx = 0
             return@LaunchedEffect
         }
-        cleanStateSparseTopAnchored = false
-        chatListState.scrollToItem(0, 0)
-        cleanStateSparseTopAnchored = true
+        snapshotFlow {
+            val visibleItems = chatListState.layoutInfo.visibleItemsInfo
+            if (visibleItems.isEmpty()) {
+                0
+            } else {
+                val firstTopPx = visibleItems.minOf { it.offset }
+                val lastBottomPx = visibleItems.maxOf { it.offset + it.size }
+                (lastBottomPx - firstTopPx).coerceAtLeast(0)
+            }
+        }
+            .distinctUntilChanged()
+            .collect { measuredHeightPx ->
+                if (measuredHeightPx > 0 && measuredHeightPx != cleanStateSparseContentHeightPx) {
+                    cleanStateSparseContentHeightPx = measuredHeightPx
+                }
+            }
     }
 
     val shouldAnchorStreamingBottomThisFrame =
@@ -6191,14 +6206,28 @@ fun ChatScreen() {
                     ?: listBottomPaddingPx
             val forwardListBottomPaddingPx =
                 (effectiveBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
-            val effectiveTopPaddingPx =
-                if (cleanStateSparseLayoutEligible) {
-                    chatListTopPaddingPx + cleanStateSparseTopOffsetPx
+            val cleanStateSparseEstimatedHeightPx =
+                if (messages.any { !it.imageUris.isNullOrEmpty() || !it.imageUrls.isNullOrEmpty() }) {
+                    with(density) { CLEAN_STATE_SPARSE_IMAGE_ESTIMATE_HEIGHT.roundToPx() }
                 } else {
-                    chatListTopPaddingPx
+                    with(density) { CLEAN_STATE_SPARSE_TEXT_ESTIMATE_HEIGHT.roundToPx() }
                 }
-            val listVerticalArrangement =
-                if (cleanStateSparseLayoutEligible) Arrangement.Top else Arrangement.Bottom
+            val cleanStateSparseMeasuredOrEstimatedHeightPx =
+                cleanStateSparseContentHeightPx.takeIf { it > 0 } ?: cleanStateSparseEstimatedHeightPx
+            val sparseTargetTopPx = chatListTopPaddingPx + cleanStateSparseTopOffsetPx
+            // Arrangement.Bottom cancels extra top padding for short content. Sparse mode keeps
+            // Bottom stable and raises early content by temporarily increasing bottom padding.
+            val effectiveForwardListBottomPaddingPx =
+                if (cleanStateSparseLayoutEligible && messageViewportHeightPx > 0) {
+                    (
+                        messageViewportHeightPx -
+                            sparseTargetTopPx -
+                            cleanStateSparseMeasuredOrEstimatedHeightPx
+                        )
+                        .coerceAtLeast(forwardListBottomPaddingPx)
+                } else {
+                    forwardListBottomPaddingPx
+                }
             SideEffect {
                 latestConversationBottomPaddingPx = conversationBottomPaddingPx
                 val collapsedStable =
@@ -6234,9 +6263,9 @@ fun ChatScreen() {
                             is ChatTimelineItem.TodayAgriCard -> "today_agri_card"
                         }
                     },
-                    topPaddingPx = effectiveTopPaddingPx,
-                    bottomPaddingPx = forwardListBottomPaddingPx,
-                    verticalArrangement = listVerticalArrangement,
+                    topPaddingPx = chatListTopPaddingPx,
+                    bottomPaddingPx = effectiveForwardListBottomPaddingPx,
+                    verticalArrangement = Arrangement.Bottom,
                     modifier = Modifier
                         .then(
                             if (hasActiveMessageSelection) {

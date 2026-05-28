@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-05-26
+最后更新：2026-05-28
 
 ## 项目概况
 
@@ -51,7 +51,7 @@
 ## 聊天 UI 主链
 
 - `ChatRecyclerViewHost.kt` 当前是正向 `LazyColumn`，没有 `reverseLayout`，没有 `items.asReversed()`
-- `ChatRecyclerViewHost.kt` 默认使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，而不是停在顶部 padding。唯一例外是 clean-state / 删除所有历史后的稀疏首屏：如果发送前没有用户 / assistant 业务消息，`ChatScreen.kt` 会临时启用稀疏布局，用 `Arrangement.Top` 加轻量 top offset 让早期文字 / 图片内容从顶部栏下方自然往下长，并暂停普通底部锚点；当前稀疏顶部额外 offset 为 `32dp`，避免清数据首发内容落到大屏手机中上位置。删除历史成功时会先请求列表归零，稀疏模式启用后再二次把列表钉回顶部，然后允许 `canScrollForward` 参与退出判断。稀疏首发不启用普通发送起步的 bottom-lock / `sendStartAnchorActive`，避免内容刚到工作线时和锁释放叠加造成用户消息先下掉再上抬；正常有历史消息发送仍保留发送起步锁。当最新真实消息的实测底边到达或超过正常 96dp 工作线，或正向列表从顶部还能继续向下滚动时，立即恢复默认 `Arrangement.Bottom`；若此时用户没有拖动 / 浏览且列表滚动已停止，会立即请求正向底部锚点，否则尊重用户当前浏览位置。稀疏态或图片上传等待态的真实拖动也会记为 `UserBrowsing`，上传完成开始 streaming 时不会把这个浏览意图重置为 AutoFollow。退出判断只看真实布局坐标，文字、图片、图片与文字间距、失败态 footer 都算，不按第几轮、字数或是否有图估算；纯图片用户消息会用消息 Column 真实 bounds 参与底边判断，不长期依赖 LazyList item fallback；`canScrollBackward` 不参与稀疏退出，避免删除历史前残留滚动位置造成提前贴底
+- `ChatRecyclerViewHost.kt` 始终使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，并避免运行时切换 arrangement。clean-state / 删除所有历史后的稀疏首屏仍是 96dp 工作线规则的唯一例外：如果发送前没有用户 / assistant 业务消息，`ChatScreen.kt` 会临时启用稀疏布局，通过实测列表内容高度加大并逐步缩回 bottom padding，让早期文字 / 图片从顶部栏下方约 `32dp` 处自然往下长；内容底边到达正常 96dp 工作线或列表可继续向下滚动时，稀疏态退出并恢复普通 AutoFollow / 工作线。稀疏首发不启用普通发送起步的 bottom-lock / `sendStartAnchorActive`，正常有历史消息发送仍保留发送起步锁。退出时若用户没有拖动 / 浏览且列表滚动已停止，会立即请求正向底部锚点，否则尊重用户当前浏览位置。稀疏态或图片上传等待态的真实拖动也会记为 `UserBrowsing`，上传完成开始 streaming 时不会把这个浏览意图重置为 AutoFollow。退出判断只看真实布局坐标，文字、图片、图片与文字间距、失败态 footer 都算，不按第几轮、字数或是否有图估算；纯图片用户消息会用消息 Column 真实 bounds 参与底边判断，不长期依赖 LazyList item fallback；`canScrollBackward` 不参与稀疏退出
 - `ChatScreen.kt` 当前使用 `ChatTimelineItem` 作为列表展示层，允许插入一个 UI-only 今日农情卡片；真实业务消息仍只来自 `messages`，不再通过 `chatListItems` 派生 streaming block item
 - streaming 小分割 / block item 化已撤掉：`StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex / streaming_tail` 等符号在主链无残留
 - mixed active-zone / overlay 运行时已退出主链：
