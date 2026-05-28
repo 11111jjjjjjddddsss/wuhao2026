@@ -5,6 +5,7 @@
 
 ## 2026-05-28
 
+- 小米 / MiMo 会诊确认真机仍从工作线出发时，`contentPadding.bottom` 方案大概率被 LazyListState 首帧锚点 / viewport 高度时序抵消。本轮把 clean-state 稀疏定位从“动态加大 bottom padding”改为“末尾 UI-only `SparseBottomSpacer` item”：`ChatTimelineItem` 新增透明 spacer，稀疏态按消息实测高度 / 首帧估算高度计算 spacer 高度并追加在真实消息之后，`Arrangement.Bottom` 保持不变，让 spacer 作为真实 item 把 user/assistant 内容顶到顶部栏下方约 `32dp`；内容高度测量排除 spacer 自身，退出条件改为内容到工作线且 spacer 缩回容差内或列表可滚动。仍不恢复 `Arrangement.Top`、反向列表、active-zone、overlay 或 raw delta。
 - 用户真机复测反馈首发消息仍在工作线附近往上滚后，继续收紧稀疏态即时判定：普通回底请求、程序回底、`scrollToBottom(false)`、streaming 同帧预锚和 sendStart lock 不再依赖可能晚一拍的 `cleanStateSparseLayoutEligible` 派生值，而是直接读取 `cleanStateSparseLayoutActive && 当前 messages 已有业务消息`。这样发送事务里刚插入首条 user/assistant 时，普通工作线回底链不会抢在稀疏 bottom padding 生效前先把列表锚到工作线。
 - 三路子代理复查 `Arrangement.Bottom + 动态 bottom padding` 稀疏首屏方案后补护栏：稀疏态实测内容高度改为只单调增，避免 streaming 重排或图片稳定时临时 bottom padding 来回伸缩；稀疏退出除了 `canScrollForward` 外，还要求最新内容底边到达工作线且临时 bottom padding 已缩回容差内，减少提前退出造成的微动；有图片的用户消息统一用整条消息 Column bounds 参与工作线判断，避免未来图片 / 文字顺序调整后底边漏算；列表 bottom padding 的 sendStart lock 消费显式排除稀疏态，固定“稀疏首发绝不吃发送起步锁”的代码不变量。同步把 2026-05-26 历史 `Arrangement.Top` 条目标注为已被本日方案替代。
 - 收到小米 / MiMo 会诊后复核 clean-state 首轮“用户消息下掉再上抬”根因：旧稀疏主链确实会在内容到达工作线时从 `Arrangement.Top` 切回 `Arrangement.Bottom`，存在一拍 layout jump 风险。本轮移除稀疏态 arrangement 切换，`ChatRecyclerViewHost.kt` 全程保持 `Arrangement.Bottom`；`ChatScreen.kt` 改为按稀疏态实测内容高度临时加大 bottom padding，并随文字 / 图片 / 间距 / 失败 footer 真实高度增长自然缩回正常 96dp 工作线。没有照抄会诊稿里的 dynamic top padding，因为在 `Arrangement.Bottom` 下额外 top padding 对短内容位置会被抵消；本轮使用 bottom padding 承接同一目标，避免新旧两套锚点并存。
