@@ -13,6 +13,7 @@
 - 已初始化服务器用户和目录：系统用户 `nongji`，部署目录 `/opt/nongjiqiancha/server`，运行配置 `/etc/nongjiqiancha/server.env`，上传目录 `/var/lib/nongjiqiancha/uploads`，日志目录 `/var/log/nongjiqiancha`
 - 已安装并启用：Nginx、fail2ban、logrotate、MariaDB client、Go 1.26.2
 - `server-go` 已部署为 `systemd` 服务 `nongji-server.service`，默认监听本机 `127.0.0.1:3000`，由 Nginx 按 `api.nongjiqiancha.cn` 反代；只有显式设置 `LISTEN_ADDR` 或 `LISTEN_HOST` 时才允许改成其他监听地址
+- Go HTTP 服务使用显式 `http.Server`，默认 `ReadHeaderTimeout=5s`、`ReadTimeout=15s`、`IdleTimeout=90s`、`MaxHeaderBytes=1MiB`；`WriteTimeout` 默认保持 `0`，避免把正常 SSE 长回答按写超时杀掉。如需调整，可通过 `HTTP_READ_HEADER_TIMEOUT_SECONDS`、`HTTP_READ_TIMEOUT_SECONDS`、`HTTP_WRITE_TIMEOUT_SECONDS`、`HTTP_IDLE_TIMEOUT_SECONDS`、`HTTP_MAX_HEADER_BYTES` 和 `HTTP_SHUTDOWN_TIMEOUT_SECONDS` 配置
 - 当前健康检查：`curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=missing_key`、`dev_order_endpoints=false`
 - 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 和域名 HTTP healthz 均已解析到本机并返回 200；本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - 当前未配置 DashScope 模型 Key，真实聊天接口会返回 `MODEL_BACKEND_NOT_CONFIGURED`，不会开模型流或消耗模型费用

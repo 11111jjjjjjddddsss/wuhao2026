@@ -5,6 +5,7 @@
 
 ## 2026-05-28
 
+- 后端继续推进并做首轮高并发 / 安全硬化：本地 `server-go` 已通过 `go test ./...` 和 `go build -buildvcs=false ./...`；ECS 上刷新到当前仓库二进制后，`nongji-server` 已从历史 `*:3000` 收口为 `127.0.0.1:3000`，继续只由 Nginx 对外代理。本轮代码层把 `cmd/server` 从裸 `http.ListenAndServe` 改成显式 `http.Server`，默认限制慢请求头、请求读取、空闲连接和最大 header，并支持优雅停机；`WriteTimeout` 默认保持 `0`，避免误杀 SSE 长回答。仍未配置 DashScope 模型 Key，公网域名仍受未备案拦截，HTTPS 仍待证书配置。
 - 用户真机截图确认：无网图片失败原本被 `SparseBottomSpacer` 顶在上方，但再次发送文字后失败图片和新消息都会掉回工作线，说明 clean-state 稀疏首屏仍在和正常滚动链互相抢位置。本轮最终撤掉“首发靠上 / 稀疏首屏”运行时例外：`ChatScreen.kt` 删除 `SparseBottomSpacer`、`cleanStateSparseLayoutActive`、稀疏高度预估和相关 gate，真实聊天消息、图片 pending / 失败、重试态和 streaming 小球统一回到 96dp 工作线、发送期 bottom-lock 与 AutoFollow 主链。后续空白首屏体验不再通过移动真实消息解决，只能考虑欢迎语、示例问题或今日农情这类非聊天消息占位；不要恢复 `Arrangement.Top`、反向列表、active-zone、overlay、raw delta、contentPadding 稀疏或 spacer 稀疏旧方案。
 - 针对用户真机发现“清数据 / 删除历史后无网发图片失败，随后再发消息又从底部工作线出来”的边角问题，拉 3 路代理复查 clean-state 稀疏首屏。两路工程审查确认根因不是滚动主链漏锚，而是稀疏态把失败图片用户消息当成普通历史，同时 `canScrollForward` 会被 UI-only `SparseBottomSpacer` 自己误触发，导致稀疏态提前退出；一路产品审查建议若仍复杂可整条撤掉首发靠上。该条为中间过程：当时曾先保留首发靠上并收窄规则，随后已被上一条“撤掉稀疏首屏、统一回 96dp 工作线”替代。
 - 备案提交后同步启动软件著作权材料准备：确认软著与 ICP / App 备案、前后端继续开发可以并行；软著按 `农技千查 Android应用软件 V1.0` 快照口径推进，后续正常 UI 修复、后端联调、登录 / 支付 / OSS / SLS 接入不影响本次 V1.0 申请。本机桌面已生成 `D:/Desktop/农技千查软著材料`，包含申请信息草稿、提交步骤简表、操作说明书 docx、Android 客户端源代码前后各 30 页摘录 docx 和阅读版 txt；源代码摘录只取 Android 客户端 Kotlin 源码，不包含 release 签名配置、私钥、密码、本机 secret、模型 Key 或后端生产环境变量。新增 [software-copyright.md](D:/wuhao/docs/runbooks/software-copyright.md) 固化申请入口、材料路径和并行关系。
