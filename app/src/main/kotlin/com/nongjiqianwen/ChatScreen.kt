@@ -2417,6 +2417,7 @@ fun ChatScreen() {
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var cleanStateSparseLayoutActive by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var cleanStateSparseContentHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var cleanStateSparseExtraBottomPaddingPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
@@ -3401,6 +3402,7 @@ fun ChatScreen() {
         sendStartAnchorActive = false
         cleanStateSparseLayoutActive = false
         cleanStateSparseContentHeightPx = 0
+        cleanStateSparseExtraBottomPaddingPx = 0
         initialBottomSnapDone = false
         suppressJumpButtonForLifecycleResume = false
         clearInputSelectionToolbar()
@@ -4084,6 +4086,7 @@ fun ChatScreen() {
         recyclerScrollInProgress = false
         cleanStateSparseLayoutActive = false
         cleanStateSparseContentHeightPx = 0
+        cleanStateSparseExtraBottomPaddingPx = 0
         hasStartedConversation = false
         initialBottomSnapDone = false
         postInitialSnapCorrectionDone = false
@@ -4407,6 +4410,7 @@ fun ChatScreen() {
         messages.size,
         chatListState.canScrollForward,
         cleanStateSparseContentHeightPx,
+        cleanStateSparseExtraBottomPaddingPx,
         currentLastMessageContentBottomPx(),
         currentStaticBottomTargetPx()
     ) {
@@ -4419,11 +4423,13 @@ fun ChatScreen() {
                 (
                     latestContentBottomPx > 0 &&
                         normalWorklineBottomPx > 0 &&
-                        latestContentBottomPx >= normalWorklineBottomPx
+                        latestContentBottomPx >= normalWorklineBottomPx &&
+                        cleanStateSparseExtraBottomPaddingPx <= bottomPositionTolerancePx
                     )
         if (!reachedNormalWorkline) return@LaunchedEffect
         cleanStateSparseLayoutActive = false
         cleanStateSparseContentHeightPx = 0
+        cleanStateSparseExtraBottomPaddingPx = 0
         if (shouldRestoreBottomAnchorAfterCleanStateSparseExit()) {
             requestProgrammaticForwardListBottomAnchor()
         }
@@ -4432,6 +4438,7 @@ fun ChatScreen() {
     LaunchedEffect(cleanStateSparseLayoutEligible) {
         if (!cleanStateSparseLayoutEligible) {
             cleanStateSparseContentHeightPx = 0
+            cleanStateSparseExtraBottomPaddingPx = 0
             return@LaunchedEffect
         }
         snapshotFlow {
@@ -4446,7 +4453,7 @@ fun ChatScreen() {
         }
             .distinctUntilChanged()
             .collect { measuredHeightPx ->
-                if (measuredHeightPx > 0 && measuredHeightPx != cleanStateSparseContentHeightPx) {
+                if (measuredHeightPx > cleanStateSparseContentHeightPx) {
                     cleanStateSparseContentHeightPx = measuredHeightPx
                 }
             }
@@ -6124,7 +6131,7 @@ fun ChatScreen() {
                                 .then(
                                     if (
                                         failedUserState != null ||
-                                        (msg.content.isBlank() && userMessageHasImages)
+                                        userMessageHasImages
                                     ) {
                                         Modifier.onGloballyPositioned { coordinates ->
                                             updateMessageContentBounds(
@@ -6157,7 +6164,7 @@ fun ChatScreen() {
                                         if (bounds != null) {
                                             updateMessageSelectionBoundsIfNeeded(msg.id, bounds)
                                         }
-                                        if (failedUserState == null) {
+                                        if (failedUserState == null && !userMessageHasImages) {
                                             updateMessageContentBounds(msg.id, bounds)
                                         }
                                         if (bounds != null) {
@@ -6201,7 +6208,7 @@ fun ChatScreen() {
         val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
             val effectiveBottomPaddingPx =
                 lockedConversationBottomPaddingPx
-                    .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
+                    .takeIf { sendStartBottomPaddingLockActive && !cleanStateSparseLayoutEligible && it >= 0 }
                     ?.let { lockedPaddingPx -> lockedPaddingPx }
                     ?: listBottomPaddingPx
             val forwardListBottomPaddingPx =
@@ -6228,8 +6235,17 @@ fun ChatScreen() {
                 } else {
                     forwardListBottomPaddingPx
                 }
+            val sparseExtraBottomPaddingPx =
+                if (cleanStateSparseLayoutEligible) {
+                    (effectiveForwardListBottomPaddingPx - forwardListBottomPaddingPx).coerceAtLeast(0)
+                } else {
+                    0
+                }
             SideEffect {
                 latestConversationBottomPaddingPx = conversationBottomPaddingPx
+                if (cleanStateSparseExtraBottomPaddingPx != sparseExtraBottomPaddingPx) {
+                    cleanStateSparseExtraBottomPaddingPx = sparseExtraBottomPaddingPx
+                }
                 val collapsedStable =
                     !sendStartBottomPaddingLockActive &&
                         !isComposerSettling &&
