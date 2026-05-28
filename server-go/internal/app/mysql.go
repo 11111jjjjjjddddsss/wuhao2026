@@ -56,6 +56,8 @@ type dbPoolConfig struct {
 	ConnMaxLifetime time.Duration
 }
 
+const defaultMySQLMigrationTimeout = 2 * time.Minute
+
 func resolveDBPoolConfig() dbPoolConfig {
 	maxOpen := envIntWithDefault("MYSQL_MAX_OPEN_CONNS", 10)
 	maxIdle := envIntWithDefault("MYSQL_MAX_IDLE_CONNS", 10)
@@ -96,6 +98,18 @@ func envDurationWithDefault(name string, fallback time.Duration) time.Duration {
 }
 
 func InitMySQL(ctx context.Context, db *sql.DB, migrationsDir string) error {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	releaseMigrationLock, err := acquireMySQLMigrationLock(ctx, conn)
+	if err != nil {
+		return err
+	}
+	defer releaseMigrationLock()
+
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
 		return err
@@ -118,11 +132,28 @@ func InitMySQL(ctx context.Context, db *sql.DB, migrationsDir string) error {
 		if strings.TrimSpace(string(content)) == "" {
 			continue
 		}
-		if _, err := db.ExecContext(ctx, string(content)); err != nil {
+		if _, err := conn.ExecContext(ctx, string(content)); err != nil {
 			return fmt.Errorf("run migration %s: %w", filepath.Base(file), err)
 		}
 	}
 	return nil
+}
+
+const mysqlSchemaMigrationLockName = "nongji_schema_migration"
+
+func acquireMySQLMigrationLock(ctx context.Context, conn *sql.Conn) (func(), error) {
+	var acquired sql.NullInt64
+	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 30)", mysqlSchemaMigrationLockName).Scan(&acquired); err != nil {
+		return nil, err
+	}
+	if !acquired.Valid || acquired.Int64 != 1 {
+		return nil, fmt.Errorf("mysql schema migration lock busy")
+	}
+	return func() {
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, _ = conn.ExecContext(releaseCtx, "SELECT RELEASE_LOCK(?)", mysqlSchemaMigrationLockName)
+	}, nil
 }
 
 func buildMySQLDSN(raw string) (string, error) {

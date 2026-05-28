@@ -83,7 +83,9 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := InitMySQL(contextBackground(), db, migrationsDir); err != nil {
+	migrationCtx, cancelMigration := context.WithTimeout(contextBackground(), envDurationWithDefault("MYSQL_MIGRATION_TIMEOUT_SECONDS", defaultMySQLMigrationTimeout))
+	defer cancelMigration()
+	if err := InitMySQL(migrationCtx, db, migrationsDir); err != nil {
 		return nil, err
 	}
 
