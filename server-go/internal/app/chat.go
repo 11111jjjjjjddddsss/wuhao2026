@@ -19,6 +19,7 @@ const (
 	chatRateLimitMaxHits  = 20
 	upstreamMaxAttempts   = 1
 	upstreamRetryBaseWait = 350 * time.Millisecond
+	chatStreamMaxDuration = 30 * time.Minute
 )
 
 type chatRateLimiter struct {
@@ -282,7 +283,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upstreamCtx, cancelUpstream := context.WithCancel(context.Background())
+	upstreamCtx, cancelUpstream := context.WithTimeout(context.Background(), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
 	upstream, err := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages)
 	if err != nil {
@@ -624,7 +625,16 @@ func (s *Server) writeSSEHeaders(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+}
+
+func resolveChatStreamMaxDuration() time.Duration {
+	duration := envDurationWithDefault("CHAT_STREAM_MAX_DURATION_SECONDS", chatStreamMaxDuration)
+	if duration <= 0 {
+		return chatStreamMaxDuration
+	}
+	return duration
 }
 
 func (s *Server) writeSSEData(w http.ResponseWriter, payload any) {

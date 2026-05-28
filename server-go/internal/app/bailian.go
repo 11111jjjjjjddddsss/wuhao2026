@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -24,12 +25,35 @@ type BailianClient struct {
 const (
 	unifiedModelTemperature = 0.8
 	bailianKeyCooldown      = 60 * time.Second
+
+	defaultDashScopeDialTimeout           = 10 * time.Second
+	defaultDashScopeTLSHandshakeTimeout   = 10 * time.Second
+	defaultDashScopeResponseHeaderTimeout = 60 * time.Second
+	defaultDashScopeIdleConnTimeout       = 90 * time.Second
 )
 
 func NewBailianClient() *BailianClient {
 	return &BailianClient{
-		httpClient:  &http.Client{},
+		httpClient:  newBailianHTTPClient(),
 		keyCooldown: map[string]time.Time{},
+	}
+}
+
+func newBailianHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   envDurationWithDefault("DASHSCOPE_DIAL_TIMEOUT_SECONDS", defaultDashScopeDialTimeout),
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   envDurationWithDefault("DASHSCOPE_TLS_HANDSHAKE_TIMEOUT_SECONDS", defaultDashScopeTLSHandshakeTimeout),
+			ResponseHeaderTimeout: envDurationWithDefault("DASHSCOPE_RESPONSE_HEADER_TIMEOUT_SECONDS", defaultDashScopeResponseHeaderTimeout),
+			IdleConnTimeout:       envDurationWithDefault("DASHSCOPE_IDLE_CONN_TIMEOUT_SECONDS", defaultDashScopeIdleConnTimeout),
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConns:          100,
+			MaxIdleConnsPerHost:   10,
+		},
 	}
 }
 

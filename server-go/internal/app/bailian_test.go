@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
@@ -78,6 +79,34 @@ func TestBailianKeysSupportDedicatedSlotsAndDeduplicate(t *testing.T) {
 	want := []string{"primary", "second", "third", "fourth", "fifth", "sixth"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("keys mismatch:\n got %#v\nwant %#v", got, want)
+	}
+}
+
+func TestNewBailianClientConfiguresStreamingSafeTransport(t *testing.T) {
+	t.Setenv("DASHSCOPE_DIAL_TIMEOUT_SECONDS", "8")
+	t.Setenv("DASHSCOPE_TLS_HANDSHAKE_TIMEOUT_SECONDS", "9")
+	t.Setenv("DASHSCOPE_RESPONSE_HEADER_TIMEOUT_SECONDS", "70")
+	t.Setenv("DASHSCOPE_IDLE_CONN_TIMEOUT_SECONDS", "80")
+
+	client := NewBailianClient()
+	if client.httpClient.Timeout != 0 {
+		t.Fatalf("http client Timeout = %v, want 0 so SSE body can stream", client.httpClient.Timeout)
+	}
+	transport, ok := client.httpClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport = %T, want *http.Transport", client.httpClient.Transport)
+	}
+	if transport.TLSHandshakeTimeout != 9*time.Second {
+		t.Fatalf("TLSHandshakeTimeout = %v, want 9s", transport.TLSHandshakeTimeout)
+	}
+	if transport.ResponseHeaderTimeout != 70*time.Second {
+		t.Fatalf("ResponseHeaderTimeout = %v, want 70s", transport.ResponseHeaderTimeout)
+	}
+	if transport.IdleConnTimeout != 80*time.Second {
+		t.Fatalf("IdleConnTimeout = %v, want 80s", transport.IdleConnTimeout)
+	}
+	if transport.MaxIdleConns != 100 || transport.MaxIdleConnsPerHost != 10 {
+		t.Fatalf("idle pool = %d/%d, want 100/10", transport.MaxIdleConns, transport.MaxIdleConnsPerHost)
 	}
 }
 

@@ -78,6 +78,20 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	}
 }
 
+func TestWriteSSEHeadersDisableNginxBuffering(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	server := &Server{}
+
+	server.writeSSEHeaders(recorder)
+
+	if got := recorder.Header().Get("Content-Type"); got != "text/event-stream; charset=utf-8" {
+		t.Fatalf("Content-Type = %q", got)
+	}
+	if got := recorder.Header().Get("X-Accel-Buffering"); got != "no" {
+		t.Fatalf("X-Accel-Buffering = %q, want no", got)
+	}
+}
+
 func TestBuildPromptMessagesAddsBCSummariesWhenPresent(t *testing.T) {
 	server := &Server{
 		systemAnchor: "anchor",
