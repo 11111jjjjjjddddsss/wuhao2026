@@ -206,7 +206,9 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.net.URL
 import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicInteger
@@ -373,6 +375,7 @@ private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val CHAT_IMAGE_PREVIEW_CACHE_MAX_KB = 12 * 1024
+private const val CHAT_REMOTE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
@@ -1822,6 +1825,20 @@ internal fun Context.readImageBytes(uri: Uri): ByteArray? {
     }.getOrNull()
 }
 
+private fun InputStream.readPreviewBytes(maxBytes: Int): ByteArray? {
+    val buffer = ByteArray(8 * 1024)
+    val output = ByteArrayOutputStream()
+    var total = 0
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) break
+        total += read
+        if (total > maxBytes) return null
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
+}
+
 internal fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImageAttachment? {
     return runCatching {
         val originalBytes = readImageBytes(uri) ?: return@runCatching null
@@ -1916,7 +1933,7 @@ internal fun Context.decodeChatImagePreview(
                 connectTimeout = 5000
                 readTimeout = 5000
             }
-            connection.getInputStream().use { it.readBytes() }
+            connection.getInputStream().use { it.readPreviewBytes(CHAT_REMOTE_PREVIEW_MAX_BYTES) }
         } else {
             readImageBytes(Uri.parse(source))
         } ?: return@runCatching null

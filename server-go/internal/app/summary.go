@@ -3,8 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -30,6 +30,7 @@ type SummaryService struct {
 const (
 	cSummaryEveryRounds   = 20
 	cSummaryArchiveRounds = 20
+	summaryResponseLimit  = 64 * 1024
 )
 
 var summaryExtractionTimeout = 60 * time.Second
@@ -178,12 +179,19 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 	defer response.Body.Close()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		body, _ := io.ReadAll(response.Body)
+		body, readErr := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
+		if readErr != nil && !errors.Is(readErr, errResponseBodyTooLarge) {
+			return "", readErr
+		}
 		return "", fmt.Errorf("%s_EXTRACT_HTTP_%d:%s", layer, response.StatusCode, strings.TrimSpace(string(body)))
 	}
 
+	body, readErr := readLimitedResponseBody(response.Body, summaryResponseLimit)
+	if readErr != nil {
+		return "", fmt.Errorf("%s_EXTRACT_RESPONSE_TOO_LARGE", layer)
+	}
 	payload := map[string]any{}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+	if err := json.Unmarshal(body, &payload); err != nil {
 		return "", err
 	}
 	choices, _ := payload["choices"].([]any)

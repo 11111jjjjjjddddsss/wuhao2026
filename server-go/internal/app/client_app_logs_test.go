@@ -1,6 +1,13 @@
 package app
 
-import "testing"
+import (
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
 
 func TestNormalizeClientAppLogPayloadAcceptsMinimalSafePayload(t *testing.T) {
 	versionCode := 12
@@ -51,5 +58,22 @@ func TestNormalizeClientAppLogPayloadRejectsInvalidPayload(t *testing.T) {
 				t.Fatalf("validation error = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHandleCreateClientAppLogRejectsOversizedBodyWith413(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	body := `{"level":"warn","event":"chat.failure","message":"` + strings.Repeat("x", clientAppLogMaxBodyBytes) + `"}`
+	request := httptest.NewRequest(http.MethodPost, "/api/app/logs", strings.NewReader(body))
+	request.Header.Set("X-User-Id", "user-1")
+	recorder := httptest.NewRecorder()
+
+	server.handleCreateClientAppLog(recorder, request)
+
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
+	}
+	if !strings.Contains(recorder.Body.String(), "body_too_large") {
+		t.Fatalf("body = %q, want body_too_large", recorder.Body.String())
 	}
 }

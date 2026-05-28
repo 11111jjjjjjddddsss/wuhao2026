@@ -1,6 +1,6 @@
 # ECS 发版 Runbook
 
-最后更新：2026-05-25
+最后更新：2026-05-28
 
 ## 目的
 
@@ -15,9 +15,9 @@
 - `server-go` 已部署为 `systemd` 服务 `nongji-server.service`，默认监听本机 `127.0.0.1:3000`，由 Nginx 按 `api.nongjiqiancha.cn` 反代；只有显式设置 `LISTEN_ADDR` 或 `LISTEN_HOST` 时才允许改成其他监听地址
 - Go HTTP 服务使用显式 `http.Server`，默认 `ReadHeaderTimeout=5s`、`ReadTimeout=15s`、`IdleTimeout=90s`、`MaxHeaderBytes=1MiB`；`WriteTimeout` 默认保持 `0`，避免把正常 SSE 长回答按写超时杀掉。如需调整，可通过 `HTTP_READ_HEADER_TIMEOUT_SECONDS`、`HTTP_READ_TIMEOUT_SECONDS`、`HTTP_WRITE_TIMEOUT_SECONDS`、`HTTP_IDLE_TIMEOUT_SECONDS`、`HTTP_MAX_HEADER_BYTES` 和 `HTTP_SHUTDOWN_TIMEOUT_SECONDS` 配置
 - 模型出站 HTTP client 不设置全局 `Timeout`，避免误杀 SSE 正文流；只限制拨号、TLS 握手、响应头等待和空闲连接，默认 `DASHSCOPE_DIAL_TIMEOUT_SECONDS=10`、`DASHSCOPE_TLS_HANDSHAKE_TIMEOUT_SECONDS=10`、`DASHSCOPE_RESPONSE_HEADER_TIMEOUT_SECONDS=60`、`DASHSCOPE_IDLE_CONN_TIMEOUT_SECONDS=90`。主聊天流另有 `CHAT_STREAM_MAX_DURATION_SECONDS` 兜底，默认 30 分钟；SSE 响应会带 `X-Accel-Buffering: no`，提示 Nginx 不缓冲流式响应
-- 上游模型错误响应 / 非 SSE 响应只读取 64KiB 预览用于判断和日志，今日农情 JSON 响应读取上限为 1MiB；正常主聊天 SSE 正文仍走流式转发
-- 通用 JSON body 解析默认只读取 64KiB，并拒绝多段 JSON；App 日志接口仍有更小的 8KiB 上限，图片上传仍按单张 JPEG `<=1MiB` 处理
-- 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整
+- 上游模型错误响应 / 非 SSE 响应只读取 64KiB 预览用于判断和日志，B/C 摘要非流式响应读取上限为 64KiB，今日农情 JSON 响应读取上限为 1MiB；正常主聊天 SSE 正文仍走流式转发
+- 通用 JSON body 解析默认只读取 64KiB，并拒绝多段 JSON；App 日志接口仍有更小的 8KiB 上限且超限返回 `413 body_too_large`，图片上传仍按单张 JPEG `<=1MiB` 处理
+- 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉
 - 当前健康检查：`curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=missing_key`、`dev_order_endpoints=false`
 - 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 和域名 HTTP healthz 均已解析到本机并返回 200；本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - 当前未配置 DashScope 模型 Key，真实聊天接口会返回 `MODEL_BACKEND_NOT_CONFIGURED`，不会开模型流或消耗模型费用
@@ -36,7 +36,7 @@
 - 内网地址：`rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`
 - 数据库：`nongjiqiancha`
 - 应用账号：`nongji_app`
-- RDS 白名单：`127.0.0.1,192.168.1.237`
+- RDS 白名单：`192.168.1.237`
 - 数据库密码只保存在本机 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 和 ECS `/etc/nongjiqiancha/server.env`，不写入仓库或文档
 
 ## 常用命令
@@ -73,6 +73,8 @@ Android 生产域名构建前提：
 ```powershell
 .\gradlew.bat :app:compileDebugKotlin -PUPLOAD_BASE_URL=https://api.nongjiqiancha.cn
 ```
+
+正式 release 构建还会额外检查固定 release 签名、https `UPLOAD_BASE_URL`，并要求 `SESSION_API_TOKEN` 为空；共享静态 token 只能用于本地 / 内测 debug 桥接，不能进入正式包。
 
 ## 当前发布方式
 

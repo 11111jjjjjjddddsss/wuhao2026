@@ -75,6 +75,54 @@ func TestExtractSummaryUsesQwen35FlashWithThinkingDisabled(t *testing.T) {
 	}
 }
 
+func TestExtractSummaryCapsHTTPErrorBody(t *testing.T) {
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, strings.Repeat("x", bailianBodyPreviewLimit+1024), http.StatusBadGateway)
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	service := &SummaryService{
+		prompts: newTestSummaryPromptLoader(t),
+		bailian: NewBailianClient(),
+	}
+
+	_, err := service.extractSummary(context.Background(), SummaryLayerB, "", "user: 问题\nassistant: 回复")
+	if err == nil {
+		t.Fatal("expected extract summary error")
+	}
+	message := err.Error()
+	if !strings.Contains(message, "B_EXTRACT_HTTP_502") {
+		t.Fatalf("error = %q, want B_EXTRACT_HTTP_502", message)
+	}
+	if len(message) > bailianBodyPreviewLimit+256 {
+		t.Fatalf("error body was not capped, length=%d", len(message))
+	}
+}
+
+func TestExtractSummaryRejectsLargeSuccessBody(t *testing.T) {
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(strings.Repeat("x", summaryResponseLimit+1)))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	service := &SummaryService{
+		prompts: newTestSummaryPromptLoader(t),
+		bailian: NewBailianClient(),
+	}
+
+	_, err := service.extractSummary(context.Background(), SummaryLayerB, "", "user: 问题\nassistant: 回复")
+	if err == nil || !strings.Contains(err.Error(), "B_EXTRACT_RESPONSE_TOO_LARGE") {
+		t.Fatalf("extract summary error = %v, want B_EXTRACT_RESPONSE_TOO_LARGE", err)
+	}
+}
+
 func TestProcessCSummaryUsesRecentArchivedRounds(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -232,6 +280,18 @@ func TestProcessSummaryTimeoutReleasesRunningGuard(t *testing.T) {
 		t.Fatal("summary running guard should be released after timeout")
 	}
 	service.finishLayer("u1", SummaryLayerB)
+}
+
+func newTestSummaryPromptLoader(t *testing.T) *PromptLoader {
+	t.Helper()
+	assetDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(assetDir, "b_extraction_prompt.txt"), []byte("B prompt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assetDir, "c_extraction_prompt.txt"), []byte("C prompt"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return NewPromptLoader(assetDir)
 }
 
 type fakeSummaryStore struct {

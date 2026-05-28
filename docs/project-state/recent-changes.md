@@ -5,6 +5,8 @@
 
 ## 2026-05-28
 
+- 拉后端安全 / Android 长用性能会诊后继续收口：B/C 摘要模型非流式响应现在同样限制 64KiB，避免异常上游大包绕过主聊天 body cap；App 自动日志接口的 8KiB `MaxBytesReader` 超限统一返回 `413 body_too_large`；MySQL schema migration 全局锁释放失败会作为启动错误暴露，不再静默吞掉；聊天区远端历史图片缩略图预览单次读取最多 2MiB，异常大图跳过本地缩略图解码。30 轮 UI 长用复查结论是：前端和后端都已把 UI 历史收在最近 30 轮内，列表长度本身不是当前卡顿主风险，后续更该关注超长单条回复、图片缩略图和真实 release Baseline Profile。本轮已在 ECS 上用同源 `server-go` 跑 `go test ./...` 后编译并重启 `nongji-server`，Nginx Host healthz 仍返回 `ok=true / auth_strict=true / bailian=missing_key / dev_order_endpoints=false`。
+- 复查上线构建与部署记忆时补一处正式包护栏：Android release 任务现在会在 `SESSION_API_TOKEN` 非空时 fail-fast，避免把本地 / 内测共享静态 token 打进正式 APK 导致多设备串成同一用户；同时把根 `AGENTS.md` 和部署 / 查库 runbook 里的 RDS 白名单口径统一为当前真实 `192.168.1.237`。
 - 继续做后端安全 / 高并发第五刀：上游模型错误响应和非 SSE 响应的错误体预览限制为 64KiB，今日农情 DashScope JSON 响应限制为 1MiB，避免异常上游返回大包时被 `io.ReadAll` 无上限读入内存；正常主聊天 SSE 正文流仍按流式转发，不套全局 `http.Client.Timeout`。
 - 继续做后端安全 / 高并发第四刀：服务启动迁移改为先在单连接上获取 MySQL 全局命名锁 `nongji_schema_migration`，拿到锁后再按顺序执行 `migrations/*.sql`，完成后释放锁；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整。当前仍是单 ECS，但这能提前避免后续滚动发布 / 多实例同时执行 DDL 抢 metadata lock；本轮不新增 `schema_migrations` 表，历史幂等 SQL 仍按现有方式执行。
 - 继续做后端安全 / 高并发第三刀：通用 JSON body 解析增加默认 64KiB 读取上限，并拒绝同一个请求体里夹带多段 JSON；超过限制返回 `413 body_too_large`。App 自动日志接口仍保留更小的 8KiB 上限，图片上传仍按单张 JPEG `<=1MiB` 单独处理。本轮只改请求体解析边界和错误返回，不改接口字段、业务扣次或数据库表结构。

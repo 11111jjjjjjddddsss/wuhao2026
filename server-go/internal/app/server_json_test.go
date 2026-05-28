@@ -53,3 +53,17 @@ func TestWriteJSONDecodeErrorUsesTooLargeStatus(t *testing.T) {
 		t.Fatalf("body = %q, want body_too_large", recorder.Body.String())
 	}
 }
+
+func TestWriteJSONDecodeErrorUsesTooLargeStatusForMaxBytesError(t *testing.T) {
+	server := &Server{}
+	recorder := httptest.NewRecorder()
+
+	server.writeJSONDecodeError(recorder, &http.MaxBytesError{Limit: 8})
+
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
+	}
+	if !strings.Contains(recorder.Body.String(), "body_too_large") {
+		t.Fatalf("body = %q, want body_too_large", recorder.Body.String())
+	}
+}

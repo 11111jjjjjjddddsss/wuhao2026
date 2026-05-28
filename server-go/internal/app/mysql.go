@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -97,7 +98,7 @@ func envDurationWithDefault(name string, fallback time.Duration) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-func InitMySQL(ctx context.Context, db *sql.DB, migrationsDir string) error {
+func InitMySQL(ctx context.Context, db *sql.DB, migrationsDir string) (err error) {
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -108,7 +109,15 @@ func InitMySQL(ctx context.Context, db *sql.DB, migrationsDir string) error {
 	if err != nil {
 		return err
 	}
-	defer releaseMigrationLock()
+	defer func() {
+		if releaseErr := releaseMigrationLock(); releaseErr != nil {
+			if err != nil {
+				err = errors.Join(err, releaseErr)
+			} else {
+				err = releaseErr
+			}
+		}
+	}()
 
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
@@ -141,7 +150,7 @@ func InitMySQL(ctx context.Context, db *sql.DB, migrationsDir string) error {
 
 const mysqlSchemaMigrationLockName = "nongji_schema_migration"
 
-func acquireMySQLMigrationLock(ctx context.Context, conn *sql.Conn) (func(), error) {
+func acquireMySQLMigrationLock(ctx context.Context, conn *sql.Conn) (func() error, error) {
 	var acquired sql.NullInt64
 	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 30)", mysqlSchemaMigrationLockName).Scan(&acquired); err != nil {
 		return nil, err
@@ -149,10 +158,17 @@ func acquireMySQLMigrationLock(ctx context.Context, conn *sql.Conn) (func(), err
 	if !acquired.Valid || acquired.Int64 != 1 {
 		return nil, fmt.Errorf("mysql schema migration lock busy")
 	}
-	return func() {
+	return func() error {
 		releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _ = conn.ExecContext(releaseCtx, "SELECT RELEASE_LOCK(?)", mysqlSchemaMigrationLockName)
+		var released sql.NullInt64
+		if err := conn.QueryRowContext(releaseCtx, "SELECT RELEASE_LOCK(?)", mysqlSchemaMigrationLockName).Scan(&released); err != nil {
+			return err
+		}
+		if !released.Valid || released.Int64 != 1 {
+			return fmt.Errorf("mysql schema migration lock release failed")
+		}
+		return nil
 	}, nil
 }
 

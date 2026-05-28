@@ -565,7 +565,7 @@ func decodeJSONBodyLimited[T any](r *http.Request, dst *T, maxBytes int64) error
 	reader := &io.LimitedReader{R: r.Body, N: maxBytes + 1}
 	decoder := json.NewDecoder(reader)
 	if err := decoder.Decode(dst); err != nil {
-		if reader.N <= 0 {
+		if reader.N <= 0 || isJSONBodyTooLargeError(err) {
 			return errJSONBodyTooLarge
 		}
 		return err
@@ -587,11 +587,16 @@ func decodeJSONBodyLimited[T any](r *http.Request, dst *T, maxBytes int64) error
 }
 
 func (s *Server) writeJSONDecodeError(w http.ResponseWriter, err error) {
-	if errors.Is(err, errJSONBodyTooLarge) {
+	if errors.Is(err, errJSONBodyTooLarge) || isJSONBodyTooLargeError(err) {
 		s.writeError(w, http.StatusRequestEntityTooLarge, "body_too_large")
 		return
 	}
 	s.writeError(w, http.StatusBadRequest, "invalid_json")
+}
+
+func isJSONBodyTooLargeError(err error) bool {
+	var maxBytesError *http.MaxBytesError
+	return errors.As(err, &maxBytesError)
 }
 
 func (s *Server) requireAuth(w http.ResponseWriter, r *http.Request) (*AuthInfo, bool) {

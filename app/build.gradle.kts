@@ -102,6 +102,11 @@ tasks.configureEach {
                     "Release UPLOAD_BASE_URL must be configured as an https URL, for example -PUPLOAD_BASE_URL=https://api.nongjiqiancha.cn.",
                 )
             }
+            if (sessionApiToken.isNotEmpty()) {
+                throw org.gradle.api.GradleException(
+                    "Release SESSION_API_TOKEN must be empty. Static shared tokens are only allowed for local/internal debug builds.",
+                )
+            }
         }
     }
 }
