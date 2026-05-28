@@ -5,6 +5,7 @@
 
 ## 2026-05-28
 
+- 继续做后端安全 / 高并发第三刀：通用 JSON body 解析增加默认 64KiB 读取上限，并拒绝同一个请求体里夹带多段 JSON；超过限制返回 `413 body_too_large`。App 自动日志接口仍保留更小的 8KiB 上限，图片上传仍按单张 JPEG `<=1MiB` 单独处理。本轮只改请求体解析边界和错误返回，不改接口字段、业务扣次或数据库表结构。
 - 继续做后端安全 / 高并发第二刀：模型出站 HTTP client 改为复用带拨号、TLS 握手、响应头等待和空闲连接限制的 `http.Transport`，但不设置全局 `http.Client.Timeout`，避免误杀 SSE 正文流；主聊天流增加 `CHAT_STREAM_MAX_DURATION_SECONDS` 兜底，默认 30 分钟；SSE 响应增加 `X-Accel-Buffering: no`，提示 Nginx 不缓冲流式响应。本轮只改出站连接和 SSE 头部 / 生命周期，不改计费、鉴权、归档或 Android 滚动链。
 - 后端继续推进并做首轮高并发 / 安全硬化：本地 `server-go` 已通过 `go test ./...` 和 `go build -buildvcs=false ./...`；ECS 上刷新到当前仓库二进制后，`nongji-server` 已从历史 `*:3000` 收口为 `127.0.0.1:3000`，继续只由 Nginx 对外代理。本轮代码层把 `cmd/server` 从裸 `http.ListenAndServe` 改成显式 `http.Server`，默认限制慢请求头、请求读取、空闲连接和最大 header，并支持优雅停机；`WriteTimeout` 默认保持 `0`，避免误杀 SSE 长回答。仍未配置 DashScope 模型 Key，公网域名仍受未备案拦截，HTTPS 仍待证书配置。
 - 用户真机截图确认：无网图片失败原本被 `SparseBottomSpacer` 顶在上方，但再次发送文字后失败图片和新消息都会掉回工作线，说明 clean-state 稀疏首屏仍在和正常滚动链互相抢位置。本轮最终撤掉“首发靠上 / 稀疏首屏”运行时例外：`ChatScreen.kt` 删除 `SparseBottomSpacer`、`cleanStateSparseLayoutActive`、稀疏高度预估和相关 gate，真实聊天消息、图片 pending / 失败、重试态和 streaming 小球统一回到 96dp 工作线、发送期 bottom-lock 与 AutoFollow 主链。后续空白首屏体验不再通过移动真实消息解决，只能考虑欢迎语、示例问题或今日农情这类非聊天消息占位；不要恢复 `Arrangement.Top`、反向列表、active-zone、overlay、raw delta、contentPadding 稀疏或 spacer 稀疏旧方案。

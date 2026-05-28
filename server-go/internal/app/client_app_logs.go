@@ -54,7 +54,7 @@ func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request
 	r.Body = http.MaxBytesReader(w, r.Body, clientAppLogMaxBodyBytes)
 	var body clientAppLogRequest
 	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	input, validationError := normalizeClientAppLogPayload(auth.UserID, auth.MaskedIP, body, time.Now().UnixMilli())

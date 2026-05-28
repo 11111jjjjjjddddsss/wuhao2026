@@ -77,7 +77,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	var body ChatStreamRequest
 	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 

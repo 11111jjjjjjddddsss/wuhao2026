@@ -93,7 +93,7 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 	}
 	var body supportMessageRequest
 	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	normalized, imageURLs, validationError := normalizeSupportMessagePayload(body.Body, body.Images)
@@ -126,7 +126,7 @@ func (s *Server) handleMarkSupportRead(w http.ResponseWriter, r *http.Request) {
 	}
 	var body supportReadRequest
 	if err := decodeJSONBody(r, &body); err != nil && err != io.EOF {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	if err := s.store.MarkSupportMessagesRead(r.Context(), auth.UserID, time.Now().UnixMilli(), body.LastSeenMessageID); err != nil {
@@ -161,7 +161,7 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 	}
 	var body supportAdminMessageRequest
 	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	userID := strings.TrimSpace(body.UserID)

@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +15,12 @@ import (
 
 const (
 	sseHeartbeatInterval = 20 * time.Second
+	defaultJSONBodyLimit = 64 * 1024
+)
+
+var (
+	errJSONBodyTooLarge     = errors.New("json body too large")
+	errJSONBodyTrailingData = errors.New("json body has trailing data")
 )
 
 type Server struct {
@@ -316,7 +324,7 @@ func (s *Server) handleTopupBuy(w http.ResponseWriter, r *http.Request) {
 	}
 	var body orderRequest
 	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	orderID := strings.TrimSpace(body.OrderID)
@@ -406,7 +414,7 @@ func (s *Server) handleRenewTier(w http.ResponseWriter, r *http.Request, targetT
 	}
 	var body orderRequest
 	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	orderID := strings.TrimSpace(body.OrderID)
@@ -465,7 +473,7 @@ func (s *Server) handleUpgradePlusToPro(w http.ResponseWriter, r *http.Request) 
 	}
 	var body orderRequest
 	if err := decodeJSONBody(r, &body); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	orderID := strings.TrimSpace(body.OrderID)
@@ -544,9 +552,44 @@ func (s *Server) writeError(w http.ResponseWriter, status int, code string) {
 }
 
 func decodeJSONBody[T any](r *http.Request, dst *T) error {
+	return decodeJSONBodyLimited(r, dst, defaultJSONBodyLimit)
+}
+
+func decodeJSONBodyLimited[T any](r *http.Request, dst *T, maxBytes int64) error {
 	defer r.Body.Close()
-	decoder := json.NewDecoder(r.Body)
-	return decoder.Decode(dst)
+	if maxBytes <= 0 {
+		maxBytes = defaultJSONBodyLimit
+	}
+	reader := &io.LimitedReader{R: r.Body, N: maxBytes + 1}
+	decoder := json.NewDecoder(reader)
+	if err := decoder.Decode(dst); err != nil {
+		if reader.N <= 0 {
+			return errJSONBodyTooLarge
+		}
+		return err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if reader.N <= 0 {
+			return errJSONBodyTooLarge
+		}
+		if err == nil {
+			return errJSONBodyTrailingData
+		}
+		return err
+	}
+	if reader.N <= 0 {
+		return errJSONBodyTooLarge
+	}
+	return nil
+}
+
+func (s *Server) writeJSONDecodeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errJSONBodyTooLarge) {
+		s.writeError(w, http.StatusRequestEntityTooLarge, "body_too_large")
+		return
+	}
+	s.writeError(w, http.StatusBadRequest, "invalid_json")
 }
 
 func (s *Server) requireAuth(w http.ResponseWriter, r *http.Request) (*AuthInfo, bool) {
