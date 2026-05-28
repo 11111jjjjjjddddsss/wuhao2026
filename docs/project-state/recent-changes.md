@@ -5,6 +5,7 @@
 
 ## 2026-05-28
 
+- 用户真机复测反馈首发消息仍在工作线附近往上滚后，继续收紧稀疏态即时判定：普通回底请求、程序回底、`scrollToBottom(false)`、streaming 同帧预锚和 sendStart lock 不再依赖可能晚一拍的 `cleanStateSparseLayoutEligible` 派生值，而是直接读取 `cleanStateSparseLayoutActive && 当前 messages 已有业务消息`。这样发送事务里刚插入首条 user/assistant 时，普通工作线回底链不会抢在稀疏 bottom padding 生效前先把列表锚到工作线。
 - 三路子代理复查 `Arrangement.Bottom + 动态 bottom padding` 稀疏首屏方案后补护栏：稀疏态实测内容高度改为只单调增，避免 streaming 重排或图片稳定时临时 bottom padding 来回伸缩；稀疏退出除了 `canScrollForward` 外，还要求最新内容底边到达工作线且临时 bottom padding 已缩回容差内，减少提前退出造成的微动；有图片的用户消息统一用整条消息 Column bounds 参与工作线判断，避免未来图片 / 文字顺序调整后底边漏算；列表 bottom padding 的 sendStart lock 消费显式排除稀疏态，固定“稀疏首发绝不吃发送起步锁”的代码不变量。同步把 2026-05-26 历史 `Arrangement.Top` 条目标注为已被本日方案替代。
 - 收到小米 / MiMo 会诊后复核 clean-state 首轮“用户消息下掉再上抬”根因：旧稀疏主链确实会在内容到达工作线时从 `Arrangement.Top` 切回 `Arrangement.Bottom`，存在一拍 layout jump 风险。本轮移除稀疏态 arrangement 切换，`ChatRecyclerViewHost.kt` 全程保持 `Arrangement.Bottom`；`ChatScreen.kt` 改为按稀疏态实测内容高度临时加大 bottom padding，并随文字 / 图片 / 间距 / 失败 footer 真实高度增长自然缩回正常 96dp 工作线。没有照抄会诊稿里的 dynamic top padding，因为在 `Arrangement.Bottom` 下额外 top padding 对短内容位置会被抵消；本轮使用 bottom padding 承接同一目标，避免新旧两套锚点并存。
 - 用户真机反馈清数据后首发消息仍落在大屏手机中上位置，不够靠近顶部，并且首轮 streaming 吐字到一部分时顶部用户消息会先往下掉一下再往上抬。确认稀疏首屏在顶部栏保留高度外还叠加固定呼吸区，先把 `CLEAN_STATE_SPARSE_TOP_OFFSET` 收到 `32dp`，让 clean-state 首条内容更接近顶部栏下方；同时 clean-state 稀疏首发不再启用普通发送起步 bottom-lock / `sendStartAnchorActive`，避免内容刚到工作线时和锁释放叠加造成一拍下掉再上抬。正常有历史消息发送仍保留发送起步锁；“未到工作线不拉底、到工作线恢复 AutoFollow / 小球工作线”的主规则不变。

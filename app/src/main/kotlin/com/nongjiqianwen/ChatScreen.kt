@@ -2444,11 +2444,13 @@ fun ChatScreen() {
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
+    fun hasBusinessChatMessages(): Boolean =
+        messages.any { it.role == ChatRole.USER || it.role == ChatRole.ASSISTANT }
+    fun isCleanStateSparseRuntimeActive(): Boolean =
+        cleanStateSparseLayoutActive && hasBusinessChatMessages()
     val cleanStateSparseLayoutEligible by remember {
         derivedStateOf {
-            if (!cleanStateSparseLayoutActive) return@derivedStateOf false
-            if (messages.isEmpty()) return@derivedStateOf false
-            messages.any { it.role == ChatRole.USER }
+            isCleanStateSparseRuntimeActive()
         }
     }
     val chatListItems by remember(todayAgriCard, messages.size, cleanStateSparseLayoutEligible) {
@@ -2688,7 +2690,7 @@ fun ChatScreen() {
         return latestMessageIndex()
     }
     fun requestForwardListBottomAnchor() {
-        if (cleanStateSparseLayoutEligible) return
+        if (isCleanStateSparseRuntimeActive()) return
         val targetIndex = latestMessageIndexOrMinusOne()
         if (targetIndex >= 0) {
             chatListState.requestScrollToItem(
@@ -4384,7 +4386,7 @@ fun ChatScreen() {
 
     fun requestProgrammaticForwardListBottomAnchor() {
         if (latestMessageIndexOrMinusOne() < 0) return
-        if (cleanStateSparseLayoutEligible) return
+        if (isCleanStateSparseRuntimeActive()) return
         programmaticBottomAnchorGeneration += 1
         val requestGeneration = programmaticBottomAnchorGeneration
         scrollRuntime.programmaticScroll.value = true
@@ -4461,7 +4463,7 @@ fun ChatScreen() {
 
     val shouldAnchorStreamingBottomThisFrame =
         (isStreaming || hasStreamingItem) &&
-            !cleanStateSparseLayoutEligible &&
+            !isCleanStateSparseRuntimeActive() &&
             scrollMode == ScrollMode.AutoFollow &&
             !scrollRuntime.userInteracting.value &&
             !chatListUserDragging &&
@@ -5108,7 +5110,7 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        val shouldProtectSendStartBottomAnchor = !cleanStateSparseLayoutEligible
+        val shouldProtectSendStartBottomAnchor = !isCleanStateSparseRuntimeActive()
         sendStartAnchorActive = shouldProtectSendStartBottomAnchor
         if (!shouldProtectSendStartBottomAnchor) {
             lockedConversationBottomPaddingPx = -1
@@ -5237,6 +5239,7 @@ fun ChatScreen() {
         )
     }
     suspend fun scrollForwardListToBottom() {
+        if (isCleanStateSparseRuntimeActive()) return
         val targetIndex = latestMessageIndexOrMinusOne()
         if (targetIndex < 0) return
         beginProgrammaticChatListScroll()
@@ -5251,7 +5254,7 @@ fun ChatScreen() {
         }
     }
     fun shouldTrackChatListBrowsingFromPointer(): Boolean {
-        return isStreaming || hasStreamingItem || cleanStateSparseLayoutEligible || imageSendInProgress
+        return isStreaming || hasStreamingItem || isCleanStateSparseRuntimeActive() || imageSendInProgress
     }
     fun markChatListUserBrowsingFromPointer() {
         if (!shouldTrackChatListBrowsingFromPointer()) return
@@ -5268,7 +5271,7 @@ fun ChatScreen() {
             !chatListUserDragging
     }
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
-        if (cleanStateSparseLayoutEligible) return@scrollToBottom
+        if (isCleanStateSparseRuntimeActive()) return@scrollToBottom
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
             targetBottomIndex = latestMessageIndexOrMinusOne(),
@@ -6206,9 +6209,10 @@ fun ChatScreen() {
             }
         }
         val renderChatList: @Composable (Int, Int) -> Unit = { conversationBottomPaddingPx, listBottomPaddingPx ->
+            val sparseRuntimeActive = isCleanStateSparseRuntimeActive()
             val effectiveBottomPaddingPx =
                 lockedConversationBottomPaddingPx
-                    .takeIf { sendStartBottomPaddingLockActive && !cleanStateSparseLayoutEligible && it >= 0 }
+                    .takeIf { sendStartBottomPaddingLockActive && !sparseRuntimeActive && it >= 0 }
                     ?.let { lockedPaddingPx -> lockedPaddingPx }
                     ?: listBottomPaddingPx
             val forwardListBottomPaddingPx =
@@ -6225,7 +6229,7 @@ fun ChatScreen() {
             // Arrangement.Bottom cancels extra top padding for short content. Sparse mode keeps
             // Bottom stable and raises early content by temporarily increasing bottom padding.
             val effectiveForwardListBottomPaddingPx =
-                if (cleanStateSparseLayoutEligible && messageViewportHeightPx > 0) {
+                if (sparseRuntimeActive && messageViewportHeightPx > 0) {
                     (
                         messageViewportHeightPx -
                             sparseTargetTopPx -
@@ -6236,7 +6240,7 @@ fun ChatScreen() {
                     forwardListBottomPaddingPx
                 }
             val sparseExtraBottomPaddingPx =
-                if (cleanStateSparseLayoutEligible) {
+                if (sparseRuntimeActive) {
                     (effectiveForwardListBottomPaddingPx - forwardListBottomPaddingPx).coerceAtLeast(0)
                 } else {
                     0
