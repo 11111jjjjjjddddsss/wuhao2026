@@ -4075,6 +4075,10 @@ fun ChatScreen() {
         resetStreamingUiState(clearVisibleContent = true)
         context.clearLocalChatHistoryStateSync(chatScopeId)
         messages.clear()
+        chatListState.requestScrollToItem(0, 0)
+        recyclerFirstVisibleItemIndex = 0
+        recyclerFirstVisibleItemScrollOffset = 0
+        recyclerScrollInProgress = false
         cleanStateSparseLayoutActive = false
         cleanStateSparseTopAnchored = false
         hasStartedConversation = false
@@ -4418,7 +4422,6 @@ fun ChatScreen() {
         if (!reachedNormalWorkline) return@LaunchedEffect
         cleanStateSparseLayoutActive = false
         cleanStateSparseTopAnchored = false
-        withFrameNanos { }
         if (shouldRestoreBottomAnchorAfterCleanStateSparseExit()) {
             requestProgrammaticForwardListBottomAnchor()
         }
@@ -5075,7 +5078,11 @@ fun ChatScreen() {
             )
         )
         streamingBackgrounded = false
-        prepareScrollRuntimeForStreamingStart(scrollRuntime)
+        prepareScrollRuntimeForStreamingStart(
+            runtime = scrollRuntime,
+            preserveUserBrowsing = scrollMode == ScrollMode.UserBrowsing ||
+                scrollRuntime.userInteracting.value
+        )
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
@@ -5217,8 +5224,11 @@ fun ChatScreen() {
             endProgrammaticChatListScroll()
         }
     }
-    fun markStreamingUserBrowsingFromPointer() {
-        if (!isStreaming && !hasStreamingItem) return
+    fun shouldTrackChatListBrowsingFromPointer(): Boolean {
+        return isStreaming || hasStreamingItem || cleanStateSparseLayoutEligible || imageSendInProgress
+    }
+    fun markChatListUserBrowsingFromPointer() {
+        if (!shouldTrackChatListBrowsingFromPointer()) return
         endProgrammaticChatListScroll()
         scrollRuntime.userInteracting.value = true
         if (scrollMode != ScrollMode.UserBrowsing) {
@@ -6232,8 +6242,13 @@ fun ChatScreen() {
                             }
                         )
                         .then(
-                            if (isStreaming || hasStreamingItem) {
-                                Modifier.pointerInput(isStreaming, hasStreamingItem) {
+                            if (shouldTrackChatListBrowsingFromPointer()) {
+                                Modifier.pointerInput(
+                                    isStreaming,
+                                    hasStreamingItem,
+                                    cleanStateSparseLayoutEligible,
+                                    imageSendInProgress
+                                ) {
                                     awaitEachGesture {
                                         val down = awaitFirstDown(
                                             requireUnconsumed = false,
@@ -6248,7 +6263,7 @@ fun ChatScreen() {
                                             if (!change.pressed) break
                                             val movedPx = (change.position - down.position).getDistance()
                                             if (movedPx > viewConfiguration.touchSlop) {
-                                                markStreamingUserBrowsingFromPointer()
+                                                markChatListUserBrowsingFromPointer()
                                                 markedBrowsing = true
                                             }
                                         }

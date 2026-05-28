@@ -208,11 +208,17 @@ internal suspend fun performJumpToBottom(
 }
 
 internal fun prepareScrollRuntimeForStreamingStart(
-    runtime: ChatScrollRuntimeState
+    runtime: ChatScrollRuntimeState,
+    preserveUserBrowsing: Boolean = false
 ) {
     runtime.streamingContentBottomPx.intValue = -1
-    runtime.scrollMode.value = ScrollMode.AutoFollow
-    runtime.userInteracting.value = false
+    if (preserveUserBrowsing) {
+        runtime.scrollMode.value = ScrollMode.UserBrowsing
+        runtime.userInteracting.value = true
+    } else {
+        runtime.scrollMode.value = ScrollMode.AutoFollow
+        runtime.userInteracting.value = false
+    }
 }
 
 internal fun resetScrollRuntimeAfterStreamingStop(
