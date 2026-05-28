@@ -5,6 +5,7 @@
 
 ## 2026-05-28
 
+- 继续做后端安全 / 高并发第五刀：上游模型错误响应和非 SSE 响应的错误体预览限制为 64KiB，今日农情 DashScope JSON 响应限制为 1MiB，避免异常上游返回大包时被 `io.ReadAll` 无上限读入内存；正常主聊天 SSE 正文流仍按流式转发，不套全局 `http.Client.Timeout`。
 - 继续做后端安全 / 高并发第四刀：服务启动迁移改为先在单连接上获取 MySQL 全局命名锁 `nongji_schema_migration`，拿到锁后再按顺序执行 `migrations/*.sql`，完成后释放锁；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整。当前仍是单 ECS，但这能提前避免后续滚动发布 / 多实例同时执行 DDL 抢 metadata lock；本轮不新增 `schema_migrations` 表，历史幂等 SQL 仍按现有方式执行。
 - 继续做后端安全 / 高并发第三刀：通用 JSON body 解析增加默认 64KiB 读取上限，并拒绝同一个请求体里夹带多段 JSON；超过限制返回 `413 body_too_large`。App 自动日志接口仍保留更小的 8KiB 上限，图片上传仍按单张 JPEG `<=1MiB` 单独处理。本轮只改请求体解析边界和错误返回，不改接口字段、业务扣次或数据库表结构。
 - 继续做后端安全 / 高并发第二刀：模型出站 HTTP client 改为复用带拨号、TLS 握手、响应头等待和空闲连接限制的 `http.Transport`，但不设置全局 `http.Client.Timeout`，避免误杀 SSE 正文流；主聊天流增加 `CHAT_STREAM_MAX_DURATION_SECONDS` 兜底，默认 30 分钟；SSE 响应增加 `X-Accel-Buffering: no`，提示 Nginx 不缓冲流式响应。本轮只改出站连接和 SSE 头部 / 生命周期，不改计费、鉴权、归档或 Android 滚动链。

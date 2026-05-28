@@ -550,7 +550,7 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 
 		contentType := response.Header.Get("Content-Type")
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-			body, _ := io.ReadAll(response.Body)
+			body, _ := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
 			_ = response.Body.Close()
 			lastErr = &upstreamStreamOpenError{
 				Message:      fmt.Sprintf("upstream http %d", response.StatusCode),
@@ -569,7 +569,7 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 		}
 
 		if !strings.Contains(strings.ToLower(contentType), "text/event-stream") {
-			body, _ := io.ReadAll(response.Body)
+			body, _ := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
 			_ = response.Body.Close()
 			lastErr = &upstreamStreamOpenError{
 				Message:      "upstream not SSE",

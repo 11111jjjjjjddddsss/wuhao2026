@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -107,6 +109,16 @@ func TestNewBailianClientConfiguresStreamingSafeTransport(t *testing.T) {
 	}
 	if transport.MaxIdleConns != 100 || transport.MaxIdleConnsPerHost != 10 {
 		t.Fatalf("idle pool = %d/%d, want 100/10", transport.MaxIdleConns, transport.MaxIdleConnsPerHost)
+	}
+}
+
+func TestReadLimitedResponseBodyCapsPayload(t *testing.T) {
+	body, err := readLimitedResponseBody(strings.NewReader(strings.Repeat("x", 10)), 4)
+	if !errors.Is(err, errResponseBodyTooLarge) {
+		t.Fatalf("readLimitedResponseBody error = %v, want errResponseBodyTooLarge", err)
+	}
+	if got := string(body); got != "xxxx" {
+		t.Fatalf("body = %q, want capped preview", got)
 	}
 }
 

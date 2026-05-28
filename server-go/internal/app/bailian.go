@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -30,7 +31,11 @@ const (
 	defaultDashScopeTLSHandshakeTimeout   = 10 * time.Second
 	defaultDashScopeResponseHeaderTimeout = 60 * time.Second
 	defaultDashScopeIdleConnTimeout       = 90 * time.Second
+	bailianBodyPreviewLimit               = 64 * 1024
+	dashScopeGenerationBodyLimit          = 1024 * 1024
 )
+
+var errResponseBodyTooLarge = errors.New("response body too large")
 
 func NewBailianClient() *BailianClient {
 	return &BailianClient{
@@ -111,7 +116,7 @@ func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []Ba
 		return "", nil, err
 	}
 	defer resp.Body.Close()
-	bodyBytes, err := io.ReadAll(resp.Body)
+	bodyBytes, err := readLimitedResponseBody(resp.Body, dashScopeGenerationBodyLimit)
 	if err != nil {
 		return "", nil, err
 	}
@@ -186,9 +191,9 @@ func (c *BailianClient) doJSONPayloadRequest(ctx context.Context, url string, ac
 			return resp, nil
 		}
 
-		bodyBytes, readErr := io.ReadAll(resp.Body)
+		bodyBytes, readErr := readLimitedResponseBody(resp.Body, bailianBodyPreviewLimit)
 		_ = resp.Body.Close()
-		if readErr != nil {
+		if readErr != nil && !errors.Is(readErr, errResponseBodyTooLarge) {
 			return nil, readErr
 		}
 		snapshot := cloneHTTPResponse(resp, bodyBytes)
@@ -202,6 +207,20 @@ func (c *BailianClient) doJSONPayloadRequest(ctx context.Context, url string, ac
 		return lastResponse, nil
 	}
 	return nil, fmt.Errorf("DASHSCOPE_API_KEY(S) is missing")
+}
+
+func readLimitedResponseBody(body io.Reader, limit int64) ([]byte, error) {
+	if limit <= 0 {
+		limit = bailianBodyPreviewLimit
+	}
+	data, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return data[:limit], errResponseBodyTooLarge
+	}
+	return data, nil
 }
 
 func (c *BailianClient) sendJSONPayload(ctx context.Context, url string, accept string, payload []byte, apiKey string) (*http.Response, error) {
