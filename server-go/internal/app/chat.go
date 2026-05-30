@@ -15,16 +15,27 @@ import (
 )
 
 const (
-	chatRateLimitWindow   = 60 * time.Second
-	chatRateLimitMaxHits  = 20
-	upstreamMaxAttempts   = 1
-	upstreamRetryBaseWait = 350 * time.Millisecond
-	chatStreamMaxDuration = 30 * time.Minute
+	defaultChatRateLimitWindow        = 60 * time.Second
+	defaultChatRateLimitMaxHits       = 20
+	defaultChatRateLimitPruneInterval = 5 * time.Minute
+	upstreamMaxAttempts               = 1
+	upstreamRetryBaseWait             = 350 * time.Millisecond
+	chatStreamMaxDuration             = 30 * time.Minute
 )
 
 type chatRateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string][]time.Time
+	mu            sync.Mutex
+	buckets       map[string][]time.Time
+	window        time.Duration
+	maxHits       int
+	pruneInterval time.Duration
+	lastPrune     time.Time
+}
+
+type chatRateLimitConfig struct {
+	Window        time.Duration
+	MaxHits       int
+	PruneInterval time.Duration
 }
 
 type upstreamStreamOpenError struct {
@@ -40,25 +51,66 @@ func (e *upstreamStreamOpenError) Error() string {
 }
 
 func newChatRateLimiter() *chatRateLimiter {
-	return &chatRateLimiter{
-		buckets: map[string][]time.Time{},
+	return newChatRateLimiterWithConfig(resolveChatRateLimitConfig())
+}
+
+func newChatRateLimiterWithConfig(config chatRateLimitConfig) *chatRateLimiter {
+	if config.Window <= 0 {
+		config.Window = defaultChatRateLimitWindow
 	}
+	if config.MaxHits <= 0 {
+		config.MaxHits = defaultChatRateLimitMaxHits
+	}
+	if config.PruneInterval <= 0 {
+		config.PruneInterval = defaultChatRateLimitPruneInterval
+	}
+	return &chatRateLimiter{
+		buckets:       map[string][]time.Time{},
+		window:        config.Window,
+		maxHits:       config.MaxHits,
+		pruneInterval: config.PruneInterval,
+	}
+}
+
+func resolveChatRateLimitConfig() chatRateLimitConfig {
+	config := chatRateLimitConfig{
+		Window:        envDurationWithDefault("CHAT_RATE_LIMIT_WINDOW_SECONDS", defaultChatRateLimitWindow),
+		MaxHits:       envIntWithDefault("CHAT_RATE_LIMIT_MAX_HITS", defaultChatRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("CHAT_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultChatRateLimitPruneInterval),
+	}
+	if config.Window <= 0 {
+		config.Window = defaultChatRateLimitWindow
+	}
+	if config.MaxHits <= 0 {
+		config.MaxHits = defaultChatRateLimitMaxHits
+	}
+	if config.PruneInterval <= 0 {
+		config.PruneInterval = defaultChatRateLimitPruneInterval
+	}
+	return config
 }
 
 func (l *chatRateLimiter) Consume(userID string, now time.Time) (bool, int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	if l.lastPrune.IsZero() {
+		l.lastPrune = now
+	} else if now.Sub(l.lastPrune) >= l.pruneInterval {
+		l.pruneLocked(now)
+		l.lastPrune = now
+	}
+
 	existing := l.buckets[userID]
 	valid := existing[:0]
 	for _, ts := range existing {
-		if now.Sub(ts) < chatRateLimitWindow {
+		if now.Sub(ts) < l.window {
 			valid = append(valid, ts)
 		}
 	}
 
-	if len(valid) >= chatRateLimitMaxHits {
-		retryAfter := chatRateLimitWindow - now.Sub(valid[0])
+	if len(valid) >= l.maxHits {
+		retryAfter := l.window - now.Sub(valid[0])
 		l.buckets[userID] = append([]time.Time(nil), valid...)
 		return false, maxInt(1, int(retryAfter.Seconds())+1)
 	}
@@ -66,6 +118,22 @@ func (l *chatRateLimiter) Consume(userID string, now time.Time) (bool, int) {
 	valid = append(valid, now)
 	l.buckets[userID] = append([]time.Time(nil), valid...)
 	return true, 0
+}
+
+func (l *chatRateLimiter) pruneLocked(now time.Time) {
+	for userID, bucket := range l.buckets {
+		valid := bucket[:0]
+		for _, ts := range bucket {
+			if now.Sub(ts) < l.window {
+				valid = append(valid, ts)
+			}
+		}
+		if len(valid) == 0 {
+			delete(l.buckets, userID)
+			continue
+		}
+		l.buckets[userID] = append([]time.Time(nil), valid...)
+	}
 }
 
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
