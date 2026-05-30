@@ -81,15 +81,27 @@ Android 生产域名构建前提：
 
 ## 当前发布方式
 
-当前没有把 GitHub 凭据放到 ECS。仓库在 ECS 上不能直接 `git clone` 私有仓库，因此本次采用：
+当前没有把 GitHub 凭据放到 ECS。仓库在 ECS 上不能直接 `git clone` 私有仓库，因此采用脚本 [deploy-ecs-server.ps1](D:/wuhao/scripts/deploy-ecs-server.ps1) 在本机打包并通过 Cloud Assistant 发布：
 
 1. 本地打包 `server-go` 源码、assets、migrations、go.mod、go.sum
-2. 用 ECS Cloud Assistant `SendFile` 分片下发到 `/tmp/nongji-deploy-chunks`
+2. 用 ECS Cloud Assistant `SendFile` 分片下发到 `/tmp/nongji-deploy-chunks-<commit>`
 3. ECS 本机用 Go 1.26.2 编译到 `/opt/nongjiqiancha/server/nongji-server`
-4. 复制 assets / migrations
-5. 重启 `nongji-server.service`
+4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum
+5. 重启 `nongji-server.service`，执行 `nginx -t` 和 Host healthz
 
-后续可以把这套流程收成仓库脚本，但脚本不得打印或写入任何真实密钥。
+只验证打包不部署：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\deploy-ecs-server.ps1 -PackageOnly
+```
+
+发布当前 HEAD：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\deploy-ecs-server.ps1
+```
+
+脚本不得打印或写入任何真实密钥；不要在发布命令中读取 `/etc/nongjiqiancha/server.env`、`printenv`、`env` 或 `systemctl show -p Environment`。
 
 ## Nginx
 
@@ -117,4 +129,4 @@ Android 生产域名构建前提：
 2. 完成 `api.nongjiqiancha.cn` HTTPS 证书、ICP备案 / App 备案。
 3. 到 OSS 控制台确认服务开通 / 账号状态，解决 `UserDisable` 后创建私有北京 Bucket。
 4. 评估 `/upload` 从本机磁盘迁到 OSS；迁移前保持单台 ECS。
-5. 形成可复用发布脚本和回滚脚本。
+5. 补一个明确的回滚脚本 / 回滚步骤，把 `/opt/nongjiqiancha/server/nongji-server.bak-*` 恢复流程固定下来。
