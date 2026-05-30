@@ -5,6 +5,7 @@
 
 ## 2026-05-30
 
+- 购买并核验阿里云 Redis 开源版最小实例：`nongjiqiancha-prod-redis` / `r-2zet46zvmoo9wu3bic`，Redis 7.0、256MB、标准高可用主备、包年包月到期 `2027-05-30T16:00:00Z`，位于生产 VPC `vpc-2zeax2zowza2398b9dzot` 和北京可用区 L 交换机 `vsw-2zemsq82lj2kp8za90aky`，内网地址 `r-2zet46zvmoo9wu3bic.redis.rds.aliyuncs.com:6379`。已把白名单收敛到 `127.0.0.1` 和 ECS 私网 IP `192.168.1.237`，并从 ECS 验证 DNS 与 TCP 6379 可达。当前 `server-go` 尚未接入 Redis，后续仅作为验证码、限流、缓存和多实例锁的预备资源；新增 `docs/runbooks/redis.md`。
 - 清理阿里云北京区无关网络资源：通过 CLI 确认 ECS、RDS、网卡、安全组、NAT、EIP、SLB、SAE 均未占用空闲资源后，删除旧 SAE 自动交换机 `vsw-2ze3elcd2iad6n1madi5g`、空默认交换机 `vsw-2zemrmbor6c886z5rul20` 和空默认 VPC `vpc-2zeceqyrcmnxhoaxxzjks`；生产 VPC 改名为 `nongjiqiancha-prod-vpc`，生产交换机改名为 `nongjiqiancha-prod-beijing-l`，系统路由表改名为 `nongjiqiancha-prod-system-rt`。当前北京区只保留生产 VPC `vpc-2zeax2zowza2398b9dzot`、生产交换机 `vsw-2zemsq82lj2kp8za90aky` 和系统路由表 `vtb-2ze7xjciht46x324zgt7z`；ECS / RDS 仍在该生产网络内。
 - 同步复查 SLS：北京区仍只有 `default-cms...`、`proj-xtrace...`、`aliyun-product-data...` 这 3 个阿里云系统 / 产品托管日志 Project，未发现农技千查专用业务日志 Project。为避免影响云监控、XTrace / APM 或产品事件，本轮不删除 SLS Project；后续若确认不用 ARMS / APM 或旧 SAE 产品事件，应先从对应产品控制台关闭 / 清理，再删除 SLS 资源。
 
