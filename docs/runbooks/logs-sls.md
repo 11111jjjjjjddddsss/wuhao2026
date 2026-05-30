@@ -1,6 +1,6 @@
 # 日志排查 Runbook
 
-最后更新：2026-05-25
+最后更新：2026-05-30
 
 ## 目的
 
@@ -15,6 +15,7 @@
   - `proj-xtrace-fcd9c65ffd26d6c2a8e8f356745e42db-cn-beijing`：XTrace / APM 托管
   - `aliyun-product-data-1159547719787456-cn-beijing`：产品托管数据，当前包含 `sae_event`
 - 这些项目不是农技千查业务日志，不应在未确认用途 / 费用 / 依赖前直接删除
+- 2026-05-30 已通过阿里云 CLI 复查：北京区仍只有这 3 个系统 / 产品托管 Project，没有农技千查专用 Project。`default-cms...` 和 `proj-xtrace...` 可能影响云监控 / XTrace / APM 视图或历史，`aliyun-product-data...` 当前包含旧产品事件 `sae_event`；本轮不删除这些 SLS 资源。若后续确认确实不需要 ARMS / APM 或旧 SAE 产品事件，先在对应产品控制台关闭 / 清理，再删除 SLS Project / Logstore
 - `server-go` 当前日志先走 ECS 本地 `systemd` journal；Nginx 日志在 `/var/log/nginx/access.log` 和 `/var/log/nginx/error.log`
 
 ## 当前查询入口

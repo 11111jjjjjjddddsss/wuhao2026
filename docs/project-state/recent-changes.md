@@ -3,6 +3,11 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-30
+
+- 清理阿里云北京区无关网络资源：通过 CLI 确认 ECS、RDS、网卡、安全组、NAT、EIP、SLB、SAE 均未占用空闲资源后，删除旧 SAE 自动交换机 `vsw-2ze3elcd2iad6n1madi5g`、空默认交换机 `vsw-2zemrmbor6c886z5rul20` 和空默认 VPC `vpc-2zeceqyrcmnxhoaxxzjks`；生产 VPC 改名为 `nongjiqiancha-prod-vpc`，生产交换机改名为 `nongjiqiancha-prod-beijing-l`，系统路由表改名为 `nongjiqiancha-prod-system-rt`。当前北京区只保留生产 VPC `vpc-2zeax2zowza2398b9dzot`、生产交换机 `vsw-2zemsq82lj2kp8za90aky` 和系统路由表 `vtb-2ze7xjciht46x324zgt7z`；ECS / RDS 仍在该生产网络内。
+- 同步复查 SLS：北京区仍只有 `default-cms...`、`proj-xtrace...`、`aliyun-product-data...` 这 3 个阿里云系统 / 产品托管日志 Project，未发现农技千查专用业务日志 Project。为避免影响云监控、XTrace / APM 或产品事件，本轮不删除 SLS Project；后续若确认不用 ARMS / APM 或旧 SAE 产品事件，应先从对应产品控制台关闭 / 清理，再删除 SLS 资源。
+
 ## 2026-05-28
 
 - 拉后端安全 / Android 长用性能会诊后继续收口：B/C 摘要模型非流式响应现在同样限制 64KiB，避免异常上游大包绕过主聊天 body cap；App 自动日志接口的 8KiB `MaxBytesReader` 超限统一返回 `413 body_too_large`；MySQL schema migration 全局锁释放失败会作为启动错误暴露，不再静默吞掉；聊天区远端历史图片缩略图预览单次读取最多 2MiB，异常大图跳过本地缩略图解码。30 轮 UI 长用复查结论是：前端和后端都已把 UI 历史收在最近 30 轮内，列表长度本身不是当前卡顿主风险，后续更该关注超长单条回复、图片缩略图和真实 release Baseline Profile。本轮已在 ECS 上用同源 `server-go` 跑 `go test ./...` 后编译并重启 `nongji-server`，Nginx Host healthz 仍返回 `ok=true / auth_strict=true / bailian=missing_key / dev_order_endpoints=false`。

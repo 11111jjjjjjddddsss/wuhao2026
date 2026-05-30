@@ -1,6 +1,6 @@
 # 待决策事项
 
-最后更新：2026-05-25
+最后更新：2026-05-30
 
 ## D1 运维入口优先固化到什么形式
 
@@ -23,7 +23,7 @@
 ## D4 正式云资源首版怎么落
 
 - 当前选项：首版已按 `ECS + RDS MySQL + OSS + 域名/HTTPS` 跑最小生产链推进；`SAE + ACR` 镜像托管路线已降级为备选。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项；短期先单环境跑通，是否拆测试 / 生产等真实联调后再评估
-- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，VPC `vpc-2zeax2zowza2398b9dzot`，交换机 `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps；已初始化部署 `server-go`，通过 `nongji-server.service` + Nginx 反向代理运行，当前 `AUTH_STRICT=true`、开发期订单接口关闭、模型 Key 未配置。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，只是默认 demo 镜像，未部署真实后端，已于 2026-05-24 删除，删除后 `ListApplications` 返回空列表。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过；阿里云 DNS 已创建 `api` A 记录指向 `39.106.1.151`，ECS 内解析和 HTTP healthz 已生效，仍待备案、HTTPS 和正式入口绑定。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`；已创建库 `nongjiqiancha` 和账号 `nongji_app`，RDS 白名单当前为 `192.168.1.237`，迁移已跑通。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；当前还没有 Bucket，CLI 创建 Bucket 返回 `UserDisable`。SLS 服务本体已开通，但没有农技千查专用 Project / Logstore；北京区已有 3 个阿里云系统 / 产品托管日志项目，暂不删除。仓库已有 `docs/runbooks/deploy-ecs.md`、`docs/runbooks/deploy-sae.md`、`docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI / Cloud Assistant 运维 ECS / RDS / SLS / OSS 资源包，SAE 应用列表当前为空
+- 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，生产 VPC `nongjiqiancha-prod-vpc` / `vpc-2zeax2zowza2398b9dzot`，生产交换机 `nongjiqiancha-prod-beijing-l` / `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps；2026-05-30 已删除空闲默认 VPC / 默认交换机和旧 SAE 自动交换机。已初始化部署 `server-go`，通过 `nongji-server.service` + Nginx 反向代理运行，当前 `AUTH_STRICT=true`、开发期订单接口关闭、模型 Key 未配置。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，只是默认 demo 镜像，未部署真实后端，已于 2026-05-24 删除，删除后 `ListApplications` 返回空列表。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过；阿里云 DNS 已创建 `api` A 记录指向 `39.106.1.151`，ECS 内解析和 HTTP healthz 已生效，仍待备案、HTTPS 和正式入口绑定。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`；已创建库 `nongjiqiancha` 和账号 `nongji_app`，RDS 白名单当前为 `192.168.1.237`，迁移已跑通。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；当前还没有 Bucket，CLI 创建 Bucket 返回 `UserDisable`。SLS 服务本体已开通，但没有农技千查专用 Project / Logstore；北京区已有 3 个阿里云系统 / 产品托管日志项目，2026-05-30 复查后暂不删除。仓库已有 `docs/runbooks/deploy-ecs.md`、`docs/runbooks/deploy-sae.md`、`docs/runbooks/infra-readiness.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI / Cloud Assistant 运维 ECS / RDS / SLS / OSS 资源包，SAE 应用列表当前为空
 - 待定原因：模型 Key 归属与生产充值告警、OSS Bucket / 访问策略 / 生命周期、后端图片链何时迁 OSS、SLS 是否首版接入、默认 7 天 RDS 备份是否调整、数据库迁移是否长期改成独立发布步骤或加锁、域名解析 / HTTPS / ICP / App 备案、Android 正式登录 token 链和 App 生产 API 地址仍需继续落地
 
 ## D5 C+ 长期记忆怎么落地
