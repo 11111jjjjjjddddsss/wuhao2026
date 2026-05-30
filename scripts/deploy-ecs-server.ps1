@@ -9,10 +9,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 function Invoke-JsonCommand {
-    param([string[]]$Args)
-    $raw = & $Args[0] @($Args[1..($Args.Length - 1)])
+    param([string[]]$CommandArgs)
+    $raw = & $CommandArgs[0] @($CommandArgs[1..($CommandArgs.Length - 1)])
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed: $($Args -join ' ')"
+        throw "Command failed: $($CommandArgs -join ' ')"
     }
     return $raw | ConvertFrom-Json
 }

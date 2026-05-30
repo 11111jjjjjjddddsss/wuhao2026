@@ -103,6 +103,18 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\deploy-ecs-
 
 脚本不得打印或写入任何真实密钥；不要在发布命令中读取 `/etc/nongjiqiancha/server.env`、`printenv`、`env` 或 `systemctl show -p Environment`。
 
+查看可回滚二进制备份：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ecs-server.ps1
+```
+
+按备份名回滚，必须显式加 `-Apply`：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ecs-server.ps1 -BackupName nongji-server.bak-YYYYMMDDHHMMSS -Apply
+```
+
 ## Nginx
 
 - 当前 Nginx 只监听 HTTP 80；HTTPS 证书未配置
@@ -129,4 +141,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\deploy-ecs-
 2. 完成 `api.nongjiqiancha.cn` HTTPS 证书、ICP备案 / App 备案。
 3. 到 OSS 控制台确认服务开通 / 账号状态，解决 `UserDisable` 后创建私有北京 Bucket。
 4. 评估 `/upload` 从本机磁盘迁到 OSS；迁移前保持单台 ECS。
-5. 补一个明确的回滚脚本 / 回滚步骤，把 `/opt/nongjiqiancha/server/nongji-server.bak-*` 恢复流程固定下来。
+5. 给发布 / 回滚脚本补更完整的异常处理和发布记录归档。
