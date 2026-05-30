@@ -219,6 +219,14 @@ import kotlin.math.abs
 import kotlin.coroutines.resume
 
 private enum class ChatRole { USER, ASSISTANT }
+
+private enum class InitialWorklinePhase {
+    WaitingForFirstSend,
+    TopUnreached,
+    HandoffPending,
+    WorklineOwned
+}
+
 @Immutable
 private data class ChatMessage(
     val id: String,
@@ -2433,6 +2441,15 @@ fun ChatScreen() {
     }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var initialWorklinePhase by rememberSaveable(uiRuntimeResetKey) {
+        mutableStateOf(
+            if (initialLocalMessages.isEmpty() && initialStreamingDraft == null) {
+                InitialWorklinePhase.WaitingForFirstSend
+            } else {
+                InitialWorklinePhase.WorklineOwned
+            }
+        )
+    }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val sendStartAnchorActiveState = remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var sendStartAnchorActive by sendStartAnchorActiveState
@@ -2461,17 +2478,26 @@ fun ChatScreen() {
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
     val chatListItems by remember(
         todayAgriCard,
-        messages.size
+        messages.size,
+        initialWorklinePhase
     ) {
         derivedStateOf {
+            val visibleTodayAgriCard = todayAgriCard.takeUnless {
+                initialWorklinePhase == InitialWorklinePhase.TopUnreached ||
+                    initialWorklinePhase == InitialWorklinePhase.HandoffPending
+            }
             buildChatTimelineItems(
                 messages = messages,
-                todayAgriCard = todayAgriCard
+                todayAgriCard = visibleTodayAgriCard
             )
         }
     }
-    val hasTodayAgriCard by remember(todayAgriCard) {
-        derivedStateOf { todayAgriCard?.isRenderableTodayAgriCard() == true }
+    val hasTodayAgriCard by remember(todayAgriCard, initialWorklinePhase) {
+        derivedStateOf {
+            todayAgriCard?.isRenderableTodayAgriCard() == true &&
+                initialWorklinePhase != InitialWorklinePhase.TopUnreached &&
+                initialWorklinePhase != InitialWorklinePhase.HandoffPending
+        }
     }
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
@@ -2693,7 +2719,35 @@ fun ChatScreen() {
     fun latestMessageIndexOrMinusOne(): Int {
         return latestMessageIndex()
     }
-    fun requestForwardListBottomAnchor() {
+    fun isInitialWorklineTopUnreached(): Boolean =
+        initialWorklinePhase == InitialWorklinePhase.TopUnreached
+
+    fun isInitialWorklineHandoffPending(): Boolean =
+        initialWorklinePhase == InitialWorklinePhase.HandoffPending
+
+    fun shouldSuppressAutomaticBottomAnchor(): Boolean =
+        isInitialWorklineTopUnreached() || isInitialWorklineHandoffPending()
+
+    fun shouldStartInitialWorklineTopFlow(): Boolean =
+        initialWorklinePhase == InitialWorklinePhase.WaitingForFirstSend &&
+            messages.isEmpty() &&
+            !isStreaming &&
+            !hasStreamingItem
+
+    fun keepOrStartInitialWorklineTopFlow(shouldStart: Boolean) {
+        if (shouldStart || isInitialWorklineTopUnreached()) {
+            initialWorklinePhase = InitialWorklinePhase.TopUnreached
+        }
+    }
+
+    fun releaseInitialWorklineToBottom() {
+        if (initialWorklinePhase != InitialWorklinePhase.WorklineOwned) {
+            initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+        }
+    }
+
+    fun requestForwardListBottomAnchor(force: Boolean = false) {
+        if (!force && shouldSuppressAutomaticBottomAnchor()) return
         val targetIndex = latestMessageIndexOrMinusOne()
         if (targetIndex >= 0) {
             chatListState.requestScrollToItem(
@@ -2993,10 +3047,12 @@ fun ChatScreen() {
         userDrivenListMotionForJumpButton,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForLifecycleResume,
-        messages.size
+        messages.size,
+        initialWorklinePhase
     ) {
         derivedStateOf {
             startupLayoutReady &&
+                !shouldSuppressAutomaticBottomAnchor() &&
                 !keyboardVisibleForJumpButton &&
                 !userDrivenListMotionForJumpButton &&
                 !suppressJumpButtonForLifecycleResume &&
@@ -3379,6 +3435,12 @@ fun ChatScreen() {
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
         anchoredUserMessageId = null
+        initialWorklinePhase =
+            if (initialLocalMessages.isEmpty() && initialStreamingDraft == null) {
+                InitialWorklinePhase.WaitingForFirstSend
+            } else {
+                InitialWorklinePhase.WorklineOwned
+            }
         inputLimitHintVisible = false
         composerStatusHintVisible = false
         composerStatusHintText = ""
@@ -4083,6 +4145,7 @@ fun ChatScreen() {
         recyclerFirstVisibleItemScrollOffset = 0
         recyclerScrollInProgress = false
         hasStartedConversation = false
+        initialWorklinePhase = InitialWorklinePhase.WaitingForFirstSend
         initialBottomSnapDone = false
         postInitialSnapCorrectionDone = false
         scrollMode = ScrollMode.AutoFollow
@@ -4195,6 +4258,9 @@ fun ChatScreen() {
                 shouldApplyHydratedSnapshot
             ) {
                 replaceMessages(hydratedSnapshot.messages)
+                if (hydratedSnapshot.messages.isNotEmpty()) {
+                    initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+                }
                 failedUserMessageStates.clear()
                 failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
                 failedAssistantMessageStates.clear()
@@ -4377,12 +4443,13 @@ fun ChatScreen() {
         }
     }
 
-    fun requestProgrammaticForwardListBottomAnchor() {
+    fun requestProgrammaticForwardListBottomAnchor(force: Boolean = false) {
         if (latestMessageIndexOrMinusOne() < 0) return
+        if (!force && shouldSuppressAutomaticBottomAnchor()) return
         programmaticBottomAnchorGeneration += 1
         val requestGeneration = programmaticBottomAnchorGeneration
         scrollRuntime.programmaticScroll.value = true
-        requestForwardListBottomAnchor()
+        requestForwardListBottomAnchor(force = force)
         snackbarScope.launch {
             withFrameNanos { }
             if (programmaticBottomAnchorGeneration == requestGeneration) {
@@ -4392,8 +4459,58 @@ fun ChatScreen() {
         }
     }
 
+    LaunchedEffect(
+        initialWorklinePhase,
+        messages.size,
+        currentLastMessageContentBottomPx(),
+        currentUnifiedBottomTargetPx(),
+        startupLayoutReady,
+        sendUiSettling,
+        isComposerSettling,
+        chatListUserDragging,
+        recyclerScrollInProgress,
+        scrollRuntime.userInteracting.value,
+        scrollMode
+    ) {
+        if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return@LaunchedEffect
+        if (!startupLayoutReady || messages.isEmpty()) return@LaunchedEffect
+        if (
+            sendUiSettling ||
+            isComposerSettling ||
+            chatListUserDragging ||
+            recyclerScrollInProgress ||
+            scrollRuntime.userInteracting.value ||
+            scrollMode == ScrollMode.UserBrowsing
+        ) {
+            return@LaunchedEffect
+        }
+        val latestContentBottomPx = currentLastMessageContentBottomPx()
+        val worklineBottomPx = currentUnifiedBottomTargetPx()
+        if (
+            latestContentBottomPx > 0 &&
+            worklineBottomPx > 0 &&
+            latestContentBottomPx >= worklineBottomPx
+        ) {
+            initialWorklinePhase = InitialWorklinePhase.HandoffPending
+        }
+    }
+
+    if (isInitialWorklineHandoffPending() && latestMessageIndexOrMinusOne() >= 0) {
+        SideEffect {
+            requestProgrammaticForwardListBottomAnchor(force = true)
+        }
+    }
+
+    LaunchedEffect(initialWorklinePhase, messages.size) {
+        if (initialWorklinePhase != InitialWorklinePhase.HandoffPending) return@LaunchedEffect
+        withFrameNanos { }
+        requestProgrammaticForwardListBottomAnchor(force = true)
+        initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+    }
+
     val shouldAnchorStreamingBottomThisFrame =
         (isStreaming || hasStreamingItem) &&
+            !shouldSuppressAutomaticBottomAnchor() &&
             scrollMode == ScrollMode.AutoFollow &&
             !scrollRuntime.userInteracting.value &&
             !chatListUserDragging &&
@@ -4469,7 +4586,8 @@ fun ChatScreen() {
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
                 val shouldPreAnchorBottom =
-                    scrollMode == ScrollMode.AutoFollow &&
+                    !shouldSuppressAutomaticBottomAnchor() &&
+                        scrollMode == ScrollMode.AutoFollow &&
                         !scrollRuntime.userInteracting.value &&
                         !chatListUserDragging &&
                         latestMessageIndexOrMinusOne() >= 0
@@ -4806,11 +4924,13 @@ fun ChatScreen() {
         existingUserMessageId: String? = null
     ) {
         if ((text.isEmpty() && imageUris.isEmpty() && imageUrls.isEmpty()) || isStreaming || sendUiSettling) return
+        val shouldUseInitialTopFlow = shouldStartInitialWorklineTopFlow()
         composerCollapseOverlayVisible = false
         sendUiSettling = true
         snackbarScope.launch {
             try {
                 hasStartedConversation = true
+                keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
                 val userId = existingUserMessageId
@@ -4852,6 +4972,7 @@ fun ChatScreen() {
         previewImageUris: List<String>
     ): String? {
         if ((text.isEmpty() && previewImageUris.isEmpty()) || isStreaming || sendUiSettling) return null
+        val shouldUseInitialTopFlow = shouldStartInitialWorklineTopFlow()
         val preSendStableCollapsedReservePx =
             if (!listShouldTrackRealtimeComposerGeometry) {
                 (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
@@ -4863,6 +4984,7 @@ fun ChatScreen() {
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
+        keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
 
@@ -4932,6 +5054,7 @@ fun ChatScreen() {
         collapseComposer: Boolean = true
     ) {
         if ((text.isEmpty() && uploadedImageUrls.isEmpty()) || isStreaming || sendUiSettling) return
+        val shouldUseInitialTopFlow = shouldStartInitialWorklineTopFlow()
         val preSendStableCollapsedReservePx =
             if (!listShouldTrackRealtimeComposerGeometry) {
                 (latestConversationBottomPaddingPx - streamVisibleBottomGapPx)
@@ -4943,6 +5066,7 @@ fun ChatScreen() {
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
+        keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
         if (collapseComposer) {
@@ -5029,8 +5153,8 @@ fun ChatScreen() {
         fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
-        sendStartAnchorActive = true
-        if (latestMessageIndexOrMinusOne() >= 0) {
+        sendStartAnchorActive = !shouldSuppressAutomaticBottomAnchor()
+        if (sendStartAnchorActive && latestMessageIndexOrMinusOne() >= 0) {
             requestProgrammaticForwardListBottomAnchor()
         }
         sendUiSettling = false
@@ -5153,7 +5277,8 @@ fun ChatScreen() {
             refreshChatListMetrics = ::refreshChatListMetrics
         )
     }
-    suspend fun scrollForwardListToBottom() {
+    suspend fun scrollForwardListToBottom(force: Boolean = false) {
+        if (!force && shouldSuppressAutomaticBottomAnchor()) return
         val targetIndex = latestMessageIndexOrMinusOne()
         if (targetIndex < 0) return
         beginProgrammaticChatListScroll()
@@ -5168,7 +5293,7 @@ fun ChatScreen() {
         }
     }
     fun shouldTrackChatListBrowsingFromPointer(): Boolean {
-        return isStreaming || hasStreamingItem || imageSendInProgress
+        return isStreaming || hasStreamingItem || imageSendInProgress || isInitialWorklineTopUnreached()
     }
     fun markChatListUserBrowsingFromPointer() {
         if (!shouldTrackChatListBrowsingFromPointer()) return
@@ -5185,6 +5310,7 @@ fun ChatScreen() {
             !chatListUserDragging
     }
     val scrollToBottom: suspend (Boolean) -> Unit = scrollToBottom@{ animated ->
+        if (shouldSuppressAutomaticBottomAnchor()) return@scrollToBottom
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
             targetBottomIndex = latestMessageIndexOrMinusOne(),
@@ -5428,6 +5554,7 @@ fun ChatScreen() {
 
     fun jumpToBottom() {
         snackbarScope.launch {
+            releaseInitialWorklineToBottom()
             performJumpToBottom(
                 messagesCount = messages.size,
                 hasStreamingItem = hasStreamingItem,
@@ -5436,7 +5563,7 @@ fun ChatScreen() {
                 userInteractingState = scrollRuntime.userInteracting,
                 jumpButtonPulseVisibleState = scrollRuntime.jumpButtonPulseVisible,
                 scrollToBottom = {
-                    scrollForwardListToBottom()
+                    scrollForwardListToBottom(force = true)
                 }
             )
         }
@@ -5456,7 +5583,7 @@ fun ChatScreen() {
         isNearStreamingWorkline = ::isNearStreamingWorkline,
         isAtStreamingWorklineStrict = ::isAtStreamingWorklineStrict,
         isAtPhysicalBottom = { !chatListState.canScrollForward },
-        requestBottomAnchor = ::requestProgrammaticForwardListBottomAnchor
+        requestBottomAnchor = { requestProgrammaticForwardListBottomAnchor() }
     )
 
     BoxWithConstraints(
@@ -6166,7 +6293,11 @@ fun ChatScreen() {
                     },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = forwardListBottomPaddingPx,
-                    verticalArrangement = Arrangement.Bottom,
+                    verticalArrangement = if (isInitialWorklineTopUnreached()) {
+                        Arrangement.Top
+                    } else {
+                        Arrangement.Bottom
+                    },
                     modifier = Modifier
                         .then(
                             if (hasActiveMessageSelection) {

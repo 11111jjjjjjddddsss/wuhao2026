@@ -27,7 +27,7 @@ Accepted
 关键规则：
 
 1. `messages` 按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`。
-2. `ChatRecyclerViewHost.kt` 使用普通 `LazyColumn` 和 `verticalArrangement = Arrangement.Bottom`，不再使用 `reverseLayout` / `items.asReversed()`。
+2. `ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，默认 `verticalArrangement = Arrangement.Bottom`，不再使用 `reverseLayout` / `items.asReversed()`。唯一例外是 `InitialWorklinePhase.TopUnreached`：清数据 / 删除历史后的首次真实业务内容尚未碰到 96dp 工作线前，临时使用 `Arrangement.Top`，让真实消息从顶部自然向下排。
 3. 回到底部和 AutoFollow 使用最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`。
 4. 工作线 gap 固定为 `96.dp`。waiting 小球、streaming 正文底边、开机历史态、完成态尾部都围绕这条工作线；工作线以下空白必须完整露出来。
 5. 小球锚点稳定不是靠 overlay，也不是靠 streaming 小分割。它依赖：
@@ -39,6 +39,7 @@ Accepted
 6. composer 是页面底部兄弟层，自己吃 `imePadding()`，根容器和列表不吃 IME 动画帧。输入框内容高度不能进入聊天列表 reserve。
 7. streaming 正文和 settled 文本共用同一条 assistant item 和同一套 soft-wrap renderer；完成态继续保留两阶段 finalize。
 8. 用户进入 `UserBrowsing` 后让权。用户手动滑回正向列表物理底部后，先请求一次底部锚点，再恢复 `AutoFollow`。
+9. 首屏未触线不是第二主人，也不是 UI spacer。`InitialWorklinePhase` 只 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor；最新真实消息内容底边到达 96dp 工作线后进入 `HandoffPending`，force 一次正向底部锚点并切回 `WorklineOwned / Arrangement.Bottom` 主链。
 
 ## 禁止回退
 
@@ -50,6 +51,7 @@ Accepted
 - streaming 小分割 / block item 化；
 - `scrollBy(...)` / `dispatchRawDelta(...)` 作为 streaming 高度补偿；
 - 旧 committed 物理行预切 / TextMeasurer 渲染链；
+- `SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 bottom padding / spacer 或按首轮次数猜测的 clean-state 旧链；
 - 同拍直接切 settled，绕过两阶段 finalize；
 - 把输入框当前内容高度、IME 动画高度、附件预览高度偷渡进消息列表 bottom reserve。
 
@@ -62,10 +64,12 @@ Accepted
 - 用户上滑 / 下滑时由单一列表状态机接管，不再发生 overlay / list 切管。
 - 完成态收口不再换成另一套渲染树，也不再主动把长回复重新锚到上方。
 - 输入框 IME 动画与消息工作线解耦。
+- 清数据 / 删除历史后的短首屏不再硬吊在底部工作线；真实内容未触线时自然向下排，触线后再回到同一条工作线主链。
 
 代价：
 
 - 当前依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 向上推并在末端 clamp 的实现语义。
+- `TopUnreached -> WorklineOwned` 存在一次窄的 arrangement handoff，必须只在真实内容底边已经到达工作线后发生，不能恢复成旧的 spacer / padding 拉扯。
 - 仍需要继续用不同机型、字体缩放、输入法和 Android 版本回归，确认 `SideEffect` 同帧锚定和底部 reserve 在低端设备上也稳定。
 - 真表格渲染、C+ 长期资产、精确地点采集、天气 API 等都不是本 ADR 处理范围。
 

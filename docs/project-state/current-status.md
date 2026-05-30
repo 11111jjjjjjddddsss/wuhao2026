@@ -53,7 +53,7 @@
 ## 聊天 UI 主链
 
 - `ChatRecyclerViewHost.kt` 当前是正向 `LazyColumn`，没有 `reverseLayout`，没有 `items.asReversed()`
-- `ChatRecyclerViewHost.kt` 始终使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近，并避免运行时切换 arrangement。clean-state / 删除所有历史后不再有“首发靠上 / 稀疏首屏”运行时例外；真实聊天消息、图片消息、图片上传 pending、失败态、重试态和 streaming 小球都统一走 96dp 工作线、发送期 bottom-lock 与 AutoFollow 主链。`SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer 和运行时 `Arrangement.Top` 切换均已废弃，后续不能作为并存旧方案恢复；空白首屏体验若要优化，应放到欢迎语、示例问题或今日农情这类非聊天消息占位上处理
+- `ChatRecyclerViewHost.kt` 默认使用 `verticalArrangement = Arrangement.Bottom`，确保短内容不满一屏时也贴在底部工作线附近；唯一例外是清数据 / 删除历史后的首次真实业务内容尚未碰到工作线时，`ChatScreen.kt` 用 `InitialWorklinePhase.TopUnreached` 临时切到 `Arrangement.Top`，让真实用户消息、图片 pending / 失败、assistant placeholder 和 streaming 小球从顶部自然向下排。该阶段会 gate 普通回底、AutoFollow 预锚和 sendStart bottom anchor；最新真实消息内容底边到达 96dp 工作线后进入 `HandoffPending`，force 一次正向底部锚点并切回默认 `WorklineOwned / Arrangement.Bottom` 主链。`SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer、反向列表、overlay 和 raw delta 仍是废弃旧方案，后续不能作为并存旧方案恢复；今日农情卡片在未触线阶段临时隐藏，避免 UI-only 卡片影响工作线判断
 - `ChatScreen.kt` 当前使用 `ChatTimelineItem` 作为列表展示层，允许插入一个 UI-only 今日农情卡片；真实业务消息仍只来自 `messages`，不再通过 `chatListItems` 派生 streaming block item
 - streaming 小分割 / block item 化已撤掉：`StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex / streaming_tail` 等符号在主链无残留
 - mixed active-zone / overlay 运行时已退出主链：

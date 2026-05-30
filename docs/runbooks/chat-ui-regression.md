@@ -1,6 +1,6 @@
 # Chat UI 回归与接手 Runbook
 
-最后更新：2026-05-24
+最后更新：2026-05-30
 
 ## 目的
 
@@ -20,6 +20,7 @@
 ## 当前稳定基线
 
 - 消息列表是单一正向 `LazyColumn` 主人，`messages` oldest -> newest，视觉底部最新消息是 `lastIndex`
+- 清数据 / 删除历史后的首次真实业务内容未触到工作线前，运行时是 `InitialWorklinePhase.TopUnreached`：同一个 `LazyColumn` 临时 `Arrangement.Top`，真实消息、图片 pending / 失败、assistant placeholder、失败 footer 和小球从顶部自然向下排；最新真实消息内容底边触到 96dp 工作线后，force 一次正向底部锚点并回到默认 `Arrangement.Bottom`
 - 工作线 gap 是 `96.dp`，小球、streaming 正文、开机历史态、完成态尾部都围绕这条工作线；工作线以下空白必须完整露出来
 - AutoFollow / 回到底部使用 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`
 - streaming 内容提交后由 `SideEffect` 在同帧 apply changes 后、layout 前请求底部锚定，压“下一行从工作线下方冒头闪”
@@ -44,19 +45,25 @@
 - streaming 高度 `scrollBy(...)` / `dispatchRawDelta(...)`
 - `followStreamingByDelta(...)`
 - 消息运行时 overlay / active-zone 作为第二消息主人
+- `SparseBottomSpacer`
+- `cleanStateSparseLayoutActive`
+- 动态稀疏 bottom padding / spacer
 
 说明：输入框收口相关的 `ChatComposerCollapseOverlay` 属于 composer 自己的残影 / 回缩链，不是消息运行时主人。排查旧链残留时不要把 composer overlay 和已废弃的 streaming message overlay 混为一谈。
 
 ## 快速回归场景
 
-### A. 首屏与完成态贴底
+### A. 首屏未触线与完成态贴底
 
 步骤：
 - 清数据后首次进入
+- 删除所有历史对话后首次发 1 个字、发纯图、发图文
 - 有本地 / 后端历史时进入聊天页
 - 生成完成后停在完成态
 
 预期：
+- 清数据 / 删除历史后，首条真实业务内容未触到工作线前应从顶部自然向下排，不应吊在底部工作线；图片上传失败、用户失败 footer、assistant 失败 footer 都算真实内容高度
+- 最新真实内容底边触到或超过 96dp 工作线后，应交回默认工作线主链；之后小球、streaming 正文和完成态尾部围绕工作线
 - 最新消息尾部命中 96dp 工作线
 - 工作线以下空白完整露出来
 - 不应还能继续往上扒出额外底部空白
@@ -70,7 +77,8 @@
 - 纯图 / 图文发送
 
 预期：
-- 用户消息和 waiting 小球第一时间落在工作线附近
+- 普通有历史 / 已触线场景：用户消息和 waiting 小球第一时间落在工作线附近
+- 清数据 / 删除历史后的未触线场景：用户消息和 waiting 小球从顶部自然向下排，直到真实内容底边触到工作线后再恢复工作线锚点
 - 发送瞬间历史文本不明显上下弹
 - 输入框清空回缩不带旧高度残影
 

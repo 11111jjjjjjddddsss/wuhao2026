@@ -258,7 +258,7 @@ Clean-State 必做回归的范围：
 - `ChatRecyclerViewHost.kt` 当前使用：
   - `LazyColumn`
   - `items = ChatTimelineItem` 展示层；当前可能包含一个 `TodayAgriCard` UI-only 卡片和真实 `messages`
-  - `verticalArrangement = Arrangement.Bottom`，用于正向列表短内容不满一屏时也贴到底部工作线
+  - 默认 `verticalArrangement = Arrangement.Bottom`，用于正向列表短内容不满一屏时也贴到底部工作线；唯一运行时例外是 `InitialWorklinePhase.TopUnreached`：清数据 / 删除历史后的首次真实业务内容尚未碰到 96dp 工作线前，临时使用 `Arrangement.Top` 让真实消息自然从顶部往下排
   - `messages` 仍按 oldest -> newest 存储；视觉底部最新真实消息通过 `ChatTimelineItem.Message` 反查 index，不能把今日农情卡片当成最新消息锚点
   - 回到底部 / AutoFollow 使用最新真实消息 index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义，把最新消息底部压到工作线附近
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
@@ -279,7 +279,7 @@ Clean-State 必做回归的范围：
 
 1. 发送起步
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 做法：在同一发送事务里同步完成输入框收口、`upsertUserMessage(...)`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)`、发送期 reserve 锁，以及按正向列表口径同步请求最新消息 `lastIndex` 贴到底部工作线
+- 做法：在同一发送事务里同步完成输入框收口、`upsertUserMessage(...)`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)` 和发送期 reserve 锁；普通有历史 / 已触线场景按正向列表口径同步请求最新消息 `lastIndex` 贴到底部工作线，`InitialWorklinePhase.TopUnreached` 阶段则暂时挡住自动回底，等真实内容底边碰到 96dp 工作线后再交回主链
 - 当前目标：发送起步仍保持单一列表主人；不再靠 active zone / overlay 切主人来承接当前轮消息
 
 2. AutoFollow / 回到底部
@@ -310,7 +310,7 @@ Clean-State 必做回归的范围：
   - `messages` 作为 oldest -> newest 的唯一业务消息数据源；列表显示层可以包一层 `ChatTimelineItem` 承接 UI-only 今日农情卡片，但不再通过 `chatListItems` 派生 streaming block item
   - `currentLastMessageContentBottomPx()` 的 fallback 按正向列表使用最新真实消息的 UI index
   - `currentBottomOverflowPx()` 按正向列表单主人口径计算最新消息底边与统一底部目标之间的绝对误差
-- clean-state / 删除所有历史后不再有“首发靠上 / 稀疏首屏”运行时例外。`ChatRecyclerViewHost.kt` 全程保持 `Arrangement.Bottom`，真实聊天消息、图片消息、失败态、重试态、图片上传 pending 和 streaming 小球都统一走 96dp 工作线、发送期 bottom-lock 与 AutoFollow 主链。`ChatTimelineItem.SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer、运行时 `Arrangement.Top` 切换都已废弃，不允许再作为并存旧方案恢复；如果以后觉得空白首屏体验需要优化，只能做欢迎语、示例问题或今日农情这类非聊天消息占位，不能再通过移动真实聊天消息来绕开工作线
+- clean-state / 删除所有历史后的首屏体验当前用 `InitialWorklinePhase` 收口，而不是旧“稀疏首屏”方案：`WaitingForFirstSend -> TopUnreached -> HandoffPending -> WorklineOwned`。只有发送前没有任何真实业务消息时才进入 `TopUnreached`；该阶段真实聊天消息、图片消息、图片上传 pending、失败态、重试态、assistant placeholder 和 streaming 小球都仍在同一个 `LazyColumn` 里，只是临时 `Arrangement.Top`，并 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor。最新真实消息内容底边到达或超过 96dp 工作线后进入 `HandoffPending`，同拍 force 一次正向底部锚点并切回 `WorklineOwned`，之后完全恢复默认 `Arrangement.Bottom`、发送期 bottom-lock 与 AutoFollow 主链。`ChatTimelineItem.SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer、反向列表、overlay、raw delta 都仍是废弃旧方案，不允许并存恢复；今日农情卡片在 `TopUnreached / HandoffPending` 临时隐藏，避免 UI-only 卡片把真实消息提前推过工作线
 - 发送起步当前保留的旧保护只有两样：
   - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`
   - `sendStartAnchorActive`
@@ -326,8 +326,8 @@ Clean-State 必做回归的范围：
   2. `upsertUserMessage(...)`
   3. 插入 assistant placeholder
   4. `prepareScrollRuntimeForStreamingStart(...)`
-  5. 置 `sendStartAnchorActive = true`
-  6. 按正向列表口径同步请求最新真实消息 UI index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让新插入的底部 assistant placeholder 成为视觉底部锚点
+  5. 普通已触线场景置 `sendStartAnchorActive = true`；`TopUnreached` 阶段保持 `false`
+  6. 普通已触线场景按正向列表口径同步请求最新真实消息 UI index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，让新插入的底部 assistant placeholder 成为视觉底部锚点；`TopUnreached` 阶段先让内容从顶部自然向下长，到工作线后再交回该锚点链
 - `scrollToBottom(false)` 当前是正向列表主链口径；聊天页主调处应把“视觉底部最新真实消息”的 UI index 传给 coordinator，并使用 `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，不要回到 `scrollToItem(0)`
 - 正向列表主链下不再运行旧 streaming 高度追滚：`BindChatListScrollEffects(...)` 不允许再调用 `followStreamingByDelta(...)`、`scrollBy(...)` 或 `dispatchRawDelta(...)` 去追 streaming 正文高度，`streamBottomFollowActive` 空壳状态也不再保留；streaming 期间只维护单一 `Idle / AutoFollow / UserBrowsing` 状态机、发送起步保护和正向底部锚点请求
 - AutoFollow 中每次 reveal 提交前会先请求一次最新消息底部锚点；提交 `streamingMessageContent` 后，`ChatScreen.kt` 顶层通过 `SideEffect` 在同帧 apply changes 后、layout 前再次请求最新消息底部锚点，减少“新换行先进树、下一帧才贴底”造成的工作线下方冒头闪
