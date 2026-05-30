@@ -4504,7 +4504,6 @@ fun ChatScreen() {
     LaunchedEffect(initialWorklinePhase, messages.size) {
         if (initialWorklinePhase != InitialWorklinePhase.HandoffPending) return@LaunchedEffect
         withFrameNanos { }
-        requestProgrammaticForwardListBottomAnchor(force = true)
         initialWorklinePhase = InitialWorklinePhase.WorklineOwned
     }
 
