@@ -162,6 +162,8 @@ rm -rf "`$stage"
 mkdir -p "`$stage"
 tar -xzf "`$archive" -C "`$stage"
 cd "`$stage"
+export GOPROXY="`${GOPROXY:-https://goproxy.cn,direct}"
+export GOSUMDB="`${GOSUMDB:-sum.golang.google.cn}"
 
 echo test
 go test ./...
