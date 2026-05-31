@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-05-31
+
+- 再拉 3 路代理复查首屏未触线链路后补两处小护栏：本地确认运行时代码没有 `SparseBottomSpacer`、`cleanStateSparse`、动态稀疏 padding / spacer、TextMeasurer 稀疏估高、反向列表、`asReversed()` 或 raw delta 旧链残留；`ChatScreen.kt` 只在 `InitialWorklinePhase.TopUnreached` 下清理已经回到物理底部且不再拖动 / 滚动的 stale `UserBrowsing / userInteracting`，避免首屏图片失败或弱网后用户轻划一下就卡住 handoff；本地聊天窗口快照新增 `initialWorklineOwned` 标记，首屏未触线 / HandoffPending 时被系统杀掉再进入，仍能恢复为未触线阶段，真正交给 96dp 工作线后才持久化为 owned。正常 `WorklineOwned / Arrangement.Bottom`、96dp 工作线、AutoFollow、图片 / 失败态 bounds、今日农情隐藏规则和旧滚动主链未改。`git diff --check` 和 `.\gradlew.bat :app:compileDebugKotlin` 已通过，仅剩既有 `LocalLifecycleOwner` deprecated 警告。
+
 ## 2026-05-30
 
 - 将后端最新 `server-go` 变更部署到 ECS：本地打包 `176c20a0` 源码后通过 Cloud Assistant 分片下发到 `/tmp`，ECS 上校验 SHA-256、运行 `go test ./...`、编译、备份旧二进制、替换并重启 `nongji-server`。重启瞬间 Nginx healthz 曾出现一次 502，延迟复查后直接 Go 端和 Nginx Host healthz 均返回 `ok=true / auth_strict=true / bailian=missing_key / dev_order_endpoints=false`，服务监听仍为 `127.0.0.1:3000`，未读取或打印任何生产密钥。

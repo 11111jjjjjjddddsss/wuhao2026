@@ -255,15 +255,28 @@ private data class FailedAssistantMessageState(val sourceUserMessageId: String)
 private data class LocalChatWindowSnapshot(
     val messages: List<ChatMessage> = emptyList(),
     val failedUserMessageStates: Map<String, String> = emptyMap(),
-    val failedAssistantMessageStates: Map<String, FailedAssistantMessageState> = emptyMap()
+    val failedAssistantMessageStates: Map<String, FailedAssistantMessageState> = emptyMap(),
+    val initialWorklineOwned: Boolean? = null
 )
 @Immutable
 private data class LocalChatWindowSnapshotPayload(
     val messages: List<ChatMessage>? = null,
     val failedUserMessageStates: Map<String, String>? = null,
     val failedAssistantMessageStates: Map<String, FailedAssistantMessageState>? = null,
+    val initialWorklineOwned: Boolean? = null,
     val sessionGeneration: Int? = null
 )
+
+private fun restoredInitialWorklinePhase(
+    hasMessages: Boolean,
+    hasStreamingDraft: Boolean,
+    initialWorklineOwned: Boolean?
+): InitialWorklinePhase =
+    when {
+        !hasMessages && !hasStreamingDraft -> InitialWorklinePhase.WaitingForFirstSend
+        initialWorklineOwned == false -> InitialWorklinePhase.TopUnreached
+        else -> InitialWorklinePhase.WorklineOwned
+    }
 
 private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
     role == ChatRole.USER &&
@@ -1369,7 +1382,10 @@ private fun sanitizeLocalChatWindowSnapshot(snapshot: LocalChatWindowSnapshot): 
     return LocalChatWindowSnapshot(
         messages = trimmedMessages,
         failedUserMessageStates = failedUserStates,
-        failedAssistantMessageStates = failedAssistantStates
+        failedAssistantMessageStates = failedAssistantStates,
+        initialWorklineOwned = snapshot.initialWorklineOwned.takeIf {
+            trimmedMessages.isNotEmpty()
+        }
     )
 }
 
@@ -1380,7 +1396,8 @@ private fun normalizeLocalChatWindowSnapshot(
         LocalChatWindowSnapshot(
             messages = payload?.messages.orEmpty(),
             failedUserMessageStates = payload?.failedUserMessageStates.orEmpty(),
-            failedAssistantMessageStates = payload?.failedAssistantMessageStates.orEmpty()
+            failedAssistantMessageStates = payload?.failedAssistantMessageStates.orEmpty(),
+            initialWorklineOwned = payload?.initialWorklineOwned
         )
     )
 
@@ -1455,7 +1472,8 @@ private fun mergeHydratedMessagesWithLocalPendingState(
         LocalChatWindowSnapshot(
             messages = mergedMessages,
             failedUserMessageStates = retainedFailedUserStates,
-            failedAssistantMessageStates = retainedFailedAssistantStates
+            failedAssistantMessageStates = retainedFailedAssistantStates,
+            initialWorklineOwned = localSnapshot.initialWorklineOwned
         )
     )
 }
@@ -1498,7 +1516,8 @@ private fun retainLocalRecoverySnapshotForRemoteFallback(
         LocalChatWindowSnapshot(
             messages = retainedMessages,
             failedUserMessageStates = retainedFailedUserStates,
-            failedAssistantMessageStates = retainedFailedAssistantStates
+            failedAssistantMessageStates = retainedFailedAssistantStates,
+            initialWorklineOwned = localSnapshot.initialWorklineOwned
         )
     )
 }
@@ -1639,6 +1658,7 @@ private suspend fun Context.saveLocalChatWindowIfEpoch(
         messages = sanitizedSnapshot.messages,
         failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates,
         failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates,
+        initialWorklineOwned = sanitizedSnapshot.initialWorklineOwned,
         sessionGeneration = SessionApi.currentSessionGenerationOrNull()
     )
     synchronized(chatCacheWriteLock) {
@@ -1656,6 +1676,7 @@ private fun Context.saveLocalChatWindowSync(chatScopeId: String, snapshot: Local
         messages = sanitizedSnapshot.messages,
         failedUserMessageStates = sanitizedSnapshot.failedUserMessageStates,
         failedAssistantMessageStates = sanitizedSnapshot.failedAssistantMessageStates,
+        initialWorklineOwned = sanitizedSnapshot.initialWorklineOwned,
         sessionGeneration = SessionApi.currentSessionGenerationOrNull()
     )
     synchronized(chatCacheWriteLock) {
@@ -2443,11 +2464,11 @@ fun ChatScreen() {
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var initialWorklinePhase by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(
-            if (initialLocalMessages.isEmpty() && initialStreamingDraft == null) {
-                InitialWorklinePhase.WaitingForFirstSend
-            } else {
-                InitialWorklinePhase.WorklineOwned
-            }
+            restoredInitialWorklinePhase(
+                hasMessages = initialLocalMessages.isNotEmpty(),
+                hasStreamingDraft = initialStreamingDraft != null,
+                initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
+            )
         )
     }
     var sendStartViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
@@ -3435,12 +3456,11 @@ fun ChatScreen() {
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
         anchoredUserMessageId = null
-        initialWorklinePhase =
-            if (initialLocalMessages.isEmpty() && initialStreamingDraft == null) {
-                InitialWorklinePhase.WaitingForFirstSend
-            } else {
-                InitialWorklinePhase.WorklineOwned
-            }
+        initialWorklinePhase = restoredInitialWorklinePhase(
+            hasMessages = initialLocalMessages.isNotEmpty(),
+            hasStreamingDraft = initialStreamingDraft != null,
+            initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
+        )
         inputLimitHintVisible = false
         composerStatusHintVisible = false
         composerStatusHintText = ""
@@ -3744,7 +3764,12 @@ fun ChatScreen() {
                     .filter { (messageId, state) ->
                         messageId in persistedMessageIds &&
                             state.sourceUserMessageId in persistedMessageIds
-                    }
+                    },
+                initialWorklineOwned = when {
+                    persistedMessages.isEmpty() -> null
+                    initialWorklinePhase == InitialWorklinePhase.WorklineOwned -> true
+                    else -> false
+                }
             )
         )
     }
@@ -4259,7 +4284,11 @@ fun ChatScreen() {
             ) {
                 replaceMessages(hydratedSnapshot.messages)
                 if (hydratedSnapshot.messages.isNotEmpty()) {
-                    initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+                    initialWorklinePhase = restoredInitialWorklinePhase(
+                        hasMessages = true,
+                        hasStreamingDraft = false,
+                        initialWorklineOwned = hydratedSnapshot.initialWorklineOwned
+                    )
                 }
                 failedUserMessageStates.clear()
                 failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
@@ -4455,6 +4484,35 @@ fun ChatScreen() {
             if (programmaticBottomAnchorGeneration == requestGeneration) {
                 scrollRuntime.programmaticScroll.value = false
                 updateChatListMetrics(readChatListMetrics(chatListState))
+            }
+        }
+    }
+
+    LaunchedEffect(
+        initialWorklinePhase,
+        scrollMode,
+        scrollRuntime.userInteracting.value,
+        chatListUserDragging,
+        recyclerScrollInProgress,
+        chatListState.canScrollForward
+    ) {
+        if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return@LaunchedEffect
+        if (chatListUserDragging || recyclerScrollInProgress || chatListState.canScrollForward) {
+            return@LaunchedEffect
+        }
+        if (scrollMode != ScrollMode.UserBrowsing && !scrollRuntime.userInteracting.value) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        if (
+            initialWorklinePhase == InitialWorklinePhase.TopUnreached &&
+            !chatListUserDragging &&
+            !recyclerScrollInProgress &&
+            !chatListState.canScrollForward
+        ) {
+            scrollRuntime.userInteracting.value = false
+            if (scrollMode == ScrollMode.UserBrowsing) {
+                scrollMode = ScrollMode.AutoFollow
             }
         }
     }
