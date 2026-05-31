@@ -390,6 +390,7 @@ private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
 private const val CHAT_COMPOSER_DRAFT_KEY_PREFIX = "composer_draft_"
 private const val CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX = "composer_draft_gen_"
+private const val TODAY_AGRI_CARD_DISMISSED_DAY_KEY_PREFIX = "today_agri_card_dismissed_day_"
 private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
@@ -516,6 +517,25 @@ private fun currentQuotaDayKey(): String {
     )
     return "${calendar.get(java.util.Calendar.YEAR)}-${calendar.get(java.util.Calendar.DAY_OF_YEAR)}"
 }
+
+private fun currentChinaDateKey(): String {
+    val calendar = java.util.Calendar.getInstance(
+        java.util.TimeZone.getTimeZone("Asia/Shanghai")
+    )
+    val year = calendar.get(java.util.Calendar.YEAR)
+    val month = calendar.get(java.util.Calendar.MONTH) + 1
+    val day = calendar.get(java.util.Calendar.DAY_OF_MONTH)
+    return "${year.toString().padStart(4, '0')}${month.toString().padStart(2, '0')}${day.toString().padStart(2, '0')}"
+}
+
+private fun normalizeTodayAgriCardDayKey(raw: String): String {
+    val trimmed = raw.trim()
+    val digits = trimmed.filter { it.isDigit() }
+    return digits.takeIf { it.length == 8 } ?: trimmed
+}
+
+private fun todayAgriCardDayKey(card: SessionApi.TodayAgriCard?): String =
+    normalizeTodayAgriCardDayKey(card?.dateCn.orEmpty()).ifBlank { currentChinaDateKey() }
 
 private fun normalizeAssistantText(content: String): String {
     return content
@@ -1702,6 +1722,21 @@ private fun Context.clearLocalChatHistoryStateSync(chatScopeId: String) {
     }
 }
 
+private fun Context.loadTodayAgriCardDismissedDaySync(chatScopeId: String): String =
+    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+        .getString("$TODAY_AGRI_CARD_DISMISSED_DAY_KEY_PREFIX$chatScopeId", null)
+        .orEmpty()
+
+private fun Context.saveTodayAgriCardDismissedDaySync(chatScopeId: String, dayKey: String) {
+    if (dayKey.isBlank()) return
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString("$TODAY_AGRI_CARD_DISMISSED_DAY_KEY_PREFIX$chatScopeId", dayKey)
+            .commit()
+    }
+}
+
 private fun Context.loadLocalStreamingDraftSync(chatScopeId: String): LocalStreamingDraft? {
     val raw = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
         .getString("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId", null)
@@ -2492,29 +2527,47 @@ fun ChatScreen() {
         }
     }
     var todayAgriCard by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.TodayAgriCard?>(null) }
+    var todayAgriCardDismissedDay by rememberSaveable(uiRuntimeResetKey) {
+        mutableStateOf(context.loadTodayAgriCardDismissedDaySync(chatScopeId))
+    }
     val retryingUserMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
-    val chatListItems by remember(
+    fun dismissTodayAgriCardForCurrentDay() {
+        val dismissedDay = todayAgriCardDayKey(todayAgriCard)
+        if (todayAgriCardDismissedDay == dismissedDay) return
+        todayAgriCardDismissedDay = dismissedDay
+        context.saveTodayAgriCardDismissedDaySync(chatScopeId, dismissedDay)
+    }
+    val shouldShowTodayAgriCard by remember(
         todayAgriCard,
-        messages.size,
+        todayAgriCardDismissedDay,
+        isStreaming,
         initialWorklinePhase
     ) {
         derivedStateOf {
-            val visibleTodayAgriCard = todayAgriCard.takeUnless {
-                initialWorklinePhase == InitialWorklinePhase.TopUnreached
-            }
+            todayAgriCard?.isRenderableTodayAgriCard() == true &&
+                todayAgriCardDismissedDay != todayAgriCardDayKey(todayAgriCard) &&
+                !isStreaming &&
+                initialWorklinePhase != InitialWorklinePhase.TopUnreached
+        }
+    }
+    val chatListItems by remember(
+        todayAgriCard,
+        shouldShowTodayAgriCard
+    ) {
+        derivedStateOf {
+            val visibleTodayAgriCard = todayAgriCard.takeIf { shouldShowTodayAgriCard }
             buildChatTimelineItems(
                 messages = messages,
                 todayAgriCard = visibleTodayAgriCard
             )
         }
     }
-    val hasTodayAgriCard by remember(todayAgriCard, initialWorklinePhase) {
+    val hasTodayAgriCard by remember(shouldShowTodayAgriCard) {
         derivedStateOf {
-            todayAgriCard?.isRenderableTodayAgriCard() == true &&
-                initialWorklinePhase != InitialWorklinePhase.TopUnreached
+            shouldShowTodayAgriCard
         }
     }
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
@@ -4979,6 +5032,7 @@ fun ChatScreen() {
         snackbarScope.launch {
             try {
                 hasStartedConversation = true
+                dismissTodayAgriCardForCurrentDay()
                 keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
                 initialBottomSnapDone = true
                 LaunchUiGate.chatReady = true
@@ -5033,6 +5087,7 @@ fun ChatScreen() {
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
+        dismissTodayAgriCardForCurrentDay()
         keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
@@ -5120,6 +5175,7 @@ fun ChatScreen() {
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
+        dismissTodayAgriCardForCurrentDay()
         keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
         initialBottomSnapDone = true
         LaunchUiGate.chatReady = true
