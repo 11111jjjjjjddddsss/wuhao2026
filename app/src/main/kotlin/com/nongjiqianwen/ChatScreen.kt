@@ -7501,7 +7501,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败浮层", UiCopyPreviewKind.ImageReadFailure),
                     UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败浮层", UiCopyPreviewKind.CameraOpenFailed),
                     UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
-                    UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator)
+                    UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
+                    UiCopyPreviewItem(IMAGE_EXPIRED_THUMB_TEXT, "远端历史图过期后的占位", UiCopyPreviewKind.ImageExpiredPlaceholder)
                 )
             ),
             UiCopyPreviewGroup(
@@ -7767,6 +7768,7 @@ private enum class UiCopyPreviewKind {
     CameraOpenFailed,
     ComposerImageBadge,
     ImagePageIndicator,
+    ImageExpiredPlaceholder,
     InputMenuCopyOnly,
     InputMenuPasteSelect,
     DebugPanel,
@@ -8270,6 +8272,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)
                 UiCopyPreviewKind.ComposerImageBadge -> UiCopyPreviewComposerImageBadge()
                 UiCopyPreviewKind.ImagePageIndicator -> UiCopyPreviewImagePageIndicator()
+                UiCopyPreviewKind.ImageExpiredPlaceholder -> UiCopyPreviewExpiredImagePlaceholder()
                 UiCopyPreviewKind.InputMenuCopyOnly -> UiCopyPreviewInputActionMenu(listOf("复制"))
                 UiCopyPreviewKind.InputMenuPasteSelect -> UiCopyPreviewInputActionMenu(listOf("粘贴", "全选"))
                 UiCopyPreviewKind.DebugPanel -> UiCopyPreviewPlainText(
@@ -8741,6 +8744,43 @@ private fun UiCopyPreviewImagePageIndicator() {
 }
 
 @Composable
+private fun UiCopyPreviewExpiredImagePlaceholder() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(86.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFFF0F1F3)),
+            contentAlignment = Alignment.Center
+        ) {
+            UserMessageExpiredImagePlaceholder()
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(96.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0xE6000000)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = IMAGE_EXPIRED_PREVIEW_TEXT,
+                color = Color.White,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 18.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun UiCopyPreviewPlainText(lines: List<String>) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         lines.forEach { line ->
@@ -8897,6 +8937,12 @@ private fun UserMessageImageStrip(
     var previewIndex by remember {
         mutableStateOf<Int?>(null)
     }
+    val unavailableSources = remember { mutableStateMapOf<String, Boolean>() }
+    LaunchedEffect(imageSources) {
+        unavailableSources.keys
+            .filterNot { it in imageSources }
+            .forEach { unavailableSources.remove(it) }
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -8913,6 +8959,13 @@ private fun UserMessageImageStrip(
                         val sourceIndex = rowIndex * 2 + columnIndex
                         UserMessageImageThumb(
                             source = source,
+                            onUnavailableChanged = { unavailable ->
+                                if (unavailable) {
+                                    unavailableSources[source] = true
+                                } else {
+                                    unavailableSources.remove(source)
+                                }
+                            },
                             onPreviewImage = { previewIndex = sourceIndex }
                         )
                     }
@@ -8921,9 +8974,15 @@ private fun UserMessageImageStrip(
         }
     }
     previewIndex?.let { index ->
+        val unavailableIndexes = imageSources
+            .mapIndexedNotNull { sourceIndex, source ->
+                sourceIndex.takeIf { unavailableSources[source] == true }
+            }
+            .toSet()
         UserMessageImagePreviewDialog(
             sources = imageSources,
             initialPage = index,
+            unavailableIndexes = unavailableIndexes,
             onDismiss = { previewIndex = null }
         )
     }
@@ -8932,16 +8991,23 @@ private fun UserMessageImageStrip(
 @Composable
 private fun UserMessageImageThumb(
     source: String,
+    onUnavailableChanged: (Boolean) -> Unit,
     onPreviewImage: () -> Unit
 ) {
     val context = LocalContext.current
     var bitmap by remember(source) {
         mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
     }
+    var loadUnavailable by remember(source) { mutableStateOf(false) }
     LaunchedEffect(source) {
-        bitmap = withContext(Dispatchers.IO) {
+        loadUnavailable = false
+        onUnavailableChanged(false)
+        val decoded = withContext(Dispatchers.IO) {
             context.decodeChatImagePreview(source)
         }
+        bitmap = decoded
+        loadUnavailable = decoded == null && source.isRemoteImageSource()
+        onUnavailableChanged(loadUnavailable)
     }
     Box(
         modifier = Modifier
@@ -8965,47 +9031,12 @@ private fun UserMessageImageThumb(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(26.dp)) {
-                    val stroke = size.minDimension * 0.085f
-                    val left = size.width * 0.16f
-                    val top = size.height * 0.18f
-                    val right = size.width * 0.84f
-                    val bottom = size.height * 0.82f
-                    drawRoundRect(
-                        color = Color(0xFF8B8D93),
-                        topLeft = Offset(left, top),
-                        size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                            size.minDimension * 0.14f,
-                            size.minDimension * 0.14f
-                        ),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
-                    )
-                    drawCircle(
-                        color = Color(0xFF8B8D93),
-                        radius = size.minDimension * 0.065f,
-                        center = Offset(size.width * 0.65f, size.height * 0.36f)
-                    )
-                    drawLine(
-                        color = Color(0xFF8B8D93),
-                        start = Offset(size.width * 0.24f, size.height * 0.72f),
-                        end = Offset(size.width * 0.42f, size.height * 0.53f),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round
-                    )
-                    drawLine(
-                        color = Color(0xFF8B8D93),
-                        start = Offset(size.width * 0.42f, size.height * 0.53f),
-                        end = Offset(size.width * 0.55f, size.height * 0.66f),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round
-                    )
-                    drawLine(
-                        color = Color(0xFF8B8D93),
-                        start = Offset(size.width * 0.55f, size.height * 0.66f),
-                        end = Offset(size.width * 0.78f, size.height * 0.56f),
-                        strokeWidth = stroke,
-                        cap = StrokeCap.Round
+                if (loadUnavailable) {
+                    UserMessageExpiredImagePlaceholder()
+                } else {
+                    UserMessageImagePlaceholderIcon(
+                        tint = Color(0xFF8B8D93),
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
@@ -9017,6 +9048,7 @@ private fun UserMessageImageThumb(
 private fun UserMessageImagePreviewDialog(
     sources: List<String>,
     initialPage: Int,
+    unavailableIndexes: Set<Int>,
     onDismiss: () -> Unit
 ) {
     if (sources.isEmpty()) return
@@ -9033,7 +9065,8 @@ private fun UserMessageImagePreviewDialog(
                 models = sources,
                 initialPage = initialPage,
                 contentDescription = "用户上传图片预览",
-                onDismiss = onDismiss
+                onDismiss = onDismiss,
+                unavailablePages = unavailableIndexes
             )
             Box(
                 modifier = Modifier
@@ -9054,6 +9087,27 @@ private fun UserMessageImagePreviewDialog(
                 UserMessagePreviewCloseIcon(tint = Color.White, modifier = Modifier.size(14.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun UserMessageExpiredImagePlaceholder() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        UserMessageImagePlaceholderIcon(
+            tint = Color(0xFF8B8D93),
+            modifier = Modifier.size(24.dp)
+        )
+        Text(
+            text = IMAGE_EXPIRED_THUMB_TEXT,
+            color = Color(0xFF777C85),
+            fontSize = 11.sp,
+            lineHeight = 14.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
     }
 }
 

@@ -25,6 +25,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -35,6 +36,12 @@ import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import me.saket.telephoto.zoomable.rememberZoomableState
 
+internal const val IMAGE_EXPIRED_THUMB_TEXT = "图片已过期"
+internal const val IMAGE_EXPIRED_PREVIEW_TEXT = "图片已过期，仅保留文字记录"
+
+internal fun String.isRemoteImageSource(): Boolean =
+    startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true)
+
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 internal fun ImagePreviewPager(
@@ -42,6 +49,8 @@ internal fun ImagePreviewPager(
     initialPage: Int,
     contentDescription: String,
     onDismiss: () -> Unit,
+    unavailablePages: Set<Int> = emptySet(),
+    unavailableText: String = IMAGE_EXPIRED_PREVIEW_TEXT,
     modifier: Modifier = Modifier
 ) {
     if (models.isEmpty()) return
@@ -58,20 +67,38 @@ internal fun ImagePreviewPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize()
         ) { page ->
-            val zoomableState = rememberZoomableState(
-                zoomSpec = ZoomSpec(
-                    maximum = ZoomLimit(5f, OverzoomEffect.RubberBanding),
-                    minimum = ZoomLimit(1f, OverzoomEffect.Disabled)
+            if (page in unavailablePages) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 42.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = unavailableText,
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.Medium,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                val zoomableState = rememberZoomableState(
+                    zoomSpec = ZoomSpec(
+                        maximum = ZoomLimit(5f, OverzoomEffect.RubberBanding),
+                        minimum = ZoomLimit(1f, OverzoomEffect.Disabled)
+                    )
                 )
-            )
-            ZoomableAsyncImage(
-                model = models[page],
-                contentDescription = contentDescription,
-                contentScale = ContentScale.Fit,
-                state = rememberZoomableImageState(zoomableState),
-                contentPadding = PaddingValues(22.dp),
-                modifier = Modifier.fillMaxSize()
-            )
+                ZoomableAsyncImage(
+                    model = models[page],
+                    contentDescription = contentDescription,
+                    contentScale = ContentScale.Fit,
+                    state = rememberZoomableImageState(zoomableState),
+                    contentPadding = PaddingValues(22.dp),
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
         if (models.size > 1) {
             Text(

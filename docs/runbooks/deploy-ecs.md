@@ -1,6 +1,6 @@
 # ECS 发版 Runbook
 
-最后更新：2026-05-30
+最后更新：2026-05-31
 
 ## 目的
 
@@ -22,6 +22,7 @@
 - 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉
 - 2026-05-31 20:21（北京时间）已通过 Cloud Assistant 将后端源码包 `a08bf15e` 部署到 ECS：分片上传源码包、ECS 上校验 SHA-256、运行 `go test ./...`、编译、备份旧二进制、替换并重启 `nongji-server`；延迟复查直接 Go 端和 Nginx Host healthz 均正常，当前 `upload_storage=local`
 - 当前健康检查：`curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=missing_key`、`dev_order_endpoints=false`、`upload_storage=local`；配置 OSS 后应看到 `upload_storage=oss`
+- 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、Host healthz、关键环境变量是否 set/missing/empty、本机上传目录和端口监听；脚本只输出脱敏状态，不打印真实密钥值。2026-05-31 最新检查显示 systemd active、Nginx 配置 OK、Host healthz 200；仍缺 OSS、DashScope、DYPNS 和 Redis 业务环境变量
 - 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 和域名 HTTP healthz 均已解析到本机并返回 200；本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - 当前未配置 DashScope 模型 Key，真实聊天接口会返回 `MODEL_BACKEND_NOT_CONFIGURED`，不会开模型流或消耗模型费用
 - 当前还没有 HTTPS、ICP备案 / App 备案闭环；正式 App 不应切到生产域名直到这些完成
@@ -107,6 +108,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\deploy-ecs-
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ecs-server.ps1
+```
+
+只读生产就绪检查：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1
 ```
 
 按备份名回滚，必须显式加 `-Apply`：

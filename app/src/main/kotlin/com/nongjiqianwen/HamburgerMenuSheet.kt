@@ -54,6 +54,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -2319,6 +2320,12 @@ private fun HamburgerSupportMessageImageStrip(
 ) {
     val previewImages = imageUrls.take(4)
     var previewIndex by remember { mutableStateOf<Int?>(null) }
+    val unavailableImages = remember { mutableStateMapOf<String, Boolean>() }
+    LaunchedEffect(previewImages) {
+        unavailableImages.keys
+            .filterNot { it in previewImages }
+            .forEach { unavailableImages.remove(it) }
+    }
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -2328,11 +2335,23 @@ private fun HamburgerSupportMessageImageStrip(
                 imageUrl = imageUrl,
                 index = index,
                 isUser = isUser,
+                onUnavailableChanged = { unavailable ->
+                    if (unavailable) {
+                        unavailableImages[imageUrl] = true
+                    } else {
+                        unavailableImages.remove(imageUrl)
+                    }
+                },
                 onClick = { previewIndex = index }
             )
         }
     }
     previewIndex?.let { index ->
+        val unavailablePages = previewImages
+            .mapIndexedNotNull { page, imageUrl ->
+                page.takeIf { unavailableImages[imageUrl] == true }
+            }
+            .toSet()
         Dialog(
             onDismissRequest = { previewIndex = null },
             properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2346,7 +2365,8 @@ private fun HamburgerSupportMessageImageStrip(
                     models = previewImages,
                     initialPage = index,
                     contentDescription = "图片预览",
-                    onDismiss = { previewIndex = null }
+                    onDismiss = { previewIndex = null },
+                    unavailablePages = unavailablePages
                 )
                 Surface(
                     color = Color(0x99111111),
@@ -2377,14 +2397,21 @@ private fun HamburgerSupportMessageImageThumb(
     imageUrl: String,
     index: Int,
     isUser: Boolean,
+    onUnavailableChanged: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
     var bitmap by remember(imageUrl) { mutableStateOf<ImageBitmap?>(null) }
+    var loadUnavailable by remember(imageUrl) { mutableStateOf(false) }
     LaunchedEffect(imageUrl) {
-        bitmap = withContext(Dispatchers.IO) {
+        loadUnavailable = false
+        onUnavailableChanged(false)
+        val decoded = withContext(Dispatchers.IO) {
             context.decodeChatImagePreview(imageUrl, targetSize = 360)
         }
+        bitmap = decoded
+        loadUnavailable = decoded == null && imageUrl.isRemoteImageSource()
+        onUnavailableChanged(loadUnavailable)
     }
     Box(
         modifier = Modifier
@@ -2407,10 +2434,11 @@ private fun HamburgerSupportMessageImageThumb(
             )
         } else {
             Text(
-                text = "图片",
+                text = if (loadUnavailable) "已过期" else "图片",
                 color = if (isUser) Color(0xFFD8DADF) else Color(0xFF777C85),
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
+                fontSize = if (loadUnavailable) 11.sp else 13.sp,
+                lineHeight = 16.sp,
+                fontWeight = if (loadUnavailable) FontWeight.Medium else FontWeight.Normal,
                 modifier = Modifier.align(Alignment.Center)
             )
         }
