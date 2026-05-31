@@ -430,6 +430,7 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 96.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
+private val INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW = 48.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
@@ -2422,6 +2423,8 @@ fun ChatScreen() {
     val streamVisibleBottomGapPx = with(density) { STREAM_VISIBLE_BOTTOM_GAP.toPx().roundToInt() }
     val bottomPositionTolerancePx = with(density) { BOTTOM_POSITION_TOLERANCE.roundToPx() }
     val staticBottomPositionTolerancePx = with(density) { STATIC_BOTTOM_POSITION_TOLERANCE.roundToPx() }
+    val initialWorklineBottomSwitchOverflowPx =
+        with(density) { INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW.roundToPx() }
     val chatMessageItemVerticalPaddingPx = with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
     val streamingRuntime = rememberChatStreamingRuntimeState(uiRuntimeResetKey)
     var isStreaming by streamingRuntime.isStreaming
@@ -2899,6 +2902,14 @@ fun ChatScreen() {
                 worklineBottomPx > 0 &&
                 documentContentBottomPx >= worklineBottomPx
         return measuredReach || chatListState.canScrollForward
+    }
+
+    fun hasInitialDocumentFlowSafelyPassedWorkline(): Boolean {
+        val documentContentBottomPx = currentInitialDocumentFlowBottomPx()
+        val worklineBottomPx = currentUnifiedBottomTargetPx()
+        return documentContentBottomPx > 0 &&
+            worklineBottomPx > 0 &&
+            documentContentBottomPx >= worklineBottomPx + initialWorklineBottomSwitchOverflowPx
     }
 
     fun shouldUseInitialTopFlowForSend(): Boolean {
@@ -4584,17 +4595,21 @@ fun ChatScreen() {
         }
     }
 
-    fun userOwnsInitialWorklineTransition(): Boolean {
+    fun userIsActivelyBrowsingInitialWorkline(): Boolean {
         return chatListUserDragging ||
             recyclerScrollInProgress ||
             (scrollMode == ScrollMode.UserBrowsing && chatListState.canScrollBackward)
     }
+
+    fun userBlocksInitialWorklineAutoSwitch(): Boolean =
+        userIsActivelyBrowsingInitialWorkline() || scrollRuntime.userInteracting.value
 
     LaunchedEffect(
         initialWorklinePhase,
         messages.size,
         currentInitialDocumentFlowBottomPx(),
         currentUnifiedBottomTargetPx(),
+        hasInitialDocumentFlowSafelyPassedWorkline(),
         startupLayoutReady,
         chatListUserDragging,
         recyclerScrollInProgress,
@@ -4606,10 +4621,11 @@ fun ChatScreen() {
         if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return@LaunchedEffect
         if (!startupLayoutReady || messages.isEmpty()) return@LaunchedEffect
         if (!hasInitialDocumentFlowReachedWorkline()) return@LaunchedEffect
-        if (userOwnsInitialWorklineTransition()) {
+        if (userIsActivelyBrowsingInitialWorkline()) {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
             return@LaunchedEffect
         }
+        if (userBlocksInitialWorklineAutoSwitch()) return@LaunchedEffect
         initialWorklinePhase = InitialWorklinePhase.TopAnchoring
     }
 
@@ -4625,18 +4641,17 @@ fun ChatScreen() {
     ) {
         if (initialWorklinePhase != InitialWorklinePhase.TopAnchoring) return@LaunchedEffect
         if (!startupLayoutReady || messages.isEmpty()) return@LaunchedEffect
-        if (userOwnsInitialWorklineTransition()) {
+        if (userIsActivelyBrowsingInitialWorkline()) {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
             return@LaunchedEffect
         }
+        if (userBlocksInitialWorklineAutoSwitch()) return@LaunchedEffect
         if (!chatListState.canScrollForward) return@LaunchedEffect
+        if (!hasInitialDocumentFlowSafelyPassedWorkline()) return@LaunchedEffect
+        initialWorklinePhase = InitialWorklinePhase.WorklineOwned
         scrollMode = ScrollMode.AutoFollow
         scrollRuntime.userInteracting.value = false
         requestProgrammaticForwardListBottomAnchor(force = true)
-        withFrameNanos { }
-        if (initialWorklinePhase == InitialWorklinePhase.TopAnchoring) {
-            initialWorklinePhase = InitialWorklinePhase.WorklineOwned
-        }
     }
 
     val shouldAnchorStreamingBottomThisFrame =
