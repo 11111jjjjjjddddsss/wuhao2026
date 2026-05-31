@@ -1,6 +1,6 @@
 # OSS 图片存储 Runbook
 
-最后更新：2026-05-25
+最后更新：2026-05-31
 
 ## 目的
 
@@ -13,8 +13,16 @@
 - 生效时间：`2026-05-24T15:00:00Z`
 - 到期时间：`2027-05-24T15:00:00Z`
 - 当前剩余额度：100GB
-- 当前 OSS Bucket 数量为 0，尚未创建真实 Bucket；2026-05-25 通过 CLI 尝试创建 `cn-beijing` 私有 Bucket 时 OSS 返回 `UserDisable`，换全局唯一名称和显式 endpoint 仍同样失败，需要到 OSS 控制台确认服务开通 / 账号状态后再重试
-- `server-go` 当前图片上传仍是后端 `/upload` 接收 JPEG 后写 ECS 本机 `/var/lib/nongjiqiancha/uploads`，尚未接 OSS；因此首版只能保持单台 ECS
+- 已创建 Bucket：`nongjiqiancha-prod`
+- Region：`oss-cn-beijing`
+- ACL：private
+- 存储类型：Standard
+- 冗余类型：LRS / 本地冗余
+- 2026-05-31 已配置生命周期：
+  - `uploads/`：问诊上传图 3 天自动删除
+  - `support/`：帮助与反馈图片预留 30 天自动删除
+  - 未完成分片上传：1 天自动清理
+- `server-go` 已新增 OSS 上传存储后端：配置 `UPLOAD_STORAGE_BACKEND=oss`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com` 和 OSS 凭证后，`/upload` 写私有 OSS；App、模型和历史 URL 仍走本后端 `https://api.nongjiqiancha.cn/uploads/<file>.jpg`，不把 OSS AK/SK 下发 Android。未配置 OSS 时仍回退 ECS 本机 `/var/lib/nongjiqiancha/uploads`
 
 ## 存储包口径
 
@@ -37,7 +45,8 @@
 
 - 模型上下文只保留当前轮和上一轮图片；更早图片不进入模型上下文，只保留文字结论 / 摘要
 - OSS 文件保存周期与模型上下文无关；即使文件仍在 OSS，也不会自动进入模型上下文
-- 首版建议设置短周期生命周期，例如 7 / 15 / 30 天，具体按隐私文案、客服追溯和成本再拍板
+- 问诊上传图当前按 3 天删除；模型上下文只需要当前轮和上一轮图片，3 天足够短期追问和后台重试，也更省钱、少留隐私数据
+- `session_round_archive` 的文字问答和图片 URL 仍可保留 30 天；3 天后图片对象可能不可见，旧聊天应以文字结论为主，后续 UI 可补“图片已过期”占位
 - 用户同一台手机翻旧聊天时优先依赖本地缓存；换机、清数据或生命周期删除后，旧图片可能不可见，这属于可接受的首版取舍
 
 ## 接入前置
@@ -45,11 +54,11 @@
 - 不把 OSS AccessKey / Secret 写入仓库、文档或聊天
 - Android 不直连 OSS，不打入 OSS 密钥
 - 后端是上传和访问控制唯一入口
-- 多台 ECS 或回到 SAE 多实例前，必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储
+- 多台 ECS 或回到 SAE 多实例前，必须先在生产环境开启 `UPLOAD_STORAGE_BACKEND=oss`，并验证 `/upload`、`/uploads/` 和模型拉图链路
 - 若 APK 分发也放 OSS，应单独配置下载域名、HTTPS、文件大小和 SHA-256，不建议让 Go 后端动态服务大 APK
 
 ## 当前阻塞
 
-- OSS 资源包已买，但 Bucket 创建被 `UserDisable` 阻塞；这不是“存储空间不够”，更像 OSS 服务开通 / 账号状态层面的限制
-- 下一步先在对象存储 OSS 控制台确认是否仍需要点击“开通 / 免费试用 / 立即使用”，或检查账号是否存在服务禁用状态；确认后再重试创建私有 Bucket
-- Bucket 创建前不要把后端改成 OSS 链路，也不要扩到多台 ECS
+- 生产 ECS 仍需写入 OSS 环境变量并部署新版后端，健康检查应显示 `upload_storage=oss`
+- OSS 凭证必须使用最小权限 RAM 子账号或等价受控凭证，只允许访问 `nongjiqiancha-prod` 所需对象操作，不使用主账号长期 AccessKey
+- HTTPS 未完成前，`BASE_PUBLIC_URL / UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 的图片公网 URL 仍不能算正式可用

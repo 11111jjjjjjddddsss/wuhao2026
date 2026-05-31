@@ -191,7 +191,7 @@
 - 不应从本地恢复旧聊天、旧输入框高度、旧滚动位置
 - 如果未来绑定手机号，后端按账号返回最近 30 轮属于业务恢复，不是 UI 回退
 - 注意区分“清除数据”和“清除缓存”：清除缓存只应影响 `cacheDir` 里的相机临时图、更新 APK 临时文件等，不应清掉 `SharedPreferences` 里的 `user_id / chat_ui_cache / pending_chat_sends`，也不应删除 `files/composer_images` 稳定上传副本
-- 若测试包配置了固定 `SESSION_API_TOKEN`，清数据后看到旧后端历史可能是 token 身份恢复，不是本地旧 UI 缓存回灌；排查时同时看 debug 日志 `ChatStartup`
+- Android 已移除固定 `SESSION_API_TOKEN` 登录绕过；清数据后若看到旧后端历史，优先按真实账号 session、远端 snapshot 或本地 hydrate 链排查，并同时看 debug 日志 `ChatStartup`
 
 ### 6.2 重装覆盖安装
 

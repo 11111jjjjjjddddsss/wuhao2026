@@ -14,8 +14,8 @@
 - Android 不调用 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro` 或 `/api/topup/buy`。
 - 后端这 4 个接口仍存在，但只是本地 / 内测开发期直改接口。
 - 开发期订单接口默认返回 `PAYMENT_NOT_CONFIGURED`。
-- 只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境不是 `APP_ENV / ENV / GO_ENV = prod / production` 时，开发期订单接口才会放行。
-- 生产环境即使误设 `ALLOW_DEV_ORDER_ENDPOINTS=true`，只要 `APP_ENV / ENV / GO_ENV` 是 `prod / production`，后端也会强制关闭开发期订单接口。
+- 只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境明确为 `APP_ENV / ENV / GO_ENV = local / dev / development / test` 时，开发期订单接口才会放行；缺失环境名也按关闭处理。
+- 生产环境或环境名缺失时，即使误设 `ALLOW_DEV_ORDER_ENDPOINTS=true`，后端也会强制关闭开发期订单接口。
 - 当前 `orders` 表只记录开发期成功结果，字段包括 `order_id / user_id / type / amount / created_at / status / result_json`；它不是正式支付订单表。
 
 ## 现有开发期接口

@@ -35,6 +35,7 @@ type Server struct {
 	shanghai     *time.Location
 	assetDir     string
 	uploadsDir   string
+	uploadStore  UploadStore
 	systemAnchor string
 	rateLimiter  *chatRateLimiter
 	smsLimiter   *chatRateLimiter
@@ -113,6 +114,10 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	uploadStore, err := NewUploadStoreFromEnv(uploadsDir)
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{
 		logger:       logger,
 		mux:          http.NewServeMux(),
@@ -125,6 +130,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		shanghai:     shanghai,
 		assetDir:     assetDir,
 		uploadsDir:   uploadsDir,
+		uploadStore:  uploadStore,
 		systemAnchor: systemAnchor,
 		rateLimiter:  newChatRateLimiter(),
 		smsLimiter:   newAuthSMSRateLimiter(),
@@ -176,6 +182,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 		"dypns":               ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		"dypns_fusion":        ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
 		"dypns_sms":           ternary(s.dypns.HasSMSConfigured(), "ok", "missing_config"),
+		"upload_storage":      uploadStoreHealthStatus(s.uploadStore),
 		"auth_strict":         IsAuthStrict(),
 		"dev_order_endpoints": devOrderEndpointsEnabled(),
 	})
@@ -541,11 +548,16 @@ func (s *Server) allowDevOrderEndpoint(w http.ResponseWriter) bool {
 }
 
 func devOrderEndpointsEnabled() bool {
-	if isProductionEnv() {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv("ALLOW_DEV_ORDER_ENDPOINTS")))
+	if raw != "1" && raw != "true" && raw != "yes" {
 		return false
 	}
-	raw := strings.ToLower(strings.TrimSpace(os.Getenv("ALLOW_DEV_ORDER_ENDPOINTS")))
-	return raw == "1" || raw == "true" || raw == "yes"
+	env := strings.ToLower(strings.TrimSpace(firstNonEmpty(
+		os.Getenv("APP_ENV"),
+		os.Getenv("ENV"),
+		os.Getenv("GO_ENV"),
+	)))
+	return env == "local" || env == "dev" || env == "development" || env == "test"
 }
 
 func isProductionEnv() bool {

@@ -8,7 +8,7 @@
 - Android 已新增登录门和验证码登录页；登录成功后保存后端签发的长期 v2 bearer token
 - 登录成功后，旧本机 `user_id` 作为迁移桥，后端会尽量把旧用户数据迁到手机号账号 `acct_...`
 - 阿里云融合认证服务已能通过 CLI 创建方案配置并返回 `OK`，但本机 CLI 未返回 `SchemeCode`，需要到控制台核对 / 复制
-- Android 一键登录 SDK / AAR 尚未导入；当前一键登录按钮不会请求后端 token，不消耗融合认证试用次数
+- Android 一键登录 SDK / AAR 尚未导入；生产标准应按官方 SDK 链路接入，不再用静态 token 或测试 ID 绕过登录
 - 短信登录后端接口已接阿里云 Dypns API，但 ECS 还没配置短信签名和模板
 - Redis 已购买但业务代码尚未接入；当前短信发送只有单 ECS 进程内限流，后续应迁到 Redis
 
@@ -29,7 +29,7 @@
 - `DYPNS_REGION_ID`：默认 `cn-hangzhou`
 - `DYPNS_FUSION_SCHEME_CODE`：阿里云融合认证 SchemeCode，需从控制台拿到
 - `DYPNS_ANDROID_PACKAGE_NAME`：默认 `com.nongjiqiancha`
-- `DYPNS_ANDROID_PACKAGE_SIGN`：Android release 签名 MD5，去掉冒号并转大写，例如 `26DF23B0D32BF5A4FCD616CBA22CADCA`
+- `DYPNS_ANDROID_PACKAGE_SIGN`：Android release 签名 MD5，去掉冒号并转小写，例如 `26df23b0d32bf5a4fcd616cba22cadca`
 - `DYPNS_SMS_SIGN_NAME`：短信签名
 - `DYPNS_SMS_TEMPLATE_CODE`：短信模板 Code
 - `DYPNS_SMS_TEMPLATE_PARAM`：默认 `{"code":"##code##","min":"5"}`
@@ -47,7 +47,7 @@
 
 - 不在数据库保存明文手机号，只保存 `APP_SECRET` HMAC 后的 `phone_hash` 和脱敏 `phone_mask`
 - 不把阿里云 AccessKey、短信模板变量、APP_SECRET 写进仓库
-- 一键登录 SDK 未接好前，Android 不请求 `/api/auth/fusion/token`，避免无意义消耗试用次数
+- 一键登录 SDK 接入后，Android 才请求 `/api/auth/fusion/token` 并把 token 交给官方 SDK；SDK 未接好前不走假登录或测试 ID 绕过
 - `chat_stream_inflight` 是临时租约，登录迁移时直接丢弃旧本机租约，不迁到手机号账号
 - 多 ECS / 多实例前，验证码发送限流、失败计数、fusion nonce 等应迁到 Redis
 

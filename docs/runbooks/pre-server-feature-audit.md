@@ -363,11 +363,11 @@
 当前代码真相：
 
 - Android 启动时由 `IdManager` 在本机 `SharedPreferences("app_ids")` 生成或读取 UUID 形式的本机 `user_id`；登录成功后会保存账号 `user_id`、v2 session token、token 到期时间、脱敏手机号和 `device_id`，并优先使用账号 `user_id`。
-- Android 主要用户接口都会带 `X-User-Id: <当前 user_id>`；如果已登录则附加账号 session bearer token；如果 `BuildConfig.SESSION_API_TOKEN` 非空，则只作为本地 / 内测静态调试桥接使用。
+- Android 主要用户接口都会带 `X-User-Id: <当前 user_id>`；如果已登录则附加账号 session bearer token；Android 不再使用静态 `SESSION_API_TOKEN` 绕过登录。
 - 图片上传 `/upload` 同样带 `X-User-Id` 和可选 bearer token。
 - 后端 `ResolveAuthUserID` 优先验证 bearer token；验证成功时以 token 内的 `userID` 为准，不再使用 Android 传来的 `X-User-Id`。
 - `AUTH_STRICT=true` 时，裸 `X-User-Id` 会被拒绝；必须配置 `APP_SECRET` 并提供可验证 bearer token 才能访问需要鉴权的接口。
-- `SESSION_API_TOKEN` 目前只是 Gradle 静态注入字段，不是正式登录方案；正式 release 不能打入共享静态 token。
+- Android 已移除 `SESSION_API_TOKEN` 静态注入和运行时绕过；正式登录只走 per-user session token。
 - 设置页“账号管理”里手机号会显示脱敏号码或未登录；退出设备按当前省成本口径保持登录，不提供用户可点退出；注销账号仍未开放。真实可用动作仍是“删除所有历史对话”，且只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
 
 已排查的旧方案：
@@ -378,9 +378,9 @@
 
 上线前必须注意：
 
-- 不能把一个静态 `SESSION_API_TOKEN` 打进正式 APK 当作生产登录方案。后端会优先认 bearer token；如果所有设备共用同一个静态 token，严格模式下会被解析成同一个 token 用户，反而把不同设备身份合并到一起。
+- 不能把共享静态 token 或测试用户 ID 当作生产登录方案；正式包必须通过手机号账号拿 per-user session token。
 - 公开生产不能长期依赖裸 `X-User-Id`；它适合本地开发和早期闭环内测，不适合开放互联网环境。
-- 如果直接开启 `AUTH_STRICT=true`，正式包必须已经能拿到 per-user session token，否则用户接口会 401；本地 / 内测静态 token 只能用于调试。
+- 如果直接开启 `AUTH_STRICT=true`，正式包必须已经能拿到 per-user session token，否则用户接口会 401。
 - 手机号登录上线时，旧本机 UUID 用户的数据迁移 / 绑定已经有首版桥接，但仍需真机验证历史、额度、反馈和日志是否都能稳定归并到同一个手机号账号。
 
 买服务器后必须补：
@@ -444,8 +444,8 @@
 - Android 会员开通、升级和加油包按钮只提示“支付功能暂不可用”，不会调用后端订单接口。
 - 后端仍有 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy`，但只是本地 / 内测开发期直改接口。
 - 开发期订单接口默认返回 `PAYMENT_NOT_CONFIGURED`。
-- 只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境不是 `APP_ENV / ENV / GO_ENV = prod / production` 时，开发期订单接口才会放行。
-- 生产环境即使误设 `ALLOW_DEV_ORDER_ENDPOINTS=true`，只要 `APP_ENV / ENV / GO_ENV` 是 `prod / production`，后端也会强制关闭开发期订单接口。
+- 只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境明确为 `APP_ENV / ENV / GO_ENV = local / dev / development / test` 时，开发期订单接口才会放行；缺失环境名也按关闭处理。
+- 生产环境或环境名缺失时，即使误设 `ALLOW_DEV_ORDER_ENDPOINTS=true`，后端也会强制关闭开发期订单接口。
 - 当前 `orders` 表只记录开发期成功结果，不是正式支付订单表。
 - 当前没有真实支付 SDK、支付渠道、自动续费、退款或对账流程。
 

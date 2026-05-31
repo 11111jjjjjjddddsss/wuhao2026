@@ -378,15 +378,10 @@ object SessionApi {
             is Number -> value
             is String -> value.trim().take(160)
             else -> value.toString().trim().take(160)
-        }
+    }
 
     private fun ensureAuthToken(onResult: (String?) -> Unit) {
-        val staticToken = BuildConfig.SESSION_API_TOKEN.trim()
-        if (staticToken.isNotEmpty()) {
-            onResult(staticToken)
-        } else {
-            onResult(IdManager.getAuthToken())
-        }
+        onResult(IdManager.getAuthToken())
     }
 
     private fun authedRequest(
@@ -403,7 +398,7 @@ object SessionApi {
         builder.addHeader("X-User-Id", IdManager.getUserId())
 
     private fun authTokenSync(): String? =
-        BuildConfig.SESSION_API_TOKEN.trim().takeIf { it.isNotEmpty() } ?: IdManager.getAuthToken()
+        IdManager.getAuthToken()
 
     private fun loginWithAuthPayload(
         endpoint: String,

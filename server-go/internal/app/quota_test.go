@@ -34,11 +34,20 @@ func TestDevOrderEndpointsAreDisabledByDefault(t *testing.T) {
 }
 
 func TestDevOrderEndpointsRequireExplicitOptIn(t *testing.T) {
-	t.Setenv("APP_ENV", "")
+	t.Setenv("APP_ENV", "development")
 	t.Setenv("ALLOW_DEV_ORDER_ENDPOINTS", "true")
 
 	if !devOrderEndpointsEnabled() {
-		t.Fatal("dev order endpoints should be enabled by explicit opt-in")
+		t.Fatal("dev order endpoints should be enabled by explicit dev opt-in")
+	}
+}
+
+func TestDevOrderEndpointsRequireDevelopmentEnvironment(t *testing.T) {
+	t.Setenv("APP_ENV", "")
+	t.Setenv("ALLOW_DEV_ORDER_ENDPOINTS", "true")
+
+	if devOrderEndpointsEnabled() {
+		t.Fatal("dev order endpoints should require an explicit development environment")
 	}
 }
 

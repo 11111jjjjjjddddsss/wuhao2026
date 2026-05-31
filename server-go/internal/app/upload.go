@@ -59,9 +59,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	targetPath := filepath.Join(s.uploadsDir, filename)
-	if err := os.WriteFile(targetPath, data, 0o644); err != nil {
-		s.logger.Error("upload write failed", "path", targetPath, "error", err)
+	if err := s.uploadStore.Save(r.Context(), filename, contentType, data); err != nil {
+		s.logger.Error("upload save failed", "filename", filename, "backend", s.uploadStore.Name(), "error", err)
 		s.writeError(w, http.StatusInternalServerError, "upload failed")
 		return
 	}
@@ -73,7 +72,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		http.NotFound(w, r)
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
@@ -83,13 +83,21 @@ func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target := filepath.Join(s.uploadsDir, name)
-	info, err := os.Stat(target)
-	if err != nil || info.IsDir() {
+	reader, contentType, err := s.uploadStore.Open(r.Context(), name)
+	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
-	http.ServeFile(w, r, target)
+	defer reader.Close()
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = io.Copy(w, reader)
 }
 
 func readUpload(file multipart.File) (string, []byte, error) {

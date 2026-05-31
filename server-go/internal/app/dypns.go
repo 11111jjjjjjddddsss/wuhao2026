@@ -50,7 +50,7 @@ func NewDypnsClientFromEnv() (*DypnsClient, error) {
 		client:        client,
 		schemeCode:    strings.TrimSpace(os.Getenv("DYPNS_FUSION_SCHEME_CODE")),
 		packageName:   strings.TrimSpace(firstNonEmpty(os.Getenv("DYPNS_ANDROID_PACKAGE_NAME"), "com.nongjiqiancha")),
-		packageSign:   strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(os.Getenv("DYPNS_ANDROID_PACKAGE_SIGN")), ":", "")),
+		packageSign:   strings.ToLower(strings.ReplaceAll(strings.TrimSpace(os.Getenv("DYPNS_ANDROID_PACKAGE_SIGN")), ":", "")),
 		smsSignName:   strings.TrimSpace(os.Getenv("DYPNS_SMS_SIGN_NAME")),
 		smsTemplate:   strings.TrimSpace(os.Getenv("DYPNS_SMS_TEMPLATE_CODE")),
 		smsParam:      strings.TrimSpace(firstNonEmpty(os.Getenv("DYPNS_SMS_TEMPLATE_PARAM"), `{"code":"##code##","min":"5"}`)),

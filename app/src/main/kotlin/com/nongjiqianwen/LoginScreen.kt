@@ -44,11 +44,7 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun LoginGate(content: @Composable () -> Unit) {
-    var loggedIn by remember {
-        mutableStateOf(
-            IdManager.isLoggedIn() || BuildConfig.SESSION_API_TOKEN.trim().isNotEmpty()
-        )
-    }
+    var loggedIn by remember { mutableStateOf(IdManager.isLoggedIn()) }
     if (loggedIn) {
         content()
     } else {

@@ -30,7 +30,6 @@ val releaseStorePassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_STORE_PAS
 val releaseKeyAlias = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_ALIAS")
 val releaseKeyPassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_PASSWORD")
 val uploadBaseUrl = optionalBuildValue("UPLOAD_BASE_URL")
-val sessionApiToken = optionalBuildValue("SESSION_API_TOKEN")
 val releaseSigningConfigured =
     !releaseStoreFile.isNullOrBlank() &&
         !releaseStorePassword.isNullOrBlank() &&
@@ -50,7 +49,6 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
-        buildConfigField("String", "SESSION_API_TOKEN", "\"$sessionApiToken\"")
 
         val useBackendAb = (project.findProperty("USE_BACKEND_AB") as String?)?.toBooleanStrictOrNull() ?: true
         buildConfigField("boolean", "USE_BACKEND_AB", useBackendAb.toString())
@@ -100,11 +98,6 @@ tasks.configureEach {
             if (!uploadBaseUrl.startsWith("https://")) {
                 throw org.gradle.api.GradleException(
                     "Release UPLOAD_BASE_URL must be configured as an https URL, for example -PUPLOAD_BASE_URL=https://api.nongjiqiancha.cn.",
-                )
-            }
-            if (sessionApiToken.isNotEmpty()) {
-                throw org.gradle.api.GradleException(
-                    "Release SESSION_API_TOKEN must be empty. Static shared tokens are only allowed for local/internal debug builds.",
                 )
             }
         }
