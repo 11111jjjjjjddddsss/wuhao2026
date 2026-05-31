@@ -223,6 +223,7 @@ private enum class ChatRole { USER, ASSISTANT }
 private enum class InitialWorklinePhase {
     WaitingForFirstSend,
     TopUnreached,
+    TopAnchoring,
     WorklineOwned
 }
 
@@ -2550,7 +2551,8 @@ fun ChatScreen() {
             todayAgriCard?.isRenderableTodayAgriCard() == true &&
                 todayAgriCardDismissedDay != todayAgriCardDayKey(todayAgriCard) &&
                 !isStreaming &&
-                initialWorklinePhase != InitialWorklinePhase.TopUnreached
+                initialWorklinePhase != InitialWorklinePhase.TopUnreached &&
+                initialWorklinePhase != InitialWorklinePhase.TopAnchoring
         }
     }
     val chatListItems by remember(
@@ -2793,8 +2795,12 @@ fun ChatScreen() {
     fun isInitialWorklineTopUnreached(): Boolean =
         initialWorklinePhase == InitialWorklinePhase.TopUnreached
 
+    fun isInitialWorklineTopFlow(): Boolean =
+        initialWorklinePhase == InitialWorklinePhase.TopUnreached ||
+            initialWorklinePhase == InitialWorklinePhase.TopAnchoring
+
     fun shouldSuppressAutomaticBottomAnchor(): Boolean =
-        initialWorklinePhase == InitialWorklinePhase.TopUnreached
+        isInitialWorklineTopFlow()
 
     fun shouldStartInitialWorklineTopFlow(): Boolean =
         initialWorklinePhase == InitialWorklinePhase.WaitingForFirstSend &&
@@ -2805,7 +2811,7 @@ fun ChatScreen() {
     fun keepOrStartInitialWorklineTopFlow(shouldUseTopFlow: Boolean) {
         if (shouldUseTopFlow) {
             initialWorklinePhase = InitialWorklinePhase.TopUnreached
-        } else if (initialWorklinePhase == InitialWorklinePhase.TopUnreached) {
+        } else if (isInitialWorklineTopFlow()) {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
         }
     }
@@ -2897,7 +2903,7 @@ fun ChatScreen() {
 
     fun shouldUseInitialTopFlowForSend(): Boolean {
         if (shouldStartInitialWorklineTopFlow()) return true
-        if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return false
+        if (!isInitialWorklineTopFlow()) return false
         return !hasInitialDocumentFlowReachedWorkline()
     }
     fun currentBottomOverflowPx(): Int {
@@ -3276,7 +3282,7 @@ fun ChatScreen() {
     }
 
     fun shouldTrackMessageContentBounds(messageId: String): Boolean {
-        return isInitialWorklineTopUnreached() ||
+        return isInitialWorklineTopFlow() ||
             messageId == messages.lastOrNull()?.id ||
             messageId == streamingMessageId ||
             messageId == pendingStreamingFinalizeMessageId
@@ -4604,10 +4610,33 @@ fun ChatScreen() {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
             return@LaunchedEffect
         }
-        initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+        initialWorklinePhase = InitialWorklinePhase.TopAnchoring
+    }
+
+    LaunchedEffect(
+        initialWorklinePhase,
+        messages.size,
+        startupLayoutReady,
+        chatListState.canScrollForward,
+        chatListUserDragging,
+        recyclerScrollInProgress,
+        scrollRuntime.userInteracting.value,
+        scrollMode
+    ) {
+        if (initialWorklinePhase != InitialWorklinePhase.TopAnchoring) return@LaunchedEffect
+        if (!startupLayoutReady || messages.isEmpty()) return@LaunchedEffect
+        if (userOwnsInitialWorklineTransition()) {
+            initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+            return@LaunchedEffect
+        }
+        if (!chatListState.canScrollForward) return@LaunchedEffect
         scrollMode = ScrollMode.AutoFollow
         scrollRuntime.userInteracting.value = false
         requestProgrammaticForwardListBottomAnchor(force = true)
+        withFrameNanos { }
+        if (initialWorklinePhase == InitialWorklinePhase.TopAnchoring) {
+            initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+        }
     }
 
     val shouldAnchorStreamingBottomThisFrame =
@@ -5402,13 +5431,13 @@ fun ChatScreen() {
         }
     }
     fun shouldTrackChatListBrowsingFromPointer(): Boolean {
-        return isStreaming || hasStreamingItem || imageSendInProgress || isInitialWorklineTopUnreached()
+        return isStreaming || hasStreamingItem || imageSendInProgress || isInitialWorklineTopFlow()
     }
     fun markChatListUserBrowsingFromPointer() {
         if (!shouldTrackChatListBrowsingFromPointer()) return
         endProgrammaticChatListScroll()
         sendStartAnchorActive = false
-        if (initialWorklinePhase == InitialWorklinePhase.TopUnreached) {
+        if (isInitialWorklineTopFlow()) {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
         }
         scrollRuntime.userInteracting.value = true
@@ -6406,7 +6435,7 @@ fun ChatScreen() {
                     },
                     topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = forwardListBottomPaddingPx,
-                    verticalArrangement = if (isInitialWorklineTopUnreached()) {
+                    verticalArrangement = if (isInitialWorklineTopFlow()) {
                         Arrangement.Top
                     } else {
                         Arrangement.Bottom

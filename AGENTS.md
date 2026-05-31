@@ -258,7 +258,7 @@ Clean-State 必做回归的范围：
 - `ChatRecyclerViewHost.kt` 当前使用：
   - `LazyColumn`
   - `items = ChatTimelineItem` 展示层；当前可能包含一个 `TodayAgriCard` UI-only 卡片和真实 `messages`
-  - 默认 `verticalArrangement = Arrangement.Bottom`，用于正向列表短内容不满一屏时也贴到底部工作线；唯一运行时例外是 `InitialWorklinePhase.TopUnreached`：清数据 / 删除历史后的首次真实业务内容尚未碰到 96dp 工作线前，临时使用 `Arrangement.Top` 让真实消息自然从顶部往下排
+  - 默认 `verticalArrangement = Arrangement.Bottom`，用于正向列表短内容不满一屏时也贴到底部工作线；唯一运行时例外是 `InitialWorklinePhase.TopUnreached / TopAnchoring`：清数据 / 删除历史后的首次真实业务内容尚未碰到 96dp 工作线前，以及触线后等待现有底部锚点同拍接住的一帧内，临时使用 `Arrangement.Top` 让真实消息自然从顶部往下排
   - `messages` 仍按 oldest -> newest 存储；视觉底部最新真实消息通过 `ChatTimelineItem.Message` 反查 index，不能把今日农情卡片当成最新消息锚点
   - 回到底部 / AutoFollow 使用最新真实消息 index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义，把最新消息底部压到工作线附近
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
@@ -279,7 +279,7 @@ Clean-State 必做回归的范围：
 
 1. 发送起步
 - 主人：[ChatScreen.kt](D:/wuhao/app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt)
-- 做法：在同一发送事务里同步完成输入框收口、`upsertUserMessage(...)`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)` 和发送期 reserve 锁；普通有历史 / 已触线场景按正向列表口径同步请求最新消息 `lastIndex` 贴到底部工作线，`InitialWorklinePhase.TopUnreached` 阶段则暂时挡住自动回底，等真实内容底边碰到 96dp 工作线后再交回主链
+- 做法：在同一发送事务里同步完成输入框收口、`upsertUserMessage(...)`、assistant placeholder、`prepareScrollRuntimeForStreamingStart(...)` 和发送期 reserve 锁；普通有历史 / 已触线场景按正向列表口径同步请求最新消息 `lastIndex` 贴到底部工作线，`InitialWorklinePhase.TopUnreached` 阶段则暂时挡住自动回底；等真实内容底边碰到 96dp 工作线后先进入极短 `TopAnchoring`，仍保持 `Arrangement.Top`，只复用现有底部锚点强制接一次，下一帧再交回主链
 - 当前目标：发送起步仍保持单一列表主人；不再靠 active zone / overlay 切主人来承接当前轮消息
 
 2. AutoFollow / 回到底部
@@ -310,7 +310,7 @@ Clean-State 必做回归的范围：
   - `messages` 作为 oldest -> newest 的唯一业务消息数据源；列表显示层可以包一层 `ChatTimelineItem` 承接 UI-only 今日农情卡片，但不再通过 `chatListItems` 派生 streaming block item
   - `currentLastMessageContentBottomPx()` 的 fallback 按正向列表使用最新真实消息的 UI index；`InitialWorklinePhase.TopUnreached` 的触线判断另走 `currentInitialDocumentFlowBottomPx()`，按当前业务消息已测 bounds、streaming bottom 和可见消息 item 最大底边判断整段首屏文档流是否碰到工作线，避免首条超长用户消息把 assistant placeholder 挤到未组合区域后漏触发上抬
   - `currentBottomOverflowPx()` 按正向列表单主人口径计算最新消息底边与统一底部目标之间的绝对误差
-- clean-state / 删除所有历史后的首屏体验当前用 `InitialWorklinePhase` 收口，而不是旧“稀疏首屏”方案：`WaitingForFirstSend -> TopUnreached -> WorklineOwned`。只有发送前没有任何真实业务消息时才进入 `TopUnreached`；该阶段真实聊天消息、图片消息、图片上传 pending、失败态、重试态、assistant placeholder 和 streaming 小球都仍在同一个 `LazyColumn` 里，只是临时 `Arrangement.Top`，并 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor。当前首屏文档流的最大可测底边到达或超过 96dp 工作线，或列表已经出现正向可滚范围时，直接交回 `WorklineOwned / Arrangement.Bottom` 主链；如果用户未拖动 / 浏览，同拍只请求一次正向底部锚点；如果用户正在拖动、滚动或浏览，只交权不抢手势。后续发送若首屏文档流已经触线，发送入口不得降回 `TopUnreached`，必须继续走正常工作线锚点。`HandoffPending` 已从运行时状态机删除，不允许再作为 Top 布局和底部锚点之间的持续交接态；`ChatTimelineItem.SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer、反向列表、overlay、raw delta 都仍是废弃旧方案，不允许并存恢复；今日农情卡片只在 `TopUnreached` 临时隐藏，避免 UI-only 卡片影响真实消息触线判断
+- clean-state / 删除所有历史后的首屏体验当前用 `InitialWorklinePhase` 收口，而不是旧“稀疏首屏”方案：`WaitingForFirstSend -> TopUnreached -> TopAnchoring -> WorklineOwned`。只有发送前没有任何真实业务消息时才进入 `TopUnreached`；该阶段真实聊天消息、图片消息、图片上传 pending、失败态、重试态、assistant placeholder 和 streaming 小球都仍在同一个 `LazyColumn` 里，只是临时 `Arrangement.Top`，并 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor。当前首屏文档流的最大可测底边到达或超过 96dp 工作线后，如果用户正在拖动、滚动或浏览，直接交给 `WorklineOwned` 且不抢手势；如果用户未拖动 / 浏览，则先进入极短 `TopAnchoring`，继续保持 `Arrangement.Top` 并继续 gate 普通自动回底，只在列表已经出现正向可滚范围时复用现有 `requestProgrammaticForwardListBottomAnchor(force = true)` 接一次底部锚点，下一帧再交回 `WorklineOwned / Arrangement.Bottom` 主链，避免 Top 到 Bottom 同拍切换造成“先掉一下再上抬”。后续发送若首屏文档流已经触线，发送入口不得降回 `TopUnreached`，必须继续走正常工作线锚点。`HandoffPending` 已从运行时状态机删除，不允许再作为 Top 布局和底部锚点之间的持续交接态；`ChatTimelineItem.SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer、反向列表、overlay、raw delta 都仍是废弃旧方案，不允许并存恢复；今日农情卡片在 `TopUnreached / TopAnchoring` 临时隐藏，避免 UI-only 卡片影响真实消息触线判断
 - 发送起步当前保留的旧保护只有两样：
   - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`
   - `sendStartAnchorActive`

@@ -27,7 +27,7 @@ Accepted
 关键规则：
 
 1. `messages` 按 oldest -> newest 存储并直接传给列表，视觉底部最新消息是 `lastIndex`。
-2. `ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，默认 `verticalArrangement = Arrangement.Bottom`，不再使用 `reverseLayout` / `items.asReversed()`。唯一例外是 `InitialWorklinePhase.TopUnreached`：清数据 / 删除历史后的首次真实业务内容尚未碰到 96dp 工作线前，临时使用 `Arrangement.Top`，让真实消息从顶部自然向下排。
+2. `ChatRecyclerViewHost.kt` 使用普通 `LazyColumn`，默认 `verticalArrangement = Arrangement.Bottom`，不再使用 `reverseLayout` / `items.asReversed()`。唯一例外是 `InitialWorklinePhase.TopUnreached / TopAnchoring`：清数据 / 删除历史后的首次真实业务内容尚未碰到 96dp 工作线前，以及触线后等待现有底部锚点接住的一帧内，临时使用 `Arrangement.Top`，让真实消息从顶部自然向下排。
 3. 回到底部和 AutoFollow 使用最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`。
 4. 工作线 gap 固定为 `96.dp`。waiting 小球、streaming 正文底边、开机历史态、完成态尾部都围绕这条工作线；工作线以下空白必须完整露出来。
 5. 小球锚点稳定不是靠 overlay，也不是靠 streaming 小分割。它依赖：
@@ -39,7 +39,7 @@ Accepted
 6. composer 是页面底部兄弟层，自己吃 `imePadding()`，根容器和列表不吃 IME 动画帧。输入框内容高度不能进入聊天列表 reserve。
 7. streaming 正文和 settled 文本共用同一条 assistant item 和同一套 soft-wrap renderer；完成态继续保留两阶段 finalize。
 8. 用户进入 `UserBrowsing` 后让权。用户手动滑回正向列表物理底部后，先请求一次底部锚点，再恢复 `AutoFollow`。
-9. 首屏未触线不是第二主人，也不是 UI spacer。`InitialWorklinePhase` 只 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor；`TopUnreached` 的触线判断看当前首屏文档流最大可测底边（消息 content bounds、streaming bottom、可见消息 item bottom），不是只看最后一条逻辑消息。文档流底边到达 96dp 工作线、或列表出现正向可滚范围后直接交回 `WorklineOwned / Arrangement.Bottom` 主链；如果用户未拖动 / 浏览，同拍只请求一次正向底部锚点，用户正在浏览则不抢手势。`HandoffPending` 已从运行时状态机删除，不得作为持续运行态和 Top 布局并存。
+9. 首屏未触线不是第二主人，也不是 UI spacer。`InitialWorklinePhase` 只 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor；`TopUnreached` 的触线判断看当前首屏文档流最大可测底边（消息 content bounds、streaming bottom、可见消息 item bottom），不是只看最后一条逻辑消息。文档流底边到达 96dp 工作线后，若用户正在浏览则直接交权不抢手势；若用户未浏览，则进入极短 `TopAnchoring`，保持 Top 布局、继续 suppress 普通自动回底，只在列表出现正向可滚范围时复用现有强制底部锚点接一次，下一帧再交回 `WorklineOwned / Arrangement.Bottom` 主链。`HandoffPending` 已从运行时状态机删除，不得作为持续运行态和 Top 布局并存。
 
 ## 禁止回退
 
