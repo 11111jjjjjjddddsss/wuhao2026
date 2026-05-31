@@ -39,7 +39,7 @@ Accepted
 6. composer 是页面底部兄弟层，自己吃 `imePadding()`，根容器和列表不吃 IME 动画帧。输入框内容高度不能进入聊天列表 reserve。
 7. streaming 正文和 settled 文本共用同一条 assistant item 和同一套 soft-wrap renderer；完成态继续保留两阶段 finalize。
 8. 用户进入 `UserBrowsing` 后让权。用户手动滑回正向列表物理底部后，先请求一次底部锚点，再恢复 `AutoFollow`。
-9. 首屏未触线不是第二主人，也不是 UI spacer。`InitialWorklinePhase` 只 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor；`TopUnreached` 的触线判断看当前首屏文档流最大可测底边（消息 content bounds、streaming bottom、可见消息 item bottom），不是只看最后一条逻辑消息。文档流底边到达 96dp 工作线后，若用户正在浏览则直接交权不抢手势；若用户只是触碰但未浏览，则继续停在 Top 流等待；若用户未触碰 / 浏览，则进入极短 `TopAnchoring`，保持 Top 布局、继续 suppress 普通自动回底。`TopAnchoring` 只在列表出现正向可滚范围、文档流底边已超过工作线约 48dp、且用户没有触碰 / 拖动 / 浏览时，同一执行点切 `WorklineOwned` 并复用现有强制底部锚点接一次。`HandoffPending` 已从运行时状态机删除，不得作为持续运行态和 Top 布局并存。
+9. 首屏未触线不是第二主人，也不是 UI spacer。`InitialWorklinePhase` 只 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor；`TopUnreached` 的触线判断看当前首屏文档流最大可测底边（消息 content bounds、streaming bottom、可见消息 item bottom），不是只看最后一条逻辑消息。文档流底边到达 96dp 工作线后，若用户正在浏览则直接交权不抢手势；若用户只是触碰但未浏览，则继续停在 Top 流等待；若用户未触碰 / 浏览，则进入极短 `TopAnchoring`，保持 Top 布局、继续 suppress 普通自动回底。`TopAnchoring` 只在列表出现正向可滚范围、文档流底边已超过工作线约 56dp、且用户没有触碰 / 拖动 / 浏览时，同一执行点切 `WorklineOwned` 并复用现有强制底部锚点接一次。`HandoffPending` 已从运行时状态机删除，不得作为持续运行态和 Top 布局并存。
 
 ## 禁止回退
 

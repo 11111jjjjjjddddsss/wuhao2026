@@ -20,7 +20,7 @@
 ## 当前稳定基线
 
 - 消息列表是单一正向 `LazyColumn` 主人，`messages` oldest -> newest，视觉底部最新消息是 `lastIndex`
-- 清数据 / 删除历史后的首次真实业务内容未触到工作线前，运行时是 `InitialWorklinePhase.TopUnreached`：同一个 `LazyColumn` 临时 `Arrangement.Top`，真实消息、图片 pending / 失败、assistant placeholder、失败 footer 和小球从顶部自然向下排；首屏文档流底边触到 96dp 工作线后，如果用户没在触碰 / 拖动 / 浏览，先进入极短 `TopAnchoring` 并继续保持 Top 布局，等列表可正向滚动且内容超过工作线约 48dp 时，同一执行点切回默认 `Arrangement.Bottom` 并复用现有强制底部锚点接一次
+- 清数据 / 删除历史后的首次真实业务内容未触到工作线前，运行时是 `InitialWorklinePhase.TopUnreached`：同一个 `LazyColumn` 临时 `Arrangement.Top`，真实消息、图片 pending / 失败、assistant placeholder、失败 footer 和小球从顶部自然向下排；首屏文档流底边触到 96dp 工作线后，如果用户没在触碰 / 拖动 / 浏览，先进入极短 `TopAnchoring` 并继续保持 Top 布局，等列表可正向滚动且内容超过工作线约 56dp 时，同一执行点切回默认 `Arrangement.Bottom` 并复用现有强制底部锚点接一次
 - 工作线 gap 是 `96.dp`，小球、streaming 正文、开机历史态、完成态尾部都围绕这条工作线；工作线以下空白必须完整露出来
 - AutoFollow / 回到底部使用 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`
 - streaming 内容提交后由 `SideEffect` 在同帧 apply changes 后、layout 前请求底部锚定，压“下一行从工作线下方冒头闪”

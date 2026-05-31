@@ -430,7 +430,7 @@ private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 96.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
-private val INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW = 48.dp
+private val INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW = 56.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
@@ -4632,6 +4632,9 @@ fun ChatScreen() {
     LaunchedEffect(
         initialWorklinePhase,
         messages.size,
+        currentInitialDocumentFlowBottomPx(),
+        currentUnifiedBottomTargetPx(),
+        hasInitialDocumentFlowSafelyPassedWorkline(),
         startupLayoutReady,
         chatListState.canScrollForward,
         chatListUserDragging,
