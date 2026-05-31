@@ -2799,6 +2799,30 @@ fun ChatScreen() {
                 ?: return -1
         return fallbackItem.offset + fallbackItem.size
     }
+
+    fun currentInitialDocumentFlowBottomPx(): Int {
+        if (messages.isEmpty()) return -1
+        val currentMessageIds = messages.mapTo(mutableSetOf()) { message -> message.id }
+        var bottomPx = currentLastMessageContentBottomPx()
+        fun includeBounds(bounds: Rect?) {
+            if (bounds == null || bounds.bottom <= bounds.top) return
+            bottomPx = bottomPx.coerceAtLeast((bounds.bottom - messageViewportTopPx).roundToInt())
+        }
+        messageContentBoundsById.forEach { (messageId, bounds) ->
+            if (messageId in currentMessageIds) includeBounds(bounds)
+        }
+        messageSelectionBoundsById.forEach { (messageId, bounds) ->
+            if (messageId in currentMessageIds) includeBounds(bounds)
+        }
+        bottomPx = bottomPx.coerceAtLeast(currentStreamingContentBottomPx())
+        chatListState.layoutInfo.visibleItemsInfo.forEach { item ->
+            if (chatListItems.getOrNull(item.index) is ChatTimelineItem.Message) {
+                bottomPx = bottomPx.coerceAtLeast(item.offset + item.size)
+            }
+        }
+        return bottomPx
+    }
+
     fun currentStreamingLegalBottomPx(): Int {
         return streamingWorklineBottomPx.takeIf { it > 0 } ?: -1
     }
@@ -3188,7 +3212,8 @@ fun ChatScreen() {
     }
 
     fun shouldTrackMessageContentBounds(messageId: String): Boolean {
-        return messageId == messages.lastOrNull()?.id ||
+        return isInitialWorklineTopUnreached() ||
+            messageId == messages.lastOrNull()?.id ||
             messageId == streamingMessageId ||
             messageId == pendingStreamingFinalizeMessageId
     }
@@ -4496,7 +4521,7 @@ fun ChatScreen() {
         chatListUserDragging,
         recyclerScrollInProgress,
         chatListState.canScrollBackward,
-        currentLastMessageContentBottomPx(),
+        currentInitialDocumentFlowBottomPx(),
         currentUnifiedBottomTargetPx()
     ) {
         if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return@LaunchedEffect
@@ -4506,12 +4531,12 @@ fun ChatScreen() {
         if (scrollMode != ScrollMode.UserBrowsing && !scrollRuntime.userInteracting.value) {
             return@LaunchedEffect
         }
-        val latestContentBottomPx = currentLastMessageContentBottomPx()
+        val documentContentBottomPx = currentInitialDocumentFlowBottomPx()
         val worklineBottomPx = currentUnifiedBottomTargetPx()
         if (
-            latestContentBottomPx <= 0 ||
+            documentContentBottomPx <= 0 ||
             worklineBottomPx <= 0 ||
-            latestContentBottomPx < worklineBottomPx
+            documentContentBottomPx < worklineBottomPx
         ) {
             return@LaunchedEffect
         }
@@ -4532,11 +4557,9 @@ fun ChatScreen() {
     LaunchedEffect(
         initialWorklinePhase,
         messages.size,
-        currentLastMessageContentBottomPx(),
+        currentInitialDocumentFlowBottomPx(),
         currentUnifiedBottomTargetPx(),
         startupLayoutReady,
-        sendUiSettling,
-        isComposerSettling,
         chatListUserDragging,
         recyclerScrollInProgress,
         scrollRuntime.userInteracting.value,
@@ -4545,8 +4568,6 @@ fun ChatScreen() {
         if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return@LaunchedEffect
         if (!startupLayoutReady || messages.isEmpty()) return@LaunchedEffect
         if (
-            sendUiSettling ||
-            isComposerSettling ||
             chatListUserDragging ||
             recyclerScrollInProgress ||
             scrollRuntime.userInteracting.value ||
@@ -4554,12 +4575,12 @@ fun ChatScreen() {
         ) {
             return@LaunchedEffect
         }
-        val latestContentBottomPx = currentLastMessageContentBottomPx()
+        val documentContentBottomPx = currentInitialDocumentFlowBottomPx()
         val worklineBottomPx = currentUnifiedBottomTargetPx()
         if (
-            latestContentBottomPx > 0 &&
+            documentContentBottomPx > 0 &&
             worklineBottomPx > 0 &&
-            latestContentBottomPx >= worklineBottomPx
+            documentContentBottomPx >= worklineBottomPx
         ) {
             initialWorklinePhase = InitialWorklinePhase.HandoffPending
             requestProgrammaticForwardListBottomAnchor(force = true)
