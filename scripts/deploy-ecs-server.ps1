@@ -192,8 +192,21 @@ echo nginx
 nginx -t
 
 echo health
-curl -sS -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz
-echo
+health_body='/tmp/nongji-health.json'
+health_status=''
+for i in `$(seq 1 20); do
+  health_status=`$(curl -sS -o "`$health_body" -w '%{http_code}' -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz || true)
+  cat "`$health_body" || true
+  echo
+  if [ "`$health_status" = "200" ]; then
+    break
+  fi
+  echo "health not ready: `$health_status" >&2
+  sleep 2
+done
+if [ "`$health_status" != "200" ]; then
+  exit 20
+fi
 "@
 
 $remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))
