@@ -79,6 +79,13 @@ object SessionApi {
         @SerializedName("upgrade_remaining") val upgradeRemaining: Int? = null
     )
 
+    data class AuthSessionSnapshot(
+        @SerializedName("user_id") val userId: String? = null,
+        @SerializedName("phone_mask") val phoneMask: String? = null,
+        val token: String? = null,
+        @SerializedName("expires_at") val expiresAt: Long? = null
+    )
+
     data class TodayAgriCardResponse(
         val status: String? = null,
         val card: TodayAgriCard? = null
@@ -156,6 +163,103 @@ object SessionApi {
     }
 
     fun hasBackendConfigured(): Boolean = baseUrl().isNotEmpty()
+
+    fun requestFusionAuthToken(onResult: (String?, String?) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            onResult(null, "后端地址未配置")
+            return
+        }
+        val request = Request.Builder()
+            .url("$base/api/auth/fusion/token")
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { onResult(null, "网络连接失败，请稍后再试") }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val body = it.body?.string().orEmpty()
+                    val token = if (it.isSuccessful) {
+                        runCatching {
+                            gson.fromJson(body, JsonObject::class.java)
+                                ?.get("auth_token")
+                                ?.asString
+                                ?.trim()
+                                ?.takeIf { value -> value.isNotEmpty() }
+                        }.getOrNull()
+                    } else {
+                        null
+                    }
+                    mainHandler.post {
+                        if (!token.isNullOrBlank()) {
+                            onResult(token, null)
+                        } else {
+                            onResult(null, "一键登录暂未配置，请使用验证码登录")
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    fun loginWithFusionVerifyToken(verifyToken: String, onResult: (Boolean, String?) -> Unit) {
+        loginWithAuthPayload(
+            endpoint = "/api/auth/fusion/login",
+            payload = mapOf(
+                "verify_token" to verifyToken.trim(),
+                "legacy_user_id" to IdManager.getLegacyUserId(),
+                "device_id" to IdManager.getDeviceId()
+            ),
+            onResult = onResult
+        )
+    }
+
+    fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            onResult(false, "后端地址未配置")
+            return
+        }
+        val payload = gson.toJson(mapOf("phone_number" to phoneNumber.trim()))
+            .toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("$base/api/auth/sms/send")
+            .addHeader("Content-Type", "application/json")
+            .post(payload)
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { onResult(false, "网络连接失败，请稍后再试") }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    mainHandler.post {
+                        onResult(
+                            it.isSuccessful,
+                            if (it.isSuccessful) null else "验证码暂时发送失败，请稍后再试"
+                        )
+                    }
+                }
+            }
+        })
+    }
+
+    fun loginWithSms(phoneNumber: String, verifyCode: String, onResult: (Boolean, String?) -> Unit) {
+        loginWithAuthPayload(
+            endpoint = "/api/auth/sms/login",
+            payload = mapOf(
+                "phone_number" to phoneNumber.trim(),
+                "verify_code" to verifyCode.trim(),
+                "legacy_user_id" to IdManager.getLegacyUserId(),
+                "device_id" to IdManager.getDeviceId()
+            ),
+            onResult = onResult
+        )
+    }
 
     fun cancelCurrentStream() {
         currentStreamCall.getAndSet(null)?.cancel()
@@ -281,7 +385,7 @@ object SessionApi {
         if (staticToken.isNotEmpty()) {
             onResult(staticToken)
         } else {
-            onResult(null)
+            onResult(IdManager.getAuthToken())
         }
     }
 
@@ -299,7 +403,57 @@ object SessionApi {
         builder.addHeader("X-User-Id", IdManager.getUserId())
 
     private fun authTokenSync(): String? =
-        BuildConfig.SESSION_API_TOKEN.trim().takeIf { it.isNotEmpty() }
+        BuildConfig.SESSION_API_TOKEN.trim().takeIf { it.isNotEmpty() } ?: IdManager.getAuthToken()
+
+    private fun loginWithAuthPayload(
+        endpoint: String,
+        payload: Map<String, String>,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            onResult(false, "后端地址未配置")
+            return
+        }
+        val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url(base + endpoint)
+            .addHeader("Content-Type", "application/json")
+            .post(requestBody)
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { onResult(false, "网络连接失败，请稍后再试") }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val body = it.body?.string().orEmpty()
+                    val session = if (it.isSuccessful) {
+                        runCatching { gson.fromJson(body, AuthSessionSnapshot::class.java) }.getOrNull()
+                    } else {
+                        null
+                    }
+                    if (!session?.userId.isNullOrBlank() && !session?.token.isNullOrBlank()) {
+                        IdManager.saveAuthSession(
+                            userId = session!!.userId.orEmpty(),
+                            token = session.token.orEmpty(),
+                            expiresAt = session.expiresAt ?: 0L,
+                            phoneMask = session.phoneMask
+                        )
+                        mainHandler.post { onResult(true, null) }
+                    } else {
+                        mainHandler.post {
+                            onResult(
+                                false,
+                                if (it.code == 401) "验证码不正确或已过期" else "登录暂时失败，请稍后再试"
+                            )
+                        }
+                    }
+                }
+            }
+        })
+    }
 
     private fun enqueueWithRetry401(
         requestFactory: (String?) -> Request.Builder,

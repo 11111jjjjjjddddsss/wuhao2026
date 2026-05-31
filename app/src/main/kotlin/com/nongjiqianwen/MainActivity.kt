@@ -53,7 +53,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    ChatScreen()
+                    LoginGate {
+                        ChatScreen()
+                    }
                 }
             }
         }

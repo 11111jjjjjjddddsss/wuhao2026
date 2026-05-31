@@ -741,6 +741,7 @@ private fun HamburgerMenuMainPage(
     onCheckUpdate: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
+    val phoneMask = IdManager.getAuthPhoneMask()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -810,12 +811,12 @@ private fun HamburgerMenuMainPage(
 
         HamburgerMenuGroup {
             HamburgerMenuRow(
-                icon = HamburgerMenuIcon.Logout,
-                title = "退出登录",
-                subtitle = "登录后可用",
-                destructive = true,
+                icon = HamburgerMenuIcon.Account,
+                title = "当前账号",
+                subtitle = phoneMask ?: "未登录",
+                destructive = false,
                 showChevron = false,
-                onClick = { onPlaceholderClick("登录能力暂不可用") }
+                onClick = { onPlaceholderClick(if (phoneMask != null) "当前设备已保持登录" else "请先登录") }
             )
         }
     }
@@ -1059,7 +1060,7 @@ private fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
+            text = "更新日期：2026年5月31日\n生效日期：2026年5月31日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1070,7 +1071,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "二、基础运行和身份标识",
-            body = "为维持服务运行和区分会话，我们会处理本机用户标识、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。本版本主要使用本机生成的用户标识承接聊天、额度、反馈和权益，不要求手机号登录，不读取通讯录或短信。"
+            body = "为维持服务运行、区分会话和保障账号权益，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。手机号用于登录认证、账号识别、历史恢复和权益核对；App 不读取通讯录或短信内容。"
         )
         HamburgerAgreementSection(
             title = "三、AI 问诊和图片处理",
@@ -1094,7 +1095,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "八、第三方大模型和云服务",
-            body = "我们通过服务端调用境内云服务器、数据库和大模型服务，用于后端运行、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。上传图片由后端服务器保存；必要运行日志用于排查故障和保障服务安全。"
+            body = "我们通过服务端调用境内云服务器、数据库、大模型服务、手机号认证和短信服务，用于后端运行、登录认证、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。上传图片由后端服务器保存；必要运行日志用于排查故障和保障服务安全。"
         )
         HamburgerAgreementSection(
             title = "九、本地缓存和后端保存",
@@ -1102,7 +1103,7 @@ private fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十、第三方和系统能力清单",
-            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。本版本不包含广告、地图、推送、统计 SDK、支付 SDK、第三方登录 SDK、友盟、Bugly、极光或 Firebase。"
+            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；手机号认证和短信服务用于一键登录或验证码登录；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase。"
         )
         HamburgerAgreementSection(
             title = "十一、共享和公开",
@@ -1244,7 +1245,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年5月25日",
+            text = "更新日期：2026年5月31日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1262,12 +1263,16 @@ private fun HamburgerThirdPartyListContent(
             body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈、更新信息和必要日志。上传图片由后端服务器保存，必要运行日志用于排查故障和保障服务安全。"
         )
         HamburgerAgreementSection(
-            title = "四、系统能力",
+            title = "四、手机号认证和短信服务",
+            body = "登录时，我们会通过境内第三方手机号认证和短信服务完成一键登录或验证码校验；必要时处理手机号、验证码校验结果、设备和网络相关认证参数。当前验证码需要您手动输入，App 不读取短信内容。"
+        )
+        HamburgerAgreementSection(
+            title = "五、系统能力",
             body = "系统浏览器、系统安装器、外部相机和 Android Photo Picker 只在您主动点击相关功能时调用。它们属于系统能力，不是 App 内嵌的广告、统计或推送 SDK。"
         )
         HamburgerAgreementSection(
-            title = "五、本版本未使用的第三方 SDK",
-            body = "本版本不包含广告、地图、推送、统计 SDK、支付 SDK、第三方登录 SDK、友盟、Bugly、极光或 Firebase；不申请定位、通讯录、短信、录音或通知权限。服务范围或第三方处理方式发生变化时，我们会更新清单和隐私政策。"
+            title = "六、本版本未使用的第三方 SDK",
+            body = "本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase；不申请定位、通讯录、短信、录音或通知权限。服务范围、第三方处理方式或一键登录客户端 SDK 发生变化时，我们会更新清单和隐私政策。"
         )
     }
 }
@@ -1308,14 +1313,14 @@ private fun HamburgerPersonalInfoListContent(
     ) {
         HamburgerLegalPageTitle("个人信息收集清单")
         Text(
-            text = "更新日期：2026年5月25日",
+            text = "更新日期：2026年5月31日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
         )
         HamburgerAgreementSection(
             title = "一、基础运行",
-            body = "为维持服务运行，我们会处理本机用户标识、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志和必要运行缓存。"
+            body = "为维持服务运行，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志和必要运行缓存。"
         )
         HamburgerAgreementSection(
             title = "二、AI 问诊",
@@ -1561,10 +1566,10 @@ private fun HamburgerMenuPreviewGroups() {
     }
     HamburgerMenuGroup {
         HamburgerMenuRow(
-            icon = HamburgerMenuIcon.Logout,
-            title = "退出登录",
-            subtitle = "登录后可用",
-            destructive = true,
+            icon = HamburgerMenuIcon.Account,
+            title = "当前账号",
+            subtitle = "138****8000",
+            destructive = false,
             showChevron = false,
             onClick = {}
         )
@@ -1597,6 +1602,7 @@ private fun HamburgerAccountManagementContent(
 ) {
     var deleteHistoryDialogVisible by rememberSaveable { mutableStateOf(false) }
     var deleteHistorySubmitting by remember { mutableStateOf(false) }
+    val phoneMask = IdManager.getAuthPhoneMask()
 
     Column(modifier = modifier) {
         Text(
@@ -1624,8 +1630,8 @@ private fun HamburgerAccountManagementContent(
         HamburgerAccountGroup {
             HamburgerAccountInfoRow(
                 title = "手机号",
-                value = "未绑定",
-                onClick = { onPendingAction("手机号绑定暂不可用") }
+                value = phoneMask ?: "未登录",
+                onClick = { onPendingAction(if (phoneMask != null) "当前账号已登录" else "请先登录") }
             )
         }
 
@@ -1639,7 +1645,7 @@ private fun HamburgerAccountManagementContent(
             HamburgerMenuDivider()
             HamburgerAccountActionRow(
                 title = "退出设备",
-                onClick = { onPendingAction("登录能力暂不可用") }
+                onClick = { onPendingAction("当前设备会保持登录") }
             )
         }
 

@@ -59,8 +59,8 @@
 - 后端是唯一真相来源
 - 以下业务逻辑必须由后端控制：用户鉴权、会员等级、调用次数、上下文组装、模型调用、成本统计
 - Android 客户端禁止保存、注入或使用模型服务 API Key；主模型和摘要模型调用只能由后端发起，不允许重新引入客户端直连模型链
-- 当前无完整账号体系前，后端默认仍兼容 Android 早期阶段的 `X-User-Id` 本机身份兜底；服务端也支持 `APP_SECRET` 签名 bearer token。生产若配置 `AUTH_STRICT=true`，必须同时配置 `APP_SECRET`，此时裸 `X-User-Id` 会被拒绝，只接受可验证 token
-- Android `SESSION_API_TOKEN` 只允许作为本地 / 内测固定用户调试桥接，不是正式登录方案；正式 release APK 不应打入共享静态 token。公开生产必须由后端按真实用户动态签发 per-user token，并规划本机 `user_id` 到账号身份的数据迁移
+- 手机号账号骨架已开始落地：后端新增 `app_accounts`、`auth_sessions` 和 `user_id_migrations`，手机号登录成功后会按手机号 HMAC hash 归一到稳定 `acct_...` 用户，并签发带 `session_id` 的长期 v2 bearer token；`AUTH_SESSION_DAYS` 默认 3650 天，当前按“长期保持登录、省认证次数”口径处理，后续若做退出设备 / 设备管理再由后端吊销 session；Android 登录后使用账号 `user_id`，登录前本机 `user_id` 只作为旧身份迁移桥。当前仍保留裸 `X-User-Id` 兼容本地 / 迁移期调试；生产若配置 `AUTH_STRICT=true`，必须同时配置 `APP_SECRET`，此时裸 `X-User-Id` 会被拒绝，只接受可验证 token
+- Android `SESSION_API_TOKEN` 只允许作为本地 / 内测固定用户调试桥接，不是正式登录方案；正式 release APK 不应打入共享静态 token。公开生产应使用后端按真实手机号账号动态签发的 per-user token；本机旧 `user_id` 到账号身份的数据迁移已经有首版后端事务骨架，但阿里云融合认证 Android SDK、`DYPNS_FUSION_SCHEME_CODE`、短信签名 / 模板、ECS 环境变量和 Redis 分布式限流仍需继续接完
 
 Android 构建链：
 - 对外安装身份：`applicationId = com.nongjiqiancha`，App 名称“农技千查”；Kotlin 源码包 / Gradle namespace 暂保留 `com.nongjiqianwen` 作为内部代码命名空间，不决定备案或安装身份。旧内测包 `com.nongjiqianwen` 不能通过检查更新覆盖安装成新包 `com.nongjiqiancha`，测试机需卸旧包重装；正式 release 构建必须同时配置固定签名和 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 等 https 后端地址，避免打出不接后端的正式包
@@ -222,7 +222,7 @@ Android 构建链：
 Clean-State 定义：
 - 清除 app 数据后首次启动
 - 无本地聊天记录、无本地底部视口、无本地流式草稿、无旧 user_id 状态
-- 若用户没有稳定账号 / 后端身份，清数据后应视为新用户 clean-state；若用户有稳定账号 / 手机号登录，后端可按该身份返回 30 天内最近 30 轮业务聊天记录，这是账号级业务恢复，不是本地 UI 状态回退。当前项目还没有手机号 / 账号登录体系，主要依赖本机 `user_id`；清数据导致本机 `user_id` 丢失后，30 天归档也无法自动识别旧用户
+- 若用户没有稳定账号 / 后端身份，清数据后应视为新用户 clean-state；若用户有稳定账号 / 手机号登录，后端可按该身份返回 30 天内最近 30 轮业务聊天记录，这是账号级业务恢复，不是本地 UI 状态回退。当前手机号账号骨架已落地但尚未完成生产配置和 Android 一键登录 SDK 接入；未登录或未配置完成时仍主要依赖本机 `user_id`，清数据导致本机 `user_id` 丢失后，30 天归档无法自动识别旧用户
 
 Clean-State 必做回归的范围：
 - 聊天列表布局

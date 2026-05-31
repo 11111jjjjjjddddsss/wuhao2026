@@ -85,9 +85,10 @@ const (
 )
 
 type AuthInfo struct {
-	UserID   string
-	AuthMode AuthMode
-	MaskedIP string
+	UserID    string
+	SessionID string
+	AuthMode  AuthMode
+	MaskedIP  string
 }
 
 type RegionSource string

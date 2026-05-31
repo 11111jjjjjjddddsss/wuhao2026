@@ -314,7 +314,7 @@ object ImageUploader {
                     .url(uploadUrl)
                     .post(requestBody)
                     .addHeader("X-User-Id", IdManager.getUserId())
-                BuildConfig.SESSION_API_TOKEN.trim().takeIf { it.isNotEmpty() }?.let { token ->
+                (BuildConfig.SESSION_API_TOKEN.trim().takeIf { it.isNotEmpty() } ?: IdManager.getAuthToken())?.let { token ->
                     requestBuilder.addHeader("Authorization", "Bearer $token")
                 }
                 val request = requestBuilder.build()

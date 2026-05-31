@@ -358,36 +358,36 @@
 
 ### 10. 账号 / 手机号登录与生产鉴权
 
-结论：当前账号链路能支撑早期内测，但还不是公开生产账号体系。后端已有严格鉴权开关和签名 token 校验，真正上线前缺的是手机号登录 / token 动态签发 / 旧本机身份迁移，不是 Go 语言性能问题。
+结论：当前账号链路已经进入手机号登录骨架阶段，但还不是公开生产账号体系。后端已有严格鉴权开关、v2 session token、手机号账号表、旧本机身份迁移桥和短信 / 融合认证接口；真正上线前缺的是阿里云一键登录 Android SDK、SchemeCode、短信签名模板、ECS 环境变量、Redis 分布式限流和真机联调，不是 Go 语言性能问题。
 
 当前代码真相：
 
-- Android 启动时由 `IdManager` 在本机 `SharedPreferences("app_ids")` 生成或读取 UUID 形式的 `user_id`；清 App 数据后会丢失并生成新身份。
-- Android 主要用户接口都会带 `X-User-Id: <本机 UUID>`；如果 `BuildConfig.SESSION_API_TOKEN` 非空，还会附加 `Authorization: Bearer <token>`。
+- Android 启动时由 `IdManager` 在本机 `SharedPreferences("app_ids")` 生成或读取 UUID 形式的本机 `user_id`；登录成功后会保存账号 `user_id`、v2 session token、token 到期时间、脱敏手机号和 `device_id`，并优先使用账号 `user_id`。
+- Android 主要用户接口都会带 `X-User-Id: <当前 user_id>`；如果已登录则附加账号 session bearer token；如果 `BuildConfig.SESSION_API_TOKEN` 非空，则只作为本地 / 内测静态调试桥接使用。
 - 图片上传 `/upload` 同样带 `X-User-Id` 和可选 bearer token。
 - 后端 `ResolveAuthUserID` 优先验证 bearer token；验证成功时以 token 内的 `userID` 为准，不再使用 Android 传来的 `X-User-Id`。
 - `AUTH_STRICT=true` 时，裸 `X-User-Id` 会被拒绝；必须配置 `APP_SECRET` 并提供可验证 bearer token 才能访问需要鉴权的接口。
-- `SESSION_API_TOKEN` 目前只是 Gradle 静态注入字段，不是登录后按真实用户动态签发 / 刷新的 token。
-- 设置页“账号管理”里手机号、退出设备、注销账号目前都是占位提示；真实可用动作只有“删除所有历史对话”，且只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
+- `SESSION_API_TOKEN` 目前只是 Gradle 静态注入字段，不是正式登录方案；正式 release 不能打入共享静态 token。
+- 设置页“账号管理”里手机号会显示脱敏号码或未登录；退出设备按当前省成本口径保持登录，不提供用户可点退出；注销账号仍未开放。真实可用动作仍是“删除所有历史对话”，且只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
 
 已排查的旧方案：
 
-- 没有发现后端手机号登录、短信验证码、退出登录或注销账号接口并存。
-- 没有发现 Android 端真实登录 / 退出 / 注销逻辑并存；相关入口当前不调用后端，也不清 `IdManager`。
-- 没有发现第二套用户身份来源；当前真实身份仍是本机 `user_id` + 可选服务端签名 token。
+- 没有发现旧的 Android 直连模型登录链、旧静态共享 token 正式化链或用户可点退出后清空账号的逻辑并存。
+- 没有发现 Android 端真实退出 / 注销逻辑并存；相关入口当前不清 `IdManager`，符合“保持登录、省钱”的当前口径。
+- 身份来源已收敛为“未登录本机 `user_id` / 登录后账号 `user_id` + session token”；旧本机 `user_id` 只作为登录迁移桥，不再是登录后的长期身份真源。
 
 上线前必须注意：
 
 - 不能把一个静态 `SESSION_API_TOKEN` 打进正式 APK 当作生产登录方案。后端会优先认 bearer token；如果所有设备共用同一个静态 token，严格模式下会被解析成同一个 token 用户，反而把不同设备身份合并到一起。
 - 公开生产不能长期依赖裸 `X-User-Id`；它适合本地开发和早期闭环内测，不适合开放互联网环境。
-- 如果直接开启 `AUTH_STRICT=true`，现有无登录 App 必须已经有 per-user token 获取链路，否则用户接口会 401。
-- 手机号登录上线时，要决定是否把旧本机 UUID 用户的数据迁移 / 绑定到手机号账号；否则老用户清数据、换机或登录后可能看不到原本的历史、额度和反馈。
+- 如果直接开启 `AUTH_STRICT=true`，正式包必须已经能拿到 per-user session token，否则用户接口会 401；本地 / 内测静态 token 只能用于调试。
+- 手机号登录上线时，旧本机 UUID 用户的数据迁移 / 绑定已经有首版桥接，但仍需真机验证历史、额度、反馈和日志是否都能稳定归并到同一个手机号账号。
 
 买服务器后必须补：
 
-- 手机号登录或等价账号体系：短信验证码服务、验证码限流、防刷、登录 / 绑定 / 换绑流程、手机号唯一性和隐私告知。
-- 后端 token 签发 / 刷新 / 过期 / 吊销机制；Android 保存 per-user token，不能继续靠共享静态 token。
-- 本机 `user_id` 到账号 `user_id` 的迁移策略，至少覆盖 `session_ab`、`session_round_archive`、会员 / 额度 / 加油包、帮助与反馈、订单 / 礼品卡未来表。
+- 阿里云手机号认证收口：一键登录 Android SDK、SchemeCode、短信签名模板、DYPNS 环境变量、短信防刷限流和 Redis 分布式限流。
+- 后端 token 刷新 / 主动吊销 / 多设备管理机制；Android 已保存 per-user token，但当前按“长期保持登录”口径不提供用户可点退出。
+- 本机 `user_id` 到账号 `user_id` 的迁移策略需要继续真机验证，至少覆盖 `session_ab`、`session_round_archive`、会员 / 额度 / 加油包、帮助与反馈、订单 / 礼品卡未来表。
 - 账号注销和个人信息查询 / 删除入口，明确聊天、图片、摘要、归档、反馈、会员权益、订单、礼品卡和日志的删除 / 匿名化 / 法定留存范围。
 - 最小管理后台或只读脚本：能按手机号 / user_id 查身份绑定、会员、额度、反馈、订单、礼品卡和注销处理记录。
 

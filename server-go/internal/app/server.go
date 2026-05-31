@@ -31,11 +31,13 @@ type Server struct {
 	bailian      *BailianClient
 	summary      *SummaryService
 	dailyAgri    *DailyAgriCardService
+	dypns        *DypnsClient
 	shanghai     *time.Location
 	assetDir     string
 	uploadsDir   string
 	systemAnchor string
 	rateLimiter  *chatRateLimiter
+	smsLimiter   *chatRateLimiter
 }
 
 type orderRequest struct {
@@ -107,6 +109,10 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 
 	store := NewStore(db, shanghai)
 	bailian := NewBailianClient()
+	dypns, err := NewDypnsClientFromEnv()
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{
 		logger:       logger,
 		mux:          http.NewServeMux(),
@@ -115,11 +121,13 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		bailian:      bailian,
 		summary:      NewSummaryService(store, prompts, bailian, logger),
 		dailyAgri:    NewDailyAgriCardService(store, bailian, logger, shanghai),
+		dypns:        dypns,
 		shanghai:     shanghai,
 		assetDir:     assetDir,
 		uploadsDir:   uploadsDir,
 		systemAnchor: systemAnchor,
 		rateLimiter:  newChatRateLimiter(),
+		smsLimiter:   newAuthSMSRateLimiter(),
 	}
 	server.registerRoutes()
 	return server, nil
@@ -131,6 +139,11 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
+	s.mux.HandleFunc("POST /api/auth/fusion/token", s.handleAuthFusionToken)
+	s.mux.HandleFunc("POST /api/auth/fusion/login", s.handleAuthFusionLogin)
+	s.mux.HandleFunc("POST /api/auth/sms/send", s.handleAuthSMSSend)
+	s.mux.HandleFunc("POST /api/auth/sms/login", s.handleAuthSMSLogin)
+	s.mux.HandleFunc("GET /api/auth/session", s.handleAuthSession)
 	s.mux.HandleFunc("GET /api/me", s.handleGetMe)
 	s.mux.HandleFunc("POST /api/session/b", s.handleSessionB)
 	s.mux.HandleFunc("POST /api/session/c", s.handleSessionC)
@@ -160,6 +173,9 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"ok":                  true,
 		"bailian":             ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
+		"dypns":               ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
+		"dypns_fusion":        ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
+		"dypns_sms":           ternary(s.dypns.HasSMSConfigured(), "ok", "missing_config"),
 		"auth_strict":         IsAuthStrict(),
 		"dev_order_endpoints": devOrderEndpointsEnabled(),
 	})
@@ -605,6 +621,19 @@ func (s *Server) requireAuth(w http.ResponseWriter, r *http.Request) (*AuthInfo,
 		s.logger.Warn("auth unauthorized", "masked_ip", auth.MaskedIP)
 		s.writeError(w, http.StatusUnauthorized, "unauthorized")
 		return nil, false
+	}
+	if auth.AuthMode == AuthModeToken && auth.SessionID != "" {
+		active, err := s.store.IsAuthSessionActive(r.Context(), auth.UserID, auth.SessionID, time.Now().UnixMilli())
+		if err != nil {
+			s.logger.Error("auth session check failed", "userId", auth.UserID, "error", err)
+			s.writeError(w, http.StatusInternalServerError, "internal_error")
+			return nil, false
+		}
+		if !active {
+			s.logger.Warn("auth session inactive", "userId", auth.UserID, "masked_ip", auth.MaskedIP)
+			s.writeError(w, http.StatusUnauthorized, "unauthorized")
+			return nil, false
+		}
 	}
 	return &auth, true
 }

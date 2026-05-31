@@ -53,6 +53,38 @@ func TestResolveAuthUserIDAllowsBearerTokenWhenStrict(t *testing.T) {
 	}
 }
 
+func TestResolveAuthUserIDAllowsV2BearerTokenWhenStrict(t *testing.T) {
+	secret := "test-secret"
+	userID := "acct_test"
+	sessionID := "session_test"
+	t.Setenv("AUTH_STRICT", "true")
+	t.Setenv("APP_SECRET", secret)
+
+	token, _, err := issueAuthToken(userID, sessionID, time.Now(), time.Hour, secret)
+	if err != nil {
+		t.Fatalf("issueAuthToken failed: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/api/me", nil)
+	req.Header.Set("X-User-Id", "u-header")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	auth := ResolveAuthUserID(req)
+	if auth.UserID != userID || auth.SessionID != sessionID || auth.AuthMode != AuthModeToken {
+		t.Fatalf("v2 token auth mismatch: user=%q session=%q mode=%s", auth.UserID, auth.SessionID, auth.AuthMode)
+	}
+}
+
+func TestVerifyV2TokenRejectsExpiredToken(t *testing.T) {
+	secret := "test-secret"
+	token, _, err := issueAuthToken("acct_test", "session_test", time.Now().Add(-2*time.Hour), time.Hour, secret)
+	if err != nil {
+		t.Fatalf("issueAuthToken failed: %v", err)
+	}
+	if userID, sessionID, ok := verifyBearerToken(token, secret); ok || userID != "" || sessionID != "" {
+		t.Fatalf("expired token should be rejected, user=%q session=%q ok=%v", userID, sessionID, ok)
+	}
+}
+
 func makeAuthTestToken(userID string, secret string) string {
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
 	mac := hmac.New(sha256.New, []byte(secret))
