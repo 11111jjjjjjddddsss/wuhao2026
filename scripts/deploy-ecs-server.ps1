@@ -36,6 +36,21 @@ function Get-SendFileStatus {
     }
 }
 
+function Wait-SendFile {
+    param([string]$InvokeId)
+    for ($i = 0; $i -lt 24; $i++) {
+        Start-Sleep -Seconds 5
+        $status = Get-SendFileStatus $InvokeId
+        if ($status.Status -eq "Success") {
+            return $status
+        }
+        if ($status.Status -ne "Pending" -and $status.Status -ne "Running") {
+            return $status
+        }
+    }
+    throw "Timed out waiting for SendFile $InvokeId"
+}
+
 function Wait-RunCommand {
     param([string]$InvokeId)
     for ($i = 0; $i -lt 120; $i++) {
@@ -115,7 +130,7 @@ for ($i = 0; $i -lt $partCount; $i++) {
         "--Overwrite", "true",
         "--Timeout", "120"
     )
-    $status = Get-SendFileStatus $send.InvokeId
+    $status = Wait-SendFile $send.InvokeId
     if ($status.Status -ne "Success") {
         throw "SendFile failed for ${name}: $($status.Status) $($status.ErrorCode) $($status.ErrorInfo)"
     }
