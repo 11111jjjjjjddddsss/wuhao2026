@@ -2741,7 +2741,8 @@ fun ChatScreen() {
         return latestMessageIndex()
     }
     fun isInitialWorklineTopUnreached(): Boolean =
-        initialWorklinePhase == InitialWorklinePhase.TopUnreached
+        initialWorklinePhase == InitialWorklinePhase.TopUnreached ||
+            initialWorklinePhase == InitialWorklinePhase.HandoffPending
 
     fun isInitialWorklineHandoffPending(): Boolean =
         initialWorklinePhase == InitialWorklinePhase.HandoffPending
@@ -4559,10 +4560,26 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(initialWorklinePhase, messages.size) {
+    LaunchedEffect(
+        initialWorklinePhase,
+        messages.size,
+        currentLastMessageContentBottomPx(),
+        currentUnifiedBottomTargetPx(),
+        chatListState.canScrollBackward,
+        chatListState.canScrollForward
+    ) {
         if (initialWorklinePhase != InitialWorklinePhase.HandoffPending) return@LaunchedEffect
         withFrameNanos { }
-        initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+        val latestContentBottomPx = currentLastMessageContentBottomPx()
+        val worklineBottomPx = currentUnifiedBottomTargetPx()
+        val latestContentAlignedToWorkline =
+            latestContentBottomPx > 0 &&
+                worklineBottomPx > 0 &&
+                latestContentBottomPx <= worklineBottomPx + bottomPositionTolerancePx
+        val listHasRealScrollRange = chatListState.canScrollBackward || chatListState.canScrollForward
+        if (latestContentAlignedToWorkline || listHasRealScrollRange) {
+            initialWorklinePhase = InitialWorklinePhase.WorklineOwned
+        }
     }
 
     val shouldAnchorStreamingBottomThisFrame =

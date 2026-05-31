@@ -6,6 +6,7 @@
 ## 2026-05-31
 
 - 再拉 3 路代理复查首屏未触线链路后补两处小护栏：本地确认运行时代码没有 `SparseBottomSpacer`、`cleanStateSparse`、动态稀疏 padding / spacer、TextMeasurer 稀疏估高、反向列表、`asReversed()` 或 raw delta 旧链残留；`ChatScreen.kt` 只在 `InitialWorklinePhase.TopUnreached` 下清理已经回到物理底部且不再拖动 / 滚动的 stale `UserBrowsing / userInteracting`，避免首屏图片失败或弱网后用户轻划一下就卡住 handoff；本地聊天窗口快照新增 `initialWorklineOwned` 标记，首屏未触线 / HandoffPending 时被系统杀掉再进入，仍能恢复为未触线阶段，真正交给 96dp 工作线后才持久化为 owned。正常 `WorklineOwned / Arrangement.Bottom`、96dp 工作线、AutoFollow、图片 / 失败态 bounds、今日农情隐藏规则和旧滚动主链未改。`git diff --check` 和 `.\gradlew.bat :app:compileDebugKotlin` 已通过，仅剩既有 `LocalLifecycleOwner` deprecated 警告。
+- 用户真机复测指出首屏触线时仍有“先下掉再上抬”，且首屏长文本时小球 / 尾部没有及时抬到工作线。确认根因是 `HandoffPending` 进入时同拍切换 `Arrangement.Top -> Arrangement.Bottom`，布局切换和强制底部锚点互相拉扯。本轮改为 `HandoffPending` 期间继续保持 Top 布局，只用现有正向底部锚点把最新内容 / 小球抬到 96dp 工作线；等最新内容已经贴线或列表有真实滚动范围后，再交回 `WorklineOwned / Arrangement.Bottom` 主链。该刀不全局抬高工作线、不改完成态底部空白、不恢复旧 spacer / dynamic padding / raw delta 链。`git diff --check` 和 `.\gradlew.bat :app:compileDebugKotlin` 已通过。
 
 ## 2026-05-30
 
