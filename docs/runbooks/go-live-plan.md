@@ -33,7 +33,7 @@
 目标：先把等待周期最长的备案跑起来。
 
 1. 已完成：域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过。
-2. 已完成：按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链的主要资源，其中 ECS / RDS / OSS 存储包已买，DNS 已创建 `api.nongjiqiancha.cn -> 39.106.1.151`，`server-go` 已部署到 ECS 并由 Nginx 反代；HTTPS、备案、模型 Key、OSS Bucket / 上传迁移尚未完成。
+2. 已完成：按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链的主要资源，其中 ECS / RDS / OSS 存储包已买，OSS Bucket / 生命周期和生产上传后端已切通，DNS 已创建 `api.nongjiqiancha.cn -> 39.106.1.151`，`server-go` 已部署到 ECS 并由 Nginx 反代；HTTPS、备案、模型 Key 尚未完成。
 3. 下一步进入阿里云 ICP / App 备案流程，提交主体、域名、App 名称、图标、包名 `com.nongjiqiancha`、签名公钥、MD5 指纹、负责人和服务内容。
 4. 完成短信核验，等待阿里云初审和管局审核。
 5. 如果备案控制台提示当前资源不满足备案校验，再补最低成本的可备案云产品兜底；后端当前优先部署在 ECS，若后续因平台能力重新启用 SAE，必须同步更新 runbook。

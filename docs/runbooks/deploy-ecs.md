@@ -20,9 +20,9 @@
 - 通用 JSON body 解析默认只读取 64KiB，并拒绝多段 JSON；App 日志接口仍有更小的 8KiB 上限且超限返回 `413 body_too_large`，图片上传仍按单张 JPEG `<=1MiB` 处理
 - 主聊天应用层用户限流默认保持 `20 次 / 60 秒`，可用 `CHAT_RATE_LIMIT_MAX_HITS`、`CHAT_RATE_LIMIT_WINDOW_SECONDS` 和 `CHAT_RATE_LIMIT_PRUNE_INTERVAL_SECONDS` 调整；限流器会定期清理过期用户桶，避免长时间运行时被大量过期 user_id 撑大内存。Nginx 仍承担 IP 级限流，Go 侧限流只作为用户维度的第二层保护
 - 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉
-- 2026-05-31 20:21（北京时间）已通过 Cloud Assistant 将后端源码包 `a08bf15e` 部署到 ECS：分片上传源码包、ECS 上校验 SHA-256、运行 `go test ./...`、编译、备份旧二进制、替换并重启 `nongji-server`；延迟复查直接 Go 端和 Nginx Host healthz 均正常，当前 `upload_storage=local`
-- 当前健康检查：`curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=missing_key`、`dev_order_endpoints=false`、`upload_storage=local`；配置 OSS 后应看到 `upload_storage=oss`
-- 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、Host healthz、关键环境变量是否 set/missing/empty、本机上传目录和端口监听；脚本只输出脱敏状态，不打印真实密钥值。2026-05-31 最新检查显示 systemd active、Nginx 配置 OK、Host healthz 200；仍缺 OSS、DashScope、DYPNS 和 Redis 业务环境变量
+- 2026-05-31 20:21（北京时间）已通过 Cloud Assistant 将后端源码包 `a08bf15e` 部署到 ECS：分片上传源码包、ECS 上校验 SHA-256、运行 `go test ./...`、编译、备份旧二进制、替换并重启 `nongji-server`；延迟复查直接 Go 端和 Nginx Host healthz 均正常。
+- 2026-05-31 夜间已创建最小权限 OSS RAM 子账号 / 策略，完成上传 / 下载 / 删除冒烟测试，并把生产 ECS 切到 OSS 上传后端。当前健康检查：`curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=missing_key`、`dev_order_endpoints=false`、`upload_storage=oss`。
+- 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、Host healthz、关键环境变量是否 set/missing/empty、本机上传目录和端口监听；脚本只输出脱敏状态，不打印真实密钥值。2026-05-31 最新检查显示 systemd active、Nginx 配置 OK、Host healthz 200、`upload_storage=oss`；仍缺 DashScope、DYPNS 和 Redis 业务环境变量
 - 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 和域名 HTTP healthz 均已解析到本机并返回 200；本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - 当前未配置 DashScope 模型 Key，真实聊天接口会返回 `MODEL_BACKEND_NOT_CONFIGURED`，不会开模型流或消耗模型费用
 - 当前还没有 HTTPS、ICP备案 / App 备案闭环；正式 App 不应切到生产域名直到这些完成
@@ -138,7 +138,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 
 - 不把数据库密码、模型 Key、短信 Key、AccessKey、`APP_SECRET`、`DAILY_AGRI_JOB_SECRET`、`SUPPORT_ADMIN_SECRET` 写进本文、代码或聊天记忆
 - 不把旧 SAE AppId 当成可部署目标
-- 不在生产环境未开启 `UPLOAD_STORAGE_BACKEND=oss` 时扩到两台 ECS 或多后端实例
+- 不在真实 App 上传 / 读取 / 模型拉图链路验证通过前扩到两台 ECS 或多后端实例
 - 不打开 `ALLOW_DEV_ORDER_ENDPOINTS`
 - 不把共享静态 token / 测试用户 ID 当正式登录方案
 
@@ -146,6 +146,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 
 1. 配置 DashScope 模型 Key 到 ECS 环境文件并重启服务。
 2. 完成 `api.nongjiqiancha.cn` HTTPS 证书、ICP备案 / App 备案。
-3. 给 ECS `/etc/nongjiqiancha/server.env` 配置 OSS 上传后端：`UPLOAD_STORAGE_BACKEND=oss`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_UPLOAD_PREFIX=uploads` 和最小权限 OSS 凭证；部署后验证 `/healthz upload_storage=oss`。
-4. 配置 DashScope 模型 Key、阿里云手机号认证 `DYPNS_*`、短信签名模板和 Redis 限流。
+3. 配置 DashScope 模型 Key、阿里云手机号认证 `DYPNS_*`、短信签名模板和 Redis 限流。
+4. HTTPS / 模型 Key 就绪后，用真实 App 链路验证 `/upload`、`/uploads/`、模型拉图和历史图片过期占位。
 5. 给发布 / 回滚脚本补更完整的异常处理和发布记录归档。

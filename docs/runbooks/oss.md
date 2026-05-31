@@ -22,7 +22,7 @@
   - `uploads/`：问诊上传图 3 天自动删除
   - `support/`：帮助与反馈图片预留 30 天自动删除
   - 未完成分片上传：1 天自动清理
-- `server-go` 已新增 OSS 上传存储后端：配置 `UPLOAD_STORAGE_BACKEND=oss`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com` 和 OSS 凭证后，`/upload` 写私有 OSS；App、模型和历史 URL 仍走本后端 `https://api.nongjiqiancha.cn/uploads/<file>.jpg`，不把 OSS AK/SK 下发 Android。未配置 OSS 时仍回退 ECS 本机 `/var/lib/nongjiqiancha/uploads`
+- `server-go` 已新增 OSS 上传存储后端。2026-05-31 已创建最小权限 RAM 子账号 / 策略、完成上传 / 下载 / 删除冒烟测试，并把生产 ECS 配置为 `UPLOAD_STORAGE_BACKEND=oss`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com` 和 OSS 凭证；当前 `/healthz` 返回 `upload_storage=oss`，`/upload` 写私有 OSS。App、模型和历史 URL 仍走本后端 `https://api.nongjiqiancha.cn/uploads/<file>.jpg`，不把 OSS AK/SK 下发 Android。未配置 OSS 的其他环境仍可回退 ECS 本机 `/var/lib/nongjiqiancha/uploads`
 
 ## 存储包口径
 
@@ -54,11 +54,11 @@
 - 不把 OSS AccessKey / Secret 写入仓库、文档或聊天
 - Android 不直连 OSS，不打入 OSS 密钥
 - 后端是上传和访问控制唯一入口
-- 多台 ECS 或回到 SAE 多实例前，必须先在生产环境开启 `UPLOAD_STORAGE_BACKEND=oss`，并验证 `/upload`、`/uploads/` 和模型拉图链路
+- 多台 ECS 或回到 SAE 多实例前，生产环境已满足共享对象存储前置条件，但仍需在 HTTPS / 模型 Key 就绪后再用真实 App 链路验证 `/upload`、`/uploads/` 和模型拉图链路
 - 若 APK 分发也放 OSS，应单独配置下载域名、HTTPS、文件大小和 SHA-256，不建议让 Go 后端动态服务大 APK
 
 ## 当前阻塞
 
-- 生产 ECS 仍需写入 OSS 环境变量并部署新版后端，健康检查应显示 `upload_storage=oss`
-- OSS 凭证必须使用最小权限 RAM 子账号或等价受控凭证，只允许访问 `nongjiqiancha-prod` 所需对象操作，不使用主账号长期 AccessKey
+- OSS 生产环境变量已写入 ECS，健康检查已显示 `upload_storage=oss`
+- OSS 凭证已使用最小权限 RAM 子账号 / 策略，只允许访问 `nongjiqiancha-prod` 的上传前缀所需对象操作；后续仍需定期轮换，不使用主账号长期 AccessKey 作为应用凭证
 - HTTPS 未完成前，`BASE_PUBLIC_URL / UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 的图片公网 URL 仍不能算正式可用
