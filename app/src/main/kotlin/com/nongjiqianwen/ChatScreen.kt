@@ -2748,7 +2748,7 @@ fun ChatScreen() {
         initialWorklinePhase == InitialWorklinePhase.HandoffPending
 
     fun shouldSuppressAutomaticBottomAnchor(): Boolean =
-        isInitialWorklineTopUnreached() || isInitialWorklineHandoffPending()
+        initialWorklinePhase == InitialWorklinePhase.TopUnreached
 
     fun shouldStartInitialWorklineTopFlow(): Boolean =
         initialWorklinePhase == InitialWorklinePhase.WaitingForFirstSend &&
@@ -4495,13 +4495,24 @@ fun ChatScreen() {
         scrollRuntime.userInteracting.value,
         chatListUserDragging,
         recyclerScrollInProgress,
-        chatListState.canScrollForward
+        chatListState.canScrollBackward,
+        currentLastMessageContentBottomPx(),
+        currentUnifiedBottomTargetPx()
     ) {
         if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return@LaunchedEffect
-        if (chatListUserDragging || recyclerScrollInProgress || chatListState.canScrollForward) {
+        if (chatListUserDragging || recyclerScrollInProgress || chatListState.canScrollBackward) {
             return@LaunchedEffect
         }
         if (scrollMode != ScrollMode.UserBrowsing && !scrollRuntime.userInteracting.value) {
+            return@LaunchedEffect
+        }
+        val latestContentBottomPx = currentLastMessageContentBottomPx()
+        val worklineBottomPx = currentUnifiedBottomTargetPx()
+        if (
+            latestContentBottomPx <= 0 ||
+            worklineBottomPx <= 0 ||
+            latestContentBottomPx < worklineBottomPx
+        ) {
             return@LaunchedEffect
         }
         withFrameNanos { }
@@ -4509,7 +4520,7 @@ fun ChatScreen() {
             initialWorklinePhase == InitialWorklinePhase.TopUnreached &&
             !chatListUserDragging &&
             !recyclerScrollInProgress &&
-            !chatListState.canScrollForward
+            !chatListState.canScrollBackward
         ) {
             scrollRuntime.userInteracting.value = false
             if (scrollMode == ScrollMode.UserBrowsing) {
@@ -4551,6 +4562,7 @@ fun ChatScreen() {
             latestContentBottomPx >= worklineBottomPx
         ) {
             initialWorklinePhase = InitialWorklinePhase.HandoffPending
+            requestProgrammaticForwardListBottomAnchor(force = true)
         }
     }
 
@@ -4565,8 +4577,7 @@ fun ChatScreen() {
         messages.size,
         currentLastMessageContentBottomPx(),
         currentUnifiedBottomTargetPx(),
-        chatListState.canScrollBackward,
-        chatListState.canScrollForward
+        chatListState.canScrollBackward
     ) {
         if (initialWorklinePhase != InitialWorklinePhase.HandoffPending) return@LaunchedEffect
         withFrameNanos { }
@@ -4576,8 +4587,7 @@ fun ChatScreen() {
             latestContentBottomPx > 0 &&
                 worklineBottomPx > 0 &&
                 latestContentBottomPx <= worklineBottomPx + bottomPositionTolerancePx
-        val listHasRealScrollRange = chatListState.canScrollBackward || chatListState.canScrollForward
-        if (latestContentAlignedToWorkline || listHasRealScrollRange) {
+        if (chatListState.canScrollBackward && latestContentAlignedToWorkline) {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
         }
     }
