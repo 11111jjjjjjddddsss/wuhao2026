@@ -46,6 +46,7 @@ type Server struct {
 	smsLoginLimiter       rateLimiter
 	clientAppLogLimiter   rateLimiter
 	supportMessageLimiter rateLimiter
+	uploadLimiter         rateLimiter
 }
 
 type orderRequest struct {
@@ -150,6 +151,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		smsLoginLimiter:       newAuthSMSLoginRateLimiter(redisClient),
 		clientAppLogLimiter:   newClientAppLogRateLimiter(redisClient),
 		supportMessageLimiter: newSupportMessageRateLimiter(redisClient),
+		uploadLimiter:         newUploadRateLimiter(redisClient),
 	}
 	server.registerRoutes()
 	return server, nil

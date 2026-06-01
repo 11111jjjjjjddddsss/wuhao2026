@@ -9,18 +9,36 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 const maxUploadFileSize = 1024 * 1024
+const (
+	defaultUploadRateLimitWindow        = 10 * time.Minute
+	defaultUploadRateLimitMaxHits       = 120
+	defaultUploadRateLimitPruneInterval = 10 * time.Minute
+)
 
 var uploadExtensions = map[string]string{
 	"image/jpeg": ".jpg",
 }
 
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
-	_, ok := s.requireAuth(w, r)
+	auth, ok := s.requireAuth(w, r)
 	if !ok {
 		return
+	}
+	if s.uploadLimiter != nil {
+		limitKey := uploadRateLimitKey(auth.UserID, GetClientIP(r))
+		if allowed, retryAfter := s.uploadLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadFileSize+1024)
@@ -132,6 +150,23 @@ func randomFilename(ext string, header *multipart.FileHeader) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(raw) + ext, nil
+}
+
+func newUploadRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := rateLimitConfig{
+		Window:        envDurationWithDefault("UPLOAD_RATE_LIMIT_WINDOW_SECONDS", defaultUploadRateLimitWindow),
+		MaxHits:       envIntWithDefault("UPLOAD_RATE_LIMIT_MAX_HITS", defaultUploadRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("UPLOAD_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultUploadRateLimitPruneInterval),
+	}
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultUploadRateLimitWindow, defaultUploadRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(config)
+}
+
+func uploadRateLimitKey(userID string, ip string) string {
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	return "upload:" + rateLimitHash(userID, secret) + ":" + rateLimitHash(ip, secret)
 }
 
 func firstNonEmpty(values ...string) string {

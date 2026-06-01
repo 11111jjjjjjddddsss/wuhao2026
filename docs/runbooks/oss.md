@@ -22,7 +22,7 @@
   - `uploads/`：问诊上传图 3 天自动删除
   - `support/`：帮助与反馈图片预留 30 天自动删除
   - 未完成分片上传：1 天自动清理
-- `server-go` 已新增 OSS 上传存储后端。2026-05-31 已创建最小权限 RAM 子账号 / 策略、完成上传 / 下载 / 删除冒烟测试，并把生产 ECS 配置为 `UPLOAD_STORAGE_BACKEND=oss`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com` 和 OSS 凭证；当前 `/healthz` 返回 `upload_storage=oss`，`/upload` 写私有 OSS。App、模型和历史 URL 仍走本后端 `https://api.nongjiqiancha.cn/uploads/<file>.jpg`，不把 OSS AK/SK 下发 Android。未配置 OSS 的其他环境仍可回退 ECS 本机 `/var/lib/nongjiqiancha/uploads`
+- `server-go` 已新增 OSS 上传存储后端。2026-05-31 已创建最小权限 RAM 子账号 / 策略、完成上传 / 下载 / 删除冒烟测试，并把生产 ECS 配置为 `UPLOAD_STORAGE_BACKEND=oss`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com` 和 OSS 凭证；当前 `/healthz` 返回 `upload_storage=oss`，`/upload` 写私有 OSS，且默认按 `user_id + IP` 做 10 分钟 120 次短期限流，防异常客户端循环刷上传成本。App、模型和历史 URL 仍走本后端 `https://api.nongjiqiancha.cn/uploads/<file>.jpg`，不把 OSS AK/SK 下发 Android。未配置 OSS 的其他环境仍可回退 ECS 本机 `/var/lib/nongjiqiancha/uploads`
 
 ## 存储包口径
 
