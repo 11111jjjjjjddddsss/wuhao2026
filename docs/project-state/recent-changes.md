@@ -5,7 +5,7 @@
 
 ## 2026-06-01
 
-- 继续补后端防刷边界：`POST /api/app/logs` 在已有登录鉴权、8KiB body 上限和字段清洗基础上新增短期限流，默认同一 `user_id + IP` 10 分钟 60 次；配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。Redis key 只保存 `user_id` hash 和 IP hash，不保存明文手机号、token、聊天正文、图片内容或反馈正文；该刀只防 App 自动日志异常循环写库，不改日志字段、Android 上报点、帮助与反馈、聊天主链或 SLS 方案。
+- 继续补后端防刷边界：`POST /api/app/logs` 在已有登录鉴权、8KiB body 上限和字段清洗基础上新增短期限流，默认同一 `user_id + IP` 10 分钟 60 次；配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。Redis key 只保存 `user_id` hash 和 IP hash，不保存明文手机号、token、聊天正文、图片内容或反馈正文；该刀只防 App 自动日志异常循环写库，不改日志字段、Android 上报点、帮助与反馈、聊天主链或 SLS 方案。`go test ./...`、`git diff --check` 和项目记忆检查已通过；commit `ac52cc55` 已部署到 ECS，readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`。
 - 在已有 Redis 认证限流基础上，补齐融合认证 token 入口的短期限流：`POST /api/auth/fusion/token` 现在默认按 IP hash 做 10 分钟 20 次频控，配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流；该 key 不保存明文 IP、手机号、验证码、token、聊天正文或图片内容。此刀只保护一键登录 SDK 后续接入后的阿里云 token 获取入口，不改短信发送 / 登录校验、不改账号 session 签发、不碰主聊天流、额度、归档、摘要、OSS 或 Android 滚动链。`go test ./...`、`git diff --check` 和项目记忆检查已通过；commit `9be4cc76` 已部署到 ECS，readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`，当前仍缺 DashScope 模型 Key 和 DYPNS 融合认证 / 短信配置。
 - 后端 Redis 先按最小生产口径接到认证限流，不碰聊天主链：`server-go` 新增可选 Redis 客户端，配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD` 后启动会先 ping，失败 fail-fast；短信发送 `POST /api/auth/sms/send` 和短信登录校验 `POST /api/auth/sms/login` 改为可走 Redis 分布式短期限流，key 只保存 scope、手机号 hash 和 IP hash，不保存明文手机号、验证码、token、聊天正文或图片内容；未配置 Redis 时仍回退本进程限流。主聊天 `/api/chat/stream`、额度扣减、轮次归档、摘要和订单仍走原 MySQL / 现有主链，没有切 Redis。`go test ./...` 已通过；随后已把 `REDIS_*` 写入 ECS 环境文件并部署 commit `5b86941b`，只读就绪检查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`，当前仍缺 DashScope 模型 Key 和 DYPNS 融合认证 / 短信配置。
 
