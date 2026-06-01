@@ -946,7 +946,7 @@ private fun HamburgerServiceAgreementPage() {
 }
 
 @Composable
-private fun HamburgerServiceAgreementContent(
+internal fun HamburgerServiceAgreementContent(
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1052,7 +1052,7 @@ private fun HamburgerPrivacyPolicyPage() {
 }
 
 @Composable
-private fun HamburgerPrivacyPolicyContent(
+internal fun HamburgerPrivacyPolicyContent(
     modifier: Modifier = Modifier
 ) {
     Column(
