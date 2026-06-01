@@ -12,9 +12,9 @@
 - 白名单：`127.0.0.1`、ECS 私网 IP `192.168.1.237`
 - ECS 已验证内网 DNS、TCP 6379 和 `default` 账号密码认证可用
 - `server-go` 已新增可选 Redis 客户端：只要配置 `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD`，启动时会先 ping Redis，失败则 fail-fast
-- 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并随 `065a3f73` 部署验证融合认证 token、短信发送、短信登录、App 自动日志接收、帮助与反馈用户发消息和上传限流；`/healthz` 当前返回 `redis=ok`
-- 当前 Redis 只接短期限流：`POST /api/auth/fusion/token`、`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/app/logs`、`POST /api/support/messages` 和 `/upload`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（App 日志 / 帮助与反馈 / 上传相关）和 IP hash，不保存明文手机号、验证码、token、聊天正文、反馈正文或图片内容
-- 主聊天 `/api/chat/stream` 仍使用原有 MySQL 业务真相、MySQL 用户级锁、`chat_stream_inflight` 和本进程用户限流；不要把 Redis 写成已经接管聊天流、额度、订单、归档或摘要锁
+- 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并已部署验证融合认证 token、融合认证登录校验、短信发送、短信登录、主聊天用户级频控、App 自动日志接收、帮助与反馈用户发消息和上传限流；`/healthz` 当前返回 `redis=ok`
+- 当前 Redis 只接短期认证状态和短期限流：`POST /api/auth/fusion/token`、`POST /api/auth/fusion/login`、`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/chat/stream` 用户级频控、`POST /api/app/logs`、`POST /api/support/messages` 和 `/upload`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（主聊天 / App 日志 / 帮助与反馈 / 上传相关）和 IP hash，不保存明文手机号、验证码、verify token、auth token、聊天正文、反馈正文或图片内容
+- 主聊天 `/api/chat/stream` 的内容、归档、额度和同用户单流仍使用 MySQL 业务真相、MySQL 用户级锁和 `chat_stream_inflight`；用户级频控配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。不要把 Redis 写成已经接管聊天内容、额度、订单、归档、摘要锁或会员资产
 
 ## 预期用途
 
@@ -51,14 +51,17 @@ aliyun ecs RunCommand --RegionId cn-beijing --Type RunShellScript --InstanceId.1
 - `REDIS_PASSWORD`：只保存到本机 secret 和 ECS 环境文件，不进仓库 / 文档 / Android
 - `REDIS_DB`：默认 `0`
 - `REDIS_DIAL_TIMEOUT_SECONDS` / `REDIS_READ_TIMEOUT_SECONDS` / `REDIS_WRITE_TIMEOUT_SECONDS` / `REDIS_PING_TIMEOUT_SECONDS`：默认 3 秒
-- `REDIS_RATE_LIMIT_TIMEOUT_SECONDS`：认证限流访问 Redis 超时，默认 1 秒
+- `REDIS_RATE_LIMIT_TIMEOUT_SECONDS`：短期限流访问 Redis 超时，默认 1 秒
 
 认证限流参数：
 
 - `AUTH_FUSION_TOKEN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_FUSION_TOKEN_RATE_LIMIT_MAX_HITS` / `AUTH_FUSION_TOKEN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：融合认证 token 获取限流，默认 10 分钟 20 次
+- `AUTH_FUSION_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_FUSION_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_FUSION_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：融合认证登录校验限流，默认 10 分钟 20 次
 - `AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送限流，默认 10 分钟 5 次
+- `AUTH_SMS_IP_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_IP_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_IP_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送 IP 总量限流，默认 10 分钟 20 次
 - `AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信登录校验限流，默认 10 分钟 10 次
 - `CLIENT_APP_LOG_RATE_LIMIT_WINDOW_SECONDS` / `CLIENT_APP_LOG_RATE_LIMIT_MAX_HITS` / `CLIENT_APP_LOG_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：App 自动日志接收限流，默认 10 分钟 60 次
+- `CHAT_RATE_LIMIT_WINDOW_SECONDS` / `CHAT_RATE_LIMIT_MAX_HITS` / `CHAT_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：主聊天用户级频控，默认 60 秒 20 次；配置 Redis 时跨进程共享，未配置 Redis 时回退单进程限流
 - `SUPPORT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS` / `SUPPORT_MESSAGE_RATE_LIMIT_MAX_HITS` / `SUPPORT_MESSAGE_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：帮助与反馈用户发消息限流，默认 10 分钟 20 条
 - `UPLOAD_RATE_LIMIT_WINDOW_SECONDS` / `UPLOAD_RATE_LIMIT_MAX_HITS` / `UPLOAD_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：图片上传限流，默认 10 分钟 120 次
 

@@ -42,7 +42,9 @@ type Server struct {
 	redisClient           *redis.Client
 	rateLimiter           rateLimiter
 	fusionTokenLimiter    rateLimiter
+	fusionLoginLimiter    rateLimiter
 	smsLimiter            rateLimiter
+	smsIPLimiter          rateLimiter
 	smsLoginLimiter       rateLimiter
 	clientAppLogLimiter   rateLimiter
 	supportMessageLimiter rateLimiter
@@ -147,7 +149,9 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		redisClient:           redisClient,
 		rateLimiter:           newChatRateLimiter(redisClient),
 		fusionTokenLimiter:    newAuthFusionTokenRateLimiter(redisClient),
+		fusionLoginLimiter:    newAuthFusionLoginRateLimiter(redisClient),
 		smsLimiter:            newAuthSMSRateLimiter(redisClient),
+		smsIPLimiter:          newAuthSMSIPRateLimiter(redisClient),
 		smsLoginLimiter:       newAuthSMSLoginRateLimiter(redisClient),
 		clientAppLogLimiter:   newClientAppLogRateLimiter(redisClient),
 		supportMessageLimiter: newSupportMessageRateLimiter(redisClient),

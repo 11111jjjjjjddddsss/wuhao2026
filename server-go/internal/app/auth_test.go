@@ -38,19 +38,34 @@ func TestResolveAuthUserIDRejectsHeaderWhenStrict(t *testing.T) {
 	}
 }
 
-func TestResolveAuthUserIDAllowsBearerTokenWhenStrict(t *testing.T) {
+func TestResolveAuthUserIDRejectsLegacyBearerTokenWhenStrict(t *testing.T) {
 	secret := "test-secret"
-	userID := "u-token"
 	t.Setenv("AUTH_STRICT", "true")
 	t.Setenv("APP_SECRET", secret)
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
 	req.Header.Set("X-User-Id", "u-header")
+	req.Header.Set("Authorization", "Bearer "+makeAuthTestToken("u-token", secret))
+
+	auth := ResolveAuthUserID(req)
+	if auth.AuthMode != AuthModeUnauthorized {
+		t.Fatalf("strict mode should reject legacy token, got user=%q mode=%s", auth.UserID, auth.AuthMode)
+	}
+}
+
+func TestResolveAuthUserIDAllowsLegacyBearerTokenWhenExplicitlyEnabled(t *testing.T) {
+	secret := "test-secret"
+	userID := "u-token"
+	t.Setenv("AUTH_STRICT", "true")
+	t.Setenv("AUTH_ALLOW_LEGACY_TOKEN", "true")
+	t.Setenv("APP_SECRET", secret)
+
+	req := httptest.NewRequest("GET", "/api/me", nil)
 	req.Header.Set("Authorization", "Bearer "+makeAuthTestToken(userID, secret))
 
 	auth := ResolveAuthUserID(req)
-	if auth.UserID != userID || auth.AuthMode != AuthModeToken {
-		t.Fatalf("token auth mismatch: user=%q mode=%s", auth.UserID, auth.AuthMode)
+	if auth.UserID != userID || auth.AuthMode != AuthModeToken || auth.SessionID != "" {
+		t.Fatalf("legacy token auth mismatch: user=%q session=%q mode=%s", auth.UserID, auth.SessionID, auth.AuthMode)
 	}
 }
 
@@ -110,9 +125,15 @@ func TestAuthSMSLimitersUseSeparateEnv(t *testing.T) {
 	t.Setenv("AUTH_FUSION_TOKEN_RATE_LIMIT_WINDOW_SECONDS", "30")
 	t.Setenv("AUTH_FUSION_TOKEN_RATE_LIMIT_MAX_HITS", "2")
 	t.Setenv("AUTH_FUSION_TOKEN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "45")
+	t.Setenv("AUTH_FUSION_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "35")
+	t.Setenv("AUTH_FUSION_LOGIN_RATE_LIMIT_MAX_HITS", "5")
+	t.Setenv("AUTH_FUSION_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "55")
 	t.Setenv("AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS", "60")
 	t.Setenv("AUTH_SMS_RATE_LIMIT_MAX_HITS", "3")
 	t.Setenv("AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "90")
+	t.Setenv("AUTH_SMS_IP_RATE_LIMIT_WINDOW_SECONDS", "70")
+	t.Setenv("AUTH_SMS_IP_RATE_LIMIT_MAX_HITS", "6")
+	t.Setenv("AUTH_SMS_IP_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "95")
 	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "120")
 	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS", "4")
 	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "150")
@@ -125,6 +146,14 @@ func TestAuthSMSLimitersUseSeparateEnv(t *testing.T) {
 		t.Fatalf("fusion limiter config mismatch: window=%s max=%d prune=%s", fusionLimiter.window, fusionLimiter.maxHits, fusionLimiter.pruneInterval)
 	}
 
+	fusionLoginLimiter, ok := newAuthFusionLoginRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newAuthFusionLoginRateLimiter returned %T, want *chatRateLimiter fallback", newAuthFusionLoginRateLimiter(nil))
+	}
+	if fusionLoginLimiter.window != 35*time.Second || fusionLoginLimiter.maxHits != 5 || fusionLoginLimiter.pruneInterval != 55*time.Second {
+		t.Fatalf("fusion login limiter config mismatch: window=%s max=%d prune=%s", fusionLoginLimiter.window, fusionLoginLimiter.maxHits, fusionLoginLimiter.pruneInterval)
+	}
+
 	sendLimiter, ok := newAuthSMSRateLimiter(nil).(*chatRateLimiter)
 	if !ok {
 		t.Fatalf("newAuthSMSRateLimiter returned %T, want *chatRateLimiter fallback", newAuthSMSRateLimiter(nil))
@@ -133,12 +162,46 @@ func TestAuthSMSLimitersUseSeparateEnv(t *testing.T) {
 		t.Fatalf("send limiter config mismatch: window=%s max=%d prune=%s", sendLimiter.window, sendLimiter.maxHits, sendLimiter.pruneInterval)
 	}
 
+	sendIPLimiter, ok := newAuthSMSIPRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newAuthSMSIPRateLimiter returned %T, want *chatRateLimiter fallback", newAuthSMSIPRateLimiter(nil))
+	}
+	if sendIPLimiter.window != 70*time.Second || sendIPLimiter.maxHits != 6 || sendIPLimiter.pruneInterval != 95*time.Second {
+		t.Fatalf("send IP limiter config mismatch: window=%s max=%d prune=%s", sendIPLimiter.window, sendIPLimiter.maxHits, sendIPLimiter.pruneInterval)
+	}
+
 	loginLimiter, ok := newAuthSMSLoginRateLimiter(nil).(*chatRateLimiter)
 	if !ok {
 		t.Fatalf("newAuthSMSLoginRateLimiter returned %T, want *chatRateLimiter fallback", newAuthSMSLoginRateLimiter(nil))
 	}
 	if loginLimiter.window != 2*time.Minute || loginLimiter.maxHits != 4 || loginLimiter.pruneInterval != 150*time.Second {
 		t.Fatalf("login limiter config mismatch: window=%s max=%d prune=%s", loginLimiter.window, loginLimiter.maxHits, loginLimiter.pruneInterval)
+	}
+}
+
+func TestGetClientIPTrustsProxyHeadersOnlyFromTrustedRemote(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/me", nil)
+	req.RemoteAddr = "127.0.0.1:53000"
+	req.Header.Set("X-Real-IP", "203.0.113.8")
+	req.Header.Set("X-Forwarded-For", "198.51.100.9, 203.0.113.8")
+	if got := GetClientIP(req); got != "203.0.113.8" {
+		t.Fatalf("trusted proxy client IP=%q, want 203.0.113.8", got)
+	}
+
+	untrusted := httptest.NewRequest("GET", "/api/me", nil)
+	untrusted.RemoteAddr = "198.51.100.10:53000"
+	untrusted.Header.Set("X-Real-IP", "203.0.113.8")
+	if got := GetClientIP(untrusted); got != "198.51.100.10" {
+		t.Fatalf("untrusted remote should ignore proxy headers, got %q", got)
+	}
+}
+
+func TestGetClientIPUsesRightmostForwardedForFromTrustedProxy(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/me", nil)
+	req.RemoteAddr = "127.0.0.1:53000"
+	req.Header.Set("X-Forwarded-For", "198.51.100.200, 203.0.113.8")
+	if got := GetClientIP(req); got != "203.0.113.8" {
+		t.Fatalf("forwarded IP=%q, want rightmost trusted-proxy value", got)
 	}
 }
 

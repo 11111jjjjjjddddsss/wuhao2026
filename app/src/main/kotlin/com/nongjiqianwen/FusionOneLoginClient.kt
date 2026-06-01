@@ -13,6 +13,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 object FusionOneLoginClient {
     private const val LOGIN_TEMPLATE_ID = "100001"
+    private const val LOGIN_TIMEOUT_MS = 30_000L
+    private const val VERIFY_FAILED_FALLBACK_MS = 1_500L
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
@@ -110,6 +112,9 @@ object FusionOneLoginClient {
 
             override fun onVerifyFailed(error: AlicomFusionEvent?, nodeName: String?) {
                 runCatching { business.continueSceneWithTemplateId(LOGIN_TEMPLATE_ID, false) }
+                mainHandler.postDelayed({
+                    finish(business, completed, false, "一键登录校验失败，请使用验证码登录", onResult)
+                }, VERIFY_FAILED_FALLBACK_MS)
             }
 
             override fun onTemplateFinish(event: AlicomFusionEvent?) {
@@ -131,6 +136,9 @@ object FusionOneLoginClient {
         }
         business.initWithToken(activity.applicationContext, snapshot.schemeCode.orEmpty(), token)
         business.adapterPageShape(true)
+        mainHandler.postDelayed({
+            finish(business, completed, false, "一键登录超时，请使用验证码登录", onResult)
+        }, LOGIN_TIMEOUT_MS)
     }
 
     private fun finish(

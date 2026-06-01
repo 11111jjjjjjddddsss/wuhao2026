@@ -17,6 +17,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -40,6 +41,7 @@ object SessionApi {
     private val runtimeGeneration = AtomicInteger(0)
     private val sessionGeneration = AtomicInteger(-1)
     private val clientLogLastSentAtMs = ConcurrentHashMap<String, Long>()
+    private val authInvalidListeners = CopyOnWriteArraySet<() -> Unit>()
 
     data class StreamOptions(
         val clientMsgId: String,
@@ -321,6 +323,21 @@ object SessionApi {
         currentStreamCall.getAndSet(null)?.cancel()
     }
 
+    fun addAuthInvalidListener(listener: () -> Unit): () -> Unit {
+        authInvalidListeners.add(listener)
+        return { authInvalidListeners.remove(listener) }
+    }
+
+    private fun notifyAuthInvalid() {
+        IdManager.clearAuthSession()
+        sessionGeneration.set(-1)
+        runtimeGeneration.incrementAndGet()
+        currentStreamCall.getAndSet(null)?.cancel()
+        postToMain {
+            authInvalidListeners.forEach { listener -> listener() }
+        }
+    }
+
     fun currentSessionGenerationOrNull(): Int? {
         val inMemory = sessionGeneration.get()
         if (inMemory >= 0) return inMemory
@@ -517,7 +534,12 @@ object SessionApi {
                         authedRequest(builderFactory = requestFactory) { retryReq ->
                             client.newCall(retryReq).enqueue(object : Callback {
                                 override fun onFailure(call: Call, e: IOException) = onFailure(e)
-                                override fun onResponse(call: Call, response: Response) = onResult(response)
+                                override fun onResponse(call: Call, response: Response) {
+                                    if (response.code == 401) {
+                                        notifyAuthInvalid()
+                                    }
+                                    onResult(response)
+                                }
                             })
                         }
                     } else {
@@ -1089,6 +1111,7 @@ object SessionApi {
                                     if (!hasRetried) {
                                         start(hasRetried = true, networkRetry = networkRetry)
                                     } else {
+                                        notifyAuthInvalid()
                                         deliverInterrupted("auth")
                                     }
                                     return
@@ -1254,6 +1277,7 @@ object SessionApi {
                         return if (!hasRetriedAuth) {
                             runRequest(hasRetriedAuth = true, networkRetry = networkRetry)
                         } else {
+                            notifyAuthInvalid()
                             StreamCompletionResult(StreamCompletionStatus.Auth, "auth")
                         }
                     }

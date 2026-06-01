@@ -15,9 +15,17 @@ const (
 	defaultAuthFusionTokenRateLimitMaxHits       = 20
 	defaultAuthFusionTokenRateLimitPruneInterval = 10 * time.Minute
 
+	defaultAuthFusionLoginRateLimitWindow        = 10 * time.Minute
+	defaultAuthFusionLoginRateLimitMaxHits       = 20
+	defaultAuthFusionLoginRateLimitPruneInterval = 10 * time.Minute
+
 	defaultAuthSMSRateLimitWindow        = 10 * time.Minute
 	defaultAuthSMSRateLimitMaxHits       = 5
 	defaultAuthSMSRateLimitPruneInterval = 10 * time.Minute
+
+	defaultAuthSMSIPRateLimitWindow        = 10 * time.Minute
+	defaultAuthSMSIPRateLimitMaxHits       = 20
+	defaultAuthSMSIPRateLimitPruneInterval = 10 * time.Minute
 
 	defaultAuthSMSLoginRateLimitWindow        = 10 * time.Minute
 	defaultAuthSMSLoginRateLimitMaxHits       = 10
@@ -74,7 +82,22 @@ func (s *Server) handleAuthFusionLogin(w http.ResponseWriter, r *http.Request) {
 		s.writeJSONDecodeError(w, err)
 		return
 	}
-	phone, err := s.dypns.VerifyFusionToken(r.Context(), body.VerifyToken)
+	verifyToken := strings.TrimSpace(body.VerifyToken)
+	if verifyToken == "" || len(verifyToken) > 4096 {
+		s.writeError(w, http.StatusBadRequest, "invalid_verify_token")
+		return
+	}
+	if s.fusionLoginLimiter != nil {
+		limitKey := authIPRateLimitKey("fusion_login", GetClientIP(r))
+		if allowed, retryAfter := s.fusionLoginLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
+	}
+	phone, err := s.dypns.VerifyFusionToken(r.Context(), verifyToken)
 	if err != nil {
 		s.logger.Warn("fusion login verify failed", "error", err, "masked_ip", maskIP(GetClientIP(r)))
 		s.writeError(w, http.StatusUnauthorized, "auth_verify_failed")
@@ -97,6 +120,16 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 	if phone == "" {
 		s.writeError(w, http.StatusBadRequest, "invalid_phone")
 		return
+	}
+	if s.smsIPLimiter != nil {
+		limitKey := authIPRateLimitKey("sms_send_ip", GetClientIP(r))
+		if allowed, retryAfter := s.smsIPLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
 	}
 	if s.smsLimiter != nil {
 		limitKey := authRateLimitKey("sms_send", phone, GetClientIP(r))
@@ -137,6 +170,18 @@ func newAuthFusionTokenRateLimiter(redisClient *redis.Client) rateLimiter {
 	return newChatRateLimiterWithConfig(config)
 }
 
+func newAuthFusionLoginRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := rateLimitConfig{
+		Window:        envDurationWithDefault("AUTH_FUSION_LOGIN_RATE_LIMIT_WINDOW_SECONDS", defaultAuthFusionLoginRateLimitWindow),
+		MaxHits:       envIntWithDefault("AUTH_FUSION_LOGIN_RATE_LIMIT_MAX_HITS", defaultAuthFusionLoginRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("AUTH_FUSION_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultAuthFusionLoginRateLimitPruneInterval),
+	}
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultAuthFusionLoginRateLimitWindow, defaultAuthFusionLoginRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(config)
+}
+
 func newAuthSMSRateLimiter(redisClient *redis.Client) rateLimiter {
 	config := rateLimitConfig{
 		Window:        envDurationWithDefault("AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS", defaultAuthSMSRateLimitWindow),
@@ -145,6 +190,18 @@ func newAuthSMSRateLimiter(redisClient *redis.Client) rateLimiter {
 	}
 	if redisClient != nil {
 		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultAuthSMSRateLimitWindow, defaultAuthSMSRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(config)
+}
+
+func newAuthSMSIPRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := rateLimitConfig{
+		Window:        envDurationWithDefault("AUTH_SMS_IP_RATE_LIMIT_WINDOW_SECONDS", defaultAuthSMSIPRateLimitWindow),
+		MaxHits:       envIntWithDefault("AUTH_SMS_IP_RATE_LIMIT_MAX_HITS", defaultAuthSMSIPRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("AUTH_SMS_IP_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultAuthSMSIPRateLimitPruneInterval),
+	}
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultAuthSMSIPRateLimitWindow, defaultAuthSMSIPRateLimitMaxHits)
 	}
 	return newChatRateLimiterWithConfig(config)
 }

@@ -39,6 +39,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,6 +63,12 @@ import kotlinx.coroutines.delay
 @Composable
 fun LoginGate(content: @Composable () -> Unit) {
     var loggedIn by remember { mutableStateOf(IdManager.isLoggedIn()) }
+    DisposableEffect(Unit) {
+        val removeListener = SessionApi.addAuthInvalidListener {
+            loggedIn = false
+        }
+        onDispose { removeListener() }
+    }
     if (loggedIn) {
         content()
     } else {

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -17,6 +18,11 @@ import (
 
 func IsAuthStrict() bool {
 	raw := strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_STRICT")))
+	return raw == "1" || raw == "true" || raw == "yes"
+}
+
+func IsLegacyAuthTokenAllowed() bool {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv("AUTH_ALLOW_LEGACY_TOKEN")))
 	return raw == "1" || raw == "true" || raw == "yes"
 }
 
@@ -66,62 +72,59 @@ func ResolveAuthUserID(r *http.Request) AuthInfo {
 }
 
 func GetClientIP(r *http.Request) string {
-	xffRaw := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
-	if xffRaw != "" {
-		parts := strings.Split(xffRaw, ",")
-		candidates := make([]string, 0, len(parts))
-		for _, part := range parts {
-			ip := strings.TrimSpace(strings.TrimPrefix(part, "::ffff:"))
-			if ip != "" {
-				candidates = append(candidates, ip)
-			}
+	remoteIP := normalizeIPFromAddress(r.RemoteAddr)
+	if isTrustedProxyIP(remoteIP) {
+		if realIP := normalizeIPLiteral(r.Header.Get("X-Real-IP")); realIP != "" {
+			return realIP
 		}
-		for _, ip := range candidates {
-			if !isPrivateIPv4(ip) {
-				return ip
-			}
-		}
-		if len(candidates) > 0 {
-			return candidates[0]
+		if forwardedIP := forwardedForClientIP(r.Header.Get("X-Forwarded-For")); forwardedIP != "" {
+			return forwardedIP
 		}
 	}
-
-	host := strings.TrimSpace(r.RemoteAddr)
-	if host == "" {
-		return ""
-	}
-	if idx := strings.LastIndex(host, ":"); idx > 0 {
-		host = host[:idx]
-	}
-	return strings.TrimPrefix(host, "::ffff:")
+	return remoteIP
 }
 
-func isPrivateIPv4(ip string) bool {
-	parts := strings.Split(ip, ".")
-	if len(parts) != 4 {
-		return false
+func normalizeIPFromAddress(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
 	}
-	values := make([]int, 0, 4)
-	for _, part := range parts {
-		value, err := strconv.Atoi(part)
-		if err != nil {
-			return false
-		}
-		values = append(values, value)
+	host, _, err := net.SplitHostPort(raw)
+	if err == nil {
+		return normalizeIPLiteral(host)
 	}
+	return normalizeIPLiteral(raw)
+}
 
-	switch {
-	case values[0] == 10:
-		return true
-	case values[0] == 127:
-		return true
-	case values[0] == 192 && values[1] == 168:
-		return true
-	case values[0] == 172 && values[1] >= 16 && values[1] <= 31:
-		return true
-	default:
+func normalizeIPLiteral(raw string) string {
+	raw = strings.TrimSpace(strings.Trim(raw, "[]"))
+	raw = strings.TrimPrefix(raw, "::ffff:")
+	if raw == "" {
+		return ""
+	}
+	parsed := net.ParseIP(raw)
+	if parsed == nil {
+		return ""
+	}
+	return parsed.String()
+}
+
+func forwardedForClientIP(raw string) string {
+	parts := strings.Split(strings.TrimSpace(raw), ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		if ip := normalizeIPLiteral(parts[i]); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func isTrustedProxyIP(ip string) bool {
+	parsed := net.ParseIP(strings.TrimSpace(ip))
+	if parsed == nil {
 		return false
 	}
+	return parsed.IsLoopback() || parsed.IsPrivate()
 }
 
 func maskIP(ip string) string {
@@ -146,6 +149,9 @@ func verifyToken(token string, secret string) (string, bool) {
 func verifyBearerToken(token string, secret string) (string, string, bool) {
 	if strings.HasPrefix(token, "v2.") {
 		return verifyV2Token(token, secret)
+	}
+	if IsAuthStrict() && !IsLegacyAuthTokenAllowed() {
+		return "", "", false
 	}
 	userID, ok := verifyLegacyToken(token, secret)
 	return userID, "", ok
