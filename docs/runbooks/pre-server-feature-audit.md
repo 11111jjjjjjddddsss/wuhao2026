@@ -70,14 +70,14 @@
 - 如果要多实例，图片必须先接 OSS 或等价共享对象存储，并用 OSS 生命周期策略处理图片保存周期。
 - 多实例前不要让多个后端实例首次启动同时跑迁移；数据库迁移应改成单独发布步骤，或至少加迁移锁。
 - 主聊天 SSE 仍需要后续评估“单轮最大生成时长”，避免上游极端卡住长期占用 goroutine 和 inflight；不要用全局 `http.Client.Timeout` 直接砍流式请求。
-- B/C 摘要的 `running` guard、聊天本地限流、模型 Key 冷却都是本进程级；多实例下可能重复摘要或限流倍增。写回已有 `round_total` 校验，所以主要风险是成本和抗刷，不是旧摘要覆盖新轮次。
+- B/C 摘要的 `running` guard 和模型 Key 冷却仍是本进程级；多实例下可能重复摘要或各实例独立冷却 Key。主聊天用户级限流已支持 Redis，写回已有 `round_total` 校验，所以主要风险是成本和抗刷，不是旧摘要覆盖新轮次。
 - 归档成功后、扣次前如果进程崩溃且短重试也失败，仍可能漏记一次成本；正式上线后要靠日志和对账巡检兜底。
 
 买服务器后用真实指标决定：
 
 - ECS 实例规格和后端实例数。
 - RDS MySQL 规格、最大连接数、连接池参数、慢查询和索引调整。
-- 是否接 Redis / 网关做分布式限流。
+- 是否把更多本地保护迁到 Redis / 网关级保护。
 - 是否为 B/C 摘要加数据库 claim / lease，避免多实例重复调用 Qwen3.5-Flash。
 - 是否补持久化模型调用 attempt / status 表，进一步压低极端重复开流或漏扣成本。
 
@@ -273,7 +273,7 @@
 - 决定图片是否首版接 OSS；如果接 OSS，补上传改造、访问策略、生命周期、图片删除策略和 SLS 监控。
 - 配置并验证 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`、HTTPS 证书、模型公网拉图、`/upload`、`/uploads/`、`/api/chat/stream` 全链路。
 - 用真机跑弱网、多图、图片上传中杀 App、上传成功但流式未完成时杀 App、后台 WorkManager 恢复、删除历史时活跃流 409、冷启动 snapshot 恢复等回归。
-- 多实例前把 B/C 摘要 running guard、聊天限流等进程内保护升级为数据库 lease / Redis / 网关级保护，或明确首版单实例观察。
+- 多实例前仍需把 B/C 摘要 running guard 升级为数据库 lease / Redis / 网关级保护；聊天用户级限流已支持 Redis，主聊天同用户单流已由 MySQL `GET_LOCK` + `chat_stream_inflight` 跨进程控制。
 - 观察 `append session round after stream failed`、`quota consume on DONE failed`、`summary extraction failed`、图片上传失败、图片 URL 404、前台 SSE 中断率和上游 429 / 5xx。
 
 ### 8. B/C 记忆与模型调用

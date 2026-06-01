@@ -8,10 +8,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -41,8 +44,12 @@ func (e *upstreamStreamOpenError) Error() string {
 	return e.Message
 }
 
-func newChatRateLimiter() *chatRateLimiter {
-	return newChatRateLimiterWithConfig(resolveChatRateLimitConfig())
+func newChatRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := resolveChatRateLimitConfig()
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultChatRateLimitWindow, defaultChatRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(config)
 }
 
 func newChatRateLimiterWithConfig(config rateLimitConfig) *chatRateLimiter {
@@ -282,7 +289,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"region_reliability", region.Reliability,
 	)
 
-	allowed, retryAfterSec := s.rateLimiter.Consume(auth.UserID, time.Now())
+	allowed, retryAfterSec := s.rateLimiter.Consume(chatRateLimitKey(auth.UserID), time.Now())
 	if !allowed {
 		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSec))
 		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
@@ -487,6 +494,11 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"done_received", doneReceived.Load(),
 		"client_disconnected", clientDisconnected.Load(),
 	)
+}
+
+func chatRateLimitKey(userID string) string {
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	return "chat:" + rateLimitHash(userID, secret)
 }
 
 func (s *Server) isStaleChatStreamRequest(ctx context.Context, userID string, expectedGeneration *int, _ int64) (bool, error) {

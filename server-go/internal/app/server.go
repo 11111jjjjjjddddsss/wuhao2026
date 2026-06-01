@@ -145,7 +145,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		uploadStore:           uploadStore,
 		systemAnchor:          systemAnchor,
 		redisClient:           redisClient,
-		rateLimiter:           newChatRateLimiter(),
+		rateLimiter:           newChatRateLimiter(redisClient),
 		fusionTokenLimiter:    newAuthFusionTokenRateLimiter(redisClient),
 		smsLimiter:            newAuthSMSRateLimiter(redisClient),
 		smsLoginLimiter:       newAuthSMSLoginRateLimiter(redisClient),

@@ -5,6 +5,7 @@
 
 ## 2026-06-01
 
+- 补高并发 / 扩机预备护栏：主聊天 `/api/chat/stream` 用户级频控从单进程内存限流升级为“有 Redis 就走 Redis、无 Redis 回退单进程”，Redis key 只保存 `user_id` hash，不保存聊天正文、图片、token 或手机号；同一用户同时一条主聊天流本来已经由 MySQL `GET_LOCK` + `chat_stream_inflight` 跨进程控制。新增 `docs/runbooks/scaling-readiness.md`，把以后从单机原地升级、多 ECS、RDS 扩容到轻量队列的步骤和仍缺的 B/C 摘要 lease、滚动发布、SLS 统一日志等准备项固化下来。
 - 按小米会诊建议补“退出设备”最小闭环：后端新增 `POST /api/auth/logout`，校验当前 bearer token 后把对应 `auth_sessions.revoked_at` 置为当前时间，后续同 token 会被 `requireAuth` 拒绝；Android 账号管理页“退出设备”不再只是占位提示，成功后清本地 auth token 并重建 Activity 回到登录门。该刀只吊销当前设备 session，不做完整设备列表、远程踢设备或账号注销，不删除聊天历史、会员资产、额度、帮助与反馈或本机 `user_id`。
 - 复查手机号登录和 ECS 部署会诊资料时，发现 `docs/runbooks/deploy-ecs.md` 仍残留 DYPNS `missing_key / missing_config` 的旧健康检查口径；已同步改为当前真实状态：`dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`，并把下一步从“配置 DYPNS / 短信模板”改为“上线前轮换已暴露主账号 AccessKey、HTTPS / 模型 Key 后做真实登录和图片链路回归”。当前业务阻塞仍是 DashScope 模型 Key、HTTPS / 备案和真机登录回归，不是手机号认证配置缺失。
 - 复查登录页验证码登录展开态：验证码输入框和“发送”按钮原本视觉不齐，原因是验证码框使用 Material3 `label` 后预留了浮动标签高度，而发送按钮按普通 56dp 高度绘制；现改为验证码框使用 `placeholder`、验证码行 `CenterVertically`、输入框和发送按钮都固定 56dp，并给发送按钮最小宽度，避免两个边框上下错位。当前“后端地址未配置”只代表当前安装包没有带 `UPLOAD_BASE_URL`，不是服务器掉线；调试包若要真机登录联调仍需用带 `-PUPLOAD_BASE_URL=http://39.106.1.151` 的构建。

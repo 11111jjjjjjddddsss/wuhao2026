@@ -1,6 +1,7 @@
 package app
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -95,5 +96,27 @@ func TestResolveChatRateLimitConfigUsesEnvAndFallbacks(t *testing.T) {
 	}
 	if config.PruneInterval != defaultChatRateLimitPruneInterval {
 		t.Fatalf("PruneInterval=%s, want default %s", config.PruneInterval, defaultChatRateLimitPruneInterval)
+	}
+}
+
+func TestNewChatRateLimiterFallsBackToProcessLimiter(t *testing.T) {
+	limiter, ok := newChatRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newChatRateLimiter(nil) returned %T, want *chatRateLimiter fallback", newChatRateLimiter(nil))
+	}
+	if limiter.window != defaultChatRateLimitWindow || limiter.maxHits != defaultChatRateLimitMaxHits {
+		t.Fatalf("fallback limiter config mismatch: window=%s max=%d", limiter.window, limiter.maxHits)
+	}
+}
+
+func TestChatRateLimitKeyHashesUserID(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret")
+
+	key := chatRateLimitKey("acct_user_123")
+	if key == "" || strings.Contains(key, "acct_user_123") {
+		t.Fatalf("chatRateLimitKey leaked user id: %q", key)
+	}
+	if !strings.HasPrefix(key, "chat:") {
+		t.Fatalf("chatRateLimitKey prefix mismatch: %q", key)
 	}
 }

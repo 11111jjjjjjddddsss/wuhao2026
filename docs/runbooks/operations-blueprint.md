@@ -125,6 +125,7 @@
 - [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情生成与排查入口
 - [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)：统一管理后台分期、权限和审计入口
 - [payments.md](D:/wuhao/docs/runbooks/payments.md)：真实支付、会员订单、回调验签和对账入口
+- [scaling-readiness.md](D:/wuhao/docs/runbooks/scaling-readiness.md)：后续单机升级、多 ECS、数据库扩容和轻量队列预案
 
 ## 参考资料
 
