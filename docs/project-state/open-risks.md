@@ -81,6 +81,7 @@
 - 状态：未关闭
 - 说明：当前后端业务接口和 `/upload` 都要求身份头 / token。服务端已新增手机号账号表、登录 session 表、旧本机 `user_id` 迁移表和 v2 bearer token；Android 已新增登录门、账号 token 保存、验证码登录 UI 和调后端短信 / 融合认证接口的客户端代码。登录成功后，旧本机 `user_id` 会作为迁移桥，聊天归档、额度账本、会员、帮助与反馈等用户数据会尽量迁到手机号账号下
 - 补充：当前仍兼容 Android 早期阶段的裸 `X-User-Id` 本机身份兜底，方便迁移期联调；Android 已移除 `SESSION_API_TOKEN` 静态注入和运行时登录绕过，正式登录只使用后端按真实手机号账号签发的 per-user session token
+- 补充：Redis 认证限流已覆盖融合认证 token 获取、短信发送和短信登录校验；fusion token 按 IP hash 限流，短信相关按手机号 hash + IP hash 限流，避免 SDK 接入后刷 token 或验证码直接消耗阿里云认证资源
 - 风险：这还不是完整可上线登录：阿里云 `CreateSchemeConfig` 已能返回 `OK`，但 CLI 未返回 `SchemeCode`，需要从控制台核对并配置；Android 一键登录 SDK / AAR 尚未导入，当前一键登录按钮不会消耗融合认证试用次数，只提示先用验证码；短信登录依赖 `DYPNS_SMS_SIGN_NAME` 和 `DYPNS_SMS_TEMPLATE_CODE`，ECS 环境变量尚未配置；Redis 认证限流已部署到 ECS 并健康；旧 `X-User-Id` 兜底在公开生产仍需严格关闭
 - 后续动作：正式公开上线前必须完成阿里云融合认证 Android SDK 接入、`DYPNS_FUSION_SCHEME_CODE`、包名 / 签名配置、短信签名 / 模板、ECS DYPNS 环境变量和真机登录回归；Redis 验证码 / 限流已接入；生产环境保持 `APP_SECRET` 与 `AUTH_STRICT=true`，并逐步移除或隔离裸 `X-User-Id` 兜底
 

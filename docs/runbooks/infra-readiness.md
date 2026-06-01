@@ -34,7 +34,7 @@
 
 1. 已完成：Region 选定 `cn-beijing`，旧 SAE demo 应用已删除，域名 `nongjiqiancha.cn` 已购买并口头确认过审，ECS / RDS MySQL / OSS 100GB 存储包已购买
 2. 已完成：ECS 基础系统环境、Nginx、systemd、RDS 数据库 / 账号 / 白名单和 `server-go` 首版部署
-3. 已完成：购买 Redis 开源版 256MB 最小实例，放入生产 VPC，并把认证短信发送 / 登录校验短期限流接到 Redis；生产 ECS 已部署验证 `redis=ok`
+3. 已完成：购买 Redis 开源版 256MB 最小实例，放入生产 VPC，并把融合认证 token、认证短信发送 / 登录校验短期限流接到 Redis；生产 ECS 已部署验证 `redis=ok`
 4. 下一步：补 DashScope 模型 Key、HTTPS、融合认证 SDK / SchemeCode / 短信模板和日志方案；SLS 是否首版接入再按成本和排障需求确认
 
 ## 采购前必须拍板的问题

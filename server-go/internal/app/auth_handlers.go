@@ -11,6 +11,10 @@ import (
 
 const authJSONBodyLimit = 8 * 1024
 const (
+	defaultAuthFusionTokenRateLimitWindow        = 10 * time.Minute
+	defaultAuthFusionTokenRateLimitMaxHits       = 20
+	defaultAuthFusionTokenRateLimitPruneInterval = 10 * time.Minute
+
 	defaultAuthSMSRateLimitWindow        = 10 * time.Minute
 	defaultAuthSMSRateLimitMaxHits       = 5
 	defaultAuthSMSRateLimitPruneInterval = 10 * time.Minute
@@ -36,6 +40,16 @@ func (s *Server) handleAuthFusionToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
 		return
+	}
+	if s.fusionTokenLimiter != nil {
+		limitKey := authIPRateLimitKey("fusion_token", GetClientIP(r))
+		if allowed, retryAfter := s.fusionTokenLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
 	}
 	token, err := s.dypns.GetFusionAuthToken(r.Context())
 	if err != nil {
@@ -110,6 +124,18 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func newAuthFusionTokenRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := rateLimitConfig{
+		Window:        envDurationWithDefault("AUTH_FUSION_TOKEN_RATE_LIMIT_WINDOW_SECONDS", defaultAuthFusionTokenRateLimitWindow),
+		MaxHits:       envIntWithDefault("AUTH_FUSION_TOKEN_RATE_LIMIT_MAX_HITS", defaultAuthFusionTokenRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("AUTH_FUSION_TOKEN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultAuthFusionTokenRateLimitPruneInterval),
+	}
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultAuthFusionTokenRateLimitWindow, defaultAuthFusionTokenRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(config)
+}
+
 func newAuthSMSRateLimiter(redisClient *redis.Client) rateLimiter {
 	config := rateLimitConfig{
 		Window:        envDurationWithDefault("AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS", defaultAuthSMSRateLimitWindow),
@@ -174,6 +200,11 @@ func (s *Server) handleAuthSMSLogin(w http.ResponseWriter, r *http.Request) {
 func authRateLimitKey(scope string, phone string, ip string) string {
 	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
 	return strings.TrimSpace(scope) + ":" + rateLimitHash(phone, secret) + ":" + rateLimitHash(ip, secret)
+}
+
+func authIPRateLimitKey(scope string, ip string) string {
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	return strings.TrimSpace(scope) + ":" + rateLimitHash(ip, secret)
 }
 
 func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {

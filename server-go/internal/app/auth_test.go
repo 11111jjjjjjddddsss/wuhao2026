@@ -96,15 +96,34 @@ func TestAuthRateLimitKeyHashesSensitiveInputs(t *testing.T) {
 	if !strings.HasPrefix(key, "sms_send:") {
 		t.Fatalf("authRateLimitKey prefix mismatch: %q", key)
 	}
+
+	ipKey := authIPRateLimitKey("fusion_token", "203.0.113.8")
+	if ipKey == "" || strings.Contains(ipKey, "203.0.113.8") {
+		t.Fatalf("authIPRateLimitKey leaked sensitive input: %q", ipKey)
+	}
+	if !strings.HasPrefix(ipKey, "fusion_token:") {
+		t.Fatalf("authIPRateLimitKey prefix mismatch: %q", ipKey)
+	}
 }
 
 func TestAuthSMSLimitersUseSeparateEnv(t *testing.T) {
+	t.Setenv("AUTH_FUSION_TOKEN_RATE_LIMIT_WINDOW_SECONDS", "30")
+	t.Setenv("AUTH_FUSION_TOKEN_RATE_LIMIT_MAX_HITS", "2")
+	t.Setenv("AUTH_FUSION_TOKEN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "45")
 	t.Setenv("AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS", "60")
 	t.Setenv("AUTH_SMS_RATE_LIMIT_MAX_HITS", "3")
 	t.Setenv("AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "90")
 	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "120")
 	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS", "4")
 	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "150")
+
+	fusionLimiter, ok := newAuthFusionTokenRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newAuthFusionTokenRateLimiter returned %T, want *chatRateLimiter fallback", newAuthFusionTokenRateLimiter(nil))
+	}
+	if fusionLimiter.window != 30*time.Second || fusionLimiter.maxHits != 2 || fusionLimiter.pruneInterval != 45*time.Second {
+		t.Fatalf("fusion limiter config mismatch: window=%s max=%d prune=%s", fusionLimiter.window, fusionLimiter.maxHits, fusionLimiter.pruneInterval)
+	}
 
 	sendLimiter, ok := newAuthSMSRateLimiter(nil).(*chatRateLimiter)
 	if !ok {
