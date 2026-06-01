@@ -5,6 +5,7 @@
 
 ## 2026-06-01
 
+- 复查手机号登录和 ECS 部署会诊资料时，发现 `docs/runbooks/deploy-ecs.md` 仍残留 DYPNS `missing_key / missing_config` 的旧健康检查口径；已同步改为当前真实状态：`dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`，并把下一步从“配置 DYPNS / 短信模板”改为“上线前轮换已暴露主账号 AccessKey、HTTPS / 模型 Key 后做真实登录和图片链路回归”。当前业务阻塞仍是 DashScope 模型 Key、HTTPS / 备案和真机登录回归，不是手机号认证配置缺失。
 - 复查登录页验证码登录展开态：验证码输入框和“发送”按钮原本视觉不齐，原因是验证码框使用 Material3 `label` 后预留了浮动标签高度，而发送按钮按普通 56dp 高度绘制；现改为验证码框使用 `placeholder`、验证码行 `CenterVertically`、输入框和发送按钮都固定 56dp，并给发送按钮最小宽度，避免两个边框上下错位。当前“后端地址未配置”只代表当前安装包没有带 `UPLOAD_BASE_URL`，不是服务器掉线；调试包若要真机登录联调仍需用带 `-PUPLOAD_BASE_URL=http://39.106.1.151` 的构建。
 - 记录后期管理后台规划：新增“用户真实反馈 / 产品洞察”模块设想，后续从帮助与反馈、App 自动日志和聊天归档里做脱敏聚合，提取高频 bug、登录 / 上传 / 历史恢复卡点、模型答偏线索、常见作物 / 病虫害和可改 UI / 提示词 / 后端规则的证据。当前只是 runbook 规划，不代表已有后台、定时任务或生产数据扫库；Codex 后续只应基于脱敏报表分析，不直接定期读取生产库原始聊天全文。
 - 接入阿里云融合认证 Android 官方 SDK 首版链路：把控制台下载的 `fusionauth-1.2.15-online-release.aar` 放入 `app/libs` 并通过 Gradle `fileTree` 引入，补 ProGuard keep；新增 `FusionOneLoginClient.kt`，登录页在用户同意协议后按需申请 `READ_PHONE_STATE`，从后端拉取 `auth_token + scheme_code` 初始化 SDK，SDK 成功返回 verify token 后调用 `/api/auth/fusion/login` 换取账号 token，失败 / 取消则回落验证码登录。后端 `/api/auth/fusion/token` 同步返回 `scheme_code`，App 内隐私政策、第三方信息共享清单、个人信息收集清单和应用权限已补阿里云融合认证 SDK、电话状态、网络状态 / Wi-Fi 状态口径；当前还未做用户真机回归，仍需备案 / HTTPS 后统一复测。
