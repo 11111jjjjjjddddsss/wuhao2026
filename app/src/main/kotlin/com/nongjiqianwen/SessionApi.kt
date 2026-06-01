@@ -280,6 +280,37 @@ object SessionApi {
         )
     }
 
+    fun logoutCurrentSession(onResult: (Boolean) -> Unit) {
+        val base = baseUrl()
+        val token = authTokenSync()
+        if (base.isEmpty() || token.isNullOrBlank()) {
+            IdManager.clearAuthSession()
+            mainHandler.post { onResult(true) }
+            return
+        }
+        val request = applyIdentityHeaders(
+            Request.Builder()
+                .url("$base/api/auth/logout")
+                .addHeader("Authorization", "Bearer $token")
+                .post(ByteArray(0).toRequestBody(null))
+        ).build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { onResult(false) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val ok = it.isSuccessful || it.code == 401
+                    if (ok) {
+                        IdManager.clearAuthSession()
+                    }
+                    mainHandler.post { onResult(ok) }
+                }
+            }
+        })
+    }
+
     fun cancelCurrentStream() {
         currentStreamCall.getAndSet(null)?.cancel()
     }

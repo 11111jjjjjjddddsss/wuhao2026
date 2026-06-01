@@ -1,6 +1,8 @@
 package com.nongjiqianwen
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
@@ -125,6 +127,13 @@ private fun normalizeSupportLinkTarget(raw: String): String {
         "https://$trimmed"
     }
 }
+
+private tailrec fun Context.findActivityForHamburger(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivityForHamburger()
+        else -> null
+    }
 
 private fun trimSupportBareUrlDisplayText(raw: String): String {
     val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
@@ -1607,6 +1616,8 @@ private fun HamburgerAccountManagementContent(
 ) {
     var deleteHistoryDialogVisible by rememberSaveable { mutableStateOf(false) }
     var deleteHistorySubmitting by remember { mutableStateOf(false) }
+    var logoutSubmitting by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val phoneMask = IdManager.getAuthPhoneMask()
 
     Column(modifier = modifier) {
@@ -1649,8 +1660,24 @@ private fun HamburgerAccountManagementContent(
             )
             HamburgerMenuDivider()
             HamburgerAccountActionRow(
-                title = "退出设备",
-                onClick = { onPendingAction("当前设备会保持登录") }
+                title = if (logoutSubmitting) "退出中" else "退出设备",
+                onClick = {
+                    if (phoneMask == null) {
+                        onPendingAction("请先登录")
+                        return@HamburgerAccountActionRow
+                    }
+                    if (logoutSubmitting) return@HamburgerAccountActionRow
+                    logoutSubmitting = true
+                    SessionApi.logoutCurrentSession { ok ->
+                        logoutSubmitting = false
+                        if (ok) {
+                            onPendingAction("已退出当前设备")
+                            context.findActivityForHamburger()?.recreate()
+                        } else {
+                            onPendingAction("退出失败，请检查网络后重试")
+                        }
+                    }
+                }
             )
         }
 

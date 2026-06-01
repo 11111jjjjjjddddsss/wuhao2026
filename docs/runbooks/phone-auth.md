@@ -6,6 +6,7 @@
 
 - 后端已新增手机号账号骨架：`app_accounts`、`auth_sessions`、`user_id_migrations`
 - Android 已新增登录门和验证码登录页；登录成功后保存后端签发的长期 v2 bearer token
+- 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会调用该接口、清本地 auth token 并回到登录门；完整设备管理 / 远程吊销后续再迭代
 - 登录成功后，旧本机 `user_id` 作为迁移桥，后端会尽量把旧用户数据迁到手机号账号 `acct_...`
 - 阿里云融合认证 Android 方案已通过 CLI 创建，DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS `/etc/nongjiqiancha/server.env`
 - Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按官方 SDK 流程拉取服务端 fusion token、初始化 SDK、提交 verify token 给后端，不再用静态 token 或测试 ID 绕过登录
@@ -19,13 +20,14 @@
 - `POST /api/auth/fusion/login`：Android SDK 拿到 `verify_token` 后提交，后端校验手机号并签发账号 token
 - `POST /api/auth/sms/send`：发送短信验证码，默认 10 分钟 5 次限流；配置 Redis 后跨进程共享
 - `POST /api/auth/sms/login`：校验短信验证码并签发账号 token，默认 10 分钟 10 次限流；配置 Redis 后跨进程共享
+- `POST /api/auth/logout`：校验当前 bearer token 后吊销当前 `session_id`，后续该 token 会被 `requireAuth` 拒绝
 - `GET /api/auth/session`：校验当前 bearer token
 
 ## 必要环境变量
 
 - `APP_SECRET`：手机号 hash 和 v2 token 签名必须依赖它
 - `AUTH_STRICT=true`：生产必须开启，关闭裸 `X-User-Id` 兜底
-- `AUTH_SESSION_DAYS`：登录保持天数，默认 3650；当前按“长期保持登录、省认证次数”口径处理，后续如接设备管理 / 主动退出再按后台吊销 session
+- `AUTH_SESSION_DAYS`：登录保持天数，默认 3650；当前按“长期保持登录、省认证次数”口径处理，主动退出设备已通过 `POST /api/auth/logout` 吊销当前 session，完整设备管理 / 远程吊销后续再迭代
 - `DYPNS_ACCESS_KEY_ID` / `DYPNS_ACCESS_KEY_SECRET`：阿里云融合认证 / 短信 API 凭证，也兼容 `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`
 - `DYPNS_REGION_ID`：默认 `cn-hangzhou`
 - `DYPNS_FUSION_SCHEME_CODE`：阿里云融合认证 SchemeCode，当前已创建并写入本机 / ECS

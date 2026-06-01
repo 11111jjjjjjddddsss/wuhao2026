@@ -58,9 +58,9 @@ func (s *Server) handleAuthFusionToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"auth_token": token,
+		"auth_token":  token,
 		"scheme_code": s.dypns.FusionSchemeCode(),
-		"expires_in": 1800,
+		"expires_in":  1800,
 	})
 }
 
@@ -196,6 +196,27 @@ func (s *Server) handleAuthSMSLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.finishPhoneLogin(w, r, phone, body.LegacyUserID, body.DeviceID)
+}
+
+func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+	auth, ok := s.requireAuth(w, r)
+	if !ok {
+		return
+	}
+	if auth.AuthMode != AuthModeToken || strings.TrimSpace(auth.SessionID) == "" {
+		s.writeError(w, http.StatusBadRequest, "token_session_required")
+		return
+	}
+	if err := s.store.RevokeAuthSession(r.Context(), auth.UserID, auth.SessionID, time.Now().UnixMilli()); err != nil {
+		s.logger.Error("logout session revoke failed", "userId", auth.UserID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 func authRateLimitKey(scope string, phone string, ip string) string {

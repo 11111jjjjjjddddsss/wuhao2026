@@ -174,6 +174,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/auth/fusion/login", s.handleAuthFusionLogin)
 	s.mux.HandleFunc("POST /api/auth/sms/send", s.handleAuthSMSSend)
 	s.mux.HandleFunc("POST /api/auth/sms/login", s.handleAuthSMSLogin)
+	s.mux.HandleFunc("POST /api/auth/logout", s.handleAuthLogout)
 	s.mux.HandleFunc("GET /api/auth/session", s.handleAuthSession)
 	s.mux.HandleFunc("GET /api/me", s.handleGetMe)
 	s.mux.HandleFunc("POST /api/session/b", s.handleSessionB)

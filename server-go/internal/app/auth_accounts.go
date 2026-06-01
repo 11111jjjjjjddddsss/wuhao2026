@@ -118,6 +118,25 @@ func (s *Store) IsAuthSessionActive(ctx context.Context, userID string, sessionI
 	return existing != "", nil
 }
 
+func (s *Store) RevokeAuthSession(ctx context.Context, userID string, sessionID string, nowMs int64) error {
+	userID = strings.TrimSpace(userID)
+	sessionID = strings.TrimSpace(sessionID)
+	if userID == "" || sessionID == "" {
+		return fmt.Errorf("auth_session_identity_missing")
+	}
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE auth_sessions
+		 SET revoked_at = ?, updated_at = ?
+		 WHERE session_id = ? AND user_id = ? AND revoked_at IS NULL`,
+		nowMs,
+		nowMs,
+		sessionID,
+		userID,
+	)
+	return err
+}
+
 func (s *Store) getOrCreateAccountForPhoneTx(ctx context.Context, tx *sql.Tx, phoneHash string, phoneMask string, nowMs int64) (string, error) {
 	var userID string
 	err := tx.QueryRowContext(

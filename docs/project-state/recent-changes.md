@@ -5,6 +5,7 @@
 
 ## 2026-06-01
 
+- 按小米会诊建议补“退出设备”最小闭环：后端新增 `POST /api/auth/logout`，校验当前 bearer token 后把对应 `auth_sessions.revoked_at` 置为当前时间，后续同 token 会被 `requireAuth` 拒绝；Android 账号管理页“退出设备”不再只是占位提示，成功后清本地 auth token 并重建 Activity 回到登录门。该刀只吊销当前设备 session，不做完整设备列表、远程踢设备或账号注销，不删除聊天历史、会员资产、额度、帮助与反馈或本机 `user_id`。
 - 复查手机号登录和 ECS 部署会诊资料时，发现 `docs/runbooks/deploy-ecs.md` 仍残留 DYPNS `missing_key / missing_config` 的旧健康检查口径；已同步改为当前真实状态：`dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`，并把下一步从“配置 DYPNS / 短信模板”改为“上线前轮换已暴露主账号 AccessKey、HTTPS / 模型 Key 后做真实登录和图片链路回归”。当前业务阻塞仍是 DashScope 模型 Key、HTTPS / 备案和真机登录回归，不是手机号认证配置缺失。
 - 复查登录页验证码登录展开态：验证码输入框和“发送”按钮原本视觉不齐，原因是验证码框使用 Material3 `label` 后预留了浮动标签高度，而发送按钮按普通 56dp 高度绘制；现改为验证码框使用 `placeholder`、验证码行 `CenterVertically`、输入框和发送按钮都固定 56dp，并给发送按钮最小宽度，避免两个边框上下错位。当前“后端地址未配置”只代表当前安装包没有带 `UPLOAD_BASE_URL`，不是服务器掉线；调试包若要真机登录联调仍需用带 `-PUPLOAD_BASE_URL=http://39.106.1.151` 的构建。
 - 记录后期管理后台规划：新增“用户真实反馈 / 产品洞察”模块设想，后续从帮助与反馈、App 自动日志和聊天归档里做脱敏聚合，提取高频 bug、登录 / 上传 / 历史恢复卡点、模型答偏线索、常见作物 / 病虫害和可改 UI / 提示词 / 后端规则的证据。当前只是 runbook 规划，不代表已有后台、定时任务或生产数据扫库；Codex 后续只应基于脱敏报表分析，不直接定期读取生产库原始聊天全文。
