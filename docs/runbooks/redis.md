@@ -12,7 +12,7 @@
 - 白名单：`127.0.0.1`、ECS 私网 IP `192.168.1.237`
 - ECS 已验证内网 DNS、TCP 6379 和 `default` 账号密码认证可用
 - `server-go` 已新增可选 Redis 客户端：只要配置 `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD`，启动时会先 ping Redis，失败则 fail-fast
-- 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并随 `ac52cc55` 部署验证融合认证 token、短信发送、短信登录和 App 自动日志接收限流；后续 `POST /api/support/messages` 限流同样会复用该 Redis；`/healthz` 当前返回 `redis=ok`
+- 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并随 `4bedc613` 部署验证融合认证 token、短信发送、短信登录、App 自动日志接收和帮助与反馈用户发消息限流；`/healthz` 当前返回 `redis=ok`
 - 当前 Redis 只接短期限流：`POST /api/auth/fusion/token`、`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/app/logs` 和 `POST /api/support/messages`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（App 日志 / 帮助与反馈相关）和 IP hash，不保存明文手机号、验证码、token、聊天正文、反馈正文或图片内容
 - 主聊天 `/api/chat/stream` 仍使用原有 MySQL 业务真相、MySQL 用户级锁、`chat_stream_inflight` 和本进程用户限流；不要把 Redis 写成已经接管聊天流、额度、订单、归档或摘要锁
 
