@@ -9,8 +9,8 @@
 - 登录成功后，旧本机 `user_id` 作为迁移桥，后端会尽量把旧用户数据迁到手机号账号 `acct_...`
 - 阿里云融合认证服务已能通过 CLI 创建方案配置并返回 `OK`，但本机 CLI 未返回 `SchemeCode`，需要到控制台核对 / 复制
 - Android 一键登录 SDK / AAR 尚未导入；生产标准应按官方 SDK 链路接入，不再用静态 token 或测试 ID 绕过登录
-- 短信登录后端接口已接阿里云 Dypns API，但 ECS 还没配置短信签名和模板
-- Redis 已购买并在 `server-go` 里接成可选认证限流后端：配置 Redis 时，短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 时仍回退单进程内限流
+- 短信登录后端接口已接阿里云 Dypns API，但 ECS 还没配置 DYPNS AccessKey、短信签名和模板
+- Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
 
 ## 后端接口
 
