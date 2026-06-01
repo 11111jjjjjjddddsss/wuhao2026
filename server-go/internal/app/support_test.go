@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNormalizeSupportMessagePayloadAllowsTextImageAndImageOnly(t *testing.T) {
@@ -96,6 +97,31 @@ func TestSupportImageURLsJSON(t *testing.T) {
 	}
 	if empty != nil {
 		t.Fatalf("empty = %#v, want nil", empty)
+	}
+}
+
+func TestSupportMessageRateLimitKeyHashesSensitiveInputs(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret")
+	key := supportMessageRateLimitKey("acct_sensitive_user", "203.0.113.9")
+	if key == "" || strings.Contains(key, "acct_sensitive_user") || strings.Contains(key, "203.0.113.9") {
+		t.Fatalf("supportMessageRateLimitKey leaked sensitive input: %q", key)
+	}
+	if !strings.HasPrefix(key, "support_message:") {
+		t.Fatalf("supportMessageRateLimitKey prefix mismatch: %q", key)
+	}
+}
+
+func TestSupportMessageRateLimiterUsesEnv(t *testing.T) {
+	t.Setenv("SUPPORT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS", "30")
+	t.Setenv("SUPPORT_MESSAGE_RATE_LIMIT_MAX_HITS", "2")
+	t.Setenv("SUPPORT_MESSAGE_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "45")
+
+	limiter, ok := newSupportMessageRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newSupportMessageRateLimiter returned %T, want *chatRateLimiter fallback", newSupportMessageRateLimiter(nil))
+	}
+	if limiter.window != 30*time.Second || limiter.maxHits != 2 || limiter.pruneInterval != 45*time.Second {
+		t.Fatalf("support message limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
 	}
 }
 

@@ -26,6 +26,7 @@
   - 当前限制正文最多 2000 字
   - 支持纯文字、纯图片或图文混合；单次最多 4 张图片
   - Android 先复用主聊天图片链压缩并上传到 `/upload`，再把返回 URL 写入帮助与反馈消息
+  - 默认同一 `user_id + IP` 10 分钟最多 20 条；配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。Redis key 只保存 user_id hash 和 IP hash，不保存正文、图片内容、手机号或 token
 - `POST /api/support/read`
   - 把当前用户所有未读后台 / 系统消息标记为已读
   - Android 成功拉取帮助与反馈页历史后调用，随后设置页红点消失

@@ -28,13 +28,13 @@
 
 - OSS：图片上传与短期保存。当前已购买华北2 100GB 标准-本地冗余存储包，Bucket `nongjiqiancha-prod` 已创建并配置生命周期，后端已新增 OSS 存储后端；生产 ECS 已配置环境变量并通过 `upload_storage=oss` 验证
 - SLS：后端日志检索与告警
-- Redis：验证码、缓存、临时会话或限流。当前已购买 256MB 实例，并已在 `server-go` 中接入认证和 App 自动日志接收短期限流；生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`。当前不得写成已接管聊天流、额度、归档、摘要或订单
+- Redis：验证码、缓存、临时会话或限流。当前已购买 256MB 实例，并已在 `server-go` 中接入认证、App 自动日志接收和帮助与反馈用户发消息短期限流；生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`。当前不得写成已接管聊天流、额度、归档、摘要或订单
 
 ## 建议采购顺序
 
 1. 已完成：Region 选定 `cn-beijing`，旧 SAE demo 应用已删除，域名 `nongjiqiancha.cn` 已购买并口头确认过审，ECS / RDS MySQL / OSS 100GB 存储包已购买
 2. 已完成：ECS 基础系统环境、Nginx、systemd、RDS 数据库 / 账号 / 白名单和 `server-go` 首版部署
-3. 已完成：购买 Redis 开源版 256MB 最小实例，放入生产 VPC，并把融合认证 token、认证短信发送 / 登录校验短期限流接到 Redis；生产 ECS 已部署验证 `redis=ok`
+3. 已完成：购买 Redis 开源版 256MB 最小实例，放入生产 VPC，并把融合认证 token、认证短信发送 / 登录校验、App 自动日志接收、帮助与反馈用户发消息短期限流接到 Redis；生产 ECS 已部署验证 `redis=ok`
 4. 下一步：补 DashScope 模型 Key、HTTPS、融合认证 SDK / SchemeCode / 短信模板和日志方案；SLS 是否首版接入再按成本和排障需求确认
 
 ## 采购前必须拍板的问题

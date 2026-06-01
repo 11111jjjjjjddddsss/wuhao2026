@@ -11,11 +11,16 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/redis/go-redis/v9"
 )
 
 const (
-	supportMessageMaxRunes  = 2000
-	supportMessageListLimit = 100
+	supportMessageMaxRunes                      = 2000
+	supportMessageListLimit                     = 100
+	defaultSupportMessageRateLimitWindow        = 10 * time.Minute
+	defaultSupportMessageRateLimitMaxHits       = 20
+	defaultSupportMessageRateLimitPruneInterval = 10 * time.Minute
 )
 
 type SupportMessage struct {
@@ -90,6 +95,16 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 	auth, ok := s.requireAuth(w, r)
 	if !ok {
 		return
+	}
+	if s.supportMessageLimiter != nil {
+		limitKey := supportMessageRateLimitKey(auth.UserID, GetClientIP(r))
+		if allowed, retryAfter := s.supportMessageLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
 	}
 	var body supportMessageRequest
 	if err := decodeJSONBody(r, &body); err != nil {
@@ -225,6 +240,23 @@ func normalizeSupportMessagePayload(raw string, images []string) (string, []stri
 		return "", nil, "body or images required"
 	}
 	return body, imageURLs, ""
+}
+
+func newSupportMessageRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := rateLimitConfig{
+		Window:        envDurationWithDefault("SUPPORT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS", defaultSupportMessageRateLimitWindow),
+		MaxHits:       envIntWithDefault("SUPPORT_MESSAGE_RATE_LIMIT_MAX_HITS", defaultSupportMessageRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("SUPPORT_MESSAGE_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultSupportMessageRateLimitPruneInterval),
+	}
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultSupportMessageRateLimitWindow, defaultSupportMessageRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(config)
+}
+
+func supportMessageRateLimitKey(userID string, ip string) string {
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	return "support_message:" + rateLimitHash(userID, secret) + ":" + rateLimitHash(ip, secret)
 }
 
 func (s *Store) GetSupportSummary(ctx context.Context, userID string) (*SupportSummary, error) {

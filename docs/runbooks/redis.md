@@ -12,8 +12,8 @@
 - 白名单：`127.0.0.1`、ECS 私网 IP `192.168.1.237`
 - ECS 已验证内网 DNS、TCP 6379 和 `default` 账号密码认证可用
 - `server-go` 已新增可选 Redis 客户端：只要配置 `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD`，启动时会先 ping Redis，失败则 fail-fast
-- 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并随 `ac52cc55` 部署验证融合认证 token、短信发送、短信登录和 App 自动日志接收限流；`/healthz` 当前返回 `redis=ok`
-- 当前 Redis 只接短期限流：`POST /api/auth/fusion/token`、`POST /api/auth/sms/send`、`POST /api/auth/sms/login` 和 `POST /api/app/logs`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（App 日志相关）和 IP hash，不保存明文手机号、验证码、token、聊天正文或图片内容
+- 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并随 `ac52cc55` 部署验证融合认证 token、短信发送、短信登录和 App 自动日志接收限流；后续 `POST /api/support/messages` 限流同样会复用该 Redis；`/healthz` 当前返回 `redis=ok`
+- 当前 Redis 只接短期限流：`POST /api/auth/fusion/token`、`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/app/logs` 和 `POST /api/support/messages`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（App 日志 / 帮助与反馈相关）和 IP hash，不保存明文手机号、验证码、token、聊天正文、反馈正文或图片内容
 - 主聊天 `/api/chat/stream` 仍使用原有 MySQL 业务真相、MySQL 用户级锁、`chat_stream_inflight` 和本进程用户限流；不要把 Redis 写成已经接管聊天流、额度、订单、归档或摘要锁
 
 ## 预期用途
@@ -59,6 +59,7 @@ aliyun ecs RunCommand --RegionId cn-beijing --Type RunShellScript --InstanceId.1
 - `AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送限流，默认 10 分钟 5 次
 - `AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信登录校验限流，默认 10 分钟 10 次
 - `CLIENT_APP_LOG_RATE_LIMIT_WINDOW_SECONDS` / `CLIENT_APP_LOG_RATE_LIMIT_MAX_HITS` / `CLIENT_APP_LOG_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：App 自动日志接收限流，默认 10 分钟 60 次
+- `SUPPORT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS` / `SUPPORT_MESSAGE_RATE_LIMIT_MAX_HITS` / `SUPPORT_MESSAGE_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：帮助与反馈用户发消息限流，默认 10 分钟 20 条
 
 ## 接入前检查
 

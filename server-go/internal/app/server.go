@@ -26,25 +26,26 @@ var (
 )
 
 type Server struct {
-	logger              *slog.Logger
-	mux                 *http.ServeMux
-	store               *Store
-	prompts             *PromptLoader
-	bailian             *BailianClient
-	summary             *SummaryService
-	dailyAgri           *DailyAgriCardService
-	dypns               *DypnsClient
-	shanghai            *time.Location
-	assetDir            string
-	uploadsDir          string
-	uploadStore         UploadStore
-	systemAnchor        string
-	redisClient         *redis.Client
-	rateLimiter         rateLimiter
-	fusionTokenLimiter  rateLimiter
-	smsLimiter          rateLimiter
-	smsLoginLimiter     rateLimiter
-	clientAppLogLimiter rateLimiter
+	logger                *slog.Logger
+	mux                   *http.ServeMux
+	store                 *Store
+	prompts               *PromptLoader
+	bailian               *BailianClient
+	summary               *SummaryService
+	dailyAgri             *DailyAgriCardService
+	dypns                 *DypnsClient
+	shanghai              *time.Location
+	assetDir              string
+	uploadsDir            string
+	uploadStore           UploadStore
+	systemAnchor          string
+	redisClient           *redis.Client
+	rateLimiter           rateLimiter
+	fusionTokenLimiter    rateLimiter
+	smsLimiter            rateLimiter
+	smsLoginLimiter       rateLimiter
+	clientAppLogLimiter   rateLimiter
+	supportMessageLimiter rateLimiter
 }
 
 type orderRequest struct {
@@ -129,25 +130,26 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 	server := &Server{
-		logger:              logger,
-		mux:                 http.NewServeMux(),
-		store:               store,
-		prompts:             prompts,
-		bailian:             bailian,
-		summary:             NewSummaryService(store, prompts, bailian, logger),
-		dailyAgri:           NewDailyAgriCardService(store, bailian, logger, shanghai),
-		dypns:               dypns,
-		shanghai:            shanghai,
-		assetDir:            assetDir,
-		uploadsDir:          uploadsDir,
-		uploadStore:         uploadStore,
-		systemAnchor:        systemAnchor,
-		redisClient:         redisClient,
-		rateLimiter:         newChatRateLimiter(),
-		fusionTokenLimiter:  newAuthFusionTokenRateLimiter(redisClient),
-		smsLimiter:          newAuthSMSRateLimiter(redisClient),
-		smsLoginLimiter:     newAuthSMSLoginRateLimiter(redisClient),
-		clientAppLogLimiter: newClientAppLogRateLimiter(redisClient),
+		logger:                logger,
+		mux:                   http.NewServeMux(),
+		store:                 store,
+		prompts:               prompts,
+		bailian:               bailian,
+		summary:               NewSummaryService(store, prompts, bailian, logger),
+		dailyAgri:             NewDailyAgriCardService(store, bailian, logger, shanghai),
+		dypns:                 dypns,
+		shanghai:              shanghai,
+		assetDir:              assetDir,
+		uploadsDir:            uploadsDir,
+		uploadStore:           uploadStore,
+		systemAnchor:          systemAnchor,
+		redisClient:           redisClient,
+		rateLimiter:           newChatRateLimiter(),
+		fusionTokenLimiter:    newAuthFusionTokenRateLimiter(redisClient),
+		smsLimiter:            newAuthSMSRateLimiter(redisClient),
+		smsLoginLimiter:       newAuthSMSLoginRateLimiter(redisClient),
+		clientAppLogLimiter:   newClientAppLogRateLimiter(redisClient),
+		supportMessageLimiter: newSupportMessageRateLimiter(redisClient),
 	}
 	server.registerRoutes()
 	return server, nil
