@@ -215,14 +215,20 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         OutlinedTextField(
                             value = code,
                             onValueChange = { code = it.filter(Char::isDigit).take(6) },
                             singleLine = true,
-                            label = { Text("验证码") },
+                            placeholder = { Text("验证码") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp)
                         )
                         OutlinedButton(
                             onClick = {
@@ -248,7 +254,9 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                             },
                             enabled = !busy && countdown == 0,
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.height(56.dp)
+                            modifier = Modifier
+                                .height(56.dp)
+                                .widthIn(min = 96.dp)
                         ) {
                             Text(
                                 text = if (countdown > 0) "${countdown}s" else "发送",
