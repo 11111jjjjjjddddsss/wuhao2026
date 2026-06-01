@@ -1,6 +1,6 @@
 # 手机号登录与融合认证 Runbook
 
-最后更新：2026-05-31
+最后更新：2026-06-01
 
 ## 当前状态
 
@@ -10,14 +10,14 @@
 - 阿里云融合认证服务已能通过 CLI 创建方案配置并返回 `OK`，但本机 CLI 未返回 `SchemeCode`，需要到控制台核对 / 复制
 - Android 一键登录 SDK / AAR 尚未导入；生产标准应按官方 SDK 链路接入，不再用静态 token 或测试 ID 绕过登录
 - 短信登录后端接口已接阿里云 Dypns API，但 ECS 还没配置短信签名和模板
-- Redis 已购买但业务代码尚未接入；当前短信发送只有单 ECS 进程内限流，后续应迁到 Redis
+- Redis 已购买并在 `server-go` 里接成可选认证限流后端：配置 Redis 时，短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 时仍回退单进程内限流
 
 ## 后端接口
 
 - `POST /api/auth/fusion/token`：服务端向阿里云获取融合认证 token，后续给 Android SDK 使用
 - `POST /api/auth/fusion/login`：Android SDK 拿到 `verify_token` 后提交，后端校验手机号并签发账号 token
-- `POST /api/auth/sms/send`：发送短信验证码，当前有进程内限流
-- `POST /api/auth/sms/login`：校验短信验证码并签发账号 token
+- `POST /api/auth/sms/send`：发送短信验证码，默认 10 分钟 5 次限流；配置 Redis 后跨进程共享
+- `POST /api/auth/sms/login`：校验短信验证码并签发账号 token，默认 10 分钟 10 次限流；配置 Redis 后跨进程共享
 - `GET /api/auth/session`：校验当前 bearer token
 
 ## 必要环境变量
@@ -33,7 +33,9 @@
 - `DYPNS_SMS_SIGN_NAME`：短信签名
 - `DYPNS_SMS_TEMPLATE_CODE`：短信模板 Code
 - `DYPNS_SMS_TEMPLATE_PARAM`：默认 `{"code":"##code##","min":"5"}`
-- `AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送进程内限流，默认 10 分钟 5 次
+- `AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送限流，默认 10 分钟 5 次
+- `AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信登录校验限流，默认 10 分钟 10 次
+- `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD` / `REDIS_DB`：可选 Redis 连接配置；配置后认证限流从单进程内存切到 Redis，主聊天流和业务真相不受影响
 
 ## 阿里云侧待办
 
@@ -49,7 +51,7 @@
 - 不把阿里云 AccessKey、短信模板变量、APP_SECRET 写进仓库
 - 一键登录 SDK 接入后，Android 才请求 `/api/auth/fusion/token` 并把 token 交给官方 SDK；SDK 未接好前不走假登录或测试 ID 绕过
 - `chat_stream_inflight` 是临时租约，登录迁移时直接丢弃旧本机租约，不迁到手机号账号
-- 多 ECS / 多实例前，验证码发送限流、失败计数、fusion nonce 等应迁到 Redis
+- 多 ECS / 多实例前，认证限流必须保持 Redis 可用；fusion token 频控、验证码短期状态、失败计数和后台任务 claim 可再按需补 Redis，但不要把聊天正文或长期用户资产放入 Redis
 
 ## 参考官方文档
 

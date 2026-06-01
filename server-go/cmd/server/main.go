@@ -40,6 +40,11 @@ func main() {
 		logger.Error("server bootstrap failed", "error", err)
 		os.Exit(1)
 	}
+	defer func() {
+		if err := server.Close(); err != nil {
+			logger.Warn("server resource close failed", "error", err)
+		}
+	}()
 
 	addr := resolveListenAddr()
 	httpServer := buildHTTPServer(addr, server.Handler())

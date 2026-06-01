@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 const (
@@ -24,21 +26,23 @@ var (
 )
 
 type Server struct {
-	logger       *slog.Logger
-	mux          *http.ServeMux
-	store        *Store
-	prompts      *PromptLoader
-	bailian      *BailianClient
-	summary      *SummaryService
-	dailyAgri    *DailyAgriCardService
-	dypns        *DypnsClient
-	shanghai     *time.Location
-	assetDir     string
-	uploadsDir   string
-	uploadStore  UploadStore
-	systemAnchor string
-	rateLimiter  *chatRateLimiter
-	smsLimiter   *chatRateLimiter
+	logger          *slog.Logger
+	mux             *http.ServeMux
+	store           *Store
+	prompts         *PromptLoader
+	bailian         *BailianClient
+	summary         *SummaryService
+	dailyAgri       *DailyAgriCardService
+	dypns           *DypnsClient
+	shanghai        *time.Location
+	assetDir        string
+	uploadsDir      string
+	uploadStore     UploadStore
+	systemAnchor    string
+	redisClient     *redis.Client
+	rateLimiter     rateLimiter
+	smsLimiter      rateLimiter
+	smsLoginLimiter rateLimiter
 }
 
 type orderRequest struct {
@@ -118,22 +122,28 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	redisClient, err := newOptionalRedisClient(contextBackground(), logger)
+	if err != nil {
+		return nil, err
+	}
 	server := &Server{
-		logger:       logger,
-		mux:          http.NewServeMux(),
-		store:        store,
-		prompts:      prompts,
-		bailian:      bailian,
-		summary:      NewSummaryService(store, prompts, bailian, logger),
-		dailyAgri:    NewDailyAgriCardService(store, bailian, logger, shanghai),
-		dypns:        dypns,
-		shanghai:     shanghai,
-		assetDir:     assetDir,
-		uploadsDir:   uploadsDir,
-		uploadStore:  uploadStore,
-		systemAnchor: systemAnchor,
-		rateLimiter:  newChatRateLimiter(),
-		smsLimiter:   newAuthSMSRateLimiter(),
+		logger:          logger,
+		mux:             http.NewServeMux(),
+		store:           store,
+		prompts:         prompts,
+		bailian:         bailian,
+		summary:         NewSummaryService(store, prompts, bailian, logger),
+		dailyAgri:       NewDailyAgriCardService(store, bailian, logger, shanghai),
+		dypns:           dypns,
+		shanghai:        shanghai,
+		assetDir:        assetDir,
+		uploadsDir:      uploadsDir,
+		uploadStore:     uploadStore,
+		systemAnchor:    systemAnchor,
+		redisClient:     redisClient,
+		rateLimiter:     newChatRateLimiter(),
+		smsLimiter:      newAuthSMSRateLimiter(redisClient),
+		smsLoginLimiter: newAuthSMSLoginRateLimiter(redisClient),
 	}
 	server.registerRoutes()
 	return server, nil
@@ -141,6 +151,13 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 
 func (s *Server) Handler() http.Handler {
 	return s.mux
+}
+
+func (s *Server) Close() error {
+	if s == nil || s.redisClient == nil {
+		return nil
+	}
+	return s.redisClient.Close()
 }
 
 func (s *Server) registerRoutes() {
@@ -182,6 +199,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 		"dypns":               ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		"dypns_fusion":        ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
 		"dypns_sms":           ternary(s.dypns.HasSMSConfigured(), "ok", "missing_config"),
+		"redis":               ternary(s.redisClient != nil, "ok", "missing_config"),
 		"upload_storage":      uploadStoreHealthStatus(s.uploadStore),
 		"auth_strict":         IsAuthStrict(),
 		"dev_order_endpoints": devOrderEndpointsEnabled(),

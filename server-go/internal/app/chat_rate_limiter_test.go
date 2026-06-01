@@ -6,7 +6,7 @@ import (
 )
 
 func TestChatRateLimiterRejectsAfterConfiguredHits(t *testing.T) {
-	limiter := newChatRateLimiterWithConfig(chatRateLimitConfig{
+	limiter := newChatRateLimiterWithConfig(rateLimitConfig{
 		Window:        time.Minute,
 		MaxHits:       2,
 		PruneInterval: time.Minute,
@@ -29,7 +29,7 @@ func TestChatRateLimiterRejectsAfterConfiguredHits(t *testing.T) {
 }
 
 func TestChatRateLimiterAllowsAfterWindow(t *testing.T) {
-	limiter := newChatRateLimiterWithConfig(chatRateLimitConfig{
+	limiter := newChatRateLimiterWithConfig(rateLimitConfig{
 		Window:        time.Second,
 		MaxHits:       1,
 		PruneInterval: time.Minute,
@@ -48,7 +48,7 @@ func TestChatRateLimiterAllowsAfterWindow(t *testing.T) {
 }
 
 func TestChatRateLimiterPrunesIdleBuckets(t *testing.T) {
-	limiter := newChatRateLimiterWithConfig(chatRateLimitConfig{
+	limiter := newChatRateLimiterWithConfig(rateLimitConfig{
 		Window:        time.Second,
 		MaxHits:       2,
 		PruneInterval: time.Second,

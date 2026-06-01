@@ -15,12 +15,9 @@ import (
 )
 
 const (
-	defaultChatRateLimitWindow        = 60 * time.Second
-	defaultChatRateLimitMaxHits       = 20
-	defaultChatRateLimitPruneInterval = 5 * time.Minute
-	upstreamMaxAttempts               = 1
-	upstreamRetryBaseWait             = 350 * time.Millisecond
-	chatStreamMaxDuration             = 30 * time.Minute
+	upstreamMaxAttempts   = 1
+	upstreamRetryBaseWait = 350 * time.Millisecond
+	chatStreamMaxDuration = 30 * time.Minute
 )
 
 type chatRateLimiter struct {
@@ -30,12 +27,6 @@ type chatRateLimiter struct {
 	maxHits       int
 	pruneInterval time.Duration
 	lastPrune     time.Time
-}
-
-type chatRateLimitConfig struct {
-	Window        time.Duration
-	MaxHits       int
-	PruneInterval time.Duration
 }
 
 type upstreamStreamOpenError struct {
@@ -54,40 +45,14 @@ func newChatRateLimiter() *chatRateLimiter {
 	return newChatRateLimiterWithConfig(resolveChatRateLimitConfig())
 }
 
-func newChatRateLimiterWithConfig(config chatRateLimitConfig) *chatRateLimiter {
-	if config.Window <= 0 {
-		config.Window = defaultChatRateLimitWindow
-	}
-	if config.MaxHits <= 0 {
-		config.MaxHits = defaultChatRateLimitMaxHits
-	}
-	if config.PruneInterval <= 0 {
-		config.PruneInterval = defaultChatRateLimitPruneInterval
-	}
+func newChatRateLimiterWithConfig(config rateLimitConfig) *chatRateLimiter {
+	config = normalizeRateLimitConfig(config, defaultChatRateLimitWindow, defaultChatRateLimitMaxHits, defaultChatRateLimitPruneInterval)
 	return &chatRateLimiter{
 		buckets:       map[string][]time.Time{},
 		window:        config.Window,
 		maxHits:       config.MaxHits,
 		pruneInterval: config.PruneInterval,
 	}
-}
-
-func resolveChatRateLimitConfig() chatRateLimitConfig {
-	config := chatRateLimitConfig{
-		Window:        envDurationWithDefault("CHAT_RATE_LIMIT_WINDOW_SECONDS", defaultChatRateLimitWindow),
-		MaxHits:       envIntWithDefault("CHAT_RATE_LIMIT_MAX_HITS", defaultChatRateLimitMaxHits),
-		PruneInterval: envDurationWithDefault("CHAT_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultChatRateLimitPruneInterval),
-	}
-	if config.Window <= 0 {
-		config.Window = defaultChatRateLimitWindow
-	}
-	if config.MaxHits <= 0 {
-		config.MaxHits = defaultChatRateLimitMaxHits
-	}
-	if config.PruneInterval <= 0 {
-		config.PruneInterval = defaultChatRateLimitPruneInterval
-	}
-	return config
 }
 
 func (l *chatRateLimiter) Consume(userID string, now time.Time) (bool, int) {

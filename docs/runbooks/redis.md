@@ -1,6 +1,6 @@
 # Redis Runbook
 
-最后更新：2026-05-30
+最后更新：2026-06-01
 
 ## 当前现状
 
@@ -10,8 +10,10 @@
 - 网络：生产 VPC `vpc-2zeax2zowza2398b9dzot`，交换机 `vsw-2zemsq82lj2kp8za90aky`
 - 内网地址：`r-2zet46zvmoo9wu3bic.redis.rds.aliyuncs.com:6379`
 - 白名单：`127.0.0.1`、ECS 私网 IP `192.168.1.237`
-- ECS 已验证内网 DNS 和 TCP 6379 可达
-- 当前 `server-go` 代码和 ECS 环境变量尚未接入 Redis；不能把 Redis 写成当前业务主链依赖
+- ECS 已验证内网 DNS、TCP 6379 和 `default` 账号密码认证可用
+- `server-go` 已新增可选 Redis 客户端：只要配置 `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD`，启动时会先 ping Redis，失败则 fail-fast
+- 当前 Redis 只接认证相关短期限流：`POST /api/auth/sms/send` 和 `POST /api/auth/sms/login`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash 和 IP hash，不保存明文手机号、验证码、token、聊天正文或图片内容
+- 主聊天 `/api/chat/stream` 仍使用原有 MySQL 业务真相、MySQL 用户级锁、`chat_stream_inflight` 和本进程用户限流；不要把 Redis 写成已经接管聊天流、额度、订单、归档或摘要锁
 
 ## 预期用途
 
@@ -24,8 +26,8 @@
 
 - 不把聊天正文、图片内容、模型 Key、手机号明文或长期用户画像放进 Redis
 - 不把 Redis 作为唯一真相来源；会员、额度、订单、聊天归档和摘要仍以 MySQL 为真相
-- 不在代码未接入前把 Redis 密码写入 ECS 环境文件
 - 不开放公网访问或 `0.0.0.0/0` 白名单
+- 不把主聊天 SSE、额度扣减、归档、摘要提取和支付订单切到 Redis
 
 ## 常用检查命令
 
@@ -40,9 +42,24 @@ aliyun r-kvstore DescribeSecurityIps --InstanceId r-2zet46zvmoo9wu3bic
 aliyun ecs RunCommand --RegionId cn-beijing --Type RunShellScript --InstanceId.1 i-2ze5nrem0jrchln4f0eh --CommandContent "getent hosts r-2zet46zvmoo9wu3bic.redis.rds.aliyuncs.com; timeout 3 bash -lc '</dev/tcp/r-2zet46zvmoo9wu3bic.redis.rds.aliyuncs.com/6379' && echo redis_tcp_ok" --Timeout 120
 ```
 
+## 环境变量
+
+- `REDIS_URL`：可选，格式 `redis://user:password@host:6379/0`
+- `REDIS_ADDR`：可选，生产推荐内网地址 `r-2zet46zvmoo9wu3bic.redis.rds.aliyuncs.com:6379`
+- `REDIS_USERNAME`：阿里云 Redis 7 ACL 账号，当前生产使用 `default`
+- `REDIS_PASSWORD`：只保存到本机 secret 和 ECS 环境文件，不进仓库 / 文档 / Android
+- `REDIS_DB`：默认 `0`
+- `REDIS_DIAL_TIMEOUT_SECONDS` / `REDIS_READ_TIMEOUT_SECONDS` / `REDIS_WRITE_TIMEOUT_SECONDS` / `REDIS_PING_TIMEOUT_SECONDS`：默认 3 秒
+- `REDIS_RATE_LIMIT_TIMEOUT_SECONDS`：认证限流访问 Redis 超时，默认 1 秒
+
+认证限流参数：
+
+- `AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送限流，默认 10 分钟 5 次
+- `AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信登录校验限流，默认 10 分钟 10 次
+
 ## 接入前检查
 
-- 先确定用途：验证码、限流、缓存或分布式锁，不要为了“已经买了”强行接入
+- 先确定用途：验证码、限流、缓存或分布式锁，不要为了“已经买了”强行把主链切过去
 - 设计 key 前缀、TTL、失败降级策略和最大内存策略
 - 生产密码只保存到本机 secret 文件和 ECS 环境文件，不进入仓库或聊天记忆
 - 接入后同步复核隐私政策 / 第三方信息共享清单 / 个人信息收集清单

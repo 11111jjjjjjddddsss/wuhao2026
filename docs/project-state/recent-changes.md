@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-01
+
+- 后端 Redis 先按最小生产口径接到认证限流，不碰聊天主链：`server-go` 新增可选 Redis 客户端，配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD` 后启动会先 ping，失败 fail-fast；短信发送 `POST /api/auth/sms/send` 和短信登录校验 `POST /api/auth/sms/login` 改为可走 Redis 分布式短期限流，key 只保存 scope、手机号 hash 和 IP hash，不保存明文手机号、验证码、token、聊天正文或图片内容；未配置 Redis 时仍回退本进程限流。主聊天 `/api/chat/stream`、额度扣减、轮次归档、摘要和订单仍走原 MySQL / 现有主链，没有切 Redis。`go test ./...` 已通过。
+
 ## 2026-05-31
 
 - OSS 生产上传后端已真实切通：创建最小权限 RAM 子账号 / 策略并绑定 `nongjiqiancha-prod` 上传前缀所需对象权限，使用新凭证完成 OSS 上传 / 下载 / 删除冒烟测试；随后通过 Cloud Assistant 写入 ECS `/etc/nongjiqiancha/server.env`，重启 `nongji-server` 后 `/healthz` 返回 `upload_storage=oss`。本轮没有把 OSS AK/SK 写入仓库、文档或 Android，App / 模型仍走本后端 `/uploads/<file>.jpg` 读取。当前仍缺 DashScope 模型 Key、DYPNS 融合认证 / 短信配置、Redis 业务接入、HTTPS 和备案闭环。

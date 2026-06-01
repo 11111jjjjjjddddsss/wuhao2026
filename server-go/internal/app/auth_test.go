@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -82,6 +83,43 @@ func TestVerifyV2TokenRejectsExpiredToken(t *testing.T) {
 	}
 	if userID, sessionID, ok := verifyBearerToken(token, secret); ok || userID != "" || sessionID != "" {
 		t.Fatalf("expired token should be rejected, user=%q session=%q ok=%v", userID, sessionID, ok)
+	}
+}
+
+func TestAuthRateLimitKeyHashesSensitiveInputs(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret")
+
+	key := authRateLimitKey("sms_send", "13800138000", "203.0.113.8")
+	if key == "" || strings.Contains(key, "13800138000") || strings.Contains(key, "203.0.113.8") {
+		t.Fatalf("authRateLimitKey leaked sensitive input: %q", key)
+	}
+	if !strings.HasPrefix(key, "sms_send:") {
+		t.Fatalf("authRateLimitKey prefix mismatch: %q", key)
+	}
+}
+
+func TestAuthSMSLimitersUseSeparateEnv(t *testing.T) {
+	t.Setenv("AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS", "60")
+	t.Setenv("AUTH_SMS_RATE_LIMIT_MAX_HITS", "3")
+	t.Setenv("AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "90")
+	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS", "120")
+	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS", "4")
+	t.Setenv("AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "150")
+
+	sendLimiter, ok := newAuthSMSRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newAuthSMSRateLimiter returned %T, want *chatRateLimiter fallback", newAuthSMSRateLimiter(nil))
+	}
+	if sendLimiter.window != time.Minute || sendLimiter.maxHits != 3 || sendLimiter.pruneInterval != 90*time.Second {
+		t.Fatalf("send limiter config mismatch: window=%s max=%d prune=%s", sendLimiter.window, sendLimiter.maxHits, sendLimiter.pruneInterval)
+	}
+
+	loginLimiter, ok := newAuthSMSLoginRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newAuthSMSLoginRateLimiter returned %T, want *chatRateLimiter fallback", newAuthSMSLoginRateLimiter(nil))
+	}
+	if loginLimiter.window != 2*time.Minute || loginLimiter.maxHits != 4 || loginLimiter.pruneInterval != 150*time.Second {
+		t.Fatalf("login limiter config mismatch: window=%s max=%d prune=%s", loginLimiter.window, loginLimiter.maxHits, loginLimiter.pruneInterval)
 	}
 }
 
