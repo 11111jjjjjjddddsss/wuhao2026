@@ -206,8 +206,8 @@
 - 设置页只有一个“服务协议”入口，进入本地内置目录页。
 - 目录页包含 6 个二级页面：用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示。
 - 6 个二级页面都走设置页右进左出的页面栈；左上角返回和系统返回键会先回到服务协议目录，再回到设置菜单。
-- Android Manifest 当前只声明 `INTERNET / ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES`。
-- App 当前不申请定位、App 相机、相册 / 存储读写、录音、通讯录、短信或通知权限。
+- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES`；引入阿里云融合认证 SDK 后，合并 Manifest 还会包含 `ACCESS_WIFI_STATE / CHANGE_NETWORK_STATE / CHANGE_WIFI_STATE / READ_PHONE_STATE / RECEIVE_USER_PRESENT` 等登录认证所需权限。
+- App 当前不申请定位、App 相机、相册 / 存储读写、录音、通讯录、短信或通知权限；手机号一键登录 SDK 接入后会按需使用电话状态、网络状态和 Wi-Fi 状态来判断 SIM 卡、运营商网络和认证环境。
 - Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，便于用户找回现场照片；本轮已把该口径补进隐私政策、个人信息收集清单和应用权限页。
 - 用户可见正文没有暴露具体模型品牌、模型平台名或供应商账号信息，只使用“第三方大模型和云服务”这类必要委托处理口径。
 
@@ -358,7 +358,7 @@
 
 ### 10. 账号 / 手机号登录与生产鉴权
 
-结论：当前账号链路已经进入手机号登录骨架阶段，但还不是公开生产账号体系。后端已有严格鉴权开关、v2 session token、手机号账号表、旧本机身份迁移桥和短信 / 融合认证接口；Redis 认证短期限流已部署到 ECS 并健康。真正上线前缺的是阿里云一键登录 Android SDK、SchemeCode、短信签名模板、DYPNS 环境变量和真机联调，不是 Go 语言性能问题。
+结论：当前账号链路已经进入手机号登录骨架阶段，但还不是公开生产账号体系。后端已有严格鉴权开关、v2 session token、手机号账号表、旧本机身份迁移桥和短信 / 融合认证接口；Redis 认证短期限流已部署到 ECS 并健康。阿里云 SchemeCode、短信签名模板、DYPNS 环境变量和 Android 一键登录 SDK 客户端链路已落地；真正上线前缺的是 HTTPS / 备案后的真机登录回归、AccessKey 轮换和旧 `X-User-Id` 兜底隔离，不是 Go 语言性能问题。
 
 当前代码真相：
 

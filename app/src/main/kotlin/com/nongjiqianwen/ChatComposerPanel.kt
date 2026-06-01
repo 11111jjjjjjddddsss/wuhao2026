@@ -118,6 +118,7 @@ internal const val COMPOSER_ATTACHMENT_CAMERA_TEXT = "相机"
 internal const val COMPOSER_ATTACHMENT_PHOTO_TEXT = "照片"
 internal const val COMPOSER_ATTACHMENT_LIMIT_TEXT = "单次最多4张图片"
 internal const val COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT = "建议拍清病斑、异常部位、叶背或果实"
+private val ComposerAttachmentActionIconSize = 30.dp
 
 private fun composerPreviewInSampleSize(width: Int, height: Int, targetSize: Int): Int {
     var sampleSize = 1
@@ -744,14 +745,20 @@ internal fun ComposerAttachmentBottomSheet(
                             modifier = Modifier.weight(1f),
                             onClick = onCameraClick
                         ) {
-                            ComposerCameraIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
+                            ComposerCameraIcon(
+                                tint = Color(0xFF111111),
+                                modifier = Modifier.size(ComposerAttachmentActionIconSize)
+                            )
                         }
                         ComposerAttachmentBottomSheetTile(
                             title = COMPOSER_ATTACHMENT_PHOTO_TEXT,
                             modifier = Modifier.weight(1f),
                             onClick = onPhotoClick
                         ) {
-                            ComposerPhotoIcon(tint = Color(0xFF111111), modifier = Modifier.size(30.dp))
+                            ComposerPhotoIcon(
+                                tint = Color(0xFF111111),
+                                modifier = Modifier.size(ComposerAttachmentActionIconSize)
+                            )
                         }
                     }
                     if (!limitReached) {

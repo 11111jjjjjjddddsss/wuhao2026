@@ -60,7 +60,7 @@
 - 以下业务逻辑必须由后端控制：用户鉴权、会员等级、调用次数、上下文组装、模型调用、成本统计
 - Android 客户端禁止保存、注入或使用模型服务 API Key；主模型和摘要模型调用只能由后端发起，不允许重新引入客户端直连模型链
 - 手机号账号骨架已开始落地：后端新增 `app_accounts`、`auth_sessions` 和 `user_id_migrations`，手机号登录成功后会按手机号 HMAC hash 归一到稳定 `acct_...` 用户，并签发带 `session_id` 的长期 v2 bearer token；`AUTH_SESSION_DAYS` 默认 3650 天，当前按“长期保持登录、省认证次数”口径处理，后续若做退出设备 / 设备管理再由后端吊销 session；Android 登录后使用账号 `user_id`，登录前本机 `user_id` 只作为旧身份迁移桥。当前仍保留裸 `X-User-Id` 兼容本地 / 迁移期调试；生产若配置 `AUTH_STRICT=true`，必须同时配置 `APP_SECRET`，此时裸 `X-User-Id` 会被拒绝，只接受可验证 token
-- Android 已移除 `SESSION_API_TOKEN` 静态共享 token 运行时绕过，不再用测试 ID 作为登录桥接；正式登录必须使用后端按真实手机号账号动态签发的 per-user session token。本机旧 `user_id` 到账号身份的数据迁移已经有首版后端事务骨架；Redis-backed 融合认证 token / 手机号短信认证限流已部署到 ECS 并健康，阿里云融合认证 Android 方案、DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS 环境，短信签名和验证码模板已通过 CLI 配置并写入 ECS，当前 `/healthz` 显示 `dypns=ok / dypns_fusion=ok / dypns_sms=ok`；当前仍缺阿里云融合认证 Android SDK 和真机登录联调，且已暴露过的主账号 AccessKey 上线前必须轮换
+- Android 已移除 `SESSION_API_TOKEN` 静态共享 token 运行时绕过，不再用测试 ID 作为登录桥接；正式登录必须使用后端按真实手机号账号动态签发的 per-user session token。本机旧 `user_id` 到账号身份的数据迁移已经有首版后端事务骨架；Redis-backed 融合认证 token / 手机号短信认证限流已部署到 ECS 并健康，阿里云融合认证 Android 方案、DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS 环境，短信签名和验证码模板已通过 CLI 配置并写入 ECS，当前 `/healthz` 显示 `dypns=ok / dypns_fusion=ok / dypns_sms=ok`；Android 已接入阿里云融合认证 AAR `fusionauth-1.2.15-online-release.aar` 并把登录页一键登录按钮接到 SDK + 后端 `/api/auth/fusion/token` / `/api/auth/fusion/login`，仍需真机完成本机号码一键登录回归；已暴露过的主账号 AccessKey 上线前必须轮换
 
 Android 构建链：
 - 对外安装身份：`applicationId = com.nongjiqiancha`，App 名称“农技千查”；Kotlin 源码包 / Gradle namespace 暂保留 `com.nongjiqianwen` 作为内部代码命名空间，不决定备案或安装身份。旧内测包 `com.nongjiqianwen` 不能通过检查更新覆盖安装成新包 `com.nongjiqiancha`，测试机需卸旧包重装；正式 release 构建必须同时配置固定签名和 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 等 https 后端地址，避免打出不接后端的正式包
@@ -224,7 +224,7 @@ Android 构建链：
 Clean-State 定义：
 - 清除 app 数据后首次启动
 - 无本地聊天记录、无本地底部视口、无本地流式草稿、无旧 user_id 状态
-- 若用户没有稳定账号 / 后端身份，清数据后应视为新用户 clean-state；若用户有稳定账号 / 手机号登录，后端可按该身份返回 30 天内最近 30 轮业务聊天记录，这是账号级业务恢复，不是本地 UI 状态回退。当前手机号账号骨架、DYPNS 融合认证服务端配置和短信验证码配置已落地，但 Android 一键登录 SDK 接入和真机登录回归尚未完成；未登录或未配置完成时仍主要依赖本机 `user_id`，清数据导致本机 `user_id` 丢失后，30 天归档无法自动识别旧用户
+- 若用户没有稳定账号 / 后端身份，清数据后应视为新用户 clean-state；若用户有稳定账号 / 手机号登录，后端可按该身份返回 30 天内最近 30 轮业务聊天记录，这是账号级业务恢复，不是本地 UI 状态回退。当前手机号账号骨架、DYPNS 融合认证服务端配置、短信验证码配置和 Android 一键登录 SDK 接入已落地，但真机登录回归尚未完成；未登录或未配置完成时仍主要依赖本机 `user_id`，清数据导致本机 `user_id` 丢失后，30 天归档无法自动识别旧用户
 
 Clean-State 必做回归的范围：
 - 聊天列表布局

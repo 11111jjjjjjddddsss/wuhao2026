@@ -70,6 +70,13 @@ func (c *DypnsClient) HasSMSConfigured() bool {
 	return c.HasClientConfigured() && c.smsSignName != "" && c.smsTemplate != "" && c.smsParam != ""
 }
 
+func (c *DypnsClient) FusionSchemeCode() string {
+	if c == nil {
+		return ""
+	}
+	return c.schemeCode
+}
+
 func (c *DypnsClient) GetFusionAuthToken(ctx context.Context) (string, error) {
 	if !c.HasFusionConfigured() {
 		return "", fmt.Errorf("fusion_auth_not_configured")

@@ -86,6 +86,15 @@ object SessionApi {
         @SerializedName("expires_at") val expiresAt: Long? = null
     )
 
+    data class FusionAuthTokenSnapshot(
+        @SerializedName("auth_token") val authToken: String? = null,
+        @SerializedName("scheme_code") val schemeCode: String? = null,
+        @SerializedName("expires_in") val expiresIn: Int? = null
+    ) {
+        val usable: Boolean
+            get() = !authToken.isNullOrBlank() && !schemeCode.isNullOrBlank()
+    }
+
     data class TodayAgriCardResponse(
         val status: String? = null,
         val card: TodayAgriCard? = null
@@ -164,7 +173,7 @@ object SessionApi {
 
     fun hasBackendConfigured(): Boolean = baseUrl().isNotEmpty()
 
-    fun requestFusionAuthToken(onResult: (String?, String?) -> Unit) {
+    fun requestFusionAuthToken(onResult: (FusionAuthTokenSnapshot?, String?) -> Unit) {
         val base = baseUrl()
         if (base.isEmpty()) {
             onResult(null, "后端地址未配置")
@@ -182,19 +191,9 @@ object SessionApi {
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     val body = it.body?.string().orEmpty()
-                    val token = if (it.isSuccessful) {
-                        runCatching {
-                            gson.fromJson(body, JsonObject::class.java)
-                                ?.get("auth_token")
-                                ?.asString
-                                ?.trim()
-                                ?.takeIf { value -> value.isNotEmpty() }
-                        }.getOrNull()
-                    } else {
-                        null
-                    }
+                    val token = if (it.isSuccessful) parseFusionAuthToken(body) else null
                     mainHandler.post {
-                        if (!token.isNullOrBlank()) {
+                        if (token?.usable == true) {
                             onResult(token, null)
                         } else {
                             onResult(null, "一键登录暂未配置，请使用验证码登录")
@@ -203,6 +202,21 @@ object SessionApi {
                 }
             }
         })
+    }
+
+    fun requestFusionAuthTokenBlocking(): FusionAuthTokenSnapshot? {
+        val base = baseUrl()
+        if (base.isEmpty()) return null
+        val request = Request.Builder()
+            .url("$base/api/auth/fusion/token")
+            .post(ByteArray(0).toRequestBody(null))
+            .build()
+        return runCatching {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return null
+                parseFusionAuthToken(response.body?.string().orEmpty())?.takeIf { it.usable }
+            }
+        }.getOrNull()
     }
 
     fun loginWithFusionVerifyToken(verifyToken: String, onResult: (Boolean, String?) -> Unit) {
@@ -216,6 +230,11 @@ object SessionApi {
             onResult = onResult
         )
     }
+
+    private fun parseFusionAuthToken(body: String): FusionAuthTokenSnapshot? =
+        runCatching {
+            gson.fromJson(body, FusionAuthTokenSnapshot::class.java)
+        }.getOrNull()
 
     fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
         val base = baseUrl()

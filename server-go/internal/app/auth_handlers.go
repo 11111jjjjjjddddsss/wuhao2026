@@ -59,6 +59,7 @@ func (s *Server) handleAuthFusionToken(w http.ResponseWriter, r *http.Request) {
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"auth_token": token,
+		"scheme_code": s.dypns.FusionSchemeCode(),
 		"expires_in": 1800,
 	})
 }

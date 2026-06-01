@@ -1061,7 +1061,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年5月31日\n生效日期：2026年5月31日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
+            text = "更新日期：2026年6月1日\n生效日期：2026年6月1日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1072,7 +1072,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "二、基础运行和身份标识",
-            body = "为维持服务运行、区分会话和保障账号权益，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。手机号用于登录认证、账号识别、历史恢复和权益核对；App 不读取通讯录或短信内容。"
+            body = "为维持服务运行、区分会话和保障账号权益，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。手机号用于登录认证、账号识别、历史恢复和权益核对；本机号码一键登录需要读取电话状态和必要设备网络状态，用于判断 SIM 卡、运营商网络和认证环境；App 不读取通讯录、短信内容或通话记录。"
         )
         HamburgerAgreementSection(
             title = "三、AI 问诊和图片处理",
@@ -1092,11 +1092,11 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "七、当前权限说明",
-            body = "当前 App 声明的权限包括：网络访问，用于连接后端、上传图片、流式回答、会员、反馈、今日农情和检查更新；网络状态，用于判断网络是否可用；安装未知应用相关权限，仅用于您主动点击“立即更新”后下载 APK 并调起系统安装确认页。当前不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限，也不做 App 外推送通知。"
+            body = "当前 App 声明的权限包括：网络访问，用于连接后端、上传图片、流式回答、会员、反馈、今日农情和检查更新；网络状态、Wi-Fi 状态和网络连接状态，用于判断网络是否可用，并支持本机号码一键登录识别运营商认证环境；电话状态，用于您点击本机号码一键登录时完成手机号认证；安装未知应用相关权限，仅用于您主动点击“立即更新”后下载 APK 并调起系统安装确认页。当前不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限，也不做 App 外推送通知。"
         )
         HamburgerAgreementSection(
             title = "八、第三方大模型和云服务",
-            body = "我们通过服务端调用境内云服务器、数据库、大模型服务、手机号认证和短信服务，用于后端运行、登录认证、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。上传图片由后端服务器保存；必要运行日志用于排查故障和保障服务安全。"
+            body = "我们通过服务端调用境内云服务器、数据库、大模型服务、手机号认证和短信服务，用于后端运行、登录认证、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。Android 端已接入阿里云融合认证 SDK，用于本机号码一键登录授权页和必要认证参数处理；上传图片由后端服务器保存；必要运行日志用于排查故障和保障服务安全。"
         )
         HamburgerAgreementSection(
             title = "九、本地缓存和后端保存",
@@ -1104,7 +1104,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十、第三方和系统能力清单",
-            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；手机号认证和短信服务用于一键登录或验证码登录；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase。"
+            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；阿里云融合认证 SDK 和短信服务用于本机号码一键登录或验证码登录；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase。"
         )
         HamburgerAgreementSection(
             title = "十一、共享和公开",
@@ -1246,7 +1246,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年5月31日",
+            text = "更新日期：2026年6月1日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1265,7 +1265,7 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "四、手机号认证和短信服务",
-            body = "登录时，我们会通过境内第三方手机号认证和短信服务完成一键登录或验证码校验；必要时处理手机号、验证码校验结果、设备和网络相关认证参数。当前验证码需要您手动输入，App 不读取短信内容。"
+            body = "登录时，我们会通过阿里云融合认证 SDK、服务端手机号认证和短信服务完成本机号码一键登录或验证码校验；必要时处理手机号、验证码校验结果、电话状态、设备和网络相关认证参数。当前验证码需要您手动输入，App 不读取短信内容或通讯录。"
         )
         HamburgerAgreementSection(
             title = "五、系统能力",
@@ -1273,7 +1273,7 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "六、本版本未使用的第三方 SDK",
-            body = "本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase；不申请定位、通讯录、短信、录音或通知权限。服务范围、第三方处理方式或一键登录客户端 SDK 发生变化时，我们会更新清单和隐私政策。"
+            body = "本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase；不申请定位、通讯录、短信、录音或通知权限。服务范围或第三方处理方式发生变化时，我们会更新清单和隐私政策。"
         )
     }
 }
@@ -1314,14 +1314,14 @@ private fun HamburgerPersonalInfoListContent(
     ) {
         HamburgerLegalPageTitle("个人信息收集清单")
         Text(
-            text = "更新日期：2026年5月31日",
+            text = "更新日期：2026年6月1日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
         )
         HamburgerAgreementSection(
             title = "一、基础运行",
-            body = "为维持服务运行，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志和必要运行缓存。"
+            body = "为维持服务运行，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、电话状态、错误日志和必要运行缓存。电话状态仅用于本机号码一键登录识别 SIM 卡、运营商网络和认证环境。"
         )
         HamburgerAgreementSection(
             title = "二、AI 问诊",
@@ -1378,7 +1378,7 @@ private fun HamburgerPermissionListContent(
     ) {
         HamburgerLegalPageTitle("应用权限")
         Text(
-            text = "更新日期：2026年5月25日",
+            text = "更新日期：2026年6月1日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1388,19 +1388,23 @@ private fun HamburgerPermissionListContent(
             body = "用于连接后端、上传图片、流式回答、会员、帮助与反馈、今日农情和检查更新。"
         )
         HamburgerAgreementSection(
-            title = "二、网络状态",
-            body = "用于判断网络是否可用，并在网络异常时给出提示。"
+            title = "二、网络状态和 Wi-Fi 状态",
+            body = "用于判断网络是否可用，并支持本机号码一键登录识别运营商认证环境；网络异常时用于给出提示。"
         )
         HamburgerAgreementSection(
-            title = "三、安装更新 APK",
+            title = "三、电话状态",
+            body = "仅在您点击本机号码一键登录时使用，用于识别 SIM 卡、运营商网络和认证环境；App 不读取通讯录、短信内容或通话记录。"
+        )
+        HamburgerAgreementSection(
+            title = "四、安装更新 APK",
             body = "仅用于您主动点击“立即更新”后下载 APK 并调起 Android 系统安装确认页；App 不做静默安装。"
         )
         HamburgerAgreementSection(
-            title = "四、相机和照片",
+            title = "五、相机和照片",
             body = "当前照片入口使用 Android 系统 Photo Picker，只访问您本次主动选择的图片；拍照入口调用外部相机并通过 FileProvider 授权临时写入，不申请 App 相机权限。Android Q 及以上系统，拍照成功后会把原始照片另存到系统相册 Pictures/农技千查。"
         )
         HamburgerAgreementSection(
-            title = "五、当前不申请的权限",
+            title = "六、当前不申请的权限",
             body = "本版本不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限；也不做 App 外推送通知。"
         )
     }
@@ -2168,7 +2172,7 @@ private fun HamburgerSupportFeedbackContent(
                 .fillMaxWidth()
                 .padding(top = 12.dp),
             addButtonSize = 36.dp,
-            addIconSize = 25.dp,
+            addIconSize = 26.dp,
             sendButtonSize = 36.dp,
             inputChromeSurface = Color.White,
             inputChromeBorder = Color(0xFFE1E4E8),

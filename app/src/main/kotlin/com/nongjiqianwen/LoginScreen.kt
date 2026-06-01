@@ -1,5 +1,13 @@
 package com.nongjiqianwen
 
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -47,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 
 @Composable
@@ -73,6 +83,33 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableIntStateOf(0) }
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
+    val context = LocalContext.current
+
+    fun startFusionOneLogin(activity: Activity) {
+        busy = true
+        message = "正在拉起本机号码登录"
+        FusionOneLoginClient.start(activity) { ok, error ->
+            busy = false
+            if (ok) {
+                onLoginSuccess()
+            } else {
+                smsMode = true
+                message = error ?: "一键登录未完成，请使用验证码登录"
+            }
+        }
+    }
+
+    val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val activity = context.findActivity()
+        if (granted && activity != null) {
+            startFusionOneLogin(activity)
+        } else {
+            smsMode = true
+            message = "未授予本机号码登录所需权限，请使用验证码登录"
+        }
+    }
 
     LaunchedEffect(countdown) {
         if (countdown > 0) {
@@ -120,8 +157,23 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                             message = "请先同意服务协议和隐私政策"
                             return@Button
                         }
-                        smsMode = true
-                        message = "一键登录客户端 SDK 正在接入，先使用验证码登录；这里不会消耗一键登录试用次数"
+                        val activity = context.findActivity()
+                        if (activity == null) {
+                            smsMode = true
+                            message = "一键登录暂不可用，请使用验证码登录"
+                            return@Button
+                        }
+                        if (
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.READ_PHONE_STATE
+                            ) != PackageManager.PERMISSION_GRANTED
+                        ) {
+                            phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+                        } else {
+                            startFusionOneLogin(activity)
+                        }
                     },
                     enabled = !busy,
                     shape = RoundedCornerShape(8.dp),
@@ -363,6 +415,13 @@ private enum class LoginLegalPage {
     ServiceAgreement,
     PrivacyPolicy
 }
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
 private fun isValidMainlandPhone(value: String): Boolean =
     value.length == 11 && value.firstOrNull() == '1' && value.all(Char::isDigit)
