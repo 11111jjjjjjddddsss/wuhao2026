@@ -9,7 +9,8 @@
 - 登录成功后，旧本机 `user_id` 作为迁移桥，后端会尽量把旧用户数据迁到手机号账号 `acct_...`
 - 阿里云融合认证 Android 方案已通过 CLI 创建，DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS `/etc/nongjiqiancha/server.env`
 - Android 一键登录 SDK / AAR 尚未导入；生产标准应按官方 SDK 链路接入，不再用静态 token 或测试 ID 绕过登录
-- 短信登录后端接口已接阿里云 Dypns API，ECS 当前已具备 DYPNS 基础凭证，但还没配置短信签名和模板
+- 短信登录后端接口已接阿里云 Dypns API，ECS 当前已配置 DYPNS 基础凭证、短信签名和验证码模板；`/healthz` 已显示 `dypns_sms=ok`
+- 备案 / HTTPS 完成前，`api.nongjiqiancha.cn` 公网访问会被阿里云拦截；2026-06-01 为真机登录联调，Nginx 临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成 debug APK 走 `http://39.106.1.151`
 - Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，融合认证 token、短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
 
 ## 后端接口
@@ -42,9 +43,9 @@
 
 1. 在融合认证控制台确认 `农技千查` Android 方案，包名 `com.nongjiqiancha`，签名 MD5 与 release 包一致。
 2. 下载 / 接入阿里云融合认证 Android SDK，并按官方文档把服务端返回的 fusion auth token 交给 SDK。
-3. 申请短信签名和登录验证码模板，写入 `DYPNS_SMS_SIGN_NAME`、`DYPNS_SMS_TEMPLATE_CODE`。
+3. 短信服务资质、签名和验证码模板已通过 CLI 配置；ECS 已写入 `DYPNS_SMS_SIGN_NAME`、`DYPNS_SMS_TEMPLATE_CODE` 并重启 `nongji-server`。
 4. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限或专用 RAM 用户口径，并重新配置 `DYPNS_ACCESS_KEY_ID` / `DYPNS_ACCESS_KEY_SECRET`。
-5. 配置完成后重启 `nongji-server`，检查 `/healthz` 中 `dypns / dypns_fusion / dypns_sms` 是否为 `ok`。
+5. 配置完成后重启 `nongji-server`，检查 `/healthz` 中 `dypns / dypns_fusion / dypns_sms` 是否为 `ok`；当前三项均已为 `ok`。
 
 ## 安全与成本边界
 

@@ -25,4 +25,4 @@
 - 若发现旧 UI 方案残留影响当前逻辑，需同次明确清理或标注废弃，避免新老并存
 - 若更改聊天 UI 真实交互口径，除代码外还应同步更新根 [AGENTS.md](D:/wuhao/AGENTS.md) 与相关项目记忆文件
 - Android Compose UI、滚动链、IME、输入框、工作线、渲染时序等问题连续多轮未收口时，默认优先整理成发给小米 / MiMo 的自包含会诊稿；会诊稿必须直接贴关键代码片段、状态名、调用顺序、已排除方案和限制条件，不能只写“看仓库 / 看 ChatScreen.kt”
-- Android 改动完成后执行：`./gradlew.bat :app:compileDebugKotlin`
+- Android 改动完成后执行：`./gradlew.bat :app:compileDebugKotlin`。若只是生成临时联调 APK，也可执行对应 `assembleDebug`，但仍需确认 Kotlin 编译通过
