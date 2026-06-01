@@ -6,15 +6,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/redis/go-redis/v9"
 )
 
 const (
 	clientAppLogMaxBodyBytes  = 8 * 1024
 	clientAppLogMaxAttrsBytes = 2048
 	clientAppLogMaxAttrsCount = 20
+
+	defaultClientAppLogRateLimitWindow        = 10 * time.Minute
+	defaultClientAppLogRateLimitMaxHits       = 60
+	defaultClientAppLogRateLimitPruneInterval = 10 * time.Minute
 )
 
 type clientAppLogRequest struct {
@@ -51,6 +58,16 @@ func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
+	if s.clientAppLogLimiter != nil {
+		limitKey := clientAppLogRateLimitKey(auth.UserID, GetClientIP(r))
+		if allowed, retryAfter := s.clientAppLogLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, clientAppLogMaxBodyBytes)
 	var body clientAppLogRequest
 	if err := decodeJSONBody(r, &body); err != nil {
@@ -83,6 +100,23 @@ func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request
 		s.logger.Info("client app log", logAttrs...)
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func newClientAppLogRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := rateLimitConfig{
+		Window:        envDurationWithDefault("CLIENT_APP_LOG_RATE_LIMIT_WINDOW_SECONDS", defaultClientAppLogRateLimitWindow),
+		MaxHits:       envIntWithDefault("CLIENT_APP_LOG_RATE_LIMIT_MAX_HITS", defaultClientAppLogRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("CLIENT_APP_LOG_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultClientAppLogRateLimitPruneInterval),
+	}
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultClientAppLogRateLimitWindow, defaultClientAppLogRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(config)
+}
+
+func clientAppLogRateLimitKey(userID string, ip string) string {
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	return "client_app_log:" + rateLimitHash(userID, secret) + ":" + rateLimitHash(ip, secret)
 }
 
 func normalizeClientAppLogPayload(userID string, maskedIP string, body clientAppLogRequest, createdAt int64) (ClientAppLogInput, string) {

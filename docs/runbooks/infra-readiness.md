@@ -28,7 +28,7 @@
 
 - OSS：图片上传与短期保存。当前已购买华北2 100GB 标准-本地冗余存储包，Bucket `nongjiqiancha-prod` 已创建并配置生命周期，后端已新增 OSS 存储后端；生产 ECS 已配置环境变量并通过 `upload_storage=oss` 验证
 - SLS：后端日志检索与告警
-- Redis：验证码、缓存、临时会话或限流。当前已购买 256MB 实例，并已在 `server-go` 中接入认证短期限流；生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`。当前不得写成已接管聊天流、额度、归档、摘要或订单
+- Redis：验证码、缓存、临时会话或限流。当前已购买 256MB 实例，并已在 `server-go` 中接入认证和 App 自动日志接收短期限流；生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`。当前不得写成已接管聊天流、额度、归档、摘要或订单
 
 ## 建议采购顺序
 

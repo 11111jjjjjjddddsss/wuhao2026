@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNormalizeClientAppLogPayloadAcceptsMinimalSafePayload(t *testing.T) {
@@ -58,6 +59,31 @@ func TestNormalizeClientAppLogPayloadRejectsInvalidPayload(t *testing.T) {
 				t.Fatalf("validation error = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestClientAppLogRateLimitKeyHashesSensitiveInputs(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret")
+	key := clientAppLogRateLimitKey("acct_sensitive_user", "203.0.113.9")
+	if key == "" || strings.Contains(key, "acct_sensitive_user") || strings.Contains(key, "203.0.113.9") {
+		t.Fatalf("clientAppLogRateLimitKey leaked sensitive input: %q", key)
+	}
+	if !strings.HasPrefix(key, "client_app_log:") {
+		t.Fatalf("clientAppLogRateLimitKey prefix mismatch: %q", key)
+	}
+}
+
+func TestClientAppLogRateLimiterUsesEnv(t *testing.T) {
+	t.Setenv("CLIENT_APP_LOG_RATE_LIMIT_WINDOW_SECONDS", "30")
+	t.Setenv("CLIENT_APP_LOG_RATE_LIMIT_MAX_HITS", "2")
+	t.Setenv("CLIENT_APP_LOG_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "45")
+
+	limiter, ok := newClientAppLogRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newClientAppLogRateLimiter returned %T, want *chatRateLimiter fallback", newClientAppLogRateLimiter(nil))
+	}
+	if limiter.window != 30*time.Second || limiter.maxHits != 2 || limiter.pruneInterval != 45*time.Second {
+		t.Fatalf("client app log limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
 	}
 }
 

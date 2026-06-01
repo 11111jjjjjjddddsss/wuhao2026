@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-05-25
+最后更新：2026-06-01
 
 ## 当前定位
 
@@ -9,6 +9,7 @@
 当前主链：
 - Android 在关键失败点自动调用 `POST /api/app/logs`
 - 后端走现有用户鉴权，写入 `client_app_logs` 表，并同步打一条结构化服务日志
+- 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流
 - 后续管理后台或 SLS 可以基于这张表 / 服务日志做查询、统计和告警
 
 ## 当前自动上报事件
@@ -39,6 +40,13 @@ Android 只上报结构化错误信息：
 - 用户主动填写的反馈正文
 
 服务端也会限制单次请求大小、事件名长度、消息长度和 attrs 大小。
+
+## 限流参数
+
+- `CLIENT_APP_LOG_RATE_LIMIT_WINDOW_SECONDS`：默认 600 秒
+- `CLIENT_APP_LOG_RATE_LIMIT_MAX_HITS`：默认 60 次
+- `CLIENT_APP_LOG_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：默认 600 秒
+- 配置 Redis 后限流 key 只保存 `user_id` hash 和 IP hash，不保存明文手机号、token、聊天正文、图片内容或用户反馈正文
 
 ## 后续接后台面板
 
