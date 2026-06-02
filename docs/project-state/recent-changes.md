@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-03
+
+- 补后台监控面板前置地基和一键登录半程校验收口：后端新增 `POST /api/auth/fusion/verify`，只给阿里云融合认证 SDK 半程校验使用，不签发账号 session、不迁移旧用户数据；Android `FusionOneLoginClient` 的 `onHalfWayVerifySuccess` 改为调用该 verify-only 接口，最终 `onVerifySuccess` 仍走 `/api/auth/fusion/login` 换账号 token。后端 App 自动日志在已有 `POST /api/app/logs` 写入基础上新增 `GET /internal/app/logs` 只读内部查询，暂复用 `SUPPORT_ADMIN_SECRET`，支持按时间、用户、事件名和等级筛选并返回明细 / 聚合摘要，给后续管理后台和日志面板接入。帮助与反馈输入区加号 / 发送按钮尺寸同步主聊天窄屏规则，加号点击也改成同主聊天一致的开关行为；相机 / 照片附件面板仍复用同一组件和同一图标尺寸。
+
 ## 2026-06-01
 
 - 夜间深度巡检后补登录与后端防刷收口：后端 `AUTH_STRICT=true` 默认不再接受旧无 `session_id` bearer token，除非显式设置 `AUTH_ALLOW_LEGACY_TOKEN=true`，让 `POST /api/auth/logout` 的 session 吊销语义真正闭环；`GetClientIP` 只信任来自本机 / 内网代理的 `X-Real-IP` / `X-Forwarded-For`，降低伪造转发头绕过限流风险；`POST /api/auth/fusion/login` 新增默认 IP hash 10 分钟 20 次限流，短信发送新增 IP 总量 10 分钟 20 次限流，防止伪造 verify token 或轮换手机号消耗阿里云认证资源。Android 侧补 invalid auth 事件：会话接口二次 401 后清本地 auth、取消当前流并把登录门切回未登录；融合认证 SDK 首版增加失败兜底和 30 秒超时兜底，避免一键登录 busy 卡住。同步更新 Redis / 手机号登录 / 隐私 / ADR 文档，明确当前 UI 主链是 ADR-0003 的单一正向 `LazyColumn`，不是旧 overlay、bottom active zone 或反向列表。`go test ./...`、`.\gradlew.bat :app:compileDebugKotlin`、`git diff --check`、项目记忆检查和 ECS 发版均通过；当前 ECS 部署提交为 `e8a0f361`，readiness 显示 `bailian=missing_key` 仍是预期未配模型 Key。

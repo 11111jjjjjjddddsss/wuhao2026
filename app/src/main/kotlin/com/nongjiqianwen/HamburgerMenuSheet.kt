@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -1745,6 +1746,7 @@ private fun HamburgerSupportFeedbackPage(
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var messages by remember { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
     var inputValue by remember { mutableStateOf(TextFieldValue("")) }
@@ -2068,8 +2070,12 @@ private fun HamburgerSupportFeedbackPage(
             },
             onAddClick = {
                 if (!sending) {
-                    focusManager.clearFocus(force = true)
-                    attachmentMenuVisible = true
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    val shouldShowAttachmentMenu = !attachmentMenuVisible
+                    attachmentMenuVisible = shouldShowAttachmentMenu
+                    if (shouldShowAttachmentMenu) {
+                        focusManager.clearFocus(force = true)
+                    }
                 }
             },
             onRemoveImage = { image ->
@@ -2115,6 +2121,9 @@ private fun HamburgerSupportFeedbackContent(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val actionCircleSize = if (screenWidth < 360.dp) 34.dp else 36.dp
+    val addIconSize = if (screenWidth < 360.dp) 24.dp else 26.dp
     val inputText = inputValue.text
     val hasContent = inputText.trim().isNotEmpty() || selectedImages.isNotEmpty()
     val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
@@ -2198,9 +2207,9 @@ private fun HamburgerSupportFeedbackContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 12.dp),
-            addButtonSize = 36.dp,
-            addIconSize = 26.dp,
-            sendButtonSize = 36.dp,
+            addButtonSize = actionCircleSize,
+            addIconSize = addIconSize,
+            sendButtonSize = actionCircleSize,
             inputChromeSurface = Color.White,
             inputChromeBorder = Color(0xFFE1E4E8),
             inputFieldSurface = Color.White,

@@ -1,6 +1,6 @@
 # 手机号登录与融合认证 Runbook
 
-最后更新：2026-06-01
+最后更新：2026-06-03
 
 ## 当前状态
 
@@ -9,7 +9,7 @@
 - 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会调用该接口、清本地 auth token 并回到登录门；完整设备管理 / 远程吊销后续再迭代
 - 登录成功后，旧本机 `user_id` 作为迁移桥，后端会尽量把旧用户数据迁到手机号账号 `acct_...`
 - 阿里云融合认证 Android 方案已通过 CLI 创建，DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS `/etc/nongjiqiancha/server.env`
-- Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按官方 SDK 流程拉取服务端 fusion token、初始化 SDK、提交 verify token 给后端，不再用静态 token 或测试 ID 绕过登录
+- Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按官方 SDK 流程拉取服务端 fusion token、初始化 SDK，SDK 半程校验只调用后端 verify-only 接口，最终成功节点才提交 verify token 给后端登录接口，不再用静态 token 或测试 ID 绕过登录
 - 短信登录后端接口已接阿里云 Dypns API，ECS 当前已配置 DYPNS 基础凭证、短信签名和验证码模板；`/healthz` 已显示 `dypns_sms=ok`
 - 备案 / HTTPS 完成前，`api.nongjiqiancha.cn` 公网访问会被阿里云拦截；2026-06-01 为真机登录联调，Nginx 临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成 debug APK 走 `http://39.106.1.151`
 - Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，融合认证 token、融合认证登录校验、短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
@@ -17,6 +17,7 @@
 ## 后端接口
 
 - `POST /api/auth/fusion/token`：服务端向阿里云获取融合认证 token，并返回 `auth_token + scheme_code` 给 Android SDK 使用；默认按 IP hash 做 10 分钟 20 次限流，配置 Redis 后跨进程共享
+- `POST /api/auth/fusion/verify`：Android SDK 半程校验用，服务端只校验 verify token 并返回脱敏手机号，不签发账号 token、不迁移旧用户数据；默认复用融合认证登录限流配置，按 IP hash 做防刷
 - `POST /api/auth/fusion/login`：Android SDK 拿到 `verify_token` 后提交，后端校验手机号并签发账号 token；默认按 IP hash 做 10 分钟 20 次限流，配置 Redis 后跨进程共享，避免伪造 verify token 反复打阿里云校验接口
 - `POST /api/auth/sms/send`：发送短信验证码，默认同一手机号 + IP 10 分钟 5 次，同时同一 IP 10 分钟 20 次；配置 Redis 后跨进程共享
 - `POST /api/auth/sms/login`：校验短信验证码并签发账号 token，默认 10 分钟 10 次限流；配置 Redis 后跨进程共享
@@ -57,7 +58,7 @@
 - 不在数据库保存明文手机号，只保存 `APP_SECRET` HMAC 后的 `phone_hash` 和脱敏 `phone_mask`
 - 不把阿里云 AccessKey、短信模板变量、APP_SECRET 写进仓库
 - Android 只在用户同意协议并点击本机号码一键登录后请求 `/api/auth/fusion/token`，把 `auth_token + scheme_code` 交给官方 SDK；失败 / 取消时回落验证码登录，不走假登录或测试 ID 绕过
-- `/api/auth/fusion/token` 和 `/api/auth/fusion/login` 都已有 Redis / 单进程短期限流，避免 SDK 接入后被脚本反复刷 token 或伪造 verify token 消耗阿里云认证配额
+- `/api/auth/fusion/token`、`/api/auth/fusion/verify` 和 `/api/auth/fusion/login` 都已有 Redis / 单进程短期限流，避免 SDK 接入后被脚本反复刷 token 或伪造 verify token 消耗阿里云认证配额
 - `/api/auth/sms/send` 同时有手机号 + IP 和 IP 总量两层限流，避免同一出口轮换手机号消耗短信
 - 生产公开入口保持 `AUTH_STRICT=true` 且不设置 `AUTH_ALLOW_LEGACY_TOKEN`，让退出设备 / session 吊销真正生效
 - `chat_stream_inflight` 是临时租约，登录迁移时直接丢弃旧本机租约，不迁到手机号账号

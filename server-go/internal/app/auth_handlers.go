@@ -106,6 +106,43 @@ func (s *Server) handleAuthFusionLogin(w http.ResponseWriter, r *http.Request) {
 	s.finishPhoneLogin(w, r, phone, body.LegacyUserID, body.DeviceID)
 }
 
+func (s *Server) handleAuthFusionVerify(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+	var body authLoginRequest
+	if err := decodeJSONBodyLimited(r, &body, authJSONBodyLimit); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	verifyToken := strings.TrimSpace(body.VerifyToken)
+	if verifyToken == "" || len(verifyToken) > 4096 {
+		s.writeError(w, http.StatusBadRequest, "invalid_verify_token")
+		return
+	}
+	if s.fusionLoginLimiter != nil {
+		limitKey := authIPRateLimitKey("fusion_verify", GetClientIP(r))
+		if allowed, retryAfter := s.fusionLoginLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
+	}
+	phone, err := s.dypns.VerifyFusionToken(r.Context(), verifyToken)
+	if err != nil {
+		s.logger.Warn("fusion verify failed", "error", err, "masked_ip", maskIP(GetClientIP(r)))
+		s.writeError(w, http.StatusUnauthorized, "auth_verify_failed")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"ok":         true,
+		"phone_mask": maskPhone(phone),
+	})
+}
+
 func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")

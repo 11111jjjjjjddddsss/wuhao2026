@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,62 @@ func TestClientAppLogRateLimiterUsesEnv(t *testing.T) {
 	}
 	if limiter.window != 30*time.Second || limiter.maxHits != 2 || limiter.pruneInterval != 45*time.Second {
 		t.Fatalf("client app log limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
+	}
+}
+
+func TestParseClientAppLogQueryNormalizesAndCapsLimit(t *testing.T) {
+	now := time.UnixMilli(10_000)
+	values := url.Values{
+		"user_id":  {" acct_123 "},
+		"event":    {" Chat.Stream_Interrupted "},
+		"level":    {"WARN"},
+		"since_ms": {"1234"},
+		"limit":    {"500"},
+	}
+	filter, validationError := parseClientAppLogQuery(values, now)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	if filter.UserID != "acct_123" ||
+		filter.Event != "chat.stream_interrupted" ||
+		filter.Level != "warn" ||
+		filter.SinceMs != 1234 ||
+		filter.Limit != maxClientAppLogInternalListLimit {
+		t.Fatalf("filter mismatch: %#v", filter)
+	}
+}
+
+func TestParseClientAppLogQueryDefaultsToRecentLogs(t *testing.T) {
+	now := time.UnixMilli(48 * 60 * 60 * 1000)
+	filter, validationError := parseClientAppLogQuery(url.Values{}, now)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	if filter.SinceMs != now.Add(-24*time.Hour).UnixMilli() {
+		t.Fatalf("since_ms = %d, want last 24h", filter.SinceMs)
+	}
+	if filter.Limit != defaultClientAppLogInternalListLimit {
+		t.Fatalf("limit = %d, want default", filter.Limit)
+	}
+}
+
+func TestParseClientAppLogQueryRejectsInvalidFilters(t *testing.T) {
+	tests := []struct {
+		name   string
+		values url.Values
+		want   string
+	}{
+		{name: "invalid level", values: url.Values{"level": {"debug"}}, want: "invalid_level"},
+		{name: "invalid since", values: url.Values{"since_ms": {"-1"}}, want: "invalid_since_ms"},
+		{name: "invalid limit", values: url.Values{"limit": {"0"}}, want: "invalid_limit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, got := parseClientAppLogQuery(tt.values, time.Now())
+			if got != tt.want {
+				t.Fatalf("validation error = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

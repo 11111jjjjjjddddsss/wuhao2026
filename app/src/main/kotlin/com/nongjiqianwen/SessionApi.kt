@@ -233,6 +233,33 @@ object SessionApi {
         )
     }
 
+    fun verifyFusionTokenOnly(verifyToken: String, onResult: (Boolean) -> Unit) {
+        val base = baseUrl()
+        val token = verifyToken.trim()
+        if (base.isEmpty() || token.isEmpty()) {
+            mainHandler.post { onResult(false) }
+            return
+        }
+        val requestBody = gson.toJson(mapOf("verify_token" to token))
+            .toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("$base/api/auth/fusion/verify")
+            .addHeader("Content-Type", "application/json")
+            .post(requestBody)
+            .build()
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                mainHandler.post { onResult(false) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    mainHandler.post { onResult(it.isSuccessful) }
+                }
+            }
+        })
+    }
+
     private fun parseFusionAuthToken(body: String): FusionAuthTokenSnapshot? =
         runCatching {
             gson.fromJson(body, FusionAuthTokenSnapshot::class.java)

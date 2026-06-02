@@ -175,6 +175,7 @@ func (s *Server) Close() error {
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
 	s.mux.HandleFunc("POST /api/auth/fusion/token", s.handleAuthFusionToken)
+	s.mux.HandleFunc("POST /api/auth/fusion/verify", s.handleAuthFusionVerify)
 	s.mux.HandleFunc("POST /api/auth/fusion/login", s.handleAuthFusionLogin)
 	s.mux.HandleFunc("POST /api/auth/sms/send", s.handleAuthSMSSend)
 	s.mux.HandleFunc("POST /api/auth/sms/login", s.handleAuthSMSLogin)
@@ -198,6 +199,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/support/messages", s.handleCreateSupportMessage)
 	s.mux.HandleFunc("POST /api/support/read", s.handleMarkSupportRead)
 	s.mux.HandleFunc("POST /internal/jobs/today-agri-card/generate", s.handleGenerateTodayAgriCard)
+	s.mux.HandleFunc("GET /internal/app/logs", s.handleInternalClientAppLogs)
 	s.mux.HandleFunc("GET /internal/support/messages", s.handleInternalSupportMessages)
 	s.mux.HandleFunc("POST /internal/support/messages", s.handleInternalCreateSupportMessage)
 	s.mux.HandleFunc("POST /api/chat/stream", s.handleChatStream)

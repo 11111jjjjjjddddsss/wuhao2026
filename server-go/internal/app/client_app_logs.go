@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -22,6 +24,10 @@ const (
 	defaultClientAppLogRateLimitWindow        = 10 * time.Minute
 	defaultClientAppLogRateLimitMaxHits       = 60
 	defaultClientAppLogRateLimitPruneInterval = 10 * time.Minute
+
+	defaultClientAppLogInternalListLimit = 100
+	maxClientAppLogInternalListLimit     = 200
+	clientAppLogInternalSummaryLimit     = 50
 )
 
 type clientAppLogRequest struct {
@@ -51,6 +57,37 @@ type ClientAppLogInput struct {
 	ClientTimeMs   *int64
 	CreatedAt      int64
 	MaskedIP       string
+}
+
+type ClientAppLogQuery struct {
+	UserID  string `json:"user_id,omitempty"`
+	Level   string `json:"level,omitempty"`
+	Event   string `json:"event,omitempty"`
+	SinceMs int64  `json:"since_ms"`
+	Limit   int    `json:"limit"`
+}
+
+type ClientAppLogEntry struct {
+	ID             int64           `json:"id"`
+	UserID         string          `json:"user_id"`
+	Level          string          `json:"level"`
+	Event          string          `json:"event"`
+	Message        string          `json:"message"`
+	Attrs          json.RawMessage `json:"attrs,omitempty"`
+	Platform       string          `json:"platform"`
+	AppVersionCode *int            `json:"app_version_code,omitempty"`
+	AppVersionName string          `json:"app_version_name,omitempty"`
+	OSVersion      string          `json:"os_version,omitempty"`
+	DeviceModel    string          `json:"device_model,omitempty"`
+	ClientTimeMs   *int64          `json:"client_time_ms,omitempty"`
+	CreatedAt      int64           `json:"created_at"`
+	MaskedIP       string          `json:"masked_ip,omitempty"`
+}
+
+type ClientAppLogSummaryEntry struct {
+	Event string `json:"event"`
+	Level string `json:"level"`
+	Count int64  `json:"count"`
 }
 
 func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request) {
@@ -102,6 +139,34 @@ func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func (s *Server) handleInternalClientAppLogs(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSupportAdminSecret(w, r) {
+		return
+	}
+	filter, validationError := parseClientAppLogQuery(r.URL.Query(), time.Now())
+	if validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	logs, err := s.store.ListClientAppLogs(r.Context(), filter)
+	if err != nil {
+		s.logger.Error("list client app logs failed", "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	summary, err := s.store.SummarizeClientAppLogs(r.Context(), filter)
+	if err != nil {
+		s.logger.Error("summarize client app logs failed", "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"logs":    logs,
+		"summary": summary,
+		"filter":  filter,
+	})
+}
+
 func newClientAppLogRateLimiter(redisClient *redis.Client) rateLimiter {
 	config := rateLimitConfig{
 		Window:        envDurationWithDefault("CLIENT_APP_LOG_RATE_LIMIT_WINDOW_SECONDS", defaultClientAppLogRateLimitWindow),
@@ -117,6 +182,42 @@ func newClientAppLogRateLimiter(redisClient *redis.Client) rateLimiter {
 func clientAppLogRateLimitKey(userID string, ip string) string {
 	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
 	return "client_app_log:" + rateLimitHash(userID, secret) + ":" + rateLimitHash(ip, secret)
+}
+
+func parseClientAppLogQuery(values url.Values, now time.Time) (ClientAppLogQuery, string) {
+	filter := ClientAppLogQuery{
+		UserID:  strings.TrimSpace(values.Get("user_id")),
+		Event:   normalizeClientLogIdentifier(values.Get("event"), 96),
+		SinceMs: now.Add(-24 * time.Hour).UnixMilli(),
+		Limit:   defaultClientAppLogInternalListLimit,
+	}
+	if rawLevel := strings.TrimSpace(values.Get("level")); rawLevel != "" {
+		level := strings.ToLower(rawLevel)
+		switch level {
+		case "info", "warn", "error":
+			filter.Level = level
+		default:
+			return ClientAppLogQuery{}, "invalid_level"
+		}
+	}
+	if rawSince := strings.TrimSpace(values.Get("since_ms")); rawSince != "" {
+		since, err := strconv.ParseInt(rawSince, 10, 64)
+		if err != nil || since < 0 {
+			return ClientAppLogQuery{}, "invalid_since_ms"
+		}
+		filter.SinceMs = since
+	}
+	if rawLimit := strings.TrimSpace(values.Get("limit")); rawLimit != "" {
+		limit, err := strconv.Atoi(rawLimit)
+		if err != nil || limit <= 0 {
+			return ClientAppLogQuery{}, "invalid_limit"
+		}
+		if limit > maxClientAppLogInternalListLimit {
+			limit = maxClientAppLogInternalListLimit
+		}
+		filter.Limit = limit
+	}
+	return filter, ""
 }
 
 func normalizeClientAppLogPayload(userID string, maskedIP string, body clientAppLogRequest, createdAt int64) (ClientAppLogInput, string) {
@@ -252,6 +353,153 @@ func minInt(left int, right int) int {
 		return left
 	}
 	return right
+}
+
+func buildClientAppLogWhere(filter ClientAppLogQuery) (string, []any) {
+	clauses := []string{"created_at >= ?"}
+	args := []any{filter.SinceMs}
+	if strings.TrimSpace(filter.UserID) != "" {
+		clauses = append(clauses, "user_id = ?")
+		args = append(args, strings.TrimSpace(filter.UserID))
+	}
+	if strings.TrimSpace(filter.Level) != "" {
+		clauses = append(clauses, "level = ?")
+		args = append(args, strings.TrimSpace(filter.Level))
+	}
+	if strings.TrimSpace(filter.Event) != "" {
+		clauses = append(clauses, "event = ?")
+		args = append(args, strings.TrimSpace(filter.Event))
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery) ([]ClientAppLogEntry, error) {
+	whereClause, args := buildClientAppLogWhere(filter)
+	query := `SELECT
+		   id,
+		   user_id,
+		   level,
+		   event,
+		   message,
+		   attrs_json,
+		   platform,
+		   app_version_code,
+		   app_version_name,
+		   os_version,
+		   device_model,
+		   client_time_ms,
+		   created_at,
+		   masked_ip
+		 FROM client_app_logs` + whereClause + `
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT ?`
+	args = append(args, filter.Limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []ClientAppLogEntry
+	for rows.Next() {
+		var entry ClientAppLogEntry
+		var attrsJSON sql.NullString
+		var appVersionCode sql.NullInt64
+		var appVersionName sql.NullString
+		var osVersion sql.NullString
+		var deviceModel sql.NullString
+		var clientTimeMs sql.NullInt64
+		var maskedIP sql.NullString
+		if err := rows.Scan(
+			&entry.ID,
+			&entry.UserID,
+			&entry.Level,
+			&entry.Event,
+			&entry.Message,
+			&attrsJSON,
+			&entry.Platform,
+			&appVersionCode,
+			&appVersionName,
+			&osVersion,
+			&deviceModel,
+			&clientTimeMs,
+			&entry.CreatedAt,
+			&maskedIP,
+		); err != nil {
+			return nil, err
+		}
+		if attrsJSON.Valid && strings.TrimSpace(attrsJSON.String) != "" {
+			entry.Attrs = json.RawMessage(attrsJSON.String)
+		}
+		entry.AppVersionCode = nullIntToPtr(appVersionCode)
+		entry.AppVersionName = nullStringValue(appVersionName)
+		entry.OSVersion = nullStringValue(osVersion)
+		entry.DeviceModel = nullStringValue(deviceModel)
+		entry.ClientTimeMs = nullInt64ToPtr(clientTimeMs)
+		entry.MaskedIP = nullStringValue(maskedIP)
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		return []ClientAppLogEntry{}, nil
+	}
+	return entries, nil
+}
+
+func (s *Store) SummarizeClientAppLogs(ctx context.Context, filter ClientAppLogQuery) ([]ClientAppLogSummaryEntry, error) {
+	whereClause, args := buildClientAppLogWhere(filter)
+	query := `SELECT event, level, COUNT(*) AS event_count
+		 FROM client_app_logs` + whereClause + `
+		 GROUP BY event, level
+		 ORDER BY event_count DESC, event ASC, level ASC
+		 LIMIT ?`
+	args = append(args, clientAppLogInternalSummaryLimit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var summary []ClientAppLogSummaryEntry
+	for rows.Next() {
+		var entry ClientAppLogSummaryEntry
+		if err := rows.Scan(&entry.Event, &entry.Level, &entry.Count); err != nil {
+			return nil, err
+		}
+		summary = append(summary, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if summary == nil {
+		return []ClientAppLogSummaryEntry{}, nil
+	}
+	return summary, nil
+}
+
+func nullStringValue(value sql.NullString) string {
+	if !value.Valid {
+		return ""
+	}
+	return strings.TrimSpace(value.String)
+}
+
+func nullIntToPtr(value sql.NullInt64) *int {
+	if !value.Valid {
+		return nil
+	}
+	converted := int(value.Int64)
+	return &converted
+}
+
+func nullInt64ToPtr(value sql.NullInt64) *int64 {
+	if !value.Valid {
+		return nil
+	}
+	converted := value.Int64
+	return &converted
 }
 
 func (s *Store) CreateClientAppLog(ctx context.Context, input ClientAppLogInput) error {

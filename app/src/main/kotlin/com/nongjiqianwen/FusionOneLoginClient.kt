@@ -105,7 +105,7 @@ object FusionOneLoginClient {
                     verifyResult?.verifyResult(false)
                     return
                 }
-                SessionApi.loginWithFusionVerifyToken(verifyToken) { ok, _ ->
+                SessionApi.verifyFusionTokenOnly(verifyToken) { ok ->
                     verifyResult?.verifyResult(ok)
                 }
             }
