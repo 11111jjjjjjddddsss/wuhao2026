@@ -5,7 +5,7 @@
 ## 客户端
 - 启动页：`MainActivity`（Compose `ChatScreen` 占位）
 - 主对话链路：后端 `/api/chat/stream`（SSE）
-- 输入边界：单次最多 4 张图（有图必须带文字）；文本长度限制按客户端当前规则
+- 输入边界：单次最多 4 张图；支持纯文字、纯图片、图文混合；文本长度限制按客户端当前规则
 
 ## 提示词真源
 - 主对话锚点：`server-go/assets/system_anchor.txt`

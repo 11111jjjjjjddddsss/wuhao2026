@@ -145,21 +145,32 @@ func (s *Server) handleInternalClientAppLogs(w http.ResponseWriter, r *http.Requ
 	}
 	filter, validationError := parseClientAppLogQuery(r.URL.Query(), time.Now())
 	if validationError != "" {
+		s.recordAdminAuditLog(r, "support_admin_secret", "internal.app.logs.list", "client_app_logs", "", filter.UserID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
 	logs, err := s.store.ListClientAppLogs(r.Context(), filter)
 	if err != nil {
 		s.logger.Error("list client app logs failed", "error", err)
+		s.recordAdminAuditLog(r, "support_admin_secret", "internal.app.logs.list", "client_app_logs", "", filter.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
 	summary, err := s.store.SummarizeClientAppLogs(r.Context(), filter)
 	if err != nil {
 		s.logger.Error("summarize client app logs failed", "error", err)
+		s.recordAdminAuditLog(r, "support_admin_secret", "internal.app.logs.list", "client_app_logs", "", filter.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	s.recordAdminAuditLog(r, "support_admin_secret", "internal.app.logs.list", "client_app_logs", "", filter.UserID, true, http.StatusOK, map[string]any{
+		"event":         filter.Event,
+		"level":         filter.Level,
+		"limit":         filter.Limit,
+		"since_ms":      filter.SinceMs,
+		"row_count":     len(logs),
+		"summary_count": len(summary),
+	})
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"logs":    logs,
 		"summary": summary,
@@ -274,6 +285,9 @@ func normalizeClientLogAttrs(raw map[string]any) (any, string) {
 		if normalizedKey == "" {
 			continue
 		}
+		if isSensitiveClientLogAttrKey(normalizedKey) {
+			continue
+		}
 		normalizedValue, ok := normalizeClientLogAttrValue(value)
 		if !ok {
 			continue
@@ -292,6 +306,36 @@ func normalizeClientLogAttrs(raw map[string]any) (any, string) {
 		return nil, "attrs too large"
 	}
 	return string(data), ""
+}
+
+func isSensitiveClientLogAttrKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	switch normalized {
+	case "token", "key", "url", "uri", "body", "message", "content":
+		return true
+	}
+	if strings.Contains(normalized, "phone") ||
+		strings.Contains(normalized, "token") ||
+		strings.Contains(normalized, "password") ||
+		strings.Contains(normalized, "secret") ||
+		strings.Contains(normalized, "authorization") ||
+		strings.Contains(normalized, "api_key") ||
+		strings.Contains(normalized, "access_key") ||
+		strings.Contains(normalized, "model_key") {
+		return true
+	}
+	for _, suffix := range []string{
+		"_url", "-url", ".url", ":url", "urls",
+		"_uri", "-uri", ".uri", ":uri", "uris",
+		"_body", "-body", ".body", ":body",
+		"_message", "-message", ".message", ":message",
+		"_content", "-content", ".content", ":content",
+	} {
+		if strings.HasSuffix(normalized, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeClientLogAttrValue(value any) (any, bool) {

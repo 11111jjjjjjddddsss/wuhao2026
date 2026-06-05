@@ -207,6 +207,10 @@ done
 if [ "`$health_status" != "200" ]; then
   exit 20
 fi
+if ! grep -q '"bailian":"ok"' "`$health_body"; then
+  echo 'health bailian is not ok' >&2
+  exit 21
+fi
 "@
 
 $remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))

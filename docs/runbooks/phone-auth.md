@@ -1,6 +1,6 @@
 # 手机号登录与融合认证 Runbook
 
-最后更新：2026-06-03
+最后更新：2026-06-04
 
 ## 当前状态
 
@@ -9,9 +9,10 @@
 - 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会调用该接口、清本地 auth token 并回到登录门；完整设备管理 / 远程吊销后续再迭代
 - 登录成功后，旧本机 `user_id` 作为迁移桥，后端会尽量把旧用户数据迁到手机号账号 `acct_...`
 - 阿里云融合认证 Android 方案已通过 CLI 创建，DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS `/etc/nongjiqiancha/server.env`
-- Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按官方 SDK 流程拉取服务端 fusion token、初始化 SDK，SDK 半程校验只调用后端 verify-only 接口，最终成功节点才提交 verify token 给后端登录接口，不再用静态 token 或测试 ID 绕过登录
+- Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按官方 SDK 流程拉取服务端 fusion token、初始化 SDK，SDK 半程校验只调用后端 verify-only 接口，Android 要求响应体 `ok=true` 才算半程通过，最终成功节点才提交 verify token 给后端登录接口，不再用静态 token 或测试 ID 绕过登录
+- Android 主 manifest 已显式声明 `READ_PHONE_STATE`、`ACCESS_NETWORK_STATE` 和 `ACCESS_WIFI_STATE`，减少 release 构建依赖 AAR manifest merge 的不确定性；正式 release 前仍要检查 merged manifest
 - 短信登录后端接口已接阿里云 Dypns API，ECS 当前已配置 DYPNS 基础凭证、短信签名和验证码模板；`/healthz` 已显示 `dypns_sms=ok`
-- 备案 / HTTPS 完成前，`api.nongjiqiancha.cn` 公网访问会被阿里云拦截；2026-06-01 为真机登录联调，Nginx 临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成 debug APK 走 `http://39.106.1.151`
+- 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成 debug APK 走 `http://39.106.1.151`，后续正式回归应优先使用 `https://api.nongjiqiancha.cn`
 - Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，融合认证 token、融合认证登录校验、短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
 
 ## 后端接口
@@ -49,9 +50,10 @@
 
 1. 在融合认证控制台确认 `农技千查` Android 方案，包名 `com.nongjiqiancha`，签名 MD5 与 release 包一致。
 2. 阿里云融合认证 Android SDK 已接入；后续真机回归时重点确认运营商网络、双卡 / 无 SIM、Wi-Fi-only、拒绝电话状态权限和 SDK 取消态都会回落验证码登录。
-3. 短信服务资质、签名和验证码模板已通过 CLI 配置；ECS 已写入 `DYPNS_SMS_SIGN_NAME`、`DYPNS_SMS_TEMPLATE_CODE` 并重启 `nongji-server`。
-4. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限或专用 RAM 用户口径，并重新配置 `DYPNS_ACCESS_KEY_ID` / `DYPNS_ACCESS_KEY_SECRET`。
-5. 配置完成后重启 `nongji-server`，检查 `/healthz` 中 `dypns / dypns_fusion / dypns_sms` 是否为 `ok`；当前三项均已为 `ok`。
+3. 当前半程 verify-only 和最终 login 都会对 SDK verify token 发起服务端校验；真机回归时必须确认 verify token 是否允许该顺序、是否存在一次性消耗语义、是否增加计费或失败率。如果发现最终 login 因半程校验后 token 失效，再按官方 SDK 语义调整流程。
+4. 短信服务资质、签名和验证码模板已通过 CLI 配置；ECS 已写入 `DYPNS_SMS_SIGN_NAME`、`DYPNS_SMS_TEMPLATE_CODE` 并重启 `nongji-server`。
+5. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限或专用 RAM 用户口径，并重新配置 `DYPNS_ACCESS_KEY_ID` / `DYPNS_ACCESS_KEY_SECRET`。
+6. 配置完成后重启 `nongji-server`，检查 `/healthz` 中 `dypns / dypns_fusion / dypns_sms` 是否为 `ok`；当前三项均已为 `ok`。
 
 ## 安全与成本边界
 

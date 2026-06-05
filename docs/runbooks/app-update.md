@@ -1,5 +1,7 @@
 # App 更新 Runbook
 
+最后更新：2026-06-04
+
 当前 Android “检查更新”走自有服务器 APK 分发，不走应用商店，也不做静默安装。
 
 当前对外包名已定为 `com.nongjiqiancha`。历史内测旧包 `com.nongjiqianwen` 不能通过“检查更新”平滑覆盖安装为新包；Android 系统会把它们视为两个 App，客户端包名校验也会拒绝错包。测试机如果装过旧包，应先卸载旧包再安装新包。后续自更新只适用于 `com.nongjiqiancha -> com.nongjiqiancha` 的同包名升级。
@@ -45,6 +47,8 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 - `APP_ANDROID_RELEASE_NOTES`：更新说明，直接展示在更新卡片里；当前默认建议写“优化产品体验”
 - `APP_ANDROID_FORCE_UPDATE`：可选，`true / 1 / yes / on` 表示强制更新；强制更新卡片不展示“稍后”
 - `APP_ANDROID_FILE_SIZE_BYTES`：可选，APK 字节大小，用于更新卡片展示；填写后客户端会要求下载后的文件大小一致
+
+当前这套仍是环境变量发布入口，不是完整发布后台；后续网站管理后台应补 `app_releases` 或等价发布记录，保存 APK 链接、SHA-256、大小、包名、versionCode、签名指纹、操作人、发布时间和回滚 / 停更审计。
 
 客户端下载后会在调起系统安装页前做基础校验：
 

@@ -44,6 +44,40 @@ func TestNormalizeClientAppLogPayloadAcceptsMinimalSafePayload(t *testing.T) {
 	}
 }
 
+func TestNormalizeClientAppLogPayloadDropsSensitiveAttrs(t *testing.T) {
+	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
+		Level:   "warn",
+		Event:   "chat.stream_interrupted",
+		Message: "safe",
+		Attrs: map[string]any{
+			"reason":        "network",
+			"body_length":   12,
+			"token":         "secret-token",
+			"access_key":    "ak-value",
+			"phone_number":  "13800138000",
+			"image_urls":    "https://example.com/uploads/a.jpg",
+			"response_body": "用户填写内容",
+		},
+	}, 123)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	attrs, ok := input.AttrsJSON.(string)
+	if !ok {
+		t.Fatalf("attrs json = %#v, want string", input.AttrsJSON)
+	}
+	for _, allowed := range []string{"reason", "body_length"} {
+		if !strings.Contains(attrs, allowed) {
+			t.Fatalf("attrs = %q, want safe %q", attrs, allowed)
+		}
+	}
+	for _, forbidden := range []string{"token", "ak-value", "13800138000", "image_urls", "用户填写内容"} {
+		if strings.Contains(attrs, forbidden) {
+			t.Fatalf("attrs leaked %q: %s", forbidden, attrs)
+		}
+	}
+}
+
 func TestNormalizeClientAppLogPayloadRejectsInvalidPayload(t *testing.T) {
 	tests := []struct {
 		name string

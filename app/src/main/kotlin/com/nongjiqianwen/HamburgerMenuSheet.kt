@@ -1102,7 +1102,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "七、当前权限说明",
-            body = "当前 App 声明的权限包括：网络访问，用于连接后端、上传图片、流式回答、会员、反馈、今日农情和检查更新；网络状态、Wi-Fi 状态和网络连接状态，用于判断网络是否可用，并支持本机号码一键登录识别运营商认证环境；电话状态，用于您点击本机号码一键登录时完成手机号认证；安装未知应用相关权限，仅用于您主动点击“立即更新”后下载 APK 并调起系统安装确认页。当前不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限，也不做 App 外推送通知。"
+            body = "当前 App 声明的权限包括：网络访问，用于连接后端、上传图片、流式回答、会员、反馈、今日农情和检查更新；网络状态、Wi-Fi 状态和网络连接状态，用于判断网络是否可用，并支持本机号码一键登录识别运营商认证环境；电话状态，用于您点击本机号码一键登录时完成手机号认证；后台任务、唤醒、开机后恢复调度和前台服务相关权限，用于带图消息在 App 切后台、进程被系统回收或设备重启后按同一条待发送任务有限重试；安装未知应用相关权限，仅用于您主动点击“立即更新”后下载 APK 并调起系统安装确认页。当前不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限，也不做 App 外推送通知。"
         )
         HamburgerAgreementSection(
             title = "八、第三方大模型和云服务",
@@ -1256,7 +1256,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年6月1日",
+            text = "更新日期：2026年6月5日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1410,11 +1410,15 @@ private fun HamburgerPermissionListContent(
             body = "仅用于您主动点击“立即更新”后下载 APK 并调起 Android 系统安装确认页；App 不做静默安装。"
         )
         HamburgerAgreementSection(
-            title = "五、相机和照片",
+            title = "五、后台待发送任务",
+            body = "Android 系统可能合并后台任务、唤醒、开机后恢复调度和前台服务相关权限；这些权限用于带图消息在 App 切后台、进程被系统回收或设备重启后，按同一条待发送任务进行有限重试。该能力不用于 App 外推送、广告通知、定位或读取通讯录 / 短信。"
+        )
+        HamburgerAgreementSection(
+            title = "六、相机和照片",
             body = "当前照片入口使用 Android 系统 Photo Picker，只访问您本次主动选择的图片；拍照入口调用外部相机并通过 FileProvider 授权临时写入，不申请 App 相机权限。Android Q 及以上系统，拍照成功后会把原始照片另存到系统相册 Pictures/农技千查。"
         )
         HamburgerAgreementSection(
-            title = "六、当前不申请的权限",
+            title = "七、当前不申请的权限",
             body = "本版本不申请定位权限、相册 / 存储读写权限、录音、通讯录、短信或通知权限；也不做 App 外推送通知。"
         )
     }

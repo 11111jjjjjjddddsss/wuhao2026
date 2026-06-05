@@ -70,8 +70,17 @@ mv "`$install_dir/nongji-server.new" "`$install_dir/nongji-server"
 systemctl restart nongji-server
 systemctl is-active nongji-server
 nginx -t
-curl -sS -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz
+health_body='/tmp/nongji-rollback-health.json'
+health_status=`$(curl -sS -o "`$health_body" -w '%{http_code}' -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz || true)
+cat "`$health_body" || true
 echo
+if [ "`$health_status" != "200" ]; then
+  exit 30
+fi
+if ! grep -q '"bailian":"ok"' "`$health_body"; then
+  echo 'health bailian is not ok' >&2
+  exit 31
+fi
 "@
 }
 

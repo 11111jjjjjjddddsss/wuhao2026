@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-03
+最后更新：2026-06-05
 
 ## 当前定位
 
@@ -10,7 +10,8 @@
 - Android 在关键失败点自动调用 `POST /api/app/logs`
 - 后端走现有用户鉴权，写入 `client_app_logs` 表，并同步打一条结构化服务日志
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流
-- 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护，用于运维和后续后台监控面板接入；它不是完整后台账号 / 权限系统
+- Android 端和后端都会按敏感 attr key 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
+- 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护，用于运维和后续后台监控面板接入；查询动作会写入 `admin_audit_logs`，但它仍不是完整后台账号 / 权限系统
 - 后续管理后台或 SLS 可以基于这张表 / 服务日志做查询、统计和告警
 
 ## 当前自动上报事件
@@ -41,6 +42,8 @@ Android 只上报结构化错误信息：
 - 用户主动填写的反馈正文
 
 服务端也会限制单次请求大小、事件名长度、消息长度和 attrs 大小。
+当前服务端会保存脱敏后的 `masked_ip`，用于排查同一网络出口的异常失败聚集；内部查询只返回 masked IP，不返回完整 IP。
+账号注销、历史删除、自动日志保留天数和批量清理策略仍需在公开运营前明确，不能把这张表当成无限期保存用户运行痕迹的仓库。
 
 ## 限流参数
 
@@ -68,6 +71,7 @@ Android 只上报结构化错误信息：
 
 - Header `X-Support-Admin-Secret: <SUPPORT_ADMIN_SECRET>`
 - 或 `Authorization: Bearer <SUPPORT_ADMIN_SECRET>`
+- 可选 `X-Admin-Actor: <operator>`，只用于审计日志标记操作人，不替代鉴权
 
 查询参数：
 
@@ -79,7 +83,7 @@ Android 只上报结构化错误信息：
 
 返回：
 
-- `logs`：按 `created_at DESC, id DESC` 返回明细
+- `logs`：按 `created_at DESC, id DESC` 返回明细，包含脱敏 `masked_ip`
 - `summary`：按 `event + level` 聚合数量，最多 50 组
 - `filter`：本次实际使用的过滤条件
 
@@ -90,7 +94,7 @@ curl -H "X-Support-Admin-Secret: $SUPPORT_ADMIN_SECRET" \
   "http://127.0.0.1:3000/internal/app/logs?level=error&limit=50"
 ```
 
-该接口只读，不返回聊天正文、AI 回复全文、图片内容 / URL、手机号、token 或模型 Key。
+该接口只读，不返回聊天正文、AI 回复全文、图片内容 / URL、手机号、token 或模型 Key。成功或失败查询都会写入最小内部审计日志，只保存动作、过滤条件摘要、返回条数、脱敏 IP、UA 和时间，不保存密钥或日志 attrs 原文以外的额外敏感内容。
 
 ## SQL 查询示例
 
@@ -103,7 +107,7 @@ ORDER BY count DESC;
 ```
 
 ```sql
-SELECT id, user_id, level, event, message, attrs_json, app_version_code, os_version, device_model, created_at
+SELECT id, user_id, masked_ip, level, event, message, attrs_json, app_version_code, os_version, device_model, created_at
 FROM client_app_logs
 WHERE user_id = ?
 ORDER BY created_at DESC, id DESC

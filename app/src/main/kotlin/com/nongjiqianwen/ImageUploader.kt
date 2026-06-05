@@ -44,6 +44,9 @@ object ImageUploader {
         .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
         .build()
+
+    private fun maskRemoteUrl(url: String): String =
+        url.replace(Regex("/([^/]+)$"), "/***")
     
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
     const val DECODE_FAIL_MESSAGE = "图片无法读取，请重新选择"
@@ -351,11 +354,11 @@ object ImageUploader {
                     
                     if (!url.isNullOrBlank() && url.startsWith("https://")) {
                         if (BuildConfig.DEBUG) {
-                            Log.d(TAG, "上传成功：URL（脱敏）=${url.replace(Regex("/([^/]+)$"), "/***")}")
+                            Log.d(TAG, "上传成功：URL（脱敏）=${maskRemoteUrl(url)}")
                         }
                         onSuccess(url)
                     } else {
-                        Log.e(TAG, if (BuildConfig.DEBUG) "上传失败：响应无根级 url, body=${bodyStr.take(200)}" else "上传失败：响应无根级 url")
+                        Log.e(TAG, if (BuildConfig.DEBUG) "上传失败：响应无根级 url, body_length=${bodyStr.length}" else "上传失败：响应无根级 url")
                         SessionApi.reportClientLog(
                             level = "warn",
                             event = "image.upload_failed",
@@ -418,7 +421,7 @@ object ImageUploader {
                             synchronized(urls) {
                                 urls[index] = url
                                 if (BuildConfig.DEBUG) {
-                                    Log.d(TAG, "图片[$index] 上传成功: $url")
+                                    Log.d(TAG, "图片[$index] 上传成功: ${maskRemoteUrl(url)}")
                                 }
                             }
                             latch.countDown()
@@ -450,7 +453,7 @@ object ImageUploader {
             Log.d(TAG, "所有图片上传成功: ${orderedUrls.size} 张")
             Log.d(TAG, "=== UPLOAD_URLS（脱敏）===")
             orderedUrls.forEachIndexed { index, url ->
-                val maskedUrl = url.replace(Regex("/([^/]+)$"), "/***")
+                val maskedUrl = maskRemoteUrl(url)
                 Log.d(TAG, "UPLOAD_URLS[$index]: $maskedUrl")
             }
         }

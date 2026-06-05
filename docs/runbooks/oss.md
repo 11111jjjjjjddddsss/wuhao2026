@@ -54,11 +54,11 @@
 - 不把 OSS AccessKey / Secret 写入仓库、文档或聊天
 - Android 不直连 OSS，不打入 OSS 密钥
 - 后端是上传和访问控制唯一入口
-- 多台 ECS 或回到 SAE 多实例前，生产环境已满足共享对象存储前置条件，但仍需在 HTTPS / 模型 Key 就绪后再用真实 App 链路验证 `/upload`、`/uploads/` 和模型拉图链路
+- 多台 ECS 或回到 SAE 多实例前，生产环境已满足共享对象存储前置条件，且 `api.nongjiqiancha.cn` HTTPS 已就绪；仍需在模型 Key 配好后用真实 App 链路验证 `/upload`、`/uploads/` 和模型拉图链路
 - 若 APK 分发也放 OSS，应单独配置下载域名、HTTPS、文件大小和 SHA-256，不建议让 Go 后端动态服务大 APK
 
 ## 当前阻塞
 
 - OSS 生产环境变量已写入 ECS，健康检查已显示 `upload_storage=oss`
 - OSS 凭证已使用最小权限 RAM 子账号 / 策略，只允许访问 `nongjiqiancha-prod` 的上传前缀所需对象操作；后续仍需定期轮换，不使用主账号长期 AccessKey 作为应用凭证
-- HTTPS 未完成前，`BASE_PUBLIC_URL / UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 的图片公网 URL 仍不能算正式可用
+- `api.nongjiqiancha.cn` HTTPS 已完成，`BASE_PUBLIC_URL / UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 可作为图片公网基地址；DashScope 模型 Key 已配置，仍需用真实 App 链路验证 `/upload`、`/uploads/` 和模型拉图链路，验证前不能把图片问诊当完整生产可用

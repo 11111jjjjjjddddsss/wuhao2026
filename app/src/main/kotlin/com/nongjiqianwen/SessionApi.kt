@@ -97,6 +97,11 @@ object SessionApi {
             get() = !authToken.isNullOrBlank() && !schemeCode.isNullOrBlank()
     }
 
+    data class FusionVerifySnapshot(
+        val ok: Boolean = false,
+        @SerializedName("phone_mask") val phoneMask: String? = null
+    )
+
     data class TodayAgriCardResponse(
         val status: String? = null,
         val card: TodayAgriCard? = null
@@ -254,7 +259,8 @@ object SessionApi {
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
-                    mainHandler.post { onResult(it.isSuccessful) }
+                    val verified = it.isSuccessful && parseFusionVerify(body = it.body?.string().orEmpty())?.ok == true
+                    mainHandler.post { onResult(verified) }
                 }
             }
         })
@@ -263,6 +269,11 @@ object SessionApi {
     private fun parseFusionAuthToken(body: String): FusionAuthTokenSnapshot? =
         runCatching {
             gson.fromJson(body, FusionAuthTokenSnapshot::class.java)
+        }.getOrNull()
+
+    private fun parseFusionVerify(body: String): FusionVerifySnapshot? =
+        runCatching {
+            gson.fromJson(body, FusionVerifySnapshot::class.java)
         }.getOrNull()
 
     fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
@@ -459,10 +470,52 @@ object SessionApi {
             .mapNotNull { (key, value) ->
                 val normalizedKey = normalizeClientLogIdentifier(key, maxLength = 64)
                 if (normalizedKey.isEmpty()) return@mapNotNull null
+                if (isSensitiveClientLogAttrKey(normalizedKey)) return@mapNotNull null
                 normalizedKey to sanitizeClientLogValue(value)
             }
             .take(20)
             .toMap()
+    }
+
+    private fun isSensitiveClientLogAttrKey(key: String): Boolean {
+        val normalized = key.lowercase()
+        return normalized.contains("phone") ||
+            normalized == "token" ||
+            normalized == "key" ||
+            normalized == "url" ||
+            normalized == "uri" ||
+            normalized == "body" ||
+            normalized == "message" ||
+            normalized == "content" ||
+            normalized.contains("token") ||
+            normalized.contains("password") ||
+            normalized.contains("secret") ||
+            normalized.contains("authorization") ||
+            normalized.contains("api_key") ||
+            normalized.contains("access_key") ||
+            normalized.contains("model_key") ||
+            normalized.endsWith("_url") ||
+            normalized.endsWith("-url") ||
+            normalized.endsWith(".url") ||
+            normalized.endsWith(":url") ||
+            normalized.endsWith("urls") ||
+            normalized.endsWith("_uri") ||
+            normalized.endsWith("-uri") ||
+            normalized.endsWith(".uri") ||
+            normalized.endsWith(":uri") ||
+            normalized.endsWith("uris") ||
+            normalized.endsWith("_body") ||
+            normalized.endsWith("-body") ||
+            normalized.endsWith(".body") ||
+            normalized.endsWith(":body") ||
+            normalized.endsWith("_message") ||
+            normalized.endsWith("-message") ||
+            normalized.endsWith(".message") ||
+            normalized.endsWith(":message") ||
+            normalized.endsWith("_content") ||
+            normalized.endsWith("-content") ||
+            normalized.endsWith(".content") ||
+            normalized.endsWith(":content")
     }
 
     private fun sanitizeClientLogValue(value: Any?): Any? =

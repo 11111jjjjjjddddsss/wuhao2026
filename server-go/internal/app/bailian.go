@@ -12,20 +12,18 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 type BailianClient struct {
 	httpClient  *http.Client
-	keyCursor   uint64
 	cooldownMu  sync.Mutex
 	keyCooldown map[string]time.Time
 }
 
 const (
-	unifiedModelTemperature = 0.8
-	bailianKeyCooldown      = 60 * time.Second
+	unifiedModelTemperature   = 0.8
+	defaultBailianKeyCooldown = 1 * time.Second
 
 	defaultDashScopeDialTimeout           = 10 * time.Second
 	defaultDashScopeTLSHandshakeTimeout   = 10 * time.Second
@@ -280,11 +278,11 @@ func (c *BailianClient) keyEntries() []bailianAPIKeyEntry {
 		result = append(result, bailianAPIKeyEntry{Value: key})
 	}
 
-	addKey(os.Getenv("DASHSCOPE_API_KEY"))
 	for i := 1; i <= 3; i++ {
 		name := fmt.Sprintf("DASHSCOPE_API_KEY_%d", i)
 		addKey(os.Getenv(name))
 	}
+	addKey(os.Getenv("DASHSCOPE_API_KEY"))
 	for _, key := range splitConfiguredKeys(os.Getenv("DASHSCOPE_API_KEYS")) {
 		addKey(key)
 	}
@@ -301,11 +299,10 @@ func (c *BailianClient) pickNextKeyEntry(keys []bailianAPIKeyEntry, attempted ma
 	if len(keys) == 0 {
 		return bailianAPIKeyEntry{}, false
 	}
-	start := int(atomic.AddUint64(&c.keyCursor, 1)-1) % len(keys)
 	now := time.Now()
 	var fallback *bailianAPIKeyEntry
 	for offset := 0; offset < len(keys); offset++ {
-		key := keys[(start+offset)%len(keys)]
+		key := keys[offset]
 		if attempted[key.Value] {
 			continue
 		}
@@ -340,7 +337,12 @@ func (c *BailianClient) isKeyCoolingDown(key string, now time.Time) bool {
 func (c *BailianClient) coolDownKey(key string) {
 	c.cooldownMu.Lock()
 	defer c.cooldownMu.Unlock()
-	c.keyCooldown[key] = time.Now().Add(bailianKeyCooldown)
+	duration := envDurationWithDefault("DASHSCOPE_KEY_COOLDOWN_SECONDS", defaultBailianKeyCooldown)
+	if duration <= 0 {
+		delete(c.keyCooldown, key)
+		return
+	}
+	c.keyCooldown[key] = time.Now().Add(duration)
 }
 
 func isBailianFailoverCandidateStatus(status int) bool {

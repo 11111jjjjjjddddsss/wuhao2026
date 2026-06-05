@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -122,6 +123,47 @@ func TestSupportMessageRateLimiterUsesEnv(t *testing.T) {
 	}
 	if limiter.window != 30*time.Second || limiter.maxHits != 2 || limiter.pruneInterval != 45*time.Second {
 		t.Fatalf("support message limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
+	}
+}
+
+func TestParseSupportConversationQuery(t *testing.T) {
+	filter, validationError := parseSupportConversationQuery(url.Values{
+		"since_ms": {"123"},
+		"limit":    {"999"},
+	}, time.UnixMilli(10_000))
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	if filter.SinceMs != 123 || filter.Limit != maxSupportConversationListLimit {
+		t.Fatalf("filter mismatch: %#v", filter)
+	}
+
+	defaultFilter, validationError := parseSupportConversationQuery(url.Values{}, time.UnixMilli(10_000))
+	if validationError != "" {
+		t.Fatalf("unexpected default validation error: %s", validationError)
+	}
+	if defaultFilter.Limit != defaultSupportConversationListLimit ||
+		defaultFilter.SinceMs != time.UnixMilli(10_000).Add(-defaultSupportConversationSinceDuration).UnixMilli() {
+		t.Fatalf("default filter mismatch: %#v", defaultFilter)
+	}
+}
+
+func TestParseSupportConversationQueryRejectsInvalidFilters(t *testing.T) {
+	tests := []struct {
+		name   string
+		values url.Values
+		want   string
+	}{
+		{name: "invalid since", values: url.Values{"since_ms": {"-1"}}, want: "invalid_since_ms"},
+		{name: "invalid limit", values: url.Values{"limit": {"0"}}, want: "invalid_limit"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, got := parseSupportConversationQuery(tt.values, time.Now())
+			if got != tt.want {
+				t.Fatalf("validation error = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

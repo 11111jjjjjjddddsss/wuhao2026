@@ -50,7 +50,7 @@
 - `UPLOAD_STORAGE_BACKEND=oss`，不能回退本地文件
 - `BASE_PUBLIC_URL / UPLOAD_BASE_URL` 一致
 - `APP_SECRET` 一致，否则 token / 手机号 hash 会失效
-- `DASHSCOPE_API_KEY(S)` 一致或按实例分配
+- `DASHSCOPE_API_KEY_1/2/3` 主备池一致或按实例分配
 - `AUTH_STRICT=true`
 
 仍需补的准备：

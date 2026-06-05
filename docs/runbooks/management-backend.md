@@ -1,21 +1,22 @@
 # 统一管理后台 Runbook
 
-最后更新：2026-06-03
+最后更新：2026-06-05
 
 ## 目的
 
 记录“农技千查”后续统一管理后台应该怎么做、什么时候做、第一版做到什么程度。
 
-这份文档不是现成后台，不伪造还没购买的服务器、域名、后台账号或权限；它只记录买服务器后要补的最小运营入口和安全边界。
+这份文档不是现成后台，不伪造还没落地的网页后台、后台账号或权限；它记录服务器已落地后，第一版网站管理后台要补的最小运营入口和安全边界。当前只有少量受共享密钥保护的内部接口和最小审计地基。
 
 ## 当前真相
 
 - 当前没有统一管理后台网页。
-- 后端没有 `/admin` 或 `/internal/admin` 路由。
+- 后端没有 `/admin` 网页路由；`/internal/admin/audit-logs` 只是内部审计日志查询接口，不是完整后台。
 - Android 没有后台入口，也没有调用任何 `/internal/*` 接口。
 - 当前真实运营入口只有少量内部接口和环境变量：
-  - 帮助与反馈后台读取 / 回复：`GET /internal/support/messages`、`POST /internal/support/messages`，由 `SUPPORT_ADMIN_SECRET` 保护。
+  - 帮助与反馈后台会话列表 / 详情 / 回复：`GET /internal/support/conversations`、`GET /internal/support/messages`、`POST /internal/support/messages`，由 `SUPPORT_ADMIN_SECRET` 保护。
   - App 自动日志只读查询：`GET /internal/app/logs`，由 `SUPPORT_ADMIN_SECRET` 保护；支持按最近时间、用户、事件名和等级过滤，返回明细和聚合摘要。
+  - 内部操作审计只读查询：`GET /internal/admin/audit-logs`，由 `SUPPORT_ADMIN_SECRET` 保护；支持按最近时间、动作、目标用户和成功 / 失败过滤，返回操作元信息。
   - 今日农情生成：`POST /internal/jobs/today-agri-card/generate`，由 `DAILY_AGRI_JOB_SECRET` 保护。
   - 检查更新：用户侧 `GET /api/app/update` 读取 `APP_ANDROID_*` 环境变量，没有发布后台。
   - 会员 / 加油包 / 升级：Android 当前只展示“支付功能暂不可用”；后端开发期直改接口默认关闭，不是正式支付后台。
@@ -24,22 +25,24 @@
 ## 当前不要误解
 
 - 买服务器不等于自动有管理后台。
-- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 只是共享密钥，不是后台账号、角色权限或审计系统。
+- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 只是共享密钥，不是后台账号或角色权限系统；当前最小审计只能记录共享密钥内部入口的 actor 标签和操作元信息，不能替代正式后台账号。
 - `/internal/app/logs` 只是给运维和后续后台面板用的只读地基，不是完整日志中心、SLS 接入或告警系统。
 - `/api/app/update` 只是读取版本配置，不是发布系统；正式发布仍需要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间。
 - debug-only 礼品卡“兑换成功”只是样式预览，不能在没有后端成功结果时接到真实兑换按钮。
 - 开发期会员接口不是正式支付回调，生产必须保持关闭。
 - Android 客户端不能承载后台逻辑；客服回复、补权益、发礼品卡、停更新和删除用户数据都必须在服务端或后台完成。
 
-## P0：买服务器前
+## P0：服务器落地前规划（历史阶段）
 
 - 不提前硬做完整后台，避免账号体系、权限模型、数据库结构和真实运维入口未定时返工。
 - 继续用 runbook、内部接口和只读脚本规划兜底。
 - 继续按功能巡检，把当前真相和后续必补项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
-## P1：服务器落地后的最小后台
+该阶段已经结束：ECS / RDS / Redis / OSS / DNS 和部分内部接口已经落地。当前处于 P1 前置地基阶段，已有 `GET /internal/app/logs`、`GET /internal/admin/audit-logs`、帮助与反馈会话列表 / 详情 / 回复内部接口、今日农情内部生成接口和检查更新环境变量入口，但还没有网页后台、后台账号或角色权限。
 
-第一版目标是“能查、能回复、能停错、能留痕”，不是做重型运营系统。
+## P1：服务器落地后的最小网站后台
+
+第一版目标是一个受保护的网站后台，做到“能查、能回复、能停错、能留痕”，不是做重型运营系统。后台逻辑必须在服务端，Android 不调用 `/internal/*`，也不承载客服、发版、补权益或审计逻辑。
 
 最小页面：
 
@@ -51,15 +54,15 @@
 - App 自动日志：按时间、等级、事件名、用户、App 版本、系统版本、设备型号筛选，先接 `GET /internal/app/logs`，后续再接 SLS / 告警。
 - 检查更新：当前版本、APK 链接、SHA-256、文件大小、是否启用、停更入口。
 - 今日农情：当天状态、失败原因、来源链接、手动补跑、停用当天卡片。
-- 审计日志：查看后台操作记录。
+- 审计日志：先接 `GET /internal/admin/audit-logs` 查看内部操作记录，后续接后台账号和角色权限。
 
 最小表或结构：
 
 - `admin_users`：后台账号。
 - `admin_roles` 或等价角色字段：只读、客服、内容运营、发布运营、财务 / 订单、管理员。
 - `admin_sessions` 或等价登录态。
-- `admin_audit_logs`：操作人、角色、动作、目标、变更前后、原因、IP、UA、request_id、时间。
-- 帮助与反馈可先复用 `support_messages`，但要补未处理状态、处理人、关闭状态、搜索 / 列表能力，或新增轻量会话表。
+- `admin_audit_logs`：已落地最小版本，记录 actor、动作、目标类型 / ID、目标用户、成功 / 失败、状态码、脱敏 IP、UA 和时间；当前不保存正文、图片 URL、手机号、token 或密钥。后续正式后台账号接入后再补角色、request_id、原因、变更前后等字段或等价扩展。
+- 帮助与反馈可先复用 `support_messages`；当前已补最小会话列表、详情和回复内部接口，后续还要补未处理状态、处理人、关闭状态、搜索能力，或新增轻量会话表。
 - 用户真实反馈 / 产品洞察建议新增独立聚合表或日报表，例如 `product_insight_reports`、`product_insight_items`、`product_insight_sources`；source 只保存来源类型、脱敏引用、时间、标签和必要短摘，不保存原始手机号、token、密钥、图片内容或完整聊天正文。若用户删除历史或后续做账号注销，必须同步设计洞察来源引用的清理 / 去标识化口径。
 - 检查更新建议补 `app_releases`，不要长期只靠环境变量手改。
 - 今日农情可先复用 `daily_agri_cards`，后台只做状态查看、补跑、停用和审计。
@@ -84,6 +87,7 @@
 ## 安全与审计底线
 
 - 所有后台接口必须服务端鉴权和授权，不能只靠前端隐藏按钮。
+- 现有内部接口仍使用共享密钥保护；可选 `X-Admin-Actor` / `X-Support-Admin-Actor` 只用于审计标记，不等于身份认证。
 - 高风险操作必须写审计：补权益、发礼品卡、作废礼品卡、停更新、手动补跑今日农情、导出 / 删除用户数据、修改后台权限。
 - 审计记录不能只存在浏览器本地；必须落服务端数据库或日志系统。
 - 后台账号、密钥和数据库密码不能写进仓库。

@@ -167,12 +167,24 @@ func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Requ
 	card, status, err := s.dailyAgri.GenerateToday(r.Context())
 	if err != nil {
 		s.logger.Error("generate today agri card failed", "status", status, "error", err)
+		s.recordAdminAuditLog(r, "daily_agri_job_secret", "internal.today_agri.generate", "daily_agri_cards", status, "", false, http.StatusBadGateway, map[string]any{
+			"status":     status,
+			"error_code": "generation_failed",
+		})
 		s.writeJSON(w, http.StatusBadGateway, map[string]any{
 			"status": status,
 			"error":  "generation_failed",
 		})
 		return
 	}
+	itemCount := 0
+	if card != nil {
+		itemCount = len(card.Items)
+	}
+	s.recordAdminAuditLog(r, "daily_agri_job_secret", "internal.today_agri.generate", "daily_agri_cards", status, "", true, http.StatusOK, map[string]any{
+		"status":     status,
+		"item_count": itemCount,
+	})
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"status": status,
 		"card":   card,

@@ -40,7 +40,7 @@ systemctl status nginx --no-pager
 ## 常用关键词
 
 - `server bootstrap failed`：启动阶段失败，多数是数据库连接、迁移、assets / migrations 路径或环境变量问题
-- `MODEL_BACKEND_NOT_CONFIGURED` / `missing_key`：DashScope 模型 Key 未配置
+- `MODEL_BACKEND_NOT_CONFIGURED` / `missing_key`：通常表示 DashScope 模型 Key 缺失、槽位为空或服务未读取到配置
 - `unauthorized`：`AUTH_STRICT=true` 下缺少有效 bearer token
 - `RATE_LIMITED`：后端用户级限流
 - Nginx `429`：Nginx IP 级限流命中

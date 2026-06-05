@@ -52,7 +52,7 @@
 - 主聊天同一用户同一时间只允许一个活跃流，依赖 MySQL `chat_stream_inflight` 和 `UNIQUE KEY (user_id)`，不是纯内存锁。
 - 同一 `client_msg_id` 的问答归档由 `session_round_ledger` 防重。
 - 额度扣减由 `quota_ledger` 防重复扣。
-- 模型 Key 池已支持 `DASHSCOPE_API_KEY_1/2/3` 和旧列表配置，能在请求打开阶段遇到限流 / quota / 认证类错误时切换 Key；同一阿里云主账号多 Key 不扩真实 RPM / TPM。
+- 模型 Key 池已支持 `DASHSCOPE_API_KEY_1/2/3` 和旧列表配置，按顺序主备使用，能在请求打开阶段遇到限流 / quota / 认证类错误时切换 Key；同一阿里云主账号多 Key 不扩真实 RPM / TPM。
 - 今日农情生成使用数据库 lease，能防多实例重复生成同一天卡片。
 - 图片上传当前限制为单张 JPEG 且 `<=1MB`，聊天图片 URL 只接受配置的公开基地址下 `/uploads/*.jpg`。
 
@@ -101,7 +101,7 @@
 
 - Android 进入帮助与反馈页时拉 `GET /api/support/messages`，成功后调用 `POST /api/support/read` 标记后台 / 系统消息已读。
 - 设置页红点由 `GET /api/support/summary` 的 `unread_count` 决定，只统计 `sender_type IN ('admin', 'system') AND read_by_user_at IS NULL`。
-- 用户发送走 `POST /api/support/messages`；后台回复走 `POST /internal/support/messages`，后台读取走 `GET /internal/support/messages?user_id=...`。
+- 用户发送走 `POST /api/support/messages`；后台会话列表走 `GET /internal/support/conversations`，后台详情读取走 `GET /internal/support/messages?user_id=...`，后台回复走 `POST /internal/support/messages`。
 - 内部后台接口由 `SUPPORT_ADMIN_SECRET` 保护，支持 `X-Support-Admin-Secret` 或 `Authorization: Bearer <secret>`。
 - 帮助与反馈图片复用主聊天图片链：相机 / Photo Picker -> App 私有 JPEG 副本 -> `/upload` -> support 消息保存 URL；单次最多 4 张。
 - 附件面板打开时，系统返回、手势返回和左上角返回都会优先收起附件面板；页面使用 `imePadding()`，输入框不会被键盘盖住。
@@ -116,7 +116,7 @@
 - 公开生产前仍必须接账号 token 并启用 `AUTH_STRICT=true`；否则裸 `X-User-Id` 能读写某个用户的帮助与反馈。
 - 多后端实例前必须先上 OSS 或保持单实例；帮助与反馈图片同样依赖当前 `/upload` 本机磁盘和 `/uploads/` 静态读取。
 - `SUPPORT_ADMIN_SECRET` 只能配置在服务端环境变量或未来管理后台后端，不能进 APK，不能写仓库。
-- 当前内部后台接口只有共享 secret，没有后台账号、角色权限、IP 限制和审计；公开运营前至少要补最小后台或内网脚本。
+- 当前内部后台接口只有共享 secret，没有后台账号、角色权限和 IP 限制；最小内部操作审计已开始落地，但还不能替代正式后台账号 / 权限系统。公开运营前至少要补最小后台或内网脚本。
 
 买服务器后必须补：
 
@@ -206,7 +206,7 @@
 - 设置页只有一个“服务协议”入口，进入本地内置目录页。
 - 目录页包含 6 个二级页面：用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示。
 - 6 个二级页面都走设置页右进左出的页面栈；左上角返回和系统返回键会先回到服务协议目录，再回到设置菜单。
-- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES`；引入阿里云融合认证 SDK 后，合并 Manifest 还会包含 `ACCESS_WIFI_STATE / CHANGE_NETWORK_STATE / CHANGE_WIFI_STATE / READ_PHONE_STATE / RECEIVE_USER_PRESENT` 等登录认证所需权限。
+- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE / READ_PHONE_STATE / REQUEST_INSTALL_PACKAGES`；引入阿里云融合认证 SDK 后，合并 Manifest 还会包含 `CHANGE_NETWORK_STATE / CHANGE_WIFI_STATE / RECEIVE_USER_PRESENT` 等登录认证所需权限；AndroidX WorkManager 还会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
 - App 当前不申请定位、App 相机、相册 / 存储读写、录音、通讯录、短信或通知权限；手机号一键登录 SDK 接入后会按需使用电话状态、网络状态和 Wi-Fi 状态来判断 SIM 卡、运营商网络和认证环境。
 - Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，便于用户找回现场照片；本轮已把该口径补进隐私政策、个人信息收集清单和应用权限页。
 - 用户可见正文没有暴露具体模型品牌、模型平台名或供应商账号信息，只使用“第三方大模型和云服务”这类必要委托处理口径。
@@ -265,7 +265,7 @@
 - `BASE_PUBLIC_URL / UPLOAD_BASE_URL` 必须是公网 https，且能被模型服务访问；否则图片上传成功也可能无法被主模型拉取。
 - 如果首版不接 OSS，ECS 必须明确单台运行；多实例前必须先把 `/upload` 和 `/uploads/` 迁到 OSS 或等价共享对象存储。
 - 数据库迁移应在发布流程中只执行一次，或补迁移锁；不要让多个后端实例首次启动同时抢跑迁移。
-- 模型 Key 池可以短期填 2 到 3 把不同主账号 Key，但朋友账号只能早期兜底，长期生产需要收回到自己可控账单和权限体系。
+- 模型 Key 池可以短期填 2 到 3 把不同主账号 Key，`DASHSCOPE_API_KEY_1` 作为主 Key、`DASHSCOPE_API_KEY_2` 作为副 Key；朋友账号只能早期兜底，长期生产需要收回到自己可控账单和权限体系。
 - 真实收费前仍必须补支付回调验签、账号绑定和对账，不能打开开发期订单直改接口。
 
 买服务器后必须补：
@@ -358,7 +358,7 @@
 
 ### 10. 账号 / 手机号登录与生产鉴权
 
-结论：当前账号链路已经进入手机号登录骨架阶段，但还不是公开生产账号体系。后端已有严格鉴权开关、v2 session token、手机号账号表、旧本机身份迁移桥和短信 / 融合认证接口；Redis 认证短期限流已部署到 ECS 并健康。阿里云 SchemeCode、短信签名模板、DYPNS 环境变量和 Android 一键登录 SDK 客户端链路已落地；真正上线前缺的是 HTTPS / 备案后的真机登录回归、AccessKey 轮换和旧 `X-User-Id` 兜底隔离，不是 Go 语言性能问题。
+结论：当前账号链路已经进入手机号登录骨架阶段，但还不是公开生产账号体系。后端已有严格鉴权开关、v2 session token、手机号账号表、旧本机身份迁移桥和短信 / 融合认证接口；Redis 认证短期限流已部署到 ECS 并健康。阿里云 SchemeCode、短信签名模板、DYPNS 环境变量和 Android 一键登录 SDK 客户端链路已落地；`api.nongjiqiancha.cn` HTTPS 已补齐，真正上线前缺的是 HTTPS 公网入口下的真机登录回归、AccessKey 轮换和旧 `X-User-Id` 兜底隔离，不是 Go 语言性能问题。
 
 当前代码真相：
 
@@ -398,28 +398,29 @@
 
 ### 11. 统一管理后台
 
-结论：当前没有统一管理后台网页，也没有 `/admin` 或 `/internal/admin` 路由。现在能用的是“少量内部接口 + 环境变量 + runbook 规划”，买服务器后第一版后台应先做最小运营入口，不要在账号、权限、支付、礼品卡和真实数据结构未定时一次性做重。
+结论：当前没有统一管理后台网页，也没有 `/admin` 网页路由；`/internal/admin/audit-logs` 只是最小内部审计查询接口，不是完整后台。现在能用的是“少量内部接口 + 环境变量 + 最小审计地基 + runbook 规划”，买服务器后第一版后台应先做最小运营入口，不要在账号、权限、支付、礼品卡和真实数据结构未定时一次性做重。
 
 当前代码真相：
 
-- 后端真实内部入口只有帮助与反馈后台读取 / 回复、今日农情内部生成，以及检查更新环境变量配置；它们不是完整后台。
-- 帮助与反馈内部接口由 `SUPPORT_ADMIN_SECRET` 保护，支持按 `user_id` 读消息和发送 `admin` 回复。
+- 后端真实内部入口有帮助与反馈后台会话列表 / 读取 / 回复、App 自动日志内部查询、今日农情内部生成、最小内部审计查询，以及检查更新环境变量配置；它们不是完整后台。
+- 帮助与反馈内部接口由 `SUPPORT_ADMIN_SECRET` 保护，支持查最近会话、按 `user_id` 读消息和发送 `admin` 回复。
 - 今日农情内部生成接口由 `DAILY_AGRI_JOB_SECRET` 保护，使用 `daily_agri_cards` 数据库 lease 防重复生成。
-- 检查更新用户侧接口 `GET /api/app/update` 只读取 `APP_ANDROID_*` 环境变量，不提供发布、停更、审计或历史版本管理。
+- 检查更新用户侧接口 `GET /api/app/update` 只读取 `APP_ANDROID_*` 环境变量，不提供发布、停更或历史版本管理。
+- 最小内部操作审计已新增 `admin_audit_logs` 和 `GET /internal/admin/audit-logs`，现有内部 App 日志查询、帮助与反馈内部会话列表 / 读取 / 回复、今日农情内部生成会记录操作元信息；不记录正文、图片 URL、手机号、token 或密钥。
 - 会员 / 加油包 / 升级的后端开发期接口默认关闭，Android 也不会调用；它们不是正式支付后台。
 - 礼品卡当前没有后端表、兑换接口、发放接口或后台。
 - Android 没有后台入口，也不调用任何 `/internal/*` 接口。
 
 已排查的旧方案：
 
-- 没有发现旧网页后台、旧 `/admin`、旧 `/internal/admin` 或 Android 端后台入口并存。
+- 没有发现旧网页后台、旧 `/admin` 或 Android 端后台入口并存；`/internal/admin/audit-logs` 是当前新落的审计查询，不是旧后台。
 - debug-only 预览面板里的会员成功、礼品卡成功、帮助与反馈样例都只是 UI 预览，不是后台。
 - `support` 内部命名里的 `admin/system` 只是消息来源枚举，不代表已经有坐席后台或工单系统。
 
 买服务器后必须补：
 
 - 后台账号、角色权限和登录态，至少区分只读、客服、内容运营、发布运营、财务 / 订单、管理员。
-- 操作审计表，记录操作人、角色、动作、目标、变更前后、原因、IP、UA、request_id 和时间。
+- 操作审计表：当前已有最小 `admin_audit_logs`，后续正式后台账号接入后还要补角色、request_id、原因、变更前后和权限模型。
 - 帮助与反馈后台：会话列表、详情、回复、未读 / 未处理队列、处理状态和搜索。
 - 用户详情页：按手机号 / user_id 查询会员、额度、扣次流水、反馈、订单、礼品卡和注销处理状态。
 - 检查更新发布页：当前版本、APK 链接、文件大小、SHA-256、是否启用、停更和发布审计；后续建议用 `app_releases` 表替代长期手改环境变量。
@@ -428,7 +429,7 @@
 
 上线前必须注意：
 
-- `SUPPORT_ADMIN_SECRET` 和 `DAILY_AGRI_JOB_SECRET` 是共享密钥，不是后台账号、角色权限或审计体系。
+- `SUPPORT_ADMIN_SECRET` 和 `DAILY_AGRI_JOB_SECRET` 是共享密钥，不是后台账号或角色权限体系；可选 `X-Admin-Actor` 只用于审计标记，不等于身份认证。
 - 高风险操作不能只靠前端隐藏按钮，必须服务端鉴权、服务端授权和服务端审计。
 - 补权益、发礼品卡、作废礼品卡、停更新、导出 / 删除用户数据等动作必须二次确认并落审计。
 - 后台密钥、数据库密码、短信密钥、支付密钥不能写进仓库。
