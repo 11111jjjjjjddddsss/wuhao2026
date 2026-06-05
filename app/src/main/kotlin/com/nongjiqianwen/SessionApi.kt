@@ -137,6 +137,14 @@ object SessionApi {
         @SerializedName("latest_message") val latestMessage: SupportMessage? = null
     )
 
+    data class SupportSendResult(
+        val message: SupportMessage? = null,
+        val autoReply: SupportMessage? = null
+    ) {
+        val visibleMessages: List<SupportMessage>
+            get() = listOfNotNull(message, autoReply)
+    }
+
     data class AppUpdateInfo(
         val platform: String? = null,
         @SerializedName("current_version_code") val currentVersionCode: Int? = null,
@@ -783,7 +791,7 @@ object SessionApi {
     fun sendSupportMessage(
         body: String,
         images: List<String> = emptyList(),
-        onResult: (SupportMessage?) -> Unit
+        onResult: (SupportSendResult?) -> Unit
     ) {
         val base = baseUrl()
         if (base.isEmpty()) {
@@ -829,7 +837,7 @@ object SessionApi {
                         return@use
                     }
                     val parsed = try {
-                        gson.fromJson(bodyText, SupportMessageResponse::class.java)?.message
+                        gson.fromJson(bodyText, SupportMessageResponse::class.java)?.toResult()
                     } catch (e: Exception) {
                         Log.e(TAG, "parse sent support message", e)
                         null
@@ -1487,8 +1495,14 @@ object SessionApi {
     )
 
     private data class SupportMessageResponse(
-        val message: SupportMessage? = null
-    )
+        val message: SupportMessage? = null,
+        @SerializedName("auto_reply") val autoReply: SupportMessage? = null
+    ) {
+        fun toResult(): SupportSendResult = SupportSendResult(
+            message = message,
+            autoReply = autoReply
+        )
+    }
 
     private fun postToMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {

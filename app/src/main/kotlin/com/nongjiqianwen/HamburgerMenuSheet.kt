@@ -169,6 +169,31 @@ private fun buildSupportLinkedText(text: String, linkColor: Color): AnnotatedStr
     }
 }
 
+private fun mergeSupportMessagesById(
+    current: List<SessionApi.SupportMessage>,
+    incoming: List<SessionApi.SupportMessage>
+): List<SessionApi.SupportMessage> {
+    val byId = linkedMapOf<Long, SessionApi.SupportMessage>()
+    val withoutId = mutableListOf<SessionApi.SupportMessage>()
+    (current + incoming).forEach { message ->
+        val id = message.id
+        if (id == null) {
+            withoutId += message
+        } else {
+            val previous = byId[id]
+            byId[id] = if (previous?.readByUserAt != null && message.readByUserAt == null) {
+                message.copy(readByUserAt = previous.readByUserAt)
+            } else {
+                message
+            }
+        }
+    }
+    return (withoutId + byId.values).sortedWith(
+        compareBy<SessionApi.SupportMessage> { it.createdAt ?: 0L }
+            .thenBy { it.id ?: Long.MAX_VALUE }
+    )
+}
+
 @Composable
 internal fun HamburgerMenuSheet(
     visible: Boolean,
@@ -1983,7 +2008,7 @@ private fun HamburgerSupportFeedbackPage(
                 loadFailed = true
                 return@getSupportMessages
             }
-            messages = loaded
+            messages = mergeSupportMessagesById(messages, loaded)
             val lastSeenMessageId = loaded
                 .asSequence()
                 .filter { it.senderType == "admin" || it.senderType == "system" }
@@ -2013,6 +2038,30 @@ private fun HamburgerSupportFeedbackPage(
         }
     }
 
+    fun markAutoReplyRead(autoReplyMessageId: Long, attempt: Int = 0) {
+        SessionApi.markSupportRead(lastSeenMessageId = autoReplyMessageId) { marked ->
+            if (marked) {
+                messages = messages.map { message ->
+                    if (message.id == autoReplyMessageId) {
+                        message.copy(readByUserAt = System.currentTimeMillis())
+                    } else {
+                        message
+                    }
+                }
+                onConversationChanged()
+                return@markSupportRead
+            }
+            if (attempt == 0) {
+                scope.launch {
+                    delay(600)
+                    markAutoReplyRead(autoReplyMessageId, attempt = 1)
+                }
+            } else {
+                onConversationChanged()
+            }
+        }
+    }
+
     fun sendMessage() {
         val body = inputValue.text.trim()
         val imageSnapshot = selectedImages.take(4)
@@ -2034,9 +2083,13 @@ private fun HamburgerSupportFeedbackPage(
                 onPendingAction(uploadError ?: "图片上传失败，请稍后再试")
                 return@launch
             }
-            SessionApi.sendSupportMessage(body = body, images = imageUrls) { sent ->
+            SessionApi.sendSupportMessage(body = body, images = imageUrls) { nullableResult ->
                 sending = false
-                if (sent == null) {
+                val result = nullableResult ?: run {
+                    onPendingAction(SUPPORT_SEND_FAILED_HINT)
+                    return@sendSupportMessage
+                }
+                val sent = result.message ?: run {
                     onPendingAction(SUPPORT_SEND_FAILED_HINT)
                     return@sendSupportMessage
                 }
@@ -2046,8 +2099,14 @@ private fun HamburgerSupportFeedbackPage(
                     imageSnapshot.forEach(context::deleteComposerImageAttachment)
                 }
                 loadFailed = false
-                messages = messages + sent
-                onConversationChanged()
+                val visibleMessages = result.visibleMessages
+                messages = mergeSupportMessagesById(messages, visibleMessages)
+                val autoReplyMessageId = result.autoReply?.id
+                if (autoReplyMessageId == null) {
+                    onConversationChanged()
+                    return@sendSupportMessage
+                }
+                markAutoReplyRead(autoReplyMessageId)
             }
         }
     }
@@ -2139,33 +2198,45 @@ private fun HamburgerSupportFeedbackContent(
     }
 
     Column(modifier = modifier) {
-        Text(
-            text = "帮助与反馈",
-            color = Color(0xFF111111),
-            fontSize = 20.sp,
-            lineHeight = 28.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
+        Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 56.dp)
                 .padding(top = 14.dp)
-        )
+        ) {
+            Text(
+                text = "帮助与反馈",
+                color = Color(0xFF111111),
+                fontSize = 20.sp,
+                lineHeight = 26.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "App 使用问题、账号权益和故障截图会在这里处理",
+                color = Color(0xFF7D828A),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                textAlign = TextAlign.Center
+            )
+        }
 
         Surface(
-            color = Color(0xFFF0F1F2),
-            shape = RoundedCornerShape(22.dp),
+            color = Color(0xFFF5F6F3),
+            shape = RoundedCornerShape(18.dp),
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .padding(top = 18.dp)
+                .padding(top = 16.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState)
-                    .padding(horizontal = 14.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 when {
                     loading -> {
@@ -2196,7 +2267,7 @@ private fun HamburgerSupportFeedbackContent(
                         }
                     }
                     messages.isEmpty() -> {
-                        HamburgerSupportStatusText(text = "提交反馈后，客服回复和处理进展会在这里显示。")
+                        HamburgerSupportEmptyState()
                     }
                     else -> {
                         messages.forEach { message ->
@@ -2280,6 +2351,47 @@ private fun HamburgerSupportFeedbackContent(
 }
 
 @Composable
+private fun HamburgerSupportEmptyState() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp, horizontal = 12.dp)
+    ) {
+        Surface(
+            color = Color.White,
+            shape = CircleShape,
+            border = BorderStroke(0.8.dp, Color(0xFFE2E5DF))
+        ) {
+            Text(
+                text = "?",
+                color = Color(0xFF5C6F42),
+                fontSize = 18.sp,
+                lineHeight = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+        }
+        Text(
+            text = "提交反馈后，处理进展会在这里显示",
+            color = Color(0xFF4B5158),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = "也可以直接问登录、更新、图片上传、会员次数等常见问题",
+            color = Color(0xFF858A91),
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
 private fun HamburgerSupportStatusText(text: String) {
     Text(
         text = text,
@@ -2296,45 +2408,74 @@ private fun HamburgerSupportStatusText(text: String) {
 @Composable
 private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
     val isUser = message.senderType == "user"
+    val isSystem = message.senderType == "system"
     val timestamp = formatSupportMessageTime(message.createdAt)
     val body = message.body.orEmpty()
     val imageUrls = message.imageUrls.orEmpty()
-    val bodyColor = if (isUser) Color.White else Color(0xFF111111)
+    val bodyColor = when {
+        isUser -> Color.White
+        isSystem -> Color(0xFF2F3B22)
+        else -> Color(0xFF111111)
+    }
     val linkColor = if (isUser) Color.White else Color(0xFF1463D9)
     val renderedBody = remember(body, linkColor) { buildSupportLinkedText(body, linkColor) }
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
+        horizontalArrangement = when {
+            isUser -> Arrangement.End
+            isSystem -> Arrangement.Center
+            else -> Arrangement.Start
+        }
     ) {
         Column(
-            horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+            horizontalAlignment = when {
+                isUser -> Alignment.End
+                isSystem -> Alignment.CenterHorizontally
+                else -> Alignment.Start
+            },
             verticalArrangement = Arrangement.spacedBy(4.dp),
-            modifier = Modifier.widthIn(max = 310.dp)
+            modifier = Modifier.widthIn(max = if (isSystem) 330.dp else 310.dp)
         ) {
             Text(
-                text = if (isUser) "我" else "客服",
-                color = Color(0xFF8A8E96),
+                text = when {
+                    isUser -> "我"
+                    isSystem -> "系统提示"
+                    else -> "客服"
+                },
+                color = if (isSystem) Color(0xFF6F7D5A) else Color(0xFF8A8E96),
                 fontSize = 11.sp,
+                fontWeight = if (isSystem) FontWeight.Medium else FontWeight.Normal,
                 lineHeight = 14.sp
             )
             if (body.isNotBlank()) {
                 Surface(
-                    color = if (isUser) Color(0xFF111111) else Color.White,
+                    color = when {
+                        isUser -> Color(0xFF111111)
+                        isSystem -> Color(0xFFF8FAF2)
+                        else -> Color.White
+                    },
                     shape = RoundedCornerShape(
-                        topStart = 18.dp,
-                        topEnd = 18.dp,
-                        bottomEnd = if (isUser) 6.dp else 18.dp,
-                        bottomStart = if (isUser) 18.dp else 6.dp
+                        topStart = if (isSystem) 14.dp else 18.dp,
+                        topEnd = if (isSystem) 14.dp else 18.dp,
+                        bottomEnd = if (isUser) 6.dp else if (isSystem) 14.dp else 18.dp,
+                        bottomStart = if (isUser) 18.dp else if (isSystem) 14.dp else 6.dp
                     ),
-                    border = if (isUser) null else BorderStroke(0.7.dp, Color(0xFFE1E4E8))
+                    border = when {
+                        isUser -> null
+                        isSystem -> BorderStroke(0.8.dp, Color(0xFFDDE6CD))
+                        else -> BorderStroke(0.7.dp, Color(0xFFE1E4E8))
+                    }
                 ) {
                     SelectionContainer {
                         Text(
                             text = renderedBody,
                             color = bodyColor,
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                            fontSize = if (isSystem) 14.sp else 15.sp,
+                            lineHeight = if (isSystem) 21.sp else 22.sp,
+                            modifier = Modifier.padding(
+                                horizontal = if (isSystem) 13.dp else 14.dp,
+                                vertical = if (isSystem) 9.dp else 10.dp
+                            )
                         )
                     }
                 }
@@ -2529,6 +2670,13 @@ internal fun HamburgerSupportFeedbackPagePreview(
         ),
         SessionApi.SupportMessage(
             id = 2,
+            senderType = "system",
+            body = "您的反馈已提交，我们会尽快核实处理。为便于定位，请补充问题发生时间、操作步骤或截图；如需进一步沟通，我们会通过本页面回复您。",
+            createdAt = now - 26L * 60L * 1000L,
+            readByUserAt = now - 26L * 60L * 1000L
+        ),
+        SessionApi.SupportMessage(
+            id = 3,
             senderType = "admin",
             body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。也可以看 https://api.nongjiqiancha.cn/help。",
             createdAt = now - 18L * 60L * 1000L

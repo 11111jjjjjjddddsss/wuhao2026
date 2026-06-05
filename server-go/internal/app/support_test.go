@@ -1,6 +1,7 @@
 package app
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -123,6 +124,135 @@ func TestSupportMessageRateLimiterUsesEnv(t *testing.T) {
 	}
 	if limiter.window != 30*time.Second || limiter.maxHits != 2 || limiter.pruneInterval != 45*time.Second {
 		t.Fatalf("support message limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
+	}
+}
+
+func TestShouldCreateSupportAutoReply(t *testing.T) {
+	now := time.Unix(2*24*60*60, 0).UnixMilli()
+	if !shouldCreateSupportAutoReply(nil, now, supportAutoReplyBody) {
+		t.Fatalf("new support conversation should create auto reply")
+	}
+
+	recentUserMessage := &SupportMessage{
+		SenderType: "user",
+		CreatedAt:  now - int64((defaultSupportAutoReplyCooldown-time.Millisecond)/time.Millisecond),
+	}
+	if shouldCreateSupportAutoReply(recentUserMessage, now, supportAutoReplyBody) {
+		t.Fatalf("recent user follow-up should not create auto reply")
+	}
+
+	oldUserMessage := &SupportMessage{
+		SenderType: "user",
+		CreatedAt:  now - int64(defaultSupportAutoReplyCooldown/time.Millisecond),
+	}
+	if !shouldCreateSupportAutoReply(oldUserMessage, now, supportAutoReplyBody) {
+		t.Fatalf("old user conversation should create auto reply")
+	}
+
+	latestAdminMessage := &SupportMessage{
+		SenderType: "admin",
+		CreatedAt:  now - int64((defaultSupportAutoReplyCooldown+time.Hour)/time.Millisecond),
+	}
+	if shouldCreateSupportAutoReply(latestAdminMessage, now, supportAutoReplyBody) {
+		t.Fatalf("latest admin message should not create auto reply")
+	}
+
+	futureUserMessage := &SupportMessage{
+		SenderType: "user",
+		CreatedAt:  now + 1,
+	}
+	if shouldCreateSupportAutoReply(futureUserMessage, now, supportAutoReplyBody) {
+		t.Fatalf("future latest message should not create auto reply")
+	}
+
+	recentUserForFAQ := &SupportMessage{
+		SenderType: "user",
+		CreatedAt:  now - int64((defaultSupportFAQAutoReplyCooldown-time.Millisecond)/time.Millisecond),
+	}
+	if shouldCreateSupportAutoReply(recentUserForFAQ, now, supportLoginAutoReplyBody) {
+		t.Fatalf("very recent FAQ follow-up should not create auto reply")
+	}
+	oldEnoughUserForFAQ := &SupportMessage{
+		SenderType: "user",
+		CreatedAt:  now - int64(defaultSupportFAQAutoReplyCooldown/time.Millisecond),
+	}
+	if !shouldCreateSupportAutoReply(oldEnoughUserForFAQ, now, supportLoginAutoReplyBody) {
+		t.Fatalf("FAQ follow-up after cooldown should create auto reply")
+	}
+
+	recentSameSystemReply := &SupportMessage{
+		SenderType: "system",
+		Body:       supportLoginAutoReplyBody,
+		CreatedAt:  now - int64((defaultSupportAutoReplyRepeatCooldown-time.Millisecond)/time.Millisecond),
+	}
+	if shouldCreateSupportAutoReply(recentSameSystemReply, now, supportLoginAutoReplyBody) {
+		t.Fatalf("same system reply should respect repeat cooldown")
+	}
+	if !shouldCreateSupportAutoReply(recentSameSystemReply, now, supportUpdateAutoReplyBody) {
+		t.Fatalf("different system reply should be allowed")
+	}
+
+	recentSameRegularSystemReply := &SupportMessage{
+		SenderType: "system",
+		Body:       supportAutoReplyBody,
+		CreatedAt:  now - int64((defaultSupportAutoReplyCooldown-time.Millisecond)/time.Millisecond),
+	}
+	if shouldCreateSupportAutoReply(recentSameRegularSystemReply, now, supportAutoReplyBody) {
+		t.Fatalf("regular submit confirmation should respect 24h cooldown even when latest is system")
+	}
+	oldSameRegularSystemReply := &SupportMessage{
+		SenderType: "system",
+		Body:       supportAutoReplyBody,
+		CreatedAt:  now - int64(defaultSupportAutoReplyCooldown/time.Millisecond),
+	}
+	if !shouldCreateSupportAutoReply(oldSameRegularSystemReply, now, supportAutoReplyBody) {
+		t.Fatalf("regular submit confirmation should be allowed after 24h")
+	}
+}
+
+func TestSupportAutoReplyBodyFor(t *testing.T) {
+	if got := supportAutoReplyBodyFor("  你好！ ", nil); got != supportGreetingAutoReplyBody {
+		t.Fatalf("greeting auto reply = %q, want greeting body", got)
+	}
+	if got := supportAutoReplyBodyFor("你好", []string{"https://example.com/uploads/a.jpg"}); got != supportAutoReplyBody {
+		t.Fatalf("image feedback auto reply = %q, want regular body", got)
+	}
+	if got := supportAutoReplyBodyFor("检查更新失败了", nil); got != supportUpdateAutoReplyBody {
+		t.Fatalf("update FAQ auto reply = %q, want update body", got)
+	}
+	if got := supportAutoReplyBodyFor("无法提交反馈", nil); got != supportAutoReplyBody {
+		t.Fatalf("regular feedback auto reply = %q, want regular body", got)
+	}
+}
+
+func TestSupportConversationNeedsReply(t *testing.T) {
+	tests := []struct {
+		name string
+		in   sql.NullString
+		want bool
+	}{
+		{
+			name: "latest user",
+			in:   sql.NullString{String: "user", Valid: true},
+			want: true,
+		},
+		{
+			name: "latest admin",
+			in:   sql.NullString{String: "admin", Valid: true},
+			want: false,
+		},
+		{
+			name: "no non-system message",
+			in:   sql.NullString{},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := supportConversationNeedsReply(tt.in); got != tt.want {
+				t.Fatalf("supportConversationNeedsReply(%#v) = %v, want %v", tt.in, got, tt.want)
+			}
+		})
 	}
 }
 

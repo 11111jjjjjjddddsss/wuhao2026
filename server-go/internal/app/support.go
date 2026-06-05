@@ -26,6 +26,19 @@ const (
 	defaultSupportMessageRateLimitWindow        = 10 * time.Minute
 	defaultSupportMessageRateLimitMaxHits       = 20
 	defaultSupportMessageRateLimitPruneInterval = 10 * time.Minute
+	defaultSupportAutoReplyCooldown             = 24 * time.Hour
+	defaultSupportAutoReplyRepeatCooldown       = 5 * time.Minute
+	defaultSupportFAQAutoReplyCooldown          = time.Minute
+	supportAutoReplyBody                        = "您的反馈已提交，我们会尽快核实处理。为便于定位，请补充问题发生时间、操作步骤或截图；如需进一步沟通，我们会通过本页面回复您。"
+	supportGreetingAutoReplyBody                = "您好，请描述您遇到的问题，并尽量补充发生时间、操作步骤或截图。我们看到后会尽快核实处理。"
+	supportHowToUseAutoReplyBody                = "您可以回到主聊天页，输入农业问题或上传作物图片进行咨询；本页主要用于提交 App 使用问题、意见反馈和故障截图。"
+	supportLoginAutoReplyBody                   = "如果遇到登录或验证码问题，请先确认已勾选协议、网络正常，并可尝试切换验证码登录或稍后重试。若仍失败，请补充失败时间、页面提示和截图，我们会继续核实。"
+	supportUpdateAutoReplyBody                  = "检查更新可在设置页进入“检查更新”。如果下载、校验或安装失败，请补充当前版本、失败提示和截图，便于我们定位。"
+	supportImageAutoReplyBody                   = "图片相关问题请确认单次最多 4 张，图片清晰且网络正常；如果拍照、选图或上传失败，请补充失败时间、页面提示和截图。"
+	supportMembershipAutoReplyBody              = "会员档位、剩余次数和权益请以会员中心展示为准。涉及订单、扣费或权益异常时，请补充页面截图和发生时间，我们会进一步核实。"
+	supportHistoryAutoReplyBody                 = "历史对话以当前登录账号为准；如需清空，可在账号管理页执行删除历史。若历史恢复或删除异常，请补充发生时间、操作步骤和截图。"
+	supportPrivacyAutoReplyBody                 = "服务协议、隐私政策和风险提示可在设置页查看。若您对账号数据、隐私或注销规则有疑问，请说明具体问题，我们会继续核实。"
+	supportAgriQuestionAutoReplyBody            = "农业技术问题请回到主聊天页咨询，那里支持文字、图片和图文混合问诊。本页主要处理 App 使用问题、故障反馈和客服沟通。"
 )
 
 type SupportMessage struct {
@@ -143,13 +156,30 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	message, err := s.store.CreateSupportMessage(r.Context(), auth.UserID, "user", normalized, imageURLs, time.Now().UnixMilli())
+	nowMs := time.Now().UnixMilli()
+	latest, latestErr := s.store.getLatestSupportMessage(r.Context(), auth.UserID)
+	if latestErr != nil {
+		s.logger.Warn("get latest support message before auto reply failed", "userId", auth.UserID, "error", latestErr)
+	}
+	message, err := s.store.CreateSupportMessage(r.Context(), auth.UserID, "user", normalized, imageURLs, nowMs)
 	if err != nil {
 		s.logger.Error("create support message failed", "userId", auth.UserID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	s.writeJSON(w, http.StatusOK, map[string]any{"message": message})
+	var autoReply *SupportMessage
+	replyBody := supportAutoReplyBodyFor(normalized, imageURLs)
+	if latestErr == nil && shouldCreateSupportAutoReply(latest, nowMs, replyBody) {
+		autoReply, err = s.store.CreateSupportMessage(r.Context(), auth.UserID, "system", replyBody, nil, nowMs+1)
+		if err != nil {
+			s.logger.Error("create support auto reply failed", "userId", auth.UserID, "messageId", message.ID, "error", err)
+			autoReply = nil
+		}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"message":    message,
+		"auto_reply": autoReply,
+	})
 }
 
 func (s *Server) handleMarkSupportRead(w http.ResponseWriter, r *http.Request) {
@@ -301,6 +331,89 @@ func normalizeSupportMessagePayload(raw string, images []string) (string, []stri
 	return body, imageURLs, ""
 }
 
+func shouldCreateSupportAutoReply(latest *SupportMessage, nowMs int64, replyBody string) bool {
+	if latest == nil {
+		return true
+	}
+	if latest.CreatedAt <= 0 || nowMs < latest.CreatedAt || latest.SenderType == "admin" {
+		return false
+	}
+	elapsed := time.Duration(nowMs-latest.CreatedAt) * time.Millisecond
+	if latest.SenderType == "system" {
+		if replyBody == supportAutoReplyBody && latest.Body == replyBody {
+			return elapsed >= defaultSupportAutoReplyCooldown
+		}
+		return latest.Body != replyBody || elapsed >= defaultSupportAutoReplyRepeatCooldown
+	}
+	if latest.SenderType != "user" {
+		return false
+	}
+	if replyBody != supportAutoReplyBody {
+		return elapsed >= defaultSupportFAQAutoReplyCooldown
+	}
+	return elapsed >= defaultSupportAutoReplyCooldown
+}
+
+func supportAutoReplyBodyFor(body string, imageURLs []string) string {
+	if len(imageURLs) > 0 {
+		return supportAutoReplyBody
+	}
+	normalized := normalizeSupportAutoReplyText(body)
+	if isShortSupportGreeting(normalized) {
+		return supportGreetingAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "怎么用", "如何用", "使用方法", "怎么玩", "新手", "教程") {
+		return supportHowToUseAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "农业问题", "作物问题", "病虫害", "病害", "虫害", "打药", "农药", "施肥", "小麦", "玉米", "水稻", "棉花", "果树", "叶片发黄", "黄叶") {
+		return supportAgriQuestionAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "登录", "登陆", "验证码", "一键登录", "手机号", "认证", "收不到码", "短信") {
+		return supportLoginAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "检查更新", "更新", "版本", "升级app", "安装包", "apk", "下载失败", "安装失败") {
+		return supportUpdateAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "图片", "照片", "拍照", "相机", "上传", "选图", "图传不上", "发图") {
+		return supportImageAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "会员", "次数", "额度", "加油包", "订单", "订购", "购买", "扣费", "支付", "退款", "权益") {
+		return supportMembershipAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "历史", "记录", "清空", "删除", "恢复", "找不到", "换手机", "重装") {
+		return supportHistoryAutoReplyBody
+	}
+	if supportTextContainsAny(normalized, "隐私", "协议", "服务协议", "注销", "个人信息", "风险提示") {
+		return supportPrivacyAutoReplyBody
+	}
+	return supportAutoReplyBody
+}
+
+func normalizeSupportAutoReplyText(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	normalized = strings.Trim(normalized, " \t\r\n,.，。!！?？~～、")
+	normalized = strings.ReplaceAll(normalized, " ", "")
+	return normalized
+}
+
+func isShortSupportGreeting(normalized string) bool {
+	switch normalized {
+	case "你好", "你好啊", "您好", "您好啊", "在吗", "在不在", "有人吗", "有人在吗", "客服", "客服在吗", "hi", "hello", "hey":
+		return true
+	default:
+		return false
+	}
+}
+
+func supportTextContainsAny(text string, keywords ...string) bool {
+	for _, keyword := range keywords {
+		if strings.Contains(text, strings.ToLower(keyword)) {
+			return true
+		}
+	}
+	return false
+}
+
 func newSupportMessageRateLimiter(redisClient *redis.Client) rateLimiter {
 	config := rateLimitConfig{
 		Window:        envDurationWithDefault("SUPPORT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS", defaultSupportMessageRateLimitWindow),
@@ -416,6 +529,7 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		   latest_message.image_urls_json,
 		   latest_message.created_at,
 		   latest_message.read_by_user_at,
+		   latest_non_system_summary.sender_type AS latest_non_system_sender_type,
 		   COALESCE(message_counts.message_count, 0) AS message_count,
 		   COALESCE(unread_counts.unread_count, 0) AS unread_count
 		 FROM support_messages latest_message
@@ -436,6 +550,16 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		      AND read_by_user_at IS NULL
 		    GROUP BY user_id
 		 ) unread_counts ON unread_counts.user_id = latest_message.user_id
+		 LEFT JOIN (
+		   SELECT latest_non_system_message.user_id, latest_non_system_message.sender_type
+		     FROM support_messages latest_non_system_message
+		     JOIN (
+		       SELECT user_id, MAX(id) AS latest_id
+		         FROM support_messages
+		        WHERE sender_type <> 'system'
+		        GROUP BY user_id
+		     ) latest_non_system_ids ON latest_non_system_ids.latest_id = latest_non_system_message.id
+		 ) latest_non_system_summary ON latest_non_system_summary.user_id = latest_message.user_id
 		 WHERE latest_message.created_at >= ?
 		 ORDER BY latest_message.created_at DESC, latest_message.id DESC
 		 LIMIT ?`,
@@ -453,6 +577,7 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		var message SupportMessage
 		var imageURLsJSON sql.NullString
 		var readByUserAt sql.NullInt64
+		var latestNonSystemSenderType sql.NullString
 		if err := rows.Scan(
 			&entry.UserID,
 			&message.ID,
@@ -461,6 +586,7 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 			&imageURLsJSON,
 			&message.CreatedAt,
 			&readByUserAt,
+			&latestNonSystemSenderType,
 			&entry.MessageCount,
 			&entry.UnreadByUserCount,
 		); err != nil {
@@ -478,7 +604,7 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 			}
 		}
 		entry.LatestMessage = message
-		entry.NeedsReply = message.SenderType == "user"
+		entry.NeedsReply = supportConversationNeedsReply(latestNonSystemSenderType)
 		conversations = append(conversations, entry)
 	}
 	if err := rows.Err(); err != nil {
@@ -488,6 +614,10 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		return []SupportConversationEntry{}, nil
 	}
 	return conversations, nil
+}
+
+func supportConversationNeedsReply(latestNonSystemSenderType sql.NullString) bool {
+	return latestNonSystemSenderType.Valid && latestNonSystemSenderType.String == "user"
 }
 
 func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderType string, body string, imageURLs []string, createdAt int64) (*SupportMessage, error) {
