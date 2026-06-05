@@ -182,6 +182,7 @@ func TestOpenStreamPrefersPrimaryKeyWhileHealthy(t *testing.T) {
 	t.Setenv("DASHSCOPE_API_KEY_2", "secondary-key")
 	t.Setenv("DASHSCOPE_API_KEY_3", "")
 	t.Setenv("DASHSCOPE_API_KEYS", "")
+	t.Setenv("DASHSCOPE_KEY_SELECTION_MODE", "fallback")
 	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
 
 	client := NewBailianClient()
@@ -197,6 +198,46 @@ func TestOpenStreamPrefersPrimaryKeyWhileHealthy(t *testing.T) {
 	}
 
 	wantAuthHeaders := []string{"Bearer primary-key", "Bearer primary-key"}
+	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
+		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)
+	}
+}
+
+func TestOpenStreamUsesRoundRobinInSmoothMode(t *testing.T) {
+	authHeaders := []string{}
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "")
+	t.Setenv("DASHSCOPE_API_KEY_1", "primary-key")
+	t.Setenv("DASHSCOPE_API_KEY_2", "secondary-key")
+	t.Setenv("DASHSCOPE_API_KEY_3", "")
+	t.Setenv("DASHSCOPE_API_KEYS", "")
+	t.Setenv("DASHSCOPE_KEY_SELECTION_MODE", "round_robin")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	client := NewBailianClient()
+	for i := 0; i < 4; i++ {
+		response, err := client.OpenStream(
+			context.Background(),
+			[]BailianMessage{{Role: "user", Content: "hello"}},
+		)
+		if err != nil {
+			t.Fatalf("open stream %d: %v", i+1, err)
+		}
+		_ = response.Body.Close()
+	}
+
+	wantAuthHeaders := []string{
+		"Bearer primary-key",
+		"Bearer secondary-key",
+		"Bearer primary-key",
+		"Bearer secondary-key",
+	}
 	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
 		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)
 	}

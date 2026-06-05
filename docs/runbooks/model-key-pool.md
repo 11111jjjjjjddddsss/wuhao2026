@@ -40,11 +40,19 @@ DASHSCOPE_API_KEYS
 
 ## 运行策略
 
-- 正常请求优先使用第一把可用 Key；`DASHSCOPE_API_KEY_1` 健康且未冷却时，不会主动轮询到 `DASHSCOPE_API_KEY_2`。
+- 默认策略（`DASHSCOPE_KEY_SELECTION_MODE=fallback`）下，正常请求优先使用第一把可用 Key；`DASHSCOPE_API_KEY_1` 健康且未冷却时，不会主动轮询到 `DASHSCOPE_API_KEY_2`。
+- 高并发平滑分流可开启 `DASHSCOPE_KEY_SELECTION_MODE=round_robin`（或 `rr`）。该模式在同一批请求间按轮询顺序选择健康 Key，仍保留每次请求内的限流 / 鉴权失败兜底切换。
 - 如果某把 Key 在模型请求打开阶段返回 `401 / 403 / 429`，或返回带限流 / quota 语义的 `400`，后端会在响应交给业务层前换下一把 Key 再试。
 - 触发上述限流 / 鉴权类失败的 Key 会进入短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；后续请求会优先跳过冷却中的 Key。
 - 主对话只在 SSE 流真正开始前换 Key；一旦上游已经返回成功 SSE，后端不会在同一条回复生成过程中切换 Key，避免半条回复和重复成本。
 - 如果所有 Key 都限流或不可用，最后一次上游错误会正常返回给业务层，Android 仍按现有失败提示处理。
+
+新增配置：
+
+```text
+DASHSCOPE_KEY_SELECTION_MODE=fallback
+# 取值：fallback（默认）|round_robin|rr
+```
 
 ## 配置建议
 

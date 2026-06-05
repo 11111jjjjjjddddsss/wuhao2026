@@ -16,14 +16,20 @@ import (
 )
 
 type BailianClient struct {
-	httpClient  *http.Client
-	cooldownMu  sync.Mutex
-	keyCooldown map[string]time.Time
+	httpClient      *http.Client
+	cooldownMu      sync.Mutex
+	keyCooldown     map[string]time.Time
+	selectionMu     sync.Mutex
+	keySelectionIdx int
+	keySelection    keySelectionMode
 }
 
 const (
 	unifiedModelTemperature   = 0.8
 	defaultBailianKeyCooldown = 1 * time.Second
+
+	keySelectionModeFallback keySelectionMode = iota
+	keySelectionModeRoundRobin
 
 	defaultDashScopeDialTimeout           = 10 * time.Second
 	defaultDashScopeTLSHandshakeTimeout   = 10 * time.Second
@@ -33,12 +39,16 @@ const (
 	dashScopeGenerationBodyLimit          = 1024 * 1024
 )
 
+type keySelectionMode int
+
 var errResponseBodyTooLarge = errors.New("response body too large")
 
 func NewBailianClient() *BailianClient {
 	return &BailianClient{
-		httpClient:  newBailianHTTPClient(),
-		keyCooldown: map[string]time.Time{},
+		httpClient:      newBailianHTTPClient(),
+		keyCooldown:     map[string]time.Time{},
+		keySelection:    getDashScopeKeySelectionMode(),
+		keySelectionIdx: 0,
 	}
 }
 
@@ -296,6 +306,15 @@ func splitConfiguredKeys(value string) []string {
 }
 
 func (c *BailianClient) pickNextKeyEntry(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
+	switch c.keySelection {
+	case keySelectionModeRoundRobin:
+		return c.pickNextKeyEntryRoundRobin(keys, attempted)
+	default:
+		return c.pickNextKeyEntryFallback(keys, attempted)
+	}
+}
+
+func (c *BailianClient) pickNextKeyEntryFallback(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
 	if len(keys) == 0 {
 		return bailianAPIKeyEntry{}, false
 	}
@@ -318,6 +337,44 @@ func (c *BailianClient) pickNextKeyEntry(keys []bailianAPIKeyEntry, attempted ma
 		return *fallback, true
 	}
 	return bailianAPIKeyEntry{}, false
+}
+
+func (c *BailianClient) pickNextKeyEntryRoundRobin(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
+	if len(keys) == 0 {
+		return bailianAPIKeyEntry{}, false
+	}
+	now := time.Now()
+	start := c.nextSelectionOffset(len(keys))
+	var fallback *bailianAPIKeyEntry
+	for offset := 0; offset < len(keys); offset++ {
+		idx := (start + offset) % len(keys)
+		key := keys[idx]
+		if attempted[key.Value] {
+			continue
+		}
+		if fallback == nil {
+			candidate := key
+			fallback = &candidate
+		}
+		if !c.isKeyCoolingDown(key.Value, now) {
+			return key, true
+		}
+	}
+	if fallback != nil {
+		return *fallback, true
+	}
+	return bailianAPIKeyEntry{}, false
+}
+
+func (c *BailianClient) nextSelectionOffset(modulo int) int {
+	if modulo <= 0 {
+		return 0
+	}
+	c.selectionMu.Lock()
+	defer c.selectionMu.Unlock()
+	start := c.keySelectionIdx
+	c.keySelectionIdx = (c.keySelectionIdx + 1) % modulo
+	return start
 }
 
 func (c *BailianClient) isKeyCoolingDown(key string, now time.Time) bool {
@@ -413,4 +470,18 @@ func firstNonBlank(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func getDashScopeKeySelectionMode() keySelectionMode {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("DASHSCOPE_KEY_SELECTION_MODE")))
+	switch mode {
+	case "rr", "roundrobin", "round-robin", "round_robin":
+		return keySelectionModeRoundRobin
+	case "fallback", "priority", "primary-first", "primary_fallback":
+		fallthrough
+	case "":
+		return keySelectionModeFallback
+	default:
+		return keySelectionModeFallback
+	}
 }
