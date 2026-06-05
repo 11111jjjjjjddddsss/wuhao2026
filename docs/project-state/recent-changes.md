@@ -7,6 +7,8 @@
 
 - 给 DashScope / 百炼模型 Key 池补自动高并发平滑分流：默认 `DASHSCOPE_KEY_SELECTION_MODE=auto`（留空也按 auto），平稳期继续主 Key 优先，保持 `DASHSCOPE_API_KEY_1` 主 Key 口径；短窗口内模型请求量达到阈值，或开流前出现限流 / 鉴权类 failover 时，后端会自动进入一段请求级轮询分流窗口，默认 10 秒内 20 次请求触发、持续 60 秒，窗口结束后自动回到主 Key 优先，不需要上线后手动改环境或为了切模式重启。仍支持显式 `fallback` 强制主备、`round_robin / rr` 强制轮询；开流前 `401 / 403 / 429` 和限流类 `400` 的自动 failover 与 1 秒冷却保留，SSE 已开始后仍不在同一条回复中途切 Key。已部署到 ECS，并通过 Cloud Assistant 显式写入 `DASHSCOPE_KEY_SELECTION_MODE=auto`、自动轮询阈值和保持时间，readiness 显示相关环境均为 set、`bailian=ok`；同步更新模型 Key runbook、`.env.example`、readiness 脚本、根规则和项目状态；真实 Key 值不进入仓库、文档或聊天复述。
 
+- 复核阿里云官方联网搜索限流口径：联网搜索是 15 RPS、按阿里云主账号维度统计所有 API Key 的搜索请求总和，超过时 API 不报错但搜索链路不会触发。当前主聊天 `forced_search=false`，高并发或模型判断无需实时信息时本来就可能不联网回答；因此不额外做“搜索限流后后端再发一轮不联网请求”的兜底，避免多打一轮模型请求。Key 池 auto 仍负责模型请求分流和开流前错误 failover；今日农情强制联网生成需要单独观察任务成功率。
+
 - 将包含后台监控面板前置内部接口、最小操作审计和 DashScope 主备 Key 优先逻辑的当前 `server-go` 工作树部署到 ECS：远端 `go test ./...`、编译、替换二进制、重启 `nongji-server`、Nginx 配置检查和 Host healthz 均通过；重启瞬间出现过一次 502，脚本随后等到 healthz 200 且 `bailian=ok`。本机 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`DASHSCOPE_API_KEY_1=set`、`DASHSCOPE_API_KEY_2=set`、`DASHSCOPE_API_KEY_3=empty`、`DASHSCOPE_KEY_COOLDOWN_SECONDS=set`、`redis=ok`、`upload_storage=oss`；输出只记录 set/empty，不打印真实 Key 值。
 
 - `server-go/internal/app/bailian.go` 将百炼模型 Key 池从健康 Key 轮询收口为主备优先：`DASHSCOPE_API_KEY_1` 是首选主 Key，`DASHSCOPE_API_KEY_2` 可作为副 Key，旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 继续作为兼容入口但不抢在专用槽位前。主对话、B/C 摘要和今日农情仍共用同一池；开流前遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400` 会切下一把并短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；SSE 已打开后不在同一条回复中途切 Key。2026-06-05 已通过 Cloud Assistant 把主 / 副模型 Key 写入 ECS `/etc/nongjiqiancha/server.env` 的主备槽位并重启服务，公网 healthz 显示 `bailian=ok`；仍需真实 App 主聊天 / 图片问诊回归。本轮未把任何真实模型 Key 写入仓库、文档或聊天复述。
