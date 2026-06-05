@@ -90,7 +90,7 @@ Android 构建链：
 - 主模型：Qwen3.5-Plus，用于农业问诊分析、图片理解、推理判断
 - 摘要模型：Qwen3.5-Flash，用于 B 层短期记忆、C 层用户长期记忆；摘要请求显式关闭思考模式
 - 当前所有真实模型调用统一显式设置 `temperature=0.8`：主对话、B 层短期记忆、C 层用户长期记忆、今日农情生成都走后端同一个温度常量；`top_p / max_tokens / penalty` 等其他采样参数暂不显式设置，继续走模型服务默认值
-- 后端模型 Key 池支持 `DASHSCOPE_API_KEY_1/2/3`、旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 逗号 / 分号 / 换行列表，自动去重并按配置顺序做主备使用；`DASHSCOPE_API_KEY_1` 是首选主 Key，`DASHSCOPE_API_KEY_2` 可作为副 Key，旧单 Key 和列表只作为兼容入口。主对话、B/C 摘要和今日农情共用该池。若模型请求打开阶段遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400`，后端会在流开始前切到下一把 Key，并把触发限流的 Key 短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；一旦 SSE 流已经成功开始，不在同一条回复中途切 Key。扩真实并发必须使用不同阿里云主账号的 Key；同一主账号下多个 API Key 共享该账号 RPM / TPM 限流，只适合轮换或应急，不算扩容
+- 后端模型 Key 池支持 `DASHSCOPE_API_KEY_1/2/3`、旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 逗号 / 分号 / 换行列表，自动去重；默认 `DASHSCOPE_KEY_SELECTION_MODE=auto`（留空也按 auto）时，平稳期仍按配置顺序主备使用，`DASHSCOPE_API_KEY_1` 是首选主 Key，`DASHSCOPE_API_KEY_2` 可作为副 Key，旧单 Key 和列表只作为兼容入口；短窗口内请求量达到阈值或开流前出现限流 / 鉴权类 failover 时，会自动进入一段请求级轮询分流窗口，窗口结束后回到主 Key 优先，不需要为切高并发模式手动重启。主对话、B/C 摘要和今日农情共用该池。若模型请求打开阶段遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400`，后端会在流开始前切到下一把 Key，并把触发限流的 Key 短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；一旦 SSE 流已经成功开始，不在同一条回复中途切 Key。扩真实并发必须使用不同阿里云主账号的 Key；同一主账号下多个 API Key 共享该账号 RPM / TPM 限流，只适合轮换或应急，不算扩容
 
 上下文结构：
 - A 层历史滑窗：Free / Plus 6 轮，Pro 9 轮

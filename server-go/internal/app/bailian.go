@@ -22,6 +22,9 @@ type BailianClient struct {
 	selectionMu     sync.Mutex
 	keySelectionIdx int
 	keySelection    keySelectionMode
+	autoMu          sync.Mutex
+	autoRequests    []time.Time
+	autoRRUntil     time.Time
 }
 
 const (
@@ -30,11 +33,15 @@ const (
 
 	keySelectionModeFallback keySelectionMode = iota
 	keySelectionModeRoundRobin
+	keySelectionModeAuto
 
 	defaultDashScopeDialTimeout           = 10 * time.Second
 	defaultDashScopeTLSHandshakeTimeout   = 10 * time.Second
 	defaultDashScopeResponseHeaderTimeout = 60 * time.Second
 	defaultDashScopeIdleConnTimeout       = 90 * time.Second
+	defaultDashScopeAutoRRWindow          = 10 * time.Second
+	defaultDashScopeAutoRRHold            = 60 * time.Second
+	defaultDashScopeAutoRRMinRequests     = 20
 	bailianBodyPreviewLimit               = 64 * 1024
 	dashScopeGenerationBodyLimit          = 1024 * 1024
 )
@@ -175,6 +182,7 @@ func (c *BailianClient) doJSONPayloadRequest(ctx context.Context, url string, ac
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("DASHSCOPE_API_KEY(S) is missing")
 	}
+	c.observeAutoKeySelectionRequest(len(keys))
 
 	attempted := map[string]bool{}
 	var lastResponse *http.Response
@@ -208,6 +216,7 @@ func (c *BailianClient) doJSONPayloadRequest(ctx context.Context, url string, ac
 		if !shouldFailoverBailianResponse(resp.StatusCode, bodyBytes) {
 			return snapshot, nil
 		}
+		c.activateAutoRoundRobin(time.Now())
 		c.coolDownKey(key.Value)
 		lastResponse = snapshot
 	}
@@ -306,12 +315,25 @@ func splitConfiguredKeys(value string) []string {
 }
 
 func (c *BailianClient) pickNextKeyEntry(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
-	switch c.keySelection {
+	switch c.effectiveKeySelectionMode(len(keys)) {
 	case keySelectionModeRoundRobin:
 		return c.pickNextKeyEntryRoundRobin(keys, attempted)
 	default:
 		return c.pickNextKeyEntryFallback(keys, attempted)
 	}
+}
+
+func (c *BailianClient) effectiveKeySelectionMode(keyCount int) keySelectionMode {
+	if c.keySelection != keySelectionModeAuto || keyCount < 2 {
+		return c.keySelection
+	}
+	now := time.Now()
+	c.autoMu.Lock()
+	defer c.autoMu.Unlock()
+	if now.Before(c.autoRRUntil) {
+		return keySelectionModeRoundRobin
+	}
+	return keySelectionModeFallback
 }
 
 func (c *BailianClient) pickNextKeyEntryFallback(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
@@ -375,6 +397,43 @@ func (c *BailianClient) nextSelectionOffset(modulo int) int {
 	start := c.keySelectionIdx
 	c.keySelectionIdx = (c.keySelectionIdx + 1) % modulo
 	return start
+}
+
+func (c *BailianClient) observeAutoKeySelectionRequest(keyCount int) {
+	if c.keySelection != keySelectionModeAuto || keyCount < 2 {
+		return
+	}
+	window := envDurationWithDefault("DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS", defaultDashScopeAutoRRWindow)
+	minRequests := envIntWithDefault("DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS", defaultDashScopeAutoRRMinRequests)
+	if window <= 0 || minRequests <= 0 {
+		return
+	}
+
+	now := time.Now()
+	c.autoMu.Lock()
+	defer c.autoMu.Unlock()
+
+	cutoff := now.Add(-window)
+	kept := c.autoRequests[:0]
+	for _, requestTime := range c.autoRequests {
+		if requestTime.After(cutoff) {
+			kept = append(kept, requestTime)
+		}
+	}
+	kept = append(kept, now)
+	c.autoRequests = kept
+	if len(c.autoRequests) >= minRequests {
+		c.autoRRUntil = laterTime(c.autoRRUntil, now.Add(autoRoundRobinHoldDuration()))
+	}
+}
+
+func (c *BailianClient) activateAutoRoundRobin(now time.Time) {
+	if c.keySelection != keySelectionModeAuto {
+		return
+	}
+	c.autoMu.Lock()
+	defer c.autoMu.Unlock()
+	c.autoRRUntil = laterTime(c.autoRRUntil, now.Add(autoRoundRobinHoldDuration()))
 }
 
 func (c *BailianClient) isKeyCoolingDown(key string, now time.Time) bool {
@@ -472,16 +531,31 @@ func firstNonBlank(values ...string) string {
 	return ""
 }
 
+func autoRoundRobinHoldDuration() time.Duration {
+	duration := envDurationWithDefault("DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS", defaultDashScopeAutoRRHold)
+	if duration <= 0 {
+		return defaultDashScopeAutoRRHold
+	}
+	return duration
+}
+
+func laterTime(left time.Time, right time.Time) time.Time {
+	if right.After(left) {
+		return right
+	}
+	return left
+}
+
 func getDashScopeKeySelectionMode() keySelectionMode {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("DASHSCOPE_KEY_SELECTION_MODE")))
 	switch mode {
+	case "auto", "":
+		return keySelectionModeAuto
 	case "rr", "roundrobin", "round-robin", "round_robin":
 		return keySelectionModeRoundRobin
 	case "fallback", "priority", "primary-first", "primary_fallback":
-		fallthrough
-	case "":
 		return keySelectionModeFallback
 	default:
-		return keySelectionModeFallback
+		return keySelectionModeAuto
 	}
 }
