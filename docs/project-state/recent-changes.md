@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 轻量优化 Android App 低风险 UI：登录页补充产品副标题，主按钮和验证码按钮圆角统一为更柔和的 12dp，登录状态提示区分成功 / 进行中与错误提示色；会员中心把“相关功能未开放”提示从黑色强提示改成淡绿色说明条，并收小关闭按钮字形；设置菜单给账号管理、帮助与反馈、检查更新、礼品卡和服务协议补短副标题，提升扫读性。本轮不改主聊天滚动链、输入框状态机、图片发送或后端接口。
+
 - 按 Product Design 方向收紧农技千查官网：导航去掉图标和“备案”入口，正文删除“备案与服务说明”大块，只保留 App 介绍、图文问诊 / 农业大模型 / 原生 Android 体验三项能力和安卓版下载入口；下载待开放文案不再向普通用户暴露 App 备案、公安备案、真机回归等内部流程；footer 只保留 `京ICP备2026031728号-1`，公安备案号未下发前不展示占位。主视觉把 App 图标放在首屏主体位置，并用展示裁切让绿色叶片更大、黑底边界更轻；不改 Android launcher 图标资源，避免影响 App 备案和物料一致性。
 
 - 执行免费优先安全加固：确认阿里云云安全中心免费版已生效，ECS 安全中心 agent online、当前风险计数 0；阿里云 DDoS 基础防护按官方口径默认免费开启。通过 CLI 撤销生产安全组公网 `TCP 22 / 0.0.0.0/0`，并通过 Cloud Assistant 停止 / 禁用 ECS 本机 `ssh` 服务，当前公网只放行 `80 / 443` 和 ICMP；生产运维优先走阿里云 CLI + Cloud Assistant。通过 Cloud Assistant 写入 Nginx 全局安全头兜底 `/etc/nginx/conf.d/nongjiqiancha-security.conf` 并 reload；官网部署脚本也补 `Content-Security-Policy`、`Permissions-Policy` 和 HSTS。统一加固官网 / 后端部署、回滚、readiness、登录用量和安全巡检脚本的阿里云 CLI 错误捕获：失败时先捕获 stderr 并脱敏 `AccessKeyId / Signature / SignatureNonce / Content` 等签名参数，再输出错误。新增 [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md) 和 [harden-ecs-security.ps1](D:/wuhao/scripts/harden-ecs-security.ps1)，后续免费安全巡检和复刻加固走脚本。

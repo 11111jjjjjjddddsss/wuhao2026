@@ -201,8 +201,8 @@ private fun MembershipCenterHeader(
                 Text(
                     text = "×",
                     color = Color(0xFF202124),
-                    fontSize = 32.sp,
-                    lineHeight = 32.sp,
+                    fontSize = 24.sp,
+                    lineHeight = 24.sp,
                     textAlign = TextAlign.Center
                 )
             }
@@ -237,7 +237,7 @@ internal fun MembershipCenterBody(
     )
     val loadedEntitlement = entitlement.takeIf { loadState == MembershipLoadState.Loaded }
     if (paymentNoticeVisible) {
-        MembershipInlineNotice(text = "支付功能暂不可用")
+        MembershipInlineNotice(text = "相关功能暂未开放，当前不会扣费")
     }
     MembershipPlanSection(
         activeTier = entitlement.activeMembershipTier(loadState),
@@ -262,13 +262,14 @@ internal fun MembershipCenterBody(
 @Composable
 private fun MembershipInlineNotice(text: String) {
     Surface(
-        color = Color(0xFF111111),
-        shape = RoundedCornerShape(999.dp),
+        color = Color(0xFFF7FAF1),
+        shape = RoundedCornerShape(10.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFDDE8CB)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
             text = text,
-            color = Color.White,
+            color = Color(0xFF5C6F42),
             fontSize = 13.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
@@ -442,7 +443,7 @@ internal fun MembershipTopupCardPreview(
 
 @Composable
 internal fun MembershipPaymentNoticePreview() {
-    MembershipInlineNotice(text = "支付功能暂不可用")
+    MembershipInlineNotice(text = "相关功能暂未开放，当前不会扣费")
 }
 
 @Composable

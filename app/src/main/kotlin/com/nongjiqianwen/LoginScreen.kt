@@ -156,7 +156,16 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.sp
                 )
-                Spacer(Modifier.height(42.dp))
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "农业图文问诊参考工具",
+                    color = Color(0xFF626872),
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    textAlign = TextAlign.Center,
+                    letterSpacing = 0.sp
+                )
+                Spacer(Modifier.height(32.dp))
 
                 Button(
                     onClick = {
@@ -183,7 +192,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         }
                     },
                     enabled = !busy,
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -198,7 +207,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         smsMode = !smsMode
                         message = null
                     },
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
@@ -260,7 +269,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 }
                             },
                             enabled = !busy && countdown == 0,
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .height(56.dp)
                                 .widthIn(min = 96.dp)
@@ -295,7 +304,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                             }
                         },
                         enabled = !busy,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -333,17 +342,21 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     }
                 }
                 message?.let {
+                    val positive = it.contains("已发送") || it.startsWith("正在")
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text = it,
-                        color = Color(0xFF8A5A00),
+                        color = if (positive) Color(0xFF4F6A3A) else Color(0xFF8A5A00),
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
                         lineHeight = 20.sp,
                         letterSpacing = 0.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color(0xFFFFF4D8), RoundedCornerShape(8.dp))
+                            .background(
+                                if (positive) Color(0xFFF2F8EA) else Color(0xFFFFF4D8),
+                                RoundedCornerShape(10.dp)
+                            )
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     )
                 }

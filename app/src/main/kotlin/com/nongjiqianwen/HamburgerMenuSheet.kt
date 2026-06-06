@@ -817,6 +817,7 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
+                subtitle = "登录状态和历史管理",
                 onClick = onOpenAccount
             )
         }
@@ -825,6 +826,7 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Feedback,
                 title = "帮助与反馈",
+                subtitle = "产品问题和客服回复",
                 showBadge = supportUnread,
                 onClick = onOpenSupport
             )
@@ -832,18 +834,21 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Update,
                 title = "检查更新",
+                subtitle = "查看当前版本",
                 onClick = onCheckUpdate
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
+                subtitle = "兑换入口暂未开放",
                 onClick = onOpenRedeem
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
+                subtitle = "协议、隐私和权限说明",
                 onClick = onOpenLegalHub
             )
         }
@@ -1582,6 +1587,7 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Account,
             title = "账号管理",
+            subtitle = "登录状态和历史管理",
             onClick = {}
         )
     }
@@ -1589,6 +1595,7 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Feedback,
             title = "帮助与反馈",
+            subtitle = "产品问题和客服回复",
             showBadge = true,
             onClick = {}
         )
@@ -1596,18 +1603,21 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Update,
             title = "检查更新",
+            subtitle = "查看当前版本",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Redeem,
             title = "礼品卡",
+            subtitle = "兑换入口暂未开放",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
             title = "服务协议",
+            subtitle = "协议、隐私和权限说明",
             onClick = {}
         )
     }
