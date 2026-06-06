@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 将帮助与反馈自动回复简单兜底版 `server-go` 提交 `8c72b973` 部署到 ECS：远端 `go test ./...`、编译、systemd 重启、Nginx 配置检查均通过；重启瞬间出现过一次 502，随后 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`。readiness 输出只记录 set/empty，不打印真实密钥值。
+
 - 将帮助与反馈自动回复收紧后的 `server-go` 提交 `cd8926a6` 部署到 ECS：远端 `go test ./...`、编译、systemd 重启、Nginx 配置检查均通过；重启瞬间出现过一次 502，随后 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`。readiness 输出只记录 set/empty，不打印真实密钥值。
 
 - 按“简单化”重新收口帮助与反馈自动回复：删除登录、更新、图片、会员、历史、隐私、农业咨询等细分自动回复，只保留短问候、纯图片 / 见图、通用兜底三类文案。通用兜底统一说明本页主要处理 App 使用反馈，农业咨询可回主聊天页继续问，并请用户补充时间、页面提示或截图；通用和纯图片兜底共享 24 小时冷却，避免短时间重复刷系统回复；测试同步改成简单规则。
