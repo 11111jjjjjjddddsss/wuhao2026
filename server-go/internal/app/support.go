@@ -29,9 +29,9 @@ const (
 	defaultSupportAutoReplyCooldown             = 24 * time.Hour
 	defaultSupportAutoReplyRepeatCooldown       = 5 * time.Minute
 	defaultSupportFAQAutoReplyCooldown          = time.Minute
-	supportAutoReplyBody                        = "已收到。这里主要处理 App 使用反馈；农业咨询可回到主聊天页继续问。若是使用问题，麻烦补充时间、页面提示或截图。"
-	supportImageOnlyAutoReplyBody               = "已收到您发来的图片。请补充具体问题；如果是农业咨询，也可以回到主聊天页继续问。"
-	supportGreetingAutoReplyBody                = "您好，请直接说明遇到的问题。"
+	supportAutoReplyBody                        = "已收到您的反馈。为便于客服核实，请补充发生时间、页面提示或相关截图；后续回复会在本页显示。农业技术咨询可返回主聊天页继续提问。"
+	supportImageOnlyAutoReplyBody               = "已收到您上传的图片。请补充具体问题、发生时间或页面提示；后续回复会在本页显示。"
+	supportGreetingAutoReplyBody                = "您好，请说明您遇到的问题或反馈内容，客服会在本页跟进回复。"
 )
 
 type SupportMessage struct {

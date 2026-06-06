@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 优化帮助与反馈自动回复文案：逻辑仍保持短问候、纯图片 / 见图、通用兜底三类，不新增细分类；文案改成更正式的客服口径，使用“客服会在本页跟进回复 / 后续回复会在本页显示”，不承诺具体时效，也不把自动回复包装成智能客服。
+
 - 将帮助与反馈自动回复简单兜底版 `server-go` 提交 `8c72b973` 部署到 ECS：远端 `go test ./...`、编译、systemd 重启、Nginx 配置检查均通过；重启瞬间出现过一次 502，随后 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`。readiness 输出只记录 set/empty，不打印真实密钥值。
 
 - 将帮助与反馈自动回复收紧后的 `server-go` 提交 `cd8926a6` 部署到 ECS：远端 `go test ./...`、编译、systemd 重启、Nginx 配置检查均通过；重启瞬间出现过一次 502，随后 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`。readiness 输出只记录 set/empty，不打印真实密钥值。
