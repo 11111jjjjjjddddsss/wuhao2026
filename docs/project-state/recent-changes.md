@@ -5,6 +5,10 @@
 
 ## 2026-06-06
 
+- 补齐 Go 后端请求级结构化日志底座：`Server.Handler()` 统一包一层 access log middleware，生成或透传 `X-Request-Id`，响应头回写同一 ID；记录 `http_request / http_request_slow / http_request_error`，字段只包含 method、path、status、duration、response bytes、masked IP、auth mode、可选 user_id 和 UA，不记录 query string、请求 body、Authorization、手机号、图片 URL 或模型 Key。慢请求阈值默认 `ACCESS_LOG_SLOW_MS=3000` 毫秒，`/healthz` 和 `/uploads/` 成功请求默认降噪，SSE Flusher 保持透传。新增只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)，可通过 Cloud Assistant 查询 Go 错误 / 慢请求 / 请求尾部、Nginx error 和 Nginx `429/5xx`，输出做基础脱敏；同步更新日志与运维 runbook。
+
+- 接入农技千查专用 SLS 最小日志集：创建 Project `nongjiqiancha-prod-1159547719787456`，Logstore `server-go` / `nginx-error`，TTL 7 天、1 shard；ECS 安装 Logtail / ilogtail 并连接机器组 `nongjiqiancha-prod-ecs`，采集 `/var/log/nongjiqiancha/server.log` 和 `/var/log/nginx/error.log`。Go 服务新增 `LOG_FILE_PATH` 支持，把 JSON 日志同时写 stdout 和文件；ECS 环境写入 `LOG_FILE_PATH=/var/log/nongjiqiancha/server.log`，并配置 7 天 logrotate。新增 [setup-sls-logging.ps1](D:/wuhao/scripts/setup-sls-logging.ps1) 和 [query-sls-logs.ps1](D:/wuhao/scripts/query-sls-logs.ps1)。当前不把聊天正文、AI 回复、图片 URL / 内容、手机号、token、模型 Key、数据库密码或完整 Nginx access 全量采进 SLS。
+
 - 轻量优化 Android App 低风险 UI：登录页补充产品副标题，主按钮和验证码按钮圆角统一为更柔和的 12dp，登录状态提示区分成功 / 进行中与错误提示色；会员中心把“相关功能未开放”提示从黑色强提示改成淡绿色说明条，并收小关闭按钮字形；设置菜单给账号管理、帮助与反馈、检查更新、礼品卡和服务协议补短副标题，提升扫读性。本轮不改主聊天滚动链、输入框状态机、图片发送或后端接口。
 
 - 按 Product Design 方向收紧农技千查官网：导航去掉图标和“备案”入口，正文删除“备案与服务说明”大块，只保留 App 介绍、图文问诊 / 农业大模型 / 原生 Android 体验三项能力和安卓版下载入口；下载待开放文案不再向普通用户暴露 App 备案、公安备案、真机回归等内部流程；footer 只保留 `京ICP备2026031728号-1`，公安备案号未下发前不展示占位。主视觉把 App 图标放在首屏主体位置，并用展示裁切让绿色叶片更大、黑底边界更轻；不改 Android launcher 图标资源，避免影响 App 备案和物料一致性。

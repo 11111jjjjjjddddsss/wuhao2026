@@ -2,6 +2,9 @@ package main
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -85,5 +88,27 @@ func TestBuildHTTPServerUsesEnvOverrides(t *testing.T) {
 	}
 	if server.MaxHeaderBytes != 65536 {
 		t.Fatalf("MaxHeaderBytes = %d, want 65536", server.MaxHeaderBytes)
+	}
+}
+
+func TestSetupLoggerWritesConfiguredLogFile(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "server.log")
+	t.Setenv("LOG_FILE_PATH", logPath)
+
+	logger, closeLogger, err := setupLogger()
+	if err != nil {
+		t.Fatalf("setupLogger: %v", err)
+	}
+	logger.Info("test log file")
+	if err := closeLogger(); err != nil {
+		t.Fatalf("closeLogger: %v", err)
+	}
+
+	raw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if !strings.Contains(string(raw), "test log file") {
+		t.Fatalf("log file missing message: %s", string(raw))
 	}
 }

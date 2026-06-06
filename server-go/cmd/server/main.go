@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -31,9 +33,12 @@ func main() {
 		_ = os.Setenv("TZ", "Asia/Shanghai")
 	}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	logger, closeLogger, err := setupLogger()
+	if err != nil {
+		slog.New(slog.NewJSONHandler(os.Stdout, nil)).Error("logger setup failed", "error", err)
+		os.Exit(1)
+	}
+	defer closeLogger()
 
 	server, err := app.NewServer(logger)
 	if err != nil {
@@ -84,6 +89,38 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("server shutdown complete")
+}
+
+func setupLogger() (*slog.Logger, func() error, error) {
+	writers := []io.Writer{os.Stdout}
+	closers := []io.Closer{}
+
+	logFilePath := strings.TrimSpace(os.Getenv("LOG_FILE_PATH"))
+	if logFilePath != "" {
+		if err := os.MkdirAll(filepath.Dir(logFilePath), 0o750); err != nil {
+			return nil, nil, err
+		}
+		file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o640)
+		if err != nil {
+			return nil, nil, err
+		}
+		writers = append(writers, file)
+		closers = append(closers, file)
+	}
+
+	logger := slog.New(slog.NewJSONHandler(io.MultiWriter(writers...), &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	closeFn := func() error {
+		var closeErr error
+		for _, closer := range closers {
+			if err := closer.Close(); err != nil && closeErr == nil {
+				closeErr = err
+			}
+		}
+		return closeErr
+	}
+	return logger, closeFn, nil
 }
 
 func resolveListenAddr() string {

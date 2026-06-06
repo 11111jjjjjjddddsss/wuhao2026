@@ -162,7 +162,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 }
 
 func (s *Server) Handler() http.Handler {
-	return s.mux
+	return s.withAccessLog(s.mux)
 }
 
 func (s *Server) Close() error {
