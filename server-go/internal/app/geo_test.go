@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net/http"
 	"testing"
 	"time"
 )
@@ -52,6 +53,32 @@ func TestResolveRegionByIPSkipsPrivateIP(t *testing.T) {
 
 	got := ResolveRegionByIP("192.168.1.1")
 	if got.Region != "未知" || got.Source != RegionSourceIP || got.Reliability != RegionUnreliable {
+		t.Fatalf("unexpected context: %+v", got)
+	}
+}
+
+func TestParseRegionFromHeadersRejectsUnknownRegion(t *testing.T) {
+	header := http.Header{}
+	header.Set("X-User-Region", "!!!")
+	header.Set("X-Region-Source", "gps")
+	header.Set("X-Region-Reliability", "reliable")
+
+	if got := ParseRegionFromHeaders(header); got != nil {
+		t.Fatalf("expected nil region context, got %+v", got)
+	}
+}
+
+func TestParseRegionFromHeadersKeepsValidGPSRegion(t *testing.T) {
+	header := http.Header{}
+	header.Set("X-User-Region", "山东省 潍坊市 寿光市")
+	header.Set("X-Region-Source", "gps")
+	header.Set("X-Region-Reliability", "reliable")
+
+	got := ParseRegionFromHeaders(header)
+	if got == nil {
+		t.Fatal("expected region context")
+	}
+	if got.Region != "山东省 潍坊市 寿光市" || got.Source != RegionSourceGPS || got.Reliability != RegionReliable {
 		t.Fatalf("unexpected context: %+v", got)
 	}
 }

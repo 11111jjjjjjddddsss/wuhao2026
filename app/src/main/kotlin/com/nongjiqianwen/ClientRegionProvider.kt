@@ -10,6 +10,7 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Bundle
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -21,7 +22,8 @@ import kotlin.coroutines.resume
 internal data class ClientRegionContext(
     val region: String,
     val source: String = "gps",
-    val reliability: String = "reliable"
+    val reliability: String = "reliable",
+    val observedAtMs: Long = System.currentTimeMillis()
 )
 
 internal object ClientRegionProvider {
@@ -30,7 +32,9 @@ internal object ClientRegionProvider {
     private const val KEY_REGION = "region"
     private const val KEY_SOURCE = "source"
     private const val KEY_RELIABILITY = "reliability"
+    private const val KEY_OBSERVED_AT_MS = "observed_at_ms"
     private const val LOCATION_TIMEOUT_MS = 1_500L
+    private const val MAX_RELIABLE_LOCATION_AGE_MS = 2 * 60 * 60 * 1000L
 
     fun hasLocationPermission(context: Context): Boolean =
         ContextCompat.checkSelfPermission(
@@ -58,10 +62,19 @@ internal object ClientRegionProvider {
             ?.trim()
             ?.takeIf { it.isNotBlank() && it != "未知" }
             ?: return null
+        val observedAtMs = prefs.getLong(KEY_OBSERVED_AT_MS, 0L)
+        val savedReliability = prefs.getString(KEY_RELIABILITY, null)?.takeIf { it.isNotBlank() } ?: "unreliable"
+        val reliability =
+            if (observedAtMs > 0L && System.currentTimeMillis() - observedAtMs <= MAX_RELIABLE_LOCATION_AGE_MS) {
+                savedReliability
+            } else {
+                "unreliable"
+            }
         return ClientRegionContext(
             region = region,
             source = prefs.getString(KEY_SOURCE, null)?.takeIf { it.isNotBlank() } ?: "gps",
-            reliability = prefs.getString(KEY_RELIABILITY, null)?.takeIf { it.isNotBlank() } ?: "reliable"
+            reliability = reliability,
+            observedAtMs = observedAtMs
         )
     }
 
@@ -70,21 +83,27 @@ internal object ClientRegionProvider {
         if (!hasLocationPermission(appContext)) return null
 
         val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) {
-            bestKnownLocation(appContext) ?: requestNetworkLocation(appContext)
+            bestKnownLocation(appContext, maxAgeMs = MAX_RELIABLE_LOCATION_AGE_MS)
+                ?: requestNetworkLocation(appContext)
+                ?: bestKnownLocation(appContext, maxAgeMs = Long.MAX_VALUE)
         } ?: return cachedRegion(appContext)
 
         val regionName = reverseGeocodeRegion(appContext, location) ?: return cachedRegion(appContext)
-        val next = ClientRegionContext(region = regionName)
+        val next = ClientRegionContext(
+            region = regionName,
+            reliability = if (locationAgeMs(location) <= MAX_RELIABLE_LOCATION_AGE_MS) "reliable" else "unreliable"
+        )
         prefs(appContext).edit()
             .putString(KEY_REGION, next.region)
             .putString(KEY_SOURCE, next.source)
             .putString(KEY_RELIABILITY, next.reliability)
+            .putLong(KEY_OBSERVED_AT_MS, next.observedAtMs)
             .apply()
         return next
     }
 
     @Suppress("MissingPermission")
-    private fun bestKnownLocation(context: Context): Location? {
+    private fun bestKnownLocation(context: Context, maxAgeMs: Long): Location? {
         if (!hasLocationPermission(context)) return null
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
         val providers = buildList {
@@ -98,7 +117,20 @@ internal object ClientRegionProvider {
                     if (manager.isProviderEnabled(provider)) manager.getLastKnownLocation(provider) else null
                 }.getOrNull()
             }
+            .filter { locationAgeMs(it) <= maxAgeMs }
             .maxByOrNull { it.time }
+    }
+
+    private fun locationAgeMs(location: Location): Long {
+        val elapsedNanos = location.elapsedRealtimeNanos
+        if (elapsedNanos > 0L) {
+            return ((SystemClock.elapsedRealtimeNanos() - elapsedNanos) / 1_000_000L).coerceAtLeast(0L)
+        }
+        val wallClockMs = location.time
+        if (wallClockMs > 0L) {
+            return (System.currentTimeMillis() - wallClockMs).coerceAtLeast(0L)
+        }
+        return Long.MAX_VALUE
     }
 
     @Suppress("MissingPermission", "DEPRECATION")

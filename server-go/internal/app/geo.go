@@ -32,6 +32,10 @@ func ParseRegionFromHeaders(header http.Header) *RegionContext {
 	if regionRaw == "" {
 		return nil
 	}
+	region := normalizeRegion(regionRaw)
+	if region == "" || region == "未知" {
+		return nil
+	}
 
 	source := RegionSourceNone
 	switch RegionSource(strings.ToLower(strings.TrimSpace(header.Get("X-Region-Source")))) {
@@ -52,7 +56,7 @@ func ParseRegionFromHeaders(header http.Header) *RegionContext {
 	}
 
 	return &RegionContext{
-		Region:      normalizeRegion(regionRaw),
+		Region:      region,
 		Source:      source,
 		Reliability: reliability,
 	}

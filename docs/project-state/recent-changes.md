@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 复查 Android 定位上下文链路并补可信度防御：每次发送前仍优先刷新系统定位并反查省 / 市 / 区县，但只有 2 小时内的系统定位或短窗口网络定位会标记 `reliable`；如果只能拿到更旧的系统缓存或历史缓存，继续传地区文本但降级为 `unreliable`，避免用户换城市后旧定位污染模型判断。后端 `ParseRegionFromHeaders` 同步拒绝空 / 无效地区头，坏头部会回落到 IP 粗定位兜底；新增对应 Go 测试。
+
 - 修复 ECS 双端口发布 drain-stop 叠加导致的 502 风险：CLI / readiness 巡检发现 Nginx active upstream 指向 `3001`，但 `nongji-server-3001` 一度处于 inactive，公网 API healthz 返回 502；排查确认不是资源不足或模型 / 数据库故障，而是多次发布的 transient `nongji-drain-stop-*` 定时任务叠加，把当前 active slot 也停掉。已通过 Cloud Assistant 启动当前 active slot 并验证 `https://api.nongjiqiancha.cn/healthz` 200；`deploy-ecs-server.ps1` / `rollback-ecs-server.ps1` 新增发布 / 回滚前清理旧 drain 任务，`check-ecs-readiness.ps1` 改为 active slot inactive、Host healthz 非 200 或关键 health 标记缺失时直接失败，避免 502 被误判通过。
 
 - 新增云资源容量与续费巡检入口：通过 CLI 复查 ECS / RDS / Redis / OSS 规格和实时用量，当前资源足够备案等待期、真机联调、早期内测和小流量上线；ECS 2 核 4G 当前负载约 0、可用内存约 2.9GiB、系统盘约 7% 使用；RDS 1 核 2G / 50G 当前磁盘约 3.0GiB、近 15 分钟 CPU 约 0.7%、内存约 11%；Redis 256MiB 当前内存约 4.4MiB、CPU 0 到 0.4%；OSS Bucket 当前 0MB。新增 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)，明确 CPU / 内存 / 磁盘 / 带宽 / RDS / Redis / OSS / 到期提醒阈值，以后 Codex 发现接近阈值必须提前提示升级、续费或购买资源包。
