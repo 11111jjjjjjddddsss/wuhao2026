@@ -26,25 +26,27 @@
 - 现状：Region 已按 `华北2（北京）/ cn-beijing` 落地。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，生产 VPC `nongjiqiancha-prod-vpc` / `vpc-2zeax2zowza2398b9dzot`，生产交换机 `nongjiqiancha-prod-beijing-l` / `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps；2026-05-30 已删除空闲默认 VPC / 默认交换机和旧 SAE 自动交换机。已初始化部署 `server-go`，当前通过 `nongji-server-3000.service` / `nongji-server-3001.service` 双端口 slot + Nginx 反向代理运行，`AUTH_STRICT=true`、开发期订单接口关闭，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，只是默认 demo 镜像，未部署真实后端，已于 2026-05-24 删除，删除后 `ListApplications` 返回空列表。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过；阿里云 DNS 已创建 `api` / `@` / `www` A 记录指向 `39.106.1.151`，ECS 内解析和 HTTP healthz 已生效；2026-06-05 已通过 Let’s Encrypt / certbot 配置 `api.nongjiqiancha.cn` Nginx 443 HTTPS，并公网验证 HTTPS healthz 200；2026-06-06 已部署根域名官网并配置 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` HTTPS；网站 ICP 已于 2026-06-05 通过，App 备案已于 2026-06-05 20:03 左右提交阿里云初审，仍待 App 备案通过、公安备案和真机登录 / 主聊天 / 图片问诊回归。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、交换机 `vsw-2zemsq82lj2kp8za90aky`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`；已创建库 `nongjiqiancha` 和账号 `nongji_app`，RDS 白名单当前为 `192.168.1.237`，迁移已跑通。Redis 开源版实例 `nongjiqiancha-prod-redis` / `r-2zet46zvmoo9wu3bic` 已购买并运行，256MB、Redis 7.0、标准高可用主备、同生产 VPC / 北京可用区 L；`server-go` 已新增可选 Redis 客户端和认证短期限流，主聊天流、额度、归档、摘要和订单仍不依赖 Redis。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；Bucket `nongjiqiancha-prod` 已创建并配置 `uploads/` 3 天、`support/` 30 天生命周期，代码已新增 OSS 上传后端，ECS 环境变量已收口并通过 `upload_storage=oss` 验证。SLS 服务本体已开通，但没有农技千查专用 Project / Logstore；北京区已有 3 个阿里云系统 / 产品托管日志项目，2026-05-30 复查后暂不删除。仓库已有 `docs/runbooks/deploy-ecs.md`、`docs/runbooks/deploy-sae.md`、`docs/runbooks/infra-readiness.md`、`docs/runbooks/redis.md`、`docs/runbooks/official-website.md` 和 `docs/runbooks/go-live-plan.md`；本机阿里云 CLI 已能通过 OpenAPI / Cloud Assistant 运维 ECS / RDS / Redis / SLS / OSS 资源包，SAE 应用列表当前为空
 - 待定原因：模型 Key 归属、生产充值告警和轮换责任仍需固化；SLS 是否首版接入、默认 7 天 RDS 备份是否调整、数据库迁移是否长期改成独立发布步骤或加锁、App 备案审核通过 / 公安备案、App 生产 API 真机回归仍需继续落地；Android 正式登录 token 链已落首版账号 / session / 迁移骨架，融合认证 SchemeCode / 包名 / 签名、DYPNS 基础凭证、短信签名模板和 Android 融合认证 SDK 客户端链路已写入生产配置 / 代码主链，但 AccessKey 轮换、HTTPS 公网入口下的真机登录联调仍待闭环
 
-## D5 C+ 长期记忆怎么落地
+## D5 C 层三块文本后续是否结构化
 
-- 当前倾向：不先做复杂 RAG、知识图谱、病例卡实时抽取或双模型全量复核；当前 C 层先用单段文本承载用户长期记忆，后续再升级成结构化 `C+ = 通用用户画像 + 农业长期档案 + 使用偏好`
-- 当前理解：
-  - 通用用户画像：沉淀用户长期使用场景、表达习惯、回答详略偏好、常用单位或口径、决策风格和长期约束
-  - 农业长期档案：沉淀相对稳定的农业生产信息，例如粗粒度地区、主种作物、作物结构、棚室/露地/果园/大田类型、常见地块或基地特征、历史高频问题；对流转地和换作物场景要避免当成永久病历，只作为“可能相关背景”
-  - 使用偏好：沉淀用户反复明确的输出偏好、风险偏好、预算 / 设备 / 时间限制，以及已验证有效或无效的经验
-- 模型现状：B 层短期记忆 / C 层用户长期记忆模型已切到 `Qwen3.5-Flash` 并显式关闭思考模式；D5 仍只讨论结构化 C+ 字段边界、更新频率、存储位置和归档记录如何进入低频抽取
-- 当前代码现状：`server-go` 仍只有 `session_ab.c_summary` 这个 C 层文本字段，当前已用它承载用户长期记忆，并从 `session_round_archive` 最近 20 轮完整问答更新；尚未实现结构化通用用户画像 / 农业长期档案 / 使用偏好字段，也没有 C+ 专用 schema。账号管理里的“删除所有历史对话”已会清掉当前 `session_ab` 和 `session_round_archive`，后续如果新增 C+ 表或字段，必须同链路纳入清理
-- 待定原因：30 天原始问诊归档已经先补上；接下来需要决定 C+ 的字段边界、更新频率、是否仍与 `c_summary` 同表存储，以及归档记录如何进入离线 / 低频抽取。否则直接改 prompt 容易把画像、档案和摘要揉成一团，后续不好检索和复盘
+- 当前事实：B 层已按“通用短期记忆”口径处理，默认≤500字、复杂场景≤700字；C 层仍是 `session_ab.c_summary` 单个文本字段，仍每 20 轮触发一次 Qwen3.5-Flash，不额外增加模型调用频率
+- 当前 C 层三块：`长期通用记忆`、`用户画像`、`农业相关重点事件记忆`
+- 当前倾向：先不做复杂 RAG、知识图谱、独立农事事件表、病例卡实时抽取或双模型全量复核；先用 C 层三块文本低频承接长期通用背景、用户画像和重点农业事件
+- 待定原因：等真实用户数据和误记忆案例出现后，再评估是否把这三块拆成结构化字段；如果未来新增结构化 C 或独立农事事件表，账号管理“删除所有历史对话”必须同链路纳入清理
 
 ## D6 时间 / 地点上下文后续增强
 
 - 当前事实：`server-go/internal/app/chat.go` 每轮主对话已经注入当前上海时间（精确到秒）和用户地点；也就是说模型知道“当前是什么时间 / 用户大概在哪里”。但当前 Android 还没有定位权限 / 地区选择主链，未传 `X-User-Region` 时后端只能用 IP / 未知兜底
 - 已落地部分：`SessionRound.created_at / region / region_source / region_reliability` 已接入后端快照和前端兼容解析，历史轮次进入模型上下文时会增加轻量前缀“历史轮次时间：...（Asia/Shanghai）”和“历史轮次地点：...；地点可信度：...”；前端暂不显示每条消息时间戳或地点条
-- 仍待决策：后续是否要把更细的地块 / 基地 / 作物茬口 / 棚室编号等作为 C+ 农业长期档案字段长期沉淀，并在每轮主对话里注入；天气 API 暂不接入，只有明确需要实时天气 / 温湿度 / 降雨时再评估成本
+- 仍待决策：后续是否要把更细的地块 / 基地 / 作物茬口 / 棚室编号等沉淀进 C 层“农业相关重点事件记忆”或未来结构化字段；天气 API 暂不接入，只有明确需要实时天气 / 温湿度 / 降雨时再评估成本
 
 ## D7 今日农情生产调度怎么落
 
 - 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card` 和内部 `POST /internal/jobs/today-agri-card/generate`。生成链路已有数据库 lease、secret 校验、来源 / 日期 / 广告词过滤；Android 只展示已 ready 的 3 条“今日农情”，缺失时静默不展示
 - 当前倾向：每天 05:30（Asia/Shanghai）由 ECS cron、云工作流、函数计算或外部 cron 调内部生成接口；失败后最多补跑少量次数，不能让用户打开 App 时触发生成风暴
 - 仍待决策：真实云端用哪种调度器、失败是否自动重试、告警走 SLS 还是先人工巡检、是否允许后台人工补生成 / 下架单条、未来是否做地区 / 作物个性化。当前首版只做全国 `CN` 卡片，不做按用户画像推送
+
+## D8 是否后续新增独立农事事件表
+
+- 当前事实：当前不单独实现复杂农事状态卡，也不新增 `agri_case_cards` 表；农业相关重点事件先由 C 层第三块“农业相关重点事件记忆”低频承接。纯图片输入已由后端补内部提示词，避免用户只发图时模型缺少文字意图
+- 当前倾向：先按低成本 C 层三块文本方案跑一段时间，不做关键词 gate、不做每轮 Flash、不做独立事件表。后续只有当 C 层第三块出现明显容量不足、旧事件污染、难以后台排查或真实用户强依赖多事件追踪时，再评估独立农事事件表
+- 防污染原则：即使在 C 层第三块里记录农业重点事件，也必须写成“近期提到 / 曾讨论 / 用户反馈 / 仍需核对”等状态，不把未确认方向写成确定诊断；当前输入、当前图片和用户最新纠正永远优先

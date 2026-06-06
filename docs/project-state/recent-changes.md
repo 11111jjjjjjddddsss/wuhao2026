@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 按用户重新拍板收口 B/C 记忆：B 层改为“通用短期记忆”，默认≤500字、复杂场景≤700字；C 层仍每 20 轮一次、仍写入 `session_ab.c_summary` 单文本字段，但提示词要求输出“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块，默认≤650字、复杂场景≤850字。当前不新增独立农事事件表 / 状态卡、不做关键词 gate、不额外增加 Flash 调用频率；农业相关重点事件先由 C 层第三块低频承接，未确认方向不得写成确定诊断。
+
 - 主对话锚点补联网校准触发条件：在原有强时效、强客观核对和用户明确要求基础上，增加“疑难问题、复杂问题、高风险判断需要校准公开权威信息”时可触发联网搜索；仍保留同轮最多一次、能不联网则不联网、关键参数缺失先追问 1 到 2 条的限制，避免把联网搜索当成知识库或替代田间信息判断。
 
 - 按 Product Design 轻量审查结果收紧 App 内几个占位 UI：礼品卡页输入后不再出现可兑换黑色按钮，按钮固定置灰显示“暂未开放”；会员中心加油包说明和按钮统一为未开放口径，不再出现“可订购但禁用”的冲突；帮助与反馈超过 2000 字会截断并提示，不再静默拒绝输入，且只在消息 / 加载状态变化时自动滚到底，避免点输入框或选图时打断用户查看旧记录；帮助与反馈空态图标从文本问号换成线性对话图标；账号管理“注销账号”弱化为不可点的“暂未开放”占位，避免像真实危险操作。
@@ -176,7 +178,7 @@
 
 - 会员中心弱网动态小修：`ChatScreen.kt` 给 `/api/me` 会员信息刷新增加本地 request epoch，底部会员中心打开、设置页会员中心刷新或订购成功刷新发生重叠时，只允许最新一次请求写回 `membershipEntitlement / membershipLoadState`，避免旧慢请求晚回来覆盖新状态导致“刚同步成功又变未同步 / 旧额度”的 UI 闪动。只改会员 UI 状态收口，不改 `/api/me`、会员权益、扣次顺序、支付占位或后端真相；按 baseline profile 规则判断不需要更新预热脚本。
 
-- 按用户确认重写 B/C 记忆提示词：B 层从偏农业病例承接调整为“全场景短期工作记忆”，明确目的是真实保留最近对话主线，让下一轮能自然接得住；C 层从“用户长期农业记忆”调整为“全场景用户长期记忆”，同时覆盖农业长期档案、通用用户画像、稳定偏好和历史经验，但明确不做通用知识库或病例流水账。同步更新根规则、项目状态、待决策、风险和上线巡检文档；后端字段、触发频率、模型参数、A/B/C 注入链路均不变。
+- 按用户确认重写 B/C 记忆提示词：B 层从偏农业病例承接调整为“全场景通用短期记忆”，明确目的是真实保留最近对话主线，让下一轮能自然接得住；C 层调整为“全场景长期通用记忆”，当时已开始覆盖长期背景、用户画像、稳定偏好和历史经验，并明确不做通用知识库或病例流水账。同步更新根规则、项目状态、待决策、风险和上线巡检文档；后端字段、触发频率、模型参数、A/B/C 注入链路均不变。
 
 - 按用户确认继续精简主对话锚点 E(2)：删除“不要每轮机械套完整模板”，保留“以自然分段为主，禁止表格，关键点少量加粗”。B 层和 C 层提示词不变。
 
@@ -216,7 +218,7 @@
 
 - 巡检“今日农情”链路并对照阿里云百炼官方文档校准参数：确认用户侧 `GET /api/today-agri-card` 只读当天 ready 缓存，缺失 / pending / failed 时 Android 静默不展示，不会在用户打开 App 时临时触发模型；内部 `POST /internal/jobs/today-agri-card/generate` 由 `DAILY_AGRI_JOB_SECRET` 保护并用 `daily_agri_cards(day_cn, scope)` 数据库 lease 防同一天并发生成。今日农情走 DashScope 原生 Generation 的 `qwen3.5-plus`，显式 `temperature=0.8`、关闭思考、强制联网搜索、`search_strategy=max`、`enable_source=true`、`freshness=7`；后端要求 JSON、严格 3 条、https、近 7 天、URL 来自搜索来源、可信域名、过滤广告 / 导购 / 泄露词 / 标题党并对近 7 天 URL / 标题去重。Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 展示层插入，不进 `messages`、本地快照、A/B/C、摘要或扣次。本轮不改业务代码，只把定时任务、SLS 告警、后台状态页、同一事件语义去重和可信域名偏严风险写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md) 和风险记忆。
 
-- 巡检“B/C 记忆与模型调用”链路：确认主对话完成归档后才异步触发 `SummaryService`，B 层 Free / Plus 每 6 轮、Pro 每 9 轮，用当前 A 层窗口 + 旧 B 摘要生成短期工作记忆；C 层每 20 轮，用 `session_round_archive` 最近 20 轮完整问答 + 旧 C 生成用户长期农业记忆，不再用 6/9 轮 A 窗口冒充长期输入。B/C 均走 `qwen3.5-flash`、非流式、`temperature=0.8`、关闭思考、不联网；模型失败、超时、归档不足或写回失败都会保留 `pending_retry_b/c`，写回带 `round_total` 校验，旧快照不会覆盖新轮次。旧 `/api/session/b`、`/api/session/c`、`/api/session/round_complete` 仍只返回 410，Android 没有摘要模型直连。本轮不改提示词和触发频率，只把多实例前需补摘要数据库 claim / lease、SLS 观察项和只读查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
+- 巡检“B/C 记忆与模型调用”链路：确认主对话完成归档后才异步触发 `SummaryService`，B 层 Free / Plus 每 6 轮、Pro 每 9 轮，用当前 A 层窗口 + 旧 B 摘要生成短期记忆；C 层每 20 轮，用 `session_round_archive` 最近 20 轮完整问答 + 旧 C 生成长期记忆，不再用 6/9 轮 A 窗口冒充长期输入。B/C 均走 `qwen3.5-flash`、非流式、`temperature=0.8`、关闭思考、不联网；模型失败、超时、归档不足或写回失败都会保留 `pending_retry_b/c`，写回带 `round_total` 校验，旧快照不会覆盖新轮次。旧 `/api/session/b`、`/api/session/c`、`/api/session/round_complete` 仍只返回 410，Android 没有摘要模型直连。本轮不改提示词和触发频率，只把多实例前需补摘要数据库 claim / lease、SLS 观察项和只读查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
 - 巡检“主聊天与图片发送”主链：确认 Android 端仍只通过后端 `/api/chat/stream` 发起文字 / 图片 / 图文混合问诊，图片先进入 App 私有 `composer_images` 稳定副本并经 `/upload` 换成同一公开基地址下的 `https /uploads/*.jpg`，后端再次校验图片 URL 后才进模型；带图发送的唯一 WorkManager 兜底、后端 `chat_stream_inflight` 同用户活跃流约束、归档成功后才发 `[DONE]` 和扣次、`/api/session/snapshot` 历史恢复、`/api/session/clear` 删除历史 409 防活跃流都和当前口径一致。没有发现旧 Android 直连模型、旧 `/api/session/round_complete` 主链、旧 active-zone、旧图片手势或旧上传通道并存；本轮只把 `ImageUploader.kt` 里“上传 OSS”的过期注释改为当前真实“上传后端 /upload，未来 OSS 只能由后端接入”，并把买服务器后必须验证公网 https 图片链、单实例 / OSS、弱网多图、后台恢复和 SLS 指标写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
@@ -236,9 +238,9 @@
 
 - `server-go/internal/app/bailian.go` 将百炼模型 Key 池从单纯 `DASHSCOPE_API_KEYS` 逗号轮询扩展为 `DASHSCOPE_API_KEY_1/2/3` 三个独立账号槽位，并继续兼容旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS`；后端会自动去重、轮询，主对话、B/C 摘要和今日农情共用同一池。模型请求打开阶段若遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400`，会在流开始前切下一把 Key，并对触发限流的 Key 做 60 秒冷却；SSE 一旦成功打开，不在同一条回复中途切 Key。新增单测覆盖专用槽位去重、429 切 Key 和冷却跳过；新增 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 记录同一阿里云主账号多 Key 共享限流、扩容必须用不同主账号 Key 的运维口径。
 
-- `server-go` 将 C 层从“旧 C + 当前 A 窗口 6/9 轮”的滚动摘要输入，改为每 20 轮从 `session_round_archive` 读取最近 20 轮完整问答并融合旧 C 重写；归档不足 20 轮时不凑合提取，保持 `pending_retry_c`，后续轮次完成后继续补提取。C 层提示词同步收口为“用户长期农业记忆”，只保留用户自己的长期农业画像、稳定种植档案、历史高频问题、用户纠正和踩坑经验，明确不做通用农技知识库、不保存通用病害常识、标准防治流程、剂量配方或品牌背书。B 层仍按 Free / Plus 每 6 轮、Pro 每 9 轮用 A 窗口更新；B/C 失败仍保留 `pending_retry_b / pending_retry_c`。同步更新根规则、项目记忆和后端单测。
+- `server-go` 将 C 层从“旧 C + 当前 A 窗口 6/9 轮”的滚动摘要输入，改为每 20 轮从 `session_round_archive` 读取最近 20 轮完整问答并融合旧 C 重写；归档不足 20 轮时不凑合提取，保持 `pending_retry_c`，后续轮次完成后继续补提取。C 层提示词当时收口为用户长期信息，不做通用农技知识库、不保存通用病害常识、标准防治流程、剂量配方或品牌背书；该口径后来已继续收紧为“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块。B 层仍按 Free / Plus 每 6 轮、Pro 每 9 轮用 A 窗口更新；B/C 失败仍保留 `pending_retry_b / pending_retry_c`。同步更新根规则、项目记忆和后端单测。
 
-- `server-go/assets/b_extraction_prompt.txt` 将 B 层从偏“累计背景摘要”收口为“短期工作记忆”：优先保留当前主线、已确认事实、用户纠正、新增信息、仍有效判断倾向、待确认关键点和后续必须承接的限制条件；农业问题保留作物 / 地块 / 症状 / 用药用肥 / 图片证据等短期判断线索，非农业问题保留当前事务目标和已确认事实，但不编造账户、订单、扣费、剩余次数或后台处理结果。后端注入标签同步改为“B层短期记忆（仅供参考）”。数据库字段、B 层触发频率、C 层摘要提示词、A 层滑窗、模型名称和 `temperature=0.8` 均不变。
+- `server-go/assets/b_extraction_prompt.txt` 将 B 层从偏“累计背景摘要”收口为“通用短期记忆”：优先保留当前主线、已确认事实、用户纠正、新增信息、仍有效判断倾向、待确认关键点和后续必须承接的限制条件；农业问题保留作物 / 地块 / 症状 / 用药用肥 / 图片证据等短期判断线索，非农业问题保留当前事务目标和已确认事实，但不编造账户、订单、扣费、剩余次数或后台处理结果。后端注入标签同步改为“B层短期记忆（仅供参考）”。数据库字段、B 层触发频率、C 层摘要提示词、A 层滑窗、模型名称和 `temperature=0.8` 均不变。
 
 ## 2026-05-20
 
