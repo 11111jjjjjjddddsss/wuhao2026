@@ -29,7 +29,7 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 Codex 默认按下面流程处理：
 
 1. 先判断问题属于 Android、后端、官网、配置还是云资源；如果只是后端问题，优先只发后端，不打 APK
-2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名和正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 构建 `com.nongjiqiancha` APK
+2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
 3. Codex 负责记录 APK 文件大小、SHA-256、包名、`versionCode`、签名指纹和更新说明
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接
 5. Codex 或运维把后端运行环境里的 `APP_ANDROID_*` 环境变量改成新版本和新 APK 链接，并用旧版 App 点“检查更新”验证

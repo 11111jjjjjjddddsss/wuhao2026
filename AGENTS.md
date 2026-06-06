@@ -63,7 +63,7 @@
 - Android 已移除 `SESSION_API_TOKEN` 静态共享 token 运行时绕过，不再用测试 ID 作为登录桥接；正式登录必须使用后端按真实手机号账号动态签发的 per-user session token。本机旧 `user_id` 到账号身份的数据迁移已经有首版后端事务骨架；Redis-backed 融合认证 token / 手机号短信认证限流已部署到 ECS 并健康，阿里云融合认证 Android 方案、DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS 环境，短信签名和验证码模板已通过 CLI 配置并写入 ECS，当前 `/healthz` 显示 `dypns=ok / dypns_fusion=ok / dypns_sms=ok`；Android 已接入阿里云融合认证 AAR `fusionauth-1.2.15-online-release.aar` 并把登录页一键登录按钮接到 SDK + 后端 `/api/auth/fusion/token` / `/api/auth/fusion/verify` / `/api/auth/fusion/login`，其中 `/api/auth/fusion/verify` 只给 SDK 半程校验 verify token 使用，不签发账号 token、不迁移旧用户数据，最终成功节点仍由 `/api/auth/fusion/login` 换账号 token；仍需真机完成本机号码一键登录回归；已暴露过的主账号 AccessKey 上线前必须轮换
 
 Android 构建链：
-- 对外安装身份：`applicationId = com.nongjiqiancha`，App 名称“农技千查”；Kotlin 源码包 / Gradle namespace 暂保留 `com.nongjiqianwen` 作为内部代码命名空间，不决定备案或安装身份。旧内测包 `com.nongjiqianwen` 不能通过检查更新覆盖安装成新包 `com.nongjiqiancha`，测试机需卸旧包重装；正式 release 构建必须同时配置固定签名和 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 等 https 后端地址，避免打出不接后端的正式包
+- 对外安装身份：`applicationId = com.nongjiqiancha`，App 名称“农技千查”；Kotlin 源码包 / Gradle namespace 暂保留 `com.nongjiqianwen` 作为内部代码命名空间，不决定备案或安装身份。旧内测包 `com.nongjiqianwen` 不能通过检查更新覆盖安装成新包 `com.nongjiqiancha`，测试机需卸旧包重装；Android 构建默认使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，所以 Android Studio 直接 Run 的 debug / 测试包也应接正式 HTTPS 后端；仍可用 `-PUPLOAD_BASE_URL=...` 或环境变量显式覆盖。正式 release 构建必须配置固定签名，且有效 `UPLOAD_BASE_URL` 必须是 https，避免打出不接后端的正式包
 - 正式签名：本机 release 签名配置保存在 `%USERPROFILE%\\.nongjiqiancha\\android-release-signing.properties`，备案 / 上架用公钥与指纹信息保存在 `%USERPROFILE%\\.nongjiqiancha\\android-release-public-info.txt`；私钥、密码和签名配置不进入仓库、聊天记忆或项目文档。正式 release 包必须使用这把固定签名
 - Gradle wrapper：8.13
 - Android Gradle Plugin：8.13.2

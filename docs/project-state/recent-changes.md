@@ -5,6 +5,10 @@
 
 ## 2026-06-06
 
+- 修复 Android Studio 直接 Run 测试包后端地址为空的问题：`app/build.gradle.kts` 现在默认使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，仍可用 `-PUPLOAD_BASE_URL=...` 或环境变量显式覆盖；debug / 测试包和正式包默认都接正式 HTTPS 后端，差异主要保留 debug-only UI 文案预览等调试入口，不能再因为未传 Gradle 参数显示“后端地址未配置”。同时把 release-like 打包任务护栏从精确 `assembleRelease / bundleRelease / packageRelease` 扩展到包含 `release` 的 assemble / bundle / package 任务，避免 `nonMinifiedRelease` 等特殊产物绕过签名和 HTTPS 检查；本地已删除 4 月残留的旧 `nonMinifiedRelease` 生成 APK，避免误装旧包。登录页删除“农业图文问诊参考工具”副标题，入口更简洁。
+
+- 再次收口农技千查官网：按克制暗色一页展示重写 `site`，删除顶部导航、产品 / 下载锚点、对话展示、复杂能力卡片和“安卓版准备中”等内部流程文案；品牌处使用透明背景的绿色叶片 `brand-mark.png` 与“农技千查”并排，正文采用“面向田间的图文问诊 / 让作物问题更清楚”口径，只保留安卓版下载按钮和居中 ICP footer。下载按钮只有注入合法 `https://...apk` 时才启用，未配置时不可点击；官网继续不展示公安备案占位。
+
 - 按坏人视角做一轮安全排查并落地低风险加固：`/api/chat/stream` 的 `client_msg_id` 增加 128 字节上限，提前对齐 MySQL `VARCHAR(128)`，避免恶意超长幂等 ID 打到数据库层制造错误；新增内部 secret 入口 Redis / IP 短期限流，覆盖 `SUPPORT_ADMIN_SECRET` 保护的内部 App 日志、审计、帮助与反馈查询 / 回复，以及 `DAILY_AGRI_JOB_SECRET` 保护的今日农情生成；`SUPPORT_ADMIN_SECRET` 比对补长度检查后再常量时间比较。通过 Cloud Assistant 把 `api.nongjiqiancha.cn` 的 HTTP 80 改成 ACME challenge + 301 HTTPS 跳转，不再直接反代业务 API；部署 / 回滚 / readiness 脚本改为本机 HTTPS `--resolve` 健康检查。新增 [security-threat-model.md](D:/wuhao/docs/runbooks/security-threat-model.md) 固化攻击面、已防护项和剩余风险；`go test ./...` 已通过。
 
 - 补齐 Go 后端请求级结构化日志底座：`Server.Handler()` 统一包一层 access log middleware，生成或透传 `X-Request-Id`，响应头回写同一 ID；记录 `http_request / http_request_slow / http_request_error`，字段只包含 method、path、status、duration、response bytes、masked IP、auth mode、可选 user_id 和 UA，不记录 query string、请求 body、Authorization、手机号、图片 URL 或模型 Key。慢请求阈值默认 `ACCESS_LOG_SLOW_MS=3000` 毫秒，`/healthz` 和 `/uploads/` 成功请求默认降噪，SSE Flusher 保持透传。新增只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)，可通过 Cloud Assistant 查询 Go 错误 / 慢请求 / 请求尾部、Nginx error 和 Nginx `429/5xx`，输出做基础脱敏；同步更新日志与运维 runbook。

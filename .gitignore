@@ -27,6 +27,7 @@ site/dist/
 .env.*
 
 # Local diagnostics / temp artifacts
+.codex-remote-attachments/
 compat_results/
 tmp/
 tmp_*/

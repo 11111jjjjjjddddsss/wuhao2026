@@ -77,10 +77,10 @@ go build ./...
 Android 生产域名构建前提：
 
 ```powershell
-.\gradlew.bat :app:compileDebugKotlin -PUPLOAD_BASE_URL=https://api.nongjiqiancha.cn
+.\gradlew.bat :app:compileDebugKotlin
 ```
 
-正式 release 构建还会额外检查固定 release 签名和 https `UPLOAD_BASE_URL`；Android 已移除静态 `SESSION_API_TOKEN` 登录绕过，正式包只走手机号账号 session token。
+Android 构建默认使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，所以 Android Studio 直接 Run 的 debug / 测试包也应接正式 HTTPS 后端；如需本地或特殊环境测试，可显式传 `-PUPLOAD_BASE_URL=...` 覆盖。正式 release 构建还会额外检查固定 release 签名和 https `UPLOAD_BASE_URL`；Android 已移除静态 `SESSION_API_TOKEN` 登录绕过，正式包只走手机号账号 session token。
 
 ## 当前发布方式
 

@@ -5,112 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="农技千查是一款专注农业场景的图文问诊 App，用大模型辅助作物病虫害、施肥管理和农事问题排查。"
+      content="农技千查是面向农业场景的视觉语言问诊工具，支持文字与照片输入，辅助梳理作物病虫害、长势异常、施肥和农事风险。"
     />
-    <meta name="theme-color" content="#f7f8f4" />
+    <meta name="theme-color" content="#071009" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <title>农技千查 - 农业图文问诊 App</title>
+    <title>农技千查 - 农业视觉语言问诊</title>
   </head>
   <body>
     <div class="page-shell">
-      <header class="site-header" aria-label="站点导航">
-        <a class="brand-word" href="#top" aria-label="农技千查首页">农技千查</a>
-        <nav class="nav-links" aria-label="主要导航">
-          <a href="#product">产品</a>
-          <a href="#download">下载</a>
-        </nav>
-      </header>
-
-      <main id="top">
+      <main class="landing" id="top">
         <section class="hero" aria-labelledby="hero-title">
-          <div class="hero-backdrop" aria-hidden="true">
-            <div class="field-grid"></div>
-            <div class="field-line line-one"></div>
-            <div class="field-line line-two"></div>
-            <div class="field-line line-three"></div>
+          <div class="brand-lockup" aria-label="农技千查">
+            <img class="brand-mark" src="/brand-mark.png" alt="" />
+            <span>农技千查</span>
           </div>
 
           <div class="hero-copy-block">
-            <p class="eyebrow">农业大模型 · 原生 Android 体验</p>
-            <h1 id="hero-title">农技千查</h1>
+            <p class="eyebrow">面向田间的图文问诊</p>
+            <h1 id="hero-title">让作物问题<br />更清楚</h1>
             <p class="hero-copy">
-              专注农业场景的图文问诊 App。用文字和照片描述作物问题，围绕病虫害、施肥管理和农事排查，给出可继续追问的技术参考。
+              上传作物照片，补充症状描述，获得可继续追问的农业技术参考。
             </p>
-            <div class="hero-actions">
-              <a class="primary-action" href="#download" data-download>安卓下载</a>
-              <a class="secondary-action" href="#product">查看能力</a>
-            </div>
-            <div class="signal-row" aria-label="产品特点">
-              <span>图文问诊</span>
-              <span>连续追问</span>
-              <span>农业参考</span>
-            </div>
+            <p class="capability-line">照片理解 / 连续问诊 / 农技参考</p>
+            <a class="download-button" data-download>安卓版下载</a>
           </div>
 
-          <aside class="hero-visual" aria-label="农技千查 App 视觉预览">
-            <div class="mark-stage">
-              <div class="app-icon-crop">
-                <img src="/app-icon.png" alt="农技千查 App 图标" />
-              </div>
-            </div>
-            <div class="visual-thread">
-              <p class="thread-line user">番茄叶背有小虫，叶片开始发黄。</p>
-              <p class="thread-line assistant">先补充地块位置、作物阶段和清晰照片，再判断虫害或病害方向。</p>
-            </div>
-          </aside>
-        </section>
-
-        <section class="section-band" id="product" aria-labelledby="product-title">
-          <div class="section-heading">
-            <p class="eyebrow">产品能力</p>
-            <h2 id="product-title">围绕农业问题，把线索查清楚</h2>
-            <p>
-              农技千查不是泛泛聊天工具。它把作物、症状、图片、管理措施和地区时间放在同一条问诊链里，帮助用户更快整理问题、定位方向。
-            </p>
-          </div>
-
-          <div class="feature-grid">
-            <article class="feature-card">
-              <span class="feature-kicker">01</span>
-              <h3>图文问诊</h3>
-              <p>支持文字、图片和图文混合咨询，适合叶片、果实、根系、虫害痕迹等可见问题排查。</p>
-            </article>
-            <article class="feature-card">
-              <span class="feature-kicker">02</span>
-              <h3>农业大模型</h3>
-              <p>围绕病虫害、肥水管理、农事时机和风险问题给出参考建议，复杂问题可结合联网信息校准。</p>
-            </article>
-            <article class="feature-card">
-              <span class="feature-kicker">03</span>
-              <h3>原生视觉语言</h3>
-              <p>面向 Android App 打磨输入、图片、历史和反馈体验，优先保持清楚、稳定、好追问。</p>
-            </article>
-          </div>
-        </section>
-
-        <section class="download-section" id="download" aria-labelledby="download-title">
-          <div>
-            <p class="eyebrow">Android</p>
-            <h2 id="download-title">安卓版下载</h2>
-            <p class="download-copy">
-              官方下载入口已预留。开放后将提供 HTTPS 下载地址，并配套版本号、包名和签名校验。
-            </p>
-            <p class="service-note">AI 建议仅供农业技术参考，不替代线下诊断、检测报告或经营决策。</p>
-            <p class="download-status" id="download-status" role="status">安卓版准备中，开放后提供官方下载地址。</p>
-          </div>
-          <a class="download-button" href="#download" data-download>下载安卓版</a>
+          <p class="service-note">内容仅供农技参考，不能替代线下诊断。</p>
         </section>
       </main>
 
       <footer class="site-footer">
-        <div>
-          <strong>农技千查</strong>
-          <span>北京农技千问科技有限公司</span>
-        </div>
-        <div class="footer-links">
-          <a href="https://beian.miit.gov.cn/" rel="noreferrer" target="_blank">京ICP备2026031728号-1</a>
-        </div>
-        <small>Copyright © <span id="copyright-year">2026</span> Nongji Qiancha. All rights reserved.</small>
+        <a href="https://beian.miit.gov.cn/" rel="noreferrer" target="_blank">京ICP备2026031728号-1</a>
       </footer>
     </div>
     <script type="module" src="/src/main.ts"></script>

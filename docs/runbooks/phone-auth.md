@@ -12,7 +12,7 @@
 - Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按官方 SDK 流程拉取服务端 fusion token、初始化 SDK，SDK 半程校验只调用后端 verify-only 接口，Android 要求响应体 `ok=true` 才算半程通过，最终成功节点才提交 verify token 给后端登录接口，不再用静态 token 或测试 ID 绕过登录
 - Android 主 manifest 已显式声明 `READ_PHONE_STATE`、`ACCESS_NETWORK_STATE` 和 `ACCESS_WIFI_STATE`，减少 release 构建依赖 AAR manifest merge 的不确定性；正式 release 前仍要检查 merged manifest
 - 短信登录后端接口已接阿里云 Dypns API，ECS 当前已配置 DYPNS 基础凭证、短信签名和验证码模板；`/healthz` 已显示 `dypns_sms=ok`
-- 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成 debug APK 走 `http://39.106.1.151`，后续正式回归应优先使用 `https://api.nongjiqiancha.cn`
+- 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成 debug APK 走 `http://39.106.1.151`。2026-06-06 起 Android 构建默认 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Android Studio 直接 Run 的 debug / 测试包也应接正式 HTTPS 后端；只有本地特殊测试才显式传 `-PUPLOAD_BASE_URL=...`
 - Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，融合认证 token、融合认证登录校验、短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
 - 阿里云侧认证次数和账单查询已纳入巡检：本机脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 会调用 DYPNS 统计 / 账单 OpenAPI 查询一键登录和短信认证用量，不输出任何密钥。2026-06-06 默认查询最近 7 天时，一键登录和短信认证统计均为 `no_data`，月账单接口未返回费用明细，说明当前尚未形成真实认证消耗
 

@@ -156,15 +156,6 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.sp
                 )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "农业图文问诊参考工具",
-                    color = Color(0xFF626872),
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    textAlign = TextAlign.Center,
-                    letterSpacing = 0.sp
-                )
                 Spacer(Modifier.height(32.dp))
 
                 Button(

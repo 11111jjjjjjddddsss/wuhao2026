@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-官网首版在 `site` 目录，使用 Vite 静态站实现。当前只做农技千查 App 介绍、安卓下载入口、服务边界说明和备案 footer，不做管理后台、不保存后台 secret、不承载用户数据。
+官网首版在 `site` 目录，使用 Vite 静态站实现。当前只做克制暗色一页展示：品牌、图文问诊介绍、安卓版下载按钮、服务边界和备案 footer；不做顶部导航、对话演示、管理后台，不保存后台 secret，不承载用户数据。
 
 2026-06-06 已部署到 ECS Nginx 静态站：
 
@@ -66,7 +66,7 @@ $env:VITE_ANDROID_APK_URL="https://your-download-host/nongjiqiancha.apk"
 npm run build
 ```
 
-未设置时页面会显示“安卓版准备中，开放后提供官方 HTTPS 下载地址。”首版不要在 App 备案、公安备案和真机回归完成前写死不存在或未验证的 APK 链接。
+未设置时下载按钮保持不可点击，不展示“准备中”或备案 / 回归等内部流程。只有 `VITE_ANDROID_APK_URL` 是合法 `https://...apk` 时，页面才启用下载按钮；首版不要在 App 备案、公安备案和真机回归完成前写死不存在或未验证的 APK 链接。
 
 APK 发布仍以 [app-update.md](D:/wuhao/docs/runbooks/app-update.md) 为准：APK 必须是固定 release 签名、包名 `com.nongjiqiancha`、versionCode 递增，并记录文件大小和 SHA-256。
 

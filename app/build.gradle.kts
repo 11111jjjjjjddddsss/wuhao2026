@@ -25,11 +25,12 @@ fun releaseSigningValue(name: String): String? =
 fun optionalBuildValue(name: String): String =
     ((project.findProperty(name) as String?) ?: System.getenv(name) ?: "").trim()
 
+val defaultUploadBaseUrl = "https://api.nongjiqiancha.cn"
 val releaseStoreFile = releaseSigningValue("NONGJI_ANDROID_RELEASE_STORE_FILE")
 val releaseStorePassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_ALIAS")
 val releaseKeyPassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_PASSWORD")
-val uploadBaseUrl = optionalBuildValue("UPLOAD_BASE_URL")
+val uploadBaseUrl = optionalBuildValue("UPLOAD_BASE_URL").ifBlank { defaultUploadBaseUrl }
 val releaseSigningConfigured =
     !releaseStoreFile.isNullOrBlank() &&
         !releaseStorePassword.isNullOrBlank() &&
@@ -88,7 +89,11 @@ android {
 }
 
 tasks.configureEach {
-    if (name == "assembleRelease" || name == "bundleRelease" || name == "packageRelease") {
+    val taskName = name.lowercase()
+    val isReleasePackagingTask =
+        taskName.contains("release") &&
+            (taskName.startsWith("assemble") || taskName.startsWith("bundle") || taskName.startsWith("package"))
+    if (isReleasePackagingTask) {
         doFirst {
             if (!releaseSigningConfigured) {
                 throw org.gradle.api.GradleException(
