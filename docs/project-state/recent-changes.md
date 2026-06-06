@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 优化 ECS 部署脚本健康检查顺序：`scripts/deploy-ecs-server.ps1` 在重启 `nongji-server` 后会先等待 Go 服务本机 `127.0.0.1:3000/healthz` 返回 200，再通过 Nginx / Host 入口检查 `api.nongjiqiancha.cn`，避免脚本刚重启就撞上游空窗并打印整页 502 HTML。该改动只减少部署输出里的瞬时 502 噪音；单台 ECS 单进程重启期间，真实零 502 仍需后续蓝绿 / 双端口切换或多实例滚动发布。
+
 - 优化帮助与反馈自动回复文案：逻辑仍保持短问候、纯图片 / 见图、通用兜底三类，不新增细分类；文案改成更正式的客服口径，使用“客服会在本页跟进回复 / 后续回复会在本页显示”，不承诺具体时效，也不把自动回复包装成智能客服。
 
 - 将帮助与反馈自动回复简单兜底版 `server-go` 提交 `8c72b973` 部署到 ECS：远端 `go test ./...`、编译、systemd 重启、Nginx 配置检查均通过；重启瞬间出现过一次 502，随后 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`。readiness 输出只记录 set/empty，不打印真实密钥值。

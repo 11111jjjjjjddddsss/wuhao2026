@@ -194,17 +194,34 @@ nginx -t
 echo health
 health_body='/tmp/nongji-health.json'
 health_status=''
+upstream_body='/tmp/nongji-upstream-health.json'
+upstream_status=''
+echo wait-upstream
+for i in `$(seq 1 20); do
+  upstream_status=`$(curl -sS -o "`$upstream_body" -w '%{http_code}' http://127.0.0.1:3000/healthz || true)
+  if [ "`$upstream_status" = "200" ]; then
+    break
+  fi
+  echo "upstream not ready: `$upstream_status" >&2
+  sleep 1
+done
+if [ "`$upstream_status" != "200" ]; then
+  cat "`$upstream_body" || true
+  exit 20
+fi
+
 for i in `$(seq 1 20); do
   health_status=`$(curl -sS -o "`$health_body" -w '%{http_code}' -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz || true)
-  cat "`$health_body" || true
-  echo
   if [ "`$health_status" = "200" ]; then
+    cat "`$health_body" || true
+    echo
     break
   fi
   echo "health not ready: `$health_status" >&2
   sleep 2
 done
 if [ "`$health_status" != "200" ]; then
+  cat "`$health_body" || true
   exit 20
 fi
 if ! grep -q '"bailian":"ok"' "`$health_body"; then
