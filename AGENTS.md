@@ -101,7 +101,7 @@ Android 构建链：
 - 待评估方向：后续如果三块文本不够用，再评估把 C 层升级成结构化字段；当前不单独落复杂农事事件表 / 状态卡，先用 C 层第三块“农业相关重点事件记忆”覆盖重点农事问题
 - 原始问诊归档：成功完成的问答轮次会写入 `session_round_archive`，先按 30 天滚动保留；`/api/session/snapshot` 给 UI 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档。该归档只服务换机 / 重装后的 UI 历史恢复和后续批量抽取，不进入每轮主模型上下文，不替代 A/B/C
 - 删除所有历史对话：账号管理页会先弹“取消 / 确定”二次确认；确认后 Android 调 `POST /api/session/clear`，后端删除当前用户的 `session_ab`（A 层滑窗、B 层通用短期记忆、C 层长期通用记忆）和 `session_round_archive` 归档，并递增 `session_generation`。前端成功后清当前聊天 UI、本地聊天快照、输入草稿、streaming draft、待发送 WorkManager 任务和本地私有 composer 图片。该操作不删除会员 / 额度 / 加油包 / 礼品卡、帮助与反馈、`quota_ledger`、`session_round_ledger` 或本机 `user_id`。`/api/session/clear` 与 `/api/chat/stream` 获取同用户 inflight 租约前会共用 MySQL 用户级命名锁，避免“清空检查无活跃流”和“旧请求刚好开新流”并发穿透；`/api/chat/stream` 开模型前和归档前还会校验客户端随请求带上的 `session_generation`，用户一旦存在清空代际，后续缺失 `session_generation` 的请求直接按 stale 拒绝；旧 ledger replay 也会按完成时间与最近清空时间比对，清空前完成的同 `client_msg_id` 不允许在清空后幽灵回放。若同一用户当前有活跃主对话流，后端返回 `409 ACTIVE_CHAT_STREAM`，前端提示稍后再删除。Android 会持久化最新 `session_generation`，本地聊天窗口、streaming draft、composer draft 和 WorkManager pending 图文都会记录所属 generation；读取或后台补发时若与当前 generation 不一致会直接丢弃。Android 清空成功时还会递增本地 clear epoch，取消前台图片上传 job、pending 图片恢复、queued mainHandler 回调和待发送 WorkManager，并让本地聊天窗口 / streaming draft / composer draft 延迟保存、上传回调、后台 Worker 继续条件都复查 epoch / pending 是否仍存在，避免旧图文或旧回复在删除后回灌
-- 时间 / 地点：后端每轮主对话必须注入当前时间、用户地点和地点可信度；历史轮次如果有后端 `created_at / region / region_source / region_reliability`，进入模型上下文时也要带轻量时间 / 地点前缀。时间以后端服务器时间为准，不用前端手机时间当业务真相；前端暂不显示每条消息时间戳或地点条。当前 Android 尚未接定位权限 / 地区选择，真实地点需要后续单独做；未传地点时后端只能走 IP / 未知兜底
+- 时间 / 地点：后端每轮主对话必须注入当前时间、用户地点和地点可信度；历史轮次如果有后端 `created_at / region / region_source / region_reliability`，进入模型上下文时也要带轻量时间 / 地点前缀。时间以后端服务器时间为准，不用前端手机时间当业务真相；前端暂不显示每条消息时间戳或地点条。当前 Nginx 会透传真实客户端 IP 给 Go 服务，`GetClientIP` 可用于限流和日志脱敏；但 `ResolveRegionByIP` 当前仍只返回“未知 / unreliable”，不做真实 IP 归属地定位。下一步提高地点准确度优先走后端自动 IP 粗定位，省 / 市级即可，不让用户手工选择地区；未传 `X-User-Region` 且未接 IP 粗定位前，模型只能收到“用户地点：未知；地点可信度：unreliable”
 
 图片规则：
 - 单轮最多 4 张
@@ -164,6 +164,7 @@ Android 构建链：
 当前锚点执行重点：
 - 当前轮输入优先，历史 / 摘要 / 联网只作参考
 - 历史和摘要不是定论；同一作物 / 同一地块可承接仍有效信息，新问题不能直接套旧判断
+- B/C 记忆默认只作后台参考，用于减少重复追问和保持连续性；除非用户明确要求回顾历史，否则不主动复述记忆内容、层级名称或用户画像
 - 信息不足时列 2 到 3 种可能性，并追问 1 到 2 个关键问题
 - 图片先做客观详细描述，再分析判断
 - 涉及混配、浓度、倍数、亩用量、兑水量、面积换算等问题时，应先核对关键参数，再给出计算或使用建议
