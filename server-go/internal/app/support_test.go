@@ -200,6 +200,9 @@ func TestShouldCreateSupportAutoReply(t *testing.T) {
 	if shouldCreateSupportAutoReply(recentSameRegularSystemReply, now, supportAutoReplyBody) {
 		t.Fatalf("regular submit confirmation should respect 24h cooldown even when latest is system")
 	}
+	if shouldCreateSupportAutoReply(recentSameRegularSystemReply, now, supportImageOnlyAutoReplyBody) {
+		t.Fatalf("generic screenshot confirmation should share 24h cooldown with regular submit confirmation")
+	}
 	oldSameRegularSystemReply := &SupportMessage{
 		SenderType: "system",
 		Body:       supportAutoReplyBody,
@@ -214,8 +217,14 @@ func TestSupportAutoReplyBodyFor(t *testing.T) {
 	if got := supportAutoReplyBodyFor("  你好！ ", nil); got != supportGreetingAutoReplyBody {
 		t.Fatalf("greeting auto reply = %q, want greeting body", got)
 	}
-	if got := supportAutoReplyBodyFor("你好", []string{"https://example.com/uploads/a.jpg"}); got != supportAutoReplyBody {
-		t.Fatalf("image feedback auto reply = %q, want regular body", got)
+	if got := supportAutoReplyBodyFor("你好", []string{"https://example.com/uploads/a.jpg"}); got != supportGreetingAutoReplyBody {
+		t.Fatalf("text should be classified before image fallback: got %q, want greeting body", got)
+	}
+	if got := supportAutoReplyBodyFor("", []string{"https://example.com/uploads/a.jpg"}); got != supportImageOnlyAutoReplyBody {
+		t.Fatalf("image-only feedback auto reply = %q, want image-only body", got)
+	}
+	if got := supportAutoReplyBodyFor("登录失败截图", []string{"https://example.com/uploads/a.jpg"}); got != supportLoginAutoReplyBody {
+		t.Fatalf("image feedback with login text = %q, want login body", got)
 	}
 	if got := supportAutoReplyBodyFor("检查更新失败了", nil); got != supportUpdateAutoReplyBody {
 		t.Fatalf("update FAQ auto reply = %q, want update body", got)

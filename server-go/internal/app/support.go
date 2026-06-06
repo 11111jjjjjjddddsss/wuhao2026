@@ -29,16 +29,17 @@ const (
 	defaultSupportAutoReplyCooldown             = 24 * time.Hour
 	defaultSupportAutoReplyRepeatCooldown       = 5 * time.Minute
 	defaultSupportFAQAutoReplyCooldown          = time.Minute
-	supportAutoReplyBody                        = "您的反馈已提交。为便于定位，请继续补充问题发生时间、操作步骤或截图；如需进一步沟通，我们会通过本页面回复您。"
-	supportGreetingAutoReplyBody                = "您好，请描述您遇到的问题，并尽量补充发生时间、操作步骤或截图；后续可在本页面查看回复。"
-	supportHowToUseAutoReplyBody                = "您可以回到主聊天页，输入农业问题或上传作物图片进行咨询；本页主要用于提交 App 使用问题、意见反馈和故障截图。"
-	supportLoginAutoReplyBody                   = "如果遇到登录或验证码问题，请先确认已勾选协议、网络正常，并可尝试切换验证码登录或稍后重试。若仍失败，请补充失败时间、页面提示和截图，我们会继续核实。"
-	supportUpdateAutoReplyBody                  = "检查更新可在设置页进入“检查更新”。如果下载、校验或安装失败，请补充当前版本、失败提示和截图，便于我们定位。"
-	supportImageAutoReplyBody                   = "图片相关问题请确认单次最多 4 张，图片清晰且网络正常；如果拍照、选图或上传失败，请补充失败时间、页面提示和截图。"
-	supportMembershipAutoReplyBody              = "会员档位、剩余次数和权益请以会员中心展示为准。涉及订单、扣费或权益异常时，请补充页面截图和发生时间，我们会进一步核实。"
-	supportHistoryAutoReplyBody                 = "历史对话以当前登录账号为准；如需清空，可在账号管理页执行删除历史。若历史恢复或删除异常，请补充发生时间、操作步骤和截图。"
-	supportPrivacyAutoReplyBody                 = "服务协议、隐私政策和风险提示可在设置页查看。若您对账号数据、隐私或注销规则有疑问，请说明具体问题，我们会继续核实。"
-	supportAgriQuestionAutoReplyBody            = "农业技术问题请回到主聊天页咨询，那里支持文字、图片和图文混合问诊。本页主要处理 App 使用问题、故障反馈和客服沟通。"
+	supportAutoReplyBody                        = "已收到。请补充发生时间、操作步骤、页面提示或截图；我们会在本页继续回复。"
+	supportImageOnlyAutoReplyBody               = "已收到截图。请补充发生时间、操作步骤或页面提示；我们会在本页继续回复。"
+	supportGreetingAutoReplyBody                = "您好，请直接描述问题；有截图也可以一起发。"
+	supportHowToUseAutoReplyBody                = "农业咨询请回到主聊天页输入问题或上传作物图片；这里主要处理 App 使用问题。"
+	supportLoginAutoReplyBody                   = "登录问题请先确认已勾选协议、网络正常；仍失败请补充时间、提示和截图。"
+	supportUpdateAutoReplyBody                  = "更新失败请补充当前版本、失败提示和截图；也可先在设置页重新检查更新。"
+	supportImageAutoReplyBody                   = "图片问题请确认单次最多 4 张、网络正常；仍失败请补充时间、提示和截图。"
+	supportMembershipAutoReplyBody              = "会员、次数和订单以会员中心展示为准；异常请补充截图和发生时间。"
+	supportHistoryAutoReplyBody                 = "历史对话以当前登录账号为准；恢复或删除异常请补充时间、步骤和截图。"
+	supportPrivacyAutoReplyBody                 = "协议、隐私和风险提示可在设置页查看；有具体问题请继续说明。"
+	supportAgriQuestionAutoReplyBody            = "农业技术问题请回到主聊天页咨询，那里支持文字和图片问诊。"
 )
 
 type SupportMessage struct {
@@ -340,7 +341,7 @@ func shouldCreateSupportAutoReply(latest *SupportMessage, nowMs int64, replyBody
 	}
 	elapsed := time.Duration(nowMs-latest.CreatedAt) * time.Millisecond
 	if latest.SenderType == "system" {
-		if replyBody == supportAutoReplyBody && latest.Body == replyBody {
+		if isGenericSupportAutoReplyBody(replyBody) && isGenericSupportAutoReplyBody(latest.Body) {
 			return elapsed >= defaultSupportAutoReplyCooldown
 		}
 		return latest.Body != replyBody || elapsed >= defaultSupportAutoReplyRepeatCooldown
@@ -348,16 +349,13 @@ func shouldCreateSupportAutoReply(latest *SupportMessage, nowMs int64, replyBody
 	if latest.SenderType != "user" {
 		return false
 	}
-	if replyBody != supportAutoReplyBody {
+	if !isGenericSupportAutoReplyBody(replyBody) {
 		return elapsed >= defaultSupportFAQAutoReplyCooldown
 	}
 	return elapsed >= defaultSupportAutoReplyCooldown
 }
 
 func supportAutoReplyBodyFor(body string, imageURLs []string) string {
-	if len(imageURLs) > 0 {
-		return supportAutoReplyBody
-	}
 	normalized := normalizeSupportAutoReplyText(body)
 	if isShortSupportGreeting(normalized) {
 		return supportGreetingAutoReplyBody
@@ -386,7 +384,14 @@ func supportAutoReplyBodyFor(body string, imageURLs []string) string {
 	if supportTextContainsAny(normalized, "隐私", "协议", "服务协议", "注销", "个人信息", "风险提示") {
 		return supportPrivacyAutoReplyBody
 	}
+	if normalized == "" && len(imageURLs) > 0 {
+		return supportImageOnlyAutoReplyBody
+	}
 	return supportAutoReplyBody
+}
+
+func isGenericSupportAutoReplyBody(body string) bool {
+	return body == supportAutoReplyBody || body == supportImageOnlyAutoReplyBody
 }
 
 func normalizeSupportAutoReplyText(raw string) string {
