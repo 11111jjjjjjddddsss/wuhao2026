@@ -1677,7 +1677,7 @@ private fun HamburgerAccountManagementContent(
             HamburgerAccountInfoRow(
                 title = "手机号",
                 value = phoneMask ?: "未登录",
-                onClick = { onPendingAction(if (phoneMask != null) "当前账号已登录" else "请先登录") }
+                onClick = { onPendingAction(if (phoneMask != null) "当前账号已登录；退出设备不会删除历史、会员或权益" else "请先登录") }
             )
         }
 
@@ -1782,6 +1782,7 @@ private fun HamburgerSupportFeedbackPage(
     var loading by remember { mutableStateOf(true) }
     var loadFailed by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
+    var sendingHint by remember { mutableStateOf<String?>(null) }
     var loadTick by remember { mutableStateOf(0) }
     var attachmentMenuVisible by remember { mutableStateOf(false) }
     val selectedImages = remember { mutableStateListOf<ComposerImageAttachment>() }
@@ -2076,15 +2077,19 @@ private fun HamburgerSupportFeedbackPage(
         }
         attachmentMenuVisible = false
         sending = true
+        sendingHint = if (imageSnapshot.isNotEmpty()) "正在上传图片..." else "正在提交反馈..."
         scope.launch {
             val (imageUrls, uploadError) = uploadSupportImagesForSend(imageSnapshot)
             if (imageUrls == null) {
                 sending = false
+                sendingHint = null
                 onPendingAction(uploadError ?: "图片上传失败，请稍后再试")
                 return@launch
             }
+            sendingHint = "正在提交反馈..."
             SessionApi.sendSupportMessage(body = body, images = imageUrls) { nullableResult ->
                 sending = false
+                sendingHint = null
                 val result = nullableResult ?: run {
                     onPendingAction(SUPPORT_SEND_FAILED_HINT)
                     return@sendSupportMessage
@@ -2126,6 +2131,7 @@ private fun HamburgerSupportFeedbackPage(
             loading = loading,
             loadFailed = loadFailed,
             sending = sending,
+            sendingHint = sendingHint,
             onInputChange = { next ->
                 if (next.text.length <= SUPPORT_MESSAGE_MAX_CHARS) {
                     inputValue = next
@@ -2176,6 +2182,7 @@ private fun HamburgerSupportFeedbackContent(
     loading: Boolean,
     loadFailed: Boolean,
     sending: Boolean,
+    sendingHint: String?,
     onInputChange: (TextFieldValue) -> Unit,
     onAddClick: () -> Unit,
     onRemoveImage: (ComposerImageAttachment) -> Unit,
@@ -2278,10 +2285,23 @@ private fun HamburgerSupportFeedbackContent(
             }
         }
 
+        if (sendingHint != null) {
+            Text(
+                text = sendingHint,
+                color = Color(0xFF5C6F42),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+            )
+        }
+
         ComposerChromeRow(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp),
+                .padding(top = if (sendingHint != null) 8.dp else 12.dp),
             addButtonSize = actionCircleSize,
             addIconSize = addIconSize,
             sendButtonSize = actionCircleSize,
@@ -2671,7 +2691,7 @@ internal fun HamburgerSupportFeedbackPagePreview(
         SessionApi.SupportMessage(
             id = 2,
             senderType = "system",
-            body = "您的反馈已提交，我们会尽快核实处理。为便于定位，请补充问题发生时间、操作步骤或截图；如需进一步沟通，我们会通过本页面回复您。",
+            body = "您的反馈已提交。为便于定位，请继续补充问题发生时间、操作步骤或截图；如需进一步沟通，我们会通过本页面回复您。",
             createdAt = now - 26L * 60L * 1000L,
             readByUserAt = now - 26L * 60L * 1000L
         ),
@@ -2719,6 +2739,7 @@ internal fun HamburgerSupportFeedbackPagePreview(
             loading = variant == HamburgerSupportFeedbackPreviewVariant.Loading,
             loadFailed = variant == HamburgerSupportFeedbackPreviewVariant.Failed,
             sending = variant == HamburgerSupportFeedbackPreviewVariant.ImageInput,
+            sendingHint = if (variant == HamburgerSupportFeedbackPreviewVariant.ImageInput) "正在上传图片..." else null,
             onInputChange = {},
             onAddClick = {},
             onRemoveImage = {},
@@ -2882,7 +2903,7 @@ private fun HamburgerRedeemCodeContent(
     val canRedeem = redeemCode.isNotBlank()
     fun submitRedeem() {
         if (canRedeem) {
-            onPendingAction("礼品卡兑换暂不可用")
+            onPendingAction("礼品卡暂未开放")
         }
     }
     Column(modifier = modifier) {
@@ -2912,6 +2933,21 @@ private fun HamburgerRedeemCodeContent(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                Text(
+                    text = "礼品卡暂未开放",
+                    color = Color(0xFF5C6F42),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "等后台兑换和权益发放接好后，这里会开放真实兑换入口。",
+                    color = Color(0xFF777B82),
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    textAlign = TextAlign.Center
+                )
                 Surface(
                     color = Color(0xFFFAFBFC),
                     shape = RoundedCornerShape(18.dp),

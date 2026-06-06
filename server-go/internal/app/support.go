@@ -29,8 +29,8 @@ const (
 	defaultSupportAutoReplyCooldown             = 24 * time.Hour
 	defaultSupportAutoReplyRepeatCooldown       = 5 * time.Minute
 	defaultSupportFAQAutoReplyCooldown          = time.Minute
-	supportAutoReplyBody                        = "您的反馈已提交，我们会尽快核实处理。为便于定位，请补充问题发生时间、操作步骤或截图；如需进一步沟通，我们会通过本页面回复您。"
-	supportGreetingAutoReplyBody                = "您好，请描述您遇到的问题，并尽量补充发生时间、操作步骤或截图。我们看到后会尽快核实处理。"
+	supportAutoReplyBody                        = "您的反馈已提交。为便于定位，请继续补充问题发生时间、操作步骤或截图；如需进一步沟通，我们会通过本页面回复您。"
+	supportGreetingAutoReplyBody                = "您好，请描述您遇到的问题，并尽量补充发生时间、操作步骤或截图；后续可在本页面查看回复。"
 	supportHowToUseAutoReplyBody                = "您可以回到主聊天页，输入农业问题或上传作物图片进行咨询；本页主要用于提交 App 使用问题、意见反馈和故障截图。"
 	supportLoginAutoReplyBody                   = "如果遇到登录或验证码问题，请先确认已勾选协议、网络正常，并可尝试切换验证码登录或稍后重试。若仍失败，请补充失败时间、页面提示和截图，我们会继续核实。"
 	supportUpdateAutoReplyBody                  = "检查更新可在设置页进入“检查更新”。如果下载、校验或安装失败，请补充当前版本、失败提示和截图，便于我们定位。"

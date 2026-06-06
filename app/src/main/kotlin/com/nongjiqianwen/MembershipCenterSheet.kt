@@ -499,8 +499,8 @@ private fun MembershipPlanSection(
     topupRemaining: Int,
     onPaymentUnavailable: () -> Unit
 ) {
-    val membershipSynced = activeTier != "unknown"
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        MembershipUnavailableNotice()
         MembershipPlanSectionTitle(
             upgradeRemaining = upgradeRemaining,
             topupRemaining = topupRemaining
@@ -514,9 +514,9 @@ private fun MembershipPlanSection(
                 "unknown" -> "同步后开通"
                 "plus" -> "当前套餐"
                 "pro" -> "当前为 Pro"
-                else -> "开通 Plus"
+                else -> "暂未开放"
             },
-            actionEnabled = membershipSynced && activeTier == "free",
+            actionEnabled = false,
             onActionClick = onPaymentUnavailable
         )
         MembershipPlanCard(
@@ -527,12 +527,31 @@ private fun MembershipPlanSection(
             highlights = listOf("每天40次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
                 "unknown" -> "同步后开通"
-                "plus" -> "升级 Pro"
+                "plus" -> "暂未开放"
                 "pro" -> "当前套餐"
-                else -> "开通 Pro"
+                else -> "暂未开放"
             },
-            actionEnabled = membershipSynced && activeTier != "pro",
+            actionEnabled = false,
             onActionClick = onPaymentUnavailable
+        )
+    }
+}
+
+@Composable
+private fun MembershipUnavailableNotice() {
+    Surface(
+        color = Color(0xFFF7FAF1),
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFDDE8CB)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = "会员购买暂未开放；当前页面只展示套餐规则，不会发起扣费或变更权益。",
+            color = Color(0xFF5C6F42),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
         )
     }
 }
@@ -664,7 +683,7 @@ private fun MembershipTopupCard(
 ) {
     val hasActiveTopup = topupRemaining > 0
     val isPaidTier = activeTier == "plus" || activeTier == "pro"
-    val canBuy = isPaidTier && !hasActiveTopup
+    val canBuy = false
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(18.dp),
@@ -725,7 +744,7 @@ private fun MembershipTopupCard(
                 text = when {
                     hasActiveTopup && isPaidTier -> "用完再续"
                     hasActiveTopup -> "剩余次数可用"
-                    canBuy -> "订购加油包"
+                    isPaidTier && !hasActiveTopup -> "暂未开放"
                     else -> "Plus / Pro 可订购"
                 },
                 enabled = canBuy,
