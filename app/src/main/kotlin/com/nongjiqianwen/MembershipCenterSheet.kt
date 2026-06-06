@@ -735,7 +735,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "Plus / Pro 可订购，永久有效，用完再续。",
+                text = "加油包暂未开放。开放后仅 Plus / Pro 用户可购买，永久有效，用完再续。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp
@@ -744,8 +744,7 @@ private fun MembershipTopupCard(
                 text = when {
                     hasActiveTopup && isPaidTier -> "用完再续"
                     hasActiveTopup -> "剩余次数可用"
-                    isPaidTier && !hasActiveTopup -> "暂未开放"
-                    else -> "Plus / Pro 可订购"
+                    else -> "暂未开放"
                 },
                 enabled = canBuy,
                 onClick = onPaymentUnavailable

@@ -66,7 +66,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
@@ -85,6 +87,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -1716,6 +1719,9 @@ private fun HamburgerAccountManagementContent(
         ) {
             HamburgerAccountActionRow(
                 title = "注销账号",
+                enabled = false,
+                danger = false,
+                trailingText = "暂未开放",
                 onClick = { onPendingAction("账号注销暂不可用，可通过帮助与反馈联系我们") }
             )
         }
@@ -2135,6 +2141,13 @@ private fun HamburgerSupportFeedbackPage(
             onInputChange = { next ->
                 if (next.text.length <= SUPPORT_MESSAGE_MAX_CHARS) {
                     inputValue = next
+                } else {
+                    val clipped = next.text.take(SUPPORT_MESSAGE_MAX_CHARS)
+                    inputValue = next.copy(
+                        text = clipped,
+                        selection = TextRange(clipped.length)
+                    )
+                    onPendingAction("最多输入2000字")
                 }
             },
             onAddClick = {
@@ -2199,7 +2212,7 @@ private fun HamburgerSupportFeedbackContent(
     val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
     var inputFocused by remember { mutableStateOf(false) }
 
-    LaunchedEffect(messages.size, loading, loadFailed, selectedImages.size, inputFocused) {
+    LaunchedEffect(messages.size, loading, loadFailed) {
         delay(80)
         scrollState.animateScrollTo(scrollState.maxValue)
     }
@@ -2384,14 +2397,46 @@ private fun HamburgerSupportEmptyState() {
             shape = CircleShape,
             border = BorderStroke(0.8.dp, Color(0xFFE2E5DF))
         ) {
-            Text(
-                text = "?",
-                color = Color(0xFF5C6F42),
-                fontSize = 18.sp,
-                lineHeight = 22.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-            )
+            Canvas(
+                modifier = Modifier
+                    .size(42.dp)
+                    .padding(10.dp)
+            ) {
+                val stroke = Stroke(
+                    width = 2.dp.toPx(),
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round
+                )
+                val bubbleSize = Size(width = size.width * 0.86f, height = size.height * 0.64f)
+                drawRoundRect(
+                    color = Color(0xFF5C6F42),
+                    topLeft = Offset(x = size.width * 0.04f, y = size.height * 0.08f),
+                    size = bubbleSize,
+                    cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
+                    style = stroke
+                )
+                drawLine(
+                    color = Color(0xFF5C6F42),
+                    start = Offset(x = size.width * 0.28f, y = size.height * 0.72f),
+                    end = Offset(x = size.width * 0.18f, y = size.height * 0.94f),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFF5C6F42),
+                    start = Offset(x = size.width * 0.46f, y = size.height * 0.34f),
+                    end = Offset(x = size.width * 0.72f, y = size.height * 0.34f),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFF5C6F42),
+                    start = Offset(x = size.width * 0.28f, y = size.height * 0.52f),
+                    end = Offset(x = size.width * 0.68f, y = size.height * 0.52f),
+                    strokeWidth = 2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            }
         }
         Text(
             text = "提交反馈后，处理进展会在这里显示",
@@ -2900,9 +2945,8 @@ private fun HamburgerRedeemCodeContent(
     initialCode: String = ""
 ) {
     var redeemCode by remember(initialCode) { mutableStateOf(initialCode) }
-    val canRedeem = redeemCode.isNotBlank()
     fun submitRedeem() {
-        if (canRedeem) {
+        if (redeemCode.isNotBlank()) {
             onPendingAction("礼品卡暂未开放")
         }
     }
@@ -2983,13 +3027,13 @@ private fun HamburgerRedeemCodeContent(
                     }
                 }
                 Surface(
-                    color = if (canRedeem) Color(0xFF111111) else Color(0xFFE3E5E8),
+                    color = Color(0xFFE3E5E8),
                     shape = RoundedCornerShape(999.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 54.dp)
                         .clickable(
-                            enabled = canRedeem,
+                            enabled = false,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = { submitRedeem() }
@@ -2997,8 +3041,8 @@ private fun HamburgerRedeemCodeContent(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = "兑换",
-                            color = if (canRedeem) Color.White else Color(0xFF8A8E96),
+                            text = "暂未开放",
+                            color = Color(0xFF8A8E96),
                             fontSize = 18.sp,
                             lineHeight = 24.sp,
                             fontWeight = FontWeight.SemiBold
@@ -3167,6 +3211,9 @@ private fun HamburgerAccountInfoRow(
 @Composable
 private fun HamburgerAccountActionRow(
     title: String,
+    enabled: Boolean = true,
+    danger: Boolean = true,
+    trailingText: String? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -3174,6 +3221,7 @@ private fun HamburgerAccountActionRow(
             .fillMaxWidth()
             .heightIn(min = 58.dp)
             .clickable(
+                enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
@@ -3183,13 +3231,29 @@ private fun HamburgerAccountActionRow(
     ) {
         Text(
             text = title,
-            color = Color(0xFFD24646),
+            color = when {
+                !enabled -> Color(0xFF8A8E96)
+                danger -> Color(0xFFD24646)
+                else -> Color(0xFF111111)
+            },
             fontSize = 17.sp,
             lineHeight = 23.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
+        if (trailingText != null) {
+            Text(
+                text = trailingText,
+                color = Color(0xFF9AA0A6),
+                fontSize = 14.sp,
+                lineHeight = 19.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 12.dp)
+            )
+        }
     }
 }
 

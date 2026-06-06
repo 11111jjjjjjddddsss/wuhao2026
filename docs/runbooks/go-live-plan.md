@@ -33,13 +33,13 @@
 目标：先把等待周期最长的备案跑起来。
 
 1. 已完成：域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过。
-2. 已完成：按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链的主要资源，其中 ECS / RDS / OSS 存储包已买，OSS Bucket / 生命周期和生产上传后端已切通，DNS 已创建 `api.nongjiqiancha.cn -> 39.106.1.151`，`server-go` 已部署到 ECS 并由 Nginx 反代，`api.nongjiqiancha.cn` HTTPS 已配置并公网验证通过，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`；App 备案通过、公安备案和真机登录 / 主聊天 / 图片问诊回归尚未完成。
+2. 已完成：按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链的主要资源，其中 ECS / RDS / OSS 存储包已买，OSS Bucket / 生命周期和生产上传后端已切通，DNS 已创建 `api.nongjiqiancha.cn`、`nongjiqiancha.cn`、`www.nongjiqiancha.cn` 到 `39.106.1.151` 的 A 记录，`server-go` 已部署到 ECS 并由 Nginx 双端口 slot 反代，`api.nongjiqiancha.cn` HTTPS 已配置并公网验证通过，根域名官网 HTTPS 已部署并公网验证通过，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`；App 备案通过、公安备案和真机登录 / 主聊天 / 图片问诊回归尚未完成。
 3. 已完成：网站 ICP 备案已通过，主体备案号 `京ICP备2026031728号`，网站备案号 `京ICP备2026031728号-1`，网站名称“农技千查”，域名 `nongjiqiancha.cn`。
 4. 已提交：2026-06-05 20:03 左右 App 备案订单进入阿里云初审，订单号 `2036780517515`，页面提示预计 2026-06-07 20:00 前审核；后续需按阿里云 / 管局要求接听审核电话、处理短信核验和补正材料。
 5. 如果备案控制台提示当前资源不满足备案校验，再补最低成本的可备案云产品兜底；后端当前优先部署在 ECS，若后续因平台能力重新启用 SAE，必须同步更新 runbook。
 
 注意：
-- 网站 ICP 已过，`api.nongjiqiancha.cn` HTTPS 已通，模型 Key 主 / 副槽位已配，但 App 备案、公安备案和真机登录 / 主聊天 / 图片问诊回归未闭环前，仍不要把它当成完整生产上线。
+- 网站 ICP 已过，`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS 和模型 Key 主 / 副槽位已配，但 App 备案、公安备案和真机登录 / 主聊天 / 图片问诊回归未闭环前，仍不要把它当成完整生产上线。
 - 备案过程中若 App 图标、名称、包名、签名等核心物料改动，可能需要重新提交或后续变更。
 - 公安联网备案数据码只用于全国互联网安全管理服务平台提交，不写入仓库或聊天交接。
 
@@ -62,9 +62,9 @@
 
 目标：让 App、后端和材料进入可公开测试状态。
 
-- 官网首版代码已在 `site` 目录准备好，包含 App 介绍、安卓下载入口和备案 footer；当前尚未部署到 `nongjiqiancha.cn` 公网根域名。把网站 ICP 备案号补进公开网站页脚或服务介绍等合适位置；App 内协议 / 隐私政策先记录网站 ICP 备案状态，App 备案号必须等 App 备案通过后再补。
+- 官网首版代码已在 `site` 目录准备好并通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，包含 App 介绍、安卓下载入口和备案 footer；网站 ICP 备案号已展示在公开页脚并链接工信部备案系统。App 内协议 / 隐私政策先记录网站 ICP 备案状态，App 备案号必须等 App 备案通过后再补。
 - 跟进 App 备案阿里云初审、管局提交、工信部短信核验和管局审核；当前网站 ICP 已通过不等于 App 备案已通过。
-- `api.nongjiqiancha.cn` HTTPS、后端公开 API 基地址和图片公开基地址已完成；后续根域名官网、下载域名和管理后台域名如果启用，需要分别配置入口和证书。
+- `api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、后端公开 API 基地址和图片公开基地址已完成；后续下载域名和管理后台域名如果启用，需要分别配置入口和证书。
 - 确认 `APP_ANDROID_*` 检查更新环境变量指向正确 APK、版本号、文件大小、SHA-256 和更新说明。
 - 做一次完整真机回归：清数据、登录、文字问诊、图片问诊、历史恢复、删除历史对话、帮助与反馈、检查更新、会员中心、礼品卡页、协议页、今日农情。
 - 在网站开通后按要求做公安联网备案；当前阿里云备案页已生成公安备案数据码，需在有效期内登录全国互联网安全管理服务平台提交。App 备案通过并开通后，也按实际要求补 App 对应公安备案信息。

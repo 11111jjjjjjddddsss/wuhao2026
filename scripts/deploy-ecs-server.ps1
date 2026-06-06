@@ -98,6 +98,7 @@ try {
 }
 
 $sha256 = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+$shaPrefix = $sha256.Substring(0, 12)
 $archiveInfo = Get-Item -LiteralPath $archive
 Write-Host "Packaged $($archiveInfo.FullName) ($($archiveInfo.Length) bytes)"
 Write-Host "SHA256 $sha256"
@@ -109,7 +110,7 @@ if ($PackageOnly) {
 
 $bytes = [IO.File]::ReadAllBytes($archive)
 $partCount = [Math]::Ceiling($bytes.Length / $ChunkSize)
-$targetDir = "/tmp/nongji-deploy-chunks-$Commit"
+$targetDir = "/tmp/nongji-deploy-chunks-$Commit-$shaPrefix"
 Write-Host "Uploading $partCount part(s) to $targetDir"
 
 for ($i = 0; $i -lt $partCount; $i++) {
@@ -139,13 +140,59 @@ for ($i = 0; $i -lt $partCount; $i++) {
 
 $remoteScript = @"
 set -euo pipefail
+lock_file='/var/lock/nongji-deploy.lock'
+exec 9>"`$lock_file"
+if ! flock -n 9; then
+  echo 'another deploy or rollback is running' >&2
+  exit 9
+fi
 commit='$Commit'
 expected_sha='$sha256'
-chunks="/tmp/nongji-deploy-chunks-$Commit"
+chunks="/tmp/nongji-deploy-chunks-$Commit-$shaPrefix"
 archive="/tmp/server-go-src-$Commit.tgz"
 stage="/tmp/nongji-server-src-$Commit"
 install_dir='/opt/nongjiqiancha/server'
 bin_tmp="/tmp/nongji-server-$Commit"
+env_file='/etc/nongjiqiancha/server.env'
+nginx_site='/etc/nginx/sites-available/nongjiqiancha-api'
+legacy_service='nongji-server.service'
+drain_seconds=1800
+
+read_active_port() {
+  matches=`$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' "`$nginx_site" 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | sort -u)
+  count=`$(printf '%s\n' "`$matches" | sed '/^`$/d' | wc -l | tr -d ' ')
+  if [ "`$count" != "1" ]; then
+    echo "cannot determine unique nginx upstream port from `$nginx_site" >&2
+    return 1
+  fi
+  printf '%s' "`$matches"
+}
+
+require_production_health() {
+  body="`$1"
+  grep -q '"auth_strict":true' "`$body" || { echo 'health auth_strict is not true' >&2; return 1; }
+  grep -q '"bailian":"ok"' "`$body" || { echo 'health bailian is not ok' >&2; return 1; }
+  grep -q '"dypns":"ok"' "`$body" || { echo 'health dypns is not ok' >&2; return 1; }
+  grep -q '"dypns_fusion":"ok"' "`$body" || { echo 'health dypns_fusion is not ok' >&2; return 1; }
+  grep -q '"dypns_sms":"ok"' "`$body" || { echo 'health dypns_sms is not ok' >&2; return 1; }
+  grep -q '"redis":"ok"' "`$body" || { echo 'health redis is not ok' >&2; return 1; }
+  grep -q '"upload_storage":"oss"' "`$body" || { echo 'health upload_storage is not oss' >&2; return 1; }
+  grep -q '"dev_order_endpoints":false' "`$body" || { echo 'health dev_order_endpoints is not false' >&2; return 1; }
+}
+
+if grep -Eq '^[[:space:]]*(export[[:space:]]+)?(LISTEN_ADDR|LISTEN_HOST)=' "`$env_file" 2>/dev/null; then
+  echo 'LISTEN_ADDR or LISTEN_HOST is set; dual-port deploy requires PORT-based listen selection' >&2
+  exit 12
+fi
+active_port=`$(read_active_port)
+if [ "`$active_port" = "3000" ]; then
+  inactive_port=3001
+else
+  inactive_port=3000
+fi
+active_service="nongji-server-`$active_port.service"
+inactive_service="nongji-server-`$inactive_port.service"
+echo "active_port=`$active_port inactive_port=`$inactive_port"
 
 echo reassemble
 rm -f "`$archive"
@@ -184,12 +231,47 @@ cp "`$stage/go.mod" "`$install_dir/go.mod"
 cp "`$stage/go.sum" "`$install_dir/go.sum"
 chown -R nongji:nongji "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum"
 
-echo restart
-systemctl restart nongji-server
-systemctl is-active nongji-server
+write_slot_unit() {
+  port="`$1"
+  cat > "/etc/systemd/system/nongji-server-`$port.service" <<EOF
+[Unit]
+Description=Nongji Qiancha Go API (`$port)
+After=network-online.target
+Wants=network-online.target
 
-echo nginx
-nginx -t
+[Service]
+Type=simple
+User=nongji
+Group=nongji
+WorkingDirectory=/opt/nongjiqiancha/server
+EnvironmentFile=/etc/nongjiqiancha/server.env
+ExecStart=/usr/bin/env PORT=`$port /opt/nongjiqiancha/server/nongji-server
+Restart=on-failure
+RestartSec=3
+LimitNOFILE=65535
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/nongjiqiancha /var/log/nongjiqiancha
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+write_slot_unit 3000
+write_slot_unit 3001
+systemctl daemon-reload
+
+echo start-new-slot
+systemctl stop "`$inactive_service" 2>/dev/null || true
+if [ "`$inactive_port" = "3000" ]; then
+  systemctl stop "`$legacy_service" 2>/dev/null || true
+fi
+systemctl reset-failed "`$inactive_service" 2>/dev/null || true
+systemctl start "`$inactive_service"
+systemctl is-active "`$inactive_service"
 
 echo health
 health_body='/tmp/nongji-health.json'
@@ -198,7 +280,7 @@ upstream_body='/tmp/nongji-upstream-health.json'
 upstream_status=''
 echo wait-upstream
 for i in `$(seq 1 20); do
-  upstream_status=`$(curl -sS -o "`$upstream_body" -w '%{http_code}' http://127.0.0.1:3000/healthz || true)
+  upstream_status=`$(curl -sS -o "`$upstream_body" -w '%{http_code}' http://127.0.0.1:`$inactive_port/healthz || true)
   if [ "`$upstream_status" = "200" ]; then
     break
   fi
@@ -209,6 +291,37 @@ if [ "`$upstream_status" != "200" ]; then
   cat "`$upstream_body" || true
   exit 20
 fi
+require_production_health "`$upstream_body"
+
+echo switch-nginx
+nginx_backup="`$nginx_site.bak-`$(date +%Y%m%d%H%M%S)"
+cp -a "`$nginx_site" "`$nginx_backup"
+before_count=`$(grep -Ec "^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:`$active_port[[:space:]]*;" "`$nginx_site" || true)
+if [ "`$before_count" -lt 1 ]; then
+  echo "nginx upstream port `$active_port was not found in non-comment proxy_pass lines" >&2
+  exit 30
+fi
+sed -i -E "s#(^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:)(3000|3001)([[:space:]]*;)#\1`$inactive_port\3#g" "`$nginx_site"
+new_port=`$(read_active_port)
+if [ "`$new_port" != "`$inactive_port" ]; then
+  cp -a "`$nginx_backup" "`$nginx_site"
+  echo "nginx upstream switch verification failed: expected `$inactive_port got `${new_port:-unknown}" >&2
+  exit 30
+fi
+if ! nginx -t; then
+  cp -a "`$nginx_backup" "`$nginx_site"
+  nginx -t || true
+  exit 30
+fi
+systemctl reload nginx
+
+restore_nginx_after_switch() {
+  if [ -f "`$nginx_backup" ]; then
+    cp -a "`$nginx_backup" "`$nginx_site"
+    nginx -t && systemctl reload nginx || true
+  fi
+  systemctl stop "`$inactive_service" 2>/dev/null || true
+}
 
 for i in `$(seq 1 20); do
   health_status=`$(curl -sS -o "`$health_body" -w '%{http_code}' -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz || true)
@@ -222,12 +335,23 @@ for i in `$(seq 1 20); do
 done
 if [ "`$health_status" != "200" ]; then
   cat "`$health_body" || true
+  restore_nginx_after_switch
   exit 20
 fi
-if ! grep -q '"bailian":"ok"' "`$health_body"; then
-  echo 'health bailian is not ok' >&2
+if ! require_production_health "`$health_body"; then
+  restore_nginx_after_switch
   exit 21
 fi
+
+echo drain-old-slot
+systemctl enable "`$inactive_service" >/dev/null
+systemctl disable "`$active_service" >/dev/null 2>&1 || true
+systemctl disable "`$legacy_service" >/dev/null 2>&1 || true
+drain_unit="nongji-drain-stop-`$active_port-`$(date +%s)"
+systemd-run --unit="`$drain_unit" --on-active="`${drain_seconds}s" /bin/sh -c "systemctl stop '`$active_service' '`$legacy_service' 2>/dev/null || true" >/dev/null 2>&1 || {
+  echo "failed to schedule old slot drain stop; leaving old slot running" >&2
+}
+systemctl is-active "`$inactive_service"
 "@
 
 $remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))

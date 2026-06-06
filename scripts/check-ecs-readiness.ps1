@@ -40,14 +40,23 @@ function Wait-RunCommand {
 $remoteScript = @'
 set -u
 env_file='/etc/nongjiqiancha/server.env'
+nginx_site='/etc/nginx/sites-available/nongjiqiancha-api'
 
 echo '== service =='
-systemctl is-active nongji-server || true
-systemctl --no-pager --full status nongji-server | sed -n '1,8p' || true
+for svc in nongji-server nongji-server-3000 nongji-server-3001; do
+  state=$(systemctl is-active "$svc" 2>/dev/null || true)
+  enabled=$(systemctl is-enabled "$svc" 2>/dev/null || true)
+  echo "$svc state=${state:-unknown} enabled=${enabled:-unknown}"
+done
 
 echo
 echo '== nginx =='
 nginx -t 2>&1 || true
+active_port=$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "$nginx_site" 2>/dev/null | head -1 | sed -E 's/.*:([0-9]+);/\1/' || true)
+if [ -z "$active_port" ]; then
+  active_port=unknown
+fi
+echo "active_upstream_port=$active_port"
 
 echo
 echo '== healthz =='
@@ -80,6 +89,7 @@ check_env() {
 
 for key in \
   APP_ENV AUTH_STRICT APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
+  LISTEN_ADDR LISTEN_HOST PORT \
   UPLOAD_STORAGE_BACKEND OSS_BUCKET OSS_ENDPOINT OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET \
   DASHSCOPE_API_KEY DASHSCOPE_API_KEY_1 DASHSCOPE_API_KEY_2 DASHSCOPE_API_KEY_3 DASHSCOPE_API_KEYS DASHSCOPE_KEY_COOLDOWN_SECONDS \
   DASHSCOPE_KEY_SELECTION_MODE DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS \
@@ -101,7 +111,7 @@ fi
 
 echo
 echo '== ports =='
-ss -ltnp 2>/dev/null | grep -E '(:80|:3000)[[:space:]]' || true
+ss -ltnp 2>/dev/null | grep -E '(:80|:443|:3000|:3001)[[:space:]]' || true
 '@
 
 $remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))

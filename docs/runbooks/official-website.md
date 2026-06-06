@@ -6,6 +6,15 @@
 
 官网首版在 `site` 目录，使用 Vite 静态站实现。当前只做农技千查 App 介绍、安卓下载入口、服务边界说明和备案 footer，不做管理后台、不保存后台 secret、不承载用户数据。
 
+2026-06-06 已部署到 ECS Nginx 静态站：
+
+- 入口：`https://nongjiqiancha.cn/`、`https://www.nongjiqiancha.cn/`
+- DNS：`@` 和 `www` A 记录均指向 ECS 公网 IP `39.106.1.151`
+- Nginx 配置：`/etc/nginx/sites-available/nongjiqiancha-site`
+- 站点目录：`/var/www/nongjiqiancha-site/current`
+- 证书：Let's Encrypt / certbot，路径 `/etc/letsencrypt/live/nongjiqiancha.cn/`，有效期到 2026-09-04，自动续期 timer 已启用；只记录证书路径，不记录私钥内容
+- 公网验证：根域名 HTTP 会 301 到 HTTPS，根域名 / www HTTPS 返回官网首页 200；`api.nongjiqiancha.cn` healthz 仍独立走 API Nginx 配置
+
 ## 本地开发
 
 ```powershell
@@ -21,7 +30,31 @@ cd site
 npm run build
 ```
 
-产物在 `site/dist`。部署根域名 `nongjiqiancha.cn` 时，可把该目录作为 Nginx 静态站点根目录或上传到后续静态托管 / OSS + CDN。
+产物在 `site/dist`。
+
+## 部署到 ECS
+
+官网通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署。脚本会：
+
+1. 本地构建 `site`
+2. 同步 `@` / `www` A 记录到 ECS 公网 IP
+3. 分片上传 `site/dist` 打包产物到 ECS
+4. 发布到 `/var/www/nongjiqiancha-site/releases/<sha>` 并切换 `current` symlink
+5. 写入 / 刷新 Nginx 静态站配置
+6. 通过 certbot 申请或续用 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书
+7. 验证 HTTP / HTTPS 入口
+
+只构建打包、不改 DNS / 服务器：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\deploy-ecs-site.ps1 -PackageOnly
+```
+
+正式部署：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\deploy-ecs-site.ps1
+```
 
 ## 下载入口
 

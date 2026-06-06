@@ -1,6 +1,6 @@
 # ECS 发版 Runbook
 
-最后更新：2026-06-05
+最后更新：2026-06-06
 
 ## 目的
 
@@ -13,7 +13,7 @@
 - 旧 SAE demo 应用已删除，当前没有 SAE 应用承载后端或对外流量
 - 已初始化服务器用户和目录：系统用户 `nongji`，部署目录 `/opt/nongjiqiancha/server`，运行配置 `/etc/nongjiqiancha/server.env`，上传目录 `/var/lib/nongjiqiancha/uploads`，日志目录 `/var/log/nongjiqiancha`
 - 已安装并启用：Nginx、fail2ban、logrotate、MariaDB client、Go 1.26.2
-- `server-go` 已部署为 `systemd` 服务 `nongji-server.service`，默认监听本机 `127.0.0.1:3000`，由 Nginx 按 `api.nongjiqiancha.cn` 反代；只有显式设置 `LISTEN_ADDR` 或 `LISTEN_HOST` 时才允许改成其他监听地址
+- `server-go` 当前采用单台 ECS 双端口发版：Nginx 在 `127.0.0.1:3000` 和 `127.0.0.1:3001` 之间切换上游，systemd slot 服务为 `nongji-server-3000.service` / `nongji-server-3001.service`；历史 `nongji-server.service` 仅作为迁移前旧服务名保留，双端口迁移成功后已禁用，旧 slot 会按排空窗口延迟停止，避免打断正在进行的 SSE。不要在生产环境显式配置 `LISTEN_ADDR` 或 `LISTEN_HOST`，否则双端口脚本无法通过 `PORT=3000/3001` 切换监听地址
 - Go HTTP 服务使用显式 `http.Server`，默认 `ReadHeaderTimeout=5s`、`ReadTimeout=15s`、`IdleTimeout=90s`、`MaxHeaderBytes=1MiB`；`WriteTimeout` 默认保持 `0`，避免把正常 SSE 长回答按写超时杀掉。如需调整，可通过 `HTTP_READ_HEADER_TIMEOUT_SECONDS`、`HTTP_READ_TIMEOUT_SECONDS`、`HTTP_WRITE_TIMEOUT_SECONDS`、`HTTP_IDLE_TIMEOUT_SECONDS`、`HTTP_MAX_HEADER_BYTES` 和 `HTTP_SHUTDOWN_TIMEOUT_SECONDS` 配置
 - 模型出站 HTTP client 不设置全局 `Timeout`，避免误杀 SSE 正文流；只限制拨号、TLS 握手、响应头等待和空闲连接，默认 `DASHSCOPE_DIAL_TIMEOUT_SECONDS=10`、`DASHSCOPE_TLS_HANDSHAKE_TIMEOUT_SECONDS=10`、`DASHSCOPE_RESPONSE_HEADER_TIMEOUT_SECONDS=60`、`DASHSCOPE_IDLE_CONN_TIMEOUT_SECONDS=90`。主聊天流另有 `CHAT_STREAM_MAX_DURATION_SECONDS` 兜底，默认 30 分钟；SSE 响应会带 `X-Accel-Buffering: no`，提示 Nginx 不缓冲流式响应
 - 上游模型错误响应 / 非 SSE 响应只读取 64KiB 预览用于判断和日志，B/C 摘要非流式响应读取上限为 64KiB，今日农情 JSON 响应读取上限为 1MiB；正常主聊天 SSE 正文仍走流式转发
@@ -47,18 +47,18 @@
 
 通过阿里云 CLI / Cloud Assistant 执行命令，不需要在聊天或仓库里暴露服务器密码。
 
-查看服务状态：
+查看当前 active upstream 和服务状态：
 
 ```powershell
-aliyun ecs RunCommand --RegionId cn-beijing --Type RunShellScript --InstanceId.1 i-2ze5nrem0jrchln4f0eh --CommandContent "systemctl status nongji-server --no-pager" --Timeout 120
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1
 ```
 
 服务器内常用命令：
 
 ```bash
-systemctl status nongji-server --no-pager
-journalctl -u nongji-server -n 120 --no-pager
-systemctl restart nongji-server
+grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' /etc/nginx/sites-available/nongjiqiancha-api | head -1
+systemctl status nongji-server-3000 nongji-server-3001 --no-pager
+journalctl -u nongji-server-3000 -u nongji-server-3001 -n 120 --no-pager
 nginx -t
 systemctl reload nginx
 curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz
@@ -89,7 +89,10 @@ Android 生产域名构建前提：
 2. 用 ECS Cloud Assistant `SendFile` 分片下发到 `/tmp/nongji-deploy-chunks-<commit>`
 3. ECS 本机用 Go 1.26.2 编译到 `/opt/nongjiqiancha/server/nongji-server`
 4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum
-5. 重启 `nongji-server.service`，执行 `nginx -t` 和 Host healthz
+5. 读取 Nginx 当前上游端口，选择另一个端口作为新 slot
+6. 启动 `nongji-server-3000.service` 或 `nongji-server-3001.service` 中的非当前 slot，并先检查该端口本机 `/healthz`
+7. 通过 `nginx -t` 后把 Nginx 上游切到新 slot，reload Nginx，再检查 Host healthz
+8. 新入口健康后启用新 slot、禁用旧 slot / 历史 `nongji-server.service`，并通过 transient systemd timer 延迟停止旧进程，给已有 SSE 连接排空时间
 
 只验证打包不部署：
 
@@ -125,7 +128,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 
 ## Nginx
 
-- 当前 Nginx 同时监听 HTTP 80 和 HTTPS 443；`server-go` 仍只监听 `127.0.0.1:3000`，公网统一由 Nginx 反代
+- 当前 Nginx 同时监听 HTTP 80 和 HTTPS 443；`server-go` 只监听本机端口，公网统一由 Nginx 反代。发版时 Nginx 会在 `127.0.0.1:3000` / `127.0.0.1:3001` 两个上游之间切换
 - 2026-06-05 已通过 Cloud Assistant 在 ECS 安装 certbot，并用 Let’s Encrypt HTTP-01 webroot 为 `api.nongjiqiancha.cn` 签发免费 DV 证书；证书有效期到 2026-09-03，certbot 自动续期 timer 已启用
 - Nginx 配置文件：`/etc/nginx/sites-available/nongjiqiancha-api`；本次 HTTPS 前备份：`/etc/nginx/sites-available/nongjiqiancha-api.bak-20260605211327`
 - 证书路径：`/etc/letsencrypt/live/api.nongjiqiancha.cn/fullchain.pem`；私钥路径：`/etc/letsencrypt/live/api.nongjiqiancha.cn/privkey.pem`。只记录路径，不在仓库、聊天或日志打印私钥内容
@@ -153,4 +156,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 2. 跟进 App 备案审核通过，并提交公安联网备案；网站 ICP 已于 2026-06-05 通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配置完成。
 3. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限 RAM 用户，并重新写入 ECS `DYPNS_*` 环境变量。
 4. 用真实 App 链路验证手机号一键登录、验证码登录、`/upload`、`/uploads/`、模型拉图、主聊天流和历史图片过期占位。
-5. 给发布 / 回滚脚本补更完整的异常处理和发布记录归档。
+5. 后续若要做到跨实例高可用，再升级为多 ECS / SLB 滚动发布；当前双端口只解决单机重启空窗，不等于多机容灾。

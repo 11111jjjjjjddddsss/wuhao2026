@@ -5,6 +5,12 @@
 
 ## 2026-06-06
 
+- 按 Product Design 轻量审查结果收紧 App 内几个占位 UI：礼品卡页输入后不再出现可兑换黑色按钮，按钮固定置灰显示“暂未开放”；会员中心加油包说明和按钮统一为未开放口径，不再出现“可订购但禁用”的冲突；帮助与反馈超过 2000 字会截断并提示，不再静默拒绝输入，且只在消息 / 加载状态变化时自动滚到底，避免点输入框或选图时打断用户查看旧记录；帮助与反馈空态图标从文本问号换成线性对话图标；账号管理“注销账号”弱化为不可点的“暂未开放”占位，避免像真实危险操作。
+
+- 部署农技千查官网到 ECS 根域名：新增 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1)，自动构建 Vite 静态站、同步 `@` / `www` A 记录到 `39.106.1.151`、分片上传 `site/dist`、发布到 `/var/www/nongjiqiancha-site/current`、写入 Nginx 静态站配置并通过 certbot 签发 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书。公网验证 `http://nongjiqiancha.cn/` 301 到 HTTPS，`https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/` 均返回官网首页 200，页面包含“农技千查 / 安卓下载 / 京ICP备2026031728号-1”；公安备案号仍为待补充文本，不伪造编号。
+
+- 将 ECS 后端发布方式从单服务重启升级为单机双端口 slot 切换：`scripts/deploy-ecs-server.ps1` / `scripts/rollback-ecs-server.ps1` 现在共用远端互斥锁，自动判断 Nginx 当前上游 `3000/3001`，在非当前端口启动新 slot 并通过生产 healthz 断言后再切 Nginx；切换失败会恢复 Nginx 备份并停止新 slot，切换成功后禁用旧 slot / 历史 `nongji-server.service`，再延迟停止旧进程给 SSE 连接排空。2026-06-06 已完成首次迁移，当前 active upstream 为 `127.0.0.1:3001`，readiness 显示 `nongji-server-3001 active/enabled`、Nginx OK、Host healthz 200、模型 / 短信 / Redis / OSS 均 ok。
+
 - 优化 ECS 部署脚本健康检查顺序：`scripts/deploy-ecs-server.ps1` 在重启 `nongji-server` 后会先等待 Go 服务本机 `127.0.0.1:3000/healthz` 返回 200，再通过 Nginx / Host 入口检查 `api.nongjiqiancha.cn`，避免脚本刚重启就撞上游空窗并打印整页 502 HTML。该改动只减少部署输出里的瞬时 502 噪音；单台 ECS 单进程重启期间，真实零 502 仍需后续蓝绿 / 双端口切换或多实例滚动发布。
 
 - 优化帮助与反馈自动回复文案：逻辑仍保持短问候、纯图片 / 见图、通用兜底三类，不新增细分类；文案改成更正式的客服口径，使用“客服会在本页跟进回复 / 后续回复会在本页显示”，不承诺具体时效，也不把自动回复包装成智能客服。
