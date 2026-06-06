@@ -5,7 +5,13 @@
 
 ## 2026-06-06
 
-- 后端地点注入补免费离线 IP 粗定位：`ResolveRegionByIP` 从原来的固定“未知 / unreliable”升级为可选读取 ECS 本地 `ip2region` xdb（`IP2REGION_V4_XDB_PATH`，兼容 `IP2REGION_XDB_PATH`）做公网 IP 到省 / 市级地区解析，结果仍标记为 `region_source=ip / region_reliability=unreliable`，只作为主对话参考；私网 IP、库未配置、代理漂移或查询失败继续兜底未知。该方案不走收费 API、不调用第三方免费接口、不放 RDS、不把完整 IP 注入模型；新增 [ip-region.md](D:/wuhao/docs/runbooks/ip-region.md) 和 readiness 检查项，后续若要更准再单独评估 Android 可选定位权限与隐私政策更新。
+- 修复 ECS 双端口发布 drain-stop 叠加导致的 502 风险：CLI / readiness 巡检发现 Nginx active upstream 指向 `3001`，但 `nongji-server-3001` 一度处于 inactive，公网 API healthz 返回 502；排查确认不是资源不足或模型 / 数据库故障，而是多次发布的 transient `nongji-drain-stop-*` 定时任务叠加，把当前 active slot 也停掉。已通过 Cloud Assistant 启动当前 active slot 并验证 `https://api.nongjiqiancha.cn/healthz` 200；`deploy-ecs-server.ps1` / `rollback-ecs-server.ps1` 新增发布 / 回滚前清理旧 drain 任务，`check-ecs-readiness.ps1` 改为 active slot inactive、Host healthz 非 200 或关键 health 标记缺失时直接失败，避免 502 被误判通过。
+
+- 新增云资源容量与续费巡检入口：通过 CLI 复查 ECS / RDS / Redis / OSS 规格和实时用量，当前资源足够备案等待期、真机联调、早期内测和小流量上线；ECS 2 核 4G 当前负载约 0、可用内存约 2.9GiB、系统盘约 7% 使用；RDS 1 核 2G / 50G 当前磁盘约 3.0GiB、近 15 分钟 CPU 约 0.7%、内存约 11%；Redis 256MiB 当前内存约 4.4MiB、CPU 0 到 0.4%；OSS Bucket 当前 0MB。新增 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)，明确 CPU / 内存 / 磁盘 / 带宽 / RDS / Redis / OSS / 到期提醒阈值，以后 Codex 发现接近阈值必须提前提示升级、续费或购买资源包。
+
+- Android 接入问诊地区定位权限：`AndroidManifest.xml` 新增 `ACCESS_COARSE_LOCATION / ACCESS_FINE_LOCATION`，App 进入聊天页后请求一次定位授权；授权后每次发送问诊前尽量短窗口刷新系统定位，并用系统 Geocoder 反查为省 / 市 / 区县等地区文本，通过 `X-User-Region` / `X-Region-Source=gps` / `X-Region-Reliability=reliable` 传给后端。纯文字前台流、带图前台流和 WorkManager 待发送任务都带同一地区上下文；App 不上传经纬度、不保存轨迹。未授权、定位失败或反查失败时继续由后端 `ip2region` IP 粗定位或未知兜底；同步更新 App 内隐私政策 / 个人信息收集清单 / 应用权限和项目记忆。
+
+- 后端地点注入补免费离线 IP 粗定位：`ResolveRegionByIP` 从原来的固定“未知 / unreliable”升级为可选读取 ECS 本地 `ip2region` xdb（`IP2REGION_V4_XDB_PATH`，兼容 `IP2REGION_XDB_PATH`）做公网 IP 到省 / 市级地区解析，结果仍标记为 `region_source=ip / region_reliability=unreliable`，只作为主对话参考；私网 IP、库未配置、代理漂移或查询失败继续兜底未知。该方案不走收费 API、不调用第三方免费接口、不放 RDS、不把完整 IP 注入模型；新增 [ip-region.md](D:/wuhao/docs/runbooks/ip-region.md) 和 readiness 检查项，当前作为 Android 定位未授权 / 失败时的兜底链路。
 
 - 主对话锚点补 B/C 记忆静默使用规则：B/C 记忆只作后台参考，用于减少重复追问和保持连续性；除非用户明确要求回顾历史，否则主模型不要主动复述记忆内容、层级名称或用户画像。`/api/chat/stream` 注入给主模型的 B/C 标签同步改为“B层通用短期记忆（仅供参考）”和“C层长期通用记忆（仅供参考）”。同时复查时间 / 地点注入链路：每轮只注入当前时间、用户地点和地点可信度；Nginx 会透传真实客户端 IP 给 Go 服务，但 IP 只用于限流、脱敏日志和地区推断，不把完整 IP 注入模型。该条复查时 `ResolveRegionByIP` 仍返回未知；随后已在同日接入免费离线 `ip2region` 粗定位，见本日更新条目。
 

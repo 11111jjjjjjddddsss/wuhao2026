@@ -22,7 +22,7 @@
 - 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉
 - 2026-06-01 已通过 Cloud Assistant 将包含手机号登录 / 融合认证后端改动的源码包部署到 ECS：分片上传源码包、ECS 上校验 SHA-256、运行 `go test ./...`、编译、备份旧二进制、替换并重启 `nongji-server`；重启瞬间 Nginx healthz 曾短暂 502，随后 readiness 复查显示 systemd active、Nginx 配置 OK、Host healthz 200。
 - 生产 ECS 已切到 OSS 上传后端，并已配置 Redis 认证限流、阿里云 DYPNS 融合认证、短信验证码环境变量、DashScope 主 / 副模型 Key 主备槽位和 `ip2region` v4 xdb 本地库路径。当前健康检查：`curl -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`dev_order_endpoints=false`、`redis=ok`、`upload_storage=oss`。
-- 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、Host healthz、关键环境变量是否 set/missing/empty、本机上传目录、`ip2region` v4 xdb 是否可读和端口监听；脚本只输出脱敏状态，不打印真实密钥值。2026-06-05 最新检查显示 systemd active、Nginx 配置 OK、Host healthz 200、HTTPS healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`
+- 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、Host healthz、关键环境变量是否 set/missing/empty、本机上传目录、`ip2region` v4 xdb 是否可读和端口监听；脚本只输出脱敏状态，不打印真实密钥值。当前脚本会在 active upstream slot 未 active、Host healthz 非 200，或生产 healthz 缺少 `ok/auth_strict/bailian/redis/upload_storage` 关键标记时直接失败，避免 502 被误判成通过。2026-06-06 最新检查显示 `nongji-server-3001 active/enabled`、Nginx 配置 OK、Host healthz 200、HTTPS healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`
 - 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 和域名 HTTP healthz 均已解析到本机并返回 200；本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - DashScope 主 / 副模型 Key 已通过 Cloud Assistant 写入 ECS 主备槽位并重启，真实 Key 值不进入仓库、文档、提交信息或聊天记忆；后端代码按 `DASHSCOPE_API_KEY_1` 主 Key、`DASHSCOPE_API_KEY_2` 副 Key 主备优先使用，旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 仅作兼容入口
 - 网站 ICP 备案已通过：主体备案号 `京ICP备2026031728号`，网站备案号 `京ICP备2026031728号-1`；App 备案已于 2026-06-05 20:03 左右提交阿里云初审，订单号 `2036780517515`；2026-06-05 已通过 Let’s Encrypt / certbot 为 `api.nongjiqiancha.cn` 配置 Nginx 443 HTTPS，并公网验证 `https://api.nongjiqiancha.cn/healthz` 返回 200。当前仍缺 App 备案通过、公安备案和真机登录 / 主聊天 / 图片问诊回归，正式 App 切生产域名前仍需最终回归
@@ -92,7 +92,7 @@ Android 生产域名构建前提：
 5. 读取 Nginx 当前上游端口，选择另一个端口作为新 slot
 6. 启动 `nongji-server-3000.service` 或 `nongji-server-3001.service` 中的非当前 slot，并先检查该端口本机 `/healthz`
 7. 通过 `nginx -t` 后把 Nginx 上游切到新 slot，reload Nginx，再检查 Host healthz
-8. 新入口健康后启用新 slot、禁用旧 slot / 历史 `nongji-server.service`，并通过 transient systemd timer 延迟停止旧进程，给已有 SSE 连接排空时间
+8. 新入口健康后启用新 slot、禁用旧 slot / 历史 `nongji-server.service`，并通过 transient systemd timer 延迟停止旧进程，给已有 SSE 连接排空时间；每次部署 / 回滚前都会先清理旧 `nongji-drain-stop-*` transient 任务，避免多次发布叠加后把当前 active slot 误停成 502
 
 只验证打包不部署：
 

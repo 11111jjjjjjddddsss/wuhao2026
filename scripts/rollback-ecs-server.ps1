@@ -108,6 +108,12 @@ require_production_health() {
   grep -q '"dev_order_endpoints":false' "`$body" || { echo 'health dev_order_endpoints is not false' >&2; return 1; }
 }
 
+cancel_stale_drains() {
+  systemctl list-units 'nongji-drain-stop-*' --all --no-legend --plain 2>/dev/null | awk '{print `$1}' | while read -r unit; do
+    [ -n "`$unit" ] && systemctl stop "`$unit" 2>/dev/null || true
+  done
+}
+
 if grep -Eq '^[[:space:]]*(export[[:space:]]+)?(LISTEN_ADDR|LISTEN_HOST)=' "`$env_file" 2>/dev/null; then
   echo 'LISTEN_ADDR or LISTEN_HOST is set; dual-port rollback requires PORT-based listen selection' >&2
   exit 22
@@ -121,6 +127,7 @@ fi
 active_service="nongji-server-`$active_port.service"
 inactive_service="nongji-server-`$inactive_port.service"
 echo "active_port=`$active_port inactive_port=`$inactive_port"
+cancel_stale_drains
 
 echo rollback "$BackupName"
 cp -a "`$install_dir/nongji-server" "`$install_dir/nongji-server.pre-rollback-`$(date +%Y%m%d%H%M%S)"

@@ -207,7 +207,7 @@
 - 目录页包含 6 个二级页面：用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示。
 - 6 个二级页面都走设置页右进左出的页面栈；左上角返回和系统返回键会先回到服务协议目录，再回到设置菜单。
 - Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE / READ_PHONE_STATE / REQUEST_INSTALL_PACKAGES`；引入阿里云融合认证 SDK 后，合并 Manifest 还会包含 `CHANGE_NETWORK_STATE / CHANGE_WIFI_STATE / RECEIVE_USER_PRESENT` 等登录认证所需权限；AndroidX WorkManager 还会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
-- App 当前不申请定位、App 相机、相册 / 存储读写、录音、通讯录、短信或通知权限；手机号一键登录 SDK 接入后会按需使用电话状态、网络状态和 Wi-Fi 状态来判断 SIM 卡、运营商网络和认证环境。
+- App 当前已申请定位权限用于问诊地区上下文校准，但只上传系统反查出的省 / 市 / 区县等地区文本，不上传经纬度、不保存轨迹；当前仍不申请 App 相机、相册 / 存储读写、录音、通讯录、短信或通知权限。手机号一键登录 SDK 接入后会按需使用电话状态、网络状态和 Wi-Fi 状态来判断 SIM 卡、运营商网络和认证环境。
 - Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，便于用户找回现场照片；本轮已把该口径补进隐私政策、个人信息收集清单和应用权限页。
 - 用户可见正文没有暴露具体模型品牌、模型平台名或供应商账号信息，只使用“第三方大模型和云服务”这类必要委托处理口径。
 

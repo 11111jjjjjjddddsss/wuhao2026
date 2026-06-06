@@ -78,7 +78,10 @@ class PendingChatSendWorker(
                 clientMsgId = userMessageId,
                 text = pending.text,
                 images = imageUrls,
-                sessionGeneration = pending.sessionGeneration
+                sessionGeneration = pending.sessionGeneration,
+                region = pending.region,
+                regionSource = pending.regionSource,
+                regionReliability = pending.regionReliability
             )
         ) {
             !isStopped && PendingChatSendStore.has(applicationContext, chatScopeId, userMessageId)

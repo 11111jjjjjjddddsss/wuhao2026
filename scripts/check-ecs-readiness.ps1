@@ -57,6 +57,15 @@ if [ -z "$active_port" ]; then
   active_port=unknown
 fi
 echo "active_upstream_port=$active_port"
+if [ "$active_port" != "unknown" ]; then
+  active_service="nongji-server-${active_port}"
+  active_state=$(systemctl is-active "$active_service" 2>/dev/null || true)
+  echo "active_upstream_service=$active_service state=${active_state:-unknown}"
+  if [ "$active_state" != "active" ]; then
+    echo "active upstream service is not active: $active_service" >&2
+    exit 10
+  fi
+fi
 
 echo
 echo '== healthz =='
@@ -65,6 +74,16 @@ health_status=$(curl -sS -o "$health_body" -w '%{http_code}' -H 'Host: api.nongj
 echo "http_status=$health_status"
 cat "$health_body" 2>/dev/null || true
 echo
+if [ "$health_status" != "200" ]; then
+  echo "healthz is not ready: $health_status" >&2
+  exit 11
+fi
+for expected in '"ok":true' '"auth_strict":true' '"bailian":"ok"' '"redis":"ok"' '"upload_storage":"oss"'; do
+  if ! grep -q "$expected" "$health_body" 2>/dev/null; then
+    echo "healthz missing expected marker: $expected" >&2
+    exit 12
+  fi
+done
 
 echo
 echo '== env readiness (values redacted) =='

@@ -12,6 +12,9 @@ internal data class PendingChatSend(
     val imageUris: List<String>,
     val imageUrls: List<String> = emptyList(),
     val sessionGeneration: Int? = null,
+    val region: String? = null,
+    val regionSource: String? = null,
+    val regionReliability: String? = null,
     val createdAtMs: Long = System.currentTimeMillis(),
     val updatedAtMs: Long = System.currentTimeMillis(),
     val remoteStartedAtMs: Long = 0L,
@@ -73,6 +76,23 @@ internal object PendingChatSendStore {
     ) {
         val pending = get(context, chatScopeId, userMessageId) ?: return
         upsert(context, pending.copy(imageUrls = imageUrls))
+    }
+
+    fun updateRegion(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String,
+        region: ClientRegionContext?
+    ) {
+        val pending = get(context, chatScopeId, userMessageId) ?: return
+        upsert(
+            context,
+            pending.copy(
+                region = region?.region,
+                regionSource = region?.source,
+                regionReliability = region?.reliability
+            )
+        )
     }
 
     fun markRemoteStarted(context: Context, chatScopeId: String, userMessageId: String) {

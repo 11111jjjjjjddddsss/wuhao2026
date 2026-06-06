@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -2411,6 +2412,35 @@ fun ChatScreen() {
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val snackbarScope = rememberCoroutineScope()
+    var latestClientRegion by remember(uiRuntimeResetKey) {
+        mutableStateOf(ClientRegionProvider.cachedRegion(context))
+    }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        ClientRegionProvider.markLocationPermissionPrompted(context)
+        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) {
+            snackbarScope.launch {
+                latestClientRegion = ClientRegionProvider.refreshRegion(context)
+            }
+        }
+    }
+    LaunchedEffect(uiRuntimeResetKey, hasRemoteHistorySource) {
+        if (!hasRemoteHistorySource) return@LaunchedEffect
+        if (ClientRegionProvider.hasLocationPermission(context)) {
+            latestClientRegion = ClientRegionProvider.refreshRegion(context)
+        } else if (!ClientRegionProvider.wasLocationPermissionPrompted(context)) {
+            ClientRegionProvider.markLocationPermissionPrompted(context)
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
     var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
@@ -5117,6 +5147,19 @@ fun ChatScreen() {
         }
     }
 
+    fun currentClientRegionForSend(): ClientRegionContext? =
+        latestClientRegion ?: ClientRegionProvider.cachedRegion(context)
+
+    suspend fun refreshClientRegionForSend(): ClientRegionContext? {
+        if (!hasRemoteHistorySource) return null
+        val refreshed = ClientRegionProvider.refreshRegion(context)
+        if (refreshed != null) {
+            latestClientRegion = refreshed
+            return refreshed
+        }
+        return currentClientRegionForSend()
+    }
+
     fun stageUserMessageForImageUpload(
         text: String,
         previewImageUris: List<String>
@@ -5181,6 +5224,7 @@ fun ChatScreen() {
         persistTick++
         val stagedSnapshot = persistableLocalChatWindowSnapshot()
         context.saveLocalChatWindowSync(chatScopeId, stagedSnapshot)
+        val region = currentClientRegionForSend()
         if (hasRemoteHistorySource) {
             PendingChatSendRuntime.markActive(userId)
             PendingChatSendWorkScheduler.enqueue(
@@ -5190,7 +5234,10 @@ fun ChatScreen() {
                     userMessageId = userId,
                     text = text,
                     imageUris = previewImageUris,
-                    sessionGeneration = SessionApi.currentSessionGenerationOrNull()
+                    sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                    region = region?.region,
+                    regionSource = region?.source,
+                    regionReliability = region?.reliability
                 )
             )
         }
@@ -5334,7 +5381,14 @@ fun ChatScreen() {
             try {
                 if (hasRemoteHistorySource) {
                     SessionApi.cancelCurrentStream()
+                    val clientRegion = refreshClientRegionForSend()
                     if (hasPendingBackgroundSend) {
+                        PendingChatSendStore.updateRegion(
+                            context = context,
+                            chatScopeId = chatScopeId,
+                            userMessageId = userId,
+                            region = clientRegion
+                        )
                         PendingChatSendWorkScheduler.markRemoteStarted(context, chatScopeId, userId)
                     }
                     val remoteStreamStartMs = SystemClock.uptimeMillis()
@@ -5395,7 +5449,10 @@ fun ChatScreen() {
                         options = SessionApi.StreamOptions(
                             clientMsgId = userId,
                             text = text,
-                            images = uploadedImageUrls
+                            images = uploadedImageUrls,
+                            region = clientRegion?.region,
+                            regionSource = clientRegion?.source,
+                            regionReliability = clientRegion?.reliability
                         ),
                         onChunk = { piece -> enqueueRemoteChunk(piece) },
                         onComplete = { runAfterRemoteFirstChunkGate { finishStreaming() } },
@@ -5842,6 +5899,7 @@ fun ChatScreen() {
                     return
                 }
                 if (hasRemoteHistorySource) {
+                    val region = currentClientRegionForSend()
                     PendingChatSendRuntime.markActive(failedMessage.id)
                     PendingChatSendWorkScheduler.enqueue(
                         context = context,
@@ -5850,7 +5908,10 @@ fun ChatScreen() {
                             userMessageId = failedMessage.id,
                             text = failedMessage.content,
                             imageUris = previewImageUris,
-                            sessionGeneration = SessionApi.currentSessionGenerationOrNull()
+                            sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                            region = region?.region,
+                            regionSource = region?.source,
+                            regionReliability = region?.reliability
                         )
                     )
                 }
@@ -5890,6 +5951,14 @@ fun ChatScreen() {
                             userMessageId = failedMessage.id,
                             imageUrls = uploadedUrls
                         )
+                        if (hasRemoteHistorySource) {
+                            PendingChatSendStore.updateRegion(
+                                context = context,
+                                chatScopeId = chatScopeId,
+                                userMessageId = failedMessage.id,
+                                region = refreshClientRegionForSend()
+                            )
+                        }
                         commitSendMessage(
                             text = failedMessage.content,
                             uploadedImageUrls = uploadedUrls,
@@ -5936,6 +6005,7 @@ fun ChatScreen() {
                     return
                 }
                 if (hasRemoteHistorySource) {
+                    val region = currentClientRegionForSend()
                     PendingChatSendRuntime.markActive(sourceUserMessage.id)
                     PendingChatSendWorkScheduler.enqueue(
                         context = context,
@@ -5944,7 +6014,10 @@ fun ChatScreen() {
                             userMessageId = sourceUserMessage.id,
                             text = sourceUserMessage.content,
                             imageUris = previewImageUris,
-                            sessionGeneration = SessionApi.currentSessionGenerationOrNull()
+                            sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                            region = region?.region,
+                            regionSource = region?.source,
+                            regionReliability = region?.reliability
                         )
                     )
                 }
@@ -5984,6 +6057,14 @@ fun ChatScreen() {
                             userMessageId = sourceUserMessage.id,
                             imageUrls = retryUploadedUrls
                         )
+                        if (hasRemoteHistorySource) {
+                            PendingChatSendStore.updateRegion(
+                                context = context,
+                                chatScopeId = chatScopeId,
+                                userMessageId = sourceUserMessage.id,
+                                region = refreshClientRegionForSend()
+                            )
+                        }
                         val existingAssistantIndex = messages.indexOfFirst { it.id == assistantMessageId }
                         if (existingAssistantIndex >= 0) {
                             messages.removeAt(existingAssistantIndex)
@@ -6012,6 +6093,7 @@ fun ChatScreen() {
                 messages.removeAt(existingAssistantIndex)
             }
             if (hasRemoteHistorySource && uploadedImageUrls.isNotEmpty()) {
+                val region = currentClientRegionForSend()
                 PendingChatSendRuntime.markActive(sourceUserMessage.id)
                 PendingChatSendWorkScheduler.enqueue(
                     context = context,
@@ -6021,7 +6103,10 @@ fun ChatScreen() {
                         text = sourceUserMessage.content,
                         imageUris = previewImageUris,
                         imageUrls = uploadedImageUrls,
-                        sessionGeneration = SessionApi.currentSessionGenerationOrNull()
+                        sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                        region = region?.region,
+                        regionSource = region?.source,
+                        regionReliability = region?.reliability
                     )
                 )
             }
@@ -6106,6 +6191,14 @@ fun ChatScreen() {
                             userMessageId = stagedUserMessageId,
                             imageUrls = uploadedUrls
                         )
+                        if (hasRemoteHistorySource) {
+                            PendingChatSendStore.updateRegion(
+                                context = context,
+                                chatScopeId = chatScopeId,
+                                userMessageId = stagedUserMessageId,
+                                region = refreshClientRegionForSend()
+                            )
+                        }
                         failedUserMessageStates.remove(stagedUserMessageId)
                         commitSendMessage(
                             text = trimmedText,
