@@ -7,7 +7,7 @@
 
 - 将帮助与反馈自动回复收紧后的 `server-go` 提交 `cd8926a6` 部署到 ECS：远端 `go test ./...`、编译、systemd 重启、Nginx 配置检查均通过；重启瞬间出现过一次 502，随后 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`。readiness 输出只记录 set/empty，不打印真实密钥值。
 
-- 复查并收紧帮助与反馈自动回复逻辑：固定回复整体改短，避免像“智能客服”一样啰嗦或乱答；分类顺序改为先看用户文字、再处理图片兜底，图文消息里的“登录失败截图 / 更新失败截图”等会命中对应轻提示，纯图片才走截图兜底。通用确认和截图兜底共享 24 小时冷却，避免短时间重复刷系统回复；测试补齐文字优先、纯图片和通用冷却场景。
+- 按“简单化”重新收口帮助与反馈自动回复：删除登录、更新、图片、会员、历史、隐私、农业咨询等细分自动回复，只保留短问候、纯图片 / 见图、通用兜底三类文案。通用兜底统一说明本页主要处理 App 使用反馈，农业咨询可回主聊天页继续问，并请用户补充时间、页面提示或截图；通用和纯图片兜底共享 24 小时冷却，避免短时间重复刷系统回复；测试同步改成简单规则。
 
 - 将帮助与反馈自动回复口径收口后的 `server-go` 当前提交 `086444a4` 部署到 ECS：远端 `go test ./...`、编译、systemd 重启、Nginx 配置检查和 Host healthz 均通过；重启瞬间出现过一次 502，随后 readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`。readiness 输出只记录 set/empty，不打印真实密钥值。
 

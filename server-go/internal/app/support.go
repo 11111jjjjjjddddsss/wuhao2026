@@ -29,17 +29,9 @@ const (
 	defaultSupportAutoReplyCooldown             = 24 * time.Hour
 	defaultSupportAutoReplyRepeatCooldown       = 5 * time.Minute
 	defaultSupportFAQAutoReplyCooldown          = time.Minute
-	supportAutoReplyBody                        = "已收到。请补充发生时间、操作步骤、页面提示或截图；我们会在本页继续回复。"
-	supportImageOnlyAutoReplyBody               = "已收到截图。请补充发生时间、操作步骤或页面提示；我们会在本页继续回复。"
-	supportGreetingAutoReplyBody                = "您好，请直接描述问题；有截图也可以一起发。"
-	supportHowToUseAutoReplyBody                = "农业咨询请回到主聊天页输入问题或上传作物图片；这里主要处理 App 使用问题。"
-	supportLoginAutoReplyBody                   = "登录问题请先确认已勾选协议、网络正常；仍失败请补充时间、提示和截图。"
-	supportUpdateAutoReplyBody                  = "更新失败请补充当前版本、失败提示和截图；也可先在设置页重新检查更新。"
-	supportImageAutoReplyBody                   = "图片问题请确认单次最多 4 张、网络正常；仍失败请补充时间、提示和截图。"
-	supportMembershipAutoReplyBody              = "会员、次数和订单以会员中心展示为准；异常请补充截图和发生时间。"
-	supportHistoryAutoReplyBody                 = "历史对话以当前登录账号为准；恢复或删除异常请补充时间、步骤和截图。"
-	supportPrivacyAutoReplyBody                 = "协议、隐私和风险提示可在设置页查看；有具体问题请继续说明。"
-	supportAgriQuestionAutoReplyBody            = "农业技术问题请回到主聊天页咨询，那里支持文字和图片问诊。"
+	supportAutoReplyBody                        = "已收到。这里主要处理 App 使用反馈；农业咨询可回到主聊天页继续问。若是使用问题，麻烦补充时间、页面提示或截图。"
+	supportImageOnlyAutoReplyBody               = "已收到您发来的图片。请补充具体问题；如果是农业咨询，也可以回到主聊天页继续问。"
+	supportGreetingAutoReplyBody                = "您好，请直接说明遇到的问题。"
 )
 
 type SupportMessage struct {
@@ -360,31 +352,10 @@ func supportAutoReplyBodyFor(body string, imageURLs []string) string {
 	if isShortSupportGreeting(normalized) {
 		return supportGreetingAutoReplyBody
 	}
-	if supportTextContainsAny(normalized, "怎么用", "如何用", "使用方法", "怎么玩", "新手", "教程") {
-		return supportHowToUseAutoReplyBody
-	}
-	if supportTextContainsAny(normalized, "农业问题", "作物问题", "病虫害", "病害", "虫害", "打药", "农药", "施肥", "小麦", "玉米", "水稻", "棉花", "果树", "叶片发黄", "黄叶") {
-		return supportAgriQuestionAutoReplyBody
-	}
-	if supportTextContainsAny(normalized, "登录", "登陆", "验证码", "一键登录", "手机号", "认证", "收不到码", "短信") {
-		return supportLoginAutoReplyBody
-	}
-	if supportTextContainsAny(normalized, "检查更新", "更新", "版本", "升级app", "安装包", "apk", "下载失败", "安装失败") {
-		return supportUpdateAutoReplyBody
-	}
-	if supportTextContainsAny(normalized, "图片", "照片", "拍照", "相机", "上传", "选图", "图传不上", "发图") {
-		return supportImageAutoReplyBody
-	}
-	if supportTextContainsAny(normalized, "会员", "次数", "额度", "加油包", "订单", "订购", "购买", "扣费", "支付", "退款", "权益") {
-		return supportMembershipAutoReplyBody
-	}
-	if supportTextContainsAny(normalized, "历史", "记录", "清空", "删除", "恢复", "找不到", "换手机", "重装") {
-		return supportHistoryAutoReplyBody
-	}
-	if supportTextContainsAny(normalized, "隐私", "协议", "服务协议", "注销", "个人信息", "风险提示") {
-		return supportPrivacyAutoReplyBody
-	}
 	if normalized == "" && len(imageURLs) > 0 {
+		return supportImageOnlyAutoReplyBody
+	}
+	if len(imageURLs) > 0 && isImageOnlySupportText(normalized) {
 		return supportImageOnlyAutoReplyBody
 	}
 	return supportAutoReplyBody
@@ -392,6 +363,15 @@ func supportAutoReplyBodyFor(body string, imageURLs []string) string {
 
 func isGenericSupportAutoReplyBody(body string) bool {
 	return body == supportAutoReplyBody || body == supportImageOnlyAutoReplyBody
+}
+
+func isImageOnlySupportText(normalized string) bool {
+	switch normalized {
+	case "截图", "见图", "看图", "如图", "见截图", "看截图", "图片", "照片", "已发图", "我发图了":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeSupportAutoReplyText(raw string) string {

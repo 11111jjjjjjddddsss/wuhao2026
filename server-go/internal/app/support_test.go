@@ -165,31 +165,28 @@ func TestShouldCreateSupportAutoReply(t *testing.T) {
 		t.Fatalf("future latest message should not create auto reply")
 	}
 
-	recentUserForFAQ := &SupportMessage{
+	recentUserForGreeting := &SupportMessage{
 		SenderType: "user",
 		CreatedAt:  now - int64((defaultSupportFAQAutoReplyCooldown-time.Millisecond)/time.Millisecond),
 	}
-	if shouldCreateSupportAutoReply(recentUserForFAQ, now, supportLoginAutoReplyBody) {
-		t.Fatalf("very recent FAQ follow-up should not create auto reply")
+	if shouldCreateSupportAutoReply(recentUserForGreeting, now, supportGreetingAutoReplyBody) {
+		t.Fatalf("very recent greeting follow-up should not create auto reply")
 	}
-	oldEnoughUserForFAQ := &SupportMessage{
+	oldEnoughUserForGreeting := &SupportMessage{
 		SenderType: "user",
 		CreatedAt:  now - int64(defaultSupportFAQAutoReplyCooldown/time.Millisecond),
 	}
-	if !shouldCreateSupportAutoReply(oldEnoughUserForFAQ, now, supportLoginAutoReplyBody) {
-		t.Fatalf("FAQ follow-up after cooldown should create auto reply")
+	if !shouldCreateSupportAutoReply(oldEnoughUserForGreeting, now, supportGreetingAutoReplyBody) {
+		t.Fatalf("greeting follow-up after cooldown should create auto reply")
 	}
 
 	recentSameSystemReply := &SupportMessage{
 		SenderType: "system",
-		Body:       supportLoginAutoReplyBody,
+		Body:       supportGreetingAutoReplyBody,
 		CreatedAt:  now - int64((defaultSupportAutoReplyRepeatCooldown-time.Millisecond)/time.Millisecond),
 	}
-	if shouldCreateSupportAutoReply(recentSameSystemReply, now, supportLoginAutoReplyBody) {
+	if shouldCreateSupportAutoReply(recentSameSystemReply, now, supportGreetingAutoReplyBody) {
 		t.Fatalf("same system reply should respect repeat cooldown")
-	}
-	if !shouldCreateSupportAutoReply(recentSameSystemReply, now, supportUpdateAutoReplyBody) {
-		t.Fatalf("different system reply should be allowed")
 	}
 
 	recentSameRegularSystemReply := &SupportMessage{
@@ -223,11 +220,17 @@ func TestSupportAutoReplyBodyFor(t *testing.T) {
 	if got := supportAutoReplyBodyFor("", []string{"https://example.com/uploads/a.jpg"}); got != supportImageOnlyAutoReplyBody {
 		t.Fatalf("image-only feedback auto reply = %q, want image-only body", got)
 	}
-	if got := supportAutoReplyBodyFor("登录失败截图", []string{"https://example.com/uploads/a.jpg"}); got != supportLoginAutoReplyBody {
-		t.Fatalf("image feedback with login text = %q, want login body", got)
+	if got := supportAutoReplyBodyFor("见图", []string{"https://example.com/uploads/a.jpg"}); got != supportImageOnlyAutoReplyBody {
+		t.Fatalf("image-only style text with image = %q, want image-only body", got)
 	}
-	if got := supportAutoReplyBodyFor("检查更新失败了", nil); got != supportUpdateAutoReplyBody {
-		t.Fatalf("update FAQ auto reply = %q, want update body", got)
+	if got := supportAutoReplyBodyFor("登录失败截图", []string{"https://example.com/uploads/a.jpg"}); got != supportAutoReplyBody {
+		t.Fatalf("specific app issue = %q, want regular body", got)
+	}
+	if got := supportAutoReplyBodyFor("检查更新失败了", nil); got != supportAutoReplyBody {
+		t.Fatalf("update issue auto reply = %q, want regular body", got)
+	}
+	if got := supportAutoReplyBodyFor("小麦叶片照片发黄", nil); got != supportAutoReplyBody {
+		t.Fatalf("agri question in support page = %q, want regular body", got)
 	}
 	if got := supportAutoReplyBodyFor("无法提交反馈", nil); got != supportAutoReplyBody {
 		t.Fatalf("regular feedback auto reply = %q, want regular body", got)
