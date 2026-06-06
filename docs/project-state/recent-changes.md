@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 复查并最小收口主对话锚点、B 层和 C 层提示词：锚点保留“信息不足时严禁直接下定论，必须列 2 到 3 种可能性并追问关键问题”的强规则，同时补充地点可信度为 `unreliable / 未知` 时不能把地区、气候和农时当确定事实，普通问候 / 寒暄只需简短接住并引导回具体农业问题。B 层仍是通用短期记忆，只补“单纯问候、客套、无后续价值闲聊、已处理完的一次性 App 操作不写入当前主线”，并要求低可信地区不写成确定事实。C 层仍是三块长期通用记忆，只补多作物、多地块、多棚室、多农资或多事件必须分清对象，且低可信地区不写成长期稳定事实，避免长期记忆混写污染后续对话。
+
 - 复查 Android 定位上下文链路并补可信度防御：每次发送前仍优先刷新系统定位并反查省 / 市 / 区县，但只有 2 小时内的系统定位或短窗口网络定位会标记 `reliable`；如果只能拿到更旧的系统缓存或历史缓存，继续传地区文本但降级为 `unreliable`，避免用户换城市后旧定位污染模型判断。后端 `ParseRegionFromHeaders` 同步拒绝空 / 无效地区头，坏头部会回落到 IP 粗定位兜底；新增对应 Go 测试。
 
 - 修复 ECS 双端口发布 drain-stop 叠加导致的 502 风险：CLI / readiness 巡检发现 Nginx active upstream 指向 `3001`，但 `nongji-server-3001` 一度处于 inactive，公网 API healthz 返回 502；排查确认不是资源不足或模型 / 数据库故障，而是多次发布的 transient `nongji-drain-stop-*` 定时任务叠加，把当前 active slot 也停掉。已通过 Cloud Assistant 启动当前 active slot 并验证 `https://api.nongjiqiancha.cn/healthz` 200；`deploy-ecs-server.ps1` / `rollback-ecs-server.ps1` 新增发布 / 回滚前清理旧 drain 任务，`check-ecs-readiness.ps1` 改为 active slot inactive、Host healthz 非 200 或关键 health 标记缺失时直接失败，避免 502 被误判通过。
