@@ -72,6 +72,7 @@ Android 只上报结构化错误信息：
 - Header `X-Support-Admin-Secret: <SUPPORT_ADMIN_SECRET>`
 - 或 `Authorization: Bearer <SUPPORT_ADMIN_SECRET>`
 - 可选 `X-Admin-Actor: <operator>`，只用于审计日志标记操作人，不替代鉴权
+- 内部 secret 入口默认按 scope + IP 做 10 分钟 120 次短期限流，配置 Redis 时跨实例共享
 
 查询参数：
 

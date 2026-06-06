@@ -38,7 +38,7 @@
 
 ## 内部后台接口
 
-内部接口必须配置环境变量 `SUPPORT_ADMIN_SECRET`，请求时带 `X-Support-Admin-Secret: <secret>`；也兼容 `Authorization: Bearer <secret>`。可选 `X-Admin-Actor: <operator>` 或 `X-Support-Admin-Actor: <operator>` 用于审计标记。不要把密钥写进仓库。
+内部接口必须配置环境变量 `SUPPORT_ADMIN_SECRET`，请求时带 `X-Support-Admin-Secret: <secret>`；也兼容 `Authorization: Bearer <secret>`。内部 secret 入口默认按 scope + IP 做 10 分钟 120 次短期限流，配置 Redis 时跨实例共享。可选 `X-Admin-Actor: <operator>` 或 `X-Support-Admin-Actor: <operator>` 用于审计标记。不要把密钥写进仓库。
 
 - `GET /internal/support/messages?user_id=<user_id>`
   - 读取指定用户最近 100 条帮助与反馈消息

@@ -247,6 +247,12 @@ func TestValidateChatStreamInputMatchesCurrentRules(t *testing.T) {
 			},
 			want: "single request supports up to 4 images",
 		},
+		{
+			name:        "reject too long client msg id",
+			clientMsgID: strings.Repeat("x", maxClientMsgIDLength+1),
+			text:        "hello",
+			want:        "client_msg_id too long",
+		},
 	}
 
 	for _, tc := range cases {

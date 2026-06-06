@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 按坏人视角做一轮安全排查并落地低风险加固：`/api/chat/stream` 的 `client_msg_id` 增加 128 字节上限，提前对齐 MySQL `VARCHAR(128)`，避免恶意超长幂等 ID 打到数据库层制造错误；新增内部 secret 入口 Redis / IP 短期限流，覆盖 `SUPPORT_ADMIN_SECRET` 保护的内部 App 日志、审计、帮助与反馈查询 / 回复，以及 `DAILY_AGRI_JOB_SECRET` 保护的今日农情生成；`SUPPORT_ADMIN_SECRET` 比对补长度检查后再常量时间比较。通过 Cloud Assistant 把 `api.nongjiqiancha.cn` 的 HTTP 80 改成 ACME challenge + 301 HTTPS 跳转，不再直接反代业务 API；部署 / 回滚 / readiness 脚本改为本机 HTTPS `--resolve` 健康检查。新增 [security-threat-model.md](D:/wuhao/docs/runbooks/security-threat-model.md) 固化攻击面、已防护项和剩余风险；`go test ./...` 已通过。
+
 - 补齐 Go 后端请求级结构化日志底座：`Server.Handler()` 统一包一层 access log middleware，生成或透传 `X-Request-Id`，响应头回写同一 ID；记录 `http_request / http_request_slow / http_request_error`，字段只包含 method、path、status、duration、response bytes、masked IP、auth mode、可选 user_id 和 UA，不记录 query string、请求 body、Authorization、手机号、图片 URL 或模型 Key。慢请求阈值默认 `ACCESS_LOG_SLOW_MS=3000` 毫秒，`/healthz` 和 `/uploads/` 成功请求默认降噪，SSE Flusher 保持透传。新增只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)，可通过 Cloud Assistant 查询 Go 错误 / 慢请求 / 请求尾部、Nginx error 和 Nginx `429/5xx`，输出做基础脱敏；同步更新日志与运维 runbook。
 
 - 接入农技千查专用 SLS 最小日志集：创建 Project `nongjiqiancha-prod-1159547719787456`，Logstore `server-go` / `nginx-error`，TTL 7 天、1 shard；ECS 安装 Logtail / ilogtail 并连接机器组 `nongjiqiancha-prod-ecs`，采集 `/var/log/nongjiqiancha/server.log` 和 `/var/log/nginx/error.log`。Go 服务新增 `LOG_FILE_PATH` 支持，把 JSON 日志同时写 stdout 和文件；ECS 环境写入 `LOG_FILE_PATH=/var/log/nongjiqiancha/server.log`，并配置 7 天 logrotate。新增 [setup-sls-logging.ps1](D:/wuhao/scripts/setup-sls-logging.ps1) 和 [query-sls-logs.ps1](D:/wuhao/scripts/query-sls-logs.ps1)。当前不把聊天正文、AI 回复、图片 URL / 内容、手机号、token、模型 Key、数据库密码或完整 Nginx access 全量采进 SLS。

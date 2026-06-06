@@ -14,9 +14,9 @@
 - 后端没有 `/admin` 网页路由；`/internal/admin/audit-logs` 只是内部审计日志查询接口，不是完整后台。
 - Android 没有后台入口，也没有调用任何 `/internal/*` 接口。
 - 当前真实运营入口只有少量内部接口和环境变量：
-  - 帮助与反馈后台会话列表 / 详情 / 回复：`GET /internal/support/conversations`、`GET /internal/support/messages`、`POST /internal/support/messages`，由 `SUPPORT_ADMIN_SECRET` 保护。
-  - App 自动日志只读查询：`GET /internal/app/logs`，由 `SUPPORT_ADMIN_SECRET` 保护；支持按最近时间、用户、事件名和等级过滤，返回明细和聚合摘要。
-  - 内部操作审计只读查询：`GET /internal/admin/audit-logs`，由 `SUPPORT_ADMIN_SECRET` 保护；支持按最近时间、动作、目标用户和成功 / 失败过滤，返回操作元信息。
+  - 帮助与反馈后台会话列表 / 详情 / 回复：`GET /internal/support/conversations`、`GET /internal/support/messages`、`POST /internal/support/messages`，由 `SUPPORT_ADMIN_SECRET` 保护，并带内部 secret IP 短期限流。
+  - App 自动日志只读查询：`GET /internal/app/logs`，由 `SUPPORT_ADMIN_SECRET` 保护并带内部 secret IP 短期限流；支持按最近时间、用户、事件名和等级过滤，返回明细和聚合摘要。
+  - 内部操作审计只读查询：`GET /internal/admin/audit-logs`，由 `SUPPORT_ADMIN_SECRET` 保护并带内部 secret IP 短期限流；支持按最近时间、动作、目标用户和成功 / 失败过滤，返回操作元信息。
   - 今日农情生成：`POST /internal/jobs/today-agri-card/generate`，由 `DAILY_AGRI_JOB_SECRET` 保护。
   - 检查更新：用户侧 `GET /api/app/update` 读取 `APP_ANDROID_*` 环境变量，没有发布后台。
   - 会员 / 加油包 / 升级：Android 当前只展示“支付功能暂不可用”；后端开发期直改接口默认关闭，不是正式支付后台。
@@ -25,7 +25,7 @@
 ## 当前不要误解
 
 - 买服务器不等于自动有管理后台。
-- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 只是共享密钥，不是后台账号或角色权限系统；当前最小审计只能记录共享密钥内部入口的 actor 标签和操作元信息，不能替代正式后台账号。
+- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 只是共享密钥，不是后台账号或角色权限系统；当前已补内部 secret IP / Redis 短期限流和最小审计，只能记录共享密钥内部入口的 actor 标签和操作元信息，不能替代正式后台账号。
 - `/internal/app/logs` 只是给运维和后续后台面板用的只读地基，不是完整日志中心、SLS 接入或告警系统。
 - `/api/app/update` 只是读取版本配置，不是发布系统；正式发布仍需要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间。
 - debug-only 礼品卡“兑换成功”只是样式预览，不能在没有后端成功结果时接到真实兑换按钮。

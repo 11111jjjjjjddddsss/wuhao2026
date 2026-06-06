@@ -310,7 +310,10 @@ func TestParseSupportConversationQueryRejectsInvalidFilters(t *testing.T) {
 }
 
 func TestRequireSupportAdminSecret(t *testing.T) {
-	server := &Server{logger: slog.New(slog.NewTextHandler(os.Stdout, nil))}
+	server := &Server{
+		logger:                slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		internalSecretLimiter: newChatRateLimiterWithConfig(rateLimitConfig{Window: time.Minute, MaxHits: 100, PruneInterval: time.Minute}),
+	}
 
 	t.Setenv("SUPPORT_ADMIN_SECRET", "")
 	req := httptest.NewRequest(http.MethodGet, "/internal/support/messages", nil)
@@ -345,5 +348,35 @@ func TestRequireSupportAdminSecret(t *testing.T) {
 	}
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("wrong secret status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestRequireSupportAdminSecretRateLimitsByIP(t *testing.T) {
+	t.Setenv("SUPPORT_ADMIN_SECRET", "secret")
+	server := &Server{
+		logger:                slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		internalSecretLimiter: newChatRateLimiterWithConfig(rateLimitConfig{Window: time.Minute, MaxHits: 1, PruneInterval: time.Minute}),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/support/messages", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Support-Admin-Secret", "wrong")
+	rec := httptest.NewRecorder()
+	if server.requireSupportAdminSecret(rec, req) {
+		t.Fatalf("expected wrong secret to reject")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("first status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/internal/support/messages", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Support-Admin-Secret", "secret")
+	rec = httptest.NewRecorder()
+	if server.requireSupportAdminSecret(rec, req) {
+		t.Fatalf("expected second attempt from same IP to be rate limited")
+	}
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d", rec.Code, http.StatusTooManyRequests)
 	}
 }

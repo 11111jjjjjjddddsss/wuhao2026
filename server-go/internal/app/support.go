@@ -290,6 +290,9 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 }
 
 func (s *Server) requireSupportAdminSecret(w http.ResponseWriter, r *http.Request) bool {
+	if !s.consumeInternalSecretRateLimit(w, r, "support_admin") {
+		return false
+	}
 	secret := strings.TrimSpace(os.Getenv("SUPPORT_ADMIN_SECRET"))
 	if secret == "" {
 		s.writeError(w, http.StatusServiceUnavailable, "SUPPORT_ADMIN_NOT_CONFIGURED")
@@ -302,7 +305,7 @@ func (s *Server) requireSupportAdminSecret(w http.ResponseWriter, r *http.Reques
 			provided = strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 		}
 	}
-	if provided == "" || subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
+	if provided == "" || len(provided) != len(secret) || subtle.ConstantTimeCompare([]byte(provided), []byte(secret)) != 1 {
 		s.writeError(w, http.StatusUnauthorized, "unauthorized")
 		return false
 	}

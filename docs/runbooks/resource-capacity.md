@@ -18,7 +18,7 @@
 - OSS：`nongjiqiancha-prod` 当前 `du` 为 0 MB，100 GiB 标准-本地冗余资源包足够；`uploads/` 3 天、`support/` 30 天生命周期仍是控制成本的关键
 - CDN：当前未启用，也不是早期必需项。阿里云 CDN 不是纯免费资源，按官方口径会产生下行流量 / 带宽等基础费用，HTTPS 静态请求有月度免费额度但超出仍计费；早期问诊图片继续走后端 `/uploads/` 中转 + OSS 生命周期，不把私有问诊图片直接改成 CDN 长缓存。若后续 APK 下载、官网静态资源或公开图片流量明显挤占 5 Mbps ECS 出口，再评估 CDN / OSS 下行分流 / 带宽升级
 - DYPNS 融合认证 / 短信认证：已新增 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 查询一键登录和短信认证统计 / 月账单。2026-06-06 默认查询最近 7 天时统计均为 `no_data`，说明当前尚未形成真实认证消耗
-- API / 官网：2026-06-06 巡检时发现一次 502，根因不是资源不足，而是双端口发布的多个 drain-stop 定时任务叠加，把当前 slot 也停掉；已启动当前 active slot 恢复 `https://api.nongjiqiancha.cn/healthz` 200，并修复部署 / 回滚脚本以清理旧 drain 任务，就绪检查脚本也改成 Host healthz 非 200 或 active slot inactive 时直接失败。后续复查最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 等探测请求被限流拦截，未见新的 API 5xx 计数
+- API / 官网：2026-06-06 巡检时发现一次 502，根因不是资源不足，而是双端口发布的多个 drain-stop 定时任务叠加，把当前 slot 也停掉；已启动当前 active slot 恢复 `https://api.nongjiqiancha.cn/healthz` 200，并修复部署 / 回滚脚本以清理旧 drain 任务，就绪检查脚本也改成 HTTPS healthz 非 200 或 active slot inactive 时直接失败。后续复查最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 等探测请求被限流拦截，未见新的 API 5xx 计数；API HTTP 80 已改为 ACME challenge + 301 HTTPS 跳转，不再直接反代业务 API
 
 ## 固定巡检命令
 

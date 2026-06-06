@@ -119,8 +119,8 @@ fi
 echo
 echo '== healthz =='
 health_body='/tmp/nongji-readiness-health.json'
-health_status=$(curl -sS -o "$health_body" -w '%{http_code}' -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz || true)
-echo "http_status=$health_status"
+health_status=$(curl -sS --resolve api.nongjiqiancha.cn:443:127.0.0.1 -o "$health_body" -w '%{http_code}' https://api.nongjiqiancha.cn/healthz || true)
+echo "https_status=$health_status"
 cat "$health_body" 2>/dev/null || true
 echo
 if [ "$health_status" != "200" ]; then

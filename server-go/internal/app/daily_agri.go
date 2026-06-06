@@ -160,6 +160,9 @@ func (s *Server) handleTodayAgriCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Request) {
+	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_job") {
+		return
+	}
 	if !validateInternalJobSecret(r) {
 		s.writeError(w, http.StatusUnauthorized, "unauthorized")
 		return

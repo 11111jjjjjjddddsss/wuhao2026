@@ -21,6 +21,7 @@ const (
 	upstreamMaxAttempts   = 1
 	upstreamRetryBaseWait = 350 * time.Millisecond
 	chatStreamMaxDuration = 30 * time.Minute
+	maxClientMsgIDLength  = 128
 )
 
 type chatRateLimiter struct {
@@ -823,6 +824,9 @@ func (round SessionRound) userTextWithContextTime(loc *time.Location) string {
 func validateChatStreamInput(clientMsgID string, text string, images []string) string {
 	if clientMsgID == "" {
 		return "client_msg_id required"
+	}
+	if len(clientMsgID) > maxClientMsgIDLength {
+		return "client_msg_id too long"
 	}
 	if len(images) > 4 {
 		return "single request supports up to 4 images"

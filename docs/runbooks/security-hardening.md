@@ -9,7 +9,7 @@
 - 安全组只开放公网 `80 / 443` 和 ICMP；公网 SSH `22` 已撤掉，服务器本机 `ssh` 服务也已停用并 disabled
 - 阿里云云安全中心免费版已生效，ECS 安全中心 agent 在线，当前显示免费版、客户端 online、风险计数 0
 - 阿里云 DDoS 原生防护基础版默认免费开启，按官方口径提供基础 DDoS 防护能力，但不能抵御无限攻击流量
-- Nginx 已有 API 级 IP 限流、连接数限制、Host 未命中返回 444、HTTPS 和安全响应头
+- Nginx 已有 API 级 IP 限流、连接数限制、Host 未命中返回 444、HTTPS、安全响应头；`api.nongjiqiancha.cn` 的 HTTP 80 只保留 ACME challenge，其余请求 301 跳 HTTPS
 - Go 后端已有严格鉴权、请求体大小限制、用户 / IP / Redis 短期限流、SSE 时长兜底、模型出站超时边界
 - ECS 已启用 fail2ban，当前 jail 为 `sshd`
 - RDS / Redis 只放通 ECS 私网 IP，OSS Bucket 私有读写，Android 不持有 OSS 或模型密钥
@@ -42,6 +42,9 @@
 - Nginx 配置验证通过并 reload
 - 复查云安全中心免费版：ECS `i-2ze5nrem0jrchln4f0eh` 客户端 online，版本为免费版，当前风险计数 0
 - 复查 fail2ban：服务 active，`sshd` jail 存在
+- 2026-06-06 坏人视角复查后，已把 `api.nongjiqiancha.cn` 的 HTTP 80 从直接反代改为 ACME challenge + 301 HTTPS 跳转；公网业务入口不再接受明文 API 请求
+- 2026-06-06 后端补内部 secret 入口 Redis / IP 短期限流，覆盖 `SUPPORT_ADMIN_SECRET` 保护的内部查询 / 回复接口和 `DAILY_AGRI_JOB_SECRET` 保护的今日农情生成接口
+- 2026-06-06 后端补 `client_msg_id` 长度上限 128，对齐 MySQL `VARCHAR(128)`，避免恶意超长幂等 ID 打到数据库层制造错误
 
 ## 自动加固脚本
 
@@ -91,7 +94,7 @@ tail -n 120 /var/log/nginx/error.log
 
 - 关闭公网 SSH 不等于服务器不会被攻击；它只是减少最常见入口
 - 当前 SSH 服务已停用；若后续确需临时 SSH，先通过 Cloud Assistant 启动 `ssh`，再按固定来源 IP 临时放通安全组，用完必须关闭
-- HTTP/HTTPS 对外开放是业务必须入口，仍需要 Nginx / Go / Redis 限流和日志观察
+- HTTPS 对外开放是业务必须入口，HTTP 80 只用于 ACME challenge 和 HTTPS 跳转；仍需要 Nginx / Go / Redis 限流和日志观察
 - 同行恶意刷接口时，优先看 Nginx 429、Go 侧限流日志、模型调用量和 DYPNS / OSS / RDS 成本曲线
 - 真正大流量 DDoS 超过基础防护能力时，免费策略无法保证持续可用，需要临时购买高防或让云厂商清洗
 - 管理后台上线前必须做后台账号、权限、审计和限流，不能把内部 secret 暴露给浏览器前端

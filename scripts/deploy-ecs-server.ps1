@@ -380,7 +380,7 @@ restore_nginx_after_switch() {
 }
 
 for i in `$(seq 1 20); do
-  health_status=`$(curl -sS -o "`$health_body" -w '%{http_code}' -H 'Host: api.nongjiqiancha.cn' http://127.0.0.1/healthz || true)
+  health_status=`$(curl -sS --resolve api.nongjiqiancha.cn:443:127.0.0.1 -o "`$health_body" -w '%{http_code}' https://api.nongjiqiancha.cn/healthz || true)
   if [ "`$health_status" = "200" ]; then
     cat "`$health_body" || true
     echo

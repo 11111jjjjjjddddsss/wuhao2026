@@ -19,7 +19,7 @@
 
 ## 生成接口
 
-生成接口只允许定时任务或人工运维调用：
+生成接口只允许定时任务或人工运维调用。该入口必须带 `DAILY_AGRI_JOB_SECRET`，并默认按 scope + IP 做 10 分钟 120 次短期限流，配置 Redis 时跨实例共享：
 
 ```powershell
 curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/generate" `
