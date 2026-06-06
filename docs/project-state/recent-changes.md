@@ -5,6 +5,8 @@
 
 ## 2026-06-06
 
+- 复查 ABC 记忆重写和失败重试机制：B 层继续由旧 B 摘要 + 当前 A 层 6/9 轮窗口整体重写，C 层继续由旧 C 摘要 + `session_round_archive` 最近 20 轮完整问答整体重写；`pending_retry_b / pending_retry_c` 保存在 MySQL `session_ab`，模型失败、超时、写库失败、C 层归档不足 20 轮或旧快照写回过期都会保留 pending，后续轮次完成后继续补提取，只有成功写回且 `round_total` 匹配才清 pending。同步在 [scaling-readiness.md](D:/wuhao/docs/runbooks/scaling-readiness.md) 明确：当前同用户同层运行中保护仍是单进程 guard，扩多台 ECS 前必须升级为 Redis / MySQL lease，避免重复抽取 Flash 和非确定性覆盖。
+
 - 继续复查云资源 / CDN / OSS 生命周期：阿里云官方口径确认 CDN 不是纯免费资源，基础按下行流量 / 带宽等计费，HTTPS 静态请求虽有月度免费额度但超出仍会计费；当前早期不启用 CDN，不把问诊私有图片改成 CDN 长缓存，仍走后端 `/uploads/` 中转 + OSS 生命周期。CLI 复查 `nongjiqiancha-prod` lifecycle 确认 `uploads/` 3 天自动删除、`support/` 30 天自动删除、未完成分片 1 天清理均为 Enabled；最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 被限流拦截。同步校正 ECS 到期口径为 CLI 当前显示的 `2027-06-01T16:00Z`。
 
 - 复查并最小收口主对话锚点、B 层和 C 层提示词：锚点保留“信息不足时严禁直接下定论，必须列 2 到 3 种可能性并追问关键问题”的强规则，同时补充地点可信度为 `unreliable / 未知` 时不能把地区、气候和农时当确定事实，普通问候 / 寒暄只需简短接住并引导回具体农业问题。B 层仍是通用短期记忆，只补“单纯问候、客套、无后续价值闲聊、已处理完的一次性 App 操作不写入当前主线”，并要求低可信地区不写成确定事实。C 层仍是三块长期通用记忆，只补多作物、多地块、多棚室、多农资或多事件必须分清对象，且低可信地区不写成长期稳定事实，避免长期记忆混写污染后续对话。
