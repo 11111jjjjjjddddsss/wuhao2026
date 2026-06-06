@@ -21,6 +21,8 @@ local.properties
 server/node_modules/
 server/dist/
 server/.env
+site/node_modules/
+site/dist/
 *.env
 .env.*
 

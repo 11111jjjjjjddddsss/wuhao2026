@@ -62,7 +62,7 @@
 
 目标：让 App、后端和材料进入可公开测试状态。
 
-- 把网站 ICP 备案号补进公开网站页脚或服务介绍等合适位置；App 内协议 / 隐私政策先记录网站 ICP 备案状态，App 备案号必须等 App 备案通过后再补。
+- 官网首版代码已在 `site` 目录准备好，包含 App 介绍、安卓下载入口和备案 footer；当前尚未部署到 `nongjiqiancha.cn` 公网根域名。把网站 ICP 备案号补进公开网站页脚或服务介绍等合适位置；App 内协议 / 隐私政策先记录网站 ICP 备案状态，App 备案号必须等 App 备案通过后再补。
 - 跟进 App 备案阿里云初审、管局提交、工信部短信核验和管局审核；当前网站 ICP 已通过不等于 App 备案已通过。
 - `api.nongjiqiancha.cn` HTTPS、后端公开 API 基地址和图片公开基地址已完成；后续根域名官网、下载域名和管理后台域名如果启用，需要分别配置入口和证书。
 - 确认 `APP_ANDROID_*` 检查更新环境变量指向正确 APK、版本号、文件大小、SHA-256 和更新说明。
@@ -106,4 +106,5 @@
 - [deploy-ecs.md](D:/wuhao/docs/runbooks/deploy-ecs.md)：ECS 部署入口
 - [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 历史备选入口
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：自有 APK 检查更新入口
+- [official-website.md](D:/wuhao/docs/runbooks/official-website.md)：官网静态站构建、下载入口和备案 footer
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈入口
