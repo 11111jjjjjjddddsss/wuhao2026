@@ -9,6 +9,7 @@ require (
 	github.com/aliyun/aliyun-oss-go-sdk v3.0.2+incompatible
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/joho/godotenv v1.5.1
+	github.com/lionsoul2014/ip2region/binding/golang v0.0.0-20260530042244-d638015592ac
 	github.com/redis/go-redis/v9 v9.20.0
 )
 

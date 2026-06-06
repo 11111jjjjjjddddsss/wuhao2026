@@ -89,6 +89,7 @@ check_env() {
 
 for key in \
   APP_ENV AUTH_STRICT APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
+  IP2REGION_V4_XDB_PATH IP2REGION_V6_XDB_PATH IP2REGION_XDB_PATH \
   LISTEN_ADDR LISTEN_HOST PORT \
   UPLOAD_STORAGE_BACKEND OSS_BUCKET OSS_ENDPOINT OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET \
   DASHSCOPE_API_KEY DASHSCOPE_API_KEY_1 DASHSCOPE_API_KEY_2 DASHSCOPE_API_KEY_3 DASHSCOPE_API_KEYS DASHSCOPE_KEY_COOLDOWN_SECONDS \
@@ -99,6 +100,24 @@ for key in \
   SUPPORT_ADMIN_SECRET DAILY_AGRI_JOB_SECRET; do
   check_env "$key"
 done
+
+echo
+echo '== ip2region data =='
+ip2region_v4_path=''
+if [ -f "$env_file" ]; then
+  ip2region_v4_line=$(grep -E '^[[:space:]]*(export[[:space:]]+)?(IP2REGION_V4_XDB_PATH|IP2REGION_XDB_PATH)=' "$env_file" | tail -n 1 || true)
+  if [ -n "$ip2region_v4_line" ]; then
+    ip2region_v4_path=$(printf '%s' "$ip2region_v4_line" | sed -E 's/^[[:space:]]*(export[[:space:]]+)?(IP2REGION_V4_XDB_PATH|IP2REGION_XDB_PATH)=//' | sed -E "s/^['\"]|['\"]$//g")
+  fi
+fi
+if [ -z "$ip2region_v4_path" ]; then
+  echo 'v4_xdb=missing_path'
+elif [ -r "$ip2region_v4_path" ]; then
+  size=$(wc -c < "$ip2region_v4_path" 2>/dev/null || true)
+  echo "v4_xdb=present readable=true bytes=${size:-unknown}"
+else
+  echo 'v4_xdb=present readable=false'
+fi
 
 echo
 echo '== local upload dir =='
