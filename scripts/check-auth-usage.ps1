@@ -9,11 +9,60 @@ $ErrorActionPreference = "Stop"
 
 function Invoke-AliyunJson {
     param([string[]]$ArgsList)
-    $raw = & $ArgsList[0] @($ArgsList[1..($ArgsList.Length - 1)])
-    if ($LASTEXITCODE -ne 0) {
-        throw "Command failed: $($ArgsList -join ' ')"
+    if ($ArgsList.Length -eq 0) {
+        throw "Command failed: empty command"
     }
-    return $raw | ConvertFrom-Json
+    $exe = $ArgsList[0]
+    $arguments = @()
+    if ($ArgsList.Length -gt 1) {
+        $arguments = $ArgsList[1..($ArgsList.Length - 1)]
+    }
+    $stderrPath = [IO.Path]::GetTempFileName()
+    $stdout = @()
+    $stderr = ""
+    $exitCode = 0
+    $oldErrorActionPreference = $ErrorActionPreference
+    $oldNativeErrorPreference = $null
+    $hasNativeErrorPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    try {
+        $ErrorActionPreference = "Continue"
+        if ($null -ne $hasNativeErrorPreference) {
+            $oldNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        $stdout = & $exe @arguments 2> $stderrPath
+        $exitCode = $LASTEXITCODE
+        if (Test-Path -LiteralPath $stderrPath) {
+            $stderr = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+        }
+    } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+        if ($null -ne $hasNativeErrorPreference) {
+            $PSNativeCommandUseErrorActionPreference = $oldNativeErrorPreference
+        }
+        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0) {
+        $safeOutput = (($stdout | Out-String) + "`n" + $stderr) `
+            -replace '(?i)(AccessKeyId=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(AccessKeySecret=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
+        $safeCommand = if ($ArgsList.Length -ge 3) {
+            "$($ArgsList[0]) $($ArgsList[1]) $($ArgsList[2])"
+        } else {
+            $ArgsList -join " "
+        }
+        throw "Command failed: $safeCommand`n$safeOutput"
+    }
+    $jsonText = $stdout | Out-String
+    if ([string]::IsNullOrWhiteSpace($jsonText)) {
+        return $null
+    }
+    return $jsonText | ConvertFrom-Json
 }
 
 function Write-Statistic {

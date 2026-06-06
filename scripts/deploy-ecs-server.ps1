@@ -10,11 +10,60 @@ $ErrorActionPreference = "Stop"
 
 function Invoke-JsonCommand {
     param([string[]]$CommandArgs)
-    $raw = & $CommandArgs[0] @($CommandArgs[1..($CommandArgs.Length - 1)])
-    if ($LASTEXITCODE -ne 0) {
-        throw "Command failed: $($CommandArgs -join ' ')"
+    if ($CommandArgs.Length -eq 0) {
+        throw "Command failed: empty command"
     }
-    return $raw | ConvertFrom-Json
+    $exe = $CommandArgs[0]
+    $arguments = @()
+    if ($CommandArgs.Length -gt 1) {
+        $arguments = $CommandArgs[1..($CommandArgs.Length - 1)]
+    }
+    $stderrPath = [IO.Path]::GetTempFileName()
+    $stdout = @()
+    $stderr = ""
+    $exitCode = 0
+    $oldErrorActionPreference = $ErrorActionPreference
+    $oldNativeErrorPreference = $null
+    $hasNativeErrorPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    try {
+        $ErrorActionPreference = "Continue"
+        if ($null -ne $hasNativeErrorPreference) {
+            $oldNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        $stdout = & $exe @arguments 2> $stderrPath
+        $exitCode = $LASTEXITCODE
+        if (Test-Path -LiteralPath $stderrPath) {
+            $stderr = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+        }
+    } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+        if ($null -ne $hasNativeErrorPreference) {
+            $PSNativeCommandUseErrorActionPreference = $oldNativeErrorPreference
+        }
+        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0) {
+        $safeOutput = (($stdout | Out-String) + "`n" + $stderr) `
+            -replace '(?i)(AccessKeyId=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(AccessKeySecret=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
+        $safeCommand = if ($CommandArgs.Length -ge 3) {
+            "$($CommandArgs[0]) $($CommandArgs[1]) $($CommandArgs[2])"
+        } else {
+            $CommandArgs -join " "
+        }
+        throw "Command failed: $safeCommand`n$safeOutput"
+    }
+    $jsonText = $stdout | Out-String
+    if ([string]::IsNullOrWhiteSpace($jsonText)) {
+        return $null
+    }
+    return $jsonText | ConvertFrom-Json
 }
 
 function Get-SendFileStatus {

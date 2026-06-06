@@ -14,6 +14,7 @@
 - 站点目录：`/var/www/nongjiqiancha-site/current`
 - 证书：Let's Encrypt / certbot，路径 `/etc/letsencrypt/live/nongjiqiancha.cn/`，有效期到 2026-09-04，自动续期 timer 已启用；只记录证书路径，不记录私钥内容
 - 公网验证：根域名 HTTP 会 301 到 HTTPS，根域名 / www HTTPS 返回官网首页 200；`api.nongjiqiancha.cn` healthz 仍独立走 API Nginx 配置
+- Nginx 静态站 HTTPS 配置包含 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`、`Content-Security-Policy` 和 HSTS；全局安全头兜底见 [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md)
 
 ## 本地开发
 
@@ -65,7 +66,7 @@ $env:VITE_ANDROID_APK_URL="https://your-download-host/nongjiqiancha.apk"
 npm run build
 ```
 
-未设置时页面会显示“安卓下载地址待开放”。首版不要在 App 备案、公安备案和真机回归完成前写死不存在或未验证的 APK 链接。
+未设置时页面会显示“安卓版准备中，开放后提供官方 HTTPS 下载地址。”首版不要在 App 备案、公安备案和真机回归完成前写死不存在或未验证的 APK 链接。
 
 APK 发布仍以 [app-update.md](D:/wuhao/docs/runbooks/app-update.md) 为准：APK 必须是固定 release 签名、包名 `com.nongjiqiancha`、versionCode 递增，并记录文件大小和 SHA-256。
 
@@ -74,7 +75,7 @@ APK 发布仍以 [app-update.md](D:/wuhao/docs/runbooks/app-update.md) 为准：
 - 网站 ICP 备案号：`京ICP备2026031728号-1`
 - footer 备案号必须链接到 `https://beian.miit.gov.cn/`
 - 公安联网备案通过后，再按全国互联网安全管理服务平台提供的 HTML / 图标 / 链接补真实公安备案号
-- 公安备案号未下发前，只保留“公安备案号待补充”文本，不伪造编号
+- 公安备案号未下发前，公开官网 footer 只保留 ICP 备案号，不展示任何未完成占位
 - 公安备案数据码、账号、证件号等不写入仓库、文档或前端代码
 
 ## 后续可加但当前不做

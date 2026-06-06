@@ -5,6 +5,12 @@
 
 ## 2026-06-06
 
+- 按 Product Design 方向收紧农技千查官网：导航去掉图标和“备案”入口，正文删除“备案与服务说明”大块，只保留 App 介绍、图文问诊 / 农业大模型 / 原生 Android 体验三项能力和安卓版下载入口；下载待开放文案不再向普通用户暴露 App 备案、公安备案、真机回归等内部流程；footer 只保留 `京ICP备2026031728号-1`，公安备案号未下发前不展示占位。主视觉把 App 图标放在首屏主体位置，并用展示裁切让绿色叶片更大、黑底边界更轻；不改 Android launcher 图标资源，避免影响 App 备案和物料一致性。
+
+- 执行免费优先安全加固：确认阿里云云安全中心免费版已生效，ECS 安全中心 agent online、当前风险计数 0；阿里云 DDoS 基础防护按官方口径默认免费开启。通过 CLI 撤销生产安全组公网 `TCP 22 / 0.0.0.0/0`，并通过 Cloud Assistant 停止 / 禁用 ECS 本机 `ssh` 服务，当前公网只放行 `80 / 443` 和 ICMP；生产运维优先走阿里云 CLI + Cloud Assistant。通过 Cloud Assistant 写入 Nginx 全局安全头兜底 `/etc/nginx/conf.d/nongjiqiancha-security.conf` 并 reload；官网部署脚本也补 `Content-Security-Policy`、`Permissions-Policy` 和 HSTS。统一加固官网 / 后端部署、回滚、readiness、登录用量和安全巡检脚本的阿里云 CLI 错误捕获：失败时先捕获 stderr 并脱敏 `AccessKeyId / Signature / SignatureNonce / Content` 等签名参数，再输出错误。新增 [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md) 和 [harden-ecs-security.ps1](D:/wuhao/scripts/harden-ecs-security.ps1)，后续免费安全巡检和复刻加固走脚本。
+
+- 只读复查手机号一键登录链路：未发现 Android 旧 `SESSION_API_TOKEN` 绕过登录、客户端模型直连或 `/api/auth/fusion/verify` 半程接口误签发账号 token；半程 verify-only 只返回 `ok / phone_mask`，最终 `onVerifySuccess` 才调用 `/api/auth/fusion/login` 换账号 session token。仍需真机重点确认阿里融合认证 verify token 半程校验后，最终 login 是否允许再次校验同一 token；如果出现半程成功但最终失败，再按 SDK 语义调整。
+
 - 复查 ABC 记忆重写和失败重试机制：B 层继续由旧 B 摘要 + 当前 A 层 6/9 轮窗口整体重写，C 层继续由旧 C 摘要 + `session_round_archive` 最近 20 轮完整问答整体重写；`pending_retry_b / pending_retry_c` 保存在 MySQL `session_ab`，模型失败、超时、写库失败、C 层归档不足 20 轮或旧快照写回过期都会保留 pending，后续轮次完成后继续补提取，只有成功写回且 `round_total` 匹配才清 pending。同步在 [scaling-readiness.md](D:/wuhao/docs/runbooks/scaling-readiness.md) 明确：当前同用户同层运行中保护仍是单进程 guard，扩多台 ECS 前必须升级为 Redis / MySQL lease，避免重复抽取 Flash 和非确定性覆盖。
 
 - 继续复查云资源 / CDN / OSS 生命周期：阿里云官方口径确认 CDN 不是纯免费资源，基础按下行流量 / 带宽等计费，HTTPS 静态请求虽有月度免费额度但超出仍会计费；当前早期不启用 CDN，不把问诊私有图片改成 CDN 长缓存，仍走后端 `/uploads/` 中转 + OSS 生命周期。CLI 复查 `nongjiqiancha-prod` lifecycle 确认 `uploads/` 3 天自动删除、`support/` 30 天自动删除、未完成分片 1 天清理均为 Enabled；最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 被限流拦截。同步校正 ECS 到期口径为 CLI 当前显示的 `2027-06-01T16:00Z`。
@@ -29,9 +35,9 @@
 
 - 按 Product Design 轻量审查结果收紧 App 内几个占位 UI：礼品卡页输入后不再出现可兑换黑色按钮，按钮固定置灰显示“暂未开放”；会员中心加油包说明和按钮统一为未开放口径，不再出现“可订购但禁用”的冲突；帮助与反馈超过 2000 字会截断并提示，不再静默拒绝输入，且只在消息 / 加载状态变化时自动滚到底，避免点输入框或选图时打断用户查看旧记录；帮助与反馈空态图标从文本问号换成线性对话图标；账号管理“注销账号”弱化为不可点的“暂未开放”占位，避免像真实危险操作。
 
-- 部署农技千查官网到 ECS 根域名：新增 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1)，自动构建 Vite 静态站、同步 `@` / `www` A 记录到 `39.106.1.151`、分片上传 `site/dist`、发布到 `/var/www/nongjiqiancha-site/current`、写入 Nginx 静态站配置并通过 certbot 签发 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书。公网验证 `http://nongjiqiancha.cn/` 301 到 HTTPS，`https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/` 均返回官网首页 200，页面包含“农技千查 / 安卓下载 / 京ICP备2026031728号-1”；公安备案号仍为待补充文本，不伪造编号。
+- 部署农技千查官网到 ECS 根域名：新增 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1)，自动构建 Vite 静态站、同步 `@` / `www` A 记录到 `39.106.1.151`、分片上传 `site/dist`、发布到 `/var/www/nongjiqiancha-site/current`、写入 Nginx 静态站配置并通过 certbot 签发 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书。公网验证 `http://nongjiqiancha.cn/` 301 到 HTTPS，`https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/` 均返回官网首页 200，页面包含“农技千查 / 安卓下载 / 京ICP备2026031728号-1”；后续新版已改为公安备案号未下发前不展示占位，不伪造编号。
 
-- 将 ECS 后端发布方式从单服务重启升级为单机双端口 slot 切换：`scripts/deploy-ecs-server.ps1` / `scripts/rollback-ecs-server.ps1` 现在共用远端互斥锁，自动判断 Nginx 当前上游 `3000/3001`，在非当前端口启动新 slot 并通过生产 healthz 断言后再切 Nginx；切换失败会恢复 Nginx 备份并停止新 slot，切换成功后禁用旧 slot / 历史 `nongji-server.service`，再延迟停止旧进程给 SSE 连接排空。2026-06-06 已完成首次迁移，当前 active upstream 为 `127.0.0.1:3001`，readiness 显示 `nongji-server-3001 active/enabled`、Nginx OK、Host healthz 200、模型 / 短信 / Redis / OSS 均 ok。
+- 将 ECS 后端发布方式从单服务重启升级为单机双端口 slot 切换：`scripts/deploy-ecs-server.ps1` / `scripts/rollback-ecs-server.ps1` 现在共用远端互斥锁，自动判断 Nginx 当前上游 `3000/3001`，在非当前端口启动新 slot 并通过生产 healthz 断言后再切 Nginx；切换失败会恢复 Nginx 备份并停止新 slot，切换成功后禁用旧 slot / 历史 `nongji-server.service`，再延迟停止旧进程给 SSE 连接排空。2026-06-06 首次迁移当时 active upstream 为 `127.0.0.1:3001`；后续巡检以 `current-status.md` 和 readiness 输出为准。
 
 - 优化 ECS 部署脚本健康检查顺序：`scripts/deploy-ecs-server.ps1` 在重启 `nongji-server` 后会先等待 Go 服务本机 `127.0.0.1:3000/healthz` 返回 200，再通过 Nginx / Host 入口检查 `api.nongjiqiancha.cn`，避免脚本刚重启就撞上游空窗并打印整页 502 HTML。该改动只减少部署输出里的瞬时 502 噪音；单台 ECS 单进程重启期间，真实零 502 仍需后续蓝绿 / 双端口切换或多实例滚动发布。
 
@@ -47,7 +53,7 @@
 
 - 打磨未开放功能和帮助反馈体验：会员中心套餐区新增“会员购买暂未开放”提示，开通 / 升级 / 加油包订购按钮统一置灰显示暂未开放或当前状态，避免内测用户误以为已经可真实交易；礼品卡页提前显示“礼品卡暂未开放”和后续开放说明，输入后也只提示暂未开放，不调用后端、不发权益。帮助与反馈发送过程中新增“正在上传图片...”/“正在提交反馈...”状态文案，弱网多图时不再只有按钮置灰；后端固定自动回复文案从“尽快核实处理”收口为“已提交，可继续补充时间、步骤或截图”，不承诺即时客服或 SLA。
 
-- 新增农技千查官网首版 Vite 静态站：`site` 目录提供 App 介绍、安卓下载入口、服务边界说明和备案 footer，使用仓库内正式黑底绿色 App 图标，保持官网 / App / 备案材料识别一致。安卓下载链接不在代码里写死，可通过 `VITE_ANDROID_APK_URL` 在构建时注入；未配置时页面显示下载待开放，避免 App 备案、公安备案和真机回归完成前假链接。footer 已展示网站备案号 `京ICP备2026031728号-1` 并链接工信部备案系统，公安备案号仅保留待补充文本，不伪造编号；官网当前是代码准备阶段，尚未部署到根域名公网。新增 [official-website.md](D:/wuhao/docs/runbooks/official-website.md) 记录构建、下载链接和备案 footer 规则。
+- 新增农技千查官网首版 Vite 静态站：`site` 目录提供 App 介绍、安卓下载入口、服务边界说明和备案 footer，使用仓库内正式黑底绿色 App 图标，保持官网 / App / 备案材料识别一致。安卓下载链接不在代码里写死，可通过 `VITE_ANDROID_APK_URL` 在构建时注入；未配置时页面显示下载待开放，避免 App 备案、公安备案和真机回归完成前假链接。footer 已展示网站备案号 `京ICP备2026031728号-1` 并链接工信部备案系统；后续新版已改为公安备案号未下发前不展示占位，不伪造编号。新增 [official-website.md](D:/wuhao/docs/runbooks/official-website.md) 记录构建、下载链接和备案 footer 规则。
 
 - 帮助与反馈补轻量自动回复和一轮 UI 打磨：用户首次提交反馈、提出可规则识别的常见 App 使用问题，或距上一条用户反馈已超过 24 小时再次提交时，后端会写入一条 `sender_type=system` 固定回复并随响应返回 `auto_reply`；Android 新版发送成功后会把用户消息和自动回复一次追加显示，并立即标记该自动回复已读，避免自己发完还亮红点。自动回复只按关键词兜住“你好 / 在吗 / 怎么用 / 登录验证码 / 检查更新 / 图片上传 / 会员次数 / 历史记录 / 隐私协议 / 农业问题请回主聊天”等轻量问答，不调用模型、不承诺 SLA、不替代后台人工回复；后台会话列表的 `needs_reply` 改按最新非 `system` 消息判断，自动回复不会盖掉用户待回复状态。前端同时给帮助与反馈页增加更清晰的空态说明、淡绿灰消息区、居中的“系统提示”气泡，并按消息 ID 合并历史拉取和发送返回，降低自动回复重复 / 被覆盖风险。
 

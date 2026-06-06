@@ -20,7 +20,7 @@ for (const link of downloadLinks) {
       event.preventDefault();
       document.querySelector('#download')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       if (downloadStatus) {
-        downloadStatus.textContent = '安卓下载地址待开放。备案、公安备案和真机回归完成后，这里会放官方 HTTPS 下载链接。';
+        downloadStatus.textContent = '安卓版准备中，开放后提供官方 HTTPS 下载地址。';
       }
     });
   }
