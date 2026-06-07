@@ -185,6 +185,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /admin-api/v1/auth/me", s.handleAdminMe)
 	s.mux.HandleFunc("POST /admin-api/v1/auth/logout", s.handleAdminLogout)
 	s.mux.HandleFunc("GET /admin-api/v1/overview", s.handleAdminOverview)
+	s.mux.HandleFunc("GET /admin-api/v1/monitoring", s.handleAdminMonitoring)
 	s.mux.HandleFunc("GET /admin-api/v1/users", s.handleAdminUsers)
 	s.mux.HandleFunc("GET /admin-api/v1/users/detail", s.handleAdminUserDetail)
 	s.mux.HandleFunc("GET /admin-api/v1/support/conversations", s.handleAdminSupportConversations)

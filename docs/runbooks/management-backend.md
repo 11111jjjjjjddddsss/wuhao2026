@@ -25,6 +25,7 @@
 当前已落地的后台页面 / API：
 
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
+- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；前端以红黄绿队列展示，未接入的 SLS 自动告警、登录精准漏斗、发布 / 回滚按钮不会伪装成已完成。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按 user_id / 脱敏手机号查询，展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈。
 - 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/cards`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次，完整卡码只在生成响应当次返回，数据库只存 hash / 掩码 / 尾号。
@@ -43,7 +44,7 @@
 
 - 买服务器不等于自动有管理后台。
 - `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 仍只是共享密钥，不能给浏览器前端使用；正式后台浏览器入口必须走 `admin_users` / `admin_sessions` / CSRF。
-- `/admin-api/v1/app-logs` 和 `/internal/app/logs` 只是给运维和后台面板用的只读地基，不是完整 SLS 告警中心。
+- `/admin-api/v1/monitoring`、`/admin-api/v1/app-logs` 和 `/internal/app/logs` 是给运维和后台面板用的只读 / 聚合入口，不是完整 SLS 告警中心。
 - `/api/app/update` 只是读取版本配置，不是发布系统；正式发布仍需要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间。
 - 礼品卡后端和后台已接入首版，但 Android 设置页真实兑换按钮仍需后续把占位提示接到 `/api/gift-cards/redeem`；debug-only 礼品卡“兑换成功”仍只能作为样式预览，不能在没有后端成功结果时弹真实兑换成功。
 - 开发期会员接口不是正式支付回调，生产必须保持关闭。
@@ -97,14 +98,14 @@
 
 | 模块 | 当前能否直接接 | 当前真源 | 第一版要补 |
 |---|---|---|---|
-| 服务健康 | 可直接接 | `/healthz`、readiness 脚本、SLS / ECS 日志 | 后台只读聚合 API |
+| 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计 | SLS 自动告警 / 仪表盘、Nginx access 聚合、登录精准漏斗 |
 | 帮助与反馈 | 可直接接 | `support_messages`、`/internal/support/*` | 会话状态、标签、处理人、搜索 |
-| App 自动日志 | 可直接接 | `client_app_logs`、`/internal/app/logs` | 按版本 / 设备 / 地区聚合 |
+| App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs` | 更细的版本 / 设备 / 地区聚合和告警 |
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
-| 用户查询 | 半直接接 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive` | 后台用户详情 API、手机号安全查询、session 管理 |
-| 会员 / 额度 | 半直接接 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 资产详情 API、扣次流水 API、人工补偿审计 |
-| 今日农情 | 半直接接 | `daily_agri_cards`、内部生成接口 | 历史状态查询、失败原因、补跑 / 停用 API |
-| 检查更新 | 半直接接 | `APP_ANDROID_*` 环境变量、`/api/app/update` | `app_releases` 表、发布 / 停更 / 回滚 API |
+| 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
+| 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |
+| 今日农情 | 已接入只读状态 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards` | 补跑 / 停用 API 和告警 |
+| 检查更新 | 已接入只读配置 | `APP_ANDROID_*` 环境变量、`/api/app/update`、`/admin-api/v1/app-update/android` | `app_releases` 表、发布 / 停更 / 回滚 API |
 | 订单 / 订购 | 不能当正式功能接 | 当前 `orders` 仅开发期记录 | 正式订单、支付回调、退款、对账和幂等表 |
 | 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | Android 真实兑换接线、作废 / 导出、批量发放和二次确认 |
 | 产品洞察 | 未完整接入 | 反馈、App 日志、聊天归档可作为来源 | 脱敏聚合任务和洞察报表表 |

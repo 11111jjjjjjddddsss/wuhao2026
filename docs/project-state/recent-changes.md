@@ -5,6 +5,8 @@
 
 ## 2026-06-07
 
+- 管理后台继续补监控面板和可用性细节：`server-go` 新增 `GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败和最近 30 天地区分布；`admin` 前端新增“监控面板”，把红黄绿状态、真实已接数据和“未开放 / 后续接”的能力分清楚。后台左侧菜单点击后保留原滚动位置，避免点底部菜单后视角跳回顶部；后台品牌图标从文字占位改为绿叶图标。该面板不是完整 SLS 告警中心，也不开放发布 / 回滚 / 支付 / 批量高风险操作。
+
 - 收口 OpenCode 自动加载配置以降低桌面端卡死 / 无回复概率：全局 `C:/Users/Administrator/.config/opencode/opencode.json` 不再无条件加载本仓库 `AGENTS.md` 和 4 份项目记忆，项目级 [opencode.json](D:/wuhao/opencode.json) 也改为只自动加载 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md)。桥接文档同步写明：根规则和项目记忆仍是任务开始前必须读取的真相，但不再作为每条轻量消息的无条件自动 prompt，避免普通问候也携带超大上下文导致模型中转超时、sidecar session 丢失或 UI 长时间转圈。
 
 - 第一版管理后台进入代码并部署到生产：新增 Vite `admin` 前端，覆盖登录、总览、用户管理、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计、产品洞察和服务健康；`server-go` 新增 `/admin-api/v1/*` 后台 API、后台账号 / session / CSRF、角色校验、bootstrap 初始化和审计。用户详情现在可查当前会员档位 / 到期、每日额度、扣次流水、加油包包明细、升级补偿、订单记录、礼品卡兑换和兑换尝试；礼品卡后端新增批次、卡、兑换尝试表，后台可生成 Plus / Pro 礼品卡批次，完整卡码只在创建成功当次返回，用户侧 `POST /api/gift-cards/redeem` 事务内发会员权益。生产入口已部署到 `https://admin.nongjiqiancha.cn/`，Nginx 同域反代 `/admin-api/`，后台域名 HTTPS 证书已签发，owner 账号已通过一次性 bootstrap 初始化，随后已清理 ECS `ADMIN_BOOTSTRAP_*` 环境变量并重启验证；公网已验证首页、登录和总览 API。Android 礼品卡页还要接真实兑换接口。

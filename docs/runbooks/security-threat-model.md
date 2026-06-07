@@ -42,7 +42,7 @@
 
 ## 剩余风险
 
-- 第一版管理后台代码已有账号、角色权限和 CSRF / 会话体系，但生产后台域名 / Nginx 托管 / bootstrap 验收仍未完成；当前 `/internal/*` 仍保留共享 secret 过渡入口，不能把 secret 放进浏览器前端
+- 第一版管理后台已部署到 `https://admin.nongjiqiancha.cn/`，并完成后台域名、Nginx 静态托管、`/admin-api/` 反代、HTTPS、bootstrap 初始化和 bootstrap 环境变量清理；当前 `/internal/*` 仍保留共享 secret 过渡入口给脚本兼容，不能把 secret 放进浏览器前端
 - Android 长期 auth token 仍保存在普通 SharedPreferences；备份已禁用，但 Root、恶意调试或设备被拿到时仍可能被窃取。后续可评估 EncryptedSharedPreferences、设备管理和远程吊销
 - 没买 WAF / 高防时，普通 Web 扫描和脚本刷接口主要靠 Nginx / Go / Redis 限流；大流量 DDoS 超过基础防护仍可能不可用
 - SLS 还没有告警 / 仪表盘；现在能查日志，但还不能自动叫醒或自动处置
@@ -50,7 +50,7 @@
 
 ## 后续优先级
 
-1. 管理后台生产上线必须配置后台域名、Nginx、bootstrap 清理和验收，不能把 `SUPPORT_ADMIN_SECRET` 直接暴露到网页前端。
+1. 管理后台继续补高风险操作二次确认、角色细化、SLS 告警 / 仪表盘、发布 / 回滚记录和数据库只读排查入口。
 2. SLS 补 healthz、Nginx 5xx、Go error、RDS / Redis / ECS 高水位告警。
 3. 上线前轮换已暴露过的主账号 AccessKey，并优先改成专用最小权限 RAM 用户。
 4. 真机回归手机号登录、验证码登录、主聊天、图片上传 / 读取 / 模型拉图和检查更新。

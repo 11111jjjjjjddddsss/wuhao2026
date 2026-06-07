@@ -97,4 +97,4 @@ tail -n 120 /var/log/nginx/error.log
 - HTTPS 对外开放是业务必须入口，HTTP 80 只用于 ACME challenge 和 HTTPS 跳转；仍需要 Nginx / Go / Redis 限流和日志观察
 - 同行恶意刷接口时，优先看 Nginx 429、Go 侧限流日志、模型调用量和 DYPNS / OSS / RDS 成本曲线
 - 真正大流量 DDoS 超过基础防护能力时，免费策略无法保证持续可用，需要临时购买高防或让云厂商清洗
-- 管理后台生产上线前必须完成后台域名 / Nginx / bootstrap 验收，并保持账号、权限、审计和限流；不能把内部 secret 暴露给浏览器前端
+- 管理后台已完成后台域名 / Nginx / bootstrap 验收；后续继续保持账号、权限、审计和限流，不能把内部 secret 暴露给浏览器前端

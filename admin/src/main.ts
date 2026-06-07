@@ -8,6 +8,7 @@ import type {
   AdminGiftCardBatch,
   AdminGiftCardCreatedCode,
   AdminGiftCardEntry,
+  AdminMonitoring,
   AdminOrderEntry,
   AdminOverview,
   AdminQuotaLedgerEntry,
@@ -25,6 +26,7 @@ import type {
 
 type RouteKey =
   | "overview"
+  | "monitoring"
   | "users"
   | "entitlements"
   | "orders"
@@ -45,18 +47,19 @@ interface RouteItem {
 }
 
 const routes: RouteItem[] = [
-  { key: "overview", label: "总览", section: "工作台", hint: "关键指标与队列" },
-  { key: "users", label: "用户管理", section: "用户与增长", hint: "查询与详情" },
-  { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "只读核查" },
-  { key: "orders", label: "订单", section: "权益与交易", hint: "支付未接入" },
-  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "批次与兑换" },
-  { key: "support", label: "帮助反馈", section: "运营工作台", hint: "会话与回复" },
-  { key: "app-logs", label: "App日志", section: "运营工作台", hint: "自动日志" },
-  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "内容状态" },
-  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "Android配置" },
-  { key: "audit", label: "审计", section: "安全与系统", hint: "后台操作" },
-  { key: "insights", label: "产品洞察", section: "安全与系统", hint: "规划态" },
-  { key: "health", label: "服务健康", section: "安全与系统", hint: "依赖状态" },
+  { key: "overview", label: "总览", section: "工作台", hint: "可用" },
+  { key: "monitoring", label: "监控面板", section: "工作台", hint: "可用" },
+  { key: "users", label: "用户管理", section: "用户与增长", hint: "可查" },
+  { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读" },
+  { key: "orders", label: "订单", section: "权益与交易", hint: "支付后接" },
+  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可创建/可查" },
+  { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复" },
+  { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查" },
+  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态" },
+  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "只读配置" },
+  { key: "audit", label: "审计", section: "安全与系统", hint: "可查" },
+  { key: "insights", label: "产品洞察", section: "安全与系统", hint: "后续报表" },
+  { key: "health", label: "服务健康", section: "安全与系统", hint: "可查" },
 ];
 
 const appNode = document.querySelector<HTMLDivElement>("#app");
@@ -66,6 +69,7 @@ const app = appNode;
 let auth: AuthPayload | null = getStoredAuth();
 let activeRoute: RouteKey = routeFromHash();
 let lastGiftCardCodes: AdminGiftCardCreatedCode[] = [];
+let sidebarScrollTop = 0;
 const pageState = {
   userQuery: "",
   userDetailID: "",
@@ -141,7 +145,7 @@ function renderLogin(message = ""): void {
       <section class="login-panel">
         <div class="login-card">
           <div class="brand-row">
-            <div class="brand-mark">叶</div>
+            ${brandMarkHTML()}
             <div>
               <h1>农技千查管理后台</h1>
               <div class="muted small">后台账号由后端初始化，前端不保存密码或密钥。</div>
@@ -173,6 +177,7 @@ function renderLogin(message = ""): void {
 }
 
 function renderLoadingShell(label: string): void {
+  captureSidebarScroll();
   app.innerHTML = `
     <div class="app-shell">
       ${sidebarHTML()}
@@ -182,9 +187,11 @@ function renderLoadingShell(label: string): void {
       </section>
     </div>
   `;
+  restoreSidebarScroll();
 }
 
 function renderShell(content: string): void {
+  captureSidebarScroll();
   app.innerHTML = `
     <div class="app-shell">
       ${sidebarHTML()}
@@ -194,6 +201,7 @@ function renderShell(content: string): void {
       </section>
     </div>
   `;
+  restoreSidebarScroll();
 }
 
 function sidebarHTML(): string {
@@ -202,7 +210,7 @@ function sidebarHTML(): string {
     <aside class="sidebar">
       <div class="sidebar-head">
         <div class="brand-row">
-          <div class="brand-mark">叶</div>
+          ${brandMarkHTML()}
           <div>
             <div class="sidebar-title">农技千查</div>
             <div class="small" style="color:#9ba6b2">Admin Console</div>
@@ -255,6 +263,8 @@ async function routeContent(route: RouteKey): Promise<string> {
   switch (route) {
     case "overview":
       return overviewPage();
+    case "monitoring":
+      return monitoringPage();
     case "users":
       return usersPage();
     case "entitlements":
@@ -278,6 +288,22 @@ async function routeContent(route: RouteKey): Promise<string> {
     case "health":
       return healthPage();
   }
+}
+
+function brandMarkHTML(): string {
+  return `<div class="brand-mark"><img src="/brand-mark.png" alt="" /></div>`;
+}
+
+function captureSidebarScroll(): void {
+  const sidebar = document.querySelector<HTMLElement>(".sidebar");
+  if (sidebar) sidebarScrollTop = sidebar.scrollTop;
+}
+
+function restoreSidebarScroll(): void {
+  requestAnimationFrame(() => {
+    const sidebar = document.querySelector<HTMLElement>(".sidebar");
+    if (sidebar) sidebar.scrollTop = sidebarScrollTop;
+  });
 }
 
 async function overviewPage(): Promise<string> {
@@ -329,6 +355,56 @@ async function overviewPage(): Promise<string> {
               ? overview.notes.map((note) => notice(note.title, note.body, note.level)).join("")
               : emptyState("没有备注", "后端未返回额外状态说明。")
           }
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+async function monitoringPage(): Promise<string> {
+  const report = await apiFetch<AdminMonitoring>("/admin-api/v1/monitoring");
+  const today = report.windows.find((item) => item.key === "today") || report.windows[0];
+  const day24 = report.windows.find((item) => item.key === "24h") || report.windows[0];
+  return `
+    ${pageHead("监控面板", "红色马上处理，黄色继续观察，绿色暂时正常；没接通的功能会明确写未开放。", "monitoring")}
+    <section class="grid kpi">
+      ${kpi("服务异常", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
+      ${kpi("App报错", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
+      ${kpi("待回复反馈", report.queues.support_needs_reply, report.queues.support_oldest_pending_at ? `最早 ${formatTime(report.queues.support_oldest_pending_at)}` : "当前无等待")}
+      ${kpi("今日问诊", today?.chat_rounds ?? 0, `${today?.chat_users ?? 0} 位用户`)}
+      ${kpi("礼品卡异常", report.queues.gift_card_failed_attempts, "最近24小时兑换失败")}
+      ${kpi("今日农情", dailyAgriStatusText(report.queues.daily_agri_status), report.queues.daily_agri_updated_at ? formatTime(report.queues.daily_agri_updated_at) : "未返回更新时间")}
+    </section>
+    <div style="margin-top:12px">${notice("怎么看这页", "先看上面 6 个数字；有红色或黄色再往下查。当前只聚合真实业务表、App 自动日志和健康检查；SLS 自动告警、登录精准漏斗、发布回滚按钮后续再接，不在这里假装完成。", "info")}</div>
+    <div class="grid two" style="margin-top:12px">
+      <section class="card">
+        <div class="card-head"><div class="card-title">最近使用情况</div><span class="small muted">${formatTime(report.now_ms)}</span></div>
+        <div class="table-wrap">${monitoringWindowTable(report.windows)}</div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div class="card-title">需要盯住的事</div></div>
+        <div class="card-body">${monitoringQueueCards(report)}</div>
+      </section>
+    </div>
+    <div class="grid two" style="margin-top:12px">
+      <section class="card">
+        <div class="card-head"><div class="card-title">服务状态</div></div>
+        <div class="card-body">${healthGrid(report.health)}</div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div class="card-title">地区分布</div><span class="small muted">最近30天问诊</span></div>
+        <div class="table-wrap">${regionMetricsTable(report.top_regions)}</div>
+      </section>
+    </div>
+    <div class="grid two" style="margin-top:12px">
+      <section class="card">
+        <div class="card-head"><div class="card-title">App错误 Top</div><span class="small muted">最近24小时</span></div>
+        <div class="card-body">${appErrorTopTable(report.top_app_errors)}</div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div class="card-title">这页不展示什么</div></div>
+        <div class="card-body stack">
+          ${report.notes?.length ? report.notes.map((note) => notice(note.title, note.body, note.level)).join("") : emptyState("没有备注", "后端未返回监控备注。")}
         </div>
       </section>
     </div>
@@ -1330,6 +1406,103 @@ function healthGrid(health: AdminOverview["health"]): string {
     <table class="table">
       <tbody>
         ${Object.entries(health).map(([key, value]) => metricRow(labelFor(key), typeof value === "boolean" ? (value ? "true" : "false") : String(value))).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
+  if (!rows.length) return emptyState("没有窗口指标", "后端未返回监控窗口数据。");
+  return `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>范围</th><th>新增用户</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>App异常</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div></td>
+                <td>${row.new_users}</td>
+                <td>${row.chat_rounds} / ${row.chat_users}</td>
+                <td>${row.image_chat_rounds}</td>
+                <td>${row.quota_deductions}</td>
+                <td>${row.app_errors} / ${row.app_warns}</td>
+                <td>${row.support_messages}<div class="small muted">${row.support_users} 位用户</div></td>
+                <td>${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div></td>
+                <td>${row.audit_failures}<div class="small muted">${row.admin_actions} 次操作</div></td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function monitoringQueueCards(report: AdminMonitoring): string {
+  const queues = report.queues;
+  const update = queues.app_update;
+  return `
+    <div class="queue-grid">
+      ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
+      ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `最早待回复 ${formatTime(queues.support_oldest_pending_at)}` : "暂无待回复", queues.support_needs_reply ? "warn" : "ok")}
+      ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
+      ${queueCard("安装包下载", update.config_valid ? "已配置" : "未放正式包", updateStatusLine(update), update.config_valid ? "ok" : "warn")}
+      ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可用`, `${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`, queues.gift_card_failed_attempts ? "warn" : "ok")}
+      ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
+    </div>
+  `;
+}
+
+function queueCard(title: string, value: string | number, body: string, level: "ok" | "warn" | "bad" | "info"): string {
+  return `
+    <div class="queue-card ${level}">
+      <div class="small muted">${escapeHTML(title)}</div>
+      <strong>${escapeHTML(String(value))}</strong>
+      <span>${escapeHTML(body)}</span>
+    </div>
+  `;
+}
+
+function updateStatusLine(update: AdminMonitoring["queues"]["app_update"]): string {
+  const version = update.latest_version_code ? `v${update.latest_version_code}${update.latest_version_name ? ` / ${update.latest_version_name}` : ""}` : "未配置版本";
+  return `${version}；APK ${update.has_apk_url ? "已配置" : "未配置"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
+}
+
+function dailyAgriStatusText(status: string): string {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "ready") return "正常";
+  if (normalized === "failed") return "失败";
+  if (normalized === "pending") return "等待生成";
+  if (normalized === "running") return "生成中";
+  if (normalized === "missing") return "未生成";
+  if (normalized === "disabled") return "已停用";
+  return "未返回";
+}
+
+function regionMetricsTable(rows: AdminMonitoring["top_regions"]): string {
+  if (!rows.length) return emptyState("没有地区数据", "最近30天问诊归档中没有可聚合地区。");
+  return `
+    <table class="table">
+      <thead><tr><th>地区</th><th>轮次</th><th>用户</th><th>来源</th><th>最近出现</th></tr></thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHTML(row.region)}</td>
+                <td>${row.count}</td>
+                <td>${row.user_count}</td>
+                <td>${escapeHTML([row.source, row.reliability].filter(Boolean).join(" / ") || "未返回")}</td>
+                <td>${formatTime(row.last_seen_at)}</td>
+              </tr>
+            `,
+          )
+          .join("")}
       </tbody>
     </table>
   `;

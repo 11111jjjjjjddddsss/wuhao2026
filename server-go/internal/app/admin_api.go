@@ -60,6 +60,69 @@ type AdminStatusNote struct {
 	Level string `json:"level"`
 }
 
+type AdminMonitoring struct {
+	Health       AdminHealthStatus          `json:"health"`
+	Windows      []AdminMonitoringWindow    `json:"windows"`
+	Queues       AdminMonitoringQueues      `json:"queues"`
+	TopRegions   []AdminRegionMetric        `json:"top_regions"`
+	TopAppErrors []ClientAppLogSummaryEntry `json:"top_app_errors"`
+	Notes        []AdminStatusNote          `json:"notes"`
+	NowMs        int64                      `json:"now_ms"`
+}
+
+type AdminMonitoringWindow struct {
+	Key                  string `json:"key"`
+	Label                string `json:"label"`
+	SinceMs              int64  `json:"since_ms"`
+	NewUsers             int64  `json:"new_users"`
+	ActiveSessions       int64  `json:"active_sessions"`
+	ChatRounds           int64  `json:"chat_rounds"`
+	ChatUsers            int64  `json:"chat_users"`
+	ImageChatRounds      int64  `json:"image_chat_rounds"`
+	QuotaDeductions      int64  `json:"quota_deductions"`
+	AppErrors            int64  `json:"app_errors"`
+	AppWarns             int64  `json:"app_warns"`
+	SupportMessages      int64  `json:"support_messages"`
+	SupportUsers         int64  `json:"support_users"`
+	GiftCardRedeems      int64  `json:"gift_card_redeems"`
+	GiftCardFailures     int64  `json:"gift_card_failures"`
+	AuditFailures        int64  `json:"audit_failures"`
+	AdminActions         int64  `json:"admin_actions"`
+	DailyAgriFailedCards int64  `json:"daily_agri_failed_cards"`
+}
+
+type AdminMonitoringQueues struct {
+	SupportNeedsReply      int64                    `json:"support_needs_reply"`
+	SupportOldestPendingAt *int64                   `json:"support_oldest_pending_at,omitempty"`
+	DailyAgriStatus        string                   `json:"daily_agri_status"`
+	DailyAgriUpdatedAt     *int64                   `json:"daily_agri_updated_at,omitempty"`
+	DailyAgriError         string                   `json:"daily_agri_error,omitempty"`
+	AppUpdate              AdminMonitoringAppUpdate `json:"app_update"`
+	GiftCardActive         int64                    `json:"gift_card_active"`
+	GiftCardRedeemed       int64                    `json:"gift_card_redeemed"`
+	GiftCardFailedAttempts int64                    `json:"gift_card_failed_attempts"`
+	AuditFailures          int64                    `json:"audit_failures"`
+	AppErrors              int64                    `json:"app_errors"`
+	UnreadyDependencyCount int64                    `json:"unready_dependency_count"`
+}
+
+type AdminMonitoringAppUpdate struct {
+	ConfigValid       bool   `json:"config_valid"`
+	HasAPKURL         bool   `json:"has_apk_url"`
+	LatestVersionCode int    `json:"latest_version_code"`
+	LatestVersionName string `json:"latest_version_name,omitempty"`
+	ForceUpdate       bool   `json:"force_update"`
+}
+
+type AdminRegionMetric struct {
+	Region      string `json:"region"`
+	Source      string `json:"source,omitempty"`
+	Reliability string `json:"reliability,omitempty"`
+	Count       int64  `json:"count"`
+	UserCount   int64  `json:"user_count"`
+	LastSeenAt  int64  `json:"last_seen_at"`
+}
+
 type AdminUserListEntry struct {
 	UserID                string            `json:"user_id"`
 	PhoneMask             string            `json:"phone_mask,omitempty"`
@@ -218,6 +281,34 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.overview", "dashboard", "", "", true, http.StatusOK, map[string]any{"app_errors": overview.Today.AppErrors})
 	s.writeJSON(w, http.StatusOK, overview)
+}
+
+func (s *Server) handleAdminMonitoring(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "ops_readonly", "auditor", "support", "finance_ops", "content_ops", "release_ops")
+	if !ok {
+		return
+	}
+	now := time.Now()
+	report, err := s.store.BuildAdminMonitoring(
+		r.Context(),
+		s.adminHealthStatus(),
+		GetTodayKeyCN(s.shanghai, now),
+		adminDayStartMs(s.shanghai, now),
+		now.UnixMilli(),
+		readAndroidUpdateConfig(os.Getenv),
+	)
+	if err != nil {
+		s.logger.Error("admin monitoring failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.monitoring", "dashboard", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.monitoring", "dashboard", "", "", true, http.StatusOK, map[string]any{
+		"app_errors":          report.Queues.AppErrors,
+		"support_needs_reply": report.Queues.SupportNeedsReply,
+		"unready_deps":        report.Queues.UnreadyDependencyCount,
+	})
+	s.writeJSON(w, http.StatusOK, report)
 }
 
 func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
@@ -517,6 +608,269 @@ func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus
 		{Title: "产品洞察", Body: "后续从脱敏反馈、App 日志和归档摘要生成，不直接铺完整聊天全文。", Level: "info"},
 	}
 	return overview, nil
+}
+
+func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStatus, dayCN string, dayStartMs int64, nowMs int64, updateCfg androidUpdateConfig) (AdminMonitoring, error) {
+	report := AdminMonitoring{
+		Health: health,
+		NowMs:  nowMs,
+		Notes: []AdminStatusNote{
+			{Title: "不是完整告警中心", Body: "本页先展示业务表、App 自动日志、审计和健康检查聚合；SLS 自动告警、完整 Nginx access 仪表盘后续再接。", Level: "info"},
+			{Title: "发版后先看这些", Body: "发版或切 slot 后，优先看服务异常、App 报错、后台失败、未回复反馈和今日农情状态。", Level: "info"},
+			{Title: "用户隐私", Body: "监控面板不展示聊天全文、图片 URL、手机号全文、token、模型 Key 或 AccessKey。", Level: "info"},
+		},
+	}
+	windows := []struct {
+		key     string
+		label   string
+		sinceMs int64
+	}{
+		{key: "today", label: "今日", sinceMs: dayStartMs},
+		{key: "24h", label: "最近24小时", sinceMs: nowMs - int64(24*time.Hour/time.Millisecond)},
+		{key: "7d", label: "最近7天", sinceMs: nowMs - int64(7*24*time.Hour/time.Millisecond)},
+	}
+	for _, item := range windows {
+		window, err := s.buildAdminMonitoringWindow(ctx, item.key, item.label, item.sinceMs, nowMs)
+		if err != nil {
+			return report, err
+		}
+		report.Windows = append(report.Windows, window)
+	}
+	queues, err := s.buildAdminMonitoringQueues(ctx, health, dayCN, nowMs, updateCfg)
+	if err != nil {
+		return report, err
+	}
+	report.Queues = queues
+	regions, err := s.ListAdminRegionMetrics(ctx, nowMs-int64(30*24*time.Hour/time.Millisecond), 12)
+	if err != nil {
+		return report, err
+	}
+	report.TopRegions = regions
+	topErrors, err := s.SummarizeClientAppLogs(ctx, ClientAppLogQuery{Level: "error", SinceMs: nowMs - int64(24*time.Hour/time.Millisecond), Limit: 10})
+	if err != nil {
+		return report, err
+	}
+	report.TopAppErrors = topErrors
+	return report, nil
+}
+
+func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, label string, sinceMs int64, nowMs int64) (AdminMonitoringWindow, error) {
+	window := AdminMonitoringWindow{Key: key, Label: label, SinceMs: sinceMs}
+	var err error
+	if window.NewUsers, err = s.countQuery(ctx, "SELECT COUNT(*) FROM app_accounts WHERE created_at >= ?", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.ActiveSessions, err = s.countQuery(ctx, "SELECT COUNT(*) FROM auth_sessions WHERE revoked_at IS NULL AND token_expires_at > ? AND updated_at >= ?", []any{nowMs, sinceMs}); err != nil {
+		return window, err
+	}
+	if window.ChatRounds, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_round_archive WHERE created_at >= ?", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.ChatUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM session_round_archive WHERE created_at >= ?", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.ImageChatRounds, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_round_archive WHERE created_at >= ? AND JSON_LENGTH(user_images_json) > 0", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.QuotaDeductions, err = s.countQuery(ctx, "SELECT COALESCE(SUM(delta),0) FROM quota_ledger WHERE created_at >= ?", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.AppWarns, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'warn'", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.SupportMessages, err = s.countQuery(ctx, "SELECT COUNT(*) FROM support_messages WHERE created_at >= ? AND sender_type = 'user'", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.SupportUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM support_messages WHERE created_at >= ? AND sender_type = 'user'", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.GiftCardRedeems, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 1", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.GiftCardFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 0", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.AuditFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM admin_audit_logs WHERE created_at >= ? AND success = 0", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.AdminActions, err = s.countQuery(ctx, "SELECT COUNT(*) FROM admin_audit_logs WHERE created_at >= ?", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.DailyAgriFailedCards, err = s.countQuery(ctx, "SELECT COUNT(*) FROM daily_agri_cards WHERE updated_at >= ? AND status = 'failed'", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	return window, nil
+}
+
+func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHealthStatus, dayCN string, nowMs int64, updateCfg androidUpdateConfig) (AdminMonitoringQueues, error) {
+	var queues AdminMonitoringQueues
+	var err error
+	queues.SupportNeedsReply, queues.SupportOldestPendingAt, err = s.countAdminSupportPending(ctx)
+	if err != nil {
+		return queues, err
+	}
+	queues.DailyAgriStatus, queues.DailyAgriUpdatedAt, queues.DailyAgriError, err = s.readAdminDailyAgriQueue(ctx, dayCN)
+	if err != nil {
+		return queues, err
+	}
+	queues.AppUpdate = AdminMonitoringAppUpdate{
+		ConfigValid:       updateCfg.LatestVersionCode > 0 && (strings.TrimSpace(updateCfg.APKURL) == "" || isHTTPSURL(updateCfg.APKURL)),
+		HasAPKURL:         strings.TrimSpace(updateCfg.APKURL) != "",
+		LatestVersionCode: updateCfg.LatestVersionCode,
+		LatestVersionName: updateCfg.LatestVersionName,
+		ForceUpdate:       updateCfg.ForceUpdate,
+	}
+	if queues.GiftCardActive, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active'", nil); err != nil {
+		return queues, err
+	}
+	if queues.GiftCardRedeemed, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'redeemed'", nil); err != nil {
+		return queues, err
+	}
+	if queues.GiftCardFailedAttempts, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 0", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+		return queues, err
+	}
+	if queues.AuditFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM admin_audit_logs WHERE created_at >= ? AND success = 0", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+		return queues, err
+	}
+	if queues.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+		return queues, err
+	}
+	queues.UnreadyDependencyCount = countUnreadyAdminDependencies(health)
+	return queues, nil
+}
+
+func (s *Store) countAdminSupportPending(ctx context.Context) (int64, *int64, error) {
+	var count int64
+	var oldest sql.NullInt64
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*), MIN(created_at)
+		   FROM (
+		     SELECT latest_message.sender_type, latest_message.created_at
+		       FROM support_messages latest_message
+		       JOIN (
+		         SELECT user_id, MAX(id) AS latest_id
+		           FROM support_messages
+		          WHERE sender_type <> 'system'
+		          GROUP BY user_id
+		       ) latest_ids ON latest_ids.latest_id = latest_message.id
+		      WHERE latest_message.sender_type = 'user'
+		   ) pending_support`,
+	).Scan(&count, &oldest)
+	if err != nil {
+		return 0, nil, err
+	}
+	if oldest.Valid {
+		return count, int64Ptr(oldest.Int64), nil
+	}
+	return count, nil, nil
+}
+
+func (s *Store) readAdminDailyAgriQueue(ctx context.Context, dayCN string) (string, *int64, string, error) {
+	var status, errorText sql.NullString
+	var updatedAt sql.NullInt64
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT status, updated_at, error FROM daily_agri_cards WHERE day_cn = ? AND scope = ? LIMIT 1",
+		dayCN,
+		dailyAgriDefaultScope,
+	).Scan(&status, &updatedAt, &errorText)
+	if err == sql.ErrNoRows {
+		return "missing", nil, "", nil
+	}
+	if err != nil {
+		return "", nil, "", err
+	}
+	return nullStringValue(status), nullInt64ToPtr(updatedAt), nullStringValue(errorText), nil
+}
+
+func (s *Store) ListAdminRegionMetrics(ctx context.Context, sinceMs int64, limit int) ([]AdminRegionMetric, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 12
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT
+		   region,
+		   CASE
+		     WHEN SUM(CASE WHEN region_source = 'gps' THEN 1 ELSE 0 END) > 0 THEN 'gps'
+		     WHEN SUM(CASE WHEN region_source = 'ip' THEN 1 ELSE 0 END) > 0 THEN 'ip'
+		     ELSE COALESCE(MAX(region_source), '')
+		   END AS source,
+		   CASE
+		     WHEN SUM(CASE WHEN region_reliability = 'reliable' THEN 1 ELSE 0 END) > 0 THEN 'reliable'
+		     WHEN SUM(CASE WHEN region_reliability = 'unreliable' THEN 1 ELSE 0 END) > 0 THEN 'unreliable'
+		     ELSE COALESCE(MAX(region_reliability), '')
+		   END AS reliability,
+		   COUNT(*) AS count_value,
+		   COUNT(DISTINCT user_id) AS user_count,
+		   MAX(created_at) AS last_seen_at
+		 FROM session_round_archive
+		 WHERE created_at >= ?
+		   AND region IS NOT NULL
+		   AND region <> ''
+		   AND region <> '未知'
+		 GROUP BY region
+		 ORDER BY count_value DESC, last_seen_at DESC
+		 LIMIT ?`,
+		sinceMs,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []AdminRegionMetric
+	for rows.Next() {
+		var entry AdminRegionMetric
+		if err := rows.Scan(&entry.Region, &entry.Source, &entry.Reliability, &entry.Count, &entry.UserCount, &entry.LastSeenAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		return []AdminRegionMetric{}, nil
+	}
+	return entries, nil
+}
+
+func countUnreadyAdminDependencies(health AdminHealthStatus) int64 {
+	var count int64
+	if strings.ToLower(strings.TrimSpace(health.API)) != "ok" {
+		count++
+	}
+	if strings.ToLower(strings.TrimSpace(health.Bailian)) != "ok" {
+		count++
+	}
+	if strings.ToLower(strings.TrimSpace(health.Dypns)) != "ok" {
+		count++
+	}
+	if strings.ToLower(strings.TrimSpace(health.DypnsFusion)) != "ok" {
+		count++
+	}
+	if strings.ToLower(strings.TrimSpace(health.DypnsSMS)) != "ok" {
+		count++
+	}
+	if strings.ToLower(strings.TrimSpace(health.Redis)) != "ok" {
+		count++
+	}
+	upload := strings.ToLower(strings.TrimSpace(health.UploadStorage))
+	if upload != "oss" && upload != "ok" {
+		count++
+	}
+	if !health.AuthStrict {
+		count++
+	}
+	if health.DevOrderEndpoints {
+		count++
+	}
+	return count
 }
 
 func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]AdminUserListEntry, error) {

@@ -7,7 +7,7 @@
 - 状态：未关闭
 - 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来；ECS / RDS / Redis / OSS / DNS / HTTPS / 部署脚本、Go 请求级日志、ECS 日志查询脚本、农技千查专用 SLS Project / Logstore 已经有一批真实入口。第一版网页后台代码已落地为 Vite `admin` 前端 + `server-go` `/admin-api/v1/*`，并新增后台账号、session、CSRF、角色校验和审计；生产入口已部署到 `https://admin.nongjiqiancha.cn/`，Nginx 静态托管并同域反代 `/admin-api/`，后台域名 HTTPS 证书已签发，owner 账号已通过一次性 bootstrap 初始化，bootstrap 环境变量已从 ECS 清理。
 - 风险：生产后台已上线并能登录，但还不能把“长期运营后台完全闭环”写成完成态；SLS 告警 / 仪表盘、数据库只读脚本、客服工单状态 / 搜索 / 分配、礼品卡作废 / 导出 / 二次确认、检查更新发布记录等仍需继续补。
-- 补充：管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。后台当前覆盖登录、总览、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康；内部共享密钥接口仍保留给脚本兼容，但浏览器后台不应持有内部 secret。
+- 补充：管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。后台当前覆盖登录、总览、监控面板、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康；监控面板已聚合真实业务表、App 自动日志、审计、健康状态和地区分布，但 SLS 自动告警 / 仪表盘、登录精准漏斗、发布 / 回滚写操作仍未接入；内部共享密钥接口仍保留给脚本兼容，但浏览器后台不应持有内部 secret。
 - 后续动作：补 SLS 告警 / 仪表盘和数据库只读脚本；继续把真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营入口沉淀到 runbook，并按最小权限继续拆角色。
 
 ## R2 项目记忆已有程序化检查，但覆盖仍偏粗

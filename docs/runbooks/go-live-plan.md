@@ -64,7 +64,7 @@
 
 - 官网首版代码已在 `site` 目录准备好并通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，包含 App 介绍、安卓下载入口和备案 footer；网站 ICP 备案号已展示在公开页脚并链接工信部备案系统。App 内协议 / 隐私政策先记录网站 ICP 备案状态，App 备案号必须等 App 备案通过后再补。
 - 跟进 App 备案阿里云初审、管局提交、工信部短信核验和管局审核；当前网站 ICP 已通过不等于 App 备案已通过。
-- `api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、后端公开 API 基地址和图片公开基地址已完成；后续下载域名和管理后台域名如果启用，需要分别配置入口和证书。
+- `api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、后端公开 API 基地址、图片公开基地址和 `admin.nongjiqiancha.cn` 后台 HTTPS 已完成；后续下载域名如果启用，需要单独配置入口和证书。
 - 确认 `APP_ANDROID_*` 检查更新环境变量指向正确 APK、版本号、文件大小、SHA-256 和更新说明。
 - 做一次完整真机回归：清数据、登录、文字问诊、图片问诊、历史恢复、删除历史对话、帮助与反馈、检查更新、会员中心、礼品卡页、协议页、今日农情。
 - 网站公安联网备案已于 2026-06-07 提交到全国互联网安全管理服务平台，当前待审核，公安备案号尚未下发；通过后把平台提供的真实备案号、图标和 HTML 代码补到官网 footer。App 备案通过并开通后，再按实际要求补 App 对应公安备案信息。

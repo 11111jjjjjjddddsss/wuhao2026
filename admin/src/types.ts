@@ -27,6 +27,69 @@ export interface AdminOverview {
   now_ms: number;
 }
 
+export interface AdminMonitoring {
+  health: AdminHealthStatus;
+  windows: AdminMonitoringWindow[];
+  queues: AdminMonitoringQueues;
+  top_regions: AdminRegionMetric[];
+  top_app_errors: ClientAppLogSummaryEntry[];
+  notes: AdminStatusNote[];
+  now_ms: number;
+}
+
+export interface AdminMonitoringWindow {
+  key: string;
+  label: string;
+  since_ms: number;
+  new_users: number;
+  active_sessions: number;
+  chat_rounds: number;
+  chat_users: number;
+  image_chat_rounds: number;
+  quota_deductions: number;
+  app_errors: number;
+  app_warns: number;
+  support_messages: number;
+  support_users: number;
+  gift_card_redeems: number;
+  gift_card_failures: number;
+  audit_failures: number;
+  admin_actions: number;
+  daily_agri_failed_cards: number;
+}
+
+export interface AdminMonitoringQueues {
+  support_needs_reply: number;
+  support_oldest_pending_at?: number;
+  daily_agri_status: string;
+  daily_agri_updated_at?: number;
+  daily_agri_error?: string;
+  app_update: AdminMonitoringAppUpdate;
+  gift_card_active: number;
+  gift_card_redeemed: number;
+  gift_card_failed_attempts: number;
+  audit_failures: number;
+  app_errors: number;
+  unready_dependency_count: number;
+}
+
+export interface AdminMonitoringAppUpdate {
+  config_valid: boolean;
+  has_apk_url: boolean;
+  latest_version_code: number;
+  latest_version_name?: string;
+  force_update: boolean;
+}
+
+export interface AdminRegionMetric {
+  region: string;
+  source?: string;
+  reliability?: string;
+  count: number;
+  user_count: number;
+  last_seen_at: number;
+}
+
 export interface AdminHealthStatus {
   api: string;
   bailian: string;

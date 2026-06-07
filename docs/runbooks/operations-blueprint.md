@@ -33,7 +33,7 @@
 - `/api/chat/stream`、图片上传、会员额度、摘要、今日农情、帮助与反馈、检查更新等接口运维
 - 日志、错误率、模型调用失败、SSE 中断、上传失败、摘要失败、今日农情生成失败排查
 - Go 后端统一请求日志：`X-Request-Id`、`http_request`、`http_request_slow`、`http_request_error`，以及只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)
-- App 自动日志接收：`POST /api/app/logs`、`client_app_logs`、后续后台监控面板 / SLS 接入
+- App 自动日志接收：`POST /api/app/logs`、`client_app_logs`、后台监控面板和后续 SLS 告警接入
 - 回滚、停更、临时降级开关和灰度策略
 
 ### 数据和后台业务
@@ -58,13 +58,13 @@
 - 继续用内部接口、脚本和手工真机回归兜底
 - 不提前硬做完整后台，避免账号体系、权限和真实数据结构没定就返工
 
-该阶段已结束：ECS / RDS / Redis / OSS / DNS / 部署脚本、部分内部接口和第一版网页后台代码已经落地。当前 P1 重点是把后台前端、`/admin-api/v1/*`、Nginx、后台域名和 bootstrap 账号收成可验收的生产运营入口。
+该阶段已结束：ECS / RDS / Redis / OSS / DNS / 部署脚本、部分内部接口和第一版网页后台代码已经落地。P1 后台入口也已部署到 `admin.nongjiqiancha.cn`，并完成后台域名、Nginx、HTTPS、bootstrap 账号和 bootstrap 环境变量清理。
 
 ### P1：服务器落地后，先做最小网站运营入口
 
-- 已落第一版代码：Vite `admin` 前端 + `server-go` `/admin-api/v1/*`，覆盖登录、总览、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康。
-- 仍需生产上线：后台域名 / Nginx 静态托管、`/admin-api` 反代、管理员 bootstrap、验收和上线后清理 bootstrap 明文环境变量。
-- 继续补齐：工单状态、发布记录表、SLS 告警 / 仪表盘、数据库只读脚本、礼品卡作废 / 导出和高风险操作二次确认。
+- 已落第一版代码并上线：Vite `admin` 前端 + `server-go` `/admin-api/v1/*`，覆盖登录、总览、监控面板、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康。
+- 当前监控面板已接真实业务表、App 自动日志、后台审计、健康检查和地区聚合；红黄绿状态用于早期排障，不伪造未接入能力。
+- 继续补齐：SLS 告警 / 仪表盘、数据库只读脚本、工单状态 / 搜索 / 分配、发布记录表、礼品卡作废 / 导出、高风险操作二次确认和支付正式订单链路。
 
 ### P2：接支付和礼品卡后
 
@@ -92,7 +92,7 @@
 
 ## 服务器落地后已回填 / 仍需回填
 
-- 已回填：阿里云 Region、ECS 实例、RDS MySQL、Redis、OSS bucket、DNS `api/@/www/admin` A 记录、`api.nongjiqiancha.cn` HTTPS / Nginx 443、根域名官网 HTTPS / 静态站、管理后台 HTTPS / 静态站 / `/admin-api/` 反代、ECS 后端双端口部署 / 回滚脚本、官网部署脚本、管理后台部署脚本、生产 readiness 检查、Go 后端请求级日志、ECS 日志只读查询脚本、农技千查专用 SLS Project / Logstore、SLS 只读查询脚本、帮助与反馈内部会话列表 / 详情 / 回复接口、App 自动日志内部查询、今日农情内部生成入口、第一版网页后台代码和后台账号 / session / CSRF / 角色 / 审计骨架。
+- 已回填：阿里云 Region、ECS 实例、RDS MySQL、Redis、OSS bucket、DNS `api/@/www/admin` A 记录、`api.nongjiqiancha.cn` HTTPS / Nginx 443、根域名官网 HTTPS / 静态站、管理后台 HTTPS / 静态站 / `/admin-api/` 反代、ECS 后端双端口部署 / 回滚脚本、官网部署脚本、管理后台部署脚本、生产 readiness 检查、Go 后端请求级日志、ECS 日志只读查询脚本、农技千查专用 SLS Project / Logstore、SLS 只读查询脚本、帮助与反馈内部会话列表 / 详情 / 回复接口、App 自动日志内部查询、今日农情内部生成入口、第一版网页后台代码、监控面板和后台账号 / session / CSRF / 角色 / 审计骨架。
 - 仍需回填：App 备案通过、网站公安备案通过 / 公安备案号和 App 公安备案后的正式公网入口、SLS 告警规则 / 仪表盘、数据库只读排查脚本、App release 发布记录表或后台发布入口；下载域名若启用，需要单独补入口和证书。网站 ICP 备案已于 2026-06-05 通过，App 备案已提交阿里云初审，网站公安联网备案已提交待审核，公安备案数据码不写入仓库或聊天交接。
 - 若后续重新启用 SAE，再补新的 SAE 应用名 / 应用 ID 和镜像部署 / 回滚入口。
 - 管理后台权限细化、二次确认、高风险动作和审计验收

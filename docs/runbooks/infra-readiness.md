@@ -21,7 +21,7 @@
 
 - 阿里云 ECS：当前首版优先的 `server-go` 运行载体。实例 `i-2ze5nrem0jrchln4f0eh` 已购买并运行；系统用户、部署目录、systemd、反向代理、`api` HTTPS、日志和回滚入口已部分固化，后续继续补发布记录、SLS 告警 / 仪表盘和后台入口
 - 阿里云 RDS MySQL：首版主业务数据。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项。当前实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，配置为 MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、生产 VPC `vpc-2zeax2zowza2398b9dzot`、生产交换机 `vsw-2zemsq82lj2kp8za90aky`，内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，自动备份保留 7 天
-- 域名与 HTTPS 证书：对外 API 入口和官网入口。当前 `nongjiqiancha.cn` 已购买且用户口头确认实名认证 / 模板审核已通过，`api.nongjiqiancha.cn` A 记录、Nginx 443、Let’s Encrypt 证书和后端反代已完成；`nongjiqiancha.cn` / `www.nongjiqiancha.cn` A 记录、Nginx 静态官网和 Let’s Encrypt 证书也已完成；下载域名和管理后台域名后续若启用需分别配置入口和证书
+- 域名与 HTTPS 证书：对外 API、官网和后台入口。当前 `nongjiqiancha.cn` 已购买且用户口头确认实名认证 / 模板审核已通过，`api.nongjiqiancha.cn` A 记录、Nginx 443、Let’s Encrypt 证书和后端反代已完成；`nongjiqiancha.cn` / `www.nongjiqiancha.cn` A 记录、Nginx 静态官网和 Let’s Encrypt 证书也已完成；`admin.nongjiqiancha.cn` 后台 HTTPS 和 `/admin-api/` 反代已完成；下载域名后续若启用需单独配置入口和证书
 - 基础密钥与环境变量托管：模型 Key、数据库连接、JWT / Session 密钥等
 
 ### 高优先级可选
