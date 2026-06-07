@@ -5,6 +5,8 @@
 
 ## 2026-06-07
 
+- 将账号ID收敛、礼品卡追溯和监控面板增强提交 `5321ffe9` 部署到 ECS 和管理后台：远端 `go test ./...`、编译、切换双端口 slot、Nginx 配置检查和公网 healthz 均通过，当前 Nginx active upstream 为 `3001`；后台静态前端重新构建并部署到 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署后轻量冒烟确认 `https://api.nongjiqiancha.cn/healthz` 为 200，返回 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`；融合认证 token 入口返回 200 且有 token / scheme，短信发送接口对非法手机号返回 400。输出不打印任何 token、AccessKey、模型 Key 或密码。
+
 - 继续按正式上架路线收敛账号、礼品卡和监控面板：明确全局长期业务身份统一为账号ID `acct_...`，手机号注册 / 登录只作为凭证归到该账号ID下，底层 `user_id` 字段在生产语义上按账号ID理解；Android 一键登录和短信登录 payload 会带旧本机 `legacy_user_id`，后端只接受本机 UUID 形态或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为迁移桥，并把礼品卡兑换和兑换尝试纳入旧 ID 到账号ID的数据迁移。礼品卡后台新增 summary 接口、卡码尾号 / 批次 / 账号ID追溯、兑换尝试成功状态和失败原因筛选、最近 7 天失败原因聚合；监控面板前端新增“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡和快捷入口，继续往非运维也能看懂的生产面板推进。debug / 测试包与正式包默认接同一个生产 HTTPS 后端，区别只保留 debug-only 预览面板和调试日志。
 
 - 轻量补充 OpenCode CI 记忆同步提示：全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 写明 Android CI 会运行 `scripts/check_project_memory.py`，改动 `app/src/main/kotlin/...`、`server-go/`、`docs/adr/`、`docs/runbooks/`、`README.md`、`app/AGENTS.md` 或 `server-go/AGENTS.md` 等关键真相文件时，需要判断并同步更新 `AGENTS.md` 或 `docs/project-state/*`，提交前优先本地运行项目记忆检查。该规则只补轻量提示，不把大型项目记忆重新加入自动 `instructions`。
