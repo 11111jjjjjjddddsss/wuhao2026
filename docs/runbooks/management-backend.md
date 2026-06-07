@@ -6,13 +6,15 @@
 
 记录“农技千查”统一管理后台当前实现、上线方式、第一版页面能力和仍需补齐的安全边界。
 
-当前第一版后台已进入代码：`admin` 是 Vite 静态前端，`server-go` 暴露 `/admin-api/v1/*` 管理 API，并新增后台账号 / session / CSRF、角色校验和审计。生产环境仍需单独配置后台域名 / Nginx 静态托管、设置一次性 bootstrap 环境变量并完成上线验收。
+当前第一版后台已进入代码并已部署到生产：`admin` 是 Vite 静态前端，`server-go` 暴露 `/admin-api/v1/*` 管理 API，并新增后台账号 / session / CSRF、角色校验和审计。生产入口为 `https://admin.nongjiqiancha.cn/`，Nginx 静态托管后台前端并同域反代 `/admin-api/` 到当前 active Go slot；一次性 bootstrap 环境变量已用于初始化 owner 账号，随后已从 ECS 环境文件清理。
 
 详细页面结构、筛选项、指标和版面建议见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)。
 
 ## 当前真相
 
 - 管理后台前端目录：`admin`。本地开发：`cd admin && npm install && npm run dev -- --host 127.0.0.1 --port 5174`。生产构建：`npm run build`。
+- 生产部署脚本：[deploy-ecs-admin.ps1](D:/wuhao/scripts/deploy-ecs-admin.ps1)。脚本会构建 `admin/dist`、同步 `admin` A 记录、上传静态包、配置 Nginx、签发 / 复用 Let's Encrypt HTTPS 证书，并验证首页和未登录 API 状态。
+- 生产入口：`https://admin.nongjiqiancha.cn/`。HTTP 80 只用于 ACME challenge 和 301 跳转；HTTPS 下 `/admin-api/` 由 Nginx 反代到当前 active Go slot。
 - 管理后台 API：`/admin-api/v1/*`，由 `server-go` 提供，不单独起第二套后端。
 - 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。
 - 后台账号：服务启动时可用 `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` 初始化；密码会以 PBKDF2-SHA256 hash 存入 `admin_users`，明文不得写入仓库、文档或前端。
@@ -53,7 +55,7 @@
 - 继续用 runbook、内部接口和只读脚本规划兜底。
 - 继续按功能巡检，把当前真相和后续必补项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
-该阶段已经结束：ECS / RDS / Redis / OSS / DNS、内部接口和第一版网页后台代码已经落地。当前处于 P1 后台上线验收阶段，仍需生产 Nginx / 域名 / 管理员 bootstrap / 真机验收。
+该阶段已经结束：ECS / RDS / Redis / OSS / DNS、内部接口和第一版网页后台代码已经落地。P1 后台生产入口也已部署到 `admin.nongjiqiancha.cn`，并完成管理员 bootstrap、清理 bootstrap 环境变量、HTTPS、首页、登录和总览 API 验收；后续重点是补 SLS 告警 / 仪表盘、数据库只读脚本和更细的运营动作。
 
 ## P1：服务器落地后的最小网站后台
 
@@ -71,6 +73,7 @@
 - 权限：第一版也要有最小角色，而不是所有人一个超级密码。建议 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`。
 - 安全：后台入口必须 HTTPS、SameSite Cookie、接口限流、登录失败限制、密码哈希、服务端授权校验和审计；不要把“前端隐藏按钮”当权限。
 - 账号初始化：后台初始账号只能通过一次性环境变量、Cloud Assistant 脚本或本机安全脚本写入数据库 hash；账号名和明文密码不能写进仓库、文档、前端代码或部署脚本。初始化成功后应禁用 bootstrap，并要求首次登录改密码。
+- 生产初始化状态：2026-06-07 已通过一次性 bootstrap 创建 owner 账号，随后已从 `/etc/nongjiqiancha/server.env` 删除 `ADMIN_BOOTSTRAP_*` 并重启 active slot；后续若忘记密码，应通过临时 bootstrap 或受控运维脚本重置，仍不得在仓库或文档中记录明文密码。
 
 ### 第一版页面建议
 
@@ -164,7 +167,7 @@
 - 高风险操作必须写审计：补权益、发礼品卡、作废礼品卡、停更新、手动补跑今日农情、导出 / 删除用户数据、修改后台权限。
 - 审计记录不能只存在浏览器本地；必须落服务端数据库或日志系统。
 - 后台账号、密钥和数据库密码不能写进仓库。
-- 后台上线前要接 SLS / 等价日志，至少能查登录失败、权限拒绝、关键操作、接口 5xx 和数据库错误。
+- 后台上线后继续接 SLS / 等价日志闭环，至少能查登录失败、权限拒绝、关键操作、接口 5xx 和数据库错误；当前 Go 请求日志和 Nginx error 已接 SLS，仍需补告警和仪表盘。
 
 参考：
 

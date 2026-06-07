@@ -5,7 +5,7 @@
 
 ## 2026-06-07
 
-- 第一版管理后台进入代码：新增 Vite `admin` 前端，覆盖登录、总览、用户管理、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计、产品洞察和服务健康；`server-go` 新增 `/admin-api/v1/*` 后台 API、后台账号 / session / CSRF、角色校验、bootstrap 初始化和审计。用户详情现在可查当前会员档位 / 到期、每日额度、扣次流水、加油包包明细、升级补偿、订单记录、礼品卡兑换和兑换尝试；礼品卡后端新增批次、卡、兑换尝试表，后台可生成 Plus / Pro 礼品卡批次，完整卡码只在创建成功当次返回，用户侧 `POST /api/gift-cards/redeem` 事务内发会员权益。生产仍需配置后台域名 / Nginx / 管理员 bootstrap 并验收，Android 礼品卡页也还要接真实兑换接口。
+- 第一版管理后台进入代码并部署到生产：新增 Vite `admin` 前端，覆盖登录、总览、用户管理、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计、产品洞察和服务健康；`server-go` 新增 `/admin-api/v1/*` 后台 API、后台账号 / session / CSRF、角色校验、bootstrap 初始化和审计。用户详情现在可查当前会员档位 / 到期、每日额度、扣次流水、加油包包明细、升级补偿、订单记录、礼品卡兑换和兑换尝试；礼品卡后端新增批次、卡、兑换尝试表，后台可生成 Plus / Pro 礼品卡批次，完整卡码只在创建成功当次返回，用户侧 `POST /api/gift-cards/redeem` 事务内发会员权益。生产入口已部署到 `https://admin.nongjiqiancha.cn/`，Nginx 同域反代 `/admin-api/`，后台域名 HTTPS 证书已签发，owner 账号已通过一次性 bootstrap 初始化，随后已清理 ECS `ADMIN_BOOTSTRAP_*` 环境变量并重启验证；公网已验证首页、登录和总览 API。Android 礼品卡页还要接真实兑换接口。
 
 - 明确 OpenCode / Codex 的“准确率优先”工作模式：根 [AGENTS.md](D:/wuhao/AGENTS.md)、全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步写入，复杂任务不要为了省 token、时间或子代理次数而省略关键代码阅读、旧方案残留排查、官方资料核对、验证命令或必要的只读并行巡检；同时禁止用无关大改、顺手重构或重复跑无意义命令来冒充严谨。本次只改协作规则，不涉及 Android / Go 业务代码。
 

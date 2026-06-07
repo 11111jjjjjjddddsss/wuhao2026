@@ -6,7 +6,7 @@
 
 农技千查当前已经有 Android App、Go 后端、ECS、RDS、Redis、OSS、SLS、帮助与反馈内部接口、App 自动日志和最小内部审计。下一步需要统一管理后台，覆盖用户管理、会员、额度、礼品卡、订单、App 日志、帮助反馈、今日农情、检查更新、审计和产品洞察。
 
-用户希望后台功能尽量完整，但当前支付、礼品卡正式后端、完整后台账号和角色权限还没落地。
+用户希望后台功能尽量完整。当前支付仍未接入正式渠道；礼品卡后端、后台账号、session、CSRF、角色权限和审计已经按第一版后台架构落地。
 
 ## 决策
 
@@ -52,4 +52,3 @@
 
 - 新增后台页面时优先更新 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md) 和 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)。
 - 如果未来引入独立后台服务，需要新增 ADR 说明为什么不再复用 Go 后端。
-
