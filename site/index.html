@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="农技千查是面向农业场景的视觉语言问诊工具，支持文字与照片输入，辅助梳理作物病虫害、长势异常、施肥和农事风险。"
+      content="农技千查是面向农业场景的视觉语言问诊 App，结合图像线索、症状描述和联网校准，为作物问题提供农技参考。"
     />
     <meta name="theme-color" content="#071009" />
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -14,27 +14,54 @@
   <body>
     <div class="page-shell">
       <main class="landing" id="top">
-        <section class="hero" aria-labelledby="hero-title">
-          <div class="brand-lockup" aria-label="农技千查">
-            <img class="brand-mark" src="/brand-mark.png" alt="" />
-            <span>农技千查</span>
+        <section class="hero" id="product" aria-labelledby="hero-title">
+          <div class="hero-main">
+            <div class="brand-lockup" aria-label="农技千查">
+              <img class="brand-mark" src="/brand-mark.png" alt="" />
+              <span>农技千查</span>
+            </div>
+
+            <div class="hero-copy-block">
+              <h1 id="hero-title">
+                <span>用视觉语言模型</span>
+                <span>看清作物问题</span>
+              </h1>
+              <p class="hero-copy">
+                围绕作物照片、症状描述、地区农时与处理反馈，辅助判断病虫害、长势异常和管理风险。
+              </p>
+              <p class="hero-copy secondary-copy">
+                疑难问题、复杂问题和高风险判断，可联网校准公开信息，给出更稳妥的农技参考。
+              </p>
+            </div>
+
+            <div class="hero-actions">
+              <a class="download-button" data-download>安卓版下载</a>
+              <p class="service-note">内容仅供农技参考，不能替代线下诊断。</p>
+            </div>
           </div>
 
-          <div class="hero-copy-block">
-            <p class="eyebrow">面向田间的图文问诊</p>
-            <h1 id="hero-title">让作物问题<br />更清楚</h1>
-            <p class="hero-copy">
-              上传作物照片，补充症状描述，获得可继续追问的农业技术参考。
-            </p>
-            <p class="capability-line">照片理解 / 连续问诊 / 农技参考</p>
-            <a class="download-button" data-download>安卓版下载</a>
-          </div>
-
-          <p class="service-note">内容仅供农技参考，不能替代线下诊断。</p>
+          <aside class="capability-panel" aria-label="核心能力">
+            <p class="panel-kicker">核心能力</p>
+            <div class="capability-list">
+              <article>
+                <h2>先进视觉语言模型</h2>
+                <p>从叶片、果实、虫痕、长势等图像线索切入，结合文字描述形成判断方向。</p>
+              </article>
+              <article>
+                <h2>联网校准</h2>
+                <p>遇到强时效、复杂或高风险问题时，对照公开信息，降低凭经验硬判的风险。</p>
+              </article>
+              <article>
+                <h2>农业场景参考</h2>
+                <p>围绕作物、地块、症状和处理过程保留关键上下文，方便持续核对问题变化。</p>
+              </article>
+            </div>
+          </aside>
         </section>
       </main>
 
       <footer class="site-footer">
+        <span>北京农技千问科技有限公司</span>
         <a href="https://beian.miit.gov.cn/" rel="noreferrer" target="_blank">京ICP备2026031728号-1</a>
       </footer>
     </div>
