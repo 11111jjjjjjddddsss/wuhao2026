@@ -5,6 +5,8 @@
 
 ## 2026-06-07
 
+- 继续补强 Codex / OpenCode 并行协作规则：根 [AGENTS.md](D:/wuhao/AGENTS.md)、全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步写入“复杂任务可用内部子代理做只读并行巡检，主窗口统一核验、最小改动、验证、文档同步、提交推送”的口径，并明确 Codex / OpenCode 同时工作时只暂存本次意图内文件，不覆盖对方并行改动。该规则用于让两套工具无缝切换，不涉及 Android / Go 业务代码。
+
 - 补强 OpenCode 接手与交付闭环规则：全局 OpenCode 提示词增加“每次改动必须说明改了什么、为什么、风险和验证；仓库改动默认提交并推送；跨对话窗口继续生效的规则必须固化到仓库文档；修改全局配置时判断是否需要镜像到仓库”的硬约束。仓库内 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步写入同一口径，确保 GitHub 同步和换窗口接手也能读到；本次不改 Android / Go 业务代码。
 
 - 管理后台方案细化：新增 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md) 作为后台页面级设计文档，覆盖总览、用户、地区与来源、会员与额度、订单、礼品卡、帮助与反馈、App 日志、今日农情、检查更新、产品洞察、审计日志和权限角色；新增 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)，明确后台采用 Vite 静态前端 + `server-go` 管理 API，不另起后台服务。产品洞察按脱敏聚合报表做，后续 Codex 优先读取洞察报表，不直接长期读取生产库完整聊天全文；后台初始账号只能通过一次性初始化脚本或环境变量写入 hash，不把明文账号密码写进仓库。
