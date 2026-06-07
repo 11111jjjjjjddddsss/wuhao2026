@@ -5,7 +5,9 @@
 
 ## 2026-06-06
 
-- 继续按 Product Design + 联网参考收口农技千查官网：删除“面向田间的图文问诊” eyebrow，不再把“照片理解 / 连续问诊”当卖点；首屏改成左侧品牌主张、右侧能力栏的暗色一页结构，logo 与“农技千查”收紧成品牌 lockup，主标题改为“用视觉语言模型，看清作物问题”，能力点收口为“先进视觉语言模型 / 联网校准 / 农业场景参考”。footer 增加公司主体“北京农技千问科技有限公司”并继续保留 ICP；已重新部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，公网验证新标题、公司名、联网校准和 ICP 均在线。
+- 官网文案按公开 AI 产品页表达重新收口：不再把“联网校准”作为公开核心能力标题，首屏主张改为“农业视觉智能，看懂作物现场”，能力点改为“视觉语言问诊 / 农事上下文承接 / 稳妥判断路径”，强调基于视觉语言模型把作物照片、症状、地区农时和处理反馈整理成可追问、可复盘的农技参考，同时保留“内容仅供农技参考，不能替代线下诊断”的边界。
+
+- 继续按 Product Design + 联网参考收口农技千查官网：删除“面向田间的图文问诊” eyebrow，不再把“照片理解 / 连续问诊”当卖点；首屏改成左侧品牌主张、右侧能力栏的暗色一页结构，logo 与“农技千查”收紧成品牌 lockup，主标题改为“用视觉语言模型，看清作物问题”，能力点收口为“先进视觉语言模型 / 联网校准 / 农业场景参考”。footer 增加公司主体“北京农技千问科技有限公司”并继续保留 ICP；已重新部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，公网验证新标题、公司名、联网校准和 ICP 均在线。该条为当时历史过程，当前官网文案已由上一条替代。
 
 - 修复 Android Studio 直接 Run 测试包后端地址为空的问题：`app/build.gradle.kts` 现在默认使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，仍可用 `-PUPLOAD_BASE_URL=...` 或环境变量显式覆盖；debug / 测试包和正式包默认都接正式 HTTPS 后端，差异主要保留 debug-only UI 文案预览等调试入口，不能再因为未传 Gradle 参数显示“后端地址未配置”。同时把 release-like 打包任务护栏从精确 `assembleRelease / bundleRelease / packageRelease` 扩展到包含 `release` 的 assemble / bundle / package 任务，避免 `nonMinifiedRelease` 等特殊产物绕过签名和 HTTPS 检查；本地已删除 4 月残留的旧 `nonMinifiedRelease` 生成 APK，避免误装旧包。登录页删除“农业图文问诊参考工具”副标题，入口更简洁。
 
