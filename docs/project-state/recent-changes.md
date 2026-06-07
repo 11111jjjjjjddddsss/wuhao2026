@@ -5,6 +5,8 @@
 
 ## 2026-06-07
 
+- 补强 OpenCode 接手与交付闭环规则：全局 OpenCode 提示词增加“每次改动必须说明改了什么、为什么、风险和验证；仓库改动默认提交并推送；跨对话窗口继续生效的规则必须固化到仓库文档；修改全局配置时判断是否需要镜像到仓库”的硬约束。仓库内 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步写入同一口径，确保 GitHub 同步和换窗口接手也能读到；本次不改 Android / Go 业务代码。
+
 - 管理后台方案细化：新增 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md) 作为后台页面级设计文档，覆盖总览、用户、地区与来源、会员与额度、订单、礼品卡、帮助与反馈、App 日志、今日农情、检查更新、产品洞察、审计日志和权限角色；新增 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)，明确后台采用 Vite 静态前端 + `server-go` 管理 API，不另起后台服务。产品洞察按脱敏聚合报表做，后续 Codex 优先读取洞察报表，不直接长期读取生产库完整聊天全文；后台初始账号只能通过一次性初始化脚本或环境变量写入 hash，不把明文账号密码写进仓库。
 
 - 用户已在全国互联网安全管理服务平台提交网站公安联网备案申请，当前处于待审核状态，公安备案号尚未下发；App 公安备案后续等 App 备案通过 / 正式信息齐后再补。仓库只记录提交状态和待办，不记录公安备案数据码、证件号或平台账号信息；官网 footer 仍只展示 ICP，等公安备案通过后再按平台提供的真实编号 / 图标 / HTML 代码补充。
