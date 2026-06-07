@@ -127,7 +127,16 @@ if [ "$health_status" != "200" ]; then
   echo "healthz is not ready: $health_status" >&2
   exit 11
 fi
-for expected in '"ok":true' '"auth_strict":true' '"bailian":"ok"' '"redis":"ok"' '"upload_storage":"oss"'; do
+for expected in \
+  '"ok":true' \
+  '"auth_strict":true' \
+  '"bailian":"ok"' \
+  '"dypns":"ok"' \
+  '"dypns_fusion":"ok"' \
+  '"dypns_sms":"ok"' \
+  '"dev_order_endpoints":false' \
+  '"redis":"ok"' \
+  '"upload_storage":"oss"'; do
   if ! grep -q "$expected" "$health_body" 2>/dev/null; then
     echo "healthz missing expected marker: $expected" >&2
     exit 12

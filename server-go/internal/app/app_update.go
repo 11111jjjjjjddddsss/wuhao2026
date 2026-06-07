@@ -47,7 +47,20 @@ func (s *Server) handleAppUpdate(w http.ResponseWriter, r *http.Request) {
 		currentVersionCode = 0
 	}
 	currentVersionName := strings.TrimSpace(r.URL.Query().Get("version_name"))
-	info := buildAndroidUpdateInfo(currentVersionCode, currentVersionName, readAndroidUpdateConfig(os.Getenv))
+	cfg := readAndroidUpdateConfig(os.Getenv)
+	info := buildAndroidUpdateInfo(currentVersionCode, currentVersionName, cfg)
+	if cfg.LatestVersionCode > currentVersionCode && !info.HasUpdate && s.logger != nil {
+		reason := "missing_apk_url"
+		if strings.TrimSpace(cfg.APKURL) != "" && !isHTTPSURL(cfg.APKURL) {
+			reason = "invalid_apk_url"
+		}
+		s.logger.Warn(
+			"android update config ignored",
+			"reason", reason,
+			"latestVersionCode", cfg.LatestVersionCode,
+			"currentVersionCode", currentVersionCode,
+		)
+	}
 	s.writeJSON(w, http.StatusOK, info)
 }
 
@@ -75,9 +88,13 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 	apkURL := cfg.APKURL
 	hasUpdate := latestVersionCode > currentVersionCode && apkURL != "" && isHTTPSURL(apkURL)
 	apkChecksumSHA256 := cfg.APKChecksumSHA256
+	releaseNotes := cfg.ReleaseNotes
+	fileSizeBytes := cfg.FileSizeBytes
 	if !hasUpdate {
 		apkURL = ""
 		apkChecksumSHA256 = ""
+		releaseNotes = ""
+		fileSizeBytes = 0
 	}
 	return AppUpdateInfo{
 		Platform:           "android",
@@ -89,8 +106,8 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 		ForceUpdate:        hasUpdate && cfg.ForceUpdate,
 		APKURL:             apkURL,
 		APKChecksumSHA256:  apkChecksumSHA256,
-		ReleaseNotes:       cfg.ReleaseNotes,
-		FileSizeBytes:      cfg.FileSizeBytes,
+		ReleaseNotes:       releaseNotes,
+		FileSizeBytes:      fileSizeBytes,
 	}
 }
 

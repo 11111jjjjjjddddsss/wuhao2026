@@ -3,6 +3,7 @@ package app
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -43,7 +44,12 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadFileSize+1024)
 	if err := r.ParseMultipartForm(maxUploadFileSize); err != nil {
-		s.writeError(w, http.StatusBadRequest, "missing file field")
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			s.writeError(w, http.StatusRequestEntityTooLarge, "body_too_large")
+			return
+		}
+		s.writeError(w, http.StatusBadRequest, "invalid multipart")
 		return
 	}
 

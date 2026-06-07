@@ -421,6 +421,7 @@ private const val INPUT_MAX_CHARS = 6000
 private const val COMPOSER_MAX_IMAGE_COUNT = 4
 private const val COMPOSER_IMAGE_COUNT_HINT = "最多4张图片"
 private const val COMPOSER_MAX_IMAGE_SIZE_BYTES = 1024 * 1024
+private const val COMPOSER_ORIGINAL_IMAGE_MAX_BYTES = 32 * 1024 * 1024
 private const val COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE = 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
@@ -1884,9 +1885,13 @@ internal fun Context.readImageBytes(uri: Uri): ByteArray? {
     return runCatching {
         if (uri.scheme == "file") {
             val path = uri.path ?: return@runCatching null
-            File(path).takeIf { it.isFile }?.readBytes()
+            val file = File(path).takeIf { it.isFile } ?: return@runCatching null
+            if (file.length() > COMPOSER_ORIGINAL_IMAGE_MAX_BYTES) return@runCatching null
+            file.inputStream().use { it.readPreviewBytes(COMPOSER_ORIGINAL_IMAGE_MAX_BYTES) }
         } else {
-            contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            contentResolver.openInputStream(uri)?.use {
+                it.readPreviewBytes(COMPOSER_ORIGINAL_IMAGE_MAX_BYTES)
+            }
         }
     }.getOrNull()
 }

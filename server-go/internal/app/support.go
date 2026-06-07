@@ -269,10 +269,16 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	if err := s.store.EnsureUser(r.Context(), userID, TierFree); err != nil {
-		s.logger.Error("ensure user failed", "userId", userID, "error", err)
+	existingMessages, err := s.store.ListSupportMessages(r.Context(), userID, 1)
+	if err != nil {
+		s.logger.Error("check support conversation before admin reply failed", "userId", userID, "error", err)
 		s.recordAdminAuditLog(r, "support_admin_secret", "internal.support.messages.create", "support_messages", "", userID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if len(existingMessages) == 0 {
+		s.recordAdminAuditLog(r, "support_admin_secret", "internal.support.messages.create", "support_messages", "", userID, false, http.StatusNotFound, map[string]any{"error_code": "support conversation not found"})
+		s.writeError(w, http.StatusNotFound, "support conversation not found")
 		return
 	}
 	message, err := s.store.CreateSupportMessage(r.Context(), userID, "admin", normalized, imageURLs, time.Now().UnixMilli())

@@ -646,8 +646,7 @@ private fun takeRendererTypewriterToken(buffer: String): String {
 }
 
 private fun scaleRendererStreamingDelay(delayMs: Long): Long {
-    val scale = if (BuildConfig.DEBUG) 0.72f else 1f
-    return max(6L, (delayMs * scale).toLong())
+    return max(6L, delayMs)
 }
 
 private fun hasRendererStructuralMarkdownPrefix(text: String): Boolean {

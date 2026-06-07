@@ -5,6 +5,8 @@
 
 ## 2026-06-07
 
+- 继续按多代理巡检收口一批前后端和运维小坑：今日农情模型非 2xx 错误不再把上游原始 body 写入错误链 / 日志 / 数据库；App 自动日志 attrs 不只按敏感 key 过滤，也会丢弃普通字段名里包含 URL、token、AccessKey、手机号等敏感文本的 value；上传 multipart 超限明确返回 `413 body_too_large`，损坏 multipart 返回 `invalid multipart`。Android 图片导入和后台待发送补发在压缩前增加 32MB 原图读取上限，自更新 APK 下载增加默认 200MB 硬上限并按后端 file size 下载中断言；debug 测试包真实流式渲染速度与 release 对齐。内部客服回复不再对任意 `user_id` 自动创建用户资产行，必须已有帮助与反馈会话。运维侧 readiness 补 `dypns / dypns_fusion / dypns_sms / dev_order_endpoints=false` 断言，官网部署脚本改为断言 HTTP / HTTPS 状态码，回滚和 SLS 日志 runbook 修正为当前双端口 slot / 最小 SLS 真实入口；同时明确帮助与反馈图片当前仍复用 `/uploads/` 3 天生命周期，`support/` 30 天只是预留规则。
+
 - 按前后端深度巡检结果修复一轮小 bug / 风险点：Android 一键登录 SDK token 鉴权成功回调增加场景启动防重，避免重复拉起融合认证场景；登录页品牌绿叶改用透明 launcher 前景并由小黑圆底裁切承托，协议勾选区改为可换行布局；一键登录 token 接口失败文案不再把临时异常误报为“未配置”。Go 后端不再把模型上游非 2xx / 非 SSE 原始响应 body 写入日志或返回客户端，B/C 摘要错误同样只保留 HTTP 状态；App 自动日志自由 `message` 增加敏感文本降级并从服务端结构化日志字段中移除；主聊天用户输入服务端校验对齐 App 端 6000 字上限，仅兜底绕过 App 的直接接口调用，不限制模型输出或 B/C 摘要输出。同步修正 SLS、HTTP healthz 和双端口 slot 相关 runbook 旧口径。
 
 - Android 登录页品牌标题补绿叶标识：在“农技千查”左侧加入小黑色圆形底的绿色叶片图标，圆底贴近绿叶、不使用完整黑底方形 App 图标，保持白底登录页更稳的品牌识别；不改一键登录、验证码登录、协议勾选或后端认证逻辑。

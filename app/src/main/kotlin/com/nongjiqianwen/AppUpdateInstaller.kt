@@ -13,11 +13,15 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.Locale
 
 object AppUpdateInstaller {
+    private const val DEFAULT_MAX_APK_DOWNLOAD_BYTES = 200L * 1024L * 1024L
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
@@ -62,9 +66,19 @@ object AppUpdateInstaller {
                     if (!response.isSuccessful) return@withContext null
                     if (!response.request.url.isHttps) return@withContext null
                     val body = response.body ?: return@withContext null
+                    val expectedSizeBytes = update.fileSizeBytes ?: 0L
+                    val maxDownloadBytes = expectedSizeBytes.takeIf { it > 0L } ?: DEFAULT_MAX_APK_DOWNLOAD_BYTES
+                    val contentLength = body.contentLength()
+                    if (contentLength > maxDownloadBytes) return@withContext null
+                    if (expectedSizeBytes > 0L && contentLength > 0L && contentLength != expectedSizeBytes) {
+                        return@withContext null
+                    }
                     tempFile.outputStream().use { output ->
                         body.byteStream().use { input ->
-                            input.copyTo(output)
+                            if (!copyToWithLimit(input, output, maxDownloadBytes)) {
+                                tempFile.delete()
+                                return@withContext null
+                            }
                         }
                     }
                     if (!verifyDownloadedApk(context, tempFile, update)) {
@@ -149,5 +163,18 @@ object AppUpdateInstaller {
             }
         }
         return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
+    }
+
+    private fun copyToWithLimit(input: InputStream, output: OutputStream, maxBytes: Long): Boolean {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            total += read.toLong()
+            if (total > maxBytes) return false
+            output.write(buffer, 0, read)
+        }
+        return true
     }
 }

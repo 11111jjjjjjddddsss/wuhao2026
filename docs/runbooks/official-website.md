@@ -43,7 +43,7 @@ npm run build
 4. 发布到 `/var/www/nongjiqiancha-site/releases/<sha>` 并切换 `current` symlink
 5. 写入 / 刷新 Nginx 静态站配置
 6. 通过 certbot 申请或续用 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书
-7. 验证 HTTP / HTTPS 入口
+7. 验证入口状态码：证书存在时根域名 HTTP 301、根域名 HTTPS 200、`www` HTTPS 200；证书尚未签发时至少断言 HTTP 200
 
 只构建打包、不改 DNS / 服务器：
 

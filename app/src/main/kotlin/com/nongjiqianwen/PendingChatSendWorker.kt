@@ -6,7 +6,9 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 
 class PendingChatSendWorker(
     appContext: Context,
@@ -140,11 +142,27 @@ class PendingChatSendWorker(
             val uri = Uri.parse(source)
             if (uri.scheme == "file") {
                 val path = uri.path ?: return@runCatching null
-                File(path).takeIf { it.isFile }?.readBytes()
+                val file = File(path).takeIf { it.isFile } ?: return@runCatching null
+                if (file.length() > MAX_ORIGINAL_IMAGE_BYTES) return@runCatching null
+                file.inputStream().use { it.readBytesWithLimit(MAX_ORIGINAL_IMAGE_BYTES) }
             } else {
-                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                contentResolver.openInputStream(uri)?.use { it.readBytesWithLimit(MAX_ORIGINAL_IMAGE_BYTES) }
             }
         }.getOrNull()
+    }
+
+    private fun InputStream.readBytesWithLimit(maxBytes: Int): ByteArray? {
+        val buffer = ByteArray(8 * 1024)
+        val output = ByteArrayOutputStream()
+        var total = 0
+        while (true) {
+            val read = read(buffer)
+            if (read < 0) break
+            total += read
+            if (total > maxBytes) return null
+            output.write(buffer, 0, read)
+        }
+        return output.toByteArray()
     }
 
     private fun ByteArray.hasJpegStartMarkerForPendingSend(): Boolean =
@@ -152,6 +170,7 @@ class PendingChatSendWorker(
 
     private companion object {
         const val MAX_IMAGE_SIZE_BYTES = 1024 * 1024
+        const val MAX_ORIGINAL_IMAGE_BYTES = 32 * 1024 * 1024
         const val MAX_RECOVERABLE_FAILURES = 5
     }
 }

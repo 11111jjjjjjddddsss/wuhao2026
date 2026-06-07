@@ -51,6 +51,9 @@ func TestNormalizeClientAppLogPayloadDropsSensitiveAttrs(t *testing.T) {
 		Message: "safe",
 		Attrs: map[string]any{
 			"reason":        "network",
+			"detail":        "https://api.example.com/uploads/a.jpg",
+			"note":          "13800138000",
+			"fallback":      "token=secret",
 			"body_length":   12,
 			"token":         "secret-token",
 			"access_key":    "ak-value",
@@ -71,7 +74,7 @@ func TestNormalizeClientAppLogPayloadDropsSensitiveAttrs(t *testing.T) {
 			t.Fatalf("attrs = %q, want safe %q", attrs, allowed)
 		}
 	}
-	for _, forbidden := range []string{"token", "ak-value", "13800138000", "image_urls", "用户填写内容"} {
+	for _, forbidden := range []string{"token", "ak-value", "13800138000", "image_urls", "用户填写内容", "detail", "fallback"} {
 		if strings.Contains(attrs, forbidden) {
 			t.Fatalf("attrs leaked %q: %s", forbidden, attrs)
 		}

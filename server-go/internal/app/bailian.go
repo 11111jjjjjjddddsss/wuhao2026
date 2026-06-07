@@ -136,7 +136,7 @@ func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []Ba
 		return "", nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", nil, fmt.Errorf("dashscope status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+		return "", nil, fmt.Errorf("dashscope status %d", resp.StatusCode)
 	}
 
 	var decoded dashScopeGenerationResponse

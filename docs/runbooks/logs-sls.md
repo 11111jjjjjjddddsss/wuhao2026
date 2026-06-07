@@ -31,13 +31,21 @@
 
 ## 当前查询入口
 
-优先用项目脚本通过 Cloud Assistant 拉取脱敏日志摘要：
+优先用项目脚本通过 Cloud Assistant 拉取 ECS 本机脱敏日志摘要：
 
 ```powershell
 .\scripts\query-ecs-logs.ps1 -Lines 240
 ```
 
-也可以直接查 SLS：
+该脚本会查看：
+
+- Go 请求错误和慢请求：`http_request_error` / `http_request_slow`
+- Go 请求尾部：`http_request`
+- Go WARN / ERROR 尾部
+- Nginx error log 尾部
+- Nginx access log 里的 `429 / 5xx`
+
+也可以直接查 SLS 最小采集集：
 
 ```powershell
 .\scripts\query-sls-logs.ps1 -Minutes 30 -Line 50
@@ -48,13 +56,7 @@ SLS 重点查：
 - `server-go`：`http_request_error`、`http_request_slow`、`server bootstrap failed`、`upstream`
 - `nginx-error`：`limiting requests`、`connect() failed`、`upstream`、`SSL_do_handshake`
 
-该脚本会查看：
-
-- Go 请求错误和慢请求：`http_request_error` / `http_request_slow`
-- Go 请求尾部：`http_request`
-- Go WARN / ERROR 尾部
-- Nginx error log 尾部
-- Nginx access log 里的 `429 / 5xx`
+当前 SLS 不采集完整 Nginx access log；如果要看 Nginx `429 / 5xx` access 摘要，仍使用 `query-ecs-logs.ps1`。
 
 脚本输出会对 Bearer、`sk-...`、AccessKey、签名参数、query string 和完整 IPv4 做基础脱敏；仍禁止把原始生产密钥、token 或完整请求正文复制进聊天 / 文档。
 

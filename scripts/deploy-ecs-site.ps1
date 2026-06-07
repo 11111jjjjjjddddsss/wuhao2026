@@ -356,10 +356,24 @@ fi
 
 echo verify
 sleep 2
-curl -sS -I -H "Host: `$domain" http://127.0.0.1/ | head -5
+expect_status() {
+  local label="`$1"
+  local expected="`$2"
+  shift 2
+  local status
+  status=`$(curl -sS -o /dev/null -w '%{http_code}' "`$@")
+  echo "`$label status=`$status expected=`$expected"
+  if [ "`$status" != "`$expected" ]; then
+    echo "`$label status mismatch" >&2
+    exit 20
+  fi
+}
 if [ -f "`$cert_dir/fullchain.pem" ]; then
-  curl -k -sS -I --resolve "`$domain:443:127.0.0.1" "https://`$domain/" | head -5
-  curl -k -sS -I --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/" | head -5
+  expect_status "site-http-redirect" "301" -H "Host: `$domain" http://127.0.0.1/
+  expect_status "site-https-root" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/"
+  expect_status "site-https-www" "200" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/"
+else
+  expect_status "site-http-root" "200" -H "Host: `$domain" http://127.0.0.1/
 fi
 "@
 

@@ -510,3 +510,34 @@ func TestGenerateDailyAgriCardUsesUnifiedTemperature(t *testing.T) {
 		t.Fatalf("freshness mismatch: %#v", searchOptions["freshness"])
 	}
 }
+
+func TestGenerateDailyAgriCardStatusErrorDoesNotIncludeBody(t *testing.T) {
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/services/aigc/text-generation/generation" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"message":"https://api.example.com token=secret 13800138000"}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
+
+	_, _, err := NewBailianClient().GenerateDailyAgriCard(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "生成今日农情"}},
+	)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	got := err.Error()
+	if got != "dashscope status 502" {
+		t.Fatalf("error = %q, want sanitized status only", got)
+	}
+	for _, forbidden := range []string{"https://", "token", "13800138000"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("error leaked %q: %s", forbidden, got)
+		}
+	}
+}

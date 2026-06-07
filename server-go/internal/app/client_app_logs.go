@@ -389,13 +389,25 @@ func normalizeClientLogAttrValue(value any) (any, bool) {
 	case int64:
 		return v, true
 	case json.Number:
-		return v.String(), true
+		text := truncateRunes(strings.TrimSpace(v.String()), 160)
+		if containsSensitiveClientLogText(text) {
+			return nil, false
+		}
+		return text, true
 	case string:
-		return truncateRunes(strings.TrimSpace(v), 160), true
+		text := truncateRunes(strings.TrimSpace(v), 160)
+		if text == "" || containsSensitiveClientLogText(text) {
+			return nil, false
+		}
+		return text, true
 	case map[string]any, []any:
 		return nil, false
 	default:
-		return truncateRunes(strings.TrimSpace(fmt.Sprint(v)), 160), true
+		text := truncateRunes(strings.TrimSpace(fmt.Sprint(v)), 160)
+		if text == "" || containsSensitiveClientLogText(text) {
+			return nil, false
+		}
+		return text, true
 	}
 }
 
