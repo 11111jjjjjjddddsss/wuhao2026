@@ -2,13 +2,13 @@
 
 最后更新：2026-06-07
 
-## R1 运维入口仍以文档骨架为主
+## R1 运维入口仍需生产后台上线和告警闭环
 
 - 状态：未关闭
-- 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来；ECS / RDS / Redis / OSS / DNS / HTTPS / 部署脚本、Go 请求级日志、ECS 日志查询脚本、农技千查专用 SLS Project / Logstore 已经有一批真实入口，最小内部操作审计表和查询接口也已落地；管理后台架构 ADR 和页面设计 runbook 已补齐，但仓库内尚未沉淀完整的 SLS 告警 / 仪表盘、数据库只读脚本、网页管理后台和后台账号 / 权限系统
-- 风险：换窗口时能知道要看哪里，但真正执行公网生产运维仍可能依赖人工补充；当前不能把网页后台、后台账号、后台权限或 SLS 告警写成既成事实
-- 补充：买服务器前“统一管理后台”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。当前没有网页后台或 `/admin` 路由；已有帮助与反馈内部会话列表 / 详情 / 回复接口、今日农情内部生成接口、App 自动日志 `POST /api/app/logs` / `client_app_logs` 骨架、只读内部查询 `GET /internal/app/logs`、Go 请求级日志 `http_request / http_request_slow / http_request_error`、ECS 只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)、SLS 只读脚本 [query-sls-logs.ps1](D:/wuhao/scripts/query-sls-logs.ps1)，以及最小内部审计 `admin_audit_logs` / `GET /internal/admin/audit-logs`。App 自动日志已有鉴权、8KiB 请求上限、字段清洗和默认 10 分钟 60 次短期限流，内部查询暂复用 `SUPPORT_ADMIN_SECRET` 保护；审计只记录动作元信息，不记录正文 / 图片 URL / token / 密钥，但还没有后台账号、角色权限、网页 UI、SLS 告警或仪表盘
-- 后续动作：后面一旦发生真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营，就把实际可执行入口补进 runbook、脚本或统一管理后台。第一版后台优先补后台账号、角色权限、操作审计、帮助与反馈、用户查询、App 自动日志查询、检查更新、今日农情状态页，不提前做重
+- 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来；ECS / RDS / Redis / OSS / DNS / HTTPS / 部署脚本、Go 请求级日志、ECS 日志查询脚本、农技千查专用 SLS Project / Logstore 已经有一批真实入口。第一版网页后台代码已落地为 Vite `admin` 前端 + `server-go` `/admin-api/v1/*`，并新增后台账号、session、CSRF、角色校验和审计。
+- 风险：后台代码已可构建，但生产后台域名 / Nginx 托管、管理员 bootstrap、上线验收、SLS 告警 / 仪表盘和数据库只读脚本仍未完全闭环；当前不能把“生产后台已上线可长期运营”写成既成事实。
+- 补充：管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。后台当前覆盖登录、总览、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康；内部共享密钥接口仍保留给脚本兼容，但浏览器后台不应持有内部 secret。
+- 后续动作：生产部署后台静态站和 `/admin-api` 反代，清理 bootstrap 密码环境变量，补 SLS 告警 / 仪表盘和数据库只读脚本；继续把真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营入口沉淀到 runbook。
 
 ## R2 项目记忆已有程序化检查，但覆盖仍偏粗
 
@@ -111,12 +111,12 @@
 - 补充：买服务器前今日农情巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前没有发现用户打开 App 临时生成、写 A/B/C、写归档、扣次或伪装成 `ChatMessage` 的旧链路；残余风险主要是质量运营，比如同一事件换标题只能靠提示词和人工抽查约束、可信域名白名单偏严可能导致当天不足 3 条
 - 后续动作：上线前按 `docs/runbooks/today-agri-card.md` 配置 `DAILY_AGRI_JOB_SECRET` 和定时触发；观察 SLS 日志关键词 `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error`。若连续失败，再评估放宽可信域名、切 `turbo + assigned_site_list` 或做人工审核入口，不把失败转成用户打开 App 时临时多次调模型
 
-## R14 帮助与反馈首版还没有完整管理后台
+## R14 帮助与反馈首版仍需客服工单能力补齐
 
 - 状态：未关闭
-- 说明：帮助与反馈当前已具备后端消息表、用户侧历史 / 发送 / 已读接口，以及 `SUPPORT_ADMIN_SECRET` 保护的内部读取会话和发送后台回复接口；Android 也能展示历史、发送文字 / 图片反馈，并在设置页“帮助与反馈”行用红点提示未读后台 / 系统消息
-- 风险：当前还不是完整客服系统，没有网页管理后台、后台账号 / 权限、工单分配、站外推送、消息搜索或未回复队列。后台想回复用户时需要先通过内部接口或未来管理后台调用，同步依赖真实服务器、数据库、上传公开域名和密钥配置。公开生产前仍必须接账号 token 并启用 `AUTH_STRICT=true`，否则裸 `X-User-Id` 能读写某个用户的帮助与反馈；当前帮助与反馈图片仍复用 `/upload` -> `/uploads/*.jpg`，实际按问诊图 3 天生命周期处理，`support/` 30 天生命周期只是 OSS 预留规则；用户连续并发发送时自动回复仍可能存在重复插入窗口，正式客服面板前应继续收口事务 / 用户级锁
-- 后续动作：正式服务器和管理后台规划落地后，再把帮助与反馈接入统一运营面板；优先补“按用户查看会话、发送回复、未读 / 未处理列表、基础权限和审计日志”，不要在 Android 端塞后台逻辑。后续若需要客服图片保留更久，应新增 support 专用上传目的或接口并切换 Android 帮助与反馈图片链；账号注销 / 数据删除规则还要明确帮助与反馈消息和图片是否删除、保留多久、由谁操作
+- 说明：帮助与反馈当前已具备后端消息表、用户侧历史 / 发送 / 已读接口，内部读取 / 回复接口，以及网页后台会话列表、详情和回复入口；Android 也能展示历史、发送文字 / 图片反馈，并在设置页“帮助与反馈”行用红点提示未读后台 / 系统消息。
+- 风险：当前仍不是完整客服系统，缺工单分配、处理状态、消息搜索、站外推送、客服绩效、自动归档和专用图片生命周期。公开生产前仍必须保持账号 token 和 `AUTH_STRICT=true`，否则裸 `X-User-Id` 能读写某个用户的帮助与反馈；当前帮助与反馈图片仍复用 `/upload` -> `/uploads/*.jpg`，实际按问诊图 3 天生命周期处理，`support/` 30 天生命周期只是 OSS 预留规则；用户连续并发发送时自动回复仍可能存在重复插入窗口，正式客服面板前应继续收口事务 / 用户级锁。
+- 后续动作：在统一管理后台继续补未处理状态、处理人、关闭状态、搜索和标签；不要在 Android 端塞后台逻辑。后续若需要客服图片保留更久，应新增 support 专用上传目的或接口并切换 Android 帮助与反馈图片链；账号注销 / 数据删除规则还要明确帮助与反馈消息和图片是否删除、保留多久、由谁操作。
 
 ## R15 自有 APK 更新链路需要上线实机验证
 
@@ -125,12 +125,12 @@
 - 风险：普通 Android App 不能静默安装 APK；Android 8+ 需要用户给本 App “安装未知应用”授权，不同国产 ROM 的授权页和安装页可能存在差异。APK 下载地址、签名证书、`versionCode` 递增、https 证书、包名一致性、哈希配置和安装权限都需要真实环境验证。若后续发布 APK 签名证书变化，系统会拒绝覆盖安装；如果用户已经安装坏包，只能再发更高 `versionCode` 修复包，不能低版本回滚覆盖
 - 后续动作：正式发第一版 APK 更新前，按 `docs/runbooks/app-update.md` 用旧包真机验证“检查更新 -> 发现新版本 -> 授权安装未知应用 -> 下载 -> 校验 -> 系统安装页 -> 覆盖安装成功”；发布流程里固定签名证书、`versionCode` 递增规则、文件大小和 SHA-256 记录
 
-## R16 礼品卡仍是前端占位
+## R16 礼品卡 Android 接线和高风险操作仍未完成
 
 - 状态：未关闭
-- 说明：Android 设置页“礼品卡”当前只是占位页：输入为空时按钮禁用，输入后点击只提示“礼品卡兑换暂不可用”；debug-only 预览面板里的“兑换成功 / 确定”只是未来成功态样式预览。当前没有后端礼品卡表、用户侧兑换接口、生成 / 发放 / 作废 / 查询后台，也不会修改会员、额度、加油包、订单或 `quota_ledger`
-- 风险：如果后续在后端规则、幂等、防撞库、后台审计和权益发放事务没做完前就把前端成功态接到真实按钮，可能造成假成功、重复发权益、礼品卡撞库或人工无法追溯
-- 后续动作：真实接入时以后端为唯一真相，按 [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md) 先补礼品卡主表、兑换记录表、用户侧兑换接口、后台生成 / 发放 / 作废 / 查询能力、操作审计、限流和日志；Android 只提交用户输入并展示后端结果，没有后端成功结果时不能弹“兑换成功”
+- 说明：后端礼品卡批次、卡、兑换尝试表、后台创建 / 查询接口和用户侧 `POST /api/gift-cards/redeem` 已接入；兑换会事务内发会员权益，并记录成功 / 失败尝试、地区、脱敏 IP 和审计。Android 设置页当前仍是占位提示，尚未接真实兑换接口。
+- 风险：Android 接线前用户无法真正兑换；接线时如果没有按后端结果展示成功 / 失败，仍可能出现假成功。后台当前只开放批次创建和查询，作废、导出、批量发放、二次确认和更细的风控统计尚未开放；完整卡码只在创建成功当次展示，刷新后无法再查看，这符合安全设计但要求运营妥善保存当次发放材料。
+- 后续动作：按 [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md) 把 Android 礼品卡页接到 `/api/gift-cards/redeem`；后台后续补作废、导出、批量发放、批次详情、失败原因聚合和二次确认。Android 只提交用户输入并展示后端结果，没有后端成功结果时不能弹“兑换成功”。
 
 ## R17 协议、隐私和风险提示仍需上线前合规复核
 

@@ -1,6 +1,6 @@
 # 农技千查安全威胁模型
 
-最后更新：2026-06-06
+最后更新：2026-06-07
 
 ## 审计范围
 
@@ -10,7 +10,7 @@
 
 - 用户账号 session token、手机号 hash、旧本机 user_id 迁移关系
 - 聊天归档、A/B/C 记忆、图片上传 URL、帮助与反馈消息
-- 每日额度、会员状态、订单 / 礼品卡后续入口
+- 每日额度、会员状态、订单、礼品卡批次 / 兑换记录和后台审计
 - 模型 Key、DYPNS、OSS、RDS、Redis、SLS、内部 job / support secret
 - ECS / Nginx / systemd slot 发布入口和 Cloud Assistant 运维链路
 
@@ -29,7 +29,7 @@
 - 上传要求登录、单张 `<=1MiB` JPEG、随机文件名、后端 HTTPS base URL；聊天图片 URL 只接受本后端 `/uploads/*.jpg`
 - 主聊天有用户级 Redis 限流、单用户活跃 SSE 租约、`client_msg_id` 幂等、64KiB JSON body 上限和 30 分钟 SSE 时长兜底
 - 融合认证、短信、上传、App 日志、帮助与反馈均有 Redis / IP 或用户级短期限流
-- 内部 secret 接口已新增 Redis / IP 频控；后台操作写 `admin_audit_logs`
+- 内部 secret 接口已新增 Redis / IP 频控；第一版后台 API 已有后台账号、HttpOnly session、CSRF、角色校验和 `admin_audit_logs`
 - Android release 要求固定签名和 HTTPS 后端，Auto Backup / Data Extraction 已关闭，检查更新只接受 HTTPS APK 并校验包名、版本和可选 SHA-256
 - SLS 只采集 Go JSON 请求日志和 Nginx error log，不采聊天正文、图片 URL、手机号、token 或模型 Key
 
@@ -42,7 +42,7 @@
 
 ## 剩余风险
 
-- 管理后台还没有后台账号、角色权限和 CSRF / 会话体系；当前 `/internal/*` 仍是共享 secret 过渡方案，不能把 secret 放进浏览器前端
+- 第一版管理后台代码已有账号、角色权限和 CSRF / 会话体系，但生产后台域名 / Nginx 托管 / bootstrap 验收仍未完成；当前 `/internal/*` 仍保留共享 secret 过渡入口，不能把 secret 放进浏览器前端
 - Android 长期 auth token 仍保存在普通 SharedPreferences；备份已禁用，但 Root、恶意调试或设备被拿到时仍可能被窃取。后续可评估 EncryptedSharedPreferences、设备管理和远程吊销
 - 没买 WAF / 高防时，普通 Web 扫描和脚本刷接口主要靠 Nginx / Go / Redis 限流；大流量 DDoS 超过基础防护仍可能不可用
 - SLS 还没有告警 / 仪表盘；现在能查日志，但还不能自动叫醒或自动处置
@@ -50,7 +50,7 @@
 
 ## 后续优先级
 
-1. 管理后台第一版必须先做账号、权限、审计和后台会话，不能把 `SUPPORT_ADMIN_SECRET` 直接暴露到网页前端。
+1. 管理后台生产上线必须配置后台域名、Nginx、bootstrap 清理和验收，不能把 `SUPPORT_ADMIN_SECRET` 直接暴露到网页前端。
 2. SLS 补 healthz、Nginx 5xx、Go error、RDS / Redis / ECS 高水位告警。
 3. 上线前轮换已暴露过的主账号 AccessKey，并优先改成专用最小权限 RAM 用户。
 4. 真机回归手机号登录、验证码登录、主聊天、图片上传 / 读取 / 模型拉图和检查更新。

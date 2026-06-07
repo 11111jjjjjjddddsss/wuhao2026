@@ -1,12 +1,12 @@
 # Codex 协助运维总蓝图
 
-最后更新：2026-06-06
+最后更新：2026-06-07
 
 ## 目的
 
 把后期“农技千查”整体 App 和后端怎么运维先存进仓库，避免以后买服务器、发版本、查问题、做管理后台时再从聊天记录里翻。
 
-这份文档不是现成后台，也不伪造还没落地的网页后台、SLS 或后台账号权限；`api.nongjiqiancha.cn` HTTPS 和根域名官网 HTTPS 已落地，但下载域名和管理后台域名仍需后续单独配置。本文记录当前真实环境和后续生产运维里 Codex 应该协助你的范围、入口和安全边界。
+第一版网页后台代码已落地，但生产后台域名 / Nginx 托管和管理员 bootstrap 仍需上线验收；`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS 和 SLS 最小日志集已落地，下载域名和管理后台域名仍需后续单独配置。本文记录当前真实环境和后续生产运维里 Codex 应该协助你的范围、入口和安全边界。
 
 ## 总原则
 
@@ -58,15 +58,13 @@
 - 继续用内部接口、脚本和手工真机回归兜底
 - 不提前硬做完整后台，避免账号体系、权限和真实数据结构没定就返工
 
-该阶段已结束：ECS / RDS / Redis / OSS / DNS / 部署脚本和部分内部接口已经落地。当前 P1 重点是把这些入口收成受保护的网站后台和可审计运维流程。
+该阶段已结束：ECS / RDS / Redis / OSS / DNS / 部署脚本、部分内部接口和第一版网页后台代码已经落地。当前 P1 重点是把后台前端、`/admin-api/v1/*`、Nginx、后台域名和 bootstrap 账号收成可验收的生产运营入口。
 
 ### P1：服务器落地后，先做最小网站运营入口
 
-- 帮助与反馈：按用户查看会话、回复客服消息、查看未读 / 未处理
-- 用户查询：按 `user_id` 查会员等级、剩余额度、最近请求和最近反馈
-- 检查更新：查看当前发布版本、APK 链接、是否启用更新
-- 今日农情：查看当天生成状态、失败原因、手动补跑
-- 后台账号、最小角色权限和操作审计必须同阶段规划；不能长期只靠共享 secret 当后台权限体系
+- 已落第一版代码：Vite `admin` 前端 + `server-go` `/admin-api/v1/*`，覆盖登录、总览、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康。
+- 仍需生产上线：后台域名 / Nginx 静态托管、`/admin-api` 反代、管理员 bootstrap、验收和上线后清理 bootstrap 明文环境变量。
+- 继续补齐：工单状态、发布记录表、SLS 告警 / 仪表盘、数据库只读脚本、礼品卡作废 / 导出和高风险操作二次确认。
 
 ### P2：接支付和礼品卡后
 
@@ -94,17 +92,17 @@
 
 ## 服务器落地后已回填 / 仍需回填
 
-- 已回填：阿里云 Region、ECS 实例、RDS MySQL、Redis、OSS bucket、DNS `api/@/www` A 记录、`api.nongjiqiancha.cn` HTTPS / Nginx 443、根域名官网 HTTPS / 静态站、ECS 后端双端口部署 / 回滚脚本、官网部署脚本、生产 readiness 检查、Go 后端请求级日志、ECS 日志只读查询脚本、农技千查专用 SLS Project / Logstore、SLS 只读查询脚本、帮助与反馈内部会话列表 / 详情 / 回复接口、App 自动日志内部查询、今日农情内部生成入口。
-- 仍需回填：App 备案通过、网站公安备案通过 / 公安备案号和 App 公安备案后的正式公网入口、SLS 告警规则 / 仪表盘、数据库只读排查脚本、网页管理后台账号 / 权限、App release 发布记录表或后台入口；下载域名和管理后台域名若启用，需要分别补入口和证书。网站 ICP 备案已于 2026-06-05 通过，App 备案已提交阿里云初审，最小内部操作审计表和查询接口已落地但还不是正式后台账号 / 权限系统，公安备案数据码不写入仓库或聊天交接。
+- 已回填：阿里云 Region、ECS 实例、RDS MySQL、Redis、OSS bucket、DNS `api/@/www` A 记录、`api.nongjiqiancha.cn` HTTPS / Nginx 443、根域名官网 HTTPS / 静态站、ECS 后端双端口部署 / 回滚脚本、官网部署脚本、生产 readiness 检查、Go 后端请求级日志、ECS 日志只读查询脚本、农技千查专用 SLS Project / Logstore、SLS 只读查询脚本、帮助与反馈内部会话列表 / 详情 / 回复接口、App 自动日志内部查询、今日农情内部生成入口、第一版网页后台代码和后台账号 / session / CSRF / 角色 / 审计骨架。
+- 仍需回填：App 备案通过、网站公安备案通过 / 公安备案号和 App 公安备案后的正式公网入口、SLS 告警规则 / 仪表盘、数据库只读排查脚本、生产后台域名 / Nginx / bootstrap 验收、App release 发布记录表或后台发布入口；下载域名和管理后台域名若启用，需要分别补入口和证书。网站 ICP 备案已于 2026-06-05 通过，App 备案已提交阿里云初审，网站公安联网备案已提交待审核，公安备案数据码不写入仓库或聊天交接。
 - 若后续重新启用 SAE，再补新的 SAE 应用名 / 应用 ID 和镜像部署 / 回滚入口。
-- 管理后台域名、后台登录方式、权限模型和审计表
+- 管理后台域名、Nginx 托管、后台登录 bootstrap 流程、权限细化和审计验收
 
 ## 当前不做的事
 
 - 不伪造还没购买的服务器实例名、域名、数据库地址
 - 不把真实密钥写进仓库
 - 不做静默安装 APK；Android 普通 App 只能调起系统安装确认
-- 不在没有正式账号 / 权限 / 审计设计前，把完整管理后台一次性做重
+- 不在生产后台入口未验收前，把高风险运营动作一次性打开
 - 不让 Android 客户端承担后端业务真相；会员、礼品卡、扣次、模型调用仍以后端为准
 
 ## 已有入口
@@ -119,7 +117,7 @@
 - [db-readonly.md](D:/wuhao/docs/runbooks/db-readonly.md)：数据库只读排查入口
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：Android APK 检查更新和停更入口
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈站内消息入口
-- [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)：礼品卡占位状态与后续兑换系统入口
+- [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)：礼品卡后端、后台批次和用户侧兑换接口
 - [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)：服务协议、隐私政策、风险提示和权限清单入口
 - [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情生成与排查入口
 - [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)：统一管理后台分期、权限和审计入口

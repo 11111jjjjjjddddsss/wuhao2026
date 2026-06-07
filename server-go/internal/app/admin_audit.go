@@ -156,13 +156,17 @@ func (s *Server) recordAdminAuditLog(r *http.Request, fallbackActor string, acti
 }
 
 func adminActorFromRequest(r *http.Request, fallback string) string {
+	fallbackActor := normalizeAdminActor(fallback)
+	if fallbackActor != "" && fallbackActor != "support_admin_secret" {
+		return fallbackActor
+	}
 	for _, header := range []string{"X-Admin-Actor", "X-Support-Admin-Actor"} {
 		if actor := normalizeAdminActor(r.Header.Get(header)); actor != "" {
 			return actor
 		}
 	}
-	if actor := normalizeAdminActor(fallback); actor != "" {
-		return actor
+	if fallbackActor != "" {
+		return fallbackActor
 	}
 	return "internal"
 }

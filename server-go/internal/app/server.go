@@ -50,6 +50,7 @@ type Server struct {
 	supportMessageLimiter rateLimiter
 	uploadLimiter         rateLimiter
 	internalSecretLimiter rateLimiter
+	giftCardRedeemLimiter rateLimiter
 }
 
 type orderRequest struct {
@@ -120,6 +121,9 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	}
 
 	store := NewStore(db, shanghai)
+	if err := store.EnsureBootstrapAdminFromEnv(contextBackground(), logger); err != nil {
+		return nil, err
+	}
 	bailian := NewBailianClient()
 	dypns, err := NewDypnsClientFromEnv()
 	if err != nil {
@@ -158,6 +162,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		supportMessageLimiter: newSupportMessageRateLimiter(redisClient),
 		uploadLimiter:         newUploadRateLimiter(redisClient),
 		internalSecretLimiter: newInternalSecretRateLimiter(redisClient),
+		giftCardRedeemLimiter: newGiftCardRedeemRateLimiter(redisClient),
 	}
 	server.registerRoutes()
 	return server, nil
@@ -176,6 +181,23 @@ func (s *Server) Close() error {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealthz)
+	s.mux.HandleFunc("POST /admin-api/v1/auth/login", s.handleAdminLogin)
+	s.mux.HandleFunc("GET /admin-api/v1/auth/me", s.handleAdminMe)
+	s.mux.HandleFunc("POST /admin-api/v1/auth/logout", s.handleAdminLogout)
+	s.mux.HandleFunc("GET /admin-api/v1/overview", s.handleAdminOverview)
+	s.mux.HandleFunc("GET /admin-api/v1/users", s.handleAdminUsers)
+	s.mux.HandleFunc("GET /admin-api/v1/users/detail", s.handleAdminUserDetail)
+	s.mux.HandleFunc("GET /admin-api/v1/support/conversations", s.handleAdminSupportConversations)
+	s.mux.HandleFunc("GET /admin-api/v1/support/messages", s.handleAdminSupportMessages)
+	s.mux.HandleFunc("POST /admin-api/v1/support/messages", s.handleAdminCreateSupportMessage)
+	s.mux.HandleFunc("GET /admin-api/v1/app-logs", s.handleAdminAppLogs)
+	s.mux.HandleFunc("GET /admin-api/v1/audit-logs", s.handleAdminAuditLogs)
+	s.mux.HandleFunc("GET /admin-api/v1/today-agri/cards", s.handleAdminTodayAgriCards)
+	s.mux.HandleFunc("GET /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroid)
+	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/batches", s.handleAdminGiftCardBatches)
+	s.mux.HandleFunc("POST /admin-api/v1/gift-cards/batches", s.handleAdminCreateGiftCardBatch)
+	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/cards", s.handleAdminGiftCards)
+	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/attempts", s.handleAdminGiftCardAttempts)
 	s.mux.HandleFunc("POST /api/auth/fusion/token", s.handleAuthFusionToken)
 	s.mux.HandleFunc("POST /api/auth/fusion/verify", s.handleAuthFusionVerify)
 	s.mux.HandleFunc("POST /api/auth/fusion/login", s.handleAuthFusionLogin)
@@ -195,6 +217,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/tier/upgrade_plus_to_pro", s.handleUpgradePlusToPro)
 	s.mux.HandleFunc("GET /api/today-agri-card", s.handleTodayAgriCard)
 	s.mux.HandleFunc("GET /api/app/update", s.handleAppUpdate)
+	s.mux.HandleFunc("POST /api/gift-cards/redeem", s.handleGiftCardRedeem)
 	s.mux.HandleFunc("POST /api/app/logs", s.handleCreateClientAppLog)
 	s.mux.HandleFunc("GET /api/support/summary", s.handleSupportSummary)
 	s.mux.HandleFunc("GET /api/support/messages", s.handleSupportMessages)

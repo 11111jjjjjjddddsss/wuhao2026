@@ -4,33 +4,46 @@
 
 ## 目的
 
-记录“农技千查”后续统一管理后台应该怎么做、什么时候做、第一版做到什么程度。
+记录“农技千查”统一管理后台当前实现、上线方式、第一版页面能力和仍需补齐的安全边界。
 
-这份文档不是现成后台，不伪造还没落地的网页后台、后台账号或权限；它记录服务器已落地后，第一版网站管理后台要补的最小运营入口和安全边界。当前只有少量受共享密钥保护的内部接口和最小审计地基。
+当前第一版后台已进入代码：`admin` 是 Vite 静态前端，`server-go` 暴露 `/admin-api/v1/*` 管理 API，并新增后台账号 / session / CSRF、角色校验和审计。生产环境仍需单独配置后台域名 / Nginx 静态托管、设置一次性 bootstrap 环境变量并完成上线验收。
 
 详细页面结构、筛选项、指标和版面建议见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)。
 
 ## 当前真相
 
-- 当前没有统一管理后台网页。
-- 后端没有 `/admin` 网页路由；`/internal/admin/audit-logs` 只是内部审计日志查询接口，不是完整后台。
-- Android 没有后台入口，也没有调用任何 `/internal/*` 接口。
-- 当前真实运营入口只有少量内部接口和环境变量：
-  - 帮助与反馈后台会话列表 / 详情 / 回复：`GET /internal/support/conversations`、`GET /internal/support/messages`、`POST /internal/support/messages`，由 `SUPPORT_ADMIN_SECRET` 保护，并带内部 secret IP 短期限流。
-  - App 自动日志只读查询：`GET /internal/app/logs`，由 `SUPPORT_ADMIN_SECRET` 保护并带内部 secret IP 短期限流；支持按最近时间、用户、事件名和等级过滤，返回明细和聚合摘要。
-  - 内部操作审计只读查询：`GET /internal/admin/audit-logs`，由 `SUPPORT_ADMIN_SECRET` 保护并带内部 secret IP 短期限流；支持按最近时间、动作、目标用户和成功 / 失败过滤，返回操作元信息。
-  - 今日农情生成：`POST /internal/jobs/today-agri-card/generate`，由 `DAILY_AGRI_JOB_SECRET` 保护。
-  - 检查更新：用户侧 `GET /api/app/update` 读取 `APP_ANDROID_*` 环境变量，没有发布后台。
-  - 会员 / 加油包 / 升级：Android 当前只展示“支付功能暂不可用”；后端开发期直改接口默认关闭，不是正式支付后台。
-  - 礼品卡：当前没有后端表、兑换接口或后台，只是 Android 占位页。
+- 管理后台前端目录：`admin`。本地开发：`cd admin && npm install && npm run dev -- --host 127.0.0.1 --port 5174`。生产构建：`npm run build`。
+- 管理后台 API：`/admin-api/v1/*`，由 `server-go` 提供，不单独起第二套后端。
+- 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。
+- 后台账号：服务启动时可用 `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` 初始化；密码会以 PBKDF2-SHA256 hash 存入 `admin_users`，明文不得写入仓库、文档或前端。
+- 后台角色：首版支持 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`；服务端校验权限，不能靠前端隐藏按钮。
+- 后台审计：登录、登出、查询用户、客服回复、日志查询、今日农情、检查更新、礼品卡生成 / 查询 / 用户兑换等会写审计记录。
+- Android 没有后台入口，也没有调用任何 `/internal/*` 或 `/admin-api/*` 接口。
+
+当前已落地的后台页面 / API：
+
+- 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
+- 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按 user_id / 脱敏手机号查询，展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈。
+- 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录。
+- 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/cards`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次，完整卡码只在生成响应当次返回，数据库只存 hash / 掩码 / 尾号。
+- 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP。
+- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`。
+- App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，不展示聊天正文、图片 URL、手机号或 token。
+- 后台审计：`GET /admin-api/v1/audit-logs`。
+- 今日农情：`GET /admin-api/v1/today-agri/cards`。
+- 检查更新：`GET /admin-api/v1/app-update/android`，当前只读展示 `APP_ANDROID_*` 环境变量配置。
+
+仍保留的内部共享密钥接口：
+
+- 帮助与反馈、App 自动日志、内部审计、今日农情生成仍保留 `/internal/*` 入口作为脚本 / 运维兼容入口，但浏览器后台不应持有 `SUPPORT_ADMIN_SECRET` 或 `DAILY_AGRI_JOB_SECRET`。
 
 ## 当前不要误解
 
 - 买服务器不等于自动有管理后台。
-- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 只是共享密钥，不是后台账号或角色权限系统；当前已补内部 secret IP / Redis 短期限流和最小审计，只能记录共享密钥内部入口的 actor 标签和操作元信息，不能替代正式后台账号。
-- `/internal/app/logs` 只是给运维和后续后台面板用的只读地基，不是完整日志中心、SLS 接入或告警系统。
+- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 仍只是共享密钥，不能给浏览器前端使用；正式后台浏览器入口必须走 `admin_users` / `admin_sessions` / CSRF。
+- `/admin-api/v1/app-logs` 和 `/internal/app/logs` 只是给运维和后台面板用的只读地基，不是完整 SLS 告警中心。
 - `/api/app/update` 只是读取版本配置，不是发布系统；正式发布仍需要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间。
-- debug-only 礼品卡“兑换成功”只是样式预览，不能在没有后端成功结果时接到真实兑换按钮。
+- 礼品卡后端和后台已接入首版，但 Android 设置页真实兑换按钮仍需后续把占位提示接到 `/api/gift-cards/redeem`；debug-only 礼品卡“兑换成功”仍只能作为样式预览，不能在没有后端成功结果时弹真实兑换成功。
 - 开发期会员接口不是正式支付回调，生产必须保持关闭。
 - Android 客户端不能承载后台逻辑；客服回复、补权益、发礼品卡、停更新和删除用户数据都必须在服务端或后台完成。
 
@@ -40,7 +53,7 @@
 - 继续用 runbook、内部接口和只读脚本规划兜底。
 - 继续按功能巡检，把当前真相和后续必补项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
-该阶段已经结束：ECS / RDS / Redis / OSS / DNS 和部分内部接口已经落地。当前处于 P1 前置地基阶段，已有 `GET /internal/app/logs`、`GET /internal/admin/audit-logs`、帮助与反馈会话列表 / 详情 / 回复内部接口、今日农情内部生成接口和检查更新环境变量入口，但还没有网页后台、后台账号或角色权限。
+该阶段已经结束：ECS / RDS / Redis / OSS / DNS、内部接口和第一版网页后台代码已经落地。当前处于 P1 后台上线验收阶段，仍需生产 Nginx / 域名 / 管理员 bootstrap / 真机验收。
 
 ## P1：服务器落地后的最小网站后台
 
@@ -68,7 +81,7 @@
 - 用户地区 / 来源：按注册、最近活跃、问诊、图片问诊、会员成交、加油包购买和帮助反馈聚合省市分布；优先使用 GPS 反查地区，IP 粗定位只作为低可信参考，不保存经纬度或轨迹。
 - 会员与额度：只读展示当前档位、到期时间、每日额度、今日已用、加油包余额、升级补偿和 `quota_ledger`。人工补偿先不开放，或只做 owner 二次确认。
 - 订单 / 订购：支付未接入前只做占位和开发期订单表只读说明；支付接入后再接正式订单、回调、对账、退款和异常补偿。
-- 礼品卡：支付 / 礼品卡系统未接入前只做规划页；接入后再做批次、生成、发放、兑换、作废、导出、撞库 / 失败记录。
+- 礼品卡：首版已接入批次、生成、兑换、卡状态和失败尝试查询；作废、导出、批量发放和二次确认后续再补。
 - 帮助与反馈：会话列表、未回复队列、详情、后台回复、处理状态、标签、搜索；首版直接接现有 `/internal/support/*`，后续补工单状态。
 - App 自动日志：按时间、用户、事件名、level、App 版本、系统版本、设备筛选；接 `GET /internal/app/logs`，后续再并入 SLS 摘要。
 - 今日农情：当天卡片状态、来源、生成时间、失败原因、手动补跑、停用当天卡片，所有动作审计。
@@ -90,7 +103,7 @@
 | 今日农情 | 半直接接 | `daily_agri_cards`、内部生成接口 | 历史状态查询、失败原因、补跑 / 停用 API |
 | 检查更新 | 半直接接 | `APP_ANDROID_*` 环境变量、`/api/app/update` | `app_releases` 表、发布 / 停更 / 回滚 API |
 | 订单 / 订购 | 不能当正式功能接 | 当前 `orders` 仅开发期记录 | 正式订单、支付回调、退款、对账和幂等表 |
-| 礼品卡 | 未接入 | Android 仅占位 | 礼品卡批次、卡号 hash、兑换、作废、失败尝试表和 API |
+| 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | Android 真实兑换接线、作废 / 导出、批量发放和二次确认 |
 | 产品洞察 | 未完整接入 | 反馈、App 日志、聊天归档可作为来源 | 脱敏聚合任务和洞察报表表 |
 
 注意：当前迁移仍按 SQL 文件幂等执行，没有独立 `schema_migrations` 版本表；后续新增后台表必须继续保持幂等，避免重复 `ALTER` 造成启动风险。
