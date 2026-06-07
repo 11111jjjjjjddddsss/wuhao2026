@@ -205,13 +205,18 @@ object SessionApi {
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
+                    val statusCode = it.code
                     val body = it.body?.string().orEmpty()
                     val token = if (it.isSuccessful) parseFusionAuthToken(body) else null
                     mainHandler.post {
                         if (token?.usable == true) {
                             onResult(token, null)
                         } else {
-                            onResult(null, "一键登录暂未配置，请使用验证码登录")
+                            val message = when (statusCode) {
+                                429 -> "操作太频繁，请稍后再试或使用验证码登录"
+                                else -> "一键登录暂不可用，请使用验证码登录"
+                            }
+                            onResult(null, message)
                         }
                     }
                 }

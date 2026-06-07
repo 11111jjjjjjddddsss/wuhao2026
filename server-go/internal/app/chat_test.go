@@ -253,6 +253,12 @@ func TestValidateChatStreamInputMatchesCurrentRules(t *testing.T) {
 			text:        "hello",
 			want:        "client_msg_id too long",
 		},
+		{
+			name:        "reject text over app input limit",
+			clientMsgID: "msg-6",
+			text:        strings.Repeat("农", maxChatTextRunes+1),
+			want:        "text too long",
+		},
 	}
 
 	for _, tc := range cases {

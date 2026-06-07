@@ -78,6 +78,20 @@ func TestNormalizeClientAppLogPayloadDropsSensitiveAttrs(t *testing.T) {
 	}
 }
 
+func TestNormalizeClientAppLogPayloadSanitizesSensitiveMessage(t *testing.T) {
+	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
+		Level:   "error",
+		Event:   "chat.stream_failed",
+		Message: "https://api.example.com/uploads/a.jpg token=secret 13800138000",
+	}, 123)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	if input.Message != "chat.stream_failed" {
+		t.Fatalf("message = %q, want event fallback", input.Message)
+	}
+}
+
 func TestNormalizeClientAppLogPayloadRejectsInvalidPayload(t *testing.T) {
 	tests := []struct {
 		name string

@@ -124,7 +124,6 @@ func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request
 	logAttrs := []any{
 		"userId", auth.UserID,
 		"event", input.Event,
-		"message", input.Message,
 		"platform", input.Platform,
 		"appVersionCode", input.AppVersionCodeValue(),
 	}
@@ -242,10 +241,7 @@ func normalizeClientAppLogPayload(userID string, maskedIP string, body clientApp
 	default:
 		return ClientAppLogInput{}, "invalid level"
 	}
-	message := truncateRunes(strings.TrimSpace(body.Message), 255)
-	if message == "" {
-		message = event
-	}
+	message := normalizeClientLogMessage(body.Message, event)
 	platform := normalizeClientLogIdentifier(body.Platform, 32)
 	if platform == "" {
 		platform = "android"
@@ -269,6 +265,46 @@ func normalizeClientAppLogPayload(userID string, maskedIP string, body clientApp
 		CreatedAt:      createdAt,
 		MaskedIP:       truncateRunes(strings.TrimSpace(maskedIP), 64),
 	}, ""
+}
+
+func normalizeClientLogMessage(raw string, fallback string) string {
+	message := truncateRunes(strings.TrimSpace(raw), 255)
+	if message == "" || containsSensitiveClientLogText(message) {
+		return fallback
+	}
+	return message
+}
+
+func containsSensitiveClientLogText(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	for _, marker := range []string{
+		"http://",
+		"https://",
+		"bearer ",
+		"authorization",
+		"token",
+		"api_key",
+		"access_key",
+		"accesskey",
+		"secret",
+		"password",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	digits := 0
+	for _, r := range normalized {
+		if r >= '0' && r <= '9' {
+			digits++
+			if digits >= 11 {
+				return true
+			}
+		} else {
+			digits = 0
+		}
+	}
+	return false
 }
 
 func normalizeClientLogAttrs(raw map[string]any) (any, string) {

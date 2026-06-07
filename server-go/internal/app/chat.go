@@ -22,6 +22,7 @@ const (
 	upstreamRetryBaseWait = 350 * time.Millisecond
 	chatStreamMaxDuration = 30 * time.Minute
 	maxClientMsgIDLength  = 128
+	maxChatTextRunes      = 6000
 )
 
 type chatRateLimiter struct {
@@ -34,11 +35,10 @@ type chatRateLimiter struct {
 }
 
 type upstreamStreamOpenError struct {
-	Message      string
-	Kind         string
-	StatusCode   int
-	ResponseBody string
-	ContentType  string
+	Message     string
+	Kind        string
+	StatusCode  int
+	ContentType string
 }
 
 func (e *upstreamStreamOpenError) Error() string {
@@ -579,10 +579,9 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 		response, err := s.bailian.OpenStream(ctx, messages)
 		if err != nil {
 			lastErr = &upstreamStreamOpenError{
-				Message:      "upstream request failed",
-				Kind:         "request",
-				StatusCode:   http.StatusBadGateway,
-				ResponseBody: err.Error(),
+				Message:    "upstream request failed",
+				Kind:       "request",
+				StatusCode: http.StatusBadGateway,
 			}
 			if attempt < upstreamMaxAttempts && ctx.Err() == nil {
 				s.logger.Warn("upstream open retry scheduled after request failure", "attempt", attempt, "maxAttempts", upstreamMaxAttempts, "error", err)
@@ -596,13 +595,12 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 
 		contentType := response.Header.Get("Content-Type")
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-			body, _ := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
+			_, _ = readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
 			_ = response.Body.Close()
 			lastErr = &upstreamStreamOpenError{
-				Message:      fmt.Sprintf("upstream http %d", response.StatusCode),
-				Kind:         "http",
-				StatusCode:   response.StatusCode,
-				ResponseBody: strings.TrimSpace(string(body)),
+				Message:    fmt.Sprintf("upstream http %d", response.StatusCode),
+				Kind:       "http",
+				StatusCode: response.StatusCode,
 			}
 			if attempt < upstreamMaxAttempts && isRetryableUpstreamStatus(response.StatusCode) && ctx.Err() == nil {
 				s.logger.Warn("upstream open retry scheduled after non-200 response", "attempt", attempt, "maxAttempts", upstreamMaxAttempts, "status", response.StatusCode)
@@ -615,14 +613,13 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 		}
 
 		if !strings.Contains(strings.ToLower(contentType), "text/event-stream") {
-			body, _ := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
+			_, _ = readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
 			_ = response.Body.Close()
 			lastErr = &upstreamStreamOpenError{
-				Message:      "upstream not SSE",
-				Kind:         "protocol",
-				StatusCode:   http.StatusBadGateway,
-				ResponseBody: strings.TrimSpace(string(body)),
-				ContentType:  contentType,
+				Message:     "upstream not SSE",
+				Kind:        "protocol",
+				StatusCode:  http.StatusBadGateway,
+				ContentType: contentType,
 			}
 			if attempt < upstreamMaxAttempts && ctx.Err() == nil {
 				s.logger.Warn("upstream open retry scheduled after non-SSE response", "attempt", attempt, "maxAttempts", upstreamMaxAttempts, "contentType", contentType)
@@ -652,18 +649,14 @@ func (s *Server) respondUpstreamOpenError(w http.ResponseWriter, err error) {
 
 	switch openErr.Kind {
 	case "http":
-		s.logger.Error("upstream non-200 after retry", "status", openErr.StatusCode, "errorBody", openErr.ResponseBody)
-		status := openErr.StatusCode
-		if status == 0 {
-			status = http.StatusBadGateway
-		}
-		s.writeJSON(w, status, map[string]any{"error": firstNonEmpty(openErr.ResponseBody, "upstream error")})
+		s.logger.Error("upstream non-200 after retry", "status", openErr.StatusCode)
+		s.writeError(w, http.StatusBadGateway, "upstream_error")
 	case "protocol":
-		s.logger.Error("upstream is not SSE after retry", "contentType", openErr.ContentType, "fallbackBody", openErr.ResponseBody)
-		s.writeError(w, http.StatusBadGateway, "upstream not SSE")
+		s.logger.Error("upstream is not SSE after retry", "contentType", openErr.ContentType)
+		s.writeError(w, http.StatusBadGateway, "upstream_error")
 	default:
-		s.logger.Error("upstream request failed after retry", "error", openErr.ResponseBody)
-		s.writeError(w, http.StatusBadGateway, "upstream request failed")
+		s.logger.Error("upstream request failed after retry")
+		s.writeError(w, http.StatusBadGateway, "upstream_error")
 	}
 }
 
@@ -827,6 +820,9 @@ func validateChatStreamInput(clientMsgID string, text string, images []string) s
 	}
 	if len(clientMsgID) > maxClientMsgIDLength {
 		return "client_msg_id too long"
+	}
+	if len([]rune(strings.TrimSpace(text))) > maxChatTextRunes {
+		return "text too long"
 	}
 	if len(images) > 4 {
 		return "single request supports up to 4 images"

@@ -47,12 +47,12 @@
 
 目标：不要干等备案，把真实后端链路补齐。
 
-- 继续维护 ECS 上的 `server-go`、`systemd`、Nginx 反向代理、健康检查、环境变量和基础日志；Go 服务默认监听 `127.0.0.1:3000`，公网只走 Nginx。
+- 继续维护 ECS 上的 `server-go`、`systemd`、Nginx 反向代理、健康检查、环境变量和基础日志；生产由 systemd slot 设置 `PORT=3000/3001`，Nginx 切 active upstream，3000 只是本地默认 fallback，公网只走 Nginx。
 - 接 RDS MySQL，跑迁移，确认备份、白名单和只读排查方式。
 - DashScope 主 / 副模型 Key 已配置；继续按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化来源、充值、告警和轮换责任。若后续要扩真实并发，必须使用不同阿里云主账号 Key；同一主账号多 Key 只适合轮换或应急。
 - 接手机号登录 / 服务端可验证 token，并在公开生产环境开启 `AUTH_STRICT=true`，逐步关闭裸 `X-User-Id` 兜底；正式 release APK 不使用共享静态 `SESSION_API_TOKEN`，由后端按真实用户动态签发 per-user token。
 - 接 OSS 图片存储，配置 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`，确保模型能访问 https 图片。
-- 接 SLS 日志，至少覆盖主对话、上传、帮助与反馈、今日农情、检查更新和模型调用失败。
+- SLS 最小日志集已接入服务端 JSON 日志和 Nginx error log；后续补告警 / 仪表盘，至少覆盖主对话、上传、帮助与反馈、今日农情、检查更新和模型调用失败。
 - 若首版暂不接 OSS，则 ECS 必须先保持单台；计划多后端实例前必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储。
 - 数据库迁移不要在多实例首次启动时抢跑；多实例发布前应把迁移改成单独发布步骤或补迁移锁。
 - 验证主聊天 SSE、图片上传、B 层通用短期记忆、C 层长期通用记忆、今日农情、会员额度、帮助与反馈、礼品卡占位、检查更新 APK 链路。

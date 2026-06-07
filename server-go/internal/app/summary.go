@@ -179,11 +179,11 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 	defer response.Body.Close()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		body, readErr := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
+		_, readErr := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
 		if readErr != nil && !errors.Is(readErr, errResponseBodyTooLarge) {
 			return "", readErr
 		}
-		return "", fmt.Errorf("%s_EXTRACT_HTTP_%d:%s", layer, response.StatusCode, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("%s_EXTRACT_HTTP_%d", layer, response.StatusCode)
 	}
 
 	body, readErr := readLimitedResponseBody(response.Body, summaryResponseLimit)

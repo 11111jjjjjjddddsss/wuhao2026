@@ -37,6 +37,7 @@ object FusionOneLoginClient {
     ) {
         val business = AlicomFusionBusiness()
         val completed = AtomicBoolean(false)
+        val sceneStarted = AtomicBoolean(false)
         currentBusiness?.let { previous ->
             runCatching { previous.stopSceneWithTemplateId(LOGIN_TEMPLATE_ID) }
             runCatching { previous.destory() }
@@ -54,7 +55,7 @@ object FusionOneLoginClient {
 
             override fun onSDKTokenAuthSuccess() {
                 activity.runOnUiThread {
-                    if (!completed.get()) {
+                    if (!completed.get() && sceneStarted.compareAndSet(false, true)) {
                         business.startSceneWithTemplateId(activity, LOGIN_TEMPLATE_ID)
                     }
                 }

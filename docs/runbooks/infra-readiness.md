@@ -12,14 +12,14 @@
 - 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
 - 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、后端部署、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进；当前网站 ICP 已通过，App 备案已提交阿里云初审但尚未通过
 - 买服务器前功能巡检记录已开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：当前已巡检会员中心 / 额度体系，以及 Go 后端高并发 / 性能边界
-- 正式云资源已部分落地：Region 选定 `华北2（北京）/ cn-beijing`；首版后端部署路线已从“SAE 镜像托管优先”转向“ECS 传统部署优先”。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，生产 VPC `nongjiqiancha-prod-vpc` / `vpc-2zeax2zowza2398b9dzot`，生产交换机 `nongjiqiancha-prod-beijing-l` / `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps，CLI 当前显示到期时间 `2027-06-01T16:00Z`；2026-05-30 已删除空闲默认 VPC / 默认交换机和旧 SAE 自动交换机，当前北京区只保留生产 VPC / 交换机；已部署真实 `server-go`，当前健康检查 OK，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`。阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内解析和 HTTP healthz 已生效；2026-06-05 已通过 Let’s Encrypt / certbot 配置 `api.nongjiqiancha.cn` Nginx 443 HTTPS，公网 HTTPS healthz 返回 200。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，但该应用只是默认 demo 镜像且已删除；删除后 SAE `ListApplications` 返回空列表，`TotalSize=0`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、同一交换机 `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，当前自动备份保留 7 天；已创建库 `nongjiqiancha`、账号 `nongji_app`，白名单放通 ECS 私网 IP `192.168.1.237`。Redis 开源版实例 `nongjiqiancha-prod-redis` / `r-2zet46zvmoo9wu3bic` 已购买并运行，256MB、Redis 7.0、标准高可用主备、同生产 VPC / 北京可用区 L，内网地址 `r-2zet46zvmoo9wu3bic.redis.rds.aliyuncs.com:6379`，白名单放通 ECS 私网 IP；`server-go` 已接可选 Redis 客户端，生产 ECS 已配置 `REDIS_*` 并通过 `/healthz redis=ok` 验证，当前用于融合认证 token、短信认证、主聊天用户级频控、App 自动日志、帮助与反馈用户发消息和上传短期限流，不接管聊天内容、额度、归档、摘要或订单真相。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过，网站 ICP 已于 2026-06-05 通过，App 备案已于 2026-06-05 20:03 左右提交阿里云初审，仍待 App 备案通过、公安备案和正式真机回归。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；Bucket `nongjiqiancha-prod` 已创建为北京私有标准本地冗余，并配置 `uploads/` 3 天、`support/` 30 天生命周期，代码已新增 OSS 上传后端，生产 ECS 环境变量已收口并通过 `upload_storage=oss` 验证。SLS 服务本体已开通，但未创建农技千查专用日志项目
-- 当前尚未购买 / 接入：SLS 节省计划 / 资源包、CDN / OSS 下行流量包。当前尚未完成：App 备案通过、公安备案、一键登录 / 验证码 / 主聊天 / 图片问诊真机回归、上线前 AccessKey 轮换；网站 ICP、`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS 和 DashScope 主 / 副模型 Key 已于 2026-06-05 至 2026-06-06 通过 / 配置；默认 7 天 RDS 备份策略是否调整仍待确认
+- 正式云资源已部分落地：Region 选定 `华北2（北京）/ cn-beijing`；首版后端部署路线已从“SAE 镜像托管优先”转向“ECS 传统部署优先”。ECS `i-2ze5nrem0jrchln4f0eh` 已购买并运行，可用区 L，规格 `ecs.u1-c1m2.large`（2 vCPU / 4 GiB），Ubuntu 22.04 64 位，公网 IP `39.106.1.151`，私网 IP `192.168.1.237`，生产 VPC `nongjiqiancha-prod-vpc` / `vpc-2zeax2zowza2398b9dzot`，生产交换机 `nongjiqiancha-prod-beijing-l` / `vsw-2zemsq82lj2kp8za90aky`，安全组 `sg-2ze4tilwxw1h5w77lwl1`，固定公网带宽 5 Mbps，CLI 当前显示到期时间 `2027-06-01T16:00Z`；2026-05-30 已删除空闲默认 VPC / 默认交换机和旧 SAE 自动交换机，当前北京区只保留生产 VPC / 交换机；已部署真实 `server-go`，当前健康检查 OK，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`。阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内解析到本机；2026-06-05 已通过 Let’s Encrypt / certbot 配置 `api.nongjiqiancha.cn` Nginx 443 HTTPS，公网 HTTPS healthz 返回 200，HTTP 80 除 ACME challenge 外会 301 跳 HTTPS。此前曾创建标准版 SAE 应用 `nongjiqiancha`，AppId `366147d5-3760-4548-bd68-f38debbc5f23`，规格 `0.5 核 / 1GB / 单实例`，自动弹性未开启，但该应用只是默认 demo 镜像且已删除；删除后 SAE `ListApplications` 返回空列表，`TotalSize=0`。RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、同一交换机 `vsw-2zemsq82lj2kp8za90aky` / `192.168.1.0/24`、内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，当前自动备份保留 7 天；已创建库 `nongjiqiancha`、账号 `nongji_app`，白名单放通 ECS 私网 IP `192.168.1.237`。Redis 开源版实例 `nongjiqiancha-prod-redis` / `r-2zet46zvmoo9wu3bic` 已购买并运行，256MB、Redis 7.0、标准高可用主备、同生产 VPC / 北京可用区 L，内网地址 `r-2zet46zvmoo9wu3bic.redis.rds.aliyuncs.com:6379`，白名单放通 ECS 私网 IP；`server-go` 已接可选 Redis 客户端，生产 ECS 已配置 `REDIS_*` 并通过 `/healthz redis=ok` 验证，当前用于融合认证 token、短信认证、主聊天用户级频控、App 自动日志、帮助与反馈用户发消息和上传短期限流，不接管聊天内容、额度、归档、摘要或订单真相。域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过，网站 ICP 已于 2026-06-05 通过，App 备案已于 2026-06-05 20:03 左右提交阿里云初审，仍待 App 备案通过、公安备案和正式真机回归。OSS 标准-本地冗余存储包（华北2）100GB 已购买并生效，资源包实例 `OSSBAG-cn-mqq4sqfvr001`；Bucket `nongjiqiancha-prod` 已创建为北京私有标准本地冗余，并配置 `uploads/` 3 天、`support/` 30 天生命周期，代码已新增 OSS 上传后端，生产 ECS 环境变量已收口并通过 `upload_storage=oss` 验证。SLS 服务本体已开通，农技千查专用 Project / Logstore 已接入最小服务端日志和 Nginx error log，当前尚未购买 SLS 资源包或配置告警 / 仪表盘
+- 当前尚未购买 / 接入：SLS 节省计划 / 资源包、SLS 告警 / 仪表盘、CDN / OSS 下行流量包。当前尚未完成：App 备案通过、公安备案、一键登录 / 验证码 / 主聊天 / 图片问诊真机回归、上线前 AccessKey 轮换；网站 ICP、`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、DashScope 主 / 副模型 Key 和 SLS 最小日志集已于 2026-06-05 至 2026-06-06 通过 / 配置；默认 7 天 RDS 备份策略是否调整仍待确认
 
 ## 最小上线资源清单
 
 ### 必需
 
-- 阿里云 ECS：当前首版优先的 `server-go` 运行载体。实例 `i-2ze5nrem0jrchln4f0eh` 已购买并运行；系统用户、部署目录、systemd、反向代理、`api` HTTPS、日志和回滚入口已部分固化，后续继续补发布记录、SLS 和后台入口
+- 阿里云 ECS：当前首版优先的 `server-go` 运行载体。实例 `i-2ze5nrem0jrchln4f0eh` 已购买并运行；系统用户、部署目录、systemd、反向代理、`api` HTTPS、日志和回滚入口已部分固化，后续继续补发布记录、SLS 告警 / 仪表盘和后台入口
 - 阿里云 RDS MySQL：首版主业务数据。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项。当前实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，配置为 MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、生产 VPC `vpc-2zeax2zowza2398b9dzot`、生产交换机 `vsw-2zemsq82lj2kp8za90aky`，内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，自动备份保留 7 天
 - 域名与 HTTPS 证书：对外 API 入口和官网入口。当前 `nongjiqiancha.cn` 已购买且用户口头确认实名认证 / 模板审核已通过，`api.nongjiqiancha.cn` A 记录、Nginx 443、Let’s Encrypt 证书和后端反代已完成；`nongjiqiancha.cn` / `www.nongjiqiancha.cn` A 记录、Nginx 静态官网和 Let’s Encrypt 证书也已完成；下载域名和管理后台域名后续若启用需分别配置入口和证书
 - 基础密钥与环境变量托管：模型 Key、数据库连接、JWT / Session 密钥等
@@ -35,14 +35,14 @@
 1. 已完成：Region 选定 `cn-beijing`，旧 SAE demo 应用已删除，域名 `nongjiqiancha.cn` 已购买并口头确认过审，ECS / RDS MySQL / OSS 100GB 存储包已购买
 2. 已完成：ECS 基础系统环境、Nginx、systemd、RDS 数据库 / 账号 / 白名单和 `server-go` 首版部署
 3. 已完成：购买 Redis 开源版 256MB 最小实例，放入生产 VPC，并把融合认证 token、认证短信发送 / 登录校验、App 自动日志接收、帮助与反馈用户发消息、上传短期限流接到 Redis；生产 ECS 已部署验证 `redis=ok`
-4. 下一步：跟进 App 备案审核 / 公安备案、部署主备 Key 优先代码、真机登录 / 主聊天 / 图片问诊回归、上线前 AccessKey 轮换和日志方案；SLS 是否首版接入再按成本和排障需求确认
+4. 下一步：跟进 App 备案审核 / 公安备案、真机登录 / 主聊天 / 图片问诊回归、上线前 AccessKey 轮换和 SLS 告警 / 仪表盘是否启用；SLS 最小日志集已先接入用于排障
 
 ## 采购前必须拍板的问题
 
 - 生产环境当前优先按北京 ECS 单环境跑通；北京 SAE demo 应用已删除，是否后续重新启用 SAE / 拆测试或预发环境仍待真实联调后确认
 - 数据库首版倾向直接使用 RDS MySQL；当前只需确认规格、备份策略、连接白名单 / VPC 连接和后续是否需要平滑升级 PolarDB
 - 图片首版按 OSS 短期保存推进；资源包、Bucket、生命周期、代码后端、生产 ECS 最小权限凭证、环境变量和部署验证均已就绪
-- 日志是否首版就接农技千查专用 SLS；如果不是，后端先用 `journalctl` / Nginx 本地日志过渡
+- SLS 告警 / 仪表盘是否首版启用；当前专用 SLS 最小日志集已接入，仍保留 `journalctl` / Nginx 本地日志作为兜底
 - 是否一开始就拆测试 / 生产两套环境，还是先单环境跑通
 - 首版已接 OSS；若计划两台 ECS 或回到 SAE 多实例，仍需先用真实 App 链路验证图片上传、读取和模型拉图
 - 多实例发布前，数据库迁移是否改成单独发布步骤或加迁移锁，避免多个实例首次启动同时跑迁移

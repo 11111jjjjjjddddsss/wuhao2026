@@ -29,7 +29,7 @@
 - Nginx 安全响应头：隐藏版本号、`nosniff`、`frame-ancestors / X-Frame-Options`、HSTS、Referrer Policy
 - Go 接口限流和 body 限制：即使绕过 Nginx 也有第二层保护
 - fail2ban：识别 SSH 暴力尝试；公网 SSH 已关后主要作为兜底观察
-- 日志巡检：Nginx error/access、`journalctl` 和 App 自动日志先顶住，后续再接 SLS
+- 日志巡检：当前已接 SLS 最小日志集，Nginx error、`journalctl` 和 App 自动日志继续作为兜底；SLS 告警 / 仪表盘后续再补
 
 ## 已执行加固
 

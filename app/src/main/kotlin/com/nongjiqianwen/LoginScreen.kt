@@ -17,6 +17,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,6 +53,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -81,6 +84,7 @@ fun LoginGate(content: @Composable () -> Unit) {
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun LoginScreen(onLoginSuccess: () -> Unit) {
     LaunchedEffect(Unit) {
         LaunchUiGate.chatReady = true
@@ -161,13 +165,14 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .background(Color(0xFF111111), CircleShape),
+                            .clip(CircleShape)
+                            .background(Color(0xFF111111)),
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
-                            painter = painterResource(R.drawable.ic_membership_leaf),
+                            painter = painterResource(R.mipmap.ic_launcher_foreground),
                             contentDescription = null,
-                            modifier = Modifier.size(34.dp)
+                            modifier = Modifier.size(68.dp)
                         )
                     }
                     Spacer(Modifier.size(10.dp))
@@ -334,8 +339,9 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Checkbox(checked = agreed, onCheckedChange = { agreed = it })
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                    FlowRow(
+                        horizontalArrangement = Arrangement.Start,
+                        verticalArrangement = Arrangement.Center,
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(

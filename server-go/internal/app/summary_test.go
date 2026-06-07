@@ -75,7 +75,7 @@ func TestExtractSummaryUsesQwen35FlashWithThinkingDisabled(t *testing.T) {
 	}
 }
 
-func TestExtractSummaryCapsHTTPErrorBody(t *testing.T) {
+func TestExtractSummaryDoesNotExposeHTTPErrorBody(t *testing.T) {
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, strings.Repeat("x", bailianBodyPreviewLimit+1024), http.StatusBadGateway)
 	}))
@@ -97,8 +97,8 @@ func TestExtractSummaryCapsHTTPErrorBody(t *testing.T) {
 	if !strings.Contains(message, "B_EXTRACT_HTTP_502") {
 		t.Fatalf("error = %q, want B_EXTRACT_HTTP_502", message)
 	}
-	if len(message) > bailianBodyPreviewLimit+256 {
-		t.Fatalf("error body was not capped, length=%d", len(message))
+	if strings.Contains(message, strings.Repeat("x", 16)) {
+		t.Fatalf("error body leaked into summary error: %q", message)
 	}
 }
 

@@ -92,7 +92,8 @@ Android 只上报结构化错误信息：
 
 ```bash
 curl -H "X-Support-Admin-Secret: $SUPPORT_ADMIN_SECRET" \
-  "http://127.0.0.1:3000/internal/app/logs?level=error&limit=50"
+  --resolve api.nongjiqiancha.cn:443:127.0.0.1 \
+  "https://api.nongjiqiancha.cn/internal/app/logs?level=error&limit=50"
 ```
 
 该接口只读，不返回聊天正文、AI 回复全文、图片内容 / URL、手机号、token 或模型 Key。成功或失败查询都会写入最小内部审计日志，只保存动作、过滤条件摘要、返回条数、脱敏 IP、UA 和时间，不保存密钥或日志 attrs 原文以外的额外敏感内容。
