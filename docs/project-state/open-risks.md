@@ -1,13 +1,13 @@
 # 当前未关闭风险
 
-最后更新：2026-06-06
+最后更新：2026-06-07
 
 ## R1 运维入口仍以文档骨架为主
 
 - 状态：未关闭
-- 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来；ECS / RDS / Redis / OSS / DNS / HTTPS / 部署脚本、Go 请求级日志、ECS 日志查询脚本、农技千查专用 SLS Project / Logstore 已经有一批真实入口，最小内部操作审计表和查询接口也已落地，但仓库内尚未沉淀完整的 SLS 告警 / 仪表盘、数据库只读脚本、网页管理后台和后台账号 / 权限系统
+- 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来；ECS / RDS / Redis / OSS / DNS / HTTPS / 部署脚本、Go 请求级日志、ECS 日志查询脚本、农技千查专用 SLS Project / Logstore 已经有一批真实入口，最小内部操作审计表和查询接口也已落地；管理后台架构 ADR 和页面设计 runbook 已补齐，但仓库内尚未沉淀完整的 SLS 告警 / 仪表盘、数据库只读脚本、网页管理后台和后台账号 / 权限系统
 - 风险：换窗口时能知道要看哪里，但真正执行公网生产运维仍可能依赖人工补充；当前不能把网页后台、后台账号、后台权限或 SLS 告警写成既成事实
-- 补充：买服务器前“统一管理后台”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，并新增 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)。当前没有网页后台或 `/admin` 路由；已有帮助与反馈内部会话列表 / 详情 / 回复接口、今日农情内部生成接口、App 自动日志 `POST /api/app/logs` / `client_app_logs` 骨架、只读内部查询 `GET /internal/app/logs`、Go 请求级日志 `http_request / http_request_slow / http_request_error`、ECS 只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)、SLS 只读脚本 [query-sls-logs.ps1](D:/wuhao/scripts/query-sls-logs.ps1)，以及最小内部审计 `admin_audit_logs` / `GET /internal/admin/audit-logs`。App 自动日志已有鉴权、8KiB 请求上限、字段清洗和默认 10 分钟 60 次短期限流，内部查询暂复用 `SUPPORT_ADMIN_SECRET` 保护；审计只记录动作元信息，不记录正文 / 图片 URL / token / 密钥，但还没有后台账号、角色权限、网页 UI、SLS 告警或仪表盘
+- 补充：买服务器前“统一管理后台”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。当前没有网页后台或 `/admin` 路由；已有帮助与反馈内部会话列表 / 详情 / 回复接口、今日农情内部生成接口、App 自动日志 `POST /api/app/logs` / `client_app_logs` 骨架、只读内部查询 `GET /internal/app/logs`、Go 请求级日志 `http_request / http_request_slow / http_request_error`、ECS 只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)、SLS 只读脚本 [query-sls-logs.ps1](D:/wuhao/scripts/query-sls-logs.ps1)，以及最小内部审计 `admin_audit_logs` / `GET /internal/admin/audit-logs`。App 自动日志已有鉴权、8KiB 请求上限、字段清洗和默认 10 分钟 60 次短期限流，内部查询暂复用 `SUPPORT_ADMIN_SECRET` 保护；审计只记录动作元信息，不记录正文 / 图片 URL / token / 密钥，但还没有后台账号、角色权限、网页 UI、SLS 告警或仪表盘
 - 后续动作：后面一旦发生真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营，就把实际可执行入口补进 runbook、脚本或统一管理后台。第一版后台优先补后台账号、角色权限、操作审计、帮助与反馈、用户查询、App 自动日志查询、检查更新、今日农情状态页，不提前做重
 
 ## R2 项目记忆已有程序化检查，但覆盖仍偏粗

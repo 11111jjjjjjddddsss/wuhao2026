@@ -5,6 +5,8 @@
 
 ## 2026-06-07
 
+- 管理后台方案细化：新增 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md) 作为后台页面级设计文档，覆盖总览、用户、地区与来源、会员与额度、订单、礼品卡、帮助与反馈、App 日志、今日农情、检查更新、产品洞察、审计日志和权限角色；新增 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)，明确后台采用 Vite 静态前端 + `server-go` 管理 API，不另起后台服务。产品洞察按脱敏聚合报表做，后续 Codex 优先读取洞察报表，不直接长期读取生产库完整聊天全文；后台初始账号只能通过一次性初始化脚本或环境变量写入 hash，不把明文账号密码写进仓库。
+
 - 用户已在全国互联网安全管理服务平台提交网站公安联网备案申请，当前处于待审核状态，公安备案号尚未下发；App 公安备案后续等 App 备案通过 / 正式信息齐后再补。仓库只记录提交状态和待办，不记录公安备案数据码、证件号或平台账号信息；官网 footer 仍只展示 ICP，等公安备案通过后再按平台提供的真实编号 / 图标 / HTML 代码补充。
 
 - 继续按多代理巡检收口一批前后端和运维小坑：今日农情模型非 2xx 错误不再把上游原始 body 写入错误链 / 日志 / 数据库；App 自动日志 attrs 不只按敏感 key 过滤，也会丢弃普通字段名里包含 URL、token、AccessKey、手机号等敏感文本的 value；上传 multipart 超限明确返回 `413 body_too_large`，损坏 multipart 返回 `invalid multipart`。Android 图片导入和后台待发送补发在压缩前增加 32MB 原图读取上限，自更新 APK 下载增加默认 200MB 硬上限并按后端 file size 下载中断言；debug 测试包真实流式渲染速度与 release 对齐。内部客服回复不再对任意 `user_id` 自动创建用户资产行，必须已有帮助与反馈会话。运维侧 readiness 补 `dypns / dypns_fusion / dypns_sms / dev_order_endpoints=false` 断言，官网部署脚本改为断言 HTTP / HTTPS 状态码，回滚和 SLS 日志 runbook 修正为当前双端口 slot / 最小 SLS 真实入口；同时明确帮助与反馈图片当前仍复用 `/uploads/` 3 天生命周期，`support/` 30 天只是预留规则。
