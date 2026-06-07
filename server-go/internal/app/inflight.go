@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-const chatStreamInflightLease = 30 * time.Minute
+const (
+	chatStreamInflightLease      = 30 * time.Minute
+	chatStreamInflightLeaseGrace = 5 * time.Minute
+)
 
 var ErrChatStreamGateBusy = errors.New("chat stream gate busy")
 
@@ -36,9 +39,12 @@ func (s *Store) WithUserChatStreamGate(ctx context.Context, userID string, fn fu
 	return fn(ctx)
 }
 
-func (s *Store) TryAcquireChatStreamInflight(ctx context.Context, userID string, clientMsgID string, now time.Time) (bool, string, error) {
+func (s *Store) TryAcquireChatStreamInflight(ctx context.Context, userID string, clientMsgID string, now time.Time, leaseDuration time.Duration) (bool, string, error) {
 	nowMs := now.UnixMilli()
-	leaseUntilMs := now.Add(chatStreamInflightLease).UnixMilli()
+	if leaseDuration <= 0 {
+		leaseDuration = chatStreamInflightLease
+	}
+	leaseUntilMs := now.Add(leaseDuration).UnixMilli()
 	leaseToken, err := newChatStreamInflightToken()
 	if err != nil {
 		return false, "", err

@@ -407,7 +407,8 @@ internal fun HamburgerMenuSheet(
                         }
                         HamburgerMenuPage.Redeem -> {
                             HamburgerRedeemCodePage(
-                                onPendingAction = ::showNotice
+                                onPendingAction = ::showNotice,
+                                onRedeemSuccess = onRequestMembershipRefresh
                             )
                         }
                         HamburgerMenuPage.Support -> {
@@ -841,7 +842,6 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
-                subtitle = "兑换入口暂未开放",
                 onClick = onOpenRedeem
             )
             HamburgerMenuDivider(startIndent = 52.dp)
@@ -1021,7 +1021,7 @@ internal fun HamburgerServiceAgreementContent(
         )
         HamburgerAgreementSection(
             title = "五、会员、支付、加油包和礼品卡",
-            body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、后端记录、实际支付或兑换结果及法律规定为准。本版本不提供真实支付、自动续费或礼品卡兑换；相关入口仅展示服务规则，不会向您扣费，也不会发放兑换权益。服务范围变化时，以届时明确展示的价格、商品或服务内容、支付方式、退款规则、权益生效方式和必要资质信息为准。"
+            body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、后端记录、实际支付或兑换结果及法律规定为准。本版本不提供真实支付或自动续费；礼品卡仅支持官方卡码兑换，兑换成功以后端返回和权益记录为准。服务范围变化时，以届时明确展示的价格、商品或服务内容、支付方式、退款规则、权益生效方式和必要资质信息为准。"
         )
         HamburgerAgreementSection(
             title = "六、农资信息和交易边界",
@@ -1127,7 +1127,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "五、会员、支付、农资交易和检查更新",
-            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。本版本不提供真实支付、礼品卡兑换或农资商品交易，不会处理支付账号、支付状态、兑换记录或商品订单。检查更新会使用当前版本号、平台信息和下载 APK 缓存，用于判断是否有新版本并调起系统安装页。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录，但不会在本机保存完整卡码。本版本不提供真实支付或农资商品交易，不会处理支付账号、支付状态或商品订单。检查更新会使用当前版本号、平台信息和下载 APK 缓存，用于判断是否有新版本并调起系统安装页。"
         )
         HamburgerAgreementSection(
             title = "六、帮助与反馈",
@@ -1224,7 +1224,7 @@ private fun HamburgerRiskNoticeContent(
         )
         HamburgerAgreementSection(
             title = "五、交易和权益风险",
-            body = "本版本不提供农资商品交易、真实支付或礼品卡兑换。会员、加油包、礼品卡、支付、农资交易或售后服务的权益，以 App 页面、服务端记录、订单记录、支付平台、商品标签和商家规则为准。请不要相信 App 外私下收款、代充、代兑换、非官方客服或承诺包治包赔的信息。"
+            body = "本版本不提供农资商品交易或真实支付。会员、加油包、礼品卡、支付、农资交易或售后服务的权益，以 App 页面、服务端记录、订单记录、支付平台、商品标签和商家规则为准。请不要相信 App 外私下收款、代充、代兑换、非官方客服或承诺包治包赔的信息。"
         )
         HamburgerAgreementSection(
             title = "六、未成年人需监护",
@@ -1376,7 +1376,7 @@ private fun HamburgerPersonalInfoListContent(
         )
         HamburgerAgreementSection(
             title = "四、会员、礼品卡和更新",
-            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。本版本不提供真实支付、礼品卡兑换或农资商品交易，不会处理支付账号、支付状态、兑换记录或商品订单。检查更新会使用当前版本号、平台信息和下载 APK 缓存。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录，但不会在本机保存完整卡码。本版本不提供真实支付或农资商品交易，不会处理支付账号、支付状态或商品订单。检查更新会使用当前版本号、平台信息和下载 APK 缓存。"
         )
         HamburgerAgreementSection(
             title = "五、帮助与反馈",
@@ -1610,7 +1610,6 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Redeem,
             title = "礼品卡",
-            subtitle = "兑换入口暂未开放",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
@@ -2932,12 +2931,31 @@ internal fun HamburgerDeleteHistoryConfirmPreview() {
     )
 }
 
+private fun giftCardRedeemSuccessText(result: SessionApi.GiftCardRedeemResult): String {
+    val tier = when (result.appliedTier?.lowercase(Locale.ROOT) ?: result.tier?.lowercase(Locale.ROOT)) {
+        "pro" -> "Pro"
+        "plus" -> "Plus"
+        else -> "会员"
+    }
+    val days = result.durationDays?.takeIf { it > 0 }?.let { "${it}天" } ?: "权益"
+    val expire = result.membershipExpireAt?.takeIf { it > 0L }?.let { millis ->
+        SimpleDateFormat("yyyy年MM月dd日 HH:mm", Locale.CHINA).format(Date(millis))
+    }
+    return if (expire.isNullOrBlank()) {
+        "$tier $days 已生效"
+    } else {
+        "$tier $days 已生效，到期 $expire"
+    }
+}
+
 @Composable
 private fun HamburgerRedeemCodePage(
-    onPendingAction: (String) -> Unit
+    onPendingAction: (String) -> Unit,
+    onRedeemSuccess: () -> Unit
 ) {
     HamburgerRedeemCodeContent(
         onPendingAction = onPendingAction,
+        onRedeemSuccess = onRedeemSuccess,
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -2951,13 +2969,31 @@ private fun HamburgerRedeemCodePage(
 @Composable
 private fun HamburgerRedeemCodeContent(
     onPendingAction: (String) -> Unit,
+    onRedeemSuccess: () -> Unit = {},
     modifier: Modifier = Modifier,
     initialCode: String = ""
 ) {
     var redeemCode by remember(initialCode) { mutableStateOf(initialCode) }
+    var redeeming by remember { mutableStateOf(false) }
+    var redeemResult by remember { mutableStateOf<SessionApi.GiftCardRedeemResult?>(null) }
     fun submitRedeem() {
-        if (redeemCode.isNotBlank()) {
-            onPendingAction("礼品卡暂未开放")
+        val code = redeemCode.trim()
+        if (redeeming) return
+        if (code.isBlank()) {
+            onPendingAction("请输入礼品卡码")
+            return
+        }
+        redeeming = true
+        SessionApi.redeemGiftCard(code) { result, error ->
+            redeeming = false
+            if (result?.ok == true) {
+                redeemResult = result
+                redeemCode = ""
+                onRedeemSuccess()
+                onPendingAction("兑换成功，会员权益已更新")
+            } else {
+                onPendingAction(error ?: "兑换失败，请稍后再试")
+            }
         }
     }
     Column(modifier = modifier) {
@@ -2980,83 +3016,93 @@ private fun HamburgerRedeemCodeContent(
                 .weight(1f),
             contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = 360.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "礼品卡暂未开放",
-                    color = Color(0xFF5C6F42),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
+            val result = redeemResult
+            if (result != null) {
+                HamburgerRedeemSuccessCard(
+                    result = result,
+                    onConfirm = { redeemResult = null },
+                    modifier = Modifier.padding(horizontal = 18.dp)
                 )
-                Text(
-                    text = "等后台兑换和权益发放接好后，这里会开放真实兑换入口。",
-                    color = Color(0xFF777B82),
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp,
-                    textAlign = TextAlign.Center
-                )
-                Surface(
-                    color = Color(0xFFFAFBFC),
-                    shape = RoundedCornerShape(18.dp),
-                    border = BorderStroke(1.dp, Color.Black),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        BasicTextField(
-                            value = redeemCode,
-                            onValueChange = { next -> redeemCode = next },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onDone = { submitRedeem() }
-                            ),
-                            modifier = Modifier.fillMaxWidth(),
-                            textStyle = TextStyle(
-                                color = Color(0xFF111111),
-                                fontSize = 18.sp,
-                                lineHeight = 25.sp,
-                                fontWeight = FontWeight.Normal,
-                                textAlign = TextAlign.Center
-                            )
-                        )
-                    }
-                }
-                Surface(
-                    color = Color(0xFFE3E5E8),
-                    shape = RoundedCornerShape(999.dp),
+            } else {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 54.dp)
-                        .clickable(
-                            enabled = false,
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { submitRedeem() }
-                        )
+                        .widthIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "暂未开放",
-                            color = Color(0xFF8A8E96),
-                            fontSize = 18.sp,
-                            lineHeight = 24.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    Text(
+                        text = "输入卡码兑换会员权益",
+                        color = Color(0xFF315E3F),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "兑换结果以后端记录为准，不显示完整卡号历史。",
+                        color = Color(0xFF777B82),
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Surface(
+                        color = Color(0xFFFAFBFC),
+                        shape = RoundedCornerShape(18.dp),
+                        border = BorderStroke(1.dp, Color.Black),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 52.dp)
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            BasicTextField(
+                                value = redeemCode,
+                                onValueChange = { next -> redeemCode = next },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { submitRedeem() }
+                                ),
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = TextStyle(
+                                    color = Color(0xFF111111),
+                                    fontSize = 18.sp,
+                                    lineHeight = 25.sp,
+                                    fontWeight = FontWeight.Normal,
+                                    textAlign = TextAlign.Center
+                                )
+                            )
+                        }
+                    }
+                    val canSubmit = redeemCode.isNotBlank() && !redeeming
+                    Surface(
+                        color = if (canSubmit) Color(0xFF111111) else Color(0xFFE3E5E8),
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 54.dp)
+                            .clickable(
+                                enabled = canSubmit,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { submitRedeem() }
+                            )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = if (redeeming) "兑换中" else "兑换",
+                                color = if (canSubmit) Color.White else Color(0xFF8A8E96),
+                                fontSize = 18.sp,
+                                lineHeight = 24.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
@@ -3066,6 +3112,7 @@ private fun HamburgerRedeemCodeContent(
 
 @Composable
 private fun HamburgerRedeemSuccessCard(
+    result: SessionApi.GiftCardRedeemResult? = null,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -3088,6 +3135,15 @@ private fun HamburgerRedeemSuccessCard(
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center
             )
+            if (result != null) {
+                Text(
+                    text = giftCardRedeemSuccessText(result),
+                    color = Color(0xFFD9DCE0),
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
             Surface(
                 color = Color.White,
                 shape = RoundedCornerShape(999.dp),

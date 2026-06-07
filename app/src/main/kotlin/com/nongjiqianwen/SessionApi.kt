@@ -162,6 +162,17 @@ object SessionApi {
             get() = hasUpdate == true && !apkUrl.isNullOrBlank() && apkUrl.trim().startsWith("https://")
     }
 
+    data class GiftCardRedeemResult(
+        val ok: Boolean = false,
+        @SerializedName("card_id") val cardId: String? = null,
+        @SerializedName("batch_id") val batchId: String? = null,
+        val tier: String? = null,
+        @SerializedName("applied_tier") val appliedTier: String? = null,
+        @SerializedName("duration_days") val durationDays: Int? = null,
+        @SerializedName("membership_expire_at") val membershipExpireAt: Long? = null,
+        @SerializedName("redeemed_at") val redeemedAt: Long? = null
+    )
+
     enum class ClearSessionHistoryResult {
         Success,
         ActiveStream,
@@ -244,7 +255,6 @@ object SessionApi {
             endpoint = "/api/auth/fusion/login",
             payload = mapOf(
                 "verify_token" to verifyToken.trim(),
-                "legacy_user_id" to IdManager.getLegacyUserId(),
                 "device_id" to IdManager.getDeviceId()
             ),
             onResult = onResult
@@ -326,7 +336,6 @@ object SessionApi {
             payload = mapOf(
                 "phone_number" to phoneNumber.trim(),
                 "verify_code" to verifyCode.trim(),
-                "legacy_user_id" to IdManager.getLegacyUserId(),
                 "device_id" to IdManager.getDeviceId()
             ),
             onResult = onResult
@@ -1007,6 +1016,75 @@ object SessionApi {
         )
     }
 
+    fun redeemGiftCard(code: String, onResult: (GiftCardRedeemResult?, String?) -> Unit) {
+        val base = baseUrl()
+        val trimmedCode = code.trim()
+        if (base.isEmpty()) {
+            postToMain { onResult(null, "后端地址未配置") }
+            return
+        }
+        if (trimmedCode.isEmpty()) {
+            postToMain { onResult(null, "请输入礼品卡码") }
+            return
+        }
+        if (!IdManager.isLoggedIn()) {
+            postToMain { onResult(null, "请先登录后兑换") }
+            return
+        }
+        val requestBody = gson.toJson(mapOf("code" to trimmedCode))
+            .toRequestBody("application/json".toMediaType())
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/gift-cards/redeem")
+                        .addHeader("Content-Type", "application/json")
+                        .post(requestBody)
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    val body = it.body?.string().orEmpty()
+                    if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = "warn",
+                            event = "gift_card.redeem_failed",
+                            message = "Gift card redeem failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
+                        postToMain { onResult(null, giftCardRedeemErrorMessage(it.code, body)) }
+                        return@use
+                    }
+                    val parsed = try {
+                        gson.fromJson(body, GiftCardRedeemResult::class.java)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse gift card redeem", e)
+                        null
+                    }
+                    if (parsed?.ok == true) {
+                        postToMain { onResult(parsed, null) }
+                    } else {
+                        postToMain { onResult(null, "兑换失败，请稍后再试") }
+                    }
+                }
+            },
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "gift_card.redeem_failed",
+                    message = "Gift card redeem failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(null, "网络连接失败，请稍后再试") }
+            }
+        )
+    }
+
     fun getSnapshot(onResult: (SessionSnapshot?) -> Unit) {
         val requestGeneration = runtimeGeneration.get()
         fun isRuntimeStale(): Boolean = requestGeneration != runtimeGeneration.get()
@@ -1507,6 +1585,25 @@ object SessionApi {
             message = message,
             autoReply = autoReply
         )
+    }
+
+    private fun giftCardRedeemErrorMessage(statusCode: Int, body: String): String {
+        val code = runCatching {
+            gson.fromJson(body, JsonObject::class.java)
+                ?.get("error")
+                ?.asString
+                .orEmpty()
+        }.getOrDefault("")
+        return when (code) {
+            "gift_card_invalid_code", "gift_card_not_found" -> "卡码不正确，请核对后再试"
+            "gift_card_inactive" -> "这张礼品卡已使用或已作废"
+            "gift_card_expired" -> "这张礼品卡已过期"
+            "gift_card_lower_tier" -> "当前会员档位更高，不能兑换较低档位礼品卡"
+            "gift_card_not_configured" -> "礼品卡服务暂未配置"
+            "rate_limited" -> "尝试太频繁，请稍后再试"
+            "unauthorized" -> "请先登录后兑换"
+            else -> if (statusCode >= 500) "服务暂时不可用，请稍后再试" else "兑换失败，请稍后再试"
+        }
     }
 
     private fun postToMain(block: () -> Unit) {

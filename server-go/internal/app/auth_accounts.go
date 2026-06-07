@@ -298,26 +298,27 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		}
 	}
 
+	targetTier, targetExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, newUserID, nowMs)
+	if err != nil {
+		return err
+	}
+	sourceTier, sourceExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, oldUserID, nowMs)
+	if err != nil {
+		return err
+	}
+	mergedTier, mergedExpireAt := mergeEffectiveEntitlements(targetTier, targetExpireAt, sourceTier, sourceExpireAt)
 	if _, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO user_entitlement(user_id, tier, tier_expire_at, updated_at)
-		 SELECT ?, tier, tier_expire_at, ? FROM user_entitlement WHERE user_id = ?
+		 VALUES (?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE
-		   tier = CASE
-		     WHEN user_entitlement.tier = 'free' AND VALUES(tier) IN ('plus','pro') THEN VALUES(tier)
-		     WHEN user_entitlement.tier = 'plus' AND VALUES(tier) = 'pro' THEN VALUES(tier)
-		     ELSE user_entitlement.tier
-		   END,
-		   tier_expire_at = CASE
-		     WHEN user_entitlement.tier_expire_at IS NULL THEN VALUES(tier_expire_at)
-		     WHEN VALUES(tier_expire_at) IS NULL THEN user_entitlement.tier_expire_at
-		     WHEN user_entitlement.tier_expire_at > VALUES(tier_expire_at) THEN user_entitlement.tier_expire_at
-		     ELSE VALUES(tier_expire_at)
-		   END,
+		   tier = VALUES(tier),
+		   tier_expire_at = VALUES(tier_expire_at),
 		   updated_at = VALUES(updated_at)`,
 		newUserID,
+		string(mergedTier),
+		nullableInt64Ptr(mergedExpireAt),
 		nowMs,
-		oldUserID,
 	); err != nil {
 		return err
 	}
@@ -325,6 +326,61 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return err
 	}
 	return nil
+}
+
+func effectiveEntitlementForUserTx(ctx context.Context, tx *sql.Tx, userID string, nowMs int64) (Tier, *int64, error) {
+	var tier sql.NullString
+	var expireAt sql.NullInt64
+	err := tx.QueryRowContext(
+		ctx,
+		"SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE",
+		userID,
+	).Scan(&tier, &expireAt)
+	if err == sql.ErrNoRows {
+		return TierFree, nil, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return effectiveTierFromRow(tier, expireAt, TierFree, nowMs)
+}
+
+func mergeEffectiveEntitlements(targetTier Tier, targetExpireAt *int64, sourceTier Tier, sourceExpireAt *int64) (Tier, *int64) {
+	if tierRank(sourceTier) > tierRank(targetTier) {
+		return sourceTier, cloneInt64Ptr(sourceExpireAt)
+	}
+	if tierRank(sourceTier) < tierRank(targetTier) {
+		return targetTier, cloneInt64Ptr(targetExpireAt)
+	}
+	if targetTier == TierFree {
+		return TierFree, nil
+	}
+	return targetTier, maxInt64Ptr(targetExpireAt, sourceExpireAt)
+}
+
+func cloneInt64Ptr(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	copyValue := *value
+	return &copyValue
+}
+
+func maxInt64Ptr(left *int64, right *int64) *int64 {
+	if left == nil {
+		return cloneInt64Ptr(right)
+	}
+	if right == nil || *left >= *right {
+		return cloneInt64Ptr(left)
+	}
+	return cloneInt64Ptr(right)
+}
+
+func nullableInt64Ptr(value *int64) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func copyRowsToNewUserID(ctx context.Context, tx *sql.Tx, table string, oldUserID string, newUserID string, orderColumn string) error {

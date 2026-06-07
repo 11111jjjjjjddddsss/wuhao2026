@@ -110,6 +110,11 @@ type adminGiftCardCreateBatchRequest struct {
 	Note         string `json:"note"`
 }
 
+type adminGiftCardVoidRequest struct {
+	CardID string `json:"card_id"`
+	Reason string `json:"reason"`
+}
+
 type giftCardRedeemRequest struct {
 	Code string `json:"code"`
 }
@@ -218,6 +223,47 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.cards", "gift_cards", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(cards), "status": filter.Status})
 	s.writeJSON(w, http.StatusOK, map[string]any{"cards": cards, "filter": filter})
+}
+
+func (s *Server) handleAdminVoidGiftCard(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "finance_ops")
+	if !ok {
+		return
+	}
+	var body adminGiftCardVoidRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	cardID := strings.TrimSpace(body.CardID)
+	reason := strings.TrimSpace(body.Reason)
+	if cardID == "" {
+		s.writeError(w, http.StatusBadRequest, "card_id_required")
+		return
+	}
+	if reason == "" {
+		s.writeError(w, http.StatusBadRequest, "reason_required")
+		return
+	}
+	if err := s.store.VoidGiftCard(r.Context(), cardID, time.Now().UnixMilli()); err != nil {
+		status := http.StatusBadRequest
+		code := "gift_card_inactive"
+		if !errors.Is(err, errGiftCardInactive) {
+			status = http.StatusInternalServerError
+			code = "internal_error"
+			s.logger.Error("admin void gift card failed", "cardID", cardID, "error", err)
+		}
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.void", "gift_cards", cardID, "", false, status, map[string]any{
+			"error_code": code,
+			"reason":     truncateRunes(reason, 160),
+		})
+		s.writeError(w, status, code)
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.void", "gift_cards", cardID, "", true, http.StatusOK, map[string]any{
+		"reason": truncateRunes(reason, 160),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card_id": cardID})
 }
 
 func (s *Server) handleAdminGiftCardAttempts(w http.ResponseWriter, r *http.Request) {
@@ -531,6 +577,31 @@ func (s *Store) ListGiftCardAttempts(ctx context.Context, filter GiftCardAttempt
 		attempts = append(attempts, attempt)
 	}
 	return attempts, rows.Err()
+}
+
+func (s *Store) VoidGiftCard(ctx context.Context, cardID string, nowMs int64) error {
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE gift_cards
+		    SET status = 'void',
+		        voided_at = ?,
+		        updated_at = ?
+		  WHERE card_id = ? AND status = 'active'`,
+		nowMs,
+		nowMs,
+		strings.TrimSpace(cardID),
+	)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return errGiftCardInactive
+	}
+	return nil
 }
 
 func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID string, region RegionContext, maskedIP string, nowMs int64) (GiftCardRedeemResult, error) {

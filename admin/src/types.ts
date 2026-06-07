@@ -31,6 +31,8 @@ export interface AdminMonitoring {
   health: AdminHealthStatus;
   windows: AdminMonitoringWindow[];
   queues: AdminMonitoringQueues;
+  action_items: AdminMonitoringActionItem[];
+  capabilities: AdminMonitoringCapability[];
   top_regions: AdminRegionMetric[];
   top_app_errors: ClientAppLogSummaryEntry[];
   notes: AdminStatusNote[];
@@ -76,9 +78,26 @@ export interface AdminMonitoringQueues {
 export interface AdminMonitoringAppUpdate {
   config_valid: boolean;
   has_apk_url: boolean;
+  has_sha256: boolean;
+  has_file_size: boolean;
   latest_version_code: number;
   latest_version_name?: string;
   force_update: boolean;
+}
+
+export interface AdminMonitoringActionItem {
+  title: string;
+  body: string;
+  level: string;
+  route?: string;
+  count?: number;
+}
+
+export interface AdminMonitoringCapability {
+  title: string;
+  status: string;
+  body: string;
+  route?: string;
 }
 
 export interface AdminRegionMetric {

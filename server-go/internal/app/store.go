@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,6 +20,8 @@ const (
 	sessionRoundArchiveUILimit   = 30
 )
 
+var ErrSessionRoundRequestConflict = errors.New("session round request conflict")
+
 func NewStore(db *sql.DB, shanghai *time.Location) *Store {
 	return &Store{
 		db:       db,
@@ -30,6 +33,7 @@ func (s *Store) AppendSessionRoundComplete(
 	ctx context.Context,
 	userID string,
 	clientMsgID string,
+	requestHash string,
 	round SessionRound,
 	aWindowRounds int,
 	bEveryRounds int,
@@ -43,13 +47,17 @@ func (s *Store) AppendSessionRoundComplete(
 	defer rollbackQuietly(tx)
 
 	var ledgerID int64
+	var storedRequestHash sql.NullString
 	err = tx.QueryRowContext(
 		ctx,
-		"SELECT id FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1 FOR UPDATE",
+		"SELECT id, request_hash FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1 FOR UPDATE",
 		userID,
 		clientMsgID,
-	).Scan(&ledgerID)
+	).Scan(&ledgerID, &storedRequestHash)
 	if err == nil {
+		if storedRequestHash.Valid && strings.TrimSpace(storedRequestHash.String) != "" && strings.TrimSpace(storedRequestHash.String) != strings.TrimSpace(requestHash) {
+			return false, nil, ErrSessionRoundRequestConflict
+		}
 		snapshot, err := s.readSnapshotForUpdateTx(ctx, tx, userID)
 		if err != nil {
 			return false, nil, err
@@ -67,9 +75,10 @@ func (s *Store) AppendSessionRoundComplete(
 	round.CreatedAt = nowMs
 	if _, err := tx.ExecContext(
 		ctx,
-		"INSERT INTO session_round_ledger(user_id, client_msg_id, created_at) VALUES (?, ?, ?)",
+		"INSERT INTO session_round_ledger(user_id, client_msg_id, request_hash, created_at) VALUES (?, ?, ?, ?)",
 		userID,
 		clientMsgID,
+		nullableTrimmed(requestHash),
 		nowMs,
 	); err != nil {
 		return false, nil, err
@@ -94,12 +103,13 @@ func (s *Store) AppendSessionRoundComplete(
 
 func (s *Store) GetSessionRoundCompletion(ctx context.Context, userID string, clientMsgID string) (SessionRoundCompletion, error) {
 	var completion SessionRoundCompletion
+	var requestHash sql.NullString
 	err := s.db.QueryRowContext(
 		ctx,
-		"SELECT created_at FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		"SELECT created_at, request_hash FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
 		userID,
 		clientMsgID,
-	).Scan(&completion.CreatedAt)
+	).Scan(&completion.CreatedAt, &requestHash)
 	if err == sql.ErrNoRows {
 		return SessionRoundCompletion{}, nil
 	}
@@ -107,6 +117,7 @@ func (s *Store) GetSessionRoundCompletion(ctx context.Context, userID string, cl
 		return SessionRoundCompletion{}, err
 	}
 	completion.Completed = true
+	completion.RequestHash = nullStringValue(requestHash)
 	return completion, nil
 }
 

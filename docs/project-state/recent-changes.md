@@ -5,13 +5,15 @@
 
 ## 2026-06-07
 
+- 深度推进礼品卡和后台监控：Android 设置页“礼品卡”接入 `POST /api/gift-cards/redeem`，只在后端成功后展示兑换成功并刷新会员权益；后端收紧手机号登录时旧本机 `user_id` 迁移证明，避免未验证 legacy id 跟随登录迁移；礼品卡后台新增 `POST /admin-api/v1/gift-cards/void`，可由 finance 权限作废未兑换卡并写审计。监控面板 `GET /admin-api/v1/monitoring` 新增 `action_items` 和 `capabilities`，前端改为“整体状态 / 先处理事项 / KPI / 服务状态 / 后台能力状态 / 明细表”的简洁视图；礼品卡页新增可用 / 已兑 / 作废 / 失败尝试 KPI，并明确历史完整卡码不可导出是安全设计。主聊天 ledger 新增 `request_hash`，同一 `client_msg_id` 若对应不同内容会返回冲突，避免重复幂等键误回放；Android 自更新下载保留默认 200MB 硬上限。
+
 - 轻量补强 OpenCode 代管规则：全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步加入“用户不懂代码和运维时默认承担技术负责人角色”“高风险生产 / 支付 / 账号 / 数据库 / 密钥 / 部署 / 花钱动作先白话说明并等确认”“扫描审查类请求默认只读、不下刀”的三条规则；不把大型项目记忆重新加入自动 `instructions`，避免增加普通对话 token 成本。
 
 - 管理后台继续补监控面板和可用性细节：`server-go` 新增 `GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败和最近 30 天地区分布；`admin` 前端新增“监控面板”，把红黄绿状态、真实已接数据和“未开放 / 后续接”的能力分清楚。后台左侧菜单点击后保留原滚动位置，避免点底部菜单后视角跳回顶部；后台品牌图标从文字占位改为绿叶图标。该面板不是完整 SLS 告警中心，也不开放发布 / 回滚 / 支付 / 批量高风险操作。
 
 - 收口 OpenCode 自动加载配置以降低桌面端卡死 / 无回复概率：全局 `C:/Users/Administrator/.config/opencode/opencode.json` 不再无条件加载本仓库 `AGENTS.md` 和 4 份项目记忆，项目级 [opencode.json](D:/wuhao/opencode.json) 也改为只自动加载 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md)。桥接文档同步写明：根规则和项目记忆仍是任务开始前必须读取的真相，但不再作为每条轻量消息的无条件自动 prompt，避免普通问候也携带超大上下文导致模型中转超时、sidecar session 丢失或 UI 长时间转圈。
 
-- 第一版管理后台进入代码并部署到生产：新增 Vite `admin` 前端，覆盖登录、总览、用户管理、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计、产品洞察和服务健康；`server-go` 新增 `/admin-api/v1/*` 后台 API、后台账号 / session / CSRF、角色校验、bootstrap 初始化和审计。用户详情现在可查当前会员档位 / 到期、每日额度、扣次流水、加油包包明细、升级补偿、订单记录、礼品卡兑换和兑换尝试；礼品卡后端新增批次、卡、兑换尝试表，后台可生成 Plus / Pro 礼品卡批次，完整卡码只在创建成功当次返回，用户侧 `POST /api/gift-cards/redeem` 事务内发会员权益。生产入口已部署到 `https://admin.nongjiqiancha.cn/`，Nginx 同域反代 `/admin-api/`，后台域名 HTTPS 证书已签发，owner 账号已通过一次性 bootstrap 初始化，随后已清理 ECS `ADMIN_BOOTSTRAP_*` 环境变量并重启验证；公网已验证首页、登录和总览 API。Android 礼品卡页还要接真实兑换接口。
+- 第一版管理后台进入代码并部署到生产：新增 Vite `admin` 前端，覆盖登录、总览、用户管理、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计、产品洞察和服务健康；`server-go` 新增 `/admin-api/v1/*` 后台 API、后台账号 / session / CSRF、角色校验、bootstrap 初始化和审计。用户详情现在可查当前会员档位 / 到期、每日额度、扣次流水、加油包包明细、升级补偿、订单记录、礼品卡兑换和兑换尝试；礼品卡后端新增批次、卡、兑换尝试表，后台可生成 Plus / Pro 礼品卡批次，完整卡码只在创建成功当次返回，用户侧 `POST /api/gift-cards/redeem` 事务内发会员权益。生产入口已部署到 `https://admin.nongjiqiancha.cn/`，Nginx 同域反代 `/admin-api/`，后台域名 HTTPS 证书已签发，owner 账号已通过一次性 bootstrap 初始化，随后已清理 ECS `ADMIN_BOOTSTRAP_*` 环境变量并重启验证；公网已验证首页、登录和总览 API。Android 礼品卡页后续仍需真机兑换回归，后台还要补批量发放和失败原因聚合。
 
 - 明确 OpenCode / Codex 的“准确率优先”工作模式：根 [AGENTS.md](D:/wuhao/AGENTS.md)、全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步写入，复杂任务不要为了省 token、时间或子代理次数而省略关键代码阅读、旧方案残留排查、官方资料核对、验证命令或必要的只读并行巡检；同时禁止用无关大改、顺手重构或重复跑无意义命令来冒充严谨。本次只改协作规则，不涉及 Android / Go 业务代码。
 

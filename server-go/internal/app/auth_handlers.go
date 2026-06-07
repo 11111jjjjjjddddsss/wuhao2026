@@ -334,16 +334,17 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone string, legacyUserID string, deviceID string) {
+	verifiedLegacyUserID := verifiedLegacyUserIDFromLoginRequest(r, legacyUserID)
 	result, err := s.store.LoginWithVerifiedPhone(
 		r.Context(),
 		phone,
-		legacyUserID,
+		verifiedLegacyUserID,
 		deviceID,
 		strings.TrimSpace(os.Getenv("APP_SECRET")),
 		time.Duration(envIntWithDefault("AUTH_SESSION_DAYS", 3650))*24*time.Hour,
 	)
 	if err != nil {
-		s.logger.Error("finish phone login failed", "phone_mask", maskPhone(phone), "legacyUserId", normalizeUserID(legacyUserID), "error", err)
+		s.logger.Error("finish phone login failed", "phone_mask", maskPhone(phone), "legacyMigrationRequested", normalizeUserID(legacyUserID) != "", "legacyMigrationVerified", verifiedLegacyUserID != "", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -353,4 +354,25 @@ func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone 
 		"token":      result.Token,
 		"expires_at": result.ExpiresAt,
 	})
+}
+
+func verifiedLegacyUserIDFromLoginRequest(r *http.Request, requestedLegacyUserID string) string {
+	legacyUserID := normalizeUserID(requestedLegacyUserID)
+	if legacyUserID == "" || strings.HasPrefix(legacyUserID, "acct_") {
+		return ""
+	}
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	if secret == "" {
+		return ""
+	}
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return ""
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	provenUserID, _, ok := verifyBearerToken(token, secret)
+	if !ok || normalizeUserID(provenUserID) != legacyUserID {
+		return ""
+	}
+	return legacyUserID
 }

@@ -3,7 +3,10 @@ package app
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -133,6 +136,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
+	requestHash := chatStreamRequestHash(text, images)
 
 	ctx := r.Context()
 	if err := s.store.EnsureUser(ctx, auth.UserID, TierFree); err != nil {
@@ -167,6 +171,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if completion.Completed {
+		if completion.RequestHash != "" && completion.RequestHash != requestHash {
+			s.writeJSON(w, http.StatusConflict, map[string]any{
+				"error":         "CLIENT_MSG_ID_CONFLICT",
+				"client_msg_id": clientMsgID,
+			})
+			return
+		}
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
@@ -185,7 +196,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	var inflightToken string
 	err = s.store.WithUserChatStreamGate(ctx, auth.UserID, func(ctx context.Context) error {
 		var acquireErr error
-		acquiredInflight, inflightToken, acquireErr = s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now())
+		acquiredInflight, inflightToken, acquireErr = s.store.TryAcquireChatStreamInflight(ctx, auth.UserID, clientMsgID, time.Now(), resolveChatStreamInflightLeaseDuration())
 		return acquireErr
 	})
 	if err != nil {
@@ -227,6 +238,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if completion.Completed {
+		if completion.RequestHash != "" && completion.RequestHash != requestHash {
+			s.writeJSON(w, http.StatusConflict, map[string]any{
+				"error":         "CLIENT_MSG_ID_CONFLICT",
+				"client_msg_id": clientMsgID,
+			})
+			return
+		}
 		s.writeSSEHeaders(w)
 		s.writeSSEData(w, map[string]any{"ok": true, "replay": true, "client_msg_id": clientMsgID})
 		s.writeSSEString(w, "data: [DONE]\n\n")
@@ -439,6 +457,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					context.Background(),
 					auth.UserID,
 					clientMsgID,
+					requestHash,
 					SessionRound{
 						ClientMsgID:       clientMsgID,
 						User:              text,
@@ -454,6 +473,11 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					"stream_done",
 				)
 				if appendErr != nil {
+					if errors.Is(appendErr, ErrSessionRoundRequestConflict) && !clientDisconnected.Load() {
+						writeMu.Lock()
+						s.writeSSEData(w, map[string]any{"error": "CLIENT_MSG_ID_CONFLICT", "client_msg_id": clientMsgID})
+						writeMu.Unlock()
+					}
 					s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
 				} else {
 					consume, consumeErr := s.store.ConsumeOnDone(context.Background(), auth.UserID, tier, clientMsgID, dayCN)
@@ -676,6 +700,15 @@ func resolveChatStreamMaxDuration() time.Duration {
 	return duration
 }
 
+func resolveChatStreamInflightLeaseDuration() time.Duration {
+	duration := resolveChatStreamMaxDuration() + chatStreamInflightLeaseGrace
+	minimum := chatStreamInflightLease + chatStreamInflightLeaseGrace
+	if duration < minimum {
+		return minimum
+	}
+	return duration
+}
+
 func (s *Server) writeSSEData(w http.ResponseWriter, payload any) {
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -831,6 +864,19 @@ func validateChatStreamInput(clientMsgID string, text string, images []string) s
 		return "text or images required"
 	}
 	return ""
+}
+
+func chatStreamRequestHash(text string, images []string) string {
+	payload := struct {
+		Text   string   `json:"text"`
+		Images []string `json:"images"`
+	}{
+		Text:   strings.TrimSpace(text),
+		Images: normalizeImages(images),
+	}
+	raw, _ := json.Marshal(payload)
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *Server) validateChatStreamImageURLs(r *http.Request, images []string) string {

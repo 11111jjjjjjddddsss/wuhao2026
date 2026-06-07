@@ -61,13 +61,15 @@ type AdminStatusNote struct {
 }
 
 type AdminMonitoring struct {
-	Health       AdminHealthStatus          `json:"health"`
-	Windows      []AdminMonitoringWindow    `json:"windows"`
-	Queues       AdminMonitoringQueues      `json:"queues"`
-	TopRegions   []AdminRegionMetric        `json:"top_regions"`
-	TopAppErrors []ClientAppLogSummaryEntry `json:"top_app_errors"`
-	Notes        []AdminStatusNote          `json:"notes"`
-	NowMs        int64                      `json:"now_ms"`
+	Health       AdminHealthStatus           `json:"health"`
+	Windows      []AdminMonitoringWindow     `json:"windows"`
+	Queues       AdminMonitoringQueues       `json:"queues"`
+	ActionItems  []AdminMonitoringActionItem `json:"action_items"`
+	Capabilities []AdminMonitoringCapability `json:"capabilities"`
+	TopRegions   []AdminRegionMetric         `json:"top_regions"`
+	TopAppErrors []ClientAppLogSummaryEntry  `json:"top_app_errors"`
+	Notes        []AdminStatusNote           `json:"notes"`
+	NowMs        int64                       `json:"now_ms"`
 }
 
 type AdminMonitoringWindow struct {
@@ -109,9 +111,26 @@ type AdminMonitoringQueues struct {
 type AdminMonitoringAppUpdate struct {
 	ConfigValid       bool   `json:"config_valid"`
 	HasAPKURL         bool   `json:"has_apk_url"`
+	HasSHA256         bool   `json:"has_sha256"`
+	HasFileSize       bool   `json:"has_file_size"`
 	LatestVersionCode int    `json:"latest_version_code"`
 	LatestVersionName string `json:"latest_version_name,omitempty"`
 	ForceUpdate       bool   `json:"force_update"`
+}
+
+type AdminMonitoringActionItem struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	Level string `json:"level"`
+	Route string `json:"route,omitempty"`
+	Count int64  `json:"count,omitempty"`
+}
+
+type AdminMonitoringCapability struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+	Body   string `json:"body"`
+	Route  string `json:"route,omitempty"`
 }
 
 type AdminRegionMetric struct {
@@ -604,7 +623,7 @@ func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus
 	overview.Queues.AppErrorTop = summary
 	overview.Notes = []AdminStatusNote{
 		{Title: "订单 / 支付", Body: "支付尚未接入正式回调，当前后台仅保留只读入口。", Level: "info"},
-		{Title: "礼品卡", Body: "礼品卡批次创建、卡状态、兑换尝试和用户侧兑换接口已接入，Android 真实兑换入口仍待接线。", Level: "info"},
+		{Title: "礼品卡", Body: "礼品卡批次创建、卡状态、作废未兑换卡、兑换尝试和 Android 用户侧兑换已接入。", Level: "info"},
 		{Title: "产品洞察", Body: "后续从脱敏反馈、App 日志和归档摘要生成，不直接铺完整聊天全文。", Level: "info"},
 	}
 	return overview, nil
@@ -651,6 +670,8 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 		return report, err
 	}
 	report.TopAppErrors = topErrors
+	report.ActionItems = buildAdminMonitoringActionItems(report)
+	report.Capabilities = buildAdminMonitoringCapabilities()
 	return report, nil
 }
 
@@ -716,9 +737,14 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if err != nil {
 		return queues, err
 	}
+	hasAPKURL := strings.TrimSpace(updateCfg.APKURL) != ""
+	hasSHA256 := strings.TrimSpace(updateCfg.APKChecksumSHA256) != ""
+	hasFileSize := updateCfg.FileSizeBytes > 0
 	queues.AppUpdate = AdminMonitoringAppUpdate{
-		ConfigValid:       updateCfg.LatestVersionCode > 0 && (strings.TrimSpace(updateCfg.APKURL) == "" || isHTTPSURL(updateCfg.APKURL)),
-		HasAPKURL:         strings.TrimSpace(updateCfg.APKURL) != "",
+		ConfigValid:       updateCfg.LatestVersionCode > 0 && (!hasAPKURL || (isHTTPSURL(updateCfg.APKURL) && hasSHA256 && hasFileSize)),
+		HasAPKURL:         hasAPKURL,
+		HasSHA256:         hasSHA256,
+		HasFileSize:       hasFileSize,
 		LatestVersionCode: updateCfg.LatestVersionCode,
 		LatestVersionName: updateCfg.LatestVersionName,
 		ForceUpdate:       updateCfg.ForceUpdate,
@@ -740,6 +766,107 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	}
 	queues.UnreadyDependencyCount = countUnreadyAdminDependencies(health)
 	return queues, nil
+}
+
+func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringActionItem {
+	queues := report.Queues
+	items := make([]AdminMonitoringActionItem, 0, 8)
+	if queues.UnreadyDependencyCount > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "服务依赖异常",
+			Body:  "模型、登录、Redis 或上传存储有异常，先打开服务健康页确认是哪一项。",
+			Level: "bad",
+			Route: "health",
+			Count: queues.UnreadyDependencyCount,
+		})
+	}
+	if queues.AppErrors > 0 {
+		level := "warn"
+		if queues.AppErrors >= 10 {
+			level = "bad"
+		}
+		items = append(items, AdminMonitoringActionItem{
+			Title: "App 报错需要看",
+			Body:  "最近 24 小时有 error 自动日志，先看 Top 事件和具体版本。",
+			Level: level,
+			Route: "app-logs",
+			Count: queues.AppErrors,
+		})
+	}
+	if queues.SupportNeedsReply > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "有用户反馈待回复",
+			Body:  "按最早待回复会话处理，避免用户问题长期无人接。",
+			Level: "warn",
+			Route: "support",
+			Count: queues.SupportNeedsReply,
+		})
+	}
+	switch strings.ToLower(strings.TrimSpace(queues.DailyAgriStatus)) {
+	case "ready":
+	case "failed":
+		items = append(items, AdminMonitoringActionItem{
+			Title: "今日农情生成失败",
+			Body:  firstNonEmpty(queues.DailyAgriError, "打开今日农情页查看最近失败原因。"),
+			Level: "bad",
+			Route: "today-agri",
+		})
+	case "pending", "running", "missing", "disabled", "":
+		items = append(items, AdminMonitoringActionItem{
+			Title: "今日农情未就绪",
+			Body:  "今天的农情卡片还没有 ready，发布前或早晨巡检时需要确认。",
+			Level: "warn",
+			Route: "today-agri",
+		})
+	}
+	if queues.GiftCardFailedAttempts > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "礼品卡兑换失败偏多",
+			Body:  "先看尾号、失败原因和用户，判断是输错码、过期、已作废还是撞库尝试。",
+			Level: "warn",
+			Route: "gift-cards",
+			Count: queues.GiftCardFailedAttempts,
+		})
+	}
+	if queues.AuditFailures > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "后台操作失败",
+			Body:  "最近 24 小时有后台失败动作，优先看审计页确认是否权限、CSRF 或接口错误。",
+			Level: "bad",
+			Route: "audit",
+			Count: queues.AuditFailures,
+		})
+	}
+	if !queues.AppUpdate.ConfigValid {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "安装包配置不完整",
+			Body:  "正式 APK 下载建议同时配置 HTTPS 地址、SHA-256 和文件大小，避免用户下载不可控文件。",
+			Level: "warn",
+			Route: "app-update",
+		})
+	}
+	if len(items) == 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "当前没有必须马上处理的事项",
+			Body:  "继续观察 App 报错、反馈、今日农情和礼品卡兑换即可。",
+			Level: "ok",
+		})
+	}
+	return items
+}
+
+func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
+	return []AdminMonitoringCapability{
+		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
+		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
+		{Title: "帮助反馈", Status: "ready", Body: "可看用户会话、待回复队列并发送后台回复。", Route: "support"},
+		{Title: "礼品卡", Status: "ready", Body: "可创建批次、查卡状态、查兑换尝试、作废未兑换卡，用户侧走后端兑换。", Route: "gift-cards"},
+		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；手动补跑后续再接。", Route: "today-agri"},
+		{Title: "检查更新", Status: "partial", Body: "当前只读配置；发布、回滚和强制更新写操作还不在后台开放。", Route: "app-update"},
+		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
+		{Title: "SLS 告警", Status: "planned", Body: "日志已采集到 SLS，自动告警和仪表盘还要继续补。", Route: "health"},
+		{Title: "产品洞察", Status: "planned", Body: "后续做脱敏聚合报表，不直接铺完整聊天内容。", Route: "insights"},
+	}
 }
 
 func (s *Store) countAdminSupportPending(ctx context.Context) (int64, *int64, error) {

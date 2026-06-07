@@ -367,6 +367,7 @@ async function monitoringPage(): Promise<string> {
   const day24 = report.windows.find((item) => item.key === "24h") || report.windows[0];
   return `
     ${pageHead("监控面板", "红色马上处理，黄色继续观察，绿色暂时正常；没接通的功能会明确写未开放。", "monitoring")}
+    ${monitoringHero(report)}
     <section class="grid kpi">
       ${kpi("服务异常", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
       ${kpi("App报错", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
@@ -375,25 +376,24 @@ async function monitoringPage(): Promise<string> {
       ${kpi("礼品卡异常", report.queues.gift_card_failed_attempts, "最近24小时兑换失败")}
       ${kpi("今日农情", dailyAgriStatusText(report.queues.daily_agri_status), report.queues.daily_agri_updated_at ? formatTime(report.queues.daily_agri_updated_at) : "未返回更新时间")}
     </section>
-    <div style="margin-top:12px">${notice("怎么看这页", "先看上面 6 个数字；有红色或黄色再往下查。当前只聚合真实业务表、App 自动日志和健康检查；SLS 自动告警、登录精准漏斗、发布回滚按钮后续再接，不在这里假装完成。", "info")}</div>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
         <div class="card-head"><div class="card-title">最近使用情况</div><span class="small muted">${formatTime(report.now_ms)}</span></div>
         <div class="table-wrap">${monitoringWindowTable(report.windows)}</div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">需要盯住的事</div></div>
-        <div class="card-body">${monitoringQueueCards(report)}</div>
+        <div class="card-head"><div class="card-title">先处理事项</div><span class="small muted">${report.action_items?.length || 0} 项</span></div>
+        <div class="card-body">${actionItemList(report.action_items || [])}</div>
       </section>
     </div>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
         <div class="card-head"><div class="card-title">服务状态</div></div>
-        <div class="card-body">${healthGrid(report.health)}</div>
+        <div class="card-body">${healthChipGrid(report.health)}</div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">地区分布</div><span class="small muted">最近30天问诊</span></div>
-        <div class="table-wrap">${regionMetricsTable(report.top_regions)}</div>
+        <div class="card-head"><div class="card-title">后台能力状态</div><span class="small muted">真实接入情况</span></div>
+        <div class="card-body">${capabilityGrid(report.capabilities || [])}</div>
       </section>
     </div>
     <div class="grid two" style="margin-top:12px">
@@ -402,12 +402,20 @@ async function monitoringPage(): Promise<string> {
         <div class="card-body">${appErrorTopTable(report.top_app_errors)}</div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">这页不展示什么</div></div>
-        <div class="card-body stack">
-          ${report.notes?.length ? report.notes.map((note) => notice(note.title, note.body, note.level)).join("") : emptyState("没有备注", "后端未返回监控备注。")}
-        </div>
+        <div class="card-head"><div class="card-title">地区分布</div><span class="small muted">最近30天问诊</span></div>
+        <div class="table-wrap">${regionMetricsTable(report.top_regions)}</div>
       </section>
     </div>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">这页不展示什么</div></div>
+      <div class="card-body stack">
+        ${report.notes?.length ? report.notes.map((note) => notice(note.title, note.body, note.level)).join("") : emptyState("没有备注", "后端未返回监控备注。")}
+      </div>
+    </section>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">队列明细</div><span class="small muted">给排障时进一步确认</span></div>
+      <div class="card-body">${monitoringQueueCards(report)}</div>
+    </section>
   `;
 }
 
@@ -512,8 +520,26 @@ async function giftCardsPage(): Promise<string> {
     apiFetch<{ cards: AdminGiftCardEntry[] }>("/admin-api/v1/gift-cards/cards?limit=50"),
     apiFetch<{ attempts: AdminGiftCardAttempt[] }>("/admin-api/v1/gift-cards/attempts?limit=50"),
   ]);
+  const cards = cardsResponse.cards;
+  const attempts = attemptsResponse.attempts;
+  const activeCount = cards.filter((card) => card.status === "active").length;
+  const redeemedCount = cards.filter((card) => card.status === "redeemed").length;
+  const voidCount = cards.filter((card) => card.status === "void").length;
+  const failedAttempts = attempts.filter((attempt) => !attempt.success).length;
   return `
     ${pageHead("礼品卡", "礼品卡必须以后端批次、卡、兑换流水和审计为真相；前端不展示完整卡号。", "gift-cards")}
+    <section class="grid kpi">
+      ${kpi("可用卡", activeCount, "当前列表内未兑换")}
+      ${kpi("已兑换", redeemedCount, "当前列表内")}
+      ${kpi("已作废", voidCount, "当前列表内")}
+      ${kpi("失败尝试", failedAttempts, "当前列表内")}
+      ${kpi("批次数", batchesResponse.batches.length, "最近批次")}
+      ${kpi("完整卡码", lastGiftCardCodes.length ? "本次可见" : "不保存", lastGiftCardCodes.length ? "离开后不可恢复" : "历史只保留掩码")}
+    </section>
+    <div class="grid two" style="margin-top:12px">
+      ${notice("现在能用什么", "后台可创建 Plus / Pro 礼品卡批次、查看卡状态、查看兑换尝试、作废未兑换卡；Android 礼品卡页会调用后端兑换接口，成功后以后端权益为准。", "info")}
+      ${notice("仍然不能做什么", "不能导出历史完整卡码，因为数据库只存 hash 和掩码；批量发放名单、按批次详情分页搜索、失败原因聚合和支付订单联动后续再补。", "warn")}
+    </div>
     <section class="card">
       <div class="card-head">
         <div class="card-title">创建批次</div>
@@ -545,14 +571,14 @@ async function giftCardsPage(): Promise<string> {
       </section>
       <section class="card">
         <div class="card-head">
-          <div class="card-title">卡与兑换</div><span class="small muted">${cardsResponse.cards.length} 张</span>
+          <div class="card-title">卡与兑换</div><span class="small muted">${cards.length} 张</span>
         </div>
-        <div class="table-wrap">${giftCardTable(cardsResponse.cards)}</div>
+        <div class="table-wrap">${giftCardTable(cards)}</div>
       </section>
     </div>
     <section class="card" style="margin-top:12px">
-      <div class="card-head"><div class="card-title">兑换尝试</div><span class="small muted">${attemptsResponse.attempts.length} 条</span></div>
-      <div class="table-wrap">${giftCardAttemptsTable(attemptsResponse.attempts)}</div>
+      <div class="card-head"><div class="card-title">兑换尝试</div><span class="small muted">${attempts.length} 条</span></div>
+      <div class="table-wrap">${giftCardAttemptsTable(attempts)}</div>
     </section>
   `;
 }
@@ -784,6 +810,10 @@ async function handleAction(button: HTMLElement): Promise<void> {
   if (action === "clear-gift-card-codes") {
     lastGiftCardCodes = [];
     await render();
+    return;
+  }
+  if (action === "void-gift-card") {
+    await voidGiftCard(button.dataset.cardId || "");
   }
 }
 
@@ -864,6 +894,30 @@ async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
     app.insertAdjacentHTML("afterbegin", errorBlock(error));
   } finally {
     if (button) button.disabled = false;
+  }
+}
+
+async function voidGiftCard(cardID: string): Promise<void> {
+  if (!cardID) return;
+  const reason = window.prompt("请输入作废原因。只写运营原因，不要写完整卡码、手机号或密钥。");
+  if (reason === null) return;
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    window.alert("作废原因不能为空。");
+    return;
+  }
+  if (!window.confirm("确认作废这张未兑换礼品卡？作废后不能再被用户兑换。")) {
+    return;
+  }
+  try {
+    await apiFetch("/admin-api/v1/gift-cards/void", {
+      method: "POST",
+      json: { card_id: cardID, reason: trimmedReason },
+    });
+    lastGiftCardCodes = [];
+    await render();
+  } catch (error) {
+    window.alert(`作废失败：${errorMessage(error)}`);
   }
 }
 
@@ -1128,7 +1182,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
   if (!rows.length) return emptyState("没有礼品卡", "后端未返回礼品卡记录。");
   return `
     <table class="table">
-      <thead><tr><th>卡</th><th>档位</th><th>状态</th><th>兑换用户</th><th>兑换时间</th><th>会员到期</th><th>地区</th></tr></thead>
+      <thead><tr><th>卡</th><th>档位</th><th>状态</th><th>兑换用户</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -1139,6 +1193,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
                 <td>${escapeHTML(row.redeemed_user_id || "")}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
                 <td>${escapeHTML(row.redeemed_region || "")}<div class="small muted">${escapeHTML([row.redeemed_region_source, row.redeemed_region_reliability].filter(Boolean).join(" / "))}</div></td>
+                <td>${row.status === "active" ? `<button class="button danger" data-action="void-gift-card" data-card-id="${escapeAttr(row.card_id)}">作废</button>` : `<span class="small muted">${row.status === "void" ? `已作废 ${formatTime(row.voided_at)}` : "无操作"}</span>`}</td>
               </tr>
             `,
           )
@@ -1470,7 +1525,7 @@ function queueCard(title: string, value: string | number, body: string, level: "
 
 function updateStatusLine(update: AdminMonitoring["queues"]["app_update"]): string {
   const version = update.latest_version_code ? `v${update.latest_version_code}${update.latest_version_name ? ` / ${update.latest_version_name}` : ""}` : "未配置版本";
-  return `${version}；APK ${update.has_apk_url ? "已配置" : "未配置"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
+  return `${version}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
 }
 
 function dailyAgriStatusText(status: string): string {
@@ -1508,11 +1563,138 @@ function regionMetricsTable(rows: AdminMonitoring["top_regions"]): string {
   `;
 }
 
+function monitoringHero(report: AdminMonitoring): string {
+  const items = report.action_items || [];
+  const worst = items.some((item) => item.level === "bad")
+    ? "bad"
+    : items.some((item) => item.level === "warn")
+      ? "warn"
+      : "ok";
+  const title = worst === "bad" ? "需要马上处理" : worst === "warn" ? "有事项要关注" : "整体正常";
+  const body =
+    worst === "bad"
+      ? "先处理红色事项，再看 App 错误 Top 和审计失败。"
+      : worst === "warn"
+        ? "当前没有明确服务中断，但有运营队列需要跟进。"
+        : "关键健康项、App 报错、反馈和礼品卡队列暂时没有明显异常。";
+  return `
+    <section class="monitor-hero ${worst}">
+      <div>
+        <div class="monitor-eyebrow">运营监控</div>
+        <h2>${escapeHTML(title)}</h2>
+        <p>${escapeHTML(body)}</p>
+      </div>
+      <div class="monitor-hero-meta">
+        <span>${statusPill(worst === "ok" ? "正常" : worst === "warn" ? "关注" : "处理", worst)}</span>
+        <span class="small muted">更新时间 ${formatTime(report.now_ms)}</span>
+      </div>
+    </section>
+  `;
+}
+
+function actionItemList(items: AdminMonitoring["action_items"]): string {
+  if (!items.length) return emptyState("没有待处理事项", "后端未返回 action_items。");
+  return `
+    <div class="action-list">
+      ${items
+        .map((item) => {
+          const level = normalizeLevel(item.level);
+          return `
+            <article class="action-item ${level}">
+              <div>
+                <div class="action-title">${escapeHTML(item.title)} ${item.count ? `<span class="count">${item.count}</span>` : ""}</div>
+                <div class="muted small">${escapeHTML(item.body)}</div>
+              </div>
+              ${routeActionButton(item.route, "去处理")}
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function capabilityGrid(rows: AdminMonitoring["capabilities"]): string {
+  if (!rows.length) return emptyState("没有能力状态", "后端未返回 capabilities。");
+  return `
+    <div class="capability-grid">
+      ${rows
+        .map(
+          (row) => `
+            <article class="capability-card ${normalizeCapabilityStatus(row.status)}">
+              <div class="capability-head">
+                <strong>${escapeHTML(row.title)}</strong>
+                ${statusPill(capabilityStatusText(row.status), capabilityLevel(row.status))}
+              </div>
+              <p>${escapeHTML(row.body)}</p>
+              ${routeActionButton(row.route, "打开")}
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function healthChipGrid(health: AdminOverview["health"]): string {
+  return `
+    <div class="health-chip-grid">
+      ${Object.entries(health)
+        .map(([key, value]) => {
+          const bad = healthFieldNeedsAttention(key, value);
+          return `
+            <div class="health-chip ${bad ? "bad" : "ok"}">
+              <span>${escapeHTML(labelFor(key))}</span>
+              ${healthValuePill(key, value)}
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function routeActionButton(route: string | undefined, label: string): string {
+  if (!route || !routes.some((item) => item.key === route)) return "";
+  return `<button class="button" data-action="route" data-route="${escapeAttr(route)}">${escapeHTML(label)}</button>`;
+}
+
+function normalizeLevel(level: string): "ok" | "warn" | "bad" | "info" {
+  if (level === "bad" || level === "error") return "bad";
+  if (level === "warn") return "warn";
+  if (level === "ok") return "ok";
+  return "info";
+}
+
+function normalizeCapabilityStatus(status: string): "ready" | "partial" | "planned" {
+  if (status === "ready") return "ready";
+  if (status === "partial") return "partial";
+  return "planned";
+}
+
+function capabilityStatusText(status: string): string {
+  if (status === "ready") return "已可用";
+  if (status === "partial") return "部分可用";
+  return "后续接";
+}
+
+function capabilityLevel(status: string): "ok" | "warn" | "bad" | "info" {
+  if (status === "ready") return "ok";
+  if (status === "partial") return "warn";
+  return "info";
+}
+
+function healthFieldNeedsAttention(key: string, value: unknown): boolean {
+  if (key === "dev_order_endpoints") return value === true;
+  if (key === "auth_strict") return value !== true;
+  if (typeof value === "boolean") return false;
+  const normalized = String(value).toLowerCase();
+  return normalized !== "ok" && normalized !== "oss";
+}
+
 function healthSummary(health: AdminOverview["health"]): string {
   const bad = Object.entries(health).filter(([key, value]) => {
-    if (key === "dev_order_endpoints") return value === true;
-    if (typeof value === "boolean") return key === "auth_strict" ? value !== true : false;
-    return String(value).toLowerCase() !== "ok" && String(value).toLowerCase() !== "oss";
+    return healthFieldNeedsAttention(key, value);
   });
   return bad.length ? `${bad.length} 项关注` : "正常";
 }

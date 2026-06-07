@@ -67,7 +67,11 @@ object AppUpdateInstaller {
                     if (!response.request.url.isHttps) return@withContext null
                     val body = response.body ?: return@withContext null
                     val expectedSizeBytes = update.fileSizeBytes ?: 0L
-                    val maxDownloadBytes = expectedSizeBytes.takeIf { it > 0L } ?: DEFAULT_MAX_APK_DOWNLOAD_BYTES
+                    if (expectedSizeBytes > DEFAULT_MAX_APK_DOWNLOAD_BYTES) return@withContext null
+                    val maxDownloadBytes = expectedSizeBytes
+                        .takeIf { it > 0L }
+                        ?.coerceAtMost(DEFAULT_MAX_APK_DOWNLOAD_BYTES)
+                        ?: DEFAULT_MAX_APK_DOWNLOAD_BYTES
                     val contentLength = body.contentLength()
                     if (contentLength > maxDownloadBytes) return@withContext null
                     if (expectedSizeBytes > 0L && contentLength > 0L && contentLength != expectedSizeBytes) {
