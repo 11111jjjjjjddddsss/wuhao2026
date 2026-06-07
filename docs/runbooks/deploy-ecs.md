@@ -155,7 +155,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 ## 下一步
 
 1. 部署当前主备 Key 优先代码并复查 readiness，确保生产二进制按 `DASHSCOPE_API_KEY_1` 主用、`DASHSCOPE_API_KEY_2` 备用执行。
-2. 跟进 App 备案审核通过，并提交公安联网备案；网站 ICP 已于 2026-06-05 通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配置完成。
+2. 跟进 App 备案审核通过、网站公安联网备案审核 / 公安备案号和后续 App 公安备案；网站 ICP 已于 2026-06-05 通过，网站公安联网备案已于 2026-06-07 提交待审核，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配置完成。
 3. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限 RAM 用户，并重新写入 ECS `DYPNS_*` 环境变量。
 4. 用真实 App 链路验证手机号一键登录、验证码登录、`/upload`、`/uploads/`、模型拉图、主聊天流和历史图片过期占位。
 5. 后续若要做到跨实例高可用，再升级为多 ECS / SLB 滚动发布；当前双端口只解决单机重启空窗，不等于多机容灾。
