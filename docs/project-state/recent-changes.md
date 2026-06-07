@@ -5,6 +5,8 @@
 
 ## 2026-06-07
 
+- 轻量补强 OpenCode 代管规则：全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步加入“用户不懂代码和运维时默认承担技术负责人角色”“高风险生产 / 支付 / 账号 / 数据库 / 密钥 / 部署 / 花钱动作先白话说明并等确认”“扫描审查类请求默认只读、不下刀”的三条规则；不把大型项目记忆重新加入自动 `instructions`，避免增加普通对话 token 成本。
+
 - 管理后台继续补监控面板和可用性细节：`server-go` 新增 `GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败和最近 30 天地区分布；`admin` 前端新增“监控面板”，把红黄绿状态、真实已接数据和“未开放 / 后续接”的能力分清楚。后台左侧菜单点击后保留原滚动位置，避免点底部菜单后视角跳回顶部；后台品牌图标从文字占位改为绿叶图标。该面板不是完整 SLS 告警中心，也不开放发布 / 回滚 / 支付 / 批量高风险操作。
 
 - 收口 OpenCode 自动加载配置以降低桌面端卡死 / 无回复概率：全局 `C:/Users/Administrator/.config/opencode/opencode.json` 不再无条件加载本仓库 `AGENTS.md` 和 4 份项目记忆，项目级 [opencode.json](D:/wuhao/opencode.json) 也改为只自动加载 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md)。桥接文档同步写明：根规则和项目记忆仍是任务开始前必须读取的真相，但不再作为每条轻量消息的无条件自动 prompt，避免普通问候也携带超大上下文导致模型中转超时、sidecar session 丢失或 UI 长时间转圈。
