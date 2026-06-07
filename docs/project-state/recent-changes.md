@@ -5,7 +5,7 @@
 
 ## 2026-06-07
 
-- 深度推进礼品卡和后台监控：Android 设置页“礼品卡”接入 `POST /api/gift-cards/redeem`，只在后端成功后展示兑换成功并刷新会员权益；后端收紧手机号登录时旧本机 `user_id` 迁移证明，避免未验证 legacy id 跟随登录迁移；礼品卡后台新增 `POST /admin-api/v1/gift-cards/void`，可由 finance 权限作废未兑换卡并写审计。监控面板 `GET /admin-api/v1/monitoring` 新增 `action_items` 和 `capabilities`，前端改为“整体状态 / 先处理事项 / KPI / 服务状态 / 后台能力状态 / 明细表”的简洁视图；礼品卡页新增可用 / 已兑 / 作废 / 失败尝试 KPI，并明确历史完整卡码不可导出是安全设计。主聊天 ledger 新增 `request_hash`，同一 `client_msg_id` 若对应不同内容会返回冲突，避免重复幂等键误回放；Android 自更新下载保留默认 200MB 硬上限。
+- 深度推进礼品卡和后台监控：Android 设置页“礼品卡”接入 `POST /api/gift-cards/redeem`，只在后端成功后展示兑换成功并刷新会员权益；后端收紧手机号登录时旧本机 `user_id` 迁移证明，避免未验证 legacy id 跟随登录迁移；礼品卡后台新增 `POST /admin-api/v1/gift-cards/void`，可由 finance 权限作废未兑换卡并写审计。监控面板 `GET /admin-api/v1/monitoring` 新增 `action_items` 和 `capabilities`，前端改为“整体状态 / 先处理事项 / KPI / 服务状态 / 后台能力状态 / 明细表”的简洁视图；礼品卡页新增可用 / 已兑 / 作废 / 失败尝试 KPI，并明确历史完整卡码不可导出是安全设计。主聊天 ledger 新增 `request_hash`，同一 `client_msg_id` 若对应不同内容会返回冲突，避免重复幂等键误回放；Android 自更新下载保留默认 200MB 硬上限。本提交 `d3c4a4ac` 已部署后端和管理后台到 ECS，公网验证 `https://api.nongjiqiancha.cn/healthz` 返回 200、`https://admin.nongjiqiancha.cn/` 返回 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。
 
 - 轻量补强 OpenCode 代管规则：全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 同步加入“用户不懂代码和运维时默认承担技术负责人角色”“高风险生产 / 支付 / 账号 / 数据库 / 密钥 / 部署 / 花钱动作先白话说明并等确认”“扫描审查类请求默认只读、不下刀”的三条规则；不把大型项目记忆重新加入自动 `instructions`，避免增加普通对话 token 成本。
 
