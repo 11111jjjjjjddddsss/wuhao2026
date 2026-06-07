@@ -7,8 +7,8 @@ import java.util.UUID
 /**
  * Unified identity manager.
  *
- * - user_id: local stable pre-login identity for migration and app-level continuity
- * - auth_user_id/auth_token: backend account identity after phone login
+ * - user_id: local stable pre-login identity used only as a migration bridge
+ * - auth_user_id/auth_token: backend account ID and session after phone login
  */
 object IdManager {
     private const val PREFS_NAME = "app_ids"

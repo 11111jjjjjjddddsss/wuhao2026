@@ -90,6 +90,41 @@ func TestResolveAuthUserIDAllowsV2BearerTokenWhenStrict(t *testing.T) {
 	}
 }
 
+func TestAcceptedLegacyUserIDAllowsLocalUUIDBridge(t *testing.T) {
+	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
+	legacyID := "123e4567-e89b-12d3-a456-426614174000"
+	if got := acceptedLegacyUserIDFromLoginRequest(req, legacyID); got != legacyID {
+		t.Fatalf("legacy UUID should be accepted as local migration bridge, got %q", got)
+	}
+}
+
+func TestAcceptedLegacyUserIDRejectsAccountID(t *testing.T) {
+	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
+	if got := acceptedLegacyUserIDFromLoginRequest(req, "acct_existing"); got != "" {
+		t.Fatalf("account id must not be accepted as legacy bridge, got %q", got)
+	}
+}
+
+func TestAcceptedLegacyUserIDAllowsSignedLegacyToken(t *testing.T) {
+	secret := "test-secret"
+	legacyID := "legacy-short-id"
+	t.Setenv("APP_SECRET", secret)
+
+	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
+	req.Header.Set("Authorization", "Bearer "+makeAuthTestToken(legacyID, secret))
+
+	if got := acceptedLegacyUserIDFromLoginRequest(req, legacyID); got != legacyID {
+		t.Fatalf("signed legacy token should be accepted, got %q", got)
+	}
+}
+
+func TestAcceptedLegacyUserIDRejectsUnknownNonUUID(t *testing.T) {
+	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
+	if got := acceptedLegacyUserIDFromLoginRequest(req, "legacy-short-id"); got != "" {
+		t.Fatalf("unsigned non-UUID legacy id should be rejected, got %q", got)
+	}
+}
+
 func TestVerifyV2TokenRejectsExpiredToken(t *testing.T) {
 	secret := "test-secret"
 	token, _, err := issueAuthToken("acct_test", "session_test", time.Now().Add(-2*time.Hour), time.Hour, secret)

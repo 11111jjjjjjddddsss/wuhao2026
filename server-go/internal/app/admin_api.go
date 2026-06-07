@@ -858,9 +858,10 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 	return []AdminMonitoringCapability{
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
+		{Title: "账号登录", Status: "ready", Body: "手机号、一键登录、短信登录统一归到账号ID；旧本机 UUID 只做迁移桥。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
 		{Title: "帮助反馈", Status: "ready", Body: "可看用户会话、待回复队列并发送后台回复。", Route: "support"},
-		{Title: "礼品卡", Status: "ready", Body: "可创建批次、查卡状态、查兑换尝试、作废未兑换卡，用户侧走后端兑换。", Route: "gift-cards"},
+		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因、作废未兑换卡，用户侧走后端兑换。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；手动补跑后续再接。", Route: "today-agri"},
 		{Title: "检查更新", Status: "partial", Body: "当前只读配置；发布、回滚和强制更新写操作还不在后台开放。", Route: "app-update"},
 		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},

@@ -334,17 +334,17 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone string, legacyUserID string, deviceID string) {
-	verifiedLegacyUserID := verifiedLegacyUserIDFromLoginRequest(r, legacyUserID)
+	acceptedLegacyUserID := acceptedLegacyUserIDFromLoginRequest(r, legacyUserID)
 	result, err := s.store.LoginWithVerifiedPhone(
 		r.Context(),
 		phone,
-		verifiedLegacyUserID,
+		acceptedLegacyUserID,
 		deviceID,
 		strings.TrimSpace(os.Getenv("APP_SECRET")),
 		time.Duration(envIntWithDefault("AUTH_SESSION_DAYS", 3650))*24*time.Hour,
 	)
 	if err != nil {
-		s.logger.Error("finish phone login failed", "phone_mask", maskPhone(phone), "legacyMigrationRequested", normalizeUserID(legacyUserID) != "", "legacyMigrationVerified", verifiedLegacyUserID != "", "error", err)
+		s.logger.Error("finish phone login failed", "phone_mask", maskPhone(phone), "legacyMigrationRequested", normalizeUserID(legacyUserID) != "", "legacyMigrationAccepted", acceptedLegacyUserID != "", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -356,23 +356,44 @@ func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone 
 	})
 }
 
-func verifiedLegacyUserIDFromLoginRequest(r *http.Request, requestedLegacyUserID string) string {
+func acceptedLegacyUserIDFromLoginRequest(r *http.Request, requestedLegacyUserID string) string {
 	legacyUserID := normalizeUserID(requestedLegacyUserID)
 	if legacyUserID == "" || strings.HasPrefix(legacyUserID, "acct_") {
 		return ""
 	}
 	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
-	if secret == "" {
-		return ""
+	if secret != "" {
+		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+			provenUserID, _, ok := verifyBearerToken(token, secret)
+			if ok && normalizeUserID(provenUserID) == legacyUserID {
+				return legacyUserID
+			}
+		}
 	}
-	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-	if !strings.HasPrefix(authHeader, "Bearer ") {
-		return ""
+	if isLocalLegacyUserID(legacyUserID) {
+		return legacyUserID
 	}
-	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-	provenUserID, _, ok := verifyBearerToken(token, secret)
-	if !ok || normalizeUserID(provenUserID) != legacyUserID {
-		return ""
+	return ""
+}
+
+func isLocalLegacyUserID(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if len(value) != 36 {
+		return false
 	}
-	return legacyUserID
+	for i, ch := range value {
+		switch i {
+		case 8, 13, 18, 23:
+			if ch != '-' {
+				return false
+			}
+		default:
+			if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
+				return false
+			}
+		}
+	}
+	return true
 }

@@ -8,6 +8,7 @@ import type {
   AdminGiftCardBatch,
   AdminGiftCardCreatedCode,
   AdminGiftCardEntry,
+  AdminGiftCardSummary,
   AdminMonitoring,
   AdminOrderEntry,
   AdminOverview,
@@ -52,7 +53,7 @@ const routes: RouteItem[] = [
   { key: "users", label: "用户管理", section: "用户与增长", hint: "可查" },
   { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读" },
   { key: "orders", label: "订单", section: "权益与交易", hint: "支付后接" },
-  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可创建/可查" },
+  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可生成/可追溯" },
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复" },
   { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查" },
   { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态" },
@@ -76,6 +77,12 @@ const pageState = {
   supportUserID: "",
   entitlementUserID: "",
   orderUserID: "",
+  giftCardBatchID: "",
+  giftCardStatus: "",
+  giftCardUserID: "",
+  giftCardCodeSuffix: "",
+  giftCardAttemptSuccess: "",
+  giftCardAttemptReason: "",
   appLogWindow: "24h",
   auditWindow: "24h",
 };
@@ -366,8 +373,10 @@ async function monitoringPage(): Promise<string> {
   const today = report.windows.find((item) => item.key === "today") || report.windows[0];
   const day24 = report.windows.find((item) => item.key === "24h") || report.windows[0];
   return `
-    ${pageHead("监控面板", "红色马上处理，黄色继续观察，绿色暂时正常；没接通的功能会明确写未开放。", "monitoring")}
+    ${pageHead("监控面板", "先看能不能继续测，再处理红色事项；没接通的能力会明确标出来。", "monitoring")}
     ${monitoringHero(report)}
+    ${monitoringDecisionGrid(report, today, day24)}
+    ${monitoringShortcutBar()}
     <section class="grid kpi">
       ${kpi("服务异常", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
       ${kpi("App报错", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
@@ -378,12 +387,12 @@ async function monitoringPage(): Promise<string> {
     </section>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
-        <div class="card-head"><div class="card-title">最近使用情况</div><span class="small muted">${formatTime(report.now_ms)}</span></div>
-        <div class="table-wrap">${monitoringWindowTable(report.windows)}</div>
-      </section>
-      <section class="card">
         <div class="card-head"><div class="card-title">先处理事项</div><span class="small muted">${report.action_items?.length || 0} 项</span></div>
         <div class="card-body">${actionItemList(report.action_items || [])}</div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div class="card-title">关键队列</div><span class="small muted">生产巡检</span></div>
+        <div class="card-body">${monitoringQueueCards(report)}</div>
       </section>
     </div>
     <div class="grid two" style="margin-top:12px">
@@ -392,8 +401,8 @@ async function monitoringPage(): Promise<string> {
         <div class="card-body">${healthChipGrid(report.health)}</div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">后台能力状态</div><span class="small muted">真实接入情况</span></div>
-        <div class="card-body">${capabilityGrid(report.capabilities || [])}</div>
+        <div class="card-head"><div class="card-title">最近使用情况</div><span class="small muted">${formatTime(report.now_ms)}</span></div>
+        <div class="table-wrap">${monitoringWindowTable(report.windows)}</div>
       </section>
     </div>
     <div class="grid two" style="margin-top:12px">
@@ -413,8 +422,8 @@ async function monitoringPage(): Promise<string> {
       </div>
     </section>
     <section class="card" style="margin-top:12px">
-      <div class="card-head"><div class="card-title">队列明细</div><span class="small muted">给排障时进一步确认</span></div>
-      <div class="card-body">${monitoringQueueCards(report)}</div>
+      <div class="card-head"><div class="card-title">后台能力状态</div><span class="small muted">真实接入情况</span></div>
+      <div class="card-body">${capabilityGrid(report.capabilities || [])}</div>
     </section>
   `;
 }
@@ -425,11 +434,11 @@ async function usersPage(): Promise<string> {
     `/admin-api/v1/users${toQuery({ query, limit: 50 })}`,
   );
   return `
-    ${pageHead("用户管理", "按 user_id 或脱敏账号线索查询用户，只展示后端返回的运营字段。", "users")}
+    ${pageHead("用户管理", "按账号ID或脱敏手机号线索查询用户，只展示后端返回的运营字段。", "users")}
     <form class="filters" id="users-filter-form">
       <label class="field wide">
-        <span>用户查询</span>
-        <input class="input" name="query" value="${escapeAttr(query)}" placeholder="user_id / 手机号脱敏线索" />
+        <span>账号查询</span>
+        <input class="input" name="query" value="${escapeAttr(query)}" placeholder="账号ID / 手机号脱敏线索" />
       </label>
       <button class="button primary" type="submit">查询</button>
     </form>
@@ -452,7 +461,7 @@ async function entitlementsPage(): Promise<string> {
     formID: "entitlements-form",
     inputName: "user_id",
     value: pageState.entitlementUserID,
-    placeholder: "输入 user_id 查询权益",
+    placeholder: "输入账号ID查询权益",
     content: async (userID) => {
       if (!userID) {
         return planningNotice("全局会员统计尚未接入", "当前管理 API 只提供用户详情内的额度和扣次流水；全局 Free / Plus / Pro 分布、耗尽用户和补偿队列后续由聚合 API 提供。");
@@ -498,7 +507,7 @@ async function ordersPage(): Promise<string> {
     formID: "orders-form",
     inputName: "user_id",
     value: pageState.orderUserID,
-    placeholder: "输入 user_id 查询订单",
+    placeholder: "输入账号ID查询订单",
     content: async (userID) => {
       if (!userID) {
         return planningNotice("全局订单页未接入", "后端目前没有正式支付订单聚合接口；支付成功、回调、退款和权益发放异常不能在前端伪造。");
@@ -515,39 +524,51 @@ async function ordersPage(): Promise<string> {
 }
 
 async function giftCardsPage(): Promise<string> {
-  const [batchesResponse, cardsResponse, attemptsResponse] = await Promise.all([
+  const cardParams = {
+    limit: 100,
+    batch_id: pageState.giftCardBatchID,
+    status: pageState.giftCardStatus,
+    user_id: pageState.giftCardUserID,
+    code_suffix: pageState.giftCardCodeSuffix,
+  };
+  const attemptParams = {
+    limit: 100,
+    user_id: pageState.giftCardUserID,
+    code_suffix: pageState.giftCardCodeSuffix,
+    success: pageState.giftCardAttemptSuccess,
+    failure_reason: pageState.giftCardAttemptReason,
+  };
+  const [summaryResponse, batchesResponse, cardsResponse, attemptsResponse] = await Promise.all([
+    apiFetch<{ summary: AdminGiftCardSummary }>("/admin-api/v1/gift-cards/summary"),
     apiFetch<{ batches: AdminGiftCardBatch[] }>("/admin-api/v1/gift-cards/batches?limit=50"),
-    apiFetch<{ cards: AdminGiftCardEntry[] }>("/admin-api/v1/gift-cards/cards?limit=50"),
-    apiFetch<{ attempts: AdminGiftCardAttempt[] }>("/admin-api/v1/gift-cards/attempts?limit=50"),
+    apiFetch<{ cards: AdminGiftCardEntry[] }>(`/admin-api/v1/gift-cards/cards${toQuery(cardParams)}`),
+    apiFetch<{ attempts: AdminGiftCardAttempt[] }>(`/admin-api/v1/gift-cards/attempts${toQuery(attemptParams)}`),
   ]);
   const cards = cardsResponse.cards;
   const attempts = attemptsResponse.attempts;
-  const activeCount = cards.filter((card) => card.status === "active").length;
-  const redeemedCount = cards.filter((card) => card.status === "redeemed").length;
-  const voidCount = cards.filter((card) => card.status === "void").length;
-  const failedAttempts = attempts.filter((attempt) => !attempt.success).length;
+  const summary = summaryResponse.summary;
   return `
-    ${pageHead("礼品卡", "礼品卡必须以后端批次、卡、兑换流水和审计为真相；前端不展示完整卡号。", "gift-cards")}
+    ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；完整卡码只在生成当次展示。", "gift-cards")}
     <section class="grid kpi">
-      ${kpi("可用卡", activeCount, "当前列表内未兑换")}
-      ${kpi("已兑换", redeemedCount, "当前列表内")}
-      ${kpi("已作废", voidCount, "当前列表内")}
-      ${kpi("失败尝试", failedAttempts, "当前列表内")}
-      ${kpi("批次数", batchesResponse.batches.length, "最近批次")}
+      ${kpi("可用卡", summary.active_count, "全量未兑换")}
+      ${kpi("已兑换", summary.redeemed_count, "全量已激活")}
+      ${kpi("已作废", summary.void_count, "全量")}
+      ${kpi("失败尝试", summary.failed_attempts_24h, "最近24小时")}
+      ${kpi("批次数", summary.batch_count, "全量批次")}
       ${kpi("完整卡码", lastGiftCardCodes.length ? "本次可见" : "不保存", lastGiftCardCodes.length ? "离开后不可恢复" : "历史只保留掩码")}
     </section>
     <div class="grid two" style="margin-top:12px">
-      ${notice("现在能用什么", "后台可创建 Plus / Pro 礼品卡批次、查看卡状态、查看兑换尝试、作废未兑换卡；Android 礼品卡页会调用后端兑换接口，成功后以后端权益为准。", "info")}
-      ${notice("仍然不能做什么", "不能导出历史完整卡码，因为数据库只存 hash 和掩码；批量发放名单、按批次详情分页搜索、失败原因聚合和支付订单联动后续再补。", "warn")}
+      ${notice("现在可以怎么用", "这里生成 1 张正式礼品卡，复制完整卡码到 Android 设置里的“礼品卡”兑换；成功后本页按账号ID、批次或卡尾号都能追到激活记录。", "info")}
+      ${notice("追溯边界", "后台不保存历史完整卡码，只能用卡掩码、尾号、批次、兑换账号ID、脱敏手机号、地区和兑换尝试流水追溯。", "warn")}
     </div>
     <section class="card">
       <div class="card-head">
-        <div class="card-title">创建批次</div>
+        <div class="card-title">生成礼品卡批次</div>
         <span class="small muted">完整卡码只在生成成功当次展示</span>
       </div>
       <div class="card-body">
         <form id="gift-card-create-form" class="filter-form">
-          <label>批次名<input name="name" placeholder="例如：内测 Plus 月卡" /></label>
+          <label>批次名<input name="name" placeholder="例如：首批 Plus 月卡" /></label>
           <label>档位
             <select name="tier">
               <option value="plus">Plus</option>
@@ -561,6 +582,10 @@ async function giftCardsPage(): Promise<string> {
         </form>
         ${createdGiftCardCodesBlock(lastGiftCardCodes)}
       </div>
+    </section>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">追溯筛选</div><span class="small muted">按批次、账号ID或卡尾号定位</span></div>
+      <div class="card-body">${giftCardTraceFilterForm()}</div>
     </section>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
@@ -576,6 +601,10 @@ async function giftCardsPage(): Promise<string> {
         <div class="table-wrap">${giftCardTable(cards)}</div>
       </section>
     </div>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">失败原因聚合</div><span class="small muted">最近7天</span></div>
+      <div class="card-body">${giftCardFailureReasonsBlock(summary.failure_reasons)}</div>
+    </section>
     <section class="card" style="margin-top:12px">
       <div class="card-head"><div class="card-title">兑换尝试</div><span class="small muted">${attempts.length} 条</span></div>
       <div class="table-wrap">${giftCardAttemptsTable(attempts)}</div>
@@ -680,7 +709,7 @@ async function auditPage(): Promise<string> {
     <form class="filters" id="audit-form">
       ${timeWindowField("audit_window", pageState.auditWindow)}
       <label class="field"><span>action</span><input class="input" name="action" value="${escapeAttr(readInputValue("audit", "action"))}" /></label>
-      <label class="field"><span>target_user_id</span><input class="input" name="target_user_id" value="${escapeAttr(readInputValue("audit", "target_user_id"))}" /></label>
+      <label class="field"><span>目标账号ID</span><input class="input" name="target_user_id" value="${escapeAttr(readInputValue("audit", "target_user_id"))}" /></label>
       <label class="field"><span>success</span>${selectHTML("success", readInputValue("audit", "success"), [["", "全部"], ["true", "成功"], ["false", "失败"]])}</label>
       <button class="button primary" type="submit">查询</button>
     </form>
@@ -762,6 +791,16 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
     await submitGiftCardBatch(form);
     return;
   }
+  if (form.id === "gift-card-filter-form") {
+    pageState.giftCardBatchID = formValue(form, "batch_id");
+    pageState.giftCardStatus = formValue(form, "status");
+    pageState.giftCardUserID = formValue(form, "user_id");
+    pageState.giftCardCodeSuffix = formValue(form, "code_suffix");
+    pageState.giftCardAttemptSuccess = formValue(form, "success");
+    pageState.giftCardAttemptReason = formValue(form, "failure_reason");
+    await render();
+    return;
+  }
   if (form.id === "support-reply-form") {
     await submitSupportReply(form);
     return;
@@ -809,6 +848,22 @@ async function handleAction(button: HTMLElement): Promise<void> {
   }
   if (action === "clear-gift-card-codes") {
     lastGiftCardCodes = [];
+    await render();
+    return;
+  }
+  if (action === "clear-gift-card-filter") {
+    pageState.giftCardBatchID = "";
+    pageState.giftCardStatus = "";
+    pageState.giftCardUserID = "";
+    pageState.giftCardCodeSuffix = "";
+    pageState.giftCardAttemptSuccess = "";
+    pageState.giftCardAttemptReason = "";
+    await render();
+    return;
+  }
+  if (action === "gift-card-reason-filter") {
+    pageState.giftCardAttemptSuccess = "failed";
+    pageState.giftCardAttemptReason = button.dataset.reason || "";
     await render();
     return;
   }
@@ -985,7 +1040,7 @@ function usersTable(users: AdminUserListEntry[]): string {
     <table class="table">
       <thead>
         <tr>
-          <th>用户</th><th>会员</th><th>今日额度</th><th>最近问诊</th><th>地区</th><th>错误</th><th>反馈</th><th>操作</th>
+          <th>账号ID</th><th>会员</th><th>今日额度</th><th>最近问诊</th><th>地区</th><th>错误</th><th>反馈</th><th>操作</th>
         </tr>
       </thead>
       <tbody>
@@ -1016,7 +1071,7 @@ function usersTable(users: AdminUserListEntry[]): string {
 function userKV(user: AdminUserListEntry): string {
   return `
     <dl class="kv">
-      <dt>user_id</dt><dd>${escapeHTML(user.user_id)}</dd>
+      <dt>账号ID</dt><dd>${escapeHTML(user.user_id)}</dd>
       <dt>手机号</dt><dd>${escapeHTML(user.phone_mask || "未返回")}</dd>
       <dt>创建时间</dt><dd>${formatTime(user.created_at)}</dd>
       <dt>最近登录</dt><dd>${formatTime(user.last_login_at)}</dd>
@@ -1034,7 +1089,7 @@ function entitlementSummary(detail: AdminUserDetail): string {
   const user = detail.user;
   return `
     <dl class="kv">
-      <dt>用户</dt><dd>${escapeHTML(user.user_id)}</dd>
+      <dt>账号ID</dt><dd>${escapeHTML(user.user_id)}</dd>
       <dt>会员档位</dt><dd>${statusPill(user.tier || "free")}</dd>
       <dt>会员到期</dt><dd>${formatTime(user.tier_expire_at)}</dd>
       <dt>今日额度</dt><dd>${quotaText(user.daily)}</dd>
@@ -1113,7 +1168,7 @@ function upgradeCreditsTable(rows: AdminUpgradeCredit[]): string {
   if (!rows.length) return emptyState("没有升级补偿", "该用户没有升级补偿次数记录。");
   return `
     <table class="table">
-      <thead><tr><th>用户</th><th>剩余次数</th><th>到期</th><th>更新时间</th></tr></thead>
+      <thead><tr><th>账号ID</th><th>剩余次数</th><th>到期</th><th>更新时间</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -1156,6 +1211,52 @@ function createdGiftCardCodesBlock(rows: AdminGiftCardCreatedCode[]): string {
   `;
 }
 
+function giftCardTraceFilterForm(): string {
+  return `
+    <form id="gift-card-filter-form" class="filter-form">
+      <label>批次 ID<input name="batch_id" value="${escapeAttr(pageState.giftCardBatchID)}" placeholder="gcb_..." /></label>
+      <label>状态
+        <select name="status">
+          ${selectOption("", "全部", pageState.giftCardStatus)}
+          ${selectOption("active", "未兑换", pageState.giftCardStatus)}
+          ${selectOption("redeemed", "已兑换", pageState.giftCardStatus)}
+          ${selectOption("void", "已作废", pageState.giftCardStatus)}
+        </select>
+      </label>
+      <label>账号ID<input name="user_id" value="${escapeAttr(pageState.giftCardUserID)}" placeholder="acct_..." /></label>
+      <label>卡尾号<input name="code_suffix" value="${escapeAttr(pageState.giftCardCodeSuffix)}" placeholder="后4位" maxlength="12" /></label>
+      <label>尝试结果
+        <select name="success">
+          ${selectOption("", "全部", pageState.giftCardAttemptSuccess)}
+          ${selectOption("success", "成功", pageState.giftCardAttemptSuccess)}
+          ${selectOption("failed", "失败", pageState.giftCardAttemptSuccess)}
+        </select>
+      </label>
+      <label>失败原因<input name="failure_reason" value="${escapeAttr(pageState.giftCardAttemptReason)}" placeholder="gift_card_not_found" /></label>
+      <button class="button primary" type="submit">查询</button>
+      <button class="button" type="button" data-action="clear-gift-card-filter">清空</button>
+    </form>
+  `;
+}
+
+function giftCardFailureReasonsBlock(rows: AdminGiftCardSummary["failure_reasons"]): string {
+  if (!rows.length) return emptyState("没有失败聚合", "最近 7 天没有失败兑换，或者还没有兑换尝试。");
+  return `
+    <div class="reason-grid">
+      ${rows
+        .map(
+          (row) => `
+            <button class="reason-chip" data-action="gift-card-reason-filter" data-reason="${escapeAttr(row.reason)}">
+              <strong>${escapeHTML(row.reason)}</strong>
+              <span>${row.count} 次</span>
+            </button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
   if (!rows.length) return emptyState("没有礼品卡批次", "还没有创建礼品卡批次。");
   return `
@@ -1182,15 +1283,15 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
   if (!rows.length) return emptyState("没有礼品卡", "后端未返回礼品卡记录。");
   return `
     <table class="table">
-      <thead><tr><th>卡</th><th>档位</th><th>状态</th><th>兑换用户</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
+      <thead><tr><th>卡</th><th>档位</th><th>状态</th><th>激活账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
+                <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
                 <td>${statusPill(row.tier)}</td><td>${statusPill(row.status)}</td>
-                <td>${escapeHTML(row.redeemed_user_id || "")}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
+                <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
                 <td>${escapeHTML(row.redeemed_region || "")}<div class="small muted">${escapeHTML([row.redeemed_region_source, row.redeemed_region_reliability].filter(Boolean).join(" / "))}</div></td>
                 <td>${row.status === "active" ? `<button class="button danger" data-action="void-gift-card" data-card-id="${escapeAttr(row.card_id)}">作废</button>` : `<span class="small muted">${row.status === "void" ? `已作废 ${formatTime(row.voided_at)}` : "无操作"}</span>`}</td>
@@ -1207,13 +1308,13 @@ function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
   if (!rows.length) return emptyState("没有兑换尝试", "后端未返回兑换尝试记录。");
   return `
     <table class="table">
-      <thead><tr><th>ID</th><th>卡尾号</th><th>用户</th><th>结果</th><th>原因</th><th>地区</th><th>IP</th><th>时间</th></tr></thead>
+      <thead><tr><th>ID</th><th>卡尾号</th><th>账号ID</th><th>结果</th><th>原因</th><th>地区</th><th>IP</th><th>时间</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${row.id}</td><td class="mono">${escapeHTML(row.code_suffix || "")}</td><td>${escapeHTML(row.user_id || "")}</td>
+                <td>${row.id}</td><td class="mono">${escapeHTML(row.code_suffix || "")}</td><td>${row.user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>` : ""}</td>
                 <td>${row.success ? statusPill("success") : statusPill("failed")}</td><td>${escapeHTML(row.failure_reason || "")}</td>
                 <td>${escapeHTML(row.region || "")}<div class="small muted">${escapeHTML([row.region_source, row.region_reliability].filter(Boolean).join(" / "))}</div></td>
                 <td>${escapeHTML(row.masked_ip || "")}</td><td>${formatTime(row.created_at)}</td>
@@ -1279,7 +1380,7 @@ function appLogsTable(rows: ClientAppLogEntry[]): string {
   if (!rows.length) return emptyState("没有 App 日志", "当前筛选条件下后端未返回日志。");
   return `
     <table class="table">
-      <thead><tr><th>时间</th><th>级别</th><th>事件</th><th>用户</th><th>版本</th><th>设备</th><th>消息</th><th>attrs</th></tr></thead>
+      <thead><tr><th>时间</th><th>级别</th><th>事件</th><th>账号ID</th><th>版本</th><th>设备</th><th>消息</th><th>attrs</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -1335,7 +1436,7 @@ function auditTable(rows: AdminAuditLogEntry[]): string {
   if (!rows.length) return emptyState("没有审计日志", "当前筛选条件下后端未返回审计记录。");
   return `
     <table class="table">
-      <thead><tr><th>时间</th><th>actor</th><th>action</th><th>目标</th><th>用户</th><th>结果</th><th>状态码</th><th>详情</th></tr></thead>
+      <thead><tr><th>时间</th><th>actor</th><th>action</th><th>目标</th><th>目标账号ID</th><th>结果</th><th>状态码</th><th>详情</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -1388,7 +1489,7 @@ async function userScopedPage(options: {
     ${pageHead(options.title, options.desc, activeRoute)}
     <form class="inline-form" id="${options.formID}">
       <label class="field">
-        <span>user_id</span>
+        <span>账号ID</span>
         <input class="input" name="${options.inputName}" value="${escapeAttr(options.value)}" placeholder="${escapeAttr(options.placeholder)}" />
       </label>
       <button class="button primary" type="submit">查询</button>
@@ -1401,7 +1502,7 @@ function logFilterForm(formID: string, key: string, selectedWindow: string): str
   return `
     <form class="filters" id="${formID}">
       ${timeWindowField(key === "app-log" ? "app_log_window" : `${key}_window`, selectedWindow)}
-      <label class="field"><span>user_id</span><input class="input" name="user_id" value="${escapeAttr(readInputValue(key, "user_id"))}" /></label>
+      <label class="field"><span>账号ID</span><input class="input" name="user_id" value="${escapeAttr(readInputValue(key, "user_id"))}" /></label>
       <label class="field"><span>event</span><input class="input" name="event" value="${escapeAttr(readInputValue(key, "event"))}" /></label>
       <label class="field"><span>level</span>${selectHTML("level", readInputValue(key, "level"), [["", "全部"], ["info", "info"], ["warn", "warn"], ["error", "error"]])}</label>
       <button class="button primary" type="submit">查询</button>
@@ -1424,6 +1525,10 @@ function selectHTML(name: string, value: string, options: [string, string][]): s
       ${options.map(([optionValue, label]) => `<option value="${escapeAttr(optionValue)}" ${optionValue === value ? "selected" : ""}>${escapeHTML(label)}</option>`).join("")}
     </select>
   `;
+}
+
+function selectOption(value: string, label: string, selected: string): string {
+  return `<option value="${escapeAttr(value)}" ${value === selected ? "selected" : ""}>${escapeHTML(label)}</option>`;
 }
 
 const filterState = new Map<string, Record<string, string>>();
@@ -1564,12 +1669,7 @@ function regionMetricsTable(rows: AdminMonitoring["top_regions"]): string {
 }
 
 function monitoringHero(report: AdminMonitoring): string {
-  const items = report.action_items || [];
-  const worst = items.some((item) => item.level === "bad")
-    ? "bad"
-    : items.some((item) => item.level === "warn")
-      ? "warn"
-      : "ok";
+  const worst = monitoringWorstLevel(report);
   const title = worst === "bad" ? "需要马上处理" : worst === "warn" ? "有事项要关注" : "整体正常";
   const body =
     worst === "bad"
@@ -1590,6 +1690,90 @@ function monitoringHero(report: AdminMonitoring): string {
       </div>
     </section>
   `;
+}
+
+function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring["windows"][number] | undefined, day24: AdminMonitoring["windows"][number] | undefined): string {
+  const worst = monitoringWorstLevel(report);
+  const loginOK = loginHealthOK(report.health);
+  const giftWarn = report.queues.gift_card_failed_attempts > 0;
+  const appErrors = day24?.app_errors ?? 0;
+  return `
+    <section class="decision-grid">
+      ${decisionCard(
+        "当前结论",
+        worst === "bad" ? "先处理" : worst === "warn" ? "可测但要盯" : "可以继续测",
+        worst === "bad" ? "有红色事项，先点下面入口处理。" : worst === "warn" ? "没有明确中断，但有队列或配置需要看。" : `今日 ${today?.chat_rounds ?? 0} 轮问诊，关键服务正常。`,
+        worst,
+        worst === "bad" ? "health" : "monitoring",
+      )}
+      ${decisionCard(
+        "登录与账号ID",
+        loginOK ? "正常" : "检查登录",
+        loginOK ? "严格鉴权、一键登录、短信登录和 Redis 状态正常；登录后主 ID 为账号ID。" : "登录依赖或严格鉴权异常，先打开服务健康。",
+        loginOK ? "ok" : "bad",
+        "health",
+      )}
+      ${decisionCard(
+        "礼品卡与权益",
+        giftWarn ? "看失败" : "可生成兑换",
+        `${report.queues.gift_card_active} 张可用，${report.queues.gift_card_redeemed} 张已兑换；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
+        giftWarn ? "warn" : "ok",
+        "gift-cards",
+      )}
+      ${decisionCard(
+        "App 质量",
+        appErrors ? `${appErrors} 个错误` : "暂无错误",
+        appErrors ? `最近24小时 warn ${day24?.app_warns ?? 0} 条，先看 App 错误 Top。` : `最近24小时 warn ${day24?.app_warns ?? 0} 条。`,
+        appErrors >= 10 ? "bad" : appErrors > 0 ? "warn" : "ok",
+        "app-logs",
+      )}
+    </section>
+  `;
+}
+
+function decisionCard(title: string, value: string, body: string, level: "ok" | "warn" | "bad" | "info", route?: RouteKey): string {
+  return `
+    <article class="decision-card ${level}">
+      <div class="decision-top">
+        <span>${escapeHTML(title)}</span>
+        ${statusPill(level === "ok" ? "正常" : level === "warn" ? "关注" : level === "bad" ? "处理" : "信息", level)}
+      </div>
+      <strong>${escapeHTML(value)}</strong>
+      <p>${escapeHTML(body)}</p>
+      ${route && route !== "monitoring" ? routeActionButton(route, "打开") : ""}
+    </article>
+  `;
+}
+
+function monitoringShortcutBar(): string {
+  return `
+    <div class="shortcut-bar">
+      ${shortcutButton("gift-cards", "生成礼品卡")}
+      ${shortcutButton("app-logs", "看 App 错误")}
+      ${shortcutButton("support", "处理反馈")}
+      ${shortcutButton("today-agri", "看今日农情")}
+      ${shortcutButton("health", "服务健康")}
+    </div>
+  `;
+}
+
+function shortcutButton(route: RouteKey, label: string): string {
+  return `<button class="button" data-action="route" data-route="${escapeAttr(route)}">${escapeHTML(label)}</button>`;
+}
+
+function monitoringWorstLevel(report: AdminMonitoring): "ok" | "warn" | "bad" {
+  const items = report.action_items || [];
+  if (items.some((item) => item.level === "bad")) return "bad";
+  if (items.some((item) => item.level === "warn")) return "warn";
+  return "ok";
+}
+
+function loginHealthOK(health: AdminOverview["health"]): boolean {
+  return health.auth_strict === true &&
+    String(health.dypns).toLowerCase() === "ok" &&
+    String(health.dypns_fusion).toLowerCase() === "ok" &&
+    String(health.dypns_sms).toLowerCase() === "ok" &&
+    String(health.redis).toLowerCase() === "ok";
 }
 
 function actionItemList(items: AdminMonitoring["action_items"]): string {

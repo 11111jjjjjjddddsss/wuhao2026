@@ -214,6 +214,28 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	if _, err := tx.ExecContext(ctx, "UPDATE client_app_logs SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
 		return err
 	}
+	var phoneMask string
+	_ = tx.QueryRowContext(ctx, "SELECT phone_mask FROM app_accounts WHERE user_id = ? LIMIT 1", newUserID).Scan(&phoneMask)
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE gift_cards
+		    SET redeemed_user_id = ?,
+		        redeemed_phone_mask = CASE
+		          WHEN redeemed_phone_mask IS NULL OR redeemed_phone_mask = '' THEN ?
+		          ELSE redeemed_phone_mask
+		        END,
+		        updated_at = ?
+		  WHERE redeemed_user_id = ?`,
+		newUserID,
+		nullableTrimmed(phoneMask),
+		nowMs,
+		oldUserID,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE gift_card_redemption_attempts SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
+		return err
+	}
 	// Inflight streams are transient. Do not migrate them across identities because
 	// the single-active-stream unique index can make login fail on stale leases.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM chat_stream_inflight WHERE user_id = ?", oldUserID); err != nil {

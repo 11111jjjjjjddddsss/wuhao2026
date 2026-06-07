@@ -199,6 +199,22 @@ button {
   opacity: 0.56;
 }
 
+.link-button {
+  display: inline;
+  border: 0;
+  background: transparent;
+  color: #1e6f50;
+  padding: 0;
+  font-weight: 700;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link-button:hover {
+  color: #164d39;
+}
+
 .app-shell {
   display: grid;
   min-height: 100vh;
@@ -555,6 +571,69 @@ button {
   gap: 8px;
 }
 
+.decision-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.decision-card {
+  display: grid;
+  min-height: 168px;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.decision-card.ok {
+  border-color: #badbc5;
+  background: #f7fcf8;
+}
+
+.decision-card.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+}
+
+.decision-card.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+}
+
+.decision-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #66717f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.decision-card strong {
+  color: #111827;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.decision-card p {
+  margin: 0;
+  color: #4a5562;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.shortcut-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
 .action-list,
 .capability-grid,
 .health-chip-grid {
@@ -750,6 +829,35 @@ button {
   outline: none;
 }
 
+.reason-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.reason-chip {
+  display: grid;
+  gap: 4px;
+  min-height: 62px;
+  align-content: center;
+  border: 1px solid #d5dde5;
+  border-radius: 8px;
+  background: #fff;
+  color: #243241;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.reason-chip:hover {
+  border-color: #94bca8;
+  background: #f6fbf8;
+}
+
+.reason-chip span {
+  color: #68717d;
+  font-size: 12px;
+}
+
 .filters .wide {
   grid-column: span 2;
 }
@@ -911,6 +1019,10 @@ button {
     grid-template-columns: repeat(3, minmax(128px, 1fr));
   }
 
+  .decision-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
   .grid.two,
   .detail-grid,
   .split {
@@ -962,6 +1074,7 @@ button {
 
   .grid.kpi,
   .grid.three,
+  .decision-grid,
   .capability-grid,
   .health-chip-grid {
     grid-template-columns: 1fr;

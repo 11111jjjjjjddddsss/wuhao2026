@@ -91,6 +91,20 @@ type AdminGiftCardAttempt struct {
 	CreatedAt         int64             `json:"created_at"`
 }
 
+type AdminGiftCardSummary struct {
+	BatchCount        int64                        `json:"batch_count"`
+	ActiveCount       int64                        `json:"active_count"`
+	RedeemedCount     int64                        `json:"redeemed_count"`
+	VoidCount         int64                        `json:"void_count"`
+	FailedAttempts24h int64                        `json:"failed_attempts_24h"`
+	FailureReasons    []AdminGiftCardFailureReason `json:"failure_reasons"`
+}
+
+type AdminGiftCardFailureReason struct {
+	Reason string `json:"reason"`
+	Count  int64  `json:"count"`
+}
+
 type AdminGiftCardCreatedCode struct {
 	CardID       string `json:"card_id"`
 	Code         string `json:"code"`
@@ -210,10 +224,11 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := GiftCardListQuery{
-		BatchID: strings.TrimSpace(r.URL.Query().Get("batch_id")),
-		Status:  normalizeGiftCardStatus(r.URL.Query().Get("status")),
-		UserID:  normalizeUserID(r.URL.Query().Get("user_id")),
-		Limit:   parseAdminLimit(r.URL.Query().Get("limit")),
+		BatchID:    strings.TrimSpace(r.URL.Query().Get("batch_id")),
+		Status:     normalizeGiftCardStatus(r.URL.Query().Get("status")),
+		UserID:     normalizeUserID(r.URL.Query().Get("user_id")),
+		CodeSuffix: normalizeGiftCardCodeSuffix(r.URL.Query().Get("code_suffix")),
+		Limit:      parseAdminLimit(r.URL.Query().Get("limit")),
 	}
 	cards, err := s.store.ListGiftCards(r.Context(), filter)
 	if err != nil {
@@ -223,6 +238,24 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.cards", "gift_cards", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(cards), "status": filter.Status})
 	s.writeJSON(w, http.StatusOK, map[string]any{"cards": cards, "filter": filter})
+}
+
+func (s *Server) handleAdminGiftCardSummary(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "finance_ops", "ops_readonly", "auditor")
+	if !ok {
+		return
+	}
+	summary, err := s.store.GetGiftCardSummary(r.Context(), time.Now().UnixMilli())
+	if err != nil {
+		s.logger.Error("admin gift card summary failed", "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.summary", "gift_cards", "", "", true, http.StatusOK, map[string]any{
+		"failed_attempts_24h": summary.FailedAttempts24h,
+		"active_count":        summary.ActiveCount,
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"summary": summary})
 }
 
 func (s *Server) handleAdminVoidGiftCard(w http.ResponseWriter, r *http.Request) {
@@ -272,9 +305,11 @@ func (s *Server) handleAdminGiftCardAttempts(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	filter := GiftCardAttemptQuery{
-		UserID:     normalizeUserID(r.URL.Query().Get("user_id")),
-		CodeSuffix: strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("code_suffix"))),
-		Limit:      parseAdminLimit(r.URL.Query().Get("limit")),
+		UserID:        normalizeUserID(r.URL.Query().Get("user_id")),
+		CodeSuffix:    normalizeGiftCardCodeSuffix(r.URL.Query().Get("code_suffix")),
+		SuccessFilter: normalizeGiftCardAttemptSuccess(r.URL.Query().Get("success")),
+		FailureReason: strings.TrimSpace(r.URL.Query().Get("failure_reason")),
+		Limit:         parseAdminLimit(r.URL.Query().Get("limit")),
 	}
 	attempts, err := s.store.ListGiftCardAttempts(r.Context(), filter)
 	if err != nil {
@@ -336,16 +371,19 @@ type GiftCardBatchInput struct {
 }
 
 type GiftCardListQuery struct {
-	BatchID string `json:"batch_id,omitempty"`
-	Status  string `json:"status,omitempty"`
-	UserID  string `json:"user_id,omitempty"`
-	Limit   int    `json:"limit"`
-}
-
-type GiftCardAttemptQuery struct {
+	BatchID    string `json:"batch_id,omitempty"`
+	Status     string `json:"status,omitempty"`
 	UserID     string `json:"user_id,omitempty"`
 	CodeSuffix string `json:"code_suffix,omitempty"`
 	Limit      int    `json:"limit"`
+}
+
+type GiftCardAttemptQuery struct {
+	UserID        string `json:"user_id,omitempty"`
+	CodeSuffix    string `json:"code_suffix,omitempty"`
+	SuccessFilter string `json:"success,omitempty"`
+	FailureReason string `json:"failure_reason,omitempty"`
+	Limit         int    `json:"limit"`
 }
 
 func (s *Store) CreateGiftCardBatch(ctx context.Context, input GiftCardBatchInput) (AdminGiftCardBatch, []AdminGiftCardCreatedCode, error) {
@@ -511,6 +549,10 @@ func (s *Store) ListGiftCards(ctx context.Context, filter GiftCardListQuery) ([]
 		clauses = append(clauses, "redeemed_user_id = ?")
 		args = append(args, strings.TrimSpace(filter.UserID))
 	}
+	if strings.TrimSpace(filter.CodeSuffix) != "" {
+		clauses = append(clauses, "code_suffix = ?")
+		args = append(args, strings.TrimSpace(filter.CodeSuffix))
+	}
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
@@ -548,6 +590,15 @@ func (s *Store) ListGiftCardAttempts(ctx context.Context, filter GiftCardAttempt
 		clauses = append(clauses, "code_suffix = ?")
 		args = append(args, strings.TrimSpace(filter.CodeSuffix))
 	}
+	if filter.SuccessFilter == "success" {
+		clauses = append(clauses, "success = 1")
+	} else if filter.SuccessFilter == "failed" {
+		clauses = append(clauses, "success = 0")
+	}
+	if strings.TrimSpace(filter.FailureReason) != "" {
+		clauses = append(clauses, "failure_reason = ?")
+		args = append(args, strings.TrimSpace(filter.FailureReason))
+	}
 	if len(clauses) > 0 {
 		query += " WHERE " + strings.Join(clauses, " AND ")
 	}
@@ -577,6 +628,61 @@ func (s *Store) ListGiftCardAttempts(ctx context.Context, filter GiftCardAttempt
 		attempts = append(attempts, attempt)
 	}
 	return attempts, rows.Err()
+}
+
+func (s *Store) GetGiftCardSummary(ctx context.Context, nowMs int64) (AdminGiftCardSummary, error) {
+	var summary AdminGiftCardSummary
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_card_batches").Scan(&summary.BatchCount); err != nil {
+		return summary, err
+	}
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active'").Scan(&summary.ActiveCount); err != nil {
+		return summary, err
+	}
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'redeemed'").Scan(&summary.RedeemedCount); err != nil {
+		return summary, err
+	}
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'void'").Scan(&summary.VoidCount); err != nil {
+		return summary, err
+	}
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 0", nowMs-int64(24*time.Hour/time.Millisecond)).Scan(&summary.FailedAttempts24h); err != nil {
+		return summary, err
+	}
+	reasons, err := s.ListGiftCardFailureReasons(ctx, nowMs-int64(7*24*time.Hour/time.Millisecond), 8)
+	if err != nil {
+		return summary, err
+	}
+	summary.FailureReasons = reasons
+	return summary, nil
+}
+
+func (s *Store) ListGiftCardFailureReasons(ctx context.Context, sinceMs int64, limit int) ([]AdminGiftCardFailureReason, error) {
+	if limit <= 0 || limit > 20 {
+		limit = 8
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT COALESCE(NULLIF(failure_reason, ''), 'unknown') AS reason, COUNT(*) AS count_value
+		   FROM gift_card_redemption_attempts
+		  WHERE created_at >= ? AND success = 0
+		  GROUP BY reason
+		  ORDER BY count_value DESC, reason ASC
+		  LIMIT ?`,
+		sinceMs,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []AdminGiftCardFailureReason
+	for rows.Next() {
+		var entry AdminGiftCardFailureReason
+		if err := rows.Scan(&entry.Reason, &entry.Count); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
 }
 
 func (s *Store) VoidGiftCard(ctx context.Context, cardID string, nowMs int64) error {
@@ -932,6 +1038,26 @@ func normalizeGiftCardStatus(raw string) string {
 	default:
 		return ""
 	}
+}
+
+func normalizeGiftCardAttemptSuccess(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	switch value {
+	case "success", "ok", "true", "1":
+		return "success"
+	case "failed", "fail", "false", "0":
+		return "failed"
+	default:
+		return ""
+	}
+}
+
+func normalizeGiftCardCodeSuffix(raw string) string {
+	code := normalizeGiftCardCode(raw)
+	if len(code) > 4 {
+		code = code[len(code)-4:]
+	}
+	return code
 }
 
 func normalizeGiftCardCode(raw string) string {

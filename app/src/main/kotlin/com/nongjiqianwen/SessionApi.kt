@@ -255,6 +255,7 @@ object SessionApi {
             endpoint = "/api/auth/fusion/login",
             payload = mapOf(
                 "verify_token" to verifyToken.trim(),
+                "legacy_user_id" to IdManager.getLegacyUserId(),
                 "device_id" to IdManager.getDeviceId()
             ),
             onResult = onResult
@@ -336,6 +337,7 @@ object SessionApi {
             payload = mapOf(
                 "phone_number" to phoneNumber.trim(),
                 "verify_code" to verifyCode.trim(),
+                "legacy_user_id" to IdManager.getLegacyUserId(),
                 "device_id" to IdManager.getDeviceId()
             ),
             onResult = onResult

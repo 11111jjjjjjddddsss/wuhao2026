@@ -197,6 +197,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroid)
 	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/batches", s.handleAdminGiftCardBatches)
 	s.mux.HandleFunc("POST /admin-api/v1/gift-cards/batches", s.handleAdminCreateGiftCardBatch)
+	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/summary", s.handleAdminGiftCardSummary)
 	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/cards", s.handleAdminGiftCards)
 	s.mux.HandleFunc("POST /admin-api/v1/gift-cards/void", s.handleAdminVoidGiftCard)
 	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/attempts", s.handleAdminGiftCardAttempts)

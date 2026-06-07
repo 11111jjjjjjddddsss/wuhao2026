@@ -6,8 +6,8 @@
 
 - 状态：未关闭
 - 说明：`docs/runbooks` 已建立，`operations-blueprint.md` 也已把整体 App / 后端 / 管理后台的 Codex 协助运维范围固定下来；ECS / RDS / Redis / OSS / DNS / HTTPS / 部署脚本、Go 请求级日志、ECS 日志查询脚本、农技千查专用 SLS Project / Logstore 已经有一批真实入口。第一版网页后台代码已落地为 Vite `admin` 前端 + `server-go` `/admin-api/v1/*`，并新增后台账号、session、CSRF、角色校验和审计；生产入口已部署到 `https://admin.nongjiqiancha.cn/`，Nginx 静态托管并同域反代 `/admin-api/`，后台域名 HTTPS 证书已签发，owner 账号已通过一次性 bootstrap 初始化，bootstrap 环境变量已从 ECS 清理。
-- 风险：生产后台已上线并能登录，但还不能把“长期运营后台完全闭环”写成完成态；SLS 告警 / 仪表盘、数据库只读脚本、客服工单状态 / 搜索 / 分配、礼品卡批量发放 / 批次详情 / 失败原因聚合、检查更新发布记录等仍需继续补。
-- 补充：管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。后台当前覆盖登录、总览、监控面板、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康；监控面板已聚合真实业务表、App 自动日志、审计、健康状态和地区分布，但 SLS 自动告警 / 仪表盘、登录精准漏斗、发布 / 回滚写操作仍未接入；内部共享密钥接口仍保留给脚本兼容，但浏览器后台不应持有内部 secret。
+- 风险：生产后台已上线并能登录，但还不能把“长期运营后台完全闭环”写成完成态；SLS 告警 / 仪表盘、数据库只读脚本、客服工单状态 / 搜索 / 分配、礼品卡批量发放 / 发放对象管理、检查更新发布记录等仍需继续补。
+- 补充：管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。后台当前覆盖登录、总览、监控面板、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康；监控面板已聚合真实业务表、App 自动日志、审计、健康状态和地区分布，并补了“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡；礼品卡后台已补汇总、尾号 / 批次 / 账号ID追溯和失败原因聚合，但 SLS 自动告警 / 仪表盘、登录精准漏斗、发布 / 回滚写操作仍未接入；内部共享密钥接口仍保留给脚本兼容，但浏览器后台不应持有内部 secret。
 - 后续动作：补 SLS 告警 / 仪表盘和数据库只读脚本；继续把真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营入口沉淀到 runbook，并按最小权限继续拆角色。
 
 ## R2 项目记忆已有程序化检查，但覆盖仍偏粗
@@ -81,10 +81,10 @@
 ## R10 手机号登录生产接入仍需收口
 
 - 状态：未关闭
-- 说明：当前后端业务接口和 `/upload` 都要求身份头 / token。服务端已新增手机号账号表、登录 session 表、旧本机 `user_id` 迁移表和 v2 bearer token；Android 已新增登录门、账号 token 保存、验证码登录 UI 和调后端短信 / 融合认证接口的客户端代码。登录成功后使用手机号账号 `user_id`；旧本机 `user_id` 只作为受控迁移桥，服务端只有在请求同时提供可验证该旧身份的 bearer token 时才允许迁移。Android 手机号登录 payload 当前不再默认提交 `legacy_user_id`，避免未验证 legacy id 被冒用合并资产
+- 说明：当前后端业务接口和 `/upload` 都要求身份头 / token。服务端已新增手机号账号表、登录 session 表、旧本机 `user_id` 迁移表和 v2 bearer token；Android 已新增登录门、账号 token 保存、验证码登录 UI 和调后端短信 / 融合认证接口的客户端代码。登录成功后使用账号ID `acct_...`，底层字段仍可能叫 `user_id`，生产语义统一按账号ID理解；手机号只是注册 / 登录凭证和脱敏展示信息，不作为业务主键。旧本机 UUID 只作为受控迁移桥，Android 一键登录和短信登录 payload 会提交 `legacy_user_id`；服务端只接受本机 UUID 形态 legacy ID 或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为 legacy bridge，避免账号之间互相合并
 - 补充：当前仍兼容 Android 早期阶段的裸 `X-User-Id` 本机身份兜底，方便迁移期联调；Android 已移除 `SESSION_API_TOKEN` 静态注入和运行时登录绕过，正式登录只使用后端按真实手机号账号签发的 per-user session token
 - 补充：Redis 认证限流已覆盖融合认证 token 获取、融合认证登录校验、短信发送和短信登录校验；fusion token / fusion login 按 IP hash 限流，短信发送按手机号 hash + IP hash 和 IP hash 两层限流，短信登录按手机号 hash + IP hash 限流，避免 SDK 接入后刷 token、伪造 verify token 或轮换手机号直接消耗阿里云认证资源
-- 风险：这还不是完整可上线登录：阿里云 `CreateSchemeConfig` 已返回 SchemeCode，且 DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名、签名、短信签名和验证码模板已写入本机密钥文件与 ECS 环境；Android 一键登录 SDK / AAR 已导入并接到登录页，源码 manifest 已显式声明 `READ_PHONE_STATE` 和设备网络 / Wi-Fi 状态权限，但还没做用户真机运营商网络回归；当前半程 verify-only 和最终 login 都会对 SDK verify token 发起服务端校验，是否会受阿里云 token 一次性语义、计费或成功率影响，必须用荣耀真机和真实运营商网络确认；验证码登录已具备后端配置但仍需真机回归；已暴露过的主账号 AccessKey 需要在上线前轮换；Redis 认证限流已部署到 ECS 并健康；旧 `X-User-Id` 兜底在公开生产仍需严格关闭，旧无 `session_id` bearer token 也不应在公开生产兼容
+- 风险：这还不是完整可上线登录：阿里云 `CreateSchemeConfig` 已返回 SchemeCode，且 DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名、签名、短信签名和验证码模板已写入本机密钥文件与 ECS 环境；Android 一键登录 SDK / AAR 已导入并接到登录页，源码 manifest 已显式声明 `READ_PHONE_STATE` 和设备网络 / Wi-Fi 状态权限，但还没做用户真机运营商网络回归；当前半程 verify-only 和最终 login 都会对 SDK verify token 发起服务端校验，是否会受阿里云 token 一次性语义、计费或成功率影响，必须用荣耀真机和真实运营商网络确认；验证码登录已具备后端配置但仍需真机回归；已暴露过的主账号 AccessKey 需要在上线前轮换；Redis 认证限流已部署到 ECS 并健康；旧 `X-User-Id` 兜底在公开生产仍需严格关闭，旧无 `session_id` bearer token 也不应在公开生产兼容。所有会员、额度、加油包、订单、礼品卡、帮助反馈、App 日志、B/C 记忆和聊天归档都必须继续收敛到同一个账号ID，后续接支付不能再按手机号或本机 ID 分叉
 - 后续动作：正式公开上线前必须完成 AccessKey 轮换、HTTPS 公网入口下的真机登录回归和旧 `X-User-Id` / 旧 bearer token 兜底隔离；DYPNS 基础凭证、SchemeCode、包名、签名、短信签名、验证码模板和 Android SDK 客户端链路已配置；Redis 验证码 / 限流已接入；生产环境保持 `APP_SECRET` 与 `AUTH_STRICT=true`，不要设置 `AUTH_ALLOW_LEGACY_TOKEN`
 
 ## R11 历史模型 Key 轮换确认
@@ -128,9 +128,9 @@
 ## R16 礼品卡批量发放和精细风控仍未完成
 
 - 状态：未关闭
-- 说明：后端礼品卡批次、卡、兑换尝试表、后台创建 / 查询 / 作废接口、用户侧 `POST /api/gift-cards/redeem` 和 Android 设置页真实兑换入口已接入；兑换会事务内发会员权益，并记录成功 / 失败尝试、地区、脱敏 IP 和审计。Android 只在后端返回成功后展示“兑换成功”并刷新会员权益。
-- 风险：后台当前仍没有批量发放名单、批次详情分页 / 搜索、失败原因聚合和更细风控统计；完整卡码只在创建成功当次展示，刷新后无法再查看，这是安全设计，但要求运营妥善保存当次发放材料。历史完整卡码不能导出，因为数据库只保存 hash / 掩码 / 尾号。
-- 后续动作：按 [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md) 补批量发放名单、批次详情、失败原因聚合和风控统计；后续若礼品卡用于商务发放，增加发放对象、渠道和外部备注。Android 仍必须坚持只提交用户输入并展示后端结果，没有后端成功结果时不能弹“兑换成功”。
+- 说明：后端礼品卡批次、卡、兑换尝试表、后台创建 / 查询 / 作废接口、用户侧 `POST /api/gift-cards/redeem` 和 Android 设置页真实兑换入口已接入；兑换会事务内发会员权益，并记录成功 / 失败尝试、地区、脱敏 IP 和审计。后台已补全局汇总、卡码尾号 / 批次 / 账号ID追溯、兑换尝试成功状态 / 失败原因筛选和最近 7 天失败原因聚合。Android 只在后端返回成功后展示“兑换成功”并刷新会员权益。
+- 风险：后台当前仍没有批量发放名单、发放对象管理和更细风控统计；完整卡码只在创建成功当次展示，刷新后无法再查看，这是安全设计，但要求运营妥善保存当次发放材料。历史完整卡码不能导出，因为数据库只保存 hash / 掩码 / 尾号。
+- 后续动作：按 [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md) 补批量发放名单、发放对象管理、商务发放渠道、外部备注和更细风控统计。Android 仍必须坚持只提交用户输入并展示后端结果，没有后端成功结果时不能弹“兑换成功”。
 
 ## R17 协议、隐私和风险提示仍需上线前合规复核
 

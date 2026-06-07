@@ -339,6 +339,20 @@ export interface AdminGiftCardAttempt {
   created_at: number;
 }
 
+export interface AdminGiftCardFailureReason {
+  reason: string;
+  count: number;
+}
+
+export interface AdminGiftCardSummary {
+  batch_count: number;
+  active_count: number;
+  redeemed_count: number;
+  void_count: number;
+  failed_attempts_24h: number;
+  failure_reasons: AdminGiftCardFailureReason[];
+}
+
 export interface ClientAppLogSummaryEntry {
   event: string;
   level: string;
