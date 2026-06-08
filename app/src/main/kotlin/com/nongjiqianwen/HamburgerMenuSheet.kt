@@ -282,7 +282,7 @@ internal fun HamburgerMenuSheet(
                 }
                 else -> {
                     if (userTriggered) {
-                        showNotice("已是最新版本")
+                        showNotice("当前已是最新版本")
                     }
                 }
             }
@@ -580,7 +580,7 @@ private fun HamburgerAppUpdateDialog(
         latestName != null && latestCode != null -> "版本 $latestName ($latestCode)"
         latestName != null -> "版本 $latestName"
         latestCode != null -> "版本 $latestCode"
-        else -> "发现新版本"
+        else -> "新版本"
     }
     val sizeText = formatAppUpdateSize(update.fileSizeBytes)
     val notes = update.releaseNotes?.trim().orEmpty()
@@ -637,7 +637,7 @@ private fun HamburgerAppUpdateCard(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "发现新版本",
+                text = "版本更新",
                 color = Color(0xFF111111),
                 fontSize = 20.sp,
                 lineHeight = 27.sp,
@@ -650,14 +650,14 @@ private fun HamburgerAppUpdateCard(
                 lineHeight = 18.sp
             )
             Text(
-                text = notes.ifBlank { "优化产品体验" },
+                text = notes.ifBlank { "修复已知问题，优化使用体验。" },
                 color = Color(0xFF222222),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
             )
             if (downloading) {
                 Text(
-                    text = "正在下载更新...",
+                    text = "正在准备安装包，请稍候。",
                     color = Color(0xFF6D7178),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -725,7 +725,7 @@ internal fun HamburgerAppUpdateDialogPreview() {
     HamburgerAppUpdateCard(
         versionText = "版本 1.0.1 (2)",
         sizeText = "38.5MB",
-        notes = "优化产品体验",
+        notes = "修复已知问题，优化使用体验。",
         forceUpdate = false,
         downloading = false,
         onDismiss = {},

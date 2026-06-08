@@ -850,6 +850,34 @@ func (s *Store) UpdateSupportConversationStatus(ctx context.Context, userID stri
 	return tx.Commit()
 }
 
+func (s *Store) AssignSupportConversation(ctx context.Context, userID string, actor string, nowMs int64) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return sql.ErrNoRows
+	}
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE support_conversations
+		    SET assigned_to = ?,
+		        updated_at = ?
+		  WHERE user_id = ?`,
+		nullableTrimmed(actor),
+		nowMs,
+		userID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func upsertSupportConversationTx(ctx context.Context, tx *sql.Tx, userID string, senderType string, messageID int64, createdAt int64) error {
 	status := "replied"
 	closedAt := any(nil)

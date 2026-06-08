@@ -561,7 +561,7 @@ async function giftCardsPage(): Promise<string> {
   return `
     ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；后台可直接查看完整卡码并复制。", "gift-cards")}
     <section class="grid kpi">
-      ${kpi("可用卡", summary.active_count, "全量未兑换")}
+      ${kpi("可兑换卡", summary.redeemable_count, "当前可兑换")}
       ${kpi("已兑换", summary.redeemed_count, "全量已激活")}
       ${kpi("已作废", summary.void_count, "全量")}
       ${kpi("失败尝试", summary.failed_attempts_24h, "最近24小时")}
@@ -570,7 +570,7 @@ async function giftCardsPage(): Promise<string> {
     </section>
     <div class="grid two" style="margin-top:12px">
       ${notice("现在可以怎么用", "这里生成 1 张正式礼品卡，复制完整卡码到 Android 设置里的“礼品卡”兑换；成功后本页按账号ID、批次或卡尾号都能追到激活记录。", "info")}
-      ${notice("追溯边界", "新生成礼品卡会加密保存完整码，后台列表可直接查看；不要把完整码写进备注、作废原因或公开文档。", "warn")}
+      ${notice("当前口径", `当前“可兑换卡”只统计已经生效且未过期的 active 卡；全量 active 卡共 ${summary.active_count} 张。`, "warn")}
     </div>
     <section class="card">
       <div class="card-head">
@@ -1352,12 +1352,16 @@ function entitlementSummary(detail: AdminUserDetail): string {
 }
 
 function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
+  const accountMembers = summary.account_member_users || 0;
   const legacyMembers = summary.legacy_member_users || 0;
-  const memberSubtitle = legacyMembers > 0 ? `会员 ${summary.member_users}（老ID ${legacyMembers}）` : `会员 ${summary.member_users}`;
+  const memberSubtitle =
+    legacyMembers > 0
+      ? `当前会员 ${summary.member_users}（账号 ${accountMembers} / 老ID ${legacyMembers}）`
+      : `当前会员 ${summary.member_users}`;
   return `
     <section class="grid kpi" style="margin-top:12px">
       ${kpi("账号用户", summary.registered_users, memberSubtitle)}
-      ${kpi("Free", summary.free_users, "仅按已收敛账号ID统计")}
+      ${kpi("账号内 Free", summary.free_users, "仅按已收敛账号ID统计")}
       ${kpi("Plus", summary.plus_users, "当前有效 Plus")}
       ${kpi("Pro", summary.pro_users, "当前有效 Pro")}
       ${kpi("7天内到期", summary.expiring_in_7d, "当前 Plus / Pro")}
@@ -1370,6 +1374,7 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
           <table class="table">
             <tbody>
               ${metricRow("当前会员总数", summary.member_users)}
+              ${metricRow("已收敛账号会员", accountMembers)}
               ${metricRow("迁移期老ID会员", legacyMembers)}
               ${metricRow("今日基础额度用满", summary.daily_limit_exhausted_users)}
               ${metricRow("有加油包余额", summary.topup_active_users)}
@@ -1381,13 +1386,13 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
       <section class="card">
         <div class="card-head"><div class="card-title">当前口径</div></div>
         <div class="card-body stack">
-          ${notice("会员有效期", "Plus / Pro 只统计当前仍在有效期内的账号；过期后自动按 Free 计算。", "info")}
+          ${notice("会员有效期", "Plus / Pro 只统计当前仍在有效期内的用户；过期后自动按 Free 计算。", "info")}
           ${
             legacyMembers > 0
-              ? notice("账号ID收敛中", `还有 ${legacyMembers} 个当前会员仍挂在迁移前老ID 下，所以“账号用户”和“当前会员”不会完全一一对应。`, "warn")
+              ? notice("账号ID收敛中", `还有 ${legacyMembers} 个当前会员仍挂在迁移前老ID 下，所以“账号用户”“账号内会员”和“当前会员总数”暂时不会完全一一对应。`, "warn")
               : ""
           }
-          ${notice("额度耗尽", "这里统计的是“今日基础额度用满”的账号数，不代表加油包和升级补偿也已经用完。", "info")}
+          ${notice("额度耗尽", "这里统计的是“今日基础额度用满”的账号数，不代表加油包和升级补偿也已经同时用完。", "info")}
         </div>
       </section>
     </div>
@@ -1537,6 +1542,7 @@ function normalizeGiftCardSummary(summary: AdminGiftCardSummary | null | undefin
   return {
     batch_count: summary?.batch_count ?? 0,
     active_count: summary?.active_count ?? 0,
+    redeemable_count: summary?.redeemable_count ?? 0,
     redeemed_count: summary?.redeemed_count ?? 0,
     void_count: summary?.void_count ?? 0,
     failed_attempts_24h: summary?.failed_attempts_24h ?? 0,
@@ -1688,7 +1694,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
                       <span>${formatTime(message.created_at)}</span>
                     </div>
                     <div>${escapeHTML(message.body || message.body_excerpt || "")}</div>
-                    ${message.has_images ? `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片，图片 URL 不在列表展开。</div>` : ""}
+                    ${supportMessageImages(message)}
                   </article>
                 `,
               )
@@ -1718,6 +1724,33 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
         `
         : notice("只读会话", "当前角色只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
     }
+  `;
+}
+
+function supportMessageImages(message: AdminSupportMessage): string {
+  const urls = message.image_urls ?? [];
+  if (!message.has_images || !urls.length) {
+    return message.has_images ? `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片。</div>` : "";
+  }
+  return `
+    <div style="margin-top:8px">
+      <div class="small muted" style="margin-bottom:6px">附图 ${urls.length} 张</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${urls
+          .map(
+            (url, index) => `
+              <a href="${escapeAttr(url)}" target="_blank" rel="noreferrer" title="查看图片 ${index + 1}" style="display:block">
+                <img
+                  src="${escapeAttr(url)}"
+                  alt="反馈图片 ${index + 1}"
+                  style="width:92px;height:92px;object-fit:cover;border-radius:8px;border:1px solid #d9dee7;background:#f6f8fb"
+                />
+              </a>
+            `,
+          )
+          .join("")}
+      </div>
+    </div>
   `;
 }
 

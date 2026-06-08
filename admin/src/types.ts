@@ -237,6 +237,7 @@ export interface AdminUserDetail {
 
 export interface AdminEntitlementSummary {
   registered_users: number;
+  account_member_users: number;
   member_users: number;
   legacy_member_users: number;
   free_users: number;
@@ -419,6 +420,7 @@ export interface AdminGiftCardFailureReason {
 export interface AdminGiftCardSummary {
   batch_count: number;
   active_count: number;
+  redeemable_count: number;
   redeemed_count: number;
   void_count: number;
   failed_attempts_24h: number;

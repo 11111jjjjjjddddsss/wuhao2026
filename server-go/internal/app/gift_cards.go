@@ -99,6 +99,7 @@ type AdminGiftCardAttempt struct {
 type AdminGiftCardSummary struct {
 	BatchCount        int64                        `json:"batch_count"`
 	ActiveCount       int64                        `json:"active_count"`
+	RedeemableCount   int64                        `json:"redeemable_count"`
 	RedeemedCount     int64                        `json:"redeemed_count"`
 	VoidCount         int64                        `json:"void_count"`
 	FailedAttempts24h int64                        `json:"failed_attempts_24h"`
@@ -648,6 +649,18 @@ func (s *Store) GetGiftCardSummary(ctx context.Context, nowMs int64) (AdminGiftC
 		return summary, err
 	}
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active'").Scan(&summary.ActiveCount); err != nil {
+		return summary, err
+	}
+	if err := s.db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*)
+		   FROM gift_cards
+		  WHERE status = 'active'
+		    AND valid_from <= ?
+		    AND (valid_until IS NULL OR valid_until > ?)`,
+		nowMs,
+		nowMs,
+	).Scan(&summary.RedeemableCount); err != nil {
 		return summary, err
 	}
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'redeemed'").Scan(&summary.RedeemedCount); err != nil {

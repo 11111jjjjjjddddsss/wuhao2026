@@ -7524,7 +7524,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("账号管理", "手机号、删除历史对话、退出设备", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("是否删除所有历史对话", "取消 / 确定二次确认卡片", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
-                    UiCopyPreviewItem("检查更新", "发现新版本卡片，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
+                    UiCopyPreviewItem("检查更新", "版本更新弹窗，默认说明 / 稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("服务协议目录", "用户协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
                     UiCopyPreviewItem("用户协议", "本地内置用户协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),

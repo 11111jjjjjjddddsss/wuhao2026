@@ -208,6 +208,7 @@ type AdminUserDetail struct {
 
 type AdminEntitlementSummary struct {
 	RegisteredUsers          int64 `json:"registered_users"`
+	AccountMemberUsers       int64 `json:"account_member_users"`
 	MemberUsers              int64 `json:"member_users"`
 	LegacyMemberUsers        int64 `json:"legacy_member_users"`
 	FreeUsers                int64 `json:"free_users"`
@@ -582,6 +583,9 @@ func (s *Server) handleAdminCreateSupportMessage(w http.ResponseWriter, r *http.
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", userID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
+	}
+	if err := s.store.AssignSupportConversation(r.Context(), userID, admin.User.Username, time.Now().UnixMilli()); err != nil {
+		s.logger.Warn("admin assign support conversation failed", "userId", userID, "actor", admin.User.Username, "error", err)
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", strconv.FormatInt(message.ID, 10), userID, true, http.StatusOK, map[string]any{"has_images": len(imageURLs) > 0})
 	s.writeJSON(w, http.StatusOK, map[string]any{"message": adminSupportMessageFromSupport(*message, true)})
@@ -1871,11 +1875,11 @@ func (s *Store) ReadAdminEntitlementSummary(ctx context.Context, dayCN string, n
 		  AND a.user_id IS NULL`, []any{nowMs}); err != nil {
 		return summary, err
 	}
-	accountMemberUsers := summary.MemberUsers - summary.LegacyMemberUsers
-	if accountMemberUsers < 0 {
-		accountMemberUsers = 0
+	summary.AccountMemberUsers = summary.MemberUsers - summary.LegacyMemberUsers
+	if summary.AccountMemberUsers < 0 {
+		summary.AccountMemberUsers = 0
 	}
-	summary.FreeUsers = summary.RegisteredUsers - accountMemberUsers
+	summary.FreeUsers = summary.RegisteredUsers - summary.AccountMemberUsers
 	if summary.FreeUsers < 0 {
 		summary.FreeUsers = 0
 	}
