@@ -49,6 +49,7 @@ export interface AdminMonitoring {
   windows: AdminMonitoringWindow[];
   queues: AdminMonitoringQueues;
   auth_logs: AdminMonitoringAuthLogs;
+  app_update_logs: AdminMonitoringAppUpdateLogs;
   launch_readiness: AdminMonitoringLaunchItem[];
   action_items: AdminMonitoringActionItem[];
   capabilities: AdminMonitoringCapability[];
@@ -176,6 +177,19 @@ export interface AdminMonitoringAuthLogs {
   env_blocked: number;
   env_warnings: number;
   login_network_failures: number;
+  last_seen_at?: number;
+  top_events: ClientAppLogSummaryEntry[];
+}
+
+export interface AdminMonitoringAppUpdateLogs {
+  since_ms: number;
+  total: number;
+  warnings: number;
+  errors: number;
+  check_failures: number;
+  download_failures: number;
+  install_failures: number;
+  permission_required: number;
   last_seen_at?: number;
   top_events: ClientAppLogSummaryEntry[];
 }

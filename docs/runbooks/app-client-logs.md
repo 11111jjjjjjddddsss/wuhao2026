@@ -24,8 +24,15 @@
 - `chat.background_stream_failed`
 - `image.upload_failed`
 - `support.send_failed`
+- `app_update.check_started`
+- `app_update.available`
+- `app_update.no_update`
 - `app_update.check_failed`
-- `app_update.parse_failed`
+- `app_update.install_permission_required`
+- `app_update.download_started`
+- `app_update.download_failed`
+- `app_update.install_intent_failed`
+- `app_update.install_started`
 - `auth.fusion_env_blocked`
 - `auth.fusion_env_warning`
 - `auth.fusion_token_failed`
@@ -73,7 +80,7 @@ Android 只上报结构化错误信息：
 
 ## 后续接后台面板
 
-第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录环境预检、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.fusion_env_blocked` 表示 App 前置判断网络或 SIM 明显不可用；`auth.fusion_env_warning` 表示 VPN / 无蜂窝等可疑环境但仍交给 SDK 继续判断；`auth.login_network_failed` 表示登录请求本身网络失败。后台“登录排障”卡会把这三类单独计数，待处理事项也会提示先查 SIM / 默认数据卡 / 移动数据 / VPN / 生产 API 可达性，避免把手机环境问题、代理问题和服务端 token 校验问题混成一个“登录失败”。由于 App 日志筛选是精确事件名，后台排障按钮会按真实上报事件拆开：取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验。后续继续补：
+第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录环境预检、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.fusion_env_blocked` 表示 App 前置判断网络或 SIM 明显不可用；`auth.fusion_env_warning` 表示 VPN / 无蜂窝等可疑环境但仍交给 SDK 继续判断；`auth.login_network_failed` 表示登录请求本身网络失败。后台“登录排障”卡会把这三类单独计数，待处理事项也会提示先查 SIM / 默认数据卡 / 移动数据 / VPN / 生产 API 可达性，避免把手机环境问题、代理问题和服务端 token 校验问题混成一个“登录失败”。由于 App 日志筛选是精确事件名，后台排障按钮会按真实上报事件拆开：取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
 - 按时间筛选错误事件
 - 按事件名聚合数量
 - 按用户查最近失败事件

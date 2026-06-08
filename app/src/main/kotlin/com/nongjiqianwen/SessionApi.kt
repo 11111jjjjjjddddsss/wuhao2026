@@ -1135,6 +1135,15 @@ object SessionApi {
                     }
                     val body = it.body?.string()
                     if (body.isNullOrBlank()) {
+                        reportClientLog(
+                            level = "warn",
+                            event = "app_update.check_failed",
+                            message = "App update check failed",
+                            attrs = mapOf(
+                                "http_status" to it.code,
+                                "reason" to "empty_body"
+                            )
+                        )
                         postToMain { onResult(null) }
                         return@use
                     }
@@ -1144,8 +1153,8 @@ object SessionApi {
                         Log.e(TAG, "parse app update", e)
                         reportClientLog(
                             level = "warn",
-                            event = "app_update.parse_failed",
-                            message = "App update parse failed",
+                            event = "app_update.check_failed",
+                            message = "App update check failed",
                             attrs = mapOf("exception" to e.javaClass.simpleName)
                         )
                         null

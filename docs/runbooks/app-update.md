@@ -1,6 +1,6 @@
 # App 更新 Runbook
 
-最后更新：2026-06-08
+最后更新：2026-06-09
 
 当前 Android “检查更新”走自有服务器 APK 分发，不走应用商店，也不做静默安装。
 
@@ -15,6 +15,7 @@
 - 有更新：弹“发现新版本”卡片，按钮为“稍后 / 立即更新”
 - 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，并通过 FileProvider 调起 Android 系统安装页
 - Android 8+ 如果用户还没允许本 App 安装未知应用，会先打开系统授权页；用户授权后需要重新点击“立即更新”
+- App 会把检查更新关键阶段通过自动日志上报到后台：检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页。日志只包含阶段、版本号、是否强更、是否配置 APK / SHA / 文件大小、失败原因和 HTTP 状态，不上传 APK URL、SHA-256、手机号、token 或其他敏感内容。
 
 自动提醒不会变成系统通知，也不会在同一个版本号上反复骚扰用户；只有后台把 `latest_version_code` 提高后，App 才会再对这个新版本自动弹一次。若后台开启强制更新，弹窗仍会按强更口径不展示“稍后”。
 
@@ -79,6 +80,14 @@ Codex 默认按下面流程处理：
 管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明、是否强制更新、是否对外启用。后台保存后立即写入 `app_release_configs`，`/api/app/update` 会优先按这份配置对外返回；取消“对外启用更新”并保存，就是停更。
 
 管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL 这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”。
+
+管理后台“监控面板”已新增“检查更新排障”卡，聚合最近 24 小时 `app_update.*` 自动日志，并提供直达 App 日志筛选按钮。若真机测试更新失败，优先按下面顺序看：
+
+1. `app_update.check_failed`：App 请求 `/api/app/update` 失败、返回非 2xx 或响应体异常。
+2. `app_update.install_permission_required`: Android 8+ 需要用户开启“安装未知应用”权限。
+3. `app_update.download_failed`：下载失败、最终响应非 HTTPS、文件过大、大小不一致、SHA / 包名 / versionCode 校验失败或写入 cache 失败。
+4. `app_update.install_intent_failed`：APK 已下载但系统安装页没有成功打开。
+5. `app_update.install_started`：已成功拉起系统安装页，后续是否确认安装由 Android 系统和用户操作决定。
 
 客户端下载后会在调起系统安装页前做基础校验：
 

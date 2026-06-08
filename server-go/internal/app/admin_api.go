@@ -60,18 +60,19 @@ type AdminStatusNote struct {
 }
 
 type AdminMonitoring struct {
-	Health       AdminHealthStatus           `json:"health"`
-	Windows      []AdminMonitoringWindow     `json:"windows"`
-	Queues       AdminMonitoringQueues       `json:"queues"`
-	AuthLogs     AdminMonitoringAuthLogs     `json:"auth_logs"`
-	LaunchReady  []AdminMonitoringLaunchItem `json:"launch_readiness"`
-	ActionItems  []AdminMonitoringActionItem `json:"action_items"`
-	Capabilities []AdminMonitoringCapability `json:"capabilities"`
-	UserRegions  AdminUserRegionOverview     `json:"user_regions"`
-	TopRegions   []AdminRegionMetric         `json:"top_regions"`
-	TopAppErrors []ClientAppLogSummaryEntry  `json:"top_app_errors"`
-	Notes        []AdminStatusNote           `json:"notes"`
-	NowMs        int64                       `json:"now_ms"`
+	Health        AdminHealthStatus            `json:"health"`
+	Windows       []AdminMonitoringWindow      `json:"windows"`
+	Queues        AdminMonitoringQueues        `json:"queues"`
+	AuthLogs      AdminMonitoringAuthLogs      `json:"auth_logs"`
+	AppUpdateLogs AdminMonitoringAppUpdateLogs `json:"app_update_logs"`
+	LaunchReady   []AdminMonitoringLaunchItem  `json:"launch_readiness"`
+	ActionItems   []AdminMonitoringActionItem  `json:"action_items"`
+	Capabilities  []AdminMonitoringCapability  `json:"capabilities"`
+	UserRegions   AdminUserRegionOverview      `json:"user_regions"`
+	TopRegions    []AdminRegionMetric          `json:"top_regions"`
+	TopAppErrors  []ClientAppLogSummaryEntry   `json:"top_app_errors"`
+	Notes         []AdminStatusNote            `json:"notes"`
+	NowMs         int64                        `json:"now_ms"`
 }
 
 type AdminInsights struct {
@@ -193,6 +194,19 @@ type AdminMonitoringAuthLogs struct {
 	LoginNetworkFailures int64                      `json:"login_network_failures"`
 	LastSeenAt           *int64                     `json:"last_seen_at,omitempty"`
 	TopEvents            []ClientAppLogSummaryEntry `json:"top_events"`
+}
+
+type AdminMonitoringAppUpdateLogs struct {
+	SinceMs            int64                      `json:"since_ms"`
+	Total              int64                      `json:"total"`
+	Warnings           int64                      `json:"warnings"`
+	Errors             int64                      `json:"errors"`
+	CheckFailures      int64                      `json:"check_failures"`
+	DownloadFailures   int64                      `json:"download_failures"`
+	InstallFailures    int64                      `json:"install_failures"`
+	PermissionRequired int64                      `json:"permission_required"`
+	LastSeenAt         *int64                     `json:"last_seen_at,omitempty"`
+	TopEvents          []ClientAppLogSummaryEntry `json:"top_events"`
 }
 
 type AdminMonitoringAppUpdate struct {
@@ -1072,6 +1086,11 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 		return report, err
 	}
 	report.AuthLogs = authLogs
+	appUpdateLogs, err := s.buildAdminMonitoringAppUpdateLogs(ctx, nowMs-int64(24*time.Hour/time.Millisecond))
+	if err != nil {
+		return report, err
+	}
+	report.AppUpdateLogs = appUpdateLogs
 	userRegions, err := s.ReadAdminUserRegionOverview(ctx, nowMs, 10)
 	if err != nil {
 		return report, err
@@ -1499,6 +1518,48 @@ func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64)
 	return authLogs, nil
 }
 
+func (s *Store) buildAdminMonitoringAppUpdateLogs(ctx context.Context, sinceMs int64) (AdminMonitoringAppUpdateLogs, error) {
+	logs := AdminMonitoringAppUpdateLogs{SinceMs: sinceMs}
+	var lastSeen sql.NullInt64
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT
+		   COUNT(*),
+		   COALESCE(SUM(CASE WHEN level = 'warn' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN level = 'error' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'app_update.check_failed' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'app_update.download_failed' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'app_update.install_intent_failed' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'app_update.install_permission_required' THEN 1 ELSE 0 END), 0),
+		   MAX(created_at)
+		 FROM client_app_logs
+		WHERE created_at >= ?
+		  AND event LIKE 'app_update.%'`,
+		sinceMs,
+	).Scan(
+		&logs.Total,
+		&logs.Warnings,
+		&logs.Errors,
+		&logs.CheckFailures,
+		&logs.DownloadFailures,
+		&logs.InstallFailures,
+		&logs.PermissionRequired,
+		&lastSeen,
+	)
+	if err != nil {
+		return logs, err
+	}
+	if lastSeen.Valid {
+		logs.LastSeenAt = int64Ptr(lastSeen.Int64)
+	}
+	topEvents, err := s.summarizeClientAppLogsByPrefix(ctx, sinceMs, 10, "app_update.", "")
+	if err != nil {
+		return logs, err
+	}
+	logs.TopEvents = topEvents
+	return logs, nil
+}
+
 func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringActionItem {
 	queues := report.Queues
 	items := make([]AdminMonitoringActionItem, 0, 10)
@@ -1535,6 +1596,29 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Level: level,
 			Route: "app-logs",
 			Count: queues.AuthFailures,
+		})
+	}
+	if report.AppUpdateLogs.CheckFailures > 0 || report.AppUpdateLogs.DownloadFailures > 0 || report.AppUpdateLogs.InstallFailures > 0 {
+		failures := report.AppUpdateLogs.CheckFailures + report.AppUpdateLogs.DownloadFailures + report.AppUpdateLogs.InstallFailures
+		level := "warn"
+		if report.AppUpdateLogs.DownloadFailures > 0 || report.AppUpdateLogs.InstallFailures > 0 {
+			level = "bad"
+		}
+		items = append(items, AdminMonitoringActionItem{
+			Title: "检查更新链路失败",
+			Body:  "最近 24 小时检查更新、下载 APK 或打开安装页失败；先看 App 日志里的 app_update.* 事件定位阶段。",
+			Level: level,
+			Route: "app-logs",
+			Count: failures,
+		})
+	}
+	if report.AppUpdateLogs.PermissionRequired > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "安装权限需要用户确认",
+			Body:  "设备需要开启“安装未知应用”权限；这不是静默安装失败，先按真机 ROM 权限页验证用户能否顺利返回继续安装。",
+			Level: "warn",
+			Route: "app-logs",
+			Count: report.AppUpdateLogs.PermissionRequired,
 		})
 	}
 	if report.AuthLogs.EnvBlocked > 0 {

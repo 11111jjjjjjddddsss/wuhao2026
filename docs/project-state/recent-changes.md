@@ -5,6 +5,8 @@
 
 ## 2026-06-09
 
+- 检查更新链路补上真机排障闭环：Android 会把检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页等阶段用 `app_update.*` 自动日志上报；下载器同步返回更细失败原因，包括网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致、versionCode 不一致或未升版本、安装页 intent 打不开等。管理后台 `GET /admin-api/v1/monitoring` 新增 `app_update_logs` 聚合，监控页新增“检查更新排障”卡和直达 App 日志筛选按钮；日志只存阶段、版本号、是否强更、物料是否配置、失败原因和 HTTP 状态，不上传 APK URL、SHA-256、手机号、token 或密钥。
+
 - 管理后台“产品洞察”从占位页推进到首版脱敏聚合报表：后端新增 `GET /admin-api/v1/insights`，前端“产品洞察”页展示今日 / 24h / 7d / 30d 用户增长、登录 session、问诊、图片问诊、App 异常、登录排障、反馈、礼品卡和今日农情失败趋势，同时展示反馈主题固定关键词命中、App 事件分类、Top App 事件和礼品卡失败原因。该接口只返回计数、比例、事件名和固定分类，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码；监控能力卡同步把“产品洞察”从 planned 改成 partial，表示首版可看，但洞察日报、人工标签、代表短摘、处理状态和独立报表表仍待补。
 
 - 新增 Android debug / release 构建一致性护栏：`scripts/check-android-build-parity.ps1` 会检查 Android 构建固定走 `https://api.nongjiqiancha.cn`、`USE_BACKEND_AB=true`、debug 有 release 签名时同签名并开启一键登录、release 必须开启一键登录、debug 不允许另加 manifest / 明文网络分叉、100001 一键登录只把最终 `onVerifySuccess` token 交给 `/api/auth/fusion/login`、不在半程回调消费 token，以及 debug-only 预览面板必须由 `BuildConfig.DEBUG` 隔离。GitHub Android CI 已接入该脚本，后续再改登录、构建或网络安全配置时会自动挡住“测试包和正式包业务链路又走偏”的改动。

@@ -253,6 +253,12 @@ internal fun HamburgerMenuSheet(
     fun checkAppUpdate(userTriggered: Boolean) {
         if (updateChecking || updateDownloading) return
         updateChecking = true
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "app_update.check_started",
+            message = "App update check started",
+            attrs = mapOf("user_triggered" to userTriggered)
+        )
         if (userTriggered) {
             showNotice("正在检查更新...")
         }
@@ -265,6 +271,12 @@ internal fun HamburgerMenuSheet(
                     }
                 }
                 info.usableUpdate -> {
+                    SessionApi.reportClientLog(
+                        level = "info",
+                        event = "app_update.available",
+                        message = "App update available",
+                        attrs = appUpdateLogAttrs(info, userTriggered)
+                    )
                     val latestVersionCode = info.latestVersionCode ?: 0
                     val shouldAutoPrompt =
                         userTriggered ||
@@ -282,6 +294,14 @@ internal fun HamburgerMenuSheet(
                 }
                 else -> {
                     if (userTriggered) {
+                        SessionApi.reportClientLog(
+                            level = "info",
+                            event = "app_update.no_update",
+                            message = "No app update available",
+                            attrs = appUpdateLogAttrs(info, true)
+                        )
+                    }
+                    if (userTriggered) {
                         showNotice("当前已是最新版本")
                     }
                 }
@@ -293,22 +313,59 @@ internal fun HamburgerMenuSheet(
         val appContext = context.applicationContext
         if (!AppUpdateInstaller.canRequestInstallPackages(appContext)) {
             val opened = AppUpdateInstaller.openInstallPermissionSettings(appContext)
+            SessionApi.reportClientLog(
+                level = "warn",
+                event = "app_update.install_permission_required",
+                message = "App update install permission required",
+                attrs = appUpdateLogAttrs(update, true) + mapOf("settings_opened" to opened)
+            )
             showNotice(if (opened) "请允许安装未知应用后再继续更新" else "请先允许安装未知应用")
             return
         }
         updateDownloading = true
         showNotice("正在下载更新...")
         scope.launch {
-            val apkFile = AppUpdateInstaller.downloadApk(appContext, update)
+            SessionApi.reportClientLog(
+                level = "info",
+                event = "app_update.download_started",
+                message = "App update download started",
+                attrs = appUpdateLogAttrs(update, true)
+            )
+            val download = AppUpdateInstaller.downloadApkDetailed(appContext, update)
             updateDownloading = false
+            val apkFile = download.file
             if (apkFile == null) {
+                SessionApi.reportClientLog(
+                    level = "warn",
+                    event = "app_update.download_failed",
+                    message = "App update download failed",
+                    attrs = appUpdateLogAttrs(update, true) + mapOf(
+                        "reason" to (download.reason?.name ?: "unknown"),
+                        "http_status" to (download.httpStatus ?: 0)
+                    )
+                )
                 showNotice("更新下载失败，请稍后重试")
                 return@launch
             }
             updateDialogInfo = null
-            val started = AppUpdateInstaller.installApk(appContext, apkFile)
-            if (!started) {
+            val install = AppUpdateInstaller.installApkDetailed(appContext, apkFile)
+            if (!install.started) {
+                SessionApi.reportClientLog(
+                    level = "warn",
+                    event = "app_update.install_intent_failed",
+                    message = "App update install intent failed",
+                    attrs = appUpdateLogAttrs(update, true) + mapOf(
+                        "reason" to (install.reason?.name ?: "unknown")
+                    )
+                )
                 showNotice("安装页面打开失败")
+            } else {
+                SessionApi.reportClientLog(
+                    level = "info",
+                    event = "app_update.install_started",
+                    message = "App update install started",
+                    attrs = appUpdateLogAttrs(update, true)
+                )
             }
         }
     }
@@ -740,6 +797,21 @@ private fun formatAppUpdateSize(bytes: Long?): String? {
     val mb = value / 1024.0 / 1024.0
     return String.format(Locale.US, "%.1fMB", mb)
 }
+
+private fun appUpdateLogAttrs(
+    update: SessionApi.AppUpdateInfo,
+    userTriggered: Boolean
+): Map<String, Any?> =
+    mapOf(
+        "user_triggered" to userTriggered,
+        "current_version_code" to (update.currentVersionCode ?: BuildConfig.VERSION_CODE),
+        "latest_version_code" to (update.latestVersionCode ?: 0),
+        "has_update" to (update.hasUpdate == true),
+        "force_update" to (update.forceUpdate == true),
+        "apk_configured" to !update.apkUrl.isNullOrBlank(),
+        "sha_configured" to !update.apkSha256.isNullOrBlank(),
+        "size_configured" to ((update.fileSizeBytes ?: 0L) > 0L)
+    )
 
 @Composable
 private fun HamburgerMembershipCenterPage(

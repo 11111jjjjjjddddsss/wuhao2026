@@ -406,6 +406,10 @@ async function monitoringPage(): Promise<string> {
       <div class="card-head"><div class="card-title">登录排障</div><span class="small muted">一键登录 / 短信 / 闪退补报</span></div>
       <div class="card-body">${authTroubleshootingBlock(report.auth_logs)}</div>
     </section>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">检查更新排障</div><span class="small muted">请求 / 下载 / 校验 / 安装权限</span></div>
+      <div class="card-body">${appUpdateTroubleshootingBlock(report.app_update_logs)}</div>
+    </section>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
         <div class="card-head"><div class="card-title">服务状态</div></div>
@@ -2387,6 +2391,43 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
         </div>
       </div>
       <div class="table-wrap">${authLogs.top_events?.length ? appLogSummaryTable(authLogs.top_events) : emptyState("暂无登录日志", "最近24小时没有 auth.* 或闪退补报。")}</div>
+    </div>
+  `;
+}
+
+function appUpdateTroubleshootingBlock(updateLogs: AdminMonitoring["app_update_logs"] | undefined): string {
+  if (!updateLogs) return emptyState("没有检查更新排障数据", "后端未返回 app_update_logs 聚合。");
+  const failures = (updateLogs.check_failures ?? 0) + (updateLogs.download_failures ?? 0) + (updateLogs.install_failures ?? 0);
+  const permissionRequired = updateLogs.permission_required ?? 0;
+  const level = updateLogs.download_failures || updateLogs.install_failures ? "bad" : failures || permissionRequired ? "warn" : "ok";
+  return `
+    <div class="auth-debug-grid">
+      <div class="auth-debug-summary ${level}">
+        <div>
+          <span class="small muted">最近24小时</span>
+          <strong>${failures}</strong>
+          <p>检查失败 ${updateLogs.check_failures ?? 0}，下载失败 ${updateLogs.download_failures ?? 0}，安装页失败 ${updateLogs.install_failures ?? 0}，需要安装权限 ${permissionRequired}。</p>
+          <div class="auth-debug-metrics">
+            ${authDebugMetric("检查失败", updateLogs.check_failures ?? 0, updateLogs.check_failures ? "warn" : "ok")}
+            ${authDebugMetric("下载失败", updateLogs.download_failures ?? 0, updateLogs.download_failures ? "bad" : "ok")}
+            ${authDebugMetric("安装页失败", updateLogs.install_failures ?? 0, updateLogs.install_failures ? "bad" : "ok")}
+            ${authDebugMetric("权限确认", permissionRequired, permissionRequired ? "warn" : "ok")}
+          </div>
+          <p class="small muted">最近出现：${updateLogs.last_seen_at ? formatTime(updateLogs.last_seen_at) : "暂无"}</p>
+        </div>
+        <div class="row-actions">
+          ${filterButton("检查开始", { event: "app_update.check_started", window: "24h" })}
+          ${filterButton("有新版本", { event: "app_update.available", window: "24h" })}
+          ${filterButton("没有新版本", { event: "app_update.no_update", window: "24h" })}
+          ${filterButton("检查失败", { event: "app_update.check_failed", window: "24h" })}
+          ${filterButton("需要安装权限", { event: "app_update.install_permission_required", window: "24h" })}
+          ${filterButton("开始下载", { event: "app_update.download_started", window: "24h" })}
+          ${filterButton("下载失败", { event: "app_update.download_failed", window: "24h" })}
+          ${filterButton("安装页失败", { event: "app_update.install_intent_failed", window: "24h" })}
+          ${filterButton("已拉起安装", { event: "app_update.install_started", window: "24h" })}
+        </div>
+      </div>
+      <div class="table-wrap">${updateLogs.top_events?.length ? appLogSummaryTable(updateLogs.top_events) : emptyState("暂无更新日志", "最近24小时没有 app_update.* 自动日志。")}</div>
     </div>
   `;
 }
