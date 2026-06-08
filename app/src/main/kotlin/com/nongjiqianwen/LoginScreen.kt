@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -53,7 +54,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -63,6 +66,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -180,8 +184,8 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer(
-                                    scaleX = 1.24f,
-                                    scaleY = 1.24f
+                                    scaleX = 1.52f,
+                                    scaleY = 1.52f
                                 )
                         )
                     }
@@ -349,26 +353,26 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
-                        modifier = Modifier.widthIn(max = 360.dp),
-                        verticalAlignment = Alignment.Top
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         LoginAgreementCheckbox(
                             checked = agreed,
                             onCheckedChange = { agreed = it },
-                            modifier = Modifier.padding(top = 2.dp)
                         )
-                        Spacer(Modifier.size(12.dp))
+                        Spacer(Modifier.size(7.dp))
                         ClickableText(
                             text = agreementText,
                             style = androidx.compose.ui.text.TextStyle(
                                 color = Color(0xFF575D66),
-                                fontSize = 14.sp,
-                                lineHeight = 22.sp,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
                                 letterSpacing = 0.sp
                             ),
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(top = 1.dp),
+                            softWrap = false,
+                            overflow = TextOverflow.Clip,
+                            maxLines = 1,
                             onClick = { offset ->
                                 agreementText.getStringAnnotations(start = offset, end = offset)
                                     .firstOrNull()
@@ -407,7 +411,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
 }
 
 private fun buildLoginAgreementText() = buildAnnotatedString {
-    append("我已阅读并同意 ")
+    append("我已阅读并同意")
     pushStringAnnotation(tag = "service", annotation = "service")
     withStyle(
         SpanStyle(
@@ -418,7 +422,6 @@ private fun buildLoginAgreementText() = buildAnnotatedString {
         append("《服务协议》")
     }
     pop()
-    append("  ")
     pushStringAnnotation(tag = "privacy", annotation = "privacy")
     withStyle(
         SpanStyle(
@@ -447,13 +450,23 @@ private fun LoginAgreementCheckbox(
             .clickable(role = Role.Checkbox) { onCheckedChange(!checked) }
     ) {
         if (checked) {
-            Text(
-                text = "✓",
-                color = Color(0xFF111111),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 16.sp
-            )
+            Canvas(modifier = Modifier.size(15.dp)) {
+                val strokeWidth = 2.6.dp.toPx()
+                drawLine(
+                    color = Color(0xFF111111),
+                    start = Offset(size.width * 0.18f, size.height * 0.54f),
+                    end = Offset(size.width * 0.42f, size.height * 0.78f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Square
+                )
+                drawLine(
+                    color = Color(0xFF111111),
+                    start = Offset(size.width * 0.42f, size.height * 0.78f),
+                    end = Offset(size.width * 0.84f, size.height * 0.24f),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Square
+                )
+            }
         }
     }
 }

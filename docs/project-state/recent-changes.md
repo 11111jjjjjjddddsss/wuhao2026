@@ -5,6 +5,8 @@
 
 ## 2026-06-08
 
+- 轻量收紧 Android 登录页视觉：`LoginScreen.kt` 将品牌黑圆内绿色叶片前景继续放大，让叶片更贴近外圈；协议勾选框不再用字体对号，改为 Canvas 两段线绘制的常规勾；“我已阅读并同意《服务协议》《隐私政策》”收成单个单行可点击协议文本，减少真机窄屏换行。该改动只影响登录页 UI，不改一键登录 / 短信登录 / 协议内容 / 后端认证逻辑。
+
 - 修复后台管理页 `overview / monitoring / users / entitlements` 一批 `500 internal_error`：根因是生产 MySQL 老表大量仍是 `utf8mb4_unicode_ci`，而 MySQL 8 新连接默认更偏 `utf8mb4_0900_ai_ci`，后台最近新增的 `tier/status/sender_type` 比较和 `COALESCE(..., 'free')` 一类 SQL 在生产上触发 `Illegal mix of collations`。后端 `OpenDB` 现统一把连接默认 collation 钉为 `utf8mb4_unicode_ci`，并补了单测覆盖 raw DSN / mysql:// URL / 显式 override 三种入口，避免今后后台再因为连接级排序规则飘掉而随机炸页。
 
 - 继续收口后台口径和正式默认文案：`GET /admin-api/v1/entitlements/summary` 新增 `account_member_users`，把“已收敛账号会员”和“迁移期老ID会员”拆开返回；后台会员额度页同步改成更实话实说的展示，避免账号ID收敛期把“账号用户”“账号内会员”“当前会员总数”混成一个口径。礼品卡汇总新增 `redeemable_count`，礼品卡页顶部 KPI 从“可用卡”改成真正的“可兑换卡”，并明确全量 active 卡与当前可兑换卡不是一个口径；后台客服回复成功后，会话也会顺手把当前 admin 用户名写入 `support_conversations.assigned_to`，减少“明明回复过了但处理人还是空的”这种运营脏状态；帮助与反馈详情页现在会直接渲染截图缩略图并支持新页打开原图，不再只写“有几张图但不展开”。Android 侧把更新弹窗默认文案收成长期通用正式版：标题改为“版本更新”，无 release notes 时默认显示“修复已知问题，优化使用体验。”，并把“已是最新版本”收成“当前已是最新版本”；debug 预览面板里的“检查更新”描述也同步更新到最新口径，避免预览和正式页文案漂移。
