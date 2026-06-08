@@ -16,12 +16,13 @@ export type AdminRouteKey =
   | "health";
 export type AdminMonitoringLevel = "ok" | "warn" | "bad" | "error";
 export type AdminMonitoringCapabilityStatus = "ready" | "partial" | "planned";
+export type AdminRole = "owner" | "ops_readonly" | "support" | "content_ops" | "release_ops" | "finance_ops" | "auditor";
 
 export interface AdminUser {
   id: number;
   username: string;
   display_name: string;
-  role: string;
+  role: AdminRole;
   enabled: boolean;
   must_change_password: boolean;
   created_at?: number;
@@ -61,6 +62,7 @@ export interface AdminMonitoringWindow {
   since_ms: number;
   new_users: number;
   active_sessions: number;
+  recent_auth_sessions: number;
   chat_rounds: number;
   chat_users: number;
   image_chat_rounds: number;

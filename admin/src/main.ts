@@ -17,6 +17,7 @@ import type {
   AdminSupportMessage,
   AdminTopupPackEntry,
   AdminRouteKey,
+  AdminRole,
   AdminUserDetail,
   AdminUserListEntry,
   AdminUpgradeCredit,
@@ -33,20 +34,21 @@ interface RouteItem {
   label: string;
   section: string;
   hint: string;
+  roles?: AdminRole[];
 }
 
 const routes: RouteItem[] = [
   { key: "overview", label: "总览", section: "工作台", hint: "可用" },
   { key: "monitoring", label: "监控面板", section: "工作台", hint: "可用" },
-  { key: "users", label: "用户管理", section: "用户与增长", hint: "可查" },
-  { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读" },
-  { key: "orders", label: "订单", section: "权益与交易", hint: "支付后接" },
-  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可生成/可追溯" },
-  { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复" },
-  { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查" },
-  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态" },
-  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "只读配置" },
-  { key: "audit", label: "审计", section: "安全与系统", hint: "可查" },
+  { key: "users", label: "用户管理", section: "用户与增长", hint: "可查", roles: ["ops_readonly", "support", "finance_ops"] },
+  { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops"] },
+  { key: "orders", label: "订单", section: "权益与交易", hint: "支付后接", roles: ["ops_readonly", "support", "finance_ops"] },
+  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可生成/可追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
+  { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复", roles: ["support", "ops_readonly", "auditor"] },
+  { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
+  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态", roles: ["content_ops", "ops_readonly", "auditor"] },
+  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "只读配置", roles: ["release_ops", "ops_readonly", "auditor"] },
+  { key: "audit", label: "审计", section: "安全与系统", hint: "可查", roles: ["auditor", "ops_readonly"] },
   { key: "insights", label: "产品洞察", section: "安全与系统", hint: "后续报表" },
   { key: "health", label: "服务健康", section: "安全与系统", hint: "可查" },
 ];
@@ -124,6 +126,9 @@ async function render(): Promise<void> {
     renderLogin();
     return;
   }
+  if (!isRouteVisible(activeRoute)) {
+    activeRoute = defaultRoute();
+  }
   renderShell(loadingBlock("加载模块"));
   const main = document.querySelector<HTMLElement>("#main-content");
   if (!main) return;
@@ -200,7 +205,8 @@ function renderShell(content: string): void {
 }
 
 function sidebarHTML(): string {
-  const sections = [...new Set(routes.map((route) => route.section))];
+  const navRoutes = visibleRoutes();
+  const sections = [...new Set(navRoutes.map((route) => route.section))];
   return `
     <aside class="sidebar">
       <div class="sidebar-head">
@@ -217,7 +223,7 @@ function sidebarHTML(): string {
           (section) => `
             <div class="nav-section">
               <div class="nav-section-title">${escapeHTML(section)}</div>
-              ${routes
+              ${navRoutes
                 .filter((route) => route.section === section)
                 .map(
                   (route) => `
@@ -810,7 +816,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
   const action = button.dataset.action || "";
   if (action === "route") {
     const route = button.dataset.route as RouteKey;
-    if (routes.some((item) => item.key === route)) {
+    if (isRouteVisible(route)) {
       location.hash = route;
     }
     return;
@@ -1005,7 +1011,7 @@ async function fetchSupportMessages(userID: string): Promise<AdminSupportMessage
 
 function routeFromHash(): RouteKey {
   const key = location.hash.replace(/^#\/?/, "") as RouteKey;
-  return routes.some((route) => route.key === key) ? key : "overview";
+  return isRouteVisible(key) ? key : defaultRoute();
 }
 
 function pageHead(title: string, desc: string, route: RouteKey): string {
@@ -1569,7 +1575,7 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
     <table class="table">
       <thead>
         <tr>
-          <th>范围</th><th>新增用户</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>App异常</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
+          <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>App异常</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
         </tr>
       </thead>
       <tbody>
@@ -1579,6 +1585,7 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
               <tr>
                 <td>${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div></td>
                 <td>${row.new_users}</td>
+                <td>${row.recent_auth_sessions}<div class="small muted">当前有效 ${row.active_sessions}</div></td>
                 <td>${row.chat_rounds} / ${row.chat_users}</td>
                 <td>${row.image_chat_rounds}</td>
                 <td>${row.quota_deductions}</td>
@@ -1751,7 +1758,7 @@ function monitoringShortcutBar(): string {
 }
 
 function shortcutButton(route: RouteKey, label: string): string {
-  return `<button class="button" data-action="route" data-route="${escapeAttr(route)}">${escapeHTML(label)}</button>`;
+  return routeActionButton(route, label);
 }
 
 function monitoringWorstLevel(report: AdminMonitoring): "ok" | "warn" | "bad" {
@@ -1838,7 +1845,7 @@ function healthChipGrid(health: AdminOverview["health"]): string {
 }
 
 function routeActionButton(route: RouteKey | undefined, label: string): string {
-  if (!isKnownRoute(route)) return "";
+  if (!isRouteVisible(route)) return "";
   return `<button class="button" data-action="route" data-route="${escapeAttr(route)}">${escapeHTML(label)}</button>`;
 }
 
@@ -1850,6 +1857,26 @@ function actionRouteControl(route: string | undefined, label: string): string {
 
 function isKnownRoute(route: string | undefined): route is RouteKey {
   return !!route && routes.some((item) => item.key === route);
+}
+
+function visibleRoutes(): RouteItem[] {
+  return routes.filter((route) => routeAllowedForRole(route, auth?.admin_user.role));
+}
+
+function isRouteVisible(route: string | undefined): route is RouteKey {
+  if (!isKnownRoute(route)) return false;
+  return routeAllowedForRole(routes.find((item) => item.key === route), auth?.admin_user.role);
+}
+
+function routeAllowedForRole(route: RouteItem | undefined, role: AdminRole | undefined): boolean {
+  if (!route) return false;
+  if (!role) return true;
+  if (role === "owner") return true;
+  return !route.roles || route.roles.includes(role);
+}
+
+function defaultRoute(): RouteKey {
+  return visibleRoutes()[0]?.key || "overview";
 }
 
 function normalizeLevel(level: string): "ok" | "warn" | "bad" | "info" {

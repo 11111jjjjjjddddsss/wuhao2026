@@ -78,6 +78,7 @@ type AdminMonitoringWindow struct {
 	SinceMs              int64  `json:"since_ms"`
 	NewUsers             int64  `json:"new_users"`
 	ActiveSessions       int64  `json:"active_sessions"`
+	RecentAuthSessions   int64  `json:"recent_auth_sessions"`
 	ChatRounds           int64  `json:"chat_rounds"`
 	ChatUsers            int64  `json:"chat_users"`
 	ImageChatRounds      int64  `json:"image_chat_rounds"`
@@ -690,7 +691,10 @@ func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, labe
 	if window.NewUsers, err = s.countQuery(ctx, "SELECT COUNT(*) FROM app_accounts WHERE created_at >= ?", []any{sinceMs}); err != nil {
 		return window, err
 	}
-	if window.ActiveSessions, err = s.countQuery(ctx, "SELECT COUNT(*) FROM auth_sessions WHERE revoked_at IS NULL AND token_expires_at > ? AND updated_at >= ?", []any{nowMs, sinceMs}); err != nil {
+	if window.ActiveSessions, err = s.countQuery(ctx, "SELECT COUNT(*) FROM auth_sessions WHERE revoked_at IS NULL AND token_expires_at > ?", []any{nowMs}); err != nil {
+		return window, err
+	}
+	if window.RecentAuthSessions, err = s.countQuery(ctx, "SELECT COUNT(*) FROM auth_sessions WHERE created_at >= ?", []any{sinceMs}); err != nil {
 		return window, err
 	}
 	if window.ChatRounds, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_round_archive WHERE created_at >= ?", []any{sinceMs}); err != nil {

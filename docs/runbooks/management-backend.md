@@ -1,6 +1,6 @@
 # 统一管理后台 Runbook
 
-最后更新：2026-06-07
+最后更新：2026-06-08
 
 ## 目的
 
@@ -18,14 +18,14 @@
 - 管理后台 API：`/admin-api/v1/*`，由 `server-go` 提供，不单独起第二套后端。
 - 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。
 - 后台账号：服务启动时可用 `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` 初始化；密码会以 PBKDF2-SHA256 hash 存入 `admin_users`，明文不得写入仓库、文档或前端。
-- 后台角色：首版支持 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`；服务端校验权限，不能靠前端隐藏按钮。
+- 后台角色：首版支持 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`；服务端校验权限，不能靠前端隐藏按钮。前端侧栏和监控快捷入口会按同一角色矩阵隐藏无权页面，减少误点和 403，但这只是体验收敛，不是安全边界。
 - 后台审计：登录、登出、查询用户、客服回复、日志查询、今日农情、检查更新、礼品卡生成 / 查询 / 作废 / 用户兑换等会写审计记录。
 - Android 没有后台入口，也没有调用任何 `/internal/*` 或 `/admin-api/*` 接口。
 
 当前已落地的后台页面 / API：
 
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
-- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；响应额外返回 `action_items` 和 `capabilities`，前端已收成“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡、快捷入口、关键队列和明细表，让非运维也能先看出今天能不能继续测试。未接入的 SLS 自动告警、发布 / 回滚按钮不会伪装成已完成。
+- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；响应额外返回 `action_items` 和 `capabilities`，前端已收成“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡、快捷入口、关键队列和明细表，让非运维也能先看出今天能不能继续测试。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session。未接入的 SLS 自动告警、发布 / 回滚按钮不会伪装成已完成。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 脱敏手机号查询，展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈。
 - 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码只在生成响应当次返回，数据库只存 hash / 掩码 / 尾号。
