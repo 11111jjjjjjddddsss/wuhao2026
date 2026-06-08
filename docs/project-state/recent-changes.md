@@ -5,6 +5,8 @@
 
 ## 2026-06-08
 
+- 修复 Android 本机号码一键登录“一点就退”崩溃：根因是 `FusionOneLoginClient` 在 `AlicomFusionBusiness.initWithToken(...)` 之前调用 `setAlicomFusionAuthCallBack(...)`，阿里云融合认证 SDK 内部 `authProxy` 尚未创建时被解引用导致 NPE。现按 SDK 实际依赖顺序先 `initWithToken` 初始化并适配页面，再挂认证回调；场景启动、继续、停止和销毁都加了安全兜底，SDK 初始化 / 拉起失败时切回验证码登录，不再让 App 进程崩溃。已用本地 AAR 字节码确认 `initWithToken` 会创建 `authProxy`，`setAlicomFusionAuthCallBack` 会使用该对象；`./gradlew.bat :app:compileDebugKotlin` 和 `./gradlew.bat :app:assembleRelease` 通过，正式签名 release 包 SHA-256 与本机备案签名记录一致。生产 `healthz` 显示 `dypns_fusion=ok / dypns_sms=ok / redis=ok`，短信接口非法手机号边界返回 `invalid_phone`。真机上 debug 签名包不再崩溃但会回落到验证码登录，正式签名包已安装到测试机；最终一键登录 / 验证码真实手机号回归仍由用户在关闭代理、优先手机流量条件下继续确认。
+
 - 轻量收紧 Android 登录页视觉：`LoginScreen.kt` 将品牌黑圆内绿色叶片前景继续放大，让叶片更贴近外圈；协议勾选框不再用字体对号，改为 Canvas 两段线绘制的常规勾；“我已阅读并同意《服务协议》《隐私政策》”收成单个单行可点击协议文本，减少真机窄屏换行。该改动只影响登录页 UI，不改一键登录 / 短信登录 / 协议内容 / 后端认证逻辑。
 
 - 修复后台管理页 `overview / monitoring / users / entitlements` 一批 `500 internal_error`：根因是生产 MySQL 老表大量仍是 `utf8mb4_unicode_ci`，而 MySQL 8 新连接默认更偏 `utf8mb4_0900_ai_ci`，后台最近新增的 `tier/status/sender_type` 比较和 `COALESCE(..., 'free')` 一类 SQL 在生产上触发 `Illegal mix of collations`。后端 `OpenDB` 现统一把连接默认 collation 钉为 `utf8mb4_unicode_ci`，并补了单测覆盖 raw DSN / mysql:// URL / 显式 override 三种入口，避免今后后台再因为连接级排序规则飘掉而随机炸页。
