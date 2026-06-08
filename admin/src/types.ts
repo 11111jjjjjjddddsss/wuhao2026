@@ -425,6 +425,15 @@ export interface AdminOrderEntry {
   result?: JsonValue;
 }
 
+export interface AdminOrdersResponse {
+  orders: AdminOrderEntry[];
+  filter?: {
+    user_id?: string;
+    limit?: number;
+  };
+  note?: string;
+}
+
 export interface ClientAppLogEntry {
   id: number;
   user_id: string;

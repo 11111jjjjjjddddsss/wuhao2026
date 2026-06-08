@@ -396,6 +396,11 @@ type AdminOrderEntry struct {
 	Result    json.RawMessage `json:"result,omitempty"`
 }
 
+type AdminOrderQuery struct {
+	UserID string `json:"user_id,omitempty"`
+	Limit  int    `json:"limit"`
+}
+
 type AdminPlaceholderStatus struct {
 	Status string `json:"status"`
 	Note   string `json:"note"`
@@ -569,6 +574,30 @@ func (s *Server) handleAdminEntitlementSummary(w http.ResponseWriter, r *http.Re
 		"expiring_7d":  summary.ExpiringIn7d,
 	})
 	s.writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) handleAdminOrders(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "ops_readonly", "support", "finance_ops")
+	if !ok {
+		return
+	}
+	filter := AdminOrderQuery{
+		UserID: normalizeUserID(r.URL.Query().Get("user_id")),
+		Limit:  parseAdminLimit(r.URL.Query().Get("limit")),
+	}
+	orders, err := s.store.ListAdminOrders(r.Context(), filter)
+	if err != nil {
+		s.logger.Error("admin list orders failed", "userId", filter.UserID, "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders", "orders", "", filter.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.orders", "orders", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(orders), "limit": filter.Limit})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"orders": orders,
+		"filter": filter,
+		"note":   "payment_not_configured",
+	})
 }
 
 func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
@@ -1878,7 +1907,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、直接查看完整卡码、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
-		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
+		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
 		{Title: "SLS 告警", Status: "planned", Body: "日志已采集到 SLS，自动告警和仪表盘还要继续补。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
@@ -2344,7 +2373,7 @@ func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN str
 	for _, message := range supportRaw {
 		supportMessages = append(supportMessages, adminSupportMessageFromSupport(message, false))
 	}
-	orders, err := s.ListAdminOrders(ctx, userID, 20)
+	orders, err := s.ListAdminOrders(ctx, AdminOrderQuery{UserID: userID, Limit: 20})
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
@@ -2611,20 +2640,26 @@ func (s *Store) ListAdminRoundExcerpts(ctx context.Context, userID string, limit
 	return entries, rows.Err()
 }
 
-func (s *Store) ListAdminOrders(ctx context.Context, userID string, limit int) ([]AdminOrderEntry, error) {
-	if limit <= 0 || limit > 50 {
-		limit = 20
+func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderQuery) ([]AdminOrderEntry, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = defaultAdminListLimit
 	}
-	rows, err := s.db.QueryContext(
-		ctx,
-		`SELECT order_id, user_id, type, CAST(amount AS CHAR), created_at, status, result_json
-		   FROM orders
-		  WHERE user_id = ?
+	if filter.Limit > maxAdminListLimit {
+		filter.Limit = maxAdminListLimit
+	}
+	query := `SELECT order_id, user_id, type, CAST(amount AS CHAR), created_at, status, result_json
+		   FROM orders`
+	args := []any{}
+	if strings.TrimSpace(filter.UserID) != "" {
+		query += `
+		  WHERE user_id = ?`
+		args = append(args, strings.TrimSpace(filter.UserID))
+	}
+	query += `
 		  ORDER BY created_at DESC
-		  LIMIT ?`,
-		userID,
-		limit,
-	)
+		  LIMIT ?`
+	args = append(args, filter.Limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

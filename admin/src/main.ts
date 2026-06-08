@@ -14,6 +14,7 @@ import type {
   AdminInsights,
   AdminMonitoring,
   AdminOrderEntry,
+  AdminOrdersResponse,
   AdminOverview,
   AdminQuotaLedgerEntry,
   AdminRegionMetric,
@@ -47,7 +48,7 @@ const routes: RouteItem[] = [
   { key: "monitoring", label: "监控面板", section: "工作台", hint: "可用" },
   { key: "users", label: "用户管理", section: "用户与增长", hint: "可查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops"] },
-  { key: "orders", label: "订单", section: "权益与交易", hint: "支付后接", roles: ["ops_readonly", "support", "finance_ops"] },
+  { key: "orders", label: "订单", section: "权益与交易", hint: "只读核查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可生成/可追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复", roles: ["support", "ops_readonly", "auditor"] },
   { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
@@ -525,20 +526,29 @@ async function entitlementsPage(): Promise<string> {
 async function ordersPage(): Promise<string> {
   return userScopedPage({
     title: "订单",
-    desc: "支付链路未正式接入前，订单只做用户级只读核查，不提供补发或退款操作。",
+    desc: "支付链路未正式接入前，订单只做只读核查，不提供补发、退款或手动改权益。",
     formID: "orders-form",
     inputName: "user_id",
     value: pageState.orderUserID,
-    placeholder: "输入账号ID查询订单",
+    placeholder: "输入账号ID筛选；留空看最近订单",
     content: async (userID) => {
-      if (!userID) {
-        return planningNotice("全局订单页未接入", "后端目前没有正式支付订单聚合接口；支付成功、回调、退款和权益发放异常不能在前端伪造。");
-      }
-      const detail = await fetchUserDetail(userID);
+      const response = await fetchOrders(userID);
+      const orders = response.orders || [];
+      const summary = summarizeOrders(orders);
       return `
+        <div class="grid kpi" style="margin-top:12px">
+          ${kpi(userID ? "筛选订单" : "最近订单", orders.length, userID ? `账号 ${userID}` : "最近 50 条")}
+          ${kpi("成功", summary.success, "只读统计")}
+          ${kpi("失败", summary.failed, "只读统计")}
+          ${kpi("金额合计", summary.amountText, "仅按当前返回记录粗略合计")}
+        </div>
+        <div class="grid two" style="margin-top:12px">
+          ${notice("支付未接入", "真实微信 / 支付宝支付、回调、退款、对账和自动补发权益仍未完成；这里不会伪造支付成功，也没有手动发放按钮。", "warn")}
+          ${notice("当前用途", "用于查看开发期订单 / 会员变更记录，辅助核查账号权益来源。支付接入后再扩展渠道订单号、回调状态和退款记录。", "info")}
+        </div>
         <section class="card">
-          <div class="card-head"><div class="card-title">用户订单</div><span class="small muted">${detail.orders.length} 条</span></div>
-          <div class="table-wrap">${ordersTable(detail.orders)}</div>
+          <div class="card-head"><div class="card-title">${userID ? "用户订单" : "最近订单"}</div><span class="small muted">${orders.length} 条</span></div>
+          <div class="table-wrap">${ordersTable(orders)}</div>
         </section>
       `;
     },
@@ -1317,6 +1327,14 @@ async function fetchUserDetail(userID: string): Promise<AdminUserDetail> {
   return normalizeUserDetail(detail);
 }
 
+async function fetchOrders(userID: string): Promise<AdminOrdersResponse> {
+  const response = await apiFetch<AdminOrdersResponse>(`/admin-api/v1/orders${toQuery({ user_id: userID, limit: 50 })}`);
+  return {
+    ...response,
+    orders: response.orders ?? [],
+  };
+}
+
 function normalizeUserDetail(detail: AdminUserDetail): AdminUserDetail {
   return {
     ...detail,
@@ -1538,16 +1556,17 @@ function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
 }
 
 function ordersTable(rows: AdminOrderEntry[]): string {
-  if (!rows.length) return emptyState("没有订单数据", "支付未正式接入，或该用户没有订单记录。");
+  if (!rows.length) return emptyState("没有订单数据", "支付未正式接入，或当前筛选范围内没有开发期订单 / 会员变更记录。");
   return `
     <table class="table">
-      <thead><tr><th>订单</th><th>类型</th><th>金额</th><th>状态</th><th>创建时间</th><th>结果</th></tr></thead>
+      <thead><tr><th>订单</th><th>账号ID</th><th>类型</th><th>金额</th><th>状态</th><th>创建时间</th><th>结果</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.order_id)}</td><td>${escapeHTML(row.type)}</td><td>${escapeHTML(row.amount)}</td>
+                <td>${escapeHTML(row.order_id)}</td><td><div class="truncate" style="max-width:220px">${escapeHTML(row.user_id)}</div></td>
+                <td>${escapeHTML(row.type)}</td><td>${escapeHTML(row.amount)}</td>
                 <td>${statusPill(row.status)}</td><td>${formatTime(row.created_at)}</td><td class="wrap">${jsonInline(row.result)}</td>
               </tr>
             `,
@@ -1556,6 +1575,29 @@ function ordersTable(rows: AdminOrderEntry[]): string {
       </tbody>
     </table>
   `;
+}
+
+function summarizeOrders(rows: AdminOrderEntry[]): { success: number; failed: number; amountText: string } {
+  let success = 0;
+  let failed = 0;
+  let amountTotal = 0;
+  for (const row of rows) {
+    const status = (row.status || "").toLowerCase();
+    if (["success", "paid", "completed", "ok"].includes(status)) {
+      success += 1;
+    } else if (["failed", "error", "closed", "refunded", "canceled", "cancelled"].includes(status)) {
+      failed += 1;
+    }
+    const amount = Number(row.amount);
+    if (Number.isFinite(amount)) {
+      amountTotal += amount;
+    }
+  }
+  return {
+    success,
+    failed,
+    amountText: new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" }).format(amountTotal),
+  };
 }
 
 function topupPacksTable(rows: AdminTopupPackEntry[]): string {

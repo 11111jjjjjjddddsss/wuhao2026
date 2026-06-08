@@ -29,6 +29,7 @@
 - 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、登录前认证失败、闪退补报、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、最近 30 天问诊地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness`、`capabilities`、`user_regions`、`auth_logs` 和 `app_update_logs`。其中 `user_regions` 会按账号最近一次已识别地区拆出“注册用户地区”和“当前会员地区”两块，让非运维也能大概看出用户主要来自哪里；这不是精确注册地，也不是 100% 覆盖，只是基于账号最近地区做运营近似盘子。`auth_logs` 聚合最近 24 小时 `auth.*`、`auth.app_crash` 和 `app.crash`，用于快速看一键登录、短信登录和登录页闪退，并额外拆出 `env_blocked`、`env_warnings`、`login_network_failures`，对应手机网络 / SIM 明显不可用、VPN / 无蜂窝等可疑环境、App 请求生产登录接口网络失败；`app_update_logs` 聚合最近 24 小时 `app_update.*`，用于快速看检查失败、下载失败、安装页失败和安装未知应用权限确认。登录排障按钮会按精确事件名拆开取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验；检查更新排障按钮会按精确事件名拆开检查开始、有新版本、手动无更新、检查失败、需要安装权限、下载开始、下载失败、安装页失败和已拉起安装页，避免一个笼统按钮漏掉真实失败阶段。前端已收成“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、正式上架检查、快捷入口、关键队列、登录排障、检查更新排障和明细表，让非运维也能先看出当前哪里正常、哪里需要处理、哪里挡住正式上架。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上架检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；页面展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；`owner`、`support`、`finance_ops` 可查看和复制加密保存的完整手机号，用于回访，其他只读巡检角色只看脱敏号。
 - 会员额度：除用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录外，现已补 `GET /admin-api/v1/entitlements/summary` 全局盘子，页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额和有升级补偿人数，不再只有“按账号ID查单人权益”。
+- 订单：`GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录；页面只做只读核查和粗略统计，不提供补发、退款、对账或手动改权益。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
 - 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；备注、回复和审计里仍禁止写手机号全文。
@@ -86,7 +87,7 @@
 - 用户查询：按 `user_id`、完整手机号精确匹配 / 脱敏手机号线索、最近活跃时间、App 版本、设备、地区可信度、会员状态、额度、加油包、最近反馈、最近 App 自动日志。
 - 用户地区 / 来源：按注册、最近活跃、问诊、图片问诊、会员成交、加油包购买和帮助反馈聚合省市分布；优先使用 GPS 反查地区，IP 粗定位只作为低可信参考，不保存经纬度或轨迹。
 - 会员与额度：只读展示当前档位、到期时间、每日额度、今日已用、加油包余额、升级补偿和 `quota_ledger`。人工补偿先不开放，或只做 owner 二次确认。
-- 订单 / 订购：支付未接入前只做占位和开发期订单表只读说明；支付接入后再接正式订单、回调、对账、退款和异常补偿。
+- 订单 / 订购：支付未接入前已接开发期 `orders` 表只读核查，可按账号ID或最近记录查看权益变更来源；支付接入后再接正式订单、回调、对账、退款和异常补偿。
 - 礼品卡：首版已接入批次、生成、兑换、卡状态、失败尝试查询、失败原因聚合和未兑换卡作废；批量发放、发放对象管理和更细风控后续再补。
 - 帮助与反馈：会话列表、未回复队列、详情、后台回复、处理状态、关闭 / 重开和搜索已接入；后续补正式坐席分配、标签、站外通知、客服绩效和消息保存 / 删除规则。
 - App 自动日志：按时间、用户、事件名、level、App 版本、系统版本、设备筛选；接 `GET /internal/app/logs`，后续再并入 SLS 摘要。
@@ -108,7 +109,7 @@
 | 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |
 | 今日农情 | 已接入状态查看和补跑 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards`、`/admin-api/v1/today-agri/generate` | 停用 API、告警和发布记录 |
 | 检查更新 | 已接入发布 / 停更配置和排障日志 | `app_release_configs`、`/api/app/update`、`/admin-api/v1/app-update/android`、`app_update.*` 自动日志 | 发布历史、APK 上传、回滚记录和更细二次确认 |
-| 订单 / 订购 | 不能当正式功能接 | 当前 `orders` 仅开发期记录 | 正式订单、支付回调、退款、对账和幂等表 |
+| 订单 / 订购 | 已接只读核查，不能当正式支付功能 | 当前 `orders` 仅开发期记录，`/admin-api/v1/orders` 只读查询 | 正式订单、支付回调、退款、对账和幂等表 |
 | 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | 批量发放、发放对象管理、更细风控；完整卡码批量导出暂不开放 |
 | 产品洞察 | 已接入首版脱敏聚合 | `/admin-api/v1/insights`、`support_messages`、`client_app_logs`、`session_round_archive`、`gift_card_redemption_attempts` | 洞察日报、人工标签、代表短摘、处理状态和独立报表表 |
 
@@ -119,7 +120,7 @@
 - 不做后台直接读写数据库的浏览器页面。
 - 不把内部共享 secret 写进前端。
 - 不开放大范围删除用户、导出全量数据、批量补权益、批量发礼品卡。
-- 不在支付未接入前伪造真实订单后台。
+- 不在支付未接入前伪造真实支付订单后台；现有订单页只能只读核查开发期记录。
 - 不把聊天全文、图片 URL、token、模型 Key 铺到后台列表；完整手机号只对授权角色在用户 / 反馈详情和必要列表字段中展示，不能写入备注、回复、审计 detail、日志、文档或导出文件。
 - 不把官网和管理后台做成同一个公开页面。
 
