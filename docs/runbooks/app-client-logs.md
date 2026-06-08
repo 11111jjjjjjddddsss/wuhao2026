@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-08
+最后更新：2026-06-09
 
 ## 当前定位
 
@@ -10,6 +10,7 @@
 - Android 在关键失败点自动调用 `POST /api/app/logs`
 - 登录后日志走现有用户鉴权，写入 `client_app_logs` 表，并同步打一条结构化服务日志
 - 登录前认证失败日志走 `POST /api/app/logs/preauth`，只允许 `auth.` 前缀事件，统一写成 `user_id=preauth`，用于排查一键登录 / 短信登录还没拿到账号 token 前的失败
+- Android 现在有最小闪退补报：进程崩溃时只在本机 SharedPreferences 保存异常类型、顶层代码位置、登录阶段和时间戳等安全摘要；下次启动后自动上报。未登录 / 登录页阶段崩溃走 `auth.app_crash` 预登录日志，已登录后的普通运行崩溃走 `app.crash`
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
 - 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验
@@ -36,6 +37,8 @@
 - `auth.fusion_halfway_unexpected`
 - `auth.sms_send_failed`
 - `auth.sms_login_failed`
+- `auth.app_crash`
+- `app.crash`
 
 ## 隐私边界
 
@@ -45,6 +48,7 @@ Android 只上报结构化错误信息：
 - 设备型号
 - 事件名、等级、短消息
 - 少量错误分类字段，例如 `reason`、`http_status`、`image_count`、`text_length`
+- 闪退补报只保存异常类名、顶层类 / 方法 / 行号、线程名、登录阶段和崩溃时间，不保存完整堆栈正文
 
 禁止上报：
 - 聊天正文
@@ -66,7 +70,7 @@ Android 只上报结构化错误信息：
 
 ## 后续接后台面板
 
-第一版网页后台已提供只读查询。后续继续补：
+第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录失败、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。后续继续补：
 - 按时间筛选错误事件
 - 按事件名聚合数量
 - 按用户查最近失败事件

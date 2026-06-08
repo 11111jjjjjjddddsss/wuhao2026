@@ -1,6 +1,6 @@
 # 统一管理后台 Runbook
 
-最后更新：2026-06-08
+最后更新：2026-06-09
 
 ## 目的
 
@@ -25,7 +25,7 @@
 当前已落地的后台页面 / API：
 
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
-- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、最近 30 天问诊地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness`、`capabilities` 和 `user_regions`。其中 `user_regions` 会按账号最近一次已识别地区拆出“注册用户地区”和“当前会员地区”两块，让非运维也能大概看出用户主要来自哪里；这不是精确注册地，也不是 100% 覆盖，只是基于账号最近地区做运营近似盘子。前端已收成“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、正式上架检查、快捷入口、关键队列和明细表，让非运维也能先看出当前哪里正常、哪里需要处理、哪里挡住正式上架。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上架检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
+- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、登录前认证失败、闪退补报、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、最近 30 天问诊地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness`、`capabilities`、`user_regions` 和 `auth_logs`。其中 `user_regions` 会按账号最近一次已识别地区拆出“注册用户地区”和“当前会员地区”两块，让非运维也能大概看出用户主要来自哪里；这不是精确注册地，也不是 100% 覆盖，只是基于账号最近地区做运营近似盘子。`auth_logs` 聚合最近 24 小时 `auth.*`、`auth.app_crash` 和 `app.crash`，用于快速看一键登录、短信登录和登录页闪退。前端已收成“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、正式上架检查、快捷入口、关键队列、登录排障和明细表，让非运维也能先看出当前哪里正常、哪里需要处理、哪里挡住正式上架。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上架检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；页面展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；`owner`、`support`、`finance_ops` 可查看和复制加密保存的完整手机号，用于回访，其他只读巡检角色只看脱敏号。
 - 会员额度：除用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录外，现已补 `GET /admin-api/v1/entitlements/summary` 全局盘子，页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额和有升级补偿人数，不再只有“按账号ID查单人权益”。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；旧卡若没有加密字段，只能显示掩码 / 尾号。
@@ -100,7 +100,7 @@
 |---|---|---|---|
 | 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计 | SLS 自动告警 / 仪表盘、Nginx access 聚合、登录精准漏斗 |
 | 帮助与反馈 | 已接入首版 | `support_messages`、`support_conversations`、`/internal/support/*`、`/admin-api/v1/support/*` | 正式坐席分配、标签、站外通知、客服绩效、保存 / 删除规则 |
-| App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs` | 更细的版本 / 设备 / 地区聚合和告警 |
+| App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs`、监控页登录排障卡 | 更细的版本 / 设备 / 地区聚合和告警 |
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
 | 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |

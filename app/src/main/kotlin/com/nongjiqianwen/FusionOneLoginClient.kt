@@ -33,8 +33,10 @@ object FusionOneLoginClient {
     private var currentBusiness: AlicomFusionBusiness? = null
 
     fun start(activity: Activity, onResult: (Boolean, String?) -> Unit) {
+        AppCrashReporter.setAuthStage("auth.fusion_token")
         SessionApi.requestFusionAuthToken { snapshot, error ->
             if (snapshot?.usable != true) {
+                AppCrashReporter.clearAuthStage("auth.fusion_token")
                 reportAuthLog(
                     level = "warn",
                     event = "auth.fusion_token_failed",
@@ -56,6 +58,7 @@ object FusionOneLoginClient {
         val business = AlicomFusionBusiness()
         val completed = AtomicBoolean(false)
         val sceneStarted = AtomicBoolean(false)
+        AppCrashReporter.setAuthStage("auth.fusion_sdk_init")
         currentBusiness?.let { previous ->
             safeStopScene(previous)
             safeDestroy(previous)
@@ -95,6 +98,7 @@ object FusionOneLoginClient {
                     activity.runOnUiThread {
                         if (!completed.get() && sceneStarted.compareAndSet(false, true)) {
                             val startResult = runCatching {
+                                AppCrashReporter.setAuthStage("auth.fusion_scene_start")
                                 business.startSceneWithTemplateId(
                                     activity,
                                     LOGIN_TEMPLATE_ID,
@@ -140,11 +144,13 @@ object FusionOneLoginClient {
                     nodeName: String?,
                     event: AlicomFusionEvent?
                 ) {
+                    AppCrashReporter.setAuthStage("auth.fusion_verify_success")
                     val verifyToken = token.orEmpty().trim()
                     if (verifyToken.isEmpty()) {
                         safeContinueScene(business, false)
                         return
                     }
+                    AppCrashReporter.setAuthStage("auth.fusion_server_login")
                     SessionApi.loginWithFusionVerifyToken(
                         verifyToken = verifyToken,
                         shouldCommitSession = { !completed.get() }
@@ -190,6 +196,7 @@ object FusionOneLoginClient {
                 }
 
                 override fun onVerifyFailed(error: AlicomFusionEvent?, nodeName: String?) {
+                    AppCrashReporter.setAuthStage("auth.fusion_verify_failed")
                     Log.w(TAG, "fusion verify failed: node=$nodeName ${describeEvent(error)}")
                     reportAuthLog(
                         level = "warn",
@@ -205,6 +212,7 @@ object FusionOneLoginClient {
                 }
 
                 override fun onTemplateFinish(event: AlicomFusionEvent?) {
+                    AppCrashReporter.setAuthStage("auth.fusion_template_finish")
                     Log.i(TAG, "fusion template finished: ${describeEvent(event)}")
                     reportAuthLog(
                         level = "info",
@@ -396,6 +404,7 @@ object FusionOneLoginClient {
         mainHandler.post {
             runCatching { business.stopSceneWithTemplateId(LOGIN_TEMPLATE_ID) }
             runCatching { business.destory() }
+            AppCrashReporter.clearAuthStage()
             if (currentBusiness === business) {
                 currentBusiness = null
             }

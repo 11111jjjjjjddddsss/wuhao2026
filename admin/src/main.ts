@@ -384,6 +384,7 @@ async function monitoringPage(): Promise<string> {
     <section class="grid kpi">
       ${kpi("服务异常", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
       ${kpi("App报错", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
+      ${kpi("登录失败", report.queues.auth_failures ?? 0, `最近24小时，闪退补报 ${report.queues.crash_reports ?? 0} 条`)}
       ${kpi("待回复反馈", report.queues.support_needs_reply, report.queues.support_oldest_pending_at ? `最早 ${formatTime(report.queues.support_oldest_pending_at)}` : "当前无等待")}
       ${kpi("今日问诊", today?.chat_rounds ?? 0, `${today?.chat_users ?? 0} 位去重用户`)}
       ${kpi("礼品卡异常", report.queues.gift_card_failed_attempts, "最近24小时兑换失败")}
@@ -399,6 +400,10 @@ async function monitoringPage(): Promise<string> {
         <div class="card-body">${monitoringQueueCards(report)}</div>
       </section>
     </div>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">登录排障</div><span class="small muted">一键登录 / 短信 / 闪退补报</span></div>
+      <div class="card-body">${authTroubleshootingBlock(report.auth_logs)}</div>
+    </section>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
         <div class="card-head"><div class="card-title">服务状态</div></div>
@@ -876,6 +881,15 @@ async function handleAction(button: HTMLElement): Promise<void> {
     if (isRouteVisible(route)) {
       location.hash = route;
     }
+    return;
+  }
+  if (action === "open-app-log-filter") {
+    openAppLogsWithFilter({
+      userID: button.dataset.userId || "",
+      event: button.dataset.event || "",
+      level: button.dataset.level || "",
+      window: button.dataset.window || "24h",
+    });
     return;
   }
   if (action === "refresh") {
@@ -2071,6 +2085,20 @@ function readInputValue(key: string, name: string): string {
   return filterState.get(key)?.[name] || "";
 }
 
+function openAppLogsWithFilter(filter: { userID?: string; event?: string; level?: string; window?: string }): void {
+  const values: Record<string, string> = {};
+  if (filter.userID) values.user_id = filter.userID;
+  if (filter.event) values.event = filter.event;
+  if (filter.level) values.level = filter.level;
+  filterState.set("app-log", values);
+  pageState.appLogWindow = filter.window || "24h";
+  if (isRouteVisible("app-logs") && activeRoute !== "app-logs") {
+    location.hash = "app-logs";
+    return;
+  }
+  void render();
+}
+
 function formValue(form: HTMLFormElement, key: string): string {
   return String(new FormData(form).get(key) || "").trim();
 }
@@ -2098,7 +2126,7 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
     <table class="table">
       <thead>
         <tr>
-          <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>App异常</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
+          <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>App异常</th><th>登录排障</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
         </tr>
       </thead>
       <tbody>
@@ -2113,6 +2141,7 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
                 <td>${row.image_chat_rounds}</td>
                 <td>${row.quota_deductions}</td>
                 <td>${row.app_errors} / ${row.app_warns}</td>
+                <td>${row.auth_failures ?? 0}<div class="small muted">闪退 ${row.crash_reports ?? 0}</div></td>
                 <td>${row.support_messages}<div class="small muted">${row.support_users} 位去重用户</div></td>
                 <td>${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div></td>
                 <td>${row.audit_failures}<div class="small muted">${row.admin_actions} 次操作</div></td>
@@ -2132,9 +2161,13 @@ function monitoringQueueCards(report: AdminMonitoring): string {
   const giftLevel = queues.gift_card_failed_attempts ? "warn" : giftReady ? "ok" : "warn";
   const giftBody = `${queues.gift_card_batch_count ?? 0} 个批次 / ${queues.gift_card_total ?? 0} 张总卡；${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`;
   const supportBody = `${queues.support_open ?? queues.support_needs_reply} 待回复 / ${queues.support_replied ?? 0} 已回复 / ${queues.support_closed ?? 0} 已关闭`;
+  const authFailures = queues.auth_failures ?? 0;
+  const crashReports = queues.crash_reports ?? 0;
+  const authLevel = crashReports > 0 || authFailures >= 10 ? "bad" : authFailures > 0 ? "warn" : "ok";
   return `
     <div class="queue-grid">
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
+      ${queueCard("登录排障", authFailures, `最近24小时认证失败；闪退补报 ${crashReports} 条`, authLevel)}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", !update.enabled ? "已停更" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "warn" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
@@ -2142,6 +2175,37 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>
   `;
+}
+
+function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undefined): string {
+  if (!authLogs) return emptyState("没有登录排障数据", "后端未返回 auth_logs 聚合。");
+  const failures = authLogs.failures ?? 0;
+  const crashReports = authLogs.crash_reports ?? 0;
+  const level = crashReports > 0 || failures >= 10 ? "bad" : failures > 0 ? "warn" : "ok";
+  return `
+    <div class="auth-debug-grid">
+      <div class="auth-debug-summary ${level}">
+        <div>
+          <span class="small muted">最近24小时</span>
+          <strong>${failures}</strong>
+          <p>认证失败；一键登录 ${authLogs.fusion_failures ?? 0}，短信 ${authLogs.sms_failures ?? 0}，登录前日志 ${authLogs.preauth_count ?? 0}，闪退补报 ${crashReports}。</p>
+          <p class="small muted">最近出现：${authLogs.last_seen_at ? formatTime(authLogs.last_seen_at) : "暂无"}</p>
+        </div>
+        <div class="row-actions">
+          ${filterButton("登录前日志", { userID: "preauth", window: "24h" })}
+          ${filterButton("一键登录失败", { event: "auth.fusion_verify_failed", window: "24h" })}
+          ${filterButton("短信失败", { event: "auth.sms_send_failed", window: "24h" })}
+          ${filterButton("登录闪退", { event: "auth.app_crash", window: "24h" })}
+          ${filterButton("普通闪退", { event: "app.crash", window: "24h" })}
+        </div>
+      </div>
+      <div class="table-wrap">${authLogs.top_events?.length ? appLogSummaryTable(authLogs.top_events) : emptyState("暂无登录日志", "最近24小时没有 auth.* 或闪退补报。")}</div>
+    </div>
+  `;
+}
+
+function filterButton(label: string, filter: { userID?: string; event?: string; level?: string; window?: string }): string {
+  return `<button class="button" data-action="open-app-log-filter" data-user-id="${escapeAttr(filter.userID || "")}" data-event="${escapeAttr(filter.event || "")}" data-level="${escapeAttr(filter.level || "")}" data-window="${escapeAttr(filter.window || "24h")}">${escapeHTML(label)}</button>`;
 }
 
 function queueCard(title: string, value: string | number, body: string, level: "ok" | "warn" | "bad" | "info"): string {

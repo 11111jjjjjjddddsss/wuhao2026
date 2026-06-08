@@ -63,6 +63,7 @@ type AdminMonitoring struct {
 	Health       AdminHealthStatus           `json:"health"`
 	Windows      []AdminMonitoringWindow     `json:"windows"`
 	Queues       AdminMonitoringQueues       `json:"queues"`
+	AuthLogs     AdminMonitoringAuthLogs     `json:"auth_logs"`
 	LaunchReady  []AdminMonitoringLaunchItem `json:"launch_readiness"`
 	ActionItems  []AdminMonitoringActionItem `json:"action_items"`
 	Capabilities []AdminMonitoringCapability `json:"capabilities"`
@@ -86,6 +87,8 @@ type AdminMonitoringWindow struct {
 	QuotaDeductions      int64  `json:"quota_deductions"`
 	AppErrors            int64  `json:"app_errors"`
 	AppWarns             int64  `json:"app_warns"`
+	AuthFailures         int64  `json:"auth_failures"`
+	CrashReports         int64  `json:"crash_reports"`
 	SupportMessages      int64  `json:"support_messages"`
 	SupportUsers         int64  `json:"support_users"`
 	GiftCardRedeems      int64  `json:"gift_card_redeems"`
@@ -112,7 +115,23 @@ type AdminMonitoringQueues struct {
 	GiftCardFailedAttempts int64                    `json:"gift_card_failed_attempts"`
 	AuditFailures          int64                    `json:"audit_failures"`
 	AppErrors              int64                    `json:"app_errors"`
+	AuthFailures           int64                    `json:"auth_failures"`
+	CrashReports           int64                    `json:"crash_reports"`
 	UnreadyDependencyCount int64                    `json:"unready_dependency_count"`
+}
+
+type AdminMonitoringAuthLogs struct {
+	SinceMs        int64                      `json:"since_ms"`
+	Total          int64                      `json:"total"`
+	Warnings       int64                      `json:"warnings"`
+	Errors         int64                      `json:"errors"`
+	Failures       int64                      `json:"failures"`
+	FusionFailures int64                      `json:"fusion_failures"`
+	SMSFailures    int64                      `json:"sms_failures"`
+	PreAuthCount   int64                      `json:"preauth_count"`
+	CrashReports   int64                      `json:"crash_reports"`
+	LastSeenAt     *int64                     `json:"last_seen_at,omitempty"`
+	TopEvents      []ClientAppLogSummaryEntry `json:"top_events"`
 }
 
 type AdminMonitoringAppUpdate struct {
@@ -953,6 +972,11 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 		return report, err
 	}
 	report.Queues = queues
+	authLogs, err := s.buildAdminMonitoringAuthLogs(ctx, nowMs-int64(24*time.Hour/time.Millisecond))
+	if err != nil {
+		return report, err
+	}
+	report.AuthLogs = authLogs
 	userRegions, err := s.ReadAdminUserRegionOverview(ctx, nowMs, 10)
 	if err != nil {
 		return report, err
@@ -1005,6 +1029,12 @@ func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, labe
 		return window, err
 	}
 	if window.AppWarns, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'warn'", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.AuthFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND event LIKE 'auth.%' AND level IN ('warn', 'error')", []any{sinceMs}); err != nil {
+		return window, err
+	}
+	if window.CrashReports, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND event IN ('app.crash', 'auth.app_crash')", []any{sinceMs}); err != nil {
 		return window, err
 	}
 	if window.SupportMessages, err = s.countQuery(ctx, "SELECT COUNT(*) FROM support_messages WHERE created_at >= ? AND sender_type = 'user'", []any{sinceMs}); err != nil {
@@ -1093,8 +1123,59 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if queues.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
 		return queues, err
 	}
+	if queues.AuthFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND event LIKE 'auth.%' AND level IN ('warn', 'error')", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+		return queues, err
+	}
+	if queues.CrashReports, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND event IN ('app.crash', 'auth.app_crash')", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+		return queues, err
+	}
 	queues.UnreadyDependencyCount = countUnreadyAdminDependencies(health)
 	return queues, nil
+}
+
+func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64) (AdminMonitoringAuthLogs, error) {
+	authLogs := AdminMonitoringAuthLogs{SinceMs: sinceMs}
+	var lastSeen sql.NullInt64
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT
+		   COUNT(*),
+		   COALESCE(SUM(CASE WHEN level = 'warn' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN level = 'error' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event LIKE 'auth.%' AND level IN ('warn', 'error') THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event LIKE 'auth.fusion_%' AND level IN ('warn', 'error') THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event LIKE 'auth.sms_%' AND level IN ('warn', 'error') THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event IN ('app.crash', 'auth.app_crash') THEN 1 ELSE 0 END), 0),
+		   MAX(created_at)
+		 FROM client_app_logs
+		WHERE created_at >= ?
+		  AND (event LIKE 'auth.%' OR event = 'app.crash')`,
+		clientAppLogPreAuthUserID,
+		sinceMs,
+	).Scan(
+		&authLogs.Total,
+		&authLogs.Warnings,
+		&authLogs.Errors,
+		&authLogs.Failures,
+		&authLogs.FusionFailures,
+		&authLogs.SMSFailures,
+		&authLogs.PreAuthCount,
+		&authLogs.CrashReports,
+		&lastSeen,
+	)
+	if err != nil {
+		return authLogs, err
+	}
+	if lastSeen.Valid {
+		authLogs.LastSeenAt = int64Ptr(lastSeen.Int64)
+	}
+	topEvents, err := s.summarizeClientAppLogsByPrefix(ctx, sinceMs, 10, "auth.", "app.crash")
+	if err != nil {
+		return authLogs, err
+	}
+	authLogs.TopEvents = topEvents
+	return authLogs, nil
 }
 
 func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringActionItem {
@@ -1120,6 +1201,32 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Level: level,
 			Route: "app-logs",
 			Count: queues.AppErrors,
+		})
+	}
+	if queues.AuthFailures > 0 {
+		level := "warn"
+		if queues.AuthFailures >= 10 {
+			level = "bad"
+		}
+		items = append(items, AdminMonitoringActionItem{
+			Title: "登录失败需要看",
+			Body:  "最近 24 小时有一键登录或短信登录自动日志，先看登录排障卡和 App 日志里的 auth 事件。",
+			Level: level,
+			Route: "app-logs",
+			Count: queues.AuthFailures,
+		})
+	}
+	if queues.CrashReports > 0 {
+		level := "bad"
+		if queues.CrashReports == 1 {
+			level = "warn"
+		}
+		items = append(items, AdminMonitoringActionItem{
+			Title: "App 闪退补报",
+			Body:  "设备下次打开 App 后补报了崩溃摘要，优先看 App 日志里的 app.crash 事件和崩溃阶段。",
+			Level: level,
+			Route: "app-logs",
+			Count: queues.CrashReports,
 		})
 	}
 	if queues.SupportNeedsReply > 0 {
@@ -1304,13 +1411,13 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner:  "法务 / 运营",
 	})
 	slsStatus := "attention"
-	if queues.AppErrors >= 10 || queues.AuditFailures > 0 {
+	if queues.AppErrors >= 10 || queues.AuthFailures >= 10 || queues.CrashReports > 0 || queues.AuditFailures > 0 {
 		slsStatus = "blocked"
 	}
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "日志告警",
 		Status: slsStatus,
-		Body:   "Go 日志和 Nginx error 已进 SLS；自动告警和仪表盘还未接，先用后台 App 日志 / 审计 / 服务健康巡检。",
+		Body:   "Go 日志和 Nginx error 已进 SLS；App 自动日志已覆盖登录前失败和闪退补报，自动告警和仪表盘还未接。",
 		Route:  "app-logs",
 		Owner:  "运维",
 	})

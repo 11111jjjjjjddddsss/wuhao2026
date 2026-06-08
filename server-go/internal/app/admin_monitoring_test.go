@@ -11,6 +11,8 @@ func TestAdminMonitoringActionItemsContract(t *testing.T) {
 			DailyAgriStatus:        "failed",
 			GiftCardFailedAttempts: 3,
 			AuditFailures:          4,
+			AuthFailures:           5,
+			CrashReports:           1,
 			AppUpdate: AdminMonitoringAppUpdate{
 				ConfigValid:               true,
 				DownloadArtifactsComplete: false,
@@ -38,6 +40,10 @@ func TestAdminMonitoringActionItemsContract(t *testing.T) {
 		!hasAdminMonitoringActionRoute(items, "audit") ||
 		!hasAdminMonitoringActionRoute(items, "app-update") {
 		t.Fatalf("missing expected action routes: %#v", items)
+	}
+	if !hasAdminMonitoringActionTitle(items, "登录失败需要看") ||
+		!hasAdminMonitoringActionTitle(items, "App 闪退补报") {
+		t.Fatalf("missing auth/crash action items: %#v", items)
 	}
 }
 
@@ -136,6 +142,15 @@ func TestAndroidUpdateConfigValidityContract(t *testing.T) {
 func hasAdminMonitoringActionRoute(items []AdminMonitoringActionItem, route string) bool {
 	for _, item := range items {
 		if item.Route == route {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAdminMonitoringActionTitle(items []AdminMonitoringActionItem, title string) bool {
+	for _, item := range items {
+		if item.Title == title {
 			return true
 		}
 	}

@@ -322,6 +322,10 @@ button {
   gap: 10px;
 }
 
+.row-actions {
+  flex-wrap: wrap;
+}
+
 .env-badge {
   border: 1px solid #c9d7ce;
   border-radius: 999px;
@@ -971,6 +975,51 @@ button {
 .queue-card.bad {
   border-color: #e4b2b2;
   background: #fff5f5;
+}
+
+.auth-debug-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.92fr) minmax(0, 1.08fr);
+  gap: 12px;
+}
+
+.auth-debug-summary {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.auth-debug-summary.ok {
+  border-color: #badbc5;
+  background: #f7fcf8;
+}
+
+.auth-debug-summary.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+}
+
+.auth-debug-summary.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+}
+
+.auth-debug-summary strong {
+  display: block;
+  margin-top: 5px;
+  color: #111827;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.auth-debug-summary p {
+  margin: 8px 0 0;
+  color: #4a5562;
+  line-height: 1.55;
 }
 
 .today-agri-preview {

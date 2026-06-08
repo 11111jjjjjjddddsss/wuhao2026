@@ -621,6 +621,39 @@ func (s *Store) SummarizeClientAppLogs(ctx context.Context, filter ClientAppLogQ
 	return summary, nil
 }
 
+func (s *Store) summarizeClientAppLogsByPrefix(ctx context.Context, sinceMs int64, limit int, prefix string, exactEvent string) ([]ClientAppLogSummaryEntry, error) {
+	cappedLimit := clientAppLogSummaryLimit(limit)
+	likePattern := strings.TrimSpace(prefix) + "%"
+	query := `SELECT event, level, COUNT(*) AS event_count
+		 FROM client_app_logs
+		WHERE created_at >= ?
+		  AND (event LIKE ? OR event = ?)
+		 GROUP BY event, level
+		 ORDER BY event_count DESC, event ASC, level ASC
+		 LIMIT ?`
+	rows, err := s.db.QueryContext(ctx, query, sinceMs, likePattern, strings.TrimSpace(exactEvent), cappedLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var summary []ClientAppLogSummaryEntry
+	for rows.Next() {
+		var entry ClientAppLogSummaryEntry
+		if err := rows.Scan(&entry.Event, &entry.Level, &entry.Count); err != nil {
+			return nil, err
+		}
+		summary = append(summary, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if summary == nil {
+		return []ClientAppLogSummaryEntry{}, nil
+	}
+	return summary, nil
+}
+
 func clientAppLogSummaryLimit(limit int) int {
 	if limit <= 0 || limit > clientAppLogInternalSummaryLimit {
 		return clientAppLogInternalSummaryLimit

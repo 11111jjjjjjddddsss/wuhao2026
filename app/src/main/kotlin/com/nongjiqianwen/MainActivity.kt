@@ -25,6 +25,7 @@ object LaunchUiGate {
 class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
+        AppCrashReporter.install(applicationContext)
         LaunchUiGate.chatReady = false
         LaunchUiGate.splashDeadlineMs = SystemClock.uptimeMillis() + 900L
         val splashScreen = installSplashScreen()
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
         ComposeFoundationFlags.isNewContextMenuEnabled = false
         ComposeFoundationFlags.isSmartSelectionEnabled = false
         IdManager.init(this)
+        AppCrashReporter.flushPendingReport(applicationContext)
         setContent {
             MaterialTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {

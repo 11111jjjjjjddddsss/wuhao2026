@@ -111,6 +111,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     val context = LocalContext.current
 
     fun startFusionOneLogin(activity: Activity) {
+        AppCrashReporter.setAuthStage("auth.fusion_start")
         busy = true
         message = "正在拉起本机号码登录"
         FusionOneLoginClient.start(activity) { ok, error ->
@@ -131,6 +132,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
         if (granted && activity != null) {
             startFusionOneLogin(activity)
         } else {
+            AppCrashReporter.clearAuthStage()
             smsMode = true
             message = "未授予本机号码登录所需权限，请使用验证码登录"
         }
@@ -294,9 +296,11 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                     message = "请输入正确的手机号"
                                     return@OutlinedButton
                                 }
+                                AppCrashReporter.setAuthStage("auth.sms_send")
                                 busy = true
                                 message = null
                                 SessionApi.sendSmsCode(phone) { ok, error ->
+                                    AppCrashReporter.clearAuthStage("auth.sms_send")
                                     busy = false
                                     if (ok) {
                                         countdown = 60
@@ -331,9 +335,11 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 message = "请填写手机号和验证码"
                                 return@Button
                             }
+                            AppCrashReporter.setAuthStage("auth.sms_login")
                             busy = true
                             message = null
                             SessionApi.loginWithSms(phone, code) { ok, error ->
+                                AppCrashReporter.clearAuthStage("auth.sms_login")
                                 busy = false
                                 if (ok) {
                                     onLoginSuccess()

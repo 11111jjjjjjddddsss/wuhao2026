@@ -48,6 +48,7 @@ export interface AdminMonitoring {
   health: AdminHealthStatus;
   windows: AdminMonitoringWindow[];
   queues: AdminMonitoringQueues;
+  auth_logs: AdminMonitoringAuthLogs;
   launch_readiness: AdminMonitoringLaunchItem[];
   action_items: AdminMonitoringActionItem[];
   capabilities: AdminMonitoringCapability[];
@@ -71,6 +72,8 @@ export interface AdminMonitoringWindow {
   quota_deductions: number;
   app_errors: number;
   app_warns: number;
+  auth_failures: number;
+  crash_reports: number;
   support_messages: number;
   support_users: number;
   gift_card_redeems: number;
@@ -97,7 +100,23 @@ export interface AdminMonitoringQueues {
   gift_card_failed_attempts: number;
   audit_failures: number;
   app_errors: number;
+  auth_failures: number;
+  crash_reports: number;
   unready_dependency_count: number;
+}
+
+export interface AdminMonitoringAuthLogs {
+  since_ms: number;
+  total: number;
+  warnings: number;
+  errors: number;
+  failures: number;
+  fusion_failures: number;
+  sms_failures: number;
+  preauth_count: number;
+  crash_reports: number;
+  last_seen_at?: number;
+  top_events: ClientAppLogSummaryEntry[];
 }
 
 export interface AdminMonitoringAppUpdate {
