@@ -2206,6 +2206,9 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
   if (!authLogs) return emptyState("没有登录排障数据", "后端未返回 auth_logs 聚合。");
   const failures = authLogs.failures ?? 0;
   const crashReports = authLogs.crash_reports ?? 0;
+  const envBlocked = authLogs.env_blocked ?? 0;
+  const envWarnings = authLogs.env_warnings ?? 0;
+  const loginNetworkFailures = authLogs.login_network_failures ?? 0;
   const level = crashReports > 0 || failures >= 10 ? "bad" : failures > 0 ? "warn" : "ok";
   return `
     <div class="auth-debug-grid">
@@ -2214,10 +2217,18 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           <span class="small muted">最近24小时</span>
           <strong>${failures}</strong>
           <p>认证失败；一键登录 ${authLogs.fusion_failures ?? 0}，短信 ${authLogs.sms_failures ?? 0}，登录前日志 ${authLogs.preauth_count ?? 0}，闪退补报 ${crashReports}。</p>
+          <div class="auth-debug-metrics">
+            ${authDebugMetric("环境不满足", envBlocked, envBlocked ? "warn" : "ok")}
+            ${authDebugMetric("可疑环境", envWarnings, envWarnings ? "warn" : "ok")}
+            ${authDebugMetric("请求网络失败", loginNetworkFailures, loginNetworkFailures ? "warn" : "ok")}
+          </div>
           <p class="small muted">最近出现：${authLogs.last_seen_at ? formatTime(authLogs.last_seen_at) : "暂无"}</p>
         </div>
         <div class="row-actions">
           ${filterButton("登录前日志", { userID: "preauth", window: "24h" })}
+          ${filterButton("环境不满足", { event: "auth.fusion_env_blocked", window: "24h" })}
+          ${filterButton("可疑环境", { event: "auth.fusion_env_warning", window: "24h" })}
+          ${filterButton("请求网络失败", { event: "auth.login_network_failed", window: "24h" })}
           ${filterButton("一键登录失败", { event: "auth.fusion_verify_failed", window: "24h" })}
           ${filterButton("短信失败", { event: "auth.sms_send_failed", window: "24h" })}
           ${filterButton("登录闪退", { event: "auth.app_crash", window: "24h" })}
@@ -2226,6 +2237,15 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
       </div>
       <div class="table-wrap">${authLogs.top_events?.length ? appLogSummaryTable(authLogs.top_events) : emptyState("暂无登录日志", "最近24小时没有 auth.* 或闪退补报。")}</div>
     </div>
+  `;
+}
+
+function authDebugMetric(label: string, value: number, level: "ok" | "warn" | "bad"): string {
+  return `
+    <span class="auth-debug-metric ${level}">
+      <span>${escapeHTML(label)}</span>
+      <strong>${value}</strong>
+    </span>
   `;
 }
 

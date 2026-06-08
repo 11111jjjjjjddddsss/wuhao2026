@@ -121,17 +121,20 @@ type AdminMonitoringQueues struct {
 }
 
 type AdminMonitoringAuthLogs struct {
-	SinceMs        int64                      `json:"since_ms"`
-	Total          int64                      `json:"total"`
-	Warnings       int64                      `json:"warnings"`
-	Errors         int64                      `json:"errors"`
-	Failures       int64                      `json:"failures"`
-	FusionFailures int64                      `json:"fusion_failures"`
-	SMSFailures    int64                      `json:"sms_failures"`
-	PreAuthCount   int64                      `json:"preauth_count"`
-	CrashReports   int64                      `json:"crash_reports"`
-	LastSeenAt     *int64                     `json:"last_seen_at,omitempty"`
-	TopEvents      []ClientAppLogSummaryEntry `json:"top_events"`
+	SinceMs              int64                      `json:"since_ms"`
+	Total                int64                      `json:"total"`
+	Warnings             int64                      `json:"warnings"`
+	Errors               int64                      `json:"errors"`
+	Failures             int64                      `json:"failures"`
+	FusionFailures       int64                      `json:"fusion_failures"`
+	SMSFailures          int64                      `json:"sms_failures"`
+	PreAuthCount         int64                      `json:"preauth_count"`
+	CrashReports         int64                      `json:"crash_reports"`
+	EnvBlocked           int64                      `json:"env_blocked"`
+	EnvWarnings          int64                      `json:"env_warnings"`
+	LoginNetworkFailures int64                      `json:"login_network_failures"`
+	LastSeenAt           *int64                     `json:"last_seen_at,omitempty"`
+	TopEvents            []ClientAppLogSummaryEntry `json:"top_events"`
 }
 
 type AdminMonitoringAppUpdate struct {
@@ -1147,6 +1150,9 @@ func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64)
 		   COALESCE(SUM(CASE WHEN event LIKE 'auth.sms_%' AND level IN ('warn', 'error') THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN user_id = ? THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event IN ('app.crash', 'auth.app_crash') THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'auth.fusion_env_blocked' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'auth.fusion_env_warning' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'auth.login_network_failed' THEN 1 ELSE 0 END), 0),
 		   MAX(created_at)
 		 FROM client_app_logs
 		WHERE created_at >= ?
@@ -1162,6 +1168,9 @@ func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64)
 		&authLogs.SMSFailures,
 		&authLogs.PreAuthCount,
 		&authLogs.CrashReports,
+		&authLogs.EnvBlocked,
+		&authLogs.EnvWarnings,
+		&authLogs.LoginNetworkFailures,
 		&lastSeen,
 	)
 	if err != nil {
@@ -1180,7 +1189,7 @@ func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64)
 
 func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringActionItem {
 	queues := report.Queues
-	items := make([]AdminMonitoringActionItem, 0, 8)
+	items := make([]AdminMonitoringActionItem, 0, 10)
 	if queues.UnreadyDependencyCount > 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "服务依赖异常",
@@ -1214,6 +1223,33 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Level: level,
 			Route: "app-logs",
 			Count: queues.AuthFailures,
+		})
+	}
+	if report.AuthLogs.EnvBlocked > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "一键登录环境不满足",
+			Body:  "测试机存在无网络、无 SIM、无蜂窝模块或 SIM 未就绪，先确认移动数据和默认数据卡，再重测一键登录。",
+			Level: "warn",
+			Route: "app-logs",
+			Count: report.AuthLogs.EnvBlocked,
+		})
+	}
+	if report.AuthLogs.EnvWarnings > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "一键登录环境可疑",
+			Body:  "测试机存在代理、无蜂窝或网络状态可疑，优先关闭 VPN、切到目标手机号的默认数据卡，再重测一键登录。",
+			Level: "warn",
+			Route: "app-logs",
+			Count: report.AuthLogs.EnvWarnings,
+		})
+	}
+	if report.AuthLogs.LoginNetworkFailures > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "登录请求网络失败",
+			Body:  "App 到后端登录接口出现网络失败，优先检查手机网络、代理、HTTPS 和生产 API 可达性。",
+			Level: "warn",
+			Route: "app-logs",
+			Count: report.AuthLogs.LoginNetworkFailures,
 		})
 	}
 	if queues.CrashReports > 0 {

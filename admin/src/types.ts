@@ -115,6 +115,9 @@ export interface AdminMonitoringAuthLogs {
   sms_failures: number;
   preauth_count: number;
   crash_reports: number;
+  env_blocked: number;
+  env_warnings: number;
+  login_network_failures: number;
   last_seen_at?: number;
   top_events: ClientAppLogSummaryEntry[];
 }

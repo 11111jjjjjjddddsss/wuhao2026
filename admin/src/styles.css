@@ -1033,6 +1033,45 @@ button {
   line-height: 1.55;
 }
 
+.auth-debug-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 2px;
+}
+
+.auth-debug-metric {
+  display: inline-grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d7dce2;
+  border-radius: 999px;
+  background: #fff;
+  padding: 5px 9px;
+  color: #4a5562;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.auth-debug-metric.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+  color: #7a4b00;
+}
+
+.auth-debug-metric.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+  color: #8f1f1f;
+}
+
+.auth-debug-metric strong {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+}
+
 .today-agri-preview {
   margin-bottom: 12px;
 }
