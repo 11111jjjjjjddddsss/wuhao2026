@@ -49,7 +49,7 @@
   - 查询最近有帮助与反馈消息的用户会话列表
   - 支持 `since_ms`、`limit`、`status` 和 `query`，默认查最近 30 天，limit 默认 100、最大 200
   - 默认时间窗只限制已回复 / 已关闭等普通队列；待回复 `open` 会话不受 30 天窗口漏掉
-  - 返回每个用户的最新消息、消息数、用户未读后台 / 系统消息数、脱敏手机号、`status`、处理人、关闭备注和 `needs_reply` 标记
+  - 返回每个用户的最新消息、消息数、用户未读后台 / 系统消息数、脱敏手机号、`status`、处理人、关闭备注和 `needs_reply` 标记；浏览器管理后台在授权角色下还会通过 `/admin-api/` 返回完整手机号，内部共享密钥接口仍只按原始结构返回脱敏号
   - `needs_reply` 按最新非 `system` 消息判断；自动确认回复不会把“用户待回复”状态盖掉
   - 查询动作会写入 `admin_audit_logs`，只记录筛选条件和返回条数，不记录反馈正文或图片 URL
 - `POST /internal/support/messages`
@@ -62,8 +62,9 @@
 
 - `GET /admin-api/v1/support/conversations`
   - 走后台账号 session / CSRF / 角色权限，不暴露内部 shared secret 给浏览器
-  - 支持按 `status=open|replied|closed` 和 `query` 筛选；`query` 可查账号ID、脱敏手机号和最近消息
+  - 支持按 `status=open|replied|closed` 和 `query` 筛选；`query` 可查账号ID、完整手机号 / 脱敏手机号和最近消息，完整手机号在服务端按 `phone_hash` 精确匹配
   - 列表排序为待回复优先，其次按最新消息时间倒序，避免大量消息时把未处理会话压到下面
+  - 授权角色可在会话详情查看和复制完整手机号，用于回访；审计只记录是否展示完整号，不记录手机号值
 - `GET /admin-api/v1/support/messages?user_id=<user_id>`
   - 读取指定账号ID的最近消息，按时间正序展示
 - `POST /admin-api/v1/support/messages`

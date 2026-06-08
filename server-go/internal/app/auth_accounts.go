@@ -2,13 +2,24 @@ package app
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
+)
+
+var (
+	errAccountPhoneInvalid       = errors.New("account_phone_invalid")
+	errAccountPhoneSecretMissing = errors.New("account_phone_secret_missing")
 )
 
 type AccountLoginResult struct {
@@ -35,6 +46,10 @@ func (s *Store) LoginWithVerifiedPhone(
 		return AccountLoginResult{}, fmt.Errorf("phone_hash_secret_missing")
 	}
 	phoneMask := maskPhone(phone)
+	phoneCiphertext, err := encryptAccountPhoneNumberWithSecret(phone, secret)
+	if err != nil {
+		return AccountLoginResult{}, err
+	}
 	now := time.Now()
 	nowMs := now.UnixMilli()
 	sessionID, err := randomHexString(16)
@@ -48,7 +63,7 @@ func (s *Store) LoginWithVerifiedPhone(
 	}
 	defer rollbackQuietly(tx)
 
-	userID, err := s.getOrCreateAccountForPhoneTx(ctx, tx, phoneHash, phoneMask, nowMs)
+	userID, err := s.getOrCreateAccountForPhoneTx(ctx, tx, phoneHash, phoneMask, phoneCiphertext, nowMs)
 	if err != nil {
 		return AccountLoginResult{}, err
 	}
@@ -75,8 +90,9 @@ func (s *Store) LoginWithVerifiedPhone(
 	}
 	if _, err := tx.ExecContext(
 		ctx,
-		"UPDATE app_accounts SET phone_mask = ?, last_login_at = ?, updated_at = ? WHERE user_id = ?",
+		"UPDATE app_accounts SET phone_mask = ?, phone_ciphertext = ?, last_login_at = ?, updated_at = ? WHERE user_id = ?",
 		phoneMask,
+		phoneCiphertext,
 		nowMs,
 		nowMs,
 		userID,
@@ -137,7 +153,7 @@ func (s *Store) RevokeAuthSession(ctx context.Context, userID string, sessionID 
 	return err
 }
 
-func (s *Store) getOrCreateAccountForPhoneTx(ctx context.Context, tx *sql.Tx, phoneHash string, phoneMask string, nowMs int64) (string, error) {
+func (s *Store) getOrCreateAccountForPhoneTx(ctx context.Context, tx *sql.Tx, phoneHash string, phoneMask string, phoneCiphertext string, nowMs int64) (string, error) {
 	var userID string
 	err := tx.QueryRowContext(
 		ctx,
@@ -157,11 +173,12 @@ func (s *Store) getOrCreateAccountForPhoneTx(ctx context.Context, tx *sql.Tx, ph
 	userID = "acct_" + randomPart
 	if _, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO app_accounts(user_id, phone_hash, phone_mask, created_at, updated_at, last_login_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO app_accounts(user_id, phone_hash, phone_mask, phone_ciphertext, created_at, updated_at, last_login_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		userID,
 		phoneHash,
 		phoneMask,
+		phoneCiphertext,
 		nowMs,
 		nowMs,
 		nowMs,
@@ -179,6 +196,78 @@ func (s *Store) getOrCreateAccountForPhoneTx(ctx context.Context, tx *sql.Tx, ph
 		return "", err
 	}
 	return userID, nil
+}
+
+func encryptAccountPhoneNumberWithSecret(phone string, secret string) (string, error) {
+	phone = normalizeMainlandPhone(phone)
+	secret = strings.TrimSpace(secret)
+	if phone == "" {
+		return "", errAccountPhoneInvalid
+	}
+	if secret == "" {
+		return "", errAccountPhoneSecretMissing
+	}
+	key := accountPhoneCipherKey(secret)
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nil, nonce, []byte(phone), []byte("account_phone:v1"))
+	payload := append(nonce, sealed...)
+	return "v1:" + base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+func decryptAccountPhoneNumber(ciphertext string) (string, error) {
+	return decryptAccountPhoneNumberWithSecret(ciphertext, os.Getenv("APP_SECRET"))
+}
+
+func decryptAccountPhoneNumberWithSecret(ciphertext string, secret string) (string, error) {
+	ciphertext = strings.TrimSpace(ciphertext)
+	secret = strings.TrimSpace(secret)
+	if ciphertext == "" {
+		return "", nil
+	}
+	if secret == "" {
+		return "", errAccountPhoneSecretMissing
+	}
+	if !strings.HasPrefix(ciphertext, "v1:") {
+		return "", fmt.Errorf("unsupported account phone ciphertext")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(ciphertext, "v1:"))
+	if err != nil {
+		return "", err
+	}
+	key := accountPhoneCipherKey(secret)
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) <= gcm.NonceSize() {
+		return "", fmt.Errorf("invalid account phone ciphertext")
+	}
+	nonce := raw[:gcm.NonceSize()]
+	sealed := raw[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, sealed, []byte("account_phone:v1"))
+	if err != nil {
+		return "", err
+	}
+	return normalizeMainlandPhone(string(plain)), nil
+}
+
+func accountPhoneCipherKey(secret string) [32]byte {
+	return sha256.Sum256([]byte("nongjiqiancha:account_phone:v1:" + strings.TrimSpace(secret)))
 }
 
 func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, oldUserID string, newUserID string, nowMs int64) error {
@@ -518,6 +607,14 @@ func hashPhone(phone string, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(phone))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func accountPhoneHashForSearch(raw string) string {
+	phone := normalizeMainlandPhone(raw)
+	if phone == "" {
+		return ""
+	}
+	return hashPhone(phone, os.Getenv("APP_SECRET"))
 }
 
 func nullableAuthString(value string) any {

@@ -189,6 +189,7 @@ export interface DailyQuotaStatus {
 export interface AdminUserListEntry {
   user_id: string;
   phone_mask?: string;
+  phone_number?: string;
   created_at?: number;
   updated_at?: number;
   last_login_at?: number;
@@ -266,6 +267,7 @@ export interface AdminRoundExcerpt {
 export interface AdminSupportConversation {
   user_id: string;
   phone_mask?: string;
+  phone_number?: string;
   latest_message: AdminSupportMessage;
   message_count: number;
   unread_by_user_count: number;

@@ -5,6 +5,8 @@
 
 ## 2026-06-08
 
+- 后台手机号回访能力补齐：`app_accounts` 新增加密 `phone_ciphertext` 字段，用户下一次一键登录或短信登录时会用 `APP_SECRET` 派生密钥加密保存完整手机号；后台用户列表 / 用户详情和帮助反馈会话对授权角色返回完整手机号并提供复制入口，用户管理和帮助反馈搜索框输入完整 11 位手机号时会在服务端按 `phone_hash` 精确匹配。账号ID仍是全局业务主键，手机号只作为登录凭证和回访线索；日志、审计 detail、SLS、Redis、文档和聊天输出仍不得打印完整手机号，旧账号需下次登录后才能补齐完整号。
+
 - 继续按正式上架路线收口：Android `UPLOAD_BASE_URL` 固定为 `https://api.nongjiqiancha.cn`，`USE_BACKEND_AB` 固定开启，debug 包和 release 包业务后端保持一致，区别只保留 debug-only 预览面板和调试日志；管理后台把监控状态文案统一为“就绪 / 需处理 / 阻塞”，并继续补空数据兜底、角色写操作隐藏、帮助反馈默认待回复队列、礼品卡激活账号跳转用户详情、账号ID迁移时同步重建反馈会话索引。后端空批次 / 空卡 / 空兑换尝试 / 空用户明细相关列表统一返回 `[]`，避免后台页面因空数据读取 `.length` 崩溃；用户兑换礼品卡时不再解密完整卡码，完整码只用于后台受权限查看。
 
 - 本轮生产部署已完成：`scripts/deploy-ecs-server.ps1` 将后端部署到 ECS 双端口 slot，当前 Nginx active upstream 为 `3001`，`scripts/check-ecs-readiness.ps1` 显示 HTTPS healthz 200 且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署和检查输出不打印真实 token、AccessKey、模型 Key 或密码。

@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestNormalizeMainlandPhone(t *testing.T) {
 	cases := map[string]string{
@@ -25,6 +29,56 @@ func TestHashPhoneRequiresSecret(t *testing.T) {
 	}
 	if got := hashPhone("13800138000", "secret"); len(got) != 64 {
 		t.Fatalf("hashPhone length=%d want 64", len(got))
+	}
+}
+
+func TestAccountPhoneCipherRoundTrip(t *testing.T) {
+	phone := "13800138000"
+	ciphertext, err := encryptAccountPhoneNumberWithSecret(phone, "unit-test-secret")
+	if err != nil {
+		t.Fatalf("encryptAccountPhoneNumberWithSecret failed: %v", err)
+	}
+	if ciphertext == "" || !strings.HasPrefix(ciphertext, "v1:") {
+		t.Fatalf("ciphertext = %q, want v1 payload", ciphertext)
+	}
+	if strings.Contains(ciphertext, phone) {
+		t.Fatalf("ciphertext leaked phone number: %q", ciphertext)
+	}
+	plain, err := decryptAccountPhoneNumberWithSecret(ciphertext, "unit-test-secret")
+	if err != nil {
+		t.Fatalf("decryptAccountPhoneNumberWithSecret failed: %v", err)
+	}
+	if plain != phone {
+		t.Fatalf("plain = %q, want %q", plain, phone)
+	}
+	if _, err := decryptAccountPhoneNumberWithSecret(ciphertext, "wrong-secret"); err == nil {
+		t.Fatalf("decrypt with wrong secret succeeded")
+	}
+}
+
+func TestAccountPhoneCipherRequiresSecret(t *testing.T) {
+	if _, err := encryptAccountPhoneNumberWithSecret("13800138000", ""); !errors.Is(err, errAccountPhoneSecretMissing) {
+		t.Fatalf("encrypt missing secret err = %v, want errAccountPhoneSecretMissing", err)
+	}
+	if _, err := decryptAccountPhoneNumberWithSecret("v1:abc", ""); !errors.Is(err, errAccountPhoneSecretMissing) {
+		t.Fatalf("decrypt missing secret err = %v, want errAccountPhoneSecretMissing", err)
+	}
+}
+
+func TestAccountPhoneHashForSearch(t *testing.T) {
+	t.Setenv("APP_SECRET", "unit-test-secret")
+	hash := accountPhoneHashForSearch("+86 138-0013-8000")
+	if hash == "" {
+		t.Fatalf("accountPhoneHashForSearch returned empty hash")
+	}
+	if strings.Contains(hash, "13800138000") {
+		t.Fatalf("search hash leaked phone number: %q", hash)
+	}
+	if hash != hashPhone("13800138000", "unit-test-secret") {
+		t.Fatalf("search hash mismatch")
+	}
+	if got := accountPhoneHashForSearch("not-a-phone"); got != "" {
+		t.Fatalf("invalid phone search hash = %q, want empty", got)
 	}
 }
 

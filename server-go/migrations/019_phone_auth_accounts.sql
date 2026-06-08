@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS app_accounts (
   user_id VARCHAR(128) PRIMARY KEY,
   phone_hash CHAR(64) NOT NULL,
   phone_mask VARCHAR(32) NOT NULL,
+  phone_ciphertext VARCHAR(512) NULL,
   created_at BIGINT NOT NULL,
   updated_at BIGINT NOT NULL,
   last_login_at BIGINT NULL,

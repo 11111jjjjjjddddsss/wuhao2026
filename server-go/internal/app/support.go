@@ -60,6 +60,8 @@ type SupportConversationQuery struct {
 type SupportConversationEntry struct {
 	UserID            string         `json:"user_id"`
 	PhoneMask         string         `json:"phone_mask,omitempty"`
+	PhoneCiphertext   string         `json:"-"`
+	PhoneHash         string         `json:"-"`
 	LatestMessage     SupportMessage `json:"latest_message"`
 	MessageCount      int            `json:"message_count"`
 	UnreadByUserCount int            `json:"unread_by_user_count"`
@@ -537,6 +539,8 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		   SELECT
 		     latest_message.user_id,
 		     accounts.phone_mask,
+		     accounts.phone_ciphertext,
+		     accounts.phone_hash,
 		     latest_message.id,
 		     latest_message.sender_type,
 		     latest_message.body,
@@ -612,6 +616,10 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		like := "%" + filter.Query + "%"
 		where = append(where, "(user_id LIKE ? OR phone_mask LIKE ? OR body LIKE ?)")
 		args = append(args, like, like, like)
+		if hash := accountPhoneHashForSearch(filter.Query); hash != "" {
+			where[len(where)-1] = strings.TrimSuffix(where[len(where)-1], ")") + " OR phone_hash = ?)"
+			args = append(args, hash)
+		}
 	}
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
@@ -632,7 +640,7 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 	for rows.Next() {
 		var entry SupportConversationEntry
 		var message SupportMessage
-		var phoneMask sql.NullString
+		var phoneMask, phoneCiphertext, phoneHash sql.NullString
 		var imageURLsJSON sql.NullString
 		var readByUserAt sql.NullInt64
 		var latestNonSystemSenderType sql.NullString
@@ -641,6 +649,8 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		if err := rows.Scan(
 			&entry.UserID,
 			&phoneMask,
+			&phoneCiphertext,
+			&phoneHash,
 			&message.ID,
 			&message.SenderType,
 			&message.Body,
@@ -662,6 +672,8 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		}
 		message.UserID = entry.UserID
 		entry.PhoneMask = nullStringValue(phoneMask)
+		entry.PhoneCiphertext = nullStringValue(phoneCiphertext)
+		entry.PhoneHash = nullStringValue(phoneHash)
 		if readByUserAt.Valid {
 			value := readByUserAt.Int64
 			message.ReadByUserAt = &value

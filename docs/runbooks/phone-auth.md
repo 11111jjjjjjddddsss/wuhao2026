@@ -1,10 +1,10 @@
 # 手机号登录与融合认证 Runbook
 
-最后更新：2026-06-07
+最后更新：2026-06-08
 
 ## 当前状态
 
-- 后端已新增手机号账号骨架：`app_accounts`、`auth_sessions`、`user_id_migrations`。生产业务唯一长期身份是账号 ID `acct_...`；底层表和接口字段仍可能叫 `user_id`，但语义应按“账号ID”理解。手机号只是登录凭证和脱敏展示信息，不作为业务主键。
+- 后端已新增手机号账号骨架：`app_accounts`、`auth_sessions`、`user_id_migrations`。生产业务唯一长期身份是账号 ID `acct_...`；底层表和接口字段仍可能叫 `user_id`，但语义应按“账号ID”理解。手机号是登录凭证和回访线索，不作为业务主键；账号表保存 `phone_hash`、`phone_mask` 和用 `APP_SECRET` 派生密钥加密的 `phone_ciphertext`。
 - Android 已新增登录门和验证码登录页；登录成功后保存后端签发的长期 v2 bearer token
 - 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会调用该接口、清本地 auth token 并回到登录门；完整设备管理 / 远程吊销后续再迭代
 - 登录成功后，Android 会随一键登录和短信登录 payload 提交旧本机 `legacy_user_id` 作为迁移桥；后端只接受本机 UUID 形态 legacy ID 或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为 legacy bridge，避免账号之间互相合并。迁移目标统一是手机号账号 `acct_...`
@@ -12,7 +12,7 @@
 - Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按官方 SDK 流程拉取服务端 fusion token、初始化 SDK，SDK 半程校验只调用后端 verify-only 接口，Android 要求响应体 `ok=true` 才算半程通过，最终成功节点才提交 verify token 给后端登录接口，不再用静态 token 或测试 ID 绕过登录
 - Android 主 manifest 已显式声明 `READ_PHONE_STATE`、`ACCESS_NETWORK_STATE` 和 `ACCESS_WIFI_STATE`，减少 release 构建依赖 AAR manifest merge 的不确定性；正式 release 前仍要检查 merged manifest
 - 短信登录后端接口已接阿里云 Dypns API，ECS 当前已配置 DYPNS 基础凭证、短信签名和验证码模板；`/healthz` 已显示 `dypns_sms=ok`
-- 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成 debug APK 走 `http://39.106.1.151`。2026-06-06 起 Android 构建默认 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Android Studio 直接 Run 的 debug / 测试包也应接正式 HTTPS 后端；正式 release 包也必须是 HTTPS 生产后端。debug / 测试包与正式包的业务后端保持一致，区别只保留 debug-only 预览面板和调试日志；只有本地特殊测试才显式传 `-PUPLOAD_BASE_URL=...`
+- 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成临时调试 APK 走 `http://39.106.1.151`。当前 Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Android Studio 直接 Run 的 debug 包和正式 release 包都接正式 HTTPS 后端；`USE_BACKEND_AB` 固定开启，不再通过 Gradle 参数关闭后端主链或切换业务后端地址。debug 包与正式包的业务链路保持一致，区别只保留 debug-only 预览面板和调试日志。
 - Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，融合认证 token、融合认证登录校验、短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
 - 阿里云侧认证次数和账单查询已纳入巡检：本机脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 会调用 DYPNS 统计 / 账单 OpenAPI 查询一键登录和短信认证用量，不输出任何密钥。2026-06-06 默认查询最近 7 天时，一键登录和短信认证统计均为 `no_data`，月账单接口未返回费用明细，说明当前尚未形成真实认证消耗
 
@@ -79,7 +79,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 
 ## 安全与成本边界
 
-- 不在数据库保存明文手机号，只保存 `APP_SECRET` HMAC 后的 `phone_hash` 和脱敏 `phone_mask`
+- 不在数据库保存可直接读取的明文手机号；`app_accounts` 保存 `APP_SECRET` HMAC 后的 `phone_hash`、脱敏 `phone_mask` 和 AES-GCM 加密的 `phone_ciphertext`
+- 后台 `owner`、`support`、`finance_ops` 可在用户 / 反馈页面查看和复制完整手机号，用于回访；用户管理和帮助反馈搜索框输入完整 11 位手机号时，服务端用 `phone_hash` 精确匹配账号，不把明文手机号写入日志或审计。`ops_readonly`、`auditor` 等只读巡检角色继续只看脱敏手机号。审计只记录是否展示了完整号，不记录手机号值
+- 旧账号如果还没有 `phone_ciphertext`，无法从 hash / mask 反推完整手机号，必须等用户下一次一键登录或短信登录后自动补齐
 - 账号 ID `acct_...` 是会员、每日额度、加油包、礼品卡、订单、帮助反馈、App 日志、A/B/C 记忆和聊天归档的统一归属 ID。旧本机 UUID 只用于登录时一次性迁移桥，不作为生产长期身份继续扩展。
 - 不把阿里云 AccessKey、短信模板变量、APP_SECRET 写进仓库
 - Android 只在用户同意协议并点击本机号码一键登录后请求 `/api/auth/fusion/token`，把 `auth_token + scheme_code` 交给官方 SDK；失败 / 取消时回落验证码登录，不走假登录或测试 ID 绕过

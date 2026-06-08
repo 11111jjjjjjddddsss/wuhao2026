@@ -72,6 +72,21 @@ func TestAdminMonitoringFiltersRoutesByRole(t *testing.T) {
 	}
 }
 
+func TestAdminCanViewAccountPhone(t *testing.T) {
+	allowed := []string{"owner", "support", "finance_ops"}
+	for _, role := range allowed {
+		if !adminCanViewAccountPhone(role) {
+			t.Fatalf("role %q should view account phone", role)
+		}
+	}
+	blocked := []string{"ops_readonly", "auditor", "content_ops", "release_ops", ""}
+	for _, role := range blocked {
+		if adminCanViewAccountPhone(role) {
+			t.Fatalf("role %q should not view account phone", role)
+		}
+	}
+}
+
 func TestAndroidUpdateConfigValidityContract(t *testing.T) {
 	tests := []struct {
 		name          string

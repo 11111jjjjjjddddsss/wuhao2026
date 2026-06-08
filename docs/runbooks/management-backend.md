@@ -26,11 +26,11 @@
 
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
 - 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness` 和 `capabilities`，前端已收成“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、正式上架检查、快捷入口、关键队列和明细表，让非运维也能先看出当前哪里正常、哪里需要处理、哪里挡住正式上架。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上架检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
-- 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 脱敏手机号查询，展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈。
+- 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；页面展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；`owner`、`support`、`finance_ops` 可查看和复制加密保存的完整手机号，用于回访，其他只读巡检角色只看脱敏号。
 - 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
-- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 脱敏手机号 / 最近消息搜索、后台回复、关闭和重开。
+- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；备注、回复和审计里仍禁止写手机号全文。
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，不展示聊天正文、图片 URL、手机号或 token。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
 - 今日农情：`GET /admin-api/v1/today-agri/cards`。
@@ -81,7 +81,7 @@
 第一版按“可运营、可排障、少误操作”做，不追求花哨。推荐左侧导航：
 
 - 总览：服务健康、今日请求量、错误量、登录 / 短信 / 一键登录状态、模型 Key 池健康、Redis / RDS / OSS / SLS 状态、最近 5xx / 慢请求。
-- 用户查询：按 `user_id`、脱敏手机号 hash / 后续手机号查询入口、最近活跃时间、App 版本、设备、地区可信度、会员状态、额度、加油包、最近反馈、最近 App 自动日志。
+- 用户查询：按 `user_id`、完整手机号精确匹配 / 脱敏手机号线索、最近活跃时间、App 版本、设备、地区可信度、会员状态、额度、加油包、最近反馈、最近 App 自动日志。
 - 用户地区 / 来源：按注册、最近活跃、问诊、图片问诊、会员成交、加油包购买和帮助反馈聚合省市分布；优先使用 GPS 反查地区，IP 粗定位只作为低可信参考，不保存经纬度或轨迹。
 - 会员与额度：只读展示当前档位、到期时间、每日额度、今日已用、加油包余额、升级补偿和 `quota_ledger`。人工补偿先不开放，或只做 owner 二次确认。
 - 订单 / 订购：支付未接入前只做占位和开发期订单表只读说明；支付接入后再接正式订单、回调、对账、退款和异常补偿。
@@ -118,15 +118,15 @@
 - 不把内部共享 secret 写进前端。
 - 不开放大范围删除用户、导出全量数据、批量补权益、批量发礼品卡。
 - 不在支付未接入前伪造真实订单后台。
-- 不把聊天全文、图片 URL、手机号、token、模型 Key 铺到后台列表。
+- 不把聊天全文、图片 URL、token、模型 Key 铺到后台列表；完整手机号只对授权角色在用户 / 反馈详情和必要列表字段中展示，不能写入备注、回复、审计 detail、日志、文档或导出文件。
 - 不把官网和管理后台做成同一个公开页面。
 
 最小页面：
 
 - 登录页和后台首页健康状态。
 - 帮助与反馈：会话列表、详情、回复、未读 / 未处理队列、处理状态。
-- 用户详情：按手机号 / user_id 查询会员、额度、扣次流水、反馈、订单、后续礼品卡和最近 App 自动日志。
-- 用户来源与地区：展示注册 / 最近活跃的 masked IP、后端推断地区、用户自选地区、地区可信度、App 版本和设备型号；不在后台列表明文铺手机号或完整 IP。
+- 用户详情：按手机号 / user_id 查询会员、额度、扣次流水、反馈、订单、后续礼品卡和最近 App 自动日志；授权角色可查看完整手机号并复制，方便回访。
+- 用户来源与地区：展示注册 / 最近活跃的 masked IP、后端推断地区、用户自选地区、地区可信度、App 版本和设备型号；不展示完整 IP，手机号展示受后台角色权限控制。
 - 用户真实反馈 / 产品洞察：从帮助与反馈、App 自动日志和聊天归档中做脱敏聚合，提取高频 bug、登录 / 上传 / 历史恢复卡点、用户不满意或反复追问的问诊场景、常见作物 / 病虫害、模型答偏线索和可改 UI / 提示词 / 后端规则的证据。第一版只展示聚合统计、标签、短脱敏片段和处理状态，不直接把手机号、token、密钥、图片原图或完整聊天原文铺到后台。
 - App 自动日志：按时间、等级、事件名、用户、App 版本、系统版本、设备型号筛选，先接 `GET /internal/app/logs` 和 SLS 最小日志集，后续再补 SLS 告警 / 仪表盘。
 - 检查更新：当前版本、APK 链接、SHA-256、文件大小、是否启用、停更入口。

@@ -161,6 +161,7 @@ type AdminRegionMetric struct {
 type AdminUserListEntry struct {
 	UserID                string            `json:"user_id"`
 	PhoneMask             string            `json:"phone_mask,omitempty"`
+	PhoneNumber           string            `json:"phone_number,omitempty"`
 	CreatedAt             int64             `json:"created_at,omitempty"`
 	UpdatedAt             int64             `json:"updated_at,omitempty"`
 	LastLoginAt           *int64            `json:"last_login_at,omitempty"`
@@ -238,6 +239,7 @@ type AdminRoundExcerpt struct {
 type AdminSupportConversation struct {
 	UserID            string              `json:"user_id"`
 	PhoneMask         string              `json:"phone_mask,omitempty"`
+	PhoneNumber       string              `json:"phone_number,omitempty"`
 	LatestMessage     AdminSupportMessage `json:"latest_message"`
 	MessageCount      int                 `json:"message_count"`
 	UnreadByUserCount int                 `json:"unread_by_user_count"`
@@ -366,11 +368,12 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := AdminUserQuery{
-		Query:   strings.TrimSpace(r.URL.Query().Get("query")),
-		DayCN:   GetTodayKeyCN(s.shanghai, time.Now()),
-		Limit:   parseAdminLimit(r.URL.Query().Get("limit")),
-		NowMs:   time.Now().UnixMilli(),
-		SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli(),
+		Query:              strings.TrimSpace(r.URL.Query().Get("query")),
+		DayCN:              GetTodayKeyCN(s.shanghai, time.Now()),
+		Limit:              parseAdminLimit(r.URL.Query().Get("limit")),
+		NowMs:              time.Now().UnixMilli(),
+		SinceMs:            time.Now().Add(-24 * time.Hour).UnixMilli(),
+		IncludePhoneNumber: adminCanViewAccountPhone(admin.User.Role),
 	}
 	users, err := s.store.ListAdminUsers(r.Context(), filter)
 	if err != nil {
@@ -379,7 +382,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", true, http.StatusOK, map[string]any{"limit": filter.Limit, "row_count": len(users)})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", true, http.StatusOK, map[string]any{"limit": filter.Limit, "row_count": len(users), "phone_number_visible": filter.IncludePhoneNumber})
 	s.writeJSON(w, http.StatusOK, map[string]any{"users": users, "filter": filter})
 }
 
@@ -393,7 +396,7 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "user_id_required")
 		return
 	}
-	detail, err := s.store.GetAdminUserDetail(r.Context(), userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli())
+	detail, err := s.store.GetAdminUserDetail(r.Context(), userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), adminCanViewAccountPhone(admin.User.Role))
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "internal_error"
@@ -406,8 +409,9 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.detail", "app_accounts", userID, userID, true, http.StatusOK, map[string]any{
-		"recent_rounds": len(detail.RecentRounds),
-		"recent_logs":   len(detail.RecentAppLogs),
+		"recent_rounds":        len(detail.RecentRounds),
+		"recent_logs":          len(detail.RecentAppLogs),
+		"phone_number_visible": adminCanViewAccountPhone(admin.User.Role),
 	})
 	s.writeJSON(w, http.StatusOK, detail)
 }
@@ -429,10 +433,18 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 		return
 	}
 	output := make([]AdminSupportConversation, 0, len(conversations))
+	includePhoneNumber := adminCanViewAccountPhone(admin.User.Role)
 	for _, item := range conversations {
+		phoneNumber := ""
+		if includePhoneNumber && item.PhoneCiphertext != "" {
+			if phone, err := decryptAccountPhoneNumber(item.PhoneCiphertext); err == nil {
+				phoneNumber = phone
+			}
+		}
 		output = append(output, AdminSupportConversation{
 			UserID:            item.UserID,
 			PhoneMask:         item.PhoneMask,
+			PhoneNumber:       phoneNumber,
 			LatestMessage:     adminSupportMessageFromSupport(item.LatestMessage, false),
 			MessageCount:      item.MessageCount,
 			UnreadByUserCount: item.UnreadByUserCount,
@@ -446,7 +458,7 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 			UpdatedAt:         item.UpdatedAt,
 		})
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.conversations", "support_messages", "", "", true, http.StatusOK, map[string]any{"row_count": len(output), "status": filter.Status})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.conversations", "support_messages", "", "", true, http.StatusOK, map[string]any{"row_count": len(output), "status": filter.Status, "phone_number_visible": includePhoneNumber})
 	s.writeJSON(w, http.StatusOK, map[string]any{"conversations": output, "filter": filter})
 }
 
@@ -640,11 +652,16 @@ func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Requ
 }
 
 type AdminUserQuery struct {
-	Query   string `json:"query,omitempty"`
-	DayCN   string `json:"day_cn"`
-	Limit   int    `json:"limit"`
-	NowMs   int64  `json:"now_ms,omitempty"`
-	SinceMs int64  `json:"since_ms,omitempty"`
+	Query              string `json:"query,omitempty"`
+	DayCN              string `json:"day_cn"`
+	Limit              int    `json:"limit"`
+	NowMs              int64  `json:"now_ms,omitempty"`
+	SinceMs            int64  `json:"since_ms,omitempty"`
+	IncludePhoneNumber bool   `json:"-"`
+}
+
+func adminCanViewAccountPhone(role string) bool {
+	return adminRoleAllowed(role, "support", "finance_ops")
 }
 
 func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus, dayCN string, sinceMs int64, nowMs int64) (AdminOverview, error) {
@@ -1357,6 +1374,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	query := `SELECT
 	   a.user_id,
 	   a.phone_mask,
+	   a.phone_ciphertext,
 	   a.created_at,
 	   a.updated_at,
 	   a.last_login_at,
@@ -1380,11 +1398,9 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 		like := "%" + strings.TrimSpace(filter.Query) + "%"
 		where = append(where, "(a.user_id LIKE ? OR a.phone_mask LIKE ?")
 		args = append(args, like, like)
-		if phone := normalizeMainlandPhone(filter.Query); phone != "" {
-			if hash := hashPhone(phone, os.Getenv("APP_SECRET")); hash != "" {
-				where[len(where)-1] += " OR a.phone_hash = ?"
-				args = append(args, hash)
-			}
+		if hash := accountPhoneHashForSearch(filter.Query); hash != "" {
+			where[len(where)-1] += " OR a.phone_hash = ?"
+			args = append(args, hash)
 		}
 		where[len(where)-1] += ")"
 	}
@@ -1400,7 +1416,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	defer rows.Close()
 	users := []AdminUserListEntry{}
 	for rows.Next() {
-		user, err := scanAdminUserListEntry(rows, filter.DayCN)
+		user, err := scanAdminUserListEntry(rows, filter.DayCN, filter.IncludePhoneNumber)
 		if err != nil {
 			return nil, err
 		}
@@ -1412,8 +1428,8 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	return users, rows.Err()
 }
 
-func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64) (AdminUserDetail, error) {
-	users, err := s.ListAdminUsers(ctx, AdminUserQuery{Query: userID, DayCN: dayCN, Limit: 1, NowMs: nowMs, SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli()})
+func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool) (AdminUserDetail, error) {
+	users, err := s.ListAdminUsers(ctx, AdminUserQuery{Query: userID, DayCN: dayCN, Limit: 1, NowMs: nowMs, SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli(), IncludePhoneNumber: includePhoneNumber})
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
@@ -1763,10 +1779,10 @@ func (s *Store) countQuery(ctx context.Context, query string, args []any) (int64
 	return value.Int64, nil
 }
 
-func scanAdminUserListEntry(rows *sql.Rows, dayCN string) (AdminUserListEntry, error) {
+func scanAdminUserListEntry(rows *sql.Rows, dayCN string, includePhoneNumber bool) (AdminUserListEntry, error) {
 	var user AdminUserListEntry
 	var lastLogin, tierExpire, lastSeen sql.NullInt64
-	var tierRaw sql.NullString
+	var tierRaw, phoneCiphertext sql.NullString
 	var region, regionSource, regionReliability sql.NullString
 	var latestSupportSender sql.NullString
 	var activeSessions, errorCount, supportMessageCount sql.NullInt64
@@ -1774,6 +1790,7 @@ func scanAdminUserListEntry(rows *sql.Rows, dayCN string) (AdminUserListEntry, e
 	if err := rows.Scan(
 		&user.UserID,
 		&user.PhoneMask,
+		&phoneCiphertext,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 		&lastLogin,
@@ -1799,6 +1816,11 @@ func scanAdminUserListEntry(rows *sql.Rows, dayCN string) (AdminUserListEntry, e
 	user.ErrorCount24h = errorCount.Int64
 	user.SupportMessageCount = supportMessageCount.Int64
 	user.SupportNeedsReply = latestSupportSender.Valid && latestSupportSender.String == "user"
+	if includePhoneNumber && phoneCiphertext.Valid {
+		if phone, err := decryptAccountPhoneNumber(phoneCiphertext.String); err == nil {
+			user.PhoneNumber = phone
+		}
+	}
 	if lastLogin.Valid {
 		user.LastLoginAt = int64Ptr(lastLogin.Int64)
 	}

@@ -435,11 +435,11 @@ async function usersPage(): Promise<string> {
     `/admin-api/v1/users${toQuery({ query, limit: 50 })}`,
   );
   return `
-    ${pageHead("用户管理", "按账号ID或脱敏手机号线索查询用户，只展示后端返回的运营字段。", "users")}
+    ${pageHead("用户管理", "按账号ID或手机号查询用户，只展示后端返回的运营字段。", "users")}
     <form class="filters" id="users-filter-form">
       <label class="field wide">
         <span>账号查询</span>
-        <input class="input" name="query" value="${escapeAttr(query)}" placeholder="账号ID / 手机号脱敏线索" />
+        <input class="input" name="query" value="${escapeAttr(query)}" placeholder="账号ID / 手机号" />
       </label>
       <button class="button primary" type="submit">查询</button>
     </form>
@@ -1161,7 +1161,7 @@ function usersTable(users: AdminUserListEntry[]): string {
               <tr>
                 <td>
                   <div class="truncate" style="max-width:220px">${escapeHTML(user.user_id)}</div>
-                  <div class="small muted">${escapeHTML(user.phone_mask || "未返回手机号")}</div>
+                  <div class="small muted">${accountPhoneDisplay(user)}</div>
                 </td>
                 <td>${statusPill(user.tier || "free")}</td>
                 <td>${quotaText(user.daily)}</td>
@@ -1179,11 +1179,26 @@ function usersTable(users: AdminUserListEntry[]): string {
   `;
 }
 
+function accountPhoneDisplay(user: AdminUserListEntry): string {
+  return phoneDisplay(user.phone_number, user.phone_mask);
+}
+
+function phoneDisplay(phoneNumber?: string, phoneMask?: string): string {
+  const fullPhone = (phoneNumber || "").trim();
+  if (fullPhone) {
+    return `${escapeHTML(fullPhone)} <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(fullPhone)}">复制</button>`;
+  }
+  if (phoneMask) {
+    return `${escapeHTML(phoneMask)} <span class="small muted">完整号待下次登录补齐</span>`;
+  }
+  return "未返回";
+}
+
 function userKV(user: AdminUserListEntry): string {
   return `
     <dl class="kv">
       <dt>账号ID</dt><dd>${escapeHTML(user.user_id)}</dd>
-      <dt>手机号</dt><dd>${escapeHTML(user.phone_mask || "未返回")}</dd>
+      <dt>手机号</dt><dd>${accountPhoneDisplay(user)}</dd>
       <dt>创建时间</dt><dd>${formatTime(user.created_at)}</dd>
       <dt>最近登录</dt><dd>${formatTime(user.last_login_at)}</dd>
       <dt>活跃 session</dt><dd>${user.active_sessions}</dd>
@@ -1466,7 +1481,7 @@ function supportFilterForm(): string {
       </label>
       <label class="field wide">
         <span>搜索</span>
-        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 脱敏手机号 / 最近消息" />
+        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 最近消息" />
       </label>
       <button class="button primary" type="submit">筛选</button>
     </form>
@@ -1480,7 +1495,7 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
       (item) => `
         <button class="selectable-row ${item.user_id === pageState.supportUserID ? "active" : ""}" data-action="support-select" data-user-id="${escapeAttr(item.user_id)}">
           <strong class="truncate">${escapeHTML(item.user_id)}</strong>
-          <span class="small muted truncate">${escapeHTML(item.phone_mask || "未返回手机号")} · ${formatTime(item.latest_message.created_at)}</span>
+          <span class="small muted truncate">${escapeHTML(item.phone_number || item.phone_mask || "未返回手机号")} · ${formatTime(item.latest_message.created_at)}</span>
           <span class="small muted truncate">${escapeHTML(item.latest_message.body_excerpt || item.latest_message.body || "无正文")}</span>
           <span>${supportStatusPill(item)} <span class="small muted">${item.message_count} 条</span></span>
         </button>
@@ -1543,7 +1558,8 @@ function supportConversationMeta(conversation: AdminSupportConversation): string
   return `
     <dl class="kv support-meta">
       <dt>状态</dt><dd>${supportStatusPill(conversation)}</dd>
-      <dt>手机号</dt><dd>${escapeHTML(conversation.phone_mask || "未返回")}</dd>
+      <dt>账号ID</dt><dd><button class="link-button" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(conversation.user_id)}">${escapeHTML(conversation.user_id)}</button></dd>
+      <dt>手机号</dt><dd>${phoneDisplay(conversation.phone_number, conversation.phone_mask)}</dd>
       <dt>处理人</dt><dd>${escapeHTML(conversation.assigned_to || "未分配")}</dd>
       <dt>最新用户消息</dt><dd>${formatTime(conversation.latest_user_message_at)}</dd>
       <dt>最新后台回复</dt><dd>${formatTime(conversation.latest_admin_message_at)}</dd>
