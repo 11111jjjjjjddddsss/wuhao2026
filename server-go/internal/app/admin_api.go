@@ -67,6 +67,7 @@ type AdminMonitoring struct {
 	LaunchReady  []AdminMonitoringLaunchItem `json:"launch_readiness"`
 	ActionItems  []AdminMonitoringActionItem `json:"action_items"`
 	Capabilities []AdminMonitoringCapability `json:"capabilities"`
+	UserRegions  AdminUserRegionOverview     `json:"user_regions"`
 	TopRegions   []AdminRegionMetric         `json:"top_regions"`
 	TopAppErrors []ClientAppLogSummaryEntry  `json:"top_app_errors"`
 	Notes        []AdminStatusNote           `json:"notes"`
@@ -156,6 +157,15 @@ type AdminRegionMetric struct {
 	Count       int64  `json:"count"`
 	UserCount   int64  `json:"user_count"`
 	LastSeenAt  int64  `json:"last_seen_at"`
+}
+
+type AdminUserRegionOverview struct {
+	RegisteredTotal      int64               `json:"registered_total"`
+	RegisteredWithRegion int64               `json:"registered_with_region"`
+	MemberTotal          int64               `json:"member_total"`
+	MemberWithRegion     int64               `json:"member_with_region"`
+	RegisteredTop        []AdminRegionMetric `json:"registered_top"`
+	MemberTop            []AdminRegionMetric `json:"member_top"`
 }
 
 type AdminUserListEntry struct {
@@ -753,6 +763,11 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 		return report, err
 	}
 	report.Queues = queues
+	userRegions, err := s.ReadAdminUserRegionOverview(ctx, nowMs, 10)
+	if err != nil {
+		return report, err
+	}
+	report.UserRegions = userRegions
 	regions, err := s.ListAdminRegionMetrics(ctx, nowMs-int64(30*24*time.Hour/time.Millisecond), 12)
 	if err != nil {
 		return report, err
@@ -1321,6 +1336,113 @@ func (s *Store) ListAdminRegionMetrics(ctx context.Context, sinceMs int64, limit
 	}
 	if entries == nil {
 		return []AdminRegionMetric{}, nil
+	}
+	return entries, nil
+}
+
+func (s *Store) ReadAdminUserRegionOverview(ctx context.Context, nowMs int64, limit int) (AdminUserRegionOverview, error) {
+	overview := AdminUserRegionOverview{
+		RegisteredTop: []AdminRegionMetric{},
+		MemberTop:     []AdminRegionMetric{},
+	}
+	var err error
+	overview.RegisteredTotal, overview.RegisteredWithRegion, err = s.readAdminAccountRegionCoverage(ctx, nowMs, false)
+	if err != nil {
+		return overview, err
+	}
+	overview.MemberTotal, overview.MemberWithRegion, err = s.readAdminAccountRegionCoverage(ctx, nowMs, true)
+	if err != nil {
+		return overview, err
+	}
+	overview.RegisteredTop, err = s.ListAdminAccountRegionMetrics(ctx, nowMs, limit, false)
+	if err != nil {
+		return overview, err
+	}
+	overview.MemberTop, err = s.ListAdminAccountRegionMetrics(ctx, nowMs, limit, true)
+	if err != nil {
+		return overview, err
+	}
+	return overview, nil
+}
+
+func (s *Store) readAdminAccountRegionCoverage(ctx context.Context, nowMs int64, paidOnly bool) (int64, int64, error) {
+	base := `SELECT
+	  COUNT(*) AS total_count,
+	  COALESCE(SUM(CASE WHEN sa.last_region IS NOT NULL AND sa.last_region <> '' AND sa.last_region <> '未知' THEN 1 ELSE 0 END), 0) AS with_region
+	FROM app_accounts a
+	LEFT JOIN session_ab sa ON sa.user_id = a.user_id`
+	args := []any{}
+	if paidOnly {
+		base += `
+	INNER JOIN user_entitlement e ON e.user_id = a.user_id
+	WHERE e.tier IN ('plus', 'pro') AND e.tier_expire_at IS NOT NULL AND e.tier_expire_at > ?`
+		args = append(args, nowMs)
+	}
+	var total int64
+	var withRegion int64
+	if err := s.db.QueryRowContext(ctx, base, args...).Scan(&total, &withRegion); err != nil {
+		return 0, 0, err
+	}
+	return total, withRegion, nil
+}
+
+func (s *Store) ListAdminAccountRegionMetrics(ctx context.Context, nowMs int64, limit int, paidOnly bool) ([]AdminRegionMetric, error) {
+	if limit <= 0 || limit > 50 {
+		limit = 10
+	}
+	query := `SELECT
+	   sa.last_region AS region,
+	   CASE
+	     WHEN SUM(CASE WHEN sa.last_region_source = 'gps' THEN 1 ELSE 0 END) > 0 THEN 'gps'
+	     WHEN SUM(CASE WHEN sa.last_region_source = 'ip' THEN 1 ELSE 0 END) > 0 THEN 'ip'
+	     ELSE COALESCE(MAX(sa.last_region_source), '')
+	   END AS source,
+	   CASE
+	     WHEN SUM(CASE WHEN sa.last_region_reliability = 'reliable' THEN 1 ELSE 0 END) > 0 THEN 'reliable'
+	     WHEN SUM(CASE WHEN sa.last_region_reliability = 'unreliable' THEN 1 ELSE 0 END) > 0 THEN 'unreliable'
+	     ELSE COALESCE(MAX(sa.last_region_reliability), '')
+	   END AS reliability,
+	   COUNT(*) AS count_value,
+	   COUNT(*) AS user_count,
+	   MAX(COALESCE(sa.last_seen_at, a.last_login_at, a.updated_at, a.created_at)) AS last_seen_at
+	 FROM app_accounts a
+	 INNER JOIN session_ab sa ON sa.user_id = a.user_id`
+	args := []any{}
+	if paidOnly {
+		query += `
+	 INNER JOIN user_entitlement e ON e.user_id = a.user_id`
+	}
+	query += `
+	 WHERE sa.last_region IS NOT NULL
+	   AND sa.last_region <> ''
+	   AND sa.last_region <> '未知'`
+	if paidOnly {
+		query += `
+	   AND e.tier IN ('plus', 'pro')
+	   AND e.tier_expire_at IS NOT NULL
+	   AND e.tier_expire_at > ?`
+		args = append(args, nowMs)
+	}
+	query += `
+	 GROUP BY sa.last_region
+	 ORDER BY count_value DESC, last_seen_at DESC
+	 LIMIT ?`
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []AdminRegionMetric{}
+	for rows.Next() {
+		var entry AdminRegionMetric
+		if err := rows.Scan(&entry.Region, &entry.Source, &entry.Reliability, &entry.Count, &entry.UserCount, &entry.LastSeenAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return entries, nil
 }

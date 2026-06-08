@@ -51,6 +51,7 @@ export interface AdminMonitoring {
   launch_readiness: AdminMonitoringLaunchItem[];
   action_items: AdminMonitoringActionItem[];
   capabilities: AdminMonitoringCapability[];
+  user_regions: AdminUserRegionOverview;
   top_regions: AdminRegionMetric[];
   top_app_errors: ClientAppLogSummaryEntry[];
   notes: AdminStatusNote[];
@@ -142,6 +143,15 @@ export interface AdminRegionMetric {
   count: number;
   user_count: number;
   last_seen_at: number;
+}
+
+export interface AdminUserRegionOverview {
+  registered_total: number;
+  registered_with_region: number;
+  member_total: number;
+  member_with_region: number;
+  registered_top: AdminRegionMetric[];
+  member_top: AdminRegionMetric[];
 }
 
 export interface AdminHealthStatus {

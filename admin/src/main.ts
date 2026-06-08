@@ -13,6 +13,7 @@ import type {
   AdminOrderEntry,
   AdminOverview,
   AdminQuotaLedgerEntry,
+  AdminRegionMetric,
   AdminSupportConversation,
   AdminSupportMessage,
   AdminTopupPackEntry,
@@ -412,10 +413,14 @@ async function monitoringPage(): Promise<string> {
         <div class="card-body">${appErrorTopTable(report.top_app_errors)}</div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">地区分布</div><span class="small muted">最近30天问诊</span></div>
+        <div class="card-head"><div class="card-title">问诊地区分布</div><span class="small muted">最近30天问诊</span></div>
         <div class="table-wrap">${regionMetricsTable(report.top_regions)}</div>
       </section>
     </div>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">用户地区概览</div><span class="small muted">按账号最近已识别地区，大概看注册和会员分布</span></div>
+      <div class="card-body">${userRegionOverviewBlock(report.user_regions)}</div>
+    </section>
     <section class="card" style="margin-top:12px">
       <div class="card-head"><div class="card-title">这页不展示什么</div></div>
       <div class="card-body stack">
@@ -1875,6 +1880,55 @@ function regionMetricsTable(rows: AdminMonitoring["top_regions"]): string {
           .join("")}
       </tbody>
     </table>
+  `;
+}
+
+function userRegionOverviewBlock(overview: AdminMonitoring["user_regions"] | undefined): string {
+  if (!overview) return emptyState("没有用户地区概览", "后端未返回注册用户和会员用户地区聚合。");
+  return `
+    <div class="monitor-region-grid">
+      ${userRegionPanel(
+        "注册用户地区",
+        "按账号最近一次已识别地区聚合，用来看目前注册用户大致分布。",
+        overview.registered_top || [],
+        overview.registered_with_region ?? 0,
+        overview.registered_total ?? 0,
+      )}
+      ${userRegionPanel(
+        "当前会员地区",
+        "只统计当前仍在有效期内的 Plus / Pro 会员，方便看付费用户主要在哪些地区。",
+        overview.member_top || [],
+        overview.member_with_region ?? 0,
+        overview.member_total ?? 0,
+      )}
+    </div>
+  `;
+}
+
+function userRegionPanel(
+  title: string,
+  desc: string,
+  rows: AdminRegionMetric[],
+  covered: number,
+  total: number,
+): string {
+  const safeTotal = Math.max(0, total || 0);
+  const safeCovered = Math.max(0, covered || 0);
+  const coverage = safeTotal > 0 ? Math.round((safeCovered / safeTotal) * 100) : 0;
+  return `
+    <section class="monitor-region-panel">
+      <div class="monitor-region-head">
+        <div>
+          <strong>${escapeHTML(title)}</strong>
+          <p>${escapeHTML(desc)}</p>
+        </div>
+        <div class="monitor-region-meta">
+          <span>${statusPill(`已识别 ${safeCovered}/${safeTotal}`, safeCovered > 0 ? "ok" : "info")}</span>
+          <span class="small muted">覆盖 ${coverage}% </span>
+        </div>
+      </div>
+      <div class="table-wrap">${rows.length ? regionMetricsTable(rows) : emptyState("暂时没有地区数据", "当前还没有可用于这组账号的地区聚合。")}</div>
+    </section>
   `;
 }
 

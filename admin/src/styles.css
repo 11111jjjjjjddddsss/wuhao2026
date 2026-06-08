@@ -660,6 +660,46 @@ button {
   margin-bottom: 12px;
 }
 
+.monitor-region-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.monitor-region-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+}
+
+.monitor-region-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.monitor-region-head strong {
+  color: #111827;
+  font-size: 16px;
+}
+
+.monitor-region-head p {
+  margin: 6px 0 0;
+  color: #4a5562;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.monitor-region-meta {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
 .decision-card {
   display: grid;
   min-height: 168px;
