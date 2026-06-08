@@ -2739,18 +2739,19 @@ function capabilityGrid(rows: AdminMonitoring["capabilities"]): string {
   return `
     <div class="capability-grid">
       ${rows
-        .map(
-          (row) => `
-            <article class="capability-card ${normalizeCapabilityStatus(row.status)}">
+        .map((row) => {
+          const status = normalizeCapabilityStatus(row.status);
+          return `
+            <article class="capability-card ${status}">
               <div class="capability-head">
                 <strong>${escapeHTML(row.title)}</strong>
                 ${statusPill(capabilityStatusText(row.status), capabilityLevel(row.status))}
               </div>
               <p>${escapeHTML(row.body)}</p>
-              ${routeActionButton(row.route, "打开")}
+              ${status === "planned" ? `<span class="action-muted">待接入</span>` : routeActionButton(row.route, "打开")}
             </article>
-          `,
-        )
+          `;
+        })
         .join("")}
     </div>
   `;

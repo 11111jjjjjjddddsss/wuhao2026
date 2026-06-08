@@ -1786,8 +1786,10 @@ private fun HamburgerAccountManagementContent(
 ) {
     var deleteHistoryDialogVisible by rememberSaveable { mutableStateOf(false) }
     var deleteHistorySubmitting by remember { mutableStateOf(false) }
+    var cacheCleanupSubmitting by remember { mutableStateOf(false) }
     var logoutSubmitting by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val phoneMask = IdManager.getAuthPhoneMask()
 
     Column(modifier = modifier) {
@@ -1824,6 +1826,21 @@ private fun HamburgerAccountManagementContent(
         HamburgerAccountGroup(
             modifier = Modifier.padding(top = 22.dp)
         ) {
+            HamburgerAccountActionRow(
+                title = if (cacheCleanupSubmitting) "清理中" else "清理本机缓存",
+                danger = false,
+                onClick = {
+                    if (cacheCleanupSubmitting) return@HamburgerAccountActionRow
+                    cacheCleanupSubmitting = true
+                    val appContext = context.applicationContext
+                    scope.launch {
+                        val ok = LocalAppCacheCleaner.clearTemporaryCaches(appContext)
+                        cacheCleanupSubmitting = false
+                        onPendingAction(if (ok) "本机缓存已清理" else "清理失败，请稍后重试")
+                    }
+                }
+            )
+            HamburgerMenuDivider()
             HamburgerAccountActionRow(
                 title = "删除所有历史对话",
                 onClick = { deleteHistoryDialogVisible = true }

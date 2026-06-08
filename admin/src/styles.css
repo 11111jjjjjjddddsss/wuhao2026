@@ -206,6 +206,19 @@ button {
   opacity: 0.56;
 }
 
+.action-muted {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border: 1px solid #d7dce2;
+  border-radius: 6px;
+  background: #f7f8fa;
+  color: #66717f;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .link-button {
   display: inline;
   border: 0;

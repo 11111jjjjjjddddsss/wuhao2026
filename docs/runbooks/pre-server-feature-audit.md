@@ -367,12 +367,12 @@
 - 后端 `ResolveAuthUserID` 优先验证 bearer token；验证成功时以 token 内的 `userID` 为准，不再使用 Android 传来的 `X-User-Id`。
 - `AUTH_STRICT=true` 时，裸 `X-User-Id` 会被拒绝；必须配置 `APP_SECRET` 并提供可验证 bearer token 才能访问需要鉴权的接口。
 - Android 已移除 `SESSION_API_TOKEN` 静态注入和运行时绕过；正式登录只走 per-user session token。
-- 设置页“账号管理”里手机号会显示脱敏号码或未登录；退出设备按当前省成本口径保持登录，不提供用户可点退出；注销账号仍未开放。真实可用动作仍是“删除所有历史对话”，且只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
+- 设置页“账号管理”里手机号会显示脱敏号码或未登录；“退出设备”已接 `POST /api/auth/logout`，只吊销当前设备 session 并回到登录门，不删除聊天、会员、额度、帮助与反馈、礼品卡或本机 `user_id`；注销账号仍未开放。真实可用动作包括“清理本机缓存”和“删除所有历史对话”：前者只清 `cacheDir/app_updates` 检查更新残留和 `cacheDir/composer_camera` 相机临时文件，不碰 `chat_ui_cache`、`files/composer_images` 或待发送 WorkManager 图文；后者只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
 
 已排查的旧方案：
 
 - 没有发现旧的 Android 直连模型登录链、旧静态共享 token 正式化链或用户可点退出后清空账号的逻辑并存。
-- 没有发现 Android 端真实退出 / 注销逻辑并存；相关入口当前不清 `IdManager`，符合“保持登录、省钱”的当前口径。
+- 没有发现 Android 端注销逻辑并存；退出设备已收敛为当前 session 吊销，不做完整设备管理或账号注销。
 - 身份来源已收敛为“未登录本机 `user_id` / 登录后账号 `user_id` + session token”；旧本机 `user_id` 只作为登录迁移桥，不再是登录后的长期身份真源。
 
 上线前必须注意：
