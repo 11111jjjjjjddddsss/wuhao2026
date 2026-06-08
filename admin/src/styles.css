@@ -777,6 +777,68 @@ button {
   line-height: 1.55;
 }
 
+.regression-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.regression-item {
+  display: grid;
+  min-height: 158px;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.regression-item.ok {
+  border-color: #badbc5;
+  background: #f7fcf8;
+}
+
+.regression-item.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+}
+
+.regression-item.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+}
+
+.regression-item.info {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.regression-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.regression-head strong {
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.regression-item p {
+  margin: 0;
+  color: #4a5562;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.regression-item .button {
+  justify-self: start;
+  align-self: end;
+}
+
 .shortcut-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1442,6 +1504,10 @@ button {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 
+  .regression-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
   .launch-grid {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
@@ -1502,6 +1568,7 @@ button {
   .grid.kpi,
   .grid.three,
   .decision-grid,
+  .regression-grid,
   .capability-grid,
   .launch-grid,
   .health-chip-grid {

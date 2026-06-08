@@ -380,6 +380,10 @@ async function monitoringPage(): Promise<string> {
     ${monitoringReadinessSummary(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
+      <div class="card-head"><div class="card-title">明天真机回归清单</div><span class="small muted">按这几个主链看后台信号</span></div>
+      <div class="card-body">${monitoringRegressionChecklist(report)}</div>
+    </section>
+    <section class="card" style="margin-bottom:12px">
       <div class="card-head"><div class="card-title">正式上架检查</div><span class="small muted">就绪 / 需处理 / 阻塞</span></div>
       <div class="card-body">${launchReadinessGrid(report.launch_readiness || [])}</div>
     </section>
@@ -2681,6 +2685,90 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
         "app-logs",
       )}
     </section>
+  `;
+}
+
+function monitoringRegressionChecklist(report: AdminMonitoring): string {
+  const authTrouble =
+    (report.auth_logs?.failures ?? report.queues.auth_failures ?? 0) +
+    (report.auth_logs?.crash_reports ?? 0) +
+    (report.auth_logs?.env_blocked ?? 0) +
+    (report.auth_logs?.env_warnings ?? 0) +
+    (report.auth_logs?.login_network_failures ?? 0);
+  const updateTrouble =
+    (report.app_update_logs?.check_failures ?? 0) +
+    (report.app_update_logs?.download_failures ?? 0) +
+    (report.app_update_logs?.install_failures ?? 0);
+  const chatRounds = report.windows.find((item) => item.key === "24h")?.chat_rounds ?? 0;
+  const imageRounds = report.windows.find((item) => item.key === "24h")?.image_chat_rounds ?? 0;
+  const items: Array<{ title: string; status: string; level: "ok" | "warn" | "bad" | "info"; body: string; route: RouteKey }> = [
+    {
+      title: "一键登录 / 短信登录",
+      status: authTrouble > 0 ? "看日志" : "待真机",
+      level: authTrouble > 0 ? "warn" : "info",
+      body: authTrouble > 0 ? "已有登录环境、网络、SDK 或闪退信号，先点 App 日志看 auth.*。" : "云端配置正常不等于真机已过；测试时重点看默认数据卡、移动数据、代理和验证码收码。",
+      route: "app-logs",
+    },
+    {
+      title: "主聊天文字问诊",
+      status: chatRounds > 0 ? "有记录" : "待真机",
+      level: report.queues.unready_dependency_count > 0 ? "bad" : chatRounds > 0 ? "ok" : "info",
+      body: report.queues.unready_dependency_count > 0 ? "先看服务健康，模型、登录、Redis 或 OSS 任一异常都会影响主链。" : "发一条纯文字问诊，后台看今日问诊数、App 错误和服务健康。",
+      route: "health",
+    },
+    {
+      title: "图片问诊 / 弱网发送",
+      status: imageRounds > 0 ? "有记录" : "待真机",
+      level: imageRounds > 0 ? "ok" : "info",
+      body: "拍照、相册、多图、切后台后回来都要测；失败先看 App 日志和 OSS / 上传存储健康。",
+      route: "app-logs",
+    },
+    {
+      title: "礼品卡兑换会员",
+      status: report.queues.gift_card_active > 0 ? "可测" : "先生成卡",
+      level: report.queues.gift_card_active > 0 ? "ok" : "warn",
+      body: report.queues.gift_card_active > 0 ? "用正式卡码在 Android 设置页兑换，再回后台查账号ID、卡状态和尝试记录。" : "当前没有可兑换 active 卡；先在礼品卡页生成一张，再测 Android 兑换。",
+      route: "gift-cards",
+    },
+    {
+      title: "今日农情显示",
+      status: dailyAgriStatusText(report.queues.daily_agri_status),
+      level: report.queues.daily_agri_status === "ready" ? "ok" : report.queues.daily_agri_status === "failed" ? "bad" : "warn",
+      body: report.queues.daily_agri_status === "ready" ? "App 首页应能展示完整摘要；后台可看来源和 Raw JSON 状态。" : "未 ready 时先在今日农情页补跑，不让 App 打开时临时生成。",
+      route: "today-agri",
+    },
+    {
+      title: "检查更新",
+      status: updateTrouble > 0 ? "看日志" : updateStatusLine(report.queues.app_update),
+      level: updateTrouble > 0 ? "warn" : report.queues.app_update.download_artifacts_complete ? "ok" : "warn",
+      body: updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" : "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。",
+      route: updateTrouble > 0 ? "app-logs" : "app-update",
+    },
+    {
+      title: "帮助与反馈",
+      status: report.queues.support_needs_reply > 0 ? "待回复" : "可测",
+      level: report.queues.support_needs_reply > 0 ? "warn" : "ok",
+      body: "App 里发文字和截图反馈，后台看会话、图片、手机号回访字段、回复、关闭和重开状态。",
+      route: "support",
+    },
+  ];
+  return `
+    <div class="regression-grid">
+      ${items
+        .map(
+          (item) => `
+            <article class="regression-item ${item.level}">
+              <div class="regression-head">
+                <strong>${escapeHTML(item.title)}</strong>
+                ${statusPill(item.status, item.level)}
+              </div>
+              <p>${escapeHTML(item.body)}</p>
+              ${routeActionButton(item.route, "打开")}
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
   `;
 }
 
