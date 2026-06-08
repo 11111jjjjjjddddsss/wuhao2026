@@ -891,6 +891,121 @@ func upsertSupportConversationTx(ctx context.Context, tx *sql.Tx, userID string,
 	return err
 }
 
+func syncMergedSupportConversationTx(ctx context.Context, tx *sql.Tx, oldUserID string, newUserID string, nowMs int64) error {
+	oldUserID = strings.TrimSpace(oldUserID)
+	newUserID = strings.TrimSpace(newUserID)
+	if oldUserID == "" || newUserID == "" || oldUserID == newUserID {
+		return nil
+	}
+
+	var existingStatus sql.NullString
+	var assignedTo sql.NullString
+	var note sql.NullString
+	var existingClosedAt sql.NullInt64
+	err := tx.QueryRowContext(
+		ctx,
+		`SELECT status, assigned_to, note, closed_at
+		   FROM support_conversations
+		  WHERE user_id IN (?, ?)
+		  ORDER BY CASE WHEN user_id = ? THEN 0 ELSE 1 END
+		  LIMIT 1
+		  FOR UPDATE`,
+		newUserID,
+		oldUserID,
+		newUserID,
+	).Scan(&existingStatus, &assignedTo, &note, &existingClosedAt)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+
+	var latestID sql.NullInt64
+	var latestAt sql.NullInt64
+	var messageCount sql.NullInt64
+	var latestUserAt sql.NullInt64
+	var latestAdminAt sql.NullInt64
+	var latestSender sql.NullString
+	err = tx.QueryRowContext(
+		ctx,
+		`SELECT MAX(id),
+		        MAX(created_at),
+		        COUNT(*),
+		        MAX(CASE WHEN sender_type = 'user' THEN created_at ELSE NULL END),
+		        MAX(CASE WHEN sender_type = 'admin' THEN created_at ELSE NULL END),
+		        (SELECT sender_type
+		           FROM support_messages
+		          WHERE user_id = ? AND sender_type <> 'system'
+		          ORDER BY id DESC
+		          LIMIT 1)
+		   FROM support_messages
+		  WHERE user_id = ?`,
+		newUserID,
+		newUserID,
+	).Scan(&latestID, &latestAt, &messageCount, &latestUserAt, &latestAdminAt, &latestSender)
+	if err != nil {
+		return err
+	}
+	if !latestID.Valid || messageCount.Int64 == 0 {
+		_, err = tx.ExecContext(ctx, "DELETE FROM support_conversations WHERE user_id IN (?, ?)", oldUserID, newUserID)
+		return err
+	}
+
+	status := normalizeSupportConversationStatus(existingStatus.String)
+	if status == "closed" {
+		if !existingClosedAt.Valid || (latestUserAt.Valid && latestUserAt.Int64 > existingClosedAt.Int64) {
+			status = "open"
+		}
+	} else if latestSender.Valid && latestSender.String == "user" {
+		status = "open"
+	} else {
+		status = "replied"
+	}
+
+	var closedAt any
+	if status == "closed" {
+		closedAt = nullableInt64FromNull(existingClosedAt)
+		if closedAt == nil {
+			closedAt = nowMs
+		}
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO support_conversations(
+		     user_id, status, assigned_to, note, message_count, latest_message_id, latest_message_at,
+		     latest_user_message_at, latest_admin_message_at, closed_at, created_at, updated_at
+		   )
+		   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   ON DUPLICATE KEY UPDATE
+		     status = VALUES(status),
+		     assigned_to = COALESCE(VALUES(assigned_to), support_conversations.assigned_to),
+		     note = COALESCE(VALUES(note), support_conversations.note),
+		     message_count = VALUES(message_count),
+		     latest_message_id = VALUES(latest_message_id),
+		     latest_message_at = VALUES(latest_message_at),
+		     latest_user_message_at = VALUES(latest_user_message_at),
+		     latest_admin_message_at = VALUES(latest_admin_message_at),
+		     closed_at = VALUES(closed_at),
+		     updated_at = VALUES(updated_at)`,
+		newUserID,
+		status,
+		nullableTrimmed(assignedTo.String),
+		nullableTrimmed(note.String),
+		int(messageCount.Int64),
+		latestID.Int64,
+		latestAt.Int64,
+		nullableInt64FromNull(latestUserAt),
+		nullableInt64FromNull(latestAdminAt),
+		closedAt,
+		nowMs,
+		nowMs,
+	)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "DELETE FROM support_conversations WHERE user_id = ?", oldUserID)
+	return err
+}
+
 func normalizeSupportConversationStatus(raw string) string {
 	status := strings.ToLower(strings.TrimSpace(raw))
 	switch status {

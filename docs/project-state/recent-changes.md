@@ -5,13 +5,17 @@
 
 ## 2026-06-08
 
-- 管理后台继续往正式可用推进：礼品卡新增 `code_ciphertext` 加密字段，新生成完整卡码会加密保存，后台礼品卡列表可直接查看和复制，仍用 hash 做兑换校验且不把完整卡码写入日志 / 审计 detail / 文档；帮助反馈新增 `support_conversations` 轻量会话状态表，后台支持待回复 / 已回复 / 已关闭队列、账号ID / 脱敏手机号 / 最近消息搜索、回复、关闭、标已回复和重开；监控面板新增“可测 / 需处理 / 阻塞”摘要和客服反馈决策卡，并把反馈 open / replied / closed 队列纳入关键队列展示。
+- 继续按正式上架路线收口：Android `UPLOAD_BASE_URL` 固定为 `https://api.nongjiqiancha.cn`，`USE_BACKEND_AB` 固定开启，debug 包和 release 包业务后端保持一致，区别只保留 debug-only 预览面板和调试日志；管理后台把监控状态文案统一为“就绪 / 需处理 / 阻塞”，并继续补空数据兜底、角色写操作隐藏、帮助反馈默认待回复队列、礼品卡激活账号跳转用户详情、账号ID迁移时同步重建反馈会话索引。后端空批次 / 空卡 / 空兑换尝试 / 空用户明细相关列表统一返回 `[]`，避免后台页面因空数据读取 `.length` 崩溃；用户兑换礼品卡时不再解密完整卡码，完整码只用于后台受权限查看。
+
+- 本轮生产部署已完成：`scripts/deploy-ecs-server.ps1` 将后端部署到 ECS 双端口 slot，当前 Nginx active upstream 为 `3001`，`scripts/check-ecs-readiness.ps1` 显示 HTTPS healthz 200 且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署和检查输出不打印真实 token、AccessKey、模型 Key 或密码。
+
+- 管理后台继续往正式可用推进：礼品卡新增 `code_ciphertext` 加密字段，新生成完整卡码会加密保存，后台礼品卡列表可直接查看和复制，仍用 hash 做兑换校验且不把完整卡码写入日志 / 审计 detail / 文档；帮助反馈新增 `support_conversations` 轻量会话状态表，后台支持待回复 / 已回复 / 已关闭队列、账号ID / 脱敏手机号 / 最近消息搜索、回复、关闭、标已回复和重开；监控面板新增“就绪 / 需处理 / 阻塞”摘要和客服反馈决策卡，并把反馈 open / replied / closed 队列纳入关键队列展示。
 
 - 将礼品卡完整码、帮助反馈状态队列和监控面板增强提交 `cd6314c2` 部署到 ECS 和管理后台：远端 `go test ./...`、编译、切换双端口 slot、Nginx 配置检查和公网 healthz 均通过，当前 Nginx active upstream 为 `3000`；后台静态前端重新构建并部署到 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署后 readiness 显示 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`，输出不打印任何 token、AccessKey、模型 Key 或密码。
 
 - 修复管理后台礼品卡页空数据崩溃：后端 `GET /admin-api/v1/gift-cards/summary` 的 `failure_reasons` 空结果现在稳定返回 `[]`，前端对 summary / 批次 / 卡 / 兑换尝试数组也做 null 兜底，生产库还没有礼品卡时页面不再报 `Cannot read properties of null (reading 'length')`。监控面板同步补礼品卡批次数和总卡数，生产库 0 张可兑换卡会作为“先生成礼品卡”的待处理事项显示，避免把“还没生成正式卡”误看成兑换链路坏了。
 
-- 管理后台监控面板补“上线检查”区：`GET /admin-api/v1/monitoring` 新增 `launch_readiness`，把后端健康、手机号登录、模型问诊、礼品卡测试、安装包更新、支付接入、备案与上架材料、日志告警、客服反馈按“可测 / 需处理 / 阻塞”展示。支付申请未完成、App 备案 / 公安备案和上线前 AccessKey 轮换不会被伪装成已完成；礼品卡可先作为内部测试权益链路。
+- 管理后台监控面板补“正式上架检查”区：`GET /admin-api/v1/monitoring` 新增 `launch_readiness`，把后端健康、手机号登录、模型问诊、礼品卡权益、安装包更新、支付接入、备案与上架材料、日志告警、客服反馈按“就绪 / 需处理 / 阻塞”展示。支付申请未完成、App 备案 / 公安备案和上线前 AccessKey 轮换不会被伪装成已完成；礼品卡可作为支付接入前的真实权益激活链路。
 
 - 继续推进管理后台生产化细节：前端侧栏和监控快捷入口开始按后台角色矩阵隐藏无权页面，减少 support / content_ops / release_ops / finance_ops 等角色点进 403 的误操作；服务端权限仍是唯一硬边界，前端隐藏只做体验收敛。监控窗口里的登录 session 口径拆清：`active_sessions` 表示当前有效 App session 总量，新增 `recent_auth_sessions` 表示当前窗口内新创建 / 登录 session，前端表格展示“新登录 session / 当前有效 session”，不再把 `updated_at` 当作真实活跃度。
 
@@ -21,7 +25,7 @@
 
 - 将账号ID收敛、礼品卡追溯和监控面板增强提交 `5321ffe9` 部署到 ECS 和管理后台：远端 `go test ./...`、编译、切换双端口 slot、Nginx 配置检查和公网 healthz 均通过，当前 Nginx active upstream 为 `3001`；后台静态前端重新构建并部署到 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署后轻量冒烟确认 `https://api.nongjiqiancha.cn/healthz` 为 200，返回 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`；融合认证 token 入口返回 200 且有 token / scheme，短信发送接口对非法手机号返回 400。输出不打印任何 token、AccessKey、模型 Key 或密码。
 
-- 继续按正式上架路线收敛账号、礼品卡和监控面板：明确全局长期业务身份统一为账号ID `acct_...`，手机号注册 / 登录只作为凭证归到该账号ID下，底层 `user_id` 字段在生产语义上按账号ID理解；Android 一键登录和短信登录 payload 会带旧本机 `legacy_user_id`，后端只接受本机 UUID 形态或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为迁移桥，并把礼品卡兑换和兑换尝试纳入旧 ID 到账号ID的数据迁移。礼品卡后台新增 summary 接口、卡码尾号 / 批次 / 账号ID追溯、兑换尝试成功状态和失败原因筛选、最近 7 天失败原因聚合；监控面板前端新增“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡和快捷入口，继续往非运维也能看懂的生产面板推进。debug / 测试包与正式包默认接同一个生产 HTTPS 后端，区别只保留 debug-only 预览面板和调试日志。
+- 继续按正式上架路线收敛账号、礼品卡和监控面板：明确全局长期业务身份统一为账号ID `acct_...`，手机号注册 / 登录只作为凭证归到该账号ID下，底层 `user_id` 字段在生产语义上按账号ID理解；Android 一键登录和短信登录 payload 会带旧本机 `legacy_user_id`，后端只接受本机 UUID 形态或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为迁移桥，并把礼品卡兑换和兑换尝试纳入旧 ID 到账号ID的数据迁移。礼品卡后台新增 summary 接口、卡码尾号 / 批次 / 账号ID追溯、兑换尝试成功状态和失败原因筛选、最近 7 天失败原因聚合；监控面板前端新增“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡和快捷入口，继续往非运维也能看懂的生产面板推进。debug 包与正式包默认接同一个生产 HTTPS 后端，区别只保留 debug-only 预览面板和调试日志。
 
 - 轻量补充 OpenCode CI 记忆同步提示：全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 写明 Android CI 会运行 `scripts/check_project_memory.py`，改动 `app/src/main/kotlin/...`、`server-go/`、`docs/adr/`、`docs/runbooks/`、`README.md`、`app/AGENTS.md` 或 `server-go/AGENTS.md` 等关键真相文件时，需要判断并同步更新 `AGENTS.md` 或 `docs/project-state/*`，提交前优先本地运行项目记忆检查。该规则只补轻量提示，不把大型项目记忆重新加入自动 `instructions`。
 
@@ -59,7 +63,7 @@
 
 - 继续按 Product Design + 联网参考收口农技千查官网：删除“面向田间的图文问诊” eyebrow，不再把“照片理解 / 连续问诊”当卖点；首屏改成左侧品牌主张、右侧能力栏的暗色一页结构，logo 与“农技千查”收紧成品牌 lockup，主标题改为“用视觉语言模型，看清作物问题”，能力点收口为“先进视觉语言模型 / 联网校准 / 农业场景参考”。footer 增加公司主体“北京农技千问科技有限公司”并继续保留 ICP；已重新部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，公网验证新标题、公司名、联网校准和 ICP 均在线。该条为当时历史过程，当前官网文案已由上一条替代。
 
-- 修复 Android Studio 直接 Run 测试包后端地址为空的问题：`app/build.gradle.kts` 现在默认使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，仍可用 `-PUPLOAD_BASE_URL=...` 或环境变量显式覆盖；debug / 测试包和正式包默认都接正式 HTTPS 后端，差异主要保留 debug-only UI 文案预览等调试入口，不能再因为未传 Gradle 参数显示“后端地址未配置”。同时把 release-like 打包任务护栏从精确 `assembleRelease / bundleRelease / packageRelease` 扩展到包含 `release` 的 assemble / bundle / package 任务，避免 `nonMinifiedRelease` 等特殊产物绕过签名和 HTTPS 检查；本地已删除 4 月残留的旧 `nonMinifiedRelease` 生成 APK，避免误装旧包。登录页删除“农业图文问诊参考工具”副标题，入口更简洁。
+- 修复 Android Studio 直接 Run 后端地址为空的问题：当时 `app/build.gradle.kts` 默认使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn` 并允许显式覆盖；2026-06-08 已进一步锁定为生产 HTTPS 后端，不再通过 Gradle 参数切换业务后端地址。debug 包和正式包业务链路保持一致，差异主要保留 debug-only UI 文案预览等调试入口，不能再因为未传 Gradle 参数显示“后端地址未配置”。同时把 release-like 打包任务护栏从精确 `assembleRelease / bundleRelease / packageRelease` 扩展到包含 `release` 的 assemble / bundle / package 任务，避免 `nonMinifiedRelease` 等特殊产物绕过签名和 HTTPS 检查；本地已删除 4 月残留的旧 `nonMinifiedRelease` 生成 APK，避免误装旧包。登录页删除“农业图文问诊参考工具”副标题，入口更简洁。
 
 - 再次收口农技千查官网：按克制暗色一页展示重写 `site`，删除顶部导航、产品 / 下载锚点、对话展示、复杂能力卡片和“安卓版准备中”等内部流程文案；品牌处使用透明背景的绿色叶片 `brand-mark.png` 与“农技千查”并排，正文采用“面向田间的图文问诊 / 让作物问题更清楚”口径，只保留安卓版下载按钮和居中 ICP footer。下载按钮只有注入合法 `https://...apk` 时才启用，未配置时不可点击；官网继续不展示公安备案占位。
 
@@ -157,7 +161,7 @@
 - 补高并发 / 扩机预备护栏：主聊天 `/api/chat/stream` 用户级频控从单进程内存限流升级为“有 Redis 就走 Redis、无 Redis 回退单进程”，Redis key 只保存 `user_id` hash，不保存聊天正文、图片、token 或手机号；同一用户同时一条主聊天流本来已经由 MySQL `GET_LOCK` + `chat_stream_inflight` 跨进程控制。新增 `docs/runbooks/scaling-readiness.md`，把以后从单机原地升级、多 ECS、RDS 扩容到轻量队列的步骤和仍缺的 B/C 摘要 lease、滚动发布、SLS 统一日志等准备项固化下来。
 - 按小米会诊建议补“退出设备”最小闭环：后端新增 `POST /api/auth/logout`，校验当前 bearer token 后把对应 `auth_sessions.revoked_at` 置为当前时间，后续同 token 会被 `requireAuth` 拒绝；Android 账号管理页“退出设备”不再只是占位提示，成功后清本地 auth token 并重建 Activity 回到登录门。该刀只吊销当前设备 session，不做完整设备列表、远程踢设备或账号注销，不删除聊天历史、会员资产、额度、帮助与反馈或本机 `user_id`。
 - 复查手机号登录和 ECS 部署会诊资料时，发现 `docs/runbooks/deploy-ecs.md` 仍残留 DYPNS `missing_key / missing_config` 的旧健康检查口径；已同步改为当前真实状态：`dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`，并把下一步从“配置 DYPNS / 短信模板”改为“上线前轮换已暴露主账号 AccessKey、HTTPS / 模型 Key 后做真实登录和图片链路回归”。当时业务阻塞仍是 DashScope 模型 Key、HTTPS / 备案和真机登录回归，不是手机号认证配置缺失；截至 2026-06-05，`api` HTTPS 和网站 ICP 已补齐，仍缺 DashScope 模型 Key、App 备案通过、公安备案和真机回归。
-- 复查登录页验证码登录展开态：验证码输入框和“发送”按钮原本视觉不齐，原因是验证码框使用 Material3 `label` 后预留了浮动标签高度，而发送按钮按普通 56dp 高度绘制；现改为验证码框使用 `placeholder`、验证码行 `CenterVertically`、输入框和发送按钮都固定 56dp，并给发送按钮最小宽度，避免两个边框上下错位。当前“后端地址未配置”只代表当前安装包没有带 `UPLOAD_BASE_URL`，不是服务器掉线；调试包若要真机登录联调仍需用带 `-PUPLOAD_BASE_URL=http://39.106.1.151` 的构建。
+- 复查登录页验证码登录展开态：验证码输入框和“发送”按钮原本视觉不齐，原因是验证码框使用 Material3 `label` 后预留了浮动标签高度，而发送按钮按普通 56dp 高度绘制；现改为验证码框使用 `placeholder`、验证码行 `CenterVertically`、输入框和发送按钮都固定 56dp，并给发送按钮最小宽度，避免两个边框上下错位。当时“后端地址未配置”代表安装包没有带 `UPLOAD_BASE_URL`，不是服务器掉线；2026-06-08 已锁定为正式 HTTPS 后端，不再使用临时 HTTP 直连构建口径。
 - 记录后期管理后台规划：新增“用户真实反馈 / 产品洞察”模块设想，后续从帮助与反馈、App 自动日志和聊天归档里做脱敏聚合，提取高频 bug、登录 / 上传 / 历史恢复卡点、模型答偏线索、常见作物 / 病虫害和可改 UI / 提示词 / 后端规则的证据。当前只是 runbook 规划，不代表已有后台、定时任务或生产数据扫库；Codex 后续只应基于脱敏报表分析，不直接定期读取生产库原始聊天全文。
 - 接入阿里云融合认证 Android 官方 SDK 首版链路：把控制台下载的 `fusionauth-1.2.15-online-release.aar` 放入 `app/libs` 并通过 Gradle `fileTree` 引入，补 ProGuard keep；新增 `FusionOneLoginClient.kt`，登录页在用户同意协议后按需申请 `READ_PHONE_STATE`，从后端拉取 `auth_token + scheme_code` 初始化 SDK，SDK 成功返回 verify token 后调用 `/api/auth/fusion/login` 换取账号 token，失败 / 取消则回落验证码登录。后端 `/api/auth/fusion/token` 同步返回 `scheme_code`，App 内隐私政策、第三方信息共享清单、个人信息收集清单和应用权限已补阿里云融合认证 SDK、电话状态、网络状态 / Wi-Fi 状态口径；当前还未做用户真机回归，仍需备案 / HTTPS 后统一复测。
 - 复查主聊天输入框 `+` 面板和帮助与反馈 `+` 面板：两处“相机 / 照片”入口本来已经复用同一个 `ComposerAttachmentBottomSheet`，面板图标统一为同一尺寸常量；同步把帮助与反馈输入框 `+` 图标从 25dp 调整为 26dp，和主聊天输入框正常宽度下的入口图标一致。该刀只改图标尺寸常量和帮助反馈入口尺寸，不改图片选择、拍照、上传或发送链路。

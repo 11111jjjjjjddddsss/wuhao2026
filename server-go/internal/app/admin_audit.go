@@ -322,7 +322,7 @@ func (s *Store) ListAdminAuditLogs(ctx context.Context, filter AdminAuditLogQuer
 	}
 	defer rows.Close()
 
-	var entries []AdminAuditLogEntry
+	entries := []AdminAuditLogEntry{}
 	for rows.Next() {
 		var entry AdminAuditLogEntry
 		var targetID sql.NullString

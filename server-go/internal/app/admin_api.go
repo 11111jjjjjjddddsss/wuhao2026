@@ -988,7 +988,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Status: ternary(dependenciesOK, "ready", "blocked"),
 		Body: ternary(
 			dependenciesOK,
-			"API、模型、登录依赖、Redis、上传存储和严格鉴权当前可作为生产测试基础。",
+			"API、模型、登录依赖、Redis、上传存储和严格鉴权当前可作为生产运行基础。",
 			"服务依赖、严格鉴权或开发期订单开关存在异常，先看服务健康。",
 		),
 		Route: "health",
@@ -1004,8 +1004,8 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Status: ternary(loginDepsOK, "attention", "blocked"),
 		Body: ternary(
 			loginDepsOK,
-			"云端配置和后端限流正常；正式上架前仍必须用真机完成一键登录和短信验证码回归。",
-			"一键登录 / 短信 / Redis / 严格鉴权任一异常都会挡住登录测试。",
+			"云端配置和后端限流正常；正式上架前仍必须用真机确认一键登录和短信验证码。",
+			"一键登录 / 短信 / Redis / 严格鉴权任一异常都会挡住正式登录。",
 		),
 		Route: "health",
 		Owner: "Android / 后端",
@@ -1016,17 +1016,17 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Status: ternary(modelOK, "ready", "blocked"),
 		Body: ternary(
 			modelOK,
-			"主模型 Key 已配置，后端统一发起模型调用；可继续测文字 / 图片问诊。",
-			"模型或 API 健康异常时，主聊天不能作为可测状态。",
+			"主模型 Key 已配置，后端统一发起模型调用；文字 / 图片问诊链路具备生产运行条件。",
+			"模型或 API 健康异常时，主聊天不能作为正式可用状态。",
 		),
 		Route: "health",
 		Owner: "后端",
 	})
 	giftStatus := "ready"
-	giftBody := "有可兑换礼品卡，可用 Android 设置页兑换并在后台追溯账号ID。"
+	giftBody := "有可兑换礼品卡，可在 Android 设置页兑换并在后台追溯账号ID。"
 	if queues.GiftCardBatchCount == 0 || queues.GiftCardTotal == 0 {
 		giftStatus = "blocked"
-		giftBody = "生产库还没有生成礼品卡；先在后台生成 1 张正式卡，才能测兑换成功链路。"
+		giftBody = "生产库还没有生成礼品卡；先在后台生成正式卡，才能支撑权益发放。"
 	} else if queues.GiftCardActive == 0 {
 		giftStatus = "blocked"
 		giftBody = "已有礼品卡记录，但当前没有生效且未过期的 active 卡；先生成或检查有效期。"
@@ -1035,7 +1035,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		giftBody = "已有可兑换卡，但最近 24 小时存在失败尝试；先看尾号和失败原因。"
 	}
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "礼品卡测试",
+		Title:  "礼品卡权益",
 		Status: giftStatus,
 		Body:   giftBody,
 		Route:  "gift-cards",
@@ -1060,7 +1060,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "支付接入",
 		Status: "blocked",
-		Body:   "微信 / 支付宝支付申请和真实回调未完成；不能把会员订单当正式收费功能，礼品卡可先支撑测试。",
+		Body:   "微信 / 支付宝支付申请和真实回调未完成；不能把会员订单当正式收费功能，礼品卡先支撑正式权益发放。",
 		Route:  "orders",
 		Owner:  "外部申请 / 后端",
 	})
@@ -1542,7 +1542,7 @@ func (s *Store) ListAdminQuotaLedger(ctx context.Context, userID string, limit i
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []AdminQuotaLedgerEntry
+	entries := []AdminQuotaLedgerEntry{}
 	for rows.Next() {
 		var entry AdminQuotaLedgerEntry
 		if err := rows.Scan(&entry.ID, &entry.ClientMsgID, &entry.DayCN, &entry.Source, &entry.Delta, &entry.CreatedAt); err != nil {
@@ -1571,7 +1571,7 @@ func (s *Store) ListAdminTopupPacks(ctx context.Context, userID string, limit in
 		return nil, err
 	}
 	defer rows.Close()
-	var packs []AdminTopupPackEntry
+	packs := []AdminTopupPackEntry{}
 	for rows.Next() {
 		var pack AdminTopupPackEntry
 		var expire sql.NullInt64
@@ -1604,7 +1604,7 @@ func (s *Store) ListAdminUpgradeCredits(ctx context.Context, userID string) ([]A
 		return nil, err
 	}
 	defer rows.Close()
-	var credits []AdminUpgradeCredit
+	credits := []AdminUpgradeCredit{}
 	for rows.Next() {
 		var credit AdminUpgradeCredit
 		var expire sql.NullInt64
@@ -1637,7 +1637,7 @@ func (s *Store) ListAdminRoundExcerpts(ctx context.Context, userID string, limit
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []AdminRoundExcerpt
+	entries := []AdminRoundExcerpt{}
 	for rows.Next() {
 		var clientMsgID, userText, assistantText string
 		var imagesRaw sql.NullString
@@ -1686,7 +1686,7 @@ func (s *Store) ListAdminOrders(ctx context.Context, userID string, limit int) (
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []AdminOrderEntry
+	entries := []AdminOrderEntry{}
 	for rows.Next() {
 		var entry AdminOrderEntry
 		var result sql.NullString
@@ -1720,7 +1720,7 @@ func (s *Store) ListAdminDailyAgriCards(ctx context.Context, scope string, limit
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []AdminDailyAgriEntry
+	entries := []AdminDailyAgriEntry{}
 	for rows.Next() {
 		var entry AdminDailyAgriEntry
 		var content, sources, model, searchStrategy, promptVersion, errorText sql.NullString

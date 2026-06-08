@@ -1048,6 +1048,7 @@ button {
   border-radius: 8px;
   background: #fbfcfd;
   padding: 9px 10px;
+  overflow-wrap: anywhere;
 }
 
 .message.admin {

@@ -22,15 +22,12 @@ fun releaseSigningValue(name: String): String? =
         ?: System.getenv(name)
         ?: releaseSigningProperties.getProperty(name)
 
-fun optionalBuildValue(name: String): String =
-    ((project.findProperty(name) as String?) ?: System.getenv(name) ?: "").trim()
-
 val defaultUploadBaseUrl = "https://api.nongjiqiancha.cn"
 val releaseStoreFile = releaseSigningValue("NONGJI_ANDROID_RELEASE_STORE_FILE")
 val releaseStorePassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_ALIAS")
 val releaseKeyPassword = releaseSigningValue("NONGJI_ANDROID_RELEASE_KEY_PASSWORD")
-val uploadBaseUrl = optionalBuildValue("UPLOAD_BASE_URL").ifBlank { defaultUploadBaseUrl }
+val uploadBaseUrl = defaultUploadBaseUrl
 val releaseSigningConfigured =
     !releaseStoreFile.isNullOrBlank() &&
         !releaseStorePassword.isNullOrBlank() &&
@@ -51,8 +48,7 @@ android {
 
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
 
-        val useBackendAb = (project.findProperty("USE_BACKEND_AB") as String?)?.toBooleanStrictOrNull() ?: true
-        buildConfigField("boolean", "USE_BACKEND_AB", useBackendAb.toString())
+        buildConfigField("boolean", "USE_BACKEND_AB", "true")
     }
 
     signingConfigs {
@@ -102,7 +98,7 @@ tasks.configureEach {
             }
             if (!uploadBaseUrl.startsWith("https://")) {
                 throw org.gradle.api.GradleException(
-                    "Release UPLOAD_BASE_URL must be configured as an https URL, for example -PUPLOAD_BASE_URL=https://api.nongjiqiancha.cn.",
+                    "Release UPLOAD_BASE_URL must remain an https production URL.",
                 )
             }
         }

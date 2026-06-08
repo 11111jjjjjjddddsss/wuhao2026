@@ -520,7 +520,7 @@ func (s *Store) ListGiftCardBatches(ctx context.Context, limit int) ([]AdminGift
 		return nil, err
 	}
 	defer rows.Close()
-	var batches []AdminGiftCardBatch
+	batches := []AdminGiftCardBatch{}
 	for rows.Next() {
 		var batch AdminGiftCardBatch
 		var tier string
@@ -573,7 +573,7 @@ func (s *Store) ListGiftCards(ctx context.Context, filter GiftCardListQuery) ([]
 		return nil, err
 	}
 	defer rows.Close()
-	var cards []AdminGiftCardEntry
+	cards := []AdminGiftCardEntry{}
 	for rows.Next() {
 		card, err := scanGiftCardEntry(rows)
 		if err != nil {
@@ -619,7 +619,7 @@ func (s *Store) ListGiftCardAttempts(ctx context.Context, filter GiftCardAttempt
 		return nil, err
 	}
 	defer rows.Close()
-	var attempts []AdminGiftCardAttempt
+	attempts := []AdminGiftCardAttempt{}
 	for rows.Next() {
 		var attempt AdminGiftCardAttempt
 		var suffix, userID, failure, maskedIP, region, regionSource, regionReliability sql.NullString
@@ -867,7 +867,7 @@ func normalizeGiftCardBatchInput(body adminGiftCardCreateBatchRequest, actor str
 func getGiftCardForUpdate(ctx context.Context, tx *sql.Tx, codeHash string) (AdminGiftCardEntry, error) {
 	row := tx.QueryRowContext(
 		ctx,
-		`SELECT card_id, batch_id, code_mask, code_suffix, code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at
+		`SELECT card_id, batch_id, code_mask, code_suffix, NULL AS code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at
 		   FROM gift_cards
 		  WHERE code_hash = ?
 		  LIMIT 1
@@ -1001,10 +1001,9 @@ func scanGiftCardEntry(scanner giftCardScanner) (AdminGiftCardEntry, error) {
 	card.Tier = Tier(tier)
 	if codeCiphertext.Valid && strings.TrimSpace(codeCiphertext.String) != "" {
 		code, err := decryptGiftCardCode(codeCiphertext.String)
-		if err != nil {
-			return card, err
+		if err == nil {
+			card.Code = code
 		}
-		card.Code = code
 	}
 	card.Note = nullStringValue(note)
 	card.RedeemedUserID = nullStringValue(redeemedUser)

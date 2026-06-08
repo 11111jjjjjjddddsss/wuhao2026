@@ -65,7 +65,7 @@ const pageState = {
   userQuery: "",
   userDetailID: "",
   supportUserID: "",
-  supportStatus: "",
+  supportStatus: "open",
   supportQuery: "",
   entitlementUserID: "",
   orderUserID: "",
@@ -369,12 +369,12 @@ async function monitoringPage(): Promise<string> {
   const today = report.windows.find((item) => item.key === "today") || report.windows[0];
   const day24 = report.windows.find((item) => item.key === "24h") || report.windows[0];
   return `
-    ${pageHead("监控面板", "先看能不能继续测，再处理红色事项；没接通的能力会明确标出来。", "monitoring")}
+    ${pageHead("监控面板", "面向正式上架的健康、风险、运营队列和阻塞项。", "monitoring")}
     ${monitoringHero(report)}
     ${monitoringReadinessSummary(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
-      <div class="card-head"><div class="card-title">上线检查</div><span class="small muted">可测 / 需处理 / 上线阻塞</span></div>
+      <div class="card-head"><div class="card-title">正式上架检查</div><span class="small muted">就绪 / 需处理 / 阻塞</span></div>
       <div class="card-body">${launchReadinessGrid(report.launch_readiness || [])}</div>
     </section>
     ${monitoringShortcutBar()}
@@ -569,20 +569,26 @@ async function giftCardsPage(): Promise<string> {
         <span class="small muted">完整卡码会加密保存，列表可查</span>
       </div>
       <div class="card-body">
-        <form id="gift-card-create-form" class="filter-form">
-          <label>批次名<input name="name" placeholder="例如：首批 Plus 月卡" /></label>
-          <label>档位
-            <select name="tier">
-              <option value="plus">Plus</option>
-              <option value="pro">Pro</option>
-            </select>
-          </label>
-          <label>张数<input name="quantity" type="number" min="1" max="200" value="1" /></label>
-          <label>天数<input name="duration_days" type="number" min="1" max="366" value="30" /></label>
-          <label>备注<input name="note" placeholder="发放对象或用途，可为空" /></label>
-          <button class="button primary" type="submit">生成</button>
-        </form>
-        ${createdGiftCardCodesBlock(lastGiftCardCodes)}
+        ${
+          canManageGiftCards()
+            ? `
+              <form id="gift-card-create-form" class="filter-form">
+                <label>批次名<input name="name" placeholder="例如：首批 Plus 月卡" /></label>
+                <label>档位
+                  <select name="tier">
+                    <option value="plus">Plus</option>
+                    <option value="pro">Pro</option>
+                  </select>
+                </label>
+                <label>张数<input name="quantity" type="number" min="1" max="200" value="1" /></label>
+                <label>天数<input name="duration_days" type="number" min="1" max="366" value="30" /></label>
+                <label>备注<input name="note" placeholder="发放对象或用途，可为空" /></label>
+                <button class="button primary" type="submit">生成</button>
+              </form>
+              ${createdGiftCardCodesBlock(lastGiftCardCodes)}
+            `
+            : notice("只读追溯", "当前角色只能查看批次、卡码、兑换账号和失败原因，不开放生成或作废操作。", "info")
+        }
       </div>
     </section>
     <section class="card" style="margin-top:12px">
@@ -630,7 +636,15 @@ async function supportPage(): Promise<string> {
     pageState.supportUserID = response.conversations[0].user_id;
   }
   const selected = response.conversations.find((item) => item.user_id === pageState.supportUserID);
-  const messages = pageState.supportUserID ? await fetchSupportMessages(pageState.supportUserID) : [];
+  let messages: AdminSupportMessage[] = [];
+  let messagesError = "";
+  if (pageState.supportUserID) {
+    try {
+      messages = await fetchSupportMessages(pageState.supportUserID);
+    } catch (error) {
+      messagesError = errorMessage(error);
+    }
+  }
   return `
     ${pageHead("帮助反馈", "按待回复、已回复、已关闭队列处理用户反馈；回复和状态动作都会写审计。", "support")}
     ${supportFilterForm()}
@@ -645,7 +659,7 @@ async function supportPage(): Promise<string> {
           <span class="small muted">${escapeHTML(pageState.supportUserID || "未选择")}</span>
         </div>
         <div class="card-body">
-          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected) : emptyState("没有会话", "当前后端未返回帮助与反馈会话。")}
+          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected, messagesError) : emptyState("没有会话", "当前后端未返回帮助与反馈会话。")}
         </div>
       </section>
     </div>
@@ -856,8 +870,14 @@ async function handleAction(button: HTMLElement): Promise<void> {
     return;
   }
   if (action === "load-user-detail") {
-    pageState.userDetailID = button.dataset.userId || "";
-    await render();
+    const userID = button.dataset.userId || "";
+    pageState.userQuery = userID;
+    pageState.userDetailID = userID;
+    if (userID && isRouteVisible("users") && activeRoute !== "users") {
+      location.hash = "users";
+    } else {
+      await render();
+    }
     return;
   }
   if (action === "support-select") {
@@ -866,6 +886,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
     return;
   }
   if (action === "support-status") {
+    if (!canManageSupport()) return;
     await updateSupportConversationStatus(button.dataset.userId || "", button.dataset.status || "");
     return;
   }
@@ -895,6 +916,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
     return;
   }
   if (action === "void-gift-card") {
+    if (!canManageGiftCards()) return;
     await voidGiftCard(button.dataset.cardId || "");
   }
 }
@@ -931,6 +953,7 @@ async function logout(): Promise<void> {
 }
 
 async function submitSupportReply(form: HTMLFormElement): Promise<void> {
+  if (!canManageSupport()) return;
   const userID = formValue(form, "user_id");
   const body = formValue(form, "body");
   if (!userID || !body) return;
@@ -949,12 +972,21 @@ async function submitSupportReply(form: HTMLFormElement): Promise<void> {
 }
 
 async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
+  if (!canManageGiftCards()) return;
   const name = formValue(form, "name");
   const tier = formValue(form, "tier") || "plus";
   const quantity = Number(formValue(form, "quantity") || "1");
   const durationDays = Number(formValue(form, "duration_days") || "30");
   const note = formValue(form, "note");
   const tierLabel = tier === "pro" ? "Pro" : "Plus";
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 200) {
+    window.alert("张数必须是 1 到 200 的整数。");
+    return;
+  }
+  if (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 366) {
+    window.alert("天数必须是 1 到 366 的整数。");
+    return;
+  }
   if (
     !window.confirm(
       `确认生成 ${quantity} 张 ${tierLabel} ${durationDays} 天礼品卡？\n\n这些卡码一旦发出即可兑换真实会员权益。后台会加密保存完整码并可直接查看，请确认数量和档位无误。`,
@@ -1040,7 +1072,23 @@ async function copyText(text: string): Promise<void> {
 }
 
 async function fetchUserDetail(userID: string): Promise<AdminUserDetail> {
-  return apiFetch<AdminUserDetail>(`/admin-api/v1/users/detail${toQuery({ user_id: userID })}`);
+  const detail = await apiFetch<AdminUserDetail>(`/admin-api/v1/users/detail${toQuery({ user_id: userID })}`);
+  return normalizeUserDetail(detail);
+}
+
+function normalizeUserDetail(detail: AdminUserDetail): AdminUserDetail {
+  return {
+    ...detail,
+    quota_ledger: detail.quota_ledger ?? [],
+    topup_packs: detail.topup_packs ?? [],
+    upgrade_credits: detail.upgrade_credits ?? [],
+    recent_rounds: detail.recent_rounds ?? [],
+    recent_app_logs: detail.recent_app_logs ?? [],
+    support_messages: detail.support_messages ?? [],
+    orders: detail.orders ?? [],
+    gift_cards: detail.gift_cards ?? [],
+    gift_card_attempts: detail.gift_card_attempts ?? [],
+  };
 }
 
 async function userDetailCard(userID: string): Promise<string> {
@@ -1357,6 +1405,7 @@ function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
 
 function giftCardTable(rows: AdminGiftCardEntry[]): string {
   if (!rows.length) return emptyState("没有礼品卡", "后端未返回礼品卡记录。");
+  const canVoid = canManageGiftCards();
   return `
     <table class="table">
       <thead><tr><th>卡</th><th>完整卡码</th><th>档位</th><th>状态</th><th>激活账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
@@ -1371,7 +1420,11 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
                 <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
                 <td>${escapeHTML(row.redeemed_region || "")}<div class="small muted">${escapeHTML([row.redeemed_region_source, row.redeemed_region_reliability].filter(Boolean).join(" / "))}</div></td>
-                <td>${row.status === "active" ? `<button class="button danger" data-action="void-gift-card" data-card-id="${escapeAttr(row.card_id)}">作废</button>` : `<span class="small muted">${row.status === "void" ? `已作废 ${formatTime(row.voided_at)}` : "无操作"}</span>`}</td>
+                <td>${
+                  row.status === "active" && canVoid
+                    ? `<button class="button danger" data-action="void-gift-card" data-card-id="${escapeAttr(row.card_id)}">作废</button>`
+                    : `<span class="small muted">${row.status === "void" ? `已作废 ${formatTime(row.voided_at)}` : canVoid ? "无操作" : "只读"}</span>`
+                }</td>
               </tr>
             `,
           )
@@ -1436,12 +1489,14 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
     .join("");
 }
 
-function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], conversation?: AdminSupportConversation): string {
+function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], conversation?: AdminSupportConversation, loadError = ""): string {
+  const canManage = canManageSupport();
   return `
     ${conversation ? supportConversationMeta(conversation) : ""}
+    ${loadError ? errorBlock(new Error(loadError)) : ""}
     <div class="message-list">
       ${
-        messages.length
+        !loadError && messages.length
           ? messages
               .map(
                 (message) => `
@@ -1456,23 +1511,31 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
                 `,
               )
               .join("")
-          : emptyState("没有消息", "当前会话未返回消息明细。")
+          : loadError
+            ? ""
+            : emptyState("没有消息", "当前会话未返回消息明细。")
       }
     </div>
     <div class="divider"></div>
-    <div class="row-actions" style="margin-bottom:12px">
-      <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="open" type="button">重开待回复</button>
-      <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="replied" type="button">标已回复</button>
-      <button class="button danger" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="closed" type="button">关闭</button>
-    </div>
-    <form id="support-reply-form" class="stack">
-      <input type="hidden" name="user_id" value="${escapeAttr(userID)}" />
-      <label class="field">
-        <span>后台回复</span>
-        <textarea class="textarea" name="body" placeholder="只写必要的客服回复，不包含密钥、手机号全文或内部排障细节。"></textarea>
-      </label>
-      <button class="button primary" type="submit">发送回复</button>
-    </form>
+    ${
+      canManage
+        ? `
+          <div class="row-actions" style="margin-bottom:12px">
+            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="open" type="button">重开待回复</button>
+            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="replied" type="button">标已回复</button>
+            <button class="button danger" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="closed" type="button">关闭</button>
+          </div>
+          <form id="support-reply-form" class="stack">
+            <input type="hidden" name="user_id" value="${escapeAttr(userID)}" />
+            <label class="field">
+              <span>后台回复</span>
+              <textarea class="textarea" name="body" placeholder="只写必要的客服回复，不包含密钥、手机号全文或内部排障细节。"></textarea>
+            </label>
+            <button class="button primary" type="submit">发送回复</button>
+          </form>
+        `
+        : notice("只读会话", "当前角色只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
+    }
   `;
 }
 
@@ -1831,13 +1894,13 @@ function monitoringReadinessSummary(report: AdminMonitoring): string {
   const next = rows.find((row) => row.status === "blocked") || rows.find((row) => row.status === "attention");
   return `
     <section class="readiness-summary">
-      <div class="readiness-count ok"><span>可测</span><strong>${ready}</strong></div>
+      <div class="readiness-count ok"><span>就绪</span><strong>${ready}</strong></div>
       <div class="readiness-count warn"><span>需处理</span><strong>${attention}</strong></div>
       <div class="readiness-count bad"><span>阻塞</span><strong>${blocked}</strong></div>
       <div class="readiness-next">
         <span class="small muted">下一步</span>
-        <strong>${escapeHTML(next?.title || "继续回归")}</strong>
-        <p>${escapeHTML(next?.body || "当前可继续看 App 登录、礼品卡兑换、模型对话和图片问诊。")}</p>
+        <strong>${escapeHTML(next?.title || "继续推进")}</strong>
+        <p>${escapeHTML(next?.body || "当前可继续推进登录、礼品卡、模型问诊、图片问诊、反馈和更新配置。")}</p>
         ${routeActionButton(next?.route, "打开")}
       </div>
     </section>
@@ -1855,15 +1918,15 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
     <section class="decision-grid">
       ${decisionCard(
         "当前结论",
-        worst === "bad" ? "先处理" : worst === "warn" ? "可测但要盯" : "可以继续测",
+        worst === "bad" ? "先处理" : worst === "warn" ? "可推进但要盯" : "可以继续推进",
         worst === "bad" ? "有红色事项，先点下面入口处理。" : worst === "warn" ? "没有明确中断，但有队列或配置需要看。" : `今日 ${today?.chat_rounds ?? 0} 轮问诊，关键服务正常。`,
         worst,
         primaryRoute,
       )}
       ${decisionCard(
         "登录与账号ID",
-        loginOK ? "正常" : "检查登录",
-        loginOK ? "严格鉴权、一键登录、短信登录和 Redis 状态正常；登录后主 ID 为账号ID。" : "登录依赖或严格鉴权异常，先打开服务健康。",
+        loginOK ? "配置正常" : "检查登录",
+        loginOK ? "严格鉴权、一键登录、短信登录和 Redis 配置正常；登录后主 ID 为账号ID，正式上架前仍以真机确认为准。" : "登录依赖或严格鉴权异常，先打开服务健康。",
         loginOK ? "ok" : "bad",
         "health",
       )}
@@ -1927,7 +1990,26 @@ function shortcutButton(route: RouteKey, label: string): string {
 function monitoringWorstLevel(report: AdminMonitoring): "ok" | "warn" | "bad" {
   const items = report.action_items || [];
   if (items.some((item) => normalizeLevel(item.level) === "bad")) return "bad";
+  if (
+    (report.queues?.unready_dependency_count ?? 0) > 0 ||
+    (report.queues?.audit_failures ?? 0) > 0 ||
+    (report.queues?.app_errors ?? 0) >= 10 ||
+    String(report.queues?.daily_agri_status || "").toLowerCase() === "failed"
+  ) {
+    return "bad";
+  }
   if (items.some((item) => normalizeLevel(item.level) === "warn")) return "warn";
+  if (
+    (report.queues?.app_errors ?? 0) > 0 ||
+    (report.queues?.support_needs_reply ?? 0) > 0 ||
+    (report.queues?.gift_card_failed_attempts ?? 0) > 0 ||
+    (report.queues?.gift_card_batch_count ?? 0) === 0 ||
+    (report.queues?.gift_card_active ?? 0) === 0 ||
+    report.queues?.app_update?.config_valid === false ||
+    report.queues?.app_update?.download_artifacts_complete === false
+  ) {
+    return "warn";
+  }
   return "ok";
 }
 
@@ -2016,7 +2098,7 @@ function launchReadinessGrid(rows: AdminMonitoring["launch_readiness"]): string 
 }
 
 function launchStatusText(status: string): string {
-  if (status === "ready") return "可测";
+  if (status === "ready") return "就绪";
   if (status === "blocked") return "阻塞";
   return "需处理";
 }
@@ -2074,6 +2156,20 @@ function routeAllowedForRole(route: RouteItem | undefined, role: AdminRole | und
   if (!role) return true;
   if (role === "owner") return true;
   return !route.roles || route.roles.includes(role);
+}
+
+function currentAdminRole(): AdminRole | undefined {
+  return auth?.admin_user.role;
+}
+
+function canManageGiftCards(): boolean {
+  const role = currentAdminRole();
+  return role === "owner" || role === "finance_ops";
+}
+
+function canManageSupport(): boolean {
+  const role = currentAdminRole();
+  return role === "owner" || role === "support";
 }
 
 function defaultRoute(): RouteKey {

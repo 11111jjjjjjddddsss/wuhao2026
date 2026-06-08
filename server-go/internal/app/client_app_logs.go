@@ -492,7 +492,7 @@ func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery)
 	}
 	defer rows.Close()
 
-	var entries []ClientAppLogEntry
+	entries := []ClientAppLogEntry{}
 	for rows.Next() {
 		var entry ClientAppLogEntry
 		var attrsJSON sql.NullString
