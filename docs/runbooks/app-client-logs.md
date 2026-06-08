@@ -26,6 +26,8 @@
 - `support.send_failed`
 - `app_update.check_failed`
 - `app_update.parse_failed`
+- `auth.fusion_env_blocked`
+- `auth.fusion_env_warning`
 - `auth.fusion_token_failed`
 - `auth.fusion_sdk_init_failed`
 - `auth.fusion_sdk_token_auth_failed`
@@ -35,6 +37,7 @@
 - `auth.fusion_timeout`
 - `auth.fusion_template_finished`
 - `auth.fusion_halfway_unexpected`
+- `auth.login_network_failed`
 - `auth.sms_send_failed`
 - `auth.sms_login_failed`
 - `auth.app_crash`
@@ -70,7 +73,7 @@ Android 只上报结构化错误信息：
 
 ## 后续接后台面板
 
-第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录失败、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。后续继续补：
+第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录环境预检、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.fusion_env_blocked` 表示 App 前置判断网络或 SIM 明显不可用；`auth.fusion_env_warning` 表示 VPN / 无蜂窝等可疑环境但仍交给 SDK 继续判断；`auth.login_network_failed` 表示登录请求本身网络失败。后续继续补：
 - 按时间筛选错误事件
 - 按事件名聚合数量
 - 按用户查最近失败事件

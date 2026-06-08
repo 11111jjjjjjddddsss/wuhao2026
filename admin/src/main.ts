@@ -919,7 +919,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
   }
   if (action === "support-status") {
     if (!canManageSupport()) return;
-    await updateSupportConversationStatus(button.dataset.userId || "", button.dataset.status || "");
+    await updateSupportConversationStatus(button.dataset.userId || "", button.dataset.status || "", button);
     return;
   }
   if (action === "clear-gift-card-codes") {
@@ -932,7 +932,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
     return;
   }
   if (action === "generate-today-agri") {
-    await generateTodayAgriCard();
+    await generateTodayAgriCard(button);
     return;
   }
   if (action === "disable-app-update") {
@@ -957,7 +957,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
   }
   if (action === "void-gift-card") {
     if (!canManageGiftCards()) return;
-    await voidGiftCard(button.dataset.cardId || "");
+    await voidGiftCard(button.dataset.cardId || "", button);
   }
 }
 
@@ -1006,6 +1006,8 @@ async function submitSupportReply(form: HTMLFormElement): Promise<void> {
     });
     pageState.supportUserID = userID;
     await render();
+  } catch (error) {
+    window.alert(`发送失败：${errorMessage(error)}`);
   } finally {
     if (button) button.disabled = false;
   }
@@ -1045,7 +1047,7 @@ async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
     await render();
   } catch (error) {
     lastGiftCardCodes = [];
-    app.insertAdjacentHTML("afterbegin", errorBlock(error));
+    window.alert(`生成失败：${errorMessage(error)}`);
   } finally {
     if (button) button.disabled = false;
   }
@@ -1117,28 +1119,30 @@ async function disableAppUpdate(button: HTMLElement): Promise<void> {
   if (!window.confirm("确认停掉当前更新？停更后，用户点“检查更新”将不会再拿到这个新包。")) {
     return;
   }
-  await apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android", {
-    method: "POST",
-    json: {
-      enabled: false,
-      latest_version_code: latestVersionCode,
-      latest_version_name: latestVersionName,
-      apk_url: apkURL,
-      apk_sha256: apkSHA256,
-      release_notes: releaseNotes,
-      force_update: forceUpdate,
-      file_size_bytes: fileSizeBytes,
-    },
-  });
-  await render();
+  await withButtonBusy(button, "停更中", async () => {
+    await apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android", {
+      method: "POST",
+      json: {
+        enabled: false,
+        latest_version_code: latestVersionCode,
+        latest_version_name: latestVersionName,
+        apk_url: apkURL,
+        apk_sha256: apkSHA256,
+        release_notes: releaseNotes,
+        force_update: forceUpdate,
+        file_size_bytes: fileSizeBytes,
+      },
+    });
+    await render();
+  }, "停更失败");
 }
 
-async function generateTodayAgriCard(): Promise<void> {
+async function generateTodayAgriCard(button?: HTMLElement): Promise<void> {
   if (!canManageTodayAgri()) return;
   if (!window.confirm("确认补跑今天的今日农情？如果今天已经有 ready 卡片，系统会直接复用现有结果。")) {
     return;
   }
-  try {
+  await withButtonBusy(button, "补跑中", async () => {
     const result = await apiFetch<{ status?: string; item_count?: number; has_card?: boolean }>("/admin-api/v1/today-agri/generate", {
       method: "POST",
     });
@@ -1147,12 +1151,10 @@ async function generateTodayAgriCard(): Promise<void> {
     const suffix = result.has_card ? `，当前 ${result.item_count || 0} 条` : "";
     window.alert(`今日农情处理完成：${label}${suffix}`);
     await render();
-  } catch (error) {
-    window.alert(`补跑失败：${errorMessage(error)}`);
-  }
+  }, "补跑失败");
 }
 
-async function voidGiftCard(cardID: string): Promise<void> {
+async function voidGiftCard(cardID: string, button?: HTMLElement): Promise<void> {
   if (!cardID) return;
   const reason = window.prompt("请输入作废原因。只写运营原因，不要写完整卡码、手机号或密钥。");
   if (reason === null) return;
@@ -1164,19 +1166,17 @@ async function voidGiftCard(cardID: string): Promise<void> {
   if (!window.confirm("确认作废这张未兑换礼品卡？作废后不能再被用户兑换。")) {
     return;
   }
-  try {
+  await withButtonBusy(button, "作废中", async () => {
     await apiFetch("/admin-api/v1/gift-cards/void", {
       method: "POST",
       json: { card_id: cardID, reason: trimmedReason },
     });
     lastGiftCardCodes = [];
     await render();
-  } catch (error) {
-    window.alert(`作废失败：${errorMessage(error)}`);
-  }
+  }, "作废失败");
 }
 
-async function updateSupportConversationStatus(userID: string, status: string): Promise<void> {
+async function updateSupportConversationStatus(userID: string, status: string, button?: HTMLElement): Promise<void> {
   if (!userID || !status) return;
   const labels: Record<string, string> = {
     open: "重新打开为待回复",
@@ -1190,16 +1190,14 @@ async function updateSupportConversationStatus(userID: string, status: string): 
     note = input.trim();
   }
   if (!window.confirm(`确认${labels[status] || "更新状态"}？`)) return;
-  try {
+  await withButtonBusy(button, "更新中", async () => {
     await apiFetch("/admin-api/v1/support/conversations/status", {
       method: "POST",
       json: { user_id: userID, status, note },
     });
     pageState.supportUserID = userID;
     await render();
-  } catch (error) {
-    window.alert(`更新失败：${errorMessage(error)}`);
-  }
+  }, "更新失败");
 }
 
 async function copyText(text: string): Promise<void> {
@@ -1209,6 +1207,33 @@ async function copyText(text: string): Promise<void> {
     window.alert("已复制");
   } catch {
     window.prompt("复制失败，请手动复制：", text);
+  }
+}
+
+async function withButtonBusy(
+  target: HTMLElement | undefined,
+  busyLabel: string,
+  action: () => Promise<void>,
+  failureTitle: string,
+): Promise<void> {
+  const button = target instanceof HTMLButtonElement ? target : undefined;
+  if (button?.dataset.busy === "true") return;
+  const previousText = button?.textContent || "";
+  if (button) {
+    button.dataset.busy = "true";
+    button.disabled = true;
+    button.textContent = busyLabel;
+  }
+  try {
+    await action();
+  } catch (error) {
+    window.alert(`${failureTitle}：${errorMessage(error)}`);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = previousText;
+      delete button.dataset.busy;
+    }
   }
 }
 
@@ -2359,6 +2384,9 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
   const giftReady = (report.queues.gift_card_batch_count ?? 0) > 0 && (report.queues.gift_card_active ?? 0) > 0;
   const giftWarn = report.queues.gift_card_failed_attempts > 0 || !giftReady;
   const appErrors = day24?.app_errors ?? 0;
+  const authFailures = day24?.auth_failures ?? report.queues.auth_failures ?? 0;
+  const crashReports = day24?.crash_reports ?? report.queues.crash_reports ?? 0;
+  const appQualityLevel = crashReports > 0 || appErrors >= 10 || authFailures >= 10 ? "bad" : appErrors > 0 || authFailures > 0 ? "warn" : "ok";
   return `
     <section class="decision-grid">
       ${decisionCard(
@@ -2391,9 +2419,9 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       )}
       ${decisionCard(
         "App 质量",
-        appErrors ? `${appErrors} 个错误` : "暂无错误",
-        appErrors ? `最近24小时 warn ${day24?.app_warns ?? 0} 条，先看 App 错误 Top。` : `最近24小时 warn ${day24?.app_warns ?? 0} 条。`,
-        appErrors >= 10 ? "bad" : appErrors > 0 ? "warn" : "ok",
+        appErrors || authFailures ? `${appErrors} 个错误 / ${authFailures} 个登录失败` : "暂无错误",
+        `最近24小时 warn ${day24?.app_warns ?? 0} 条，闪退补报 ${crashReports} 条。`,
+        appQualityLevel,
         "app-logs",
       )}
     </section>

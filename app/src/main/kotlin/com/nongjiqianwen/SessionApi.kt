@@ -90,6 +90,11 @@ object SessionApi {
         @SerializedName("expires_at") val expiresAt: Long? = null
     )
 
+    private data class ApiErrorBody(
+        val error: String? = null,
+        @SerializedName("retry_after_seconds") val retryAfterSeconds: Int? = null
+    )
+
     data class FusionAuthTokenSnapshot(
         @SerializedName("auth_token") val authToken: String? = null,
         @SerializedName("scheme_code") val schemeCode: String? = null,
@@ -679,11 +684,21 @@ object SessionApi {
             .build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                reportAuthClientLog(
+                    level = "warn",
+                    event = "auth.login_network_failed",
+                    message = "auth login network failure",
+                    attrs = mapOf(
+                        "endpoint" to endpoint.substringAfterLast('/').take(48),
+                        "reason" to e.javaClass.simpleName
+                    )
+                )
                 mainHandler.post { onResult(false, "网络连接失败，请稍后再试") }
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
+                    val statusCode = it.code
                     val body = it.body?.string().orEmpty()
                     val session = if (it.isSuccessful) {
                         runCatching { gson.fromJson(body, AuthSessionSnapshot::class.java) }.getOrNull()
@@ -703,16 +718,57 @@ object SessionApi {
                         )
                         mainHandler.post { onResult(true, null) }
                     } else {
+                        val errorCode = parseApiErrorCode(body)
+                        reportAuthClientLog(
+                            level = if (statusCode >= 500) "error" else "warn",
+                            event = when {
+                                endpoint.contains("/sms/") -> "auth.sms_login_failed"
+                                endpoint.contains("/fusion/") -> "auth.fusion_login_failed"
+                                else -> "auth.login_failed"
+                            },
+                            message = "auth login failed",
+                            attrs = mapOf(
+                                "endpoint" to endpoint.substringAfterLast('/').take(48),
+                                "http_status" to statusCode,
+                                "error" to errorCode
+                            )
+                        )
                         mainHandler.post {
                             onResult(
                                 false,
-                                if (it.code == 401) "验证码不正确或已过期" else "登录暂时失败，请稍后再试"
+                                authLoginErrorMessage(statusCode, errorCode, endpoint)
                             )
                         }
                     }
                 }
             }
         })
+    }
+
+    private fun parseApiErrorCode(body: String): String =
+        runCatching {
+            gson.fromJson(body, ApiErrorBody::class.java)
+                ?.error
+                .orEmpty()
+                .trim()
+                .take(96)
+        }.getOrDefault("")
+
+    private fun authLoginErrorMessage(statusCode: Int, errorCode: String, endpoint: String): String {
+        val isSms = endpoint.contains("/sms/")
+        return when {
+            statusCode == 429 -> "操作太频繁，请稍后再试"
+            statusCode == 400 && errorCode == "invalid_phone" -> "请输入正确的手机号"
+            statusCode == 400 && errorCode == "invalid_code" -> "请填写验证码"
+            statusCode == 400 && errorCode == "invalid_verify_token" -> "一键登录参数无效，请使用验证码登录"
+            statusCode == 401 && isSms -> "验证码不正确或已过期"
+            statusCode == 401 -> "一键登录校验失败，请使用验证码登录"
+            statusCode == 413 -> "请求内容过大，请重新尝试"
+            statusCode >= 500 && isSms -> "验证码服务暂时不可用，请稍后再试"
+            statusCode >= 500 -> "一键登录暂时不可用，请使用验证码登录"
+            isSms -> "短信登录失败，请稍后再试"
+            else -> "登录暂时失败，请稍后再试"
+        }
     }
 
     private fun enqueueWithRetry401(

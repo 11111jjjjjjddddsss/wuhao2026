@@ -1,10 +1,15 @@
 package com.nongjiqianwen
 
 import android.app.Activity
+import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.Gravity
 import com.alicom.fusion.auth.AlicomFusionAuthCallBack
@@ -33,6 +38,30 @@ object FusionOneLoginClient {
     private var currentBusiness: AlicomFusionBusiness? = null
 
     fun start(activity: Activity, onResult: (Boolean, String?) -> Unit) {
+        AppCrashReporter.setAuthStage("auth.fusion_env_check")
+        val environment = inspectAuthEnvironment(activity)
+        val blockReason = environment.blockReason()
+        if (blockReason != null) {
+            AppCrashReporter.clearAuthStage("auth.fusion_env_check")
+            reportAuthEnvironment(
+                level = "warn",
+                event = "auth.fusion_env_blocked",
+                stage = "env_check",
+                environment = environment,
+                reason = blockReason
+            )
+            onResult(false, environment.userMessageFor(blockReason))
+            return
+        }
+        environment.warningReason()?.let { reason ->
+            reportAuthEnvironment(
+                level = "info",
+                event = "auth.fusion_env_warning",
+                stage = "env_check",
+                environment = environment,
+                reason = reason
+            )
+        }
         AppCrashReporter.setAuthStage("auth.fusion_token")
         SessionApi.requestFusionAuthToken { snapshot, error ->
             if (snapshot?.usable != true) {
@@ -390,6 +419,118 @@ object FusionOneLoginClient {
             event = event,
             message = event,
             attrs = attrs
+        )
+    }
+
+    private fun reportAuthEnvironment(
+        level: String,
+        event: String,
+        stage: String,
+        environment: AuthEnvironmentSnapshot,
+        reason: String
+    ) {
+        SessionApi.reportAuthClientLog(
+            level = level,
+            event = event,
+            message = event,
+            attrs = mapOf(
+                "stage" to stage,
+                "reason" to reason,
+                "network" to environment.networkLabel(),
+                "sim_state" to environment.simStateLabel,
+                "sim_count" to (environment.simCount ?: 0)
+            )
+        )
+    }
+
+    private data class AuthEnvironmentSnapshot(
+        val hasActiveNetwork: Boolean,
+        val hasInternetCapability: Boolean,
+        val hasCellularTransport: Boolean,
+        val hasWifiTransport: Boolean,
+        val hasVpnTransport: Boolean,
+        val simState: Int?,
+        val simCount: Int?
+    ) {
+        val simStateLabel: String
+            get() = when (simState) {
+                TelephonyManager.SIM_STATE_ABSENT -> "absent"
+                TelephonyManager.SIM_STATE_NETWORK_LOCKED -> "network_locked"
+                TelephonyManager.SIM_STATE_PIN_REQUIRED -> "pin_required"
+                TelephonyManager.SIM_STATE_PUK_REQUIRED -> "puk_required"
+                TelephonyManager.SIM_STATE_READY -> "ready"
+                TelephonyManager.SIM_STATE_NOT_READY -> "not_ready"
+                TelephonyManager.SIM_STATE_PERM_DISABLED -> "perm_disabled"
+                TelephonyManager.SIM_STATE_CARD_IO_ERROR -> "card_io_error"
+                TelephonyManager.SIM_STATE_CARD_RESTRICTED -> "card_restricted"
+                TelephonyManager.SIM_STATE_UNKNOWN, null -> "unknown"
+                else -> "other"
+            }
+
+        fun networkLabel(): String =
+            listOfNotNull(
+                "active".takeIf { hasActiveNetwork },
+                "internet".takeIf { hasInternetCapability },
+                "cellular".takeIf { hasCellularTransport },
+                "wifi".takeIf { hasWifiTransport },
+                "vpn".takeIf { hasVpnTransport }
+            ).ifEmpty { listOf("none") }.joinToString(separator = "+")
+
+        fun blockReason(): String? =
+            when {
+                !hasActiveNetwork || !hasInternetCapability -> "no_network"
+                simCount == 0 -> "no_sim"
+                simState == TelephonyManager.SIM_STATE_ABSENT -> "no_sim"
+                simState in setOf(
+                    TelephonyManager.SIM_STATE_NETWORK_LOCKED,
+                    TelephonyManager.SIM_STATE_PIN_REQUIRED,
+                    TelephonyManager.SIM_STATE_PUK_REQUIRED,
+                    TelephonyManager.SIM_STATE_NOT_READY,
+                    TelephonyManager.SIM_STATE_PERM_DISABLED,
+                    TelephonyManager.SIM_STATE_CARD_IO_ERROR,
+                    TelephonyManager.SIM_STATE_CARD_RESTRICTED
+                ) -> "sim_not_ready"
+                else -> null
+            }
+
+        fun warningReason(): String? =
+            when {
+                hasVpnTransport -> "vpn_active"
+                !hasCellularTransport -> "no_active_cellular"
+                else -> null
+            }
+
+        fun userMessageFor(reason: String): String =
+            when (reason) {
+                "no_network" -> "当前网络不可用，请联网后重试，或使用验证码登录"
+                "no_sim" -> "未检测到可用 SIM 卡，请插卡并打开移动数据，或使用验证码登录"
+                "sim_not_ready" -> "SIM 卡暂不可用，请确认默认移动数据卡正常，或使用验证码登录"
+                else -> "一键登录暂不可用，请使用验证码登录"
+            }
+    }
+
+    private fun inspectAuthEnvironment(context: Context): AuthEnvironmentSnapshot {
+        val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val network = connectivity?.activeNetwork
+        val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
+        val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+        val simState = runCatching { telephony?.simState }.getOrNull()
+        val simCount = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                telephony?.activeModemCount
+            } else {
+                @Suppress("DEPRECATION")
+                telephony?.phoneCount
+            }
+        }.getOrNull()
+        return AuthEnvironmentSnapshot(
+            hasActiveNetwork = network != null,
+            hasInternetCapability = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
+            hasCellularTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true,
+            hasWifiTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true,
+            hasVpnTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true,
+            simState = simState,
+            simCount = simCount
         )
     }
 

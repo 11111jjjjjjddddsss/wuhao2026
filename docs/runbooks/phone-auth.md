@@ -9,8 +9,9 @@
 - 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会调用该接口、清本地 auth token 并回到登录门；完整设备管理 / 远程吊销后续再迭代
 - 登录成功后，Android 会随一键登录和短信登录 payload 提交旧本机 `legacy_user_id` 作为迁移桥；后端只接受本机 UUID 形态 legacy ID 或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为 legacy bridge，避免账号之间互相合并。迁移目标统一是手机号账号 `acct_...`
 - 阿里云融合认证 Android 方案已通过 CLI 创建，DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS `/etc/nongjiqiancha/server.env`
-- Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按阿里云融合认证 100001 一键登录流程拉取服务端 fusion token、初始化 SDK、拉起授权页，Android 不在 `onHalfWayVerifySuccess` 中调用后端校验，也不消费中途 token；最终只在 `onVerifySuccess` 收到 token 后提交给 `/api/auth/fusion/login`，由后端调用一次 `VerifyWithFusionAuthToken` 换手机号并签账号 token，不再用静态 token 或测试 ID 绕过登录。授权页已接 `AlicomFusionAuthUICallBack` 自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框可见且默认未勾选；用户点其他手机号登录、SDK 失败、取消或超时都会回到 App 自己的验证码登录页。Android 端还会在一键登录、短信发送和短信登录阶段设置最小崩溃阶段标记，若进程直接退出，下次启动会通过 `auth.app_crash` 补报安全摘要
-- Android 主 manifest 已显式声明 `READ_PHONE_STATE`、`ACCESS_NETWORK_STATE` 和 `ACCESS_WIFI_STATE`，减少 release 构建依赖 AAR manifest merge 的不确定性；正式 release 前仍要检查 merged manifest
+- Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按阿里云融合认证 100001 一键登录流程拉取服务端 fusion token、初始化 SDK、拉起授权页，Android 不在 `onHalfWayVerifySuccess` 中调用后端校验，也不消费中途 token；最终只在 `onVerifySuccess` 收到 token 后提交给 `/api/auth/fusion/login`，由后端调用一次 `VerifyWithFusionAuthToken` 换手机号并签账号 token，不再用静态 token 或测试 ID 绕过登录。授权页已接 `AlicomFusionAuthUICallBack` 自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框可见且默认未勾选；用户点其他手机号登录、SDK 失败、取消或超时都会回到 App 自己的验证码登录页。Android 端会在拉取 fusion token 前先做网络 / SIM 环境预检：无网络、无 SIM、SIM 未就绪直接回落验证码登录并上报 `auth.fusion_env_blocked`；VPN / 无蜂窝等可疑环境不中断主链，但会上报 `auth.fusion_env_warning` 便于后台排障。Android 端还会在一键登录、短信发送和短信登录阶段设置最小崩溃阶段标记，若进程直接退出，下次启动会通过 `auth.app_crash` 补报安全摘要
+- Android 主 manifest 已显式声明 `READ_PHONE_STATE`、`ACCESS_NETWORK_STATE`、`ACCESS_WIFI_STATE` 和 `CHANGE_NETWORK_STATE`，减少 release 构建依赖 AAR manifest merge 的不确定性，并满足少数 Wi-Fi + 移动数据切换取号场景；正式 release 前仍要检查 merged manifest
+- Android 网络安全配置默认仍禁止明文 HTTP，仅按阿里云 SDK FAQ 对移动 / 联通取号网关 `onekey.cmpassport.com`、`enrichgw.10010.com` 做域名级明文放行；不要为了一键登录直接全局开启 `cleartextTrafficPermitted=true`
 - 短信登录后端接口已接阿里云 Dypns API，ECS 当前已配置 DYPNS 基础凭证、短信签名和验证码模板；`/healthz` 已显示 `dypns_sms=ok`
 - 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成临时调试 APK 走 `http://39.106.1.151`。当前 Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Android Studio 直接 Run 的 debug 包和正式 release 包都接正式 HTTPS 后端；`USE_BACKEND_AB` 固定开启，不再通过 Gradle 参数关闭后端主链或切换业务后端地址。本机存在固定 release 签名配置时，debug 构建也使用同一把 release 签名并开启一键登录，让测试包和正式包保持同包名、同签名、同业务链路；缺少 release 签名配置的环境下，debug 包会关闭一键登录并退到验证码登录。debug 包与正式包的差异只保留 debug-only 预览面板和调试日志。
 - Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，融合认证 token、融合认证登录校验、短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
@@ -82,7 +83,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 
 - 不在数据库保存可直接读取的明文手机号；`app_accounts` 保存 `APP_SECRET` HMAC 后的 `phone_hash`、脱敏 `phone_mask` 和 AES-GCM 加密的 `phone_ciphertext`
 - 后台 `owner`、`support`、`finance_ops` 可在用户 / 反馈页面查看和复制完整手机号，用于回访；用户管理和帮助反馈搜索框输入完整 11 位手机号时，服务端用 `phone_hash` 精确匹配账号，不把明文手机号写入日志或审计。`ops_readonly`、`auditor` 等只读巡检角色继续只看脱敏手机号。审计只记录是否展示了完整号，不记录手机号值
-- 后台监控面板已新增“登录排障”聚合：最近 24 小时认证失败、一键登录失败、短信失败、登录前日志、`auth.app_crash` / `app.crash` 闪退补报和 Top 事件会直接展示，并提供按钮跳转 App 日志筛选；登录前日志统一 `user_id=preauth`
+- 后台监控面板已新增“登录排障”聚合：最近 24 小时认证失败、一键登录失败、短信失败、登录前日志、`auth.fusion_env_blocked / auth.fusion_env_warning` 环境预检、`auth.app_crash / app.crash` 闪退补报和 Top 事件会直接展示，并提供按钮跳转 App 日志筛选；登录前日志统一 `user_id=preauth`
 - 旧账号如果还没有 `phone_ciphertext`，无法从 hash / mask 反推完整手机号，必须等用户下一次一键登录或短信登录后自动补齐
 - 账号 ID `acct_...` 是会员、每日额度、加油包、礼品卡、订单、帮助反馈、App 日志、A/B/C 记忆和聊天归档的统一归属 ID。旧本机 UUID 只用于登录时一次性迁移桥，不作为生产长期身份继续扩展。
 - 不把阿里云 AccessKey、短信模板变量、APP_SECRET 写进仓库
@@ -97,16 +98,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 ## 参考官方文档
 
 - 阿里云 `CreateSchemeConfig`
-- 阿里云 `GetFusionAuthToken`
-- 阿里云 `VerifyWithFusionAuthToken`
+- 阿里云 `GetFusionAuthToken`：服务端获取鉴权 Token，Android 场景必须携带 SchemeCode、PackageName、PackageSign、Platform 等关键参数。
+- 阿里云 `VerifyWithFusionAuthToken`：客户端 SDK 最终拿到统一认证 Token 后，服务端调用该接口获取认证结果。
 - 阿里云 `SendSmsVerifyCode`
 - 阿里云 `CheckSmsVerifyCode`
 - 阿里云登录 / 注册场景文档明确：号码认证失败时应继续流程，或点“其他手机号登录”进入短信认证
-- 阿里云 SDK FAQ 提醒：`checkEnvAvailable` 返回 false 时需检查 SIM 卡移动数据是否开启，Android 还要检查 WLAN 和移动数据网络权限
+- 阿里云 SDK FAQ 提醒：`checkEnvAvailable` 返回 false 时需检查 SIM 卡移动数据是否开启，Android 还要检查 WLAN 和移动数据网络权限；FAQ 对 Android 取号网关给出 `networkSecurityConfig` 域名级明文示例，不需要全局放开所有 HTTP
 
 ## 双卡 / 代理 / 网络切换排障口径
 
 - 一键登录依赖运营商网关取号能力，不是 App 自己读取短信或联系人。双卡手机上，通常以当前默认移动数据卡 / 当前蜂窝数据链路作为本机号码认证目标；App 不应承诺在授权页里直接选择某一张 SIM 卡。
 - 如果用户想用另一张卡做一键登录，先到系统设置切换默认移动数据卡，再回 App 重试；如果仍失败，直接走验证码登录，这是正式兜底，不是临时测试方案。
-- VPN / 国外代理、纯 Wi-Fi、移动数据关闭、SIM 卡欠费 / 未激活、运营商网络切换中、部分 5G 兼容性问题，都可能导致 SDK 环境检测、授权页拉起或取号失败。
-- 真机排障顺序：关闭代理 / VPN、打开移动数据、确认默认数据卡和目标手机号一致、确认 App 电话状态 / 网络权限已允许、再测一键登录；失败后立刻看后台监控面板“登录排障”和 App 日志 `auth.*` / `auth.app_crash` 事件。
+- VPN / 国外代理、纯 Wi-Fi、移动数据关闭、SIM 卡欠费 / 未激活、运营商网络切换中、部分 5G 兼容性问题，都可能导致 SDK 环境检测、授权页拉起或取号失败。App 当前只对“明显不可用”的无网络、无 SIM、SIM 未就绪做前置拦截；对 VPN / 无蜂窝只记录 warning，让 SDK 自己继续判断，避免误伤少数运营商 / 系统组合。
+- 真机排障顺序：关闭代理 / VPN、打开移动数据、确认默认数据卡和目标手机号一致、确认 App 电话状态 / 网络权限已允许、再测一键登录；失败后立刻看后台监控面板“登录排障”和 App 日志 `auth.*` / `auth.app_crash` 事件。若看到 `auth.fusion_env_blocked`，先处理网络 / SIM；若看到 `auth.fusion_sdk_token_auth_failed` 或 `auth.fusion_scene_start_failed`，优先核对包名、签名、SchemeCode 和阿里云控制台方案；若看到 `auth.fusion_login_failed`，优先查服务端 `VerifyWithFusionAuthToken` 返回和 token 是否被重复消费。

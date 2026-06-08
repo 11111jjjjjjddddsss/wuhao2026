@@ -470,11 +470,22 @@ button {
   min-width: 220px;
   max-width: 420px;
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .code-cell {
   min-width: 170px;
+  max-width: 360px;
   user-select: all;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.mono {
+  font-family: "Cascadia Mono", Consolas, "SFMono-Regular", ui-monospace, monospace;
+  overflow-wrap: anywhere;
 }
 
 .table tr:hover td {
