@@ -3,6 +3,8 @@ package app
 import (
 	"testing"
 	"time"
+
+	mysqlDriver "github.com/go-sql-driver/mysql"
 )
 
 func TestResolveDBPoolConfigDefaults(t *testing.T) {
@@ -65,5 +67,47 @@ func TestResolveDBPoolConfigClampsIdleToOpen(t *testing.T) {
 	}
 	if config.ConnMaxLifetime != 30*time.Minute {
 		t.Fatalf("ConnMaxLifetime = %s, want default 30m", config.ConnMaxLifetime)
+	}
+}
+
+func TestBuildMySQLDSNDefaultsCollationForRawDSN(t *testing.T) {
+	dsn, err := buildMySQLDSN("user:pass@tcp(127.0.0.1:3306)/nongjiqiancha?parseTime=true")
+	if err != nil {
+		t.Fatalf("buildMySQLDSN returned error: %v", err)
+	}
+	cfg, err := mysqlDriver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("ParseDSN returned error: %v", err)
+	}
+	if cfg.Collation != defaultMySQLCollation {
+		t.Fatalf("Collation = %q, want %q", cfg.Collation, defaultMySQLCollation)
+	}
+}
+
+func TestBuildMySQLDSNDefaultsCollationForMySQLURL(t *testing.T) {
+	dsn, err := buildMySQLDSN("mysql://user:pass@127.0.0.1:3306/nongjiqiancha?parseTime=true")
+	if err != nil {
+		t.Fatalf("buildMySQLDSN returned error: %v", err)
+	}
+	cfg, err := mysqlDriver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("ParseDSN returned error: %v", err)
+	}
+	if cfg.Collation != defaultMySQLCollation {
+		t.Fatalf("Collation = %q, want %q", cfg.Collation, defaultMySQLCollation)
+	}
+}
+
+func TestBuildMySQLDSNRespectsExplicitCollationOverride(t *testing.T) {
+	dsn, err := buildMySQLDSN("mysql://user:pass@127.0.0.1:3306/nongjiqiancha?collation=utf8mb4_0900_ai_ci")
+	if err != nil {
+		t.Fatalf("buildMySQLDSN returned error: %v", err)
+	}
+	cfg, err := mysqlDriver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("ParseDSN returned error: %v", err)
+	}
+	if cfg.Collation != "utf8mb4_0900_ai_ci" {
+		t.Fatalf("Collation = %q, want explicit override", cfg.Collation)
 	}
 }

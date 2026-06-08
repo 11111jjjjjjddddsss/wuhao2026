@@ -11,14 +11,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,7 +36,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -55,12 +54,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -84,7 +88,6 @@ fun LoginGate(content: @Composable () -> Unit) {
 }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
 private fun LoginScreen(onLoginSuccess: () -> Unit) {
     LaunchedEffect(Unit) {
         LaunchUiGate.chatReady = true
@@ -98,6 +101,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableIntStateOf(0) }
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
+    val agreementText = remember { buildLoginAgreementText() }
     val context = LocalContext.current
 
     fun startFusionOneLogin(activity: Activity) {
@@ -164,7 +168,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(52.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF111111)),
                         contentAlignment = Alignment.Center
@@ -172,14 +176,20 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         Image(
                             painter = painterResource(R.mipmap.ic_launcher_foreground),
                             contentDescription = null,
-                            modifier = Modifier.size(68.dp)
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer(
+                                    scaleX = 1.24f,
+                                    scaleY = 1.24f
+                                )
                         )
                     }
-                    Spacer(Modifier.size(10.dp))
+                    Spacer(Modifier.size(14.dp))
                     Text(
                         text = "农技千查",
                         color = Color(0xFF111111),
-                        fontSize = 34.sp,
+                        fontSize = 40.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.sp
                     )
@@ -334,30 +344,41 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                 }
 
                 Spacer(Modifier.height(24.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Checkbox(checked = agreed, onCheckedChange = { agreed = it })
-                    FlowRow(
-                        horizontalArrangement = Arrangement.Start,
-                        verticalArrangement = Arrangement.Center,
-                        modifier = Modifier.weight(1f)
+                    Row(
+                        modifier = Modifier.widthIn(max = 360.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Text(
-                            text = "我已阅读并同意",
-                            color = Color(0xFF575D66),
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            letterSpacing = 0.sp
+                        LoginAgreementCheckbox(
+                            checked = agreed,
+                            onCheckedChange = { agreed = it },
+                            modifier = Modifier.padding(top = 2.dp)
                         )
-                        LoginLegalLink(
-                            text = "《服务协议》",
-                            onClick = { legalPage = LoginLegalPage.ServiceAgreement }
-                        )
-                        LoginLegalLink(
-                            text = "《隐私政策》",
-                            onClick = { legalPage = LoginLegalPage.PrivacyPolicy }
+                        Spacer(Modifier.size(12.dp))
+                        ClickableText(
+                            text = agreementText,
+                            style = androidx.compose.ui.text.TextStyle(
+                                color = Color(0xFF575D66),
+                                fontSize = 14.sp,
+                                lineHeight = 22.sp,
+                                letterSpacing = 0.sp
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(top = 1.dp),
+                            onClick = { offset ->
+                                agreementText.getStringAnnotations(start = offset, end = offset)
+                                    .firstOrNull()
+                                    ?.let { annotation ->
+                                        when (annotation.tag) {
+                                            "service" -> legalPage = LoginLegalPage.ServiceAgreement
+                                            "privacy" -> legalPage = LoginLegalPage.PrivacyPolicy
+                                        }
+                                    }
+                            }
                         )
                     }
                 }
@@ -385,21 +406,56 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     }
 }
 
+private fun buildLoginAgreementText() = buildAnnotatedString {
+    append("我已阅读并同意 ")
+    pushStringAnnotation(tag = "service", annotation = "service")
+    withStyle(
+        SpanStyle(
+            color = Color(0xFF111111),
+            fontWeight = FontWeight.SemiBold
+        )
+    ) {
+        append("《服务协议》")
+    }
+    pop()
+    append("  ")
+    pushStringAnnotation(tag = "privacy", annotation = "privacy")
+    withStyle(
+        SpanStyle(
+            color = Color(0xFF111111),
+            fontWeight = FontWeight.SemiBold
+        )
+    ) {
+        append("《隐私政策》")
+    }
+    pop()
+}
+
 @Composable
-private fun LoginLegalLink(
-    text: String,
-    onClick: () -> Unit
+private fun LoginAgreementCheckbox(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Text(
-        text = text,
-        color = Color(0xFF111111),
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-        letterSpacing = 0.sp,
-        modifier = Modifier
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = 2.dp, vertical = 5.dp)
-    )
+    val borderColor = if (checked) Color(0xFF111111) else Color(0xFF747682)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = modifier
+            .size(24.dp)
+            .clip(RoundedCornerShape(5.dp))
+            .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(5.dp))
+            .clickable(role = Role.Checkbox) { onCheckedChange(!checked) }
+    ) {
+        if (checked) {
+            Text(
+                text = "✓",
+                color = Color(0xFF111111),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                lineHeight = 16.sp
+            )
+        }
+    }
 }
 
 @Composable

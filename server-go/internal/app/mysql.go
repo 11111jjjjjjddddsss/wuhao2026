@@ -19,6 +19,8 @@ import (
 	mysqlDriver "github.com/go-sql-driver/mysql"
 )
 
+const defaultMySQLCollation = "utf8mb4_unicode_ci"
+
 func OpenDB() (*sql.DB, error) {
 	rawURL := strings.TrimSpace(os.Getenv("MYSQL_URL"))
 	if rawURL == "" {
@@ -174,7 +176,12 @@ func acquireMySQLMigrationLock(ctx context.Context, conn *sql.Conn) (func() erro
 
 func buildMySQLDSN(raw string) (string, error) {
 	if !strings.Contains(raw, "://") {
-		return raw, nil
+		cfg, err := mysqlDriver.ParseDSN(raw)
+		if err != nil {
+			return "", err
+		}
+		applyDefaultMySQLConfig(cfg)
+		return cfg.FormatDSN(), nil
 	}
 
 	parsed, err := url.Parse(raw)
@@ -204,9 +211,8 @@ func buildMySQLDSN(raw string) (string, error) {
 	cfg.Loc = time.UTC
 	cfg.MultiStatements = true
 	cfg.AllowNativePasswords = true
-	cfg.Params = map[string]string{
-		"charset": "utf8mb4",
-	}
+	cfg.Params = map[string]string{}
+	applyDefaultMySQLConfig(cfg)
 
 	query := parsed.Query()
 	for key, values := range query {
@@ -217,6 +223,8 @@ func buildMySQLDSN(raw string) (string, error) {
 		switch strings.ToLower(key) {
 		case "charset":
 			cfg.Params["charset"] = value
+		case "collation":
+			cfg.Collation = value
 		case "parsetime":
 			cfg.ParseTime = value == "1" || strings.EqualFold(value, "true")
 		case "multistatements":
@@ -232,6 +240,21 @@ func buildMySQLDSN(raw string) (string, error) {
 	}
 
 	return cfg.FormatDSN(), nil
+}
+
+func applyDefaultMySQLConfig(cfg *mysqlDriver.Config) {
+	if cfg == nil {
+		return
+	}
+	if cfg.Params == nil {
+		cfg.Params = map[string]string{}
+	}
+	if strings.TrimSpace(cfg.Params["charset"]) == "" {
+		cfg.Params["charset"] = "utf8mb4"
+	}
+	if strings.TrimSpace(cfg.Collation) == "" {
+		cfg.Collation = defaultMySQLCollation
+	}
 }
 
 func resolveExistingDir(envName string, candidates ...string) (string, error) {
