@@ -109,13 +109,14 @@ type AdminMonitoringQueues struct {
 }
 
 type AdminMonitoringAppUpdate struct {
-	ConfigValid       bool   `json:"config_valid"`
-	HasAPKURL         bool   `json:"has_apk_url"`
-	HasSHA256         bool   `json:"has_sha256"`
-	HasFileSize       bool   `json:"has_file_size"`
-	LatestVersionCode int    `json:"latest_version_code"`
-	LatestVersionName string `json:"latest_version_name,omitempty"`
-	ForceUpdate       bool   `json:"force_update"`
+	ConfigValid               bool   `json:"config_valid"`
+	DownloadArtifactsComplete bool   `json:"download_artifacts_complete"`
+	HasAPKURL                 bool   `json:"has_apk_url"`
+	HasSHA256                 bool   `json:"has_sha256"`
+	HasFileSize               bool   `json:"has_file_size"`
+	LatestVersionCode         int    `json:"latest_version_code"`
+	LatestVersionName         string `json:"latest_version_name,omitempty"`
+	ForceUpdate               bool   `json:"force_update"`
 }
 
 type AdminMonitoringActionItem struct {
@@ -275,15 +276,18 @@ type AdminDailyAgriEntry struct {
 }
 
 type AdminAppUpdateConfig struct {
-	LatestVersionCode int    `json:"latest_version_code"`
-	LatestVersionName string `json:"latest_version_name,omitempty"`
-	APKURL            string `json:"apk_url,omitempty"`
-	APKChecksumSHA256 string `json:"apk_sha256,omitempty"`
-	ReleaseNotes      string `json:"release_notes,omitempty"`
-	ForceUpdate       bool   `json:"force_update"`
-	FileSizeBytes     int64  `json:"file_size_bytes,omitempty"`
-	ConfigValid       bool   `json:"config_valid"`
-	HasAPKURL         bool   `json:"has_apk_url"`
+	LatestVersionCode         int    `json:"latest_version_code"`
+	LatestVersionName         string `json:"latest_version_name,omitempty"`
+	APKURL                    string `json:"apk_url,omitempty"`
+	APKChecksumSHA256         string `json:"apk_sha256,omitempty"`
+	ReleaseNotes              string `json:"release_notes,omitempty"`
+	ForceUpdate               bool   `json:"force_update"`
+	FileSizeBytes             int64  `json:"file_size_bytes,omitempty"`
+	ConfigValid               bool   `json:"config_valid"`
+	DownloadArtifactsComplete bool   `json:"download_artifacts_complete"`
+	HasAPKURL                 bool   `json:"has_apk_url"`
+	HasSHA256                 bool   `json:"has_sha256"`
+	HasFileSize               bool   `json:"has_file_size"`
 }
 
 func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
@@ -322,6 +326,8 @@ func (s *Server) handleAdminMonitoring(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	report.ActionItems = filterAdminMonitoringActionRoutes(report.ActionItems, admin.User.Role)
+	report.Capabilities = filterAdminMonitoringCapabilityRoutes(report.Capabilities, admin.User.Role)
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.monitoring", "dashboard", "", "", true, http.StatusOK, map[string]any{
 		"app_errors":          report.Queues.AppErrors,
 		"support_needs_reply": report.Queues.SupportNeedsReply,
@@ -549,15 +555,18 @@ func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Requ
 	}
 	cfg := readAndroidUpdateConfig(os.Getenv)
 	result := AdminAppUpdateConfig{
-		LatestVersionCode: cfg.LatestVersionCode,
-		LatestVersionName: cfg.LatestVersionName,
-		APKURL:            cfg.APKURL,
-		APKChecksumSHA256: cfg.APKChecksumSHA256,
-		ReleaseNotes:      cfg.ReleaseNotes,
-		ForceUpdate:       cfg.ForceUpdate,
-		FileSizeBytes:     cfg.FileSizeBytes,
-		HasAPKURL:         strings.TrimSpace(cfg.APKURL) != "",
-		ConfigValid:       cfg.LatestVersionCode > 0 && (strings.TrimSpace(cfg.APKURL) == "" || isHTTPSURL(cfg.APKURL)),
+		LatestVersionCode:         cfg.LatestVersionCode,
+		LatestVersionName:         cfg.LatestVersionName,
+		APKURL:                    cfg.APKURL,
+		APKChecksumSHA256:         cfg.APKChecksumSHA256,
+		ReleaseNotes:              cfg.ReleaseNotes,
+		ForceUpdate:               cfg.ForceUpdate,
+		FileSizeBytes:             cfg.FileSizeBytes,
+		ConfigValid:               androidUpdateConfigValid(cfg),
+		DownloadArtifactsComplete: androidUpdateDownloadArtifactsComplete(cfg),
+		HasAPKURL:                 strings.TrimSpace(cfg.APKURL) != "",
+		HasSHA256:                 strings.TrimSpace(cfg.APKChecksumSHA256) != "",
+		HasFileSize:               cfg.FileSizeBytes > 0,
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.read", "app_update", "android", "", true, http.StatusOK, map[string]any{"latest_version_code": cfg.LatestVersionCode, "has_apk_url": result.HasAPKURL})
 	s.writeJSON(w, http.StatusOK, result)
@@ -741,15 +750,16 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	hasSHA256 := strings.TrimSpace(updateCfg.APKChecksumSHA256) != ""
 	hasFileSize := updateCfg.FileSizeBytes > 0
 	queues.AppUpdate = AdminMonitoringAppUpdate{
-		ConfigValid:       updateCfg.LatestVersionCode > 0 && (!hasAPKURL || (isHTTPSURL(updateCfg.APKURL) && hasSHA256 && hasFileSize)),
-		HasAPKURL:         hasAPKURL,
-		HasSHA256:         hasSHA256,
-		HasFileSize:       hasFileSize,
-		LatestVersionCode: updateCfg.LatestVersionCode,
-		LatestVersionName: updateCfg.LatestVersionName,
-		ForceUpdate:       updateCfg.ForceUpdate,
+		ConfigValid:               androidUpdateConfigValid(updateCfg),
+		DownloadArtifactsComplete: androidUpdateDownloadArtifactsComplete(updateCfg),
+		HasAPKURL:                 hasAPKURL,
+		HasSHA256:                 hasSHA256,
+		HasFileSize:               hasFileSize,
+		LatestVersionCode:         updateCfg.LatestVersionCode,
+		LatestVersionName:         updateCfg.LatestVersionName,
+		ForceUpdate:               updateCfg.ForceUpdate,
 	}
-	if queues.GiftCardActive, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active'", nil); err != nil {
+	if queues.GiftCardActive, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active' AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)", []any{nowMs, nowMs}); err != nil {
 		return queues, err
 	}
 	if queues.GiftCardRedeemed, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'redeemed'", nil); err != nil {
@@ -839,8 +849,16 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	}
 	if !queues.AppUpdate.ConfigValid {
 		items = append(items, AdminMonitoringActionItem{
-			Title: "安装包配置不完整",
-			Body:  "正式 APK 下载建议同时配置 HTTPS 地址、SHA-256 和文件大小，避免用户下载不可控文件。",
+			Title: "安装包配置非法",
+			Body:  "检查更新配置至少要有版本号；如果配置 APK 地址，必须使用 HTTPS。",
+			Level: "warn",
+			Route: "app-update",
+		})
+	}
+	if queues.AppUpdate.ConfigValid && !queues.AppUpdate.DownloadArtifactsComplete {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "正式 APK 下载物料未齐",
+			Body:  "上架前建议同时配置 HTTPS APK、SHA-256 和文件大小，避免用户下载不可控文件。",
 			Level: "warn",
 			Route: "app-update",
 		})
@@ -867,6 +885,47 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
 		{Title: "SLS 告警", Status: "planned", Body: "日志已采集到 SLS，自动告警和仪表盘还要继续补。", Route: "health"},
 		{Title: "产品洞察", Status: "planned", Body: "后续做脱敏聚合报表，不直接铺完整聊天内容。", Route: "insights"},
+	}
+}
+
+func filterAdminMonitoringActionRoutes(items []AdminMonitoringActionItem, role string) []AdminMonitoringActionItem {
+	for idx := range items {
+		if items[idx].Route != "" && !adminRouteAllowed(role, items[idx].Route) {
+			items[idx].Route = ""
+		}
+	}
+	return items
+}
+
+func filterAdminMonitoringCapabilityRoutes(items []AdminMonitoringCapability, role string) []AdminMonitoringCapability {
+	for idx := range items {
+		if items[idx].Route != "" && !adminRouteAllowed(role, items[idx].Route) {
+			items[idx].Route = ""
+		}
+	}
+	return items
+}
+
+func adminRouteAllowed(role string, route string) bool {
+	switch strings.TrimSpace(route) {
+	case "", "overview", "monitoring", "health", "insights":
+		return adminRoleAllowed(role)
+	case "users", "entitlements", "orders":
+		return adminRoleAllowed(role, "ops_readonly", "support", "finance_ops")
+	case "gift-cards":
+		return adminRoleAllowed(role, "finance_ops", "ops_readonly", "auditor")
+	case "support":
+		return adminRoleAllowed(role, "support", "ops_readonly", "auditor")
+	case "app-logs":
+		return adminRoleAllowed(role, "ops_readonly", "support", "auditor")
+	case "today-agri":
+		return adminRoleAllowed(role, "content_ops", "ops_readonly", "auditor")
+	case "app-update":
+		return adminRoleAllowed(role, "release_ops", "ops_readonly", "auditor")
+	case "audit":
+		return adminRoleAllowed(role, "auditor", "ops_readonly")
+	default:
+		return false
 	}
 }
 

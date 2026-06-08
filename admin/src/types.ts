@@ -1,5 +1,21 @@
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = Record<string, JsonValue>;
+export type AdminRouteKey =
+  | "overview"
+  | "monitoring"
+  | "users"
+  | "entitlements"
+  | "orders"
+  | "gift-cards"
+  | "support"
+  | "app-logs"
+  | "today-agri"
+  | "app-update"
+  | "audit"
+  | "insights"
+  | "health";
+export type AdminMonitoringLevel = "ok" | "warn" | "bad" | "error";
+export type AdminMonitoringCapabilityStatus = "ready" | "partial" | "planned";
 
 export interface AdminUser {
   id: number;
@@ -77,6 +93,7 @@ export interface AdminMonitoringQueues {
 
 export interface AdminMonitoringAppUpdate {
   config_valid: boolean;
+  download_artifacts_complete: boolean;
   has_apk_url: boolean;
   has_sha256: boolean;
   has_file_size: boolean;
@@ -88,16 +105,16 @@ export interface AdminMonitoringAppUpdate {
 export interface AdminMonitoringActionItem {
   title: string;
   body: string;
-  level: string;
-  route?: string;
+  level: AdminMonitoringLevel;
+  route?: AdminRouteKey;
   count?: number;
 }
 
 export interface AdminMonitoringCapability {
   title: string;
-  status: string;
+  status: AdminMonitoringCapabilityStatus;
   body: string;
-  route?: string;
+  route?: AdminRouteKey;
 }
 
 export interface AdminRegionMetric {
@@ -402,7 +419,10 @@ export interface AdminAppUpdateConfig {
   force_update: boolean;
   file_size_bytes?: number;
   config_valid: boolean;
+  download_artifacts_complete: boolean;
   has_apk_url: boolean;
+  has_sha256: boolean;
+  has_file_size: boolean;
 }
 
 export interface ApiListResponse<T> {

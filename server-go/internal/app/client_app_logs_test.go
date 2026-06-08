@@ -195,6 +195,18 @@ func TestParseClientAppLogQueryRejectsInvalidFilters(t *testing.T) {
 	}
 }
 
+func TestClientAppLogSummaryLimitHonorsSmallerCallerLimit(t *testing.T) {
+	if got := clientAppLogSummaryLimit(10); got != 10 {
+		t.Fatalf("summary limit = %d, want 10", got)
+	}
+	if got := clientAppLogSummaryLimit(0); got != clientAppLogInternalSummaryLimit {
+		t.Fatalf("default summary limit = %d, want %d", got, clientAppLogInternalSummaryLimit)
+	}
+	if got := clientAppLogSummaryLimit(500); got != clientAppLogInternalSummaryLimit {
+		t.Fatalf("capped summary limit = %d, want %d", got, clientAppLogInternalSummaryLimit)
+	}
+}
+
 func TestHandleCreateClientAppLogRejectsOversizedBodyWith413(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	body := `{"level":"warn","event":"chat.failure","message":"` + strings.Repeat("x", clientAppLogMaxBodyBytes) + `"}`

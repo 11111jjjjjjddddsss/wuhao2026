@@ -16,6 +16,7 @@ import type {
   AdminSupportConversation,
   AdminSupportMessage,
   AdminTopupPackEntry,
+  AdminRouteKey,
   AdminUserDetail,
   AdminUserListEntry,
   AdminUpgradeCredit,
@@ -25,20 +26,7 @@ import type {
   JsonValue,
 } from "./types";
 
-type RouteKey =
-  | "overview"
-  | "monitoring"
-  | "users"
-  | "entitlements"
-  | "orders"
-  | "gift-cards"
-  | "support"
-  | "app-logs"
-  | "today-agri"
-  | "app-update"
-  | "audit"
-  | "insights"
-  | "health";
+type RouteKey = AdminRouteKey;
 
 interface RouteItem {
   key: RouteKey;
@@ -1464,7 +1452,11 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
       <dt>SHA-256</dt><dd>${escapeHTML(config.apk_sha256 || "未配置")}</dd>
       <dt>文件大小</dt><dd>${formatBytes(config.file_size_bytes)}</dd>
       <dt>强制更新</dt><dd>${config.force_update ? statusPill("true", "warn") : statusPill("false", "ok")}</dd>
-      <dt>APK URL</dt><dd>${config.has_apk_url ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
+      <dt>配置合法</dt><dd>${config.config_valid ? statusPill("合法", "ok") : statusPill("异常", "warn")}</dd>
+      <dt>正式下载物料</dt><dd>${config.download_artifacts_complete ? statusPill("已齐", "ok") : statusPill("未齐", "warn")}</dd>
+      <dt>APK URL 状态</dt><dd>${config.has_apk_url ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
+      <dt>SHA-256 状态</dt><dd>${config.has_sha256 ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
+      <dt>文件大小状态</dt><dd>${config.has_file_size ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
       <dt>release notes</dt><dd>${escapeHTML(config.release_notes || "未配置")}</dd>
     </dl>
   `;
@@ -1611,7 +1603,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `最早待回复 ${formatTime(queues.support_oldest_pending_at)}` : "暂无待回复", queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
-      ${queueCard("安装包下载", update.config_valid ? "已配置" : "未放正式包", updateStatusLine(update), update.config_valid ? "ok" : "warn")}
+      ${queueCard("安装包下载", update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可用`, `${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`, queues.gift_card_failed_attempts ? "warn" : "ok")}
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>
@@ -1630,7 +1622,7 @@ function queueCard(title: string, value: string | number, body: string, level: "
 
 function updateStatusLine(update: AdminMonitoring["queues"]["app_update"]): string {
   const version = update.latest_version_code ? `v${update.latest_version_code}${update.latest_version_name ? ` / ${update.latest_version_name}` : ""}` : "未配置版本";
-  return `${version}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
+  return `${version}；配置 ${update.config_valid ? "合法" : "异常"}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
 }
 
 function dailyAgriStatusText(status: string): string {
@@ -1694,6 +1686,7 @@ function monitoringHero(report: AdminMonitoring): string {
 
 function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring["windows"][number] | undefined, day24: AdminMonitoring["windows"][number] | undefined): string {
   const worst = monitoringWorstLevel(report);
+  const primaryRoute = primaryMonitoringActionRoute(report, worst);
   const loginOK = loginHealthOK(report.health);
   const giftWarn = report.queues.gift_card_failed_attempts > 0;
   const appErrors = day24?.app_errors ?? 0;
@@ -1704,7 +1697,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
         worst === "bad" ? "先处理" : worst === "warn" ? "可测但要盯" : "可以继续测",
         worst === "bad" ? "有红色事项，先点下面入口处理。" : worst === "warn" ? "没有明确中断，但有队列或配置需要看。" : `今日 ${today?.chat_rounds ?? 0} 轮问诊，关键服务正常。`,
         worst,
-        worst === "bad" ? "health" : "monitoring",
+        primaryRoute,
       )}
       ${decisionCard(
         "登录与账号ID",
@@ -1763,9 +1756,15 @@ function shortcutButton(route: RouteKey, label: string): string {
 
 function monitoringWorstLevel(report: AdminMonitoring): "ok" | "warn" | "bad" {
   const items = report.action_items || [];
-  if (items.some((item) => item.level === "bad")) return "bad";
-  if (items.some((item) => item.level === "warn")) return "warn";
+  if (items.some((item) => normalizeLevel(item.level) === "bad")) return "bad";
+  if (items.some((item) => normalizeLevel(item.level) === "warn")) return "warn";
   return "ok";
+}
+
+function primaryMonitoringActionRoute(report: AdminMonitoring, level: "ok" | "warn" | "bad"): RouteKey | undefined {
+  if (level === "ok") return undefined;
+  const item = (report.action_items || []).find((entry) => normalizeLevel(entry.level) === level && isKnownRoute(entry.route));
+  return item?.route;
 }
 
 function loginHealthOK(health: AdminOverview["health"]): boolean {
@@ -1789,7 +1788,7 @@ function actionItemList(items: AdminMonitoring["action_items"]): string {
                 <div class="action-title">${escapeHTML(item.title)} ${item.count ? `<span class="count">${item.count}</span>` : ""}</div>
                 <div class="muted small">${escapeHTML(item.body)}</div>
               </div>
-              ${routeActionButton(item.route, "去处理")}
+              ${actionRouteControl(item.route, "去处理")}
             </article>
           `;
         })
@@ -1838,9 +1837,19 @@ function healthChipGrid(health: AdminOverview["health"]): string {
   `;
 }
 
-function routeActionButton(route: string | undefined, label: string): string {
-  if (!route || !routes.some((item) => item.key === route)) return "";
+function routeActionButton(route: RouteKey | undefined, label: string): string {
+  if (!isKnownRoute(route)) return "";
   return `<button class="button" data-action="route" data-route="${escapeAttr(route)}">${escapeHTML(label)}</button>`;
+}
+
+function actionRouteControl(route: string | undefined, label: string): string {
+  if (!route) return "";
+  if (!isKnownRoute(route)) return `<span class="small muted">入口未配置</span>`;
+  return routeActionButton(route, label);
+}
+
+function isKnownRoute(route: string | undefined): route is RouteKey {
+  return !!route && routes.some((item) => item.key === route);
 }
 
 function normalizeLevel(level: string): "ok" | "warn" | "bad" | "info" {
@@ -1891,7 +1900,7 @@ function healthHint(key: string, value: unknown): string {
 }
 
 function healthValuePill(key: string, value: unknown): string {
-  if (typeof value !== "boolean") return statusPill(String(value));
+  if (typeof value !== "boolean") return statusPill(String(value), healthFieldNeedsAttention(key, value) ? "bad" : undefined);
   if (key === "dev_order_endpoints") return statusPill(value ? "开启" : "关闭", value ? "bad" : "ok");
   if (key === "auth_strict") return statusPill(value ? "开启" : "关闭", value ? "ok" : "bad");
   return statusPill(value ? "true" : "false", value ? "ok" : "info");
@@ -2011,7 +2020,7 @@ function labelFor(key: string): string {
 }
 
 function formatTime(value?: number | null): string {
-  if (!value) return "未返回";
+  if (value == null) return "未返回";
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "2-digit",

@@ -111,6 +111,17 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 	}
 }
 
+func androidUpdateConfigValid(cfg androidUpdateConfig) bool {
+	return cfg.LatestVersionCode > 0 && (strings.TrimSpace(cfg.APKURL) == "" || isHTTPSURL(cfg.APKURL))
+}
+
+func androidUpdateDownloadArtifactsComplete(cfg androidUpdateConfig) bool {
+	return strings.TrimSpace(cfg.APKURL) != "" &&
+		isHTTPSURL(cfg.APKURL) &&
+		strings.TrimSpace(cfg.APKChecksumSHA256) != "" &&
+		cfg.FileSizeBytes > 0
+}
+
 func isHTTPSURL(raw string) bool {
 	parsed, err := url.Parse(raw)
 	return err == nil && parsed.Scheme == "https" && parsed.Host != ""

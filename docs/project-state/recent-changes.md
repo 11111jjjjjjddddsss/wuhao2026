@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-08
+
+- 多代理只读巡检后继续收口管理后台监控面板小 bug：前端修复窄屏筛选栏横向溢出、宽表撑破卡片、健康异常字符串只显示信息态、`action_items.level=error` 时顶部结论不变红、`formatTime(0)` 空值判断不严和后端 route 拼错时按钮静默消失等问题；监控“当前结论”会优先跳到真实触发红 / 黄的处理入口。后端修正礼品卡“可用”数量，只统计当前已生效且未过期的 active 卡；App 错误 Top 的聚合函数开始尊重调用方 limit，监控传 Top10 就返回 10；检查更新页和监控页的 `config_valid` 口径统一，并新增 `download_artifacts_complete` 单独提示 HTTPS APK、SHA-256 和文件大小是否齐全；监控返回的 action / capability route 会按当前后台角色裁剪，避免无权限账号点进 403。新增后端契约单测覆盖监控 route / level / status、角色裁剪和检查更新配置口径。
+
 ## 2026-06-07
 
 - 将账号ID收敛、礼品卡追溯和监控面板增强提交 `5321ffe9` 部署到 ECS 和管理后台：远端 `go test ./...`、编译、切换双端口 slot、Nginx 配置检查和公网 healthz 均通过，当前 Nginx active upstream 为 `3001`；后台静态前端重新构建并部署到 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署后轻量冒烟确认 `https://api.nongjiqiancha.cn/healthz` 为 200，返回 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`；融合认证 token 入口返回 200 且有 token / scheme，短信发送接口对非法手机号返回 400。输出不打印任何 token、AccessKey、模型 Key 或密码。

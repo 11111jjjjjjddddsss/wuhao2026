@@ -542,12 +542,13 @@ func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery)
 
 func (s *Store) SummarizeClientAppLogs(ctx context.Context, filter ClientAppLogQuery) ([]ClientAppLogSummaryEntry, error) {
 	whereClause, args := buildClientAppLogWhere(filter)
+	limit := clientAppLogSummaryLimit(filter.Limit)
 	query := `SELECT event, level, COUNT(*) AS event_count
 		 FROM client_app_logs` + whereClause + `
 		 GROUP BY event, level
 		 ORDER BY event_count DESC, event ASC, level ASC
 		 LIMIT ?`
-	args = append(args, clientAppLogInternalSummaryLimit)
+	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -569,6 +570,13 @@ func (s *Store) SummarizeClientAppLogs(ctx context.Context, filter ClientAppLogQ
 		return []ClientAppLogSummaryEntry{}, nil
 	}
 	return summary, nil
+}
+
+func clientAppLogSummaryLimit(limit int) int {
+	if limit <= 0 || limit > clientAppLogInternalSummaryLimit {
+		return clientAppLogInternalSummaryLimit
+	}
+	return limit
 }
 
 func nullStringValue(value sql.NullString) string {

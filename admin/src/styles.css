@@ -426,7 +426,12 @@ button {
 }
 
 .table-wrap {
+  min-width: 0;
   overflow: auto;
+}
+
+.card {
+  min-width: 0;
 }
 
 .table {
@@ -1061,11 +1066,14 @@ button {
   .topbar,
   .page-head,
   .monitor-hero,
-  .filters,
   .inline-form,
   .filter-form {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .filters {
+    grid-template-columns: 1fr;
   }
 
   .content {
