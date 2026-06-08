@@ -370,6 +370,10 @@ async function monitoringPage(): Promise<string> {
     ${pageHead("监控面板", "先看能不能继续测，再处理红色事项；没接通的能力会明确标出来。", "monitoring")}
     ${monitoringHero(report)}
     ${monitoringDecisionGrid(report, today, day24)}
+    <section class="card" style="margin-bottom:12px">
+      <div class="card-head"><div class="card-title">上线检查</div><span class="small muted">可测 / 需处理 / 上线阻塞</span></div>
+      <div class="card-body">${launchReadinessGrid(report.launch_readiness || [])}</div>
+    </section>
     ${monitoringShortcutBar()}
     <section class="grid kpi">
       ${kpi("服务异常", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
@@ -538,9 +542,10 @@ async function giftCardsPage(): Promise<string> {
     apiFetch<{ cards: AdminGiftCardEntry[] }>(`/admin-api/v1/gift-cards/cards${toQuery(cardParams)}`),
     apiFetch<{ attempts: AdminGiftCardAttempt[] }>(`/admin-api/v1/gift-cards/attempts${toQuery(attemptParams)}`),
   ]);
-  const cards = cardsResponse.cards;
-  const attempts = attemptsResponse.attempts;
-  const summary = summaryResponse.summary;
+  const batches = batchesResponse.batches ?? [];
+  const cards = cardsResponse.cards ?? [];
+  const attempts = attemptsResponse.attempts ?? [];
+  const summary = normalizeGiftCardSummary(summaryResponse.summary);
   return `
     ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；完整卡码只在生成当次展示。", "gift-cards")}
     <section class="grid kpi">
@@ -584,9 +589,9 @@ async function giftCardsPage(): Promise<string> {
     <div class="grid two" style="margin-top:12px">
       <section class="card">
         <div class="card-head">
-          <div class="card-title">批次</div><span class="small muted">${batchesResponse.batches.length} 个</span>
+          <div class="card-title">批次</div><span class="small muted">${batches.length} 个</span>
         </div>
-        <div class="table-wrap">${giftCardBatchesTable(batchesResponse.batches)}</div>
+        <div class="table-wrap">${giftCardBatchesTable(batches)}</div>
       </section>
       <section class="card">
         <div class="card-head">
@@ -1233,7 +1238,19 @@ function giftCardTraceFilterForm(): string {
   `;
 }
 
-function giftCardFailureReasonsBlock(rows: AdminGiftCardSummary["failure_reasons"]): string {
+function normalizeGiftCardSummary(summary: AdminGiftCardSummary | null | undefined): AdminGiftCardSummary {
+  return {
+    batch_count: summary?.batch_count ?? 0,
+    active_count: summary?.active_count ?? 0,
+    redeemed_count: summary?.redeemed_count ?? 0,
+    void_count: summary?.void_count ?? 0,
+    failed_attempts_24h: summary?.failed_attempts_24h ?? 0,
+    failure_reasons: summary?.failure_reasons ?? [],
+  };
+}
+
+function giftCardFailureReasonsBlock(rows: AdminGiftCardSummary["failure_reasons"] | null | undefined): string {
+  rows = rows ?? [];
   if (!rows.length) return emptyState("没有失败聚合", "最近 7 天没有失败兑换，或者还没有兑换尝试。");
   return `
     <div class="reason-grid">
@@ -1605,13 +1622,16 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
 function monitoringQueueCards(report: AdminMonitoring): string {
   const queues = report.queues;
   const update = queues.app_update;
+  const giftReady = (queues.gift_card_batch_count ?? 0) > 0 && (queues.gift_card_active ?? 0) > 0;
+  const giftLevel = queues.gift_card_failed_attempts ? "warn" : giftReady ? "ok" : "warn";
+  const giftBody = `${queues.gift_card_batch_count ?? 0} 个批次 / ${queues.gift_card_total ?? 0} 张总卡；${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`;
   return `
     <div class="queue-grid">
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `最早待回复 ${formatTime(queues.support_oldest_pending_at)}` : "暂无待回复", queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
-      ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可用`, `${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`, queues.gift_card_failed_attempts ? "warn" : "ok")}
+      ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可用`, giftBody, giftLevel)}
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>
   `;
@@ -1695,7 +1715,8 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
   const worst = monitoringWorstLevel(report);
   const primaryRoute = primaryMonitoringActionRoute(report, worst);
   const loginOK = loginHealthOK(report.health);
-  const giftWarn = report.queues.gift_card_failed_attempts > 0;
+  const giftReady = (report.queues.gift_card_batch_count ?? 0) > 0 && (report.queues.gift_card_active ?? 0) > 0;
+  const giftWarn = report.queues.gift_card_failed_attempts > 0 || !giftReady;
   const appErrors = day24?.app_errors ?? 0;
   return `
     <section class="decision-grid">
@@ -1715,8 +1736,8 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       )}
       ${decisionCard(
         "礼品卡与权益",
-        giftWarn ? "看失败" : "可生成兑换",
-        `${report.queues.gift_card_active} 张可用，${report.queues.gift_card_redeemed} 张已兑换；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
+        !giftReady ? "先生成卡" : giftWarn ? "看失败" : "可生成兑换",
+        `${report.queues.gift_card_active} 张可用，${report.queues.gift_card_batch_count ?? 0} 个批次 / ${report.queues.gift_card_total ?? 0} 张总卡；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
         giftWarn ? "warn" : "ok",
         "gift-cards",
       )}
@@ -1824,6 +1845,44 @@ function capabilityGrid(rows: AdminMonitoring["capabilities"]): string {
         .join("")}
     </div>
   `;
+}
+
+function launchReadinessGrid(rows: AdminMonitoring["launch_readiness"]): string {
+  if (!rows.length) return emptyState("没有上线检查", "后端未返回 launch_readiness。");
+  return `
+    <div class="launch-grid">
+      ${rows
+        .map((row) => {
+          const level = launchStatusLevel(row.status);
+          return `
+            <article class="launch-card ${level}">
+              <div class="launch-head">
+                <strong>${escapeHTML(row.title)}</strong>
+                ${statusPill(launchStatusText(row.status), level)}
+              </div>
+              <p>${escapeHTML(row.body)}</p>
+              <div class="launch-foot">
+                <span>${escapeHTML(row.owner || "")}</span>
+                ${routeActionButton(row.route, "打开")}
+              </div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function launchStatusText(status: string): string {
+  if (status === "ready") return "可测";
+  if (status === "blocked") return "阻塞";
+  return "需处理";
+}
+
+function launchStatusLevel(status: string): "ok" | "warn" | "bad" {
+  if (status === "ready") return "ok";
+  if (status === "blocked") return "bad";
+  return "warn";
 }
 
 function healthChipGrid(health: AdminOverview["health"]): string {

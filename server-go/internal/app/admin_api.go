@@ -64,6 +64,7 @@ type AdminMonitoring struct {
 	Health       AdminHealthStatus           `json:"health"`
 	Windows      []AdminMonitoringWindow     `json:"windows"`
 	Queues       AdminMonitoringQueues       `json:"queues"`
+	LaunchReady  []AdminMonitoringLaunchItem `json:"launch_readiness"`
 	ActionItems  []AdminMonitoringActionItem `json:"action_items"`
 	Capabilities []AdminMonitoringCapability `json:"capabilities"`
 	TopRegions   []AdminRegionMetric         `json:"top_regions"`
@@ -101,6 +102,8 @@ type AdminMonitoringQueues struct {
 	DailyAgriUpdatedAt     *int64                   `json:"daily_agri_updated_at,omitempty"`
 	DailyAgriError         string                   `json:"daily_agri_error,omitempty"`
 	AppUpdate              AdminMonitoringAppUpdate `json:"app_update"`
+	GiftCardBatchCount     int64                    `json:"gift_card_batch_count"`
+	GiftCardTotal          int64                    `json:"gift_card_total"`
 	GiftCardActive         int64                    `json:"gift_card_active"`
 	GiftCardRedeemed       int64                    `json:"gift_card_redeemed"`
 	GiftCardFailedAttempts int64                    `json:"gift_card_failed_attempts"`
@@ -133,6 +136,14 @@ type AdminMonitoringCapability struct {
 	Status string `json:"status"`
 	Body   string `json:"body"`
 	Route  string `json:"route,omitempty"`
+}
+
+type AdminMonitoringLaunchItem struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+	Body   string `json:"body"`
+	Route  string `json:"route,omitempty"`
+	Owner  string `json:"owner,omitempty"`
 }
 
 type AdminRegionMetric struct {
@@ -328,6 +339,7 @@ func (s *Server) handleAdminMonitoring(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	report.ActionItems = filterAdminMonitoringActionRoutes(report.ActionItems, admin.User.Role)
+	report.LaunchReady = filterAdminMonitoringLaunchRoutes(report.LaunchReady, admin.User.Role)
 	report.Capabilities = filterAdminMonitoringCapabilityRoutes(report.Capabilities, admin.User.Role)
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.monitoring", "dashboard", "", "", true, http.StatusOK, map[string]any{
 		"app_errors":          report.Queues.AppErrors,
@@ -680,6 +692,7 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 		return report, err
 	}
 	report.TopAppErrors = topErrors
+	report.LaunchReady = buildAdminMonitoringLaunchReadiness(report)
 	report.ActionItems = buildAdminMonitoringActionItems(report)
 	report.Capabilities = buildAdminMonitoringCapabilities()
 	return report, nil
@@ -763,6 +776,12 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 		LatestVersionName:         updateCfg.LatestVersionName,
 		ForceUpdate:               updateCfg.ForceUpdate,
 	}
+	if queues.GiftCardBatchCount, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_batches", nil); err != nil {
+		return queues, err
+	}
+	if queues.GiftCardTotal, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards", nil); err != nil {
+		return queues, err
+	}
 	if queues.GiftCardActive, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active' AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)", []any{nowMs, nowMs}); err != nil {
 		return queues, err
 	}
@@ -833,6 +852,22 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Route: "today-agri",
 		})
 	}
+	if queues.GiftCardBatchCount == 0 || queues.GiftCardTotal == 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "还没有生产礼品卡",
+			Body:  "生产库没有礼品卡批次和卡码；先在礼品卡页生成 1 张正式卡，再用 Android 礼品卡入口兑换测试。",
+			Level: "warn",
+			Route: "gift-cards",
+		})
+	} else if queues.GiftCardActive == 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "没有可兑换礼品卡",
+			Body:  "已有礼品卡记录，但当前没有生效且未过期的 active 卡；测试兑换前需要新生成或检查有效期。",
+			Level: "warn",
+			Route: "gift-cards",
+			Count: queues.GiftCardTotal,
+		})
+	}
 	if queues.GiftCardFailedAttempts > 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "礼品卡兑换失败偏多",
@@ -877,6 +912,125 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	return items
 }
 
+func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitoringLaunchItem {
+	queues := report.Queues
+	health := report.Health
+	items := make([]AdminMonitoringLaunchItem, 0, 10)
+	dependenciesOK := queues.UnreadyDependencyCount == 0 && health.AuthStrict && !health.DevOrderEndpoints
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "后端生产健康",
+		Status: ternary(dependenciesOK, "ready", "blocked"),
+		Body: ternary(
+			dependenciesOK,
+			"API、模型、登录依赖、Redis、上传存储和严格鉴权当前可作为生产测试基础。",
+			"服务依赖、严格鉴权或开发期订单开关存在异常，先看服务健康。",
+		),
+		Route: "health",
+		Owner: "运维",
+	})
+	loginDepsOK := health.AuthStrict &&
+		strings.EqualFold(health.Dypns, "ok") &&
+		strings.EqualFold(health.DypnsFusion, "ok") &&
+		strings.EqualFold(health.DypnsSMS, "ok") &&
+		strings.EqualFold(health.Redis, "ok")
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "手机号登录",
+		Status: ternary(loginDepsOK, "attention", "blocked"),
+		Body: ternary(
+			loginDepsOK,
+			"云端配置和后端限流正常；正式上架前仍必须用真机完成一键登录和短信验证码回归。",
+			"一键登录 / 短信 / Redis / 严格鉴权任一异常都会挡住登录测试。",
+		),
+		Route: "health",
+		Owner: "Android / 后端",
+	})
+	modelOK := strings.EqualFold(health.API, "ok") && strings.EqualFold(health.Bailian, "ok")
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "模型问诊",
+		Status: ternary(modelOK, "ready", "blocked"),
+		Body: ternary(
+			modelOK,
+			"主模型 Key 已配置，后端统一发起模型调用；可继续测文字 / 图片问诊。",
+			"模型或 API 健康异常时，主聊天不能作为可测状态。",
+		),
+		Route: "health",
+		Owner: "后端",
+	})
+	giftStatus := "ready"
+	giftBody := "有可兑换礼品卡，可用 Android 设置页兑换并在后台追溯账号ID。"
+	if queues.GiftCardBatchCount == 0 || queues.GiftCardTotal == 0 {
+		giftStatus = "blocked"
+		giftBody = "生产库还没有生成礼品卡；先在后台生成 1 张正式卡，才能测兑换成功链路。"
+	} else if queues.GiftCardActive == 0 {
+		giftStatus = "blocked"
+		giftBody = "已有礼品卡记录，但当前没有生效且未过期的 active 卡；先生成或检查有效期。"
+	} else if queues.GiftCardFailedAttempts > 0 {
+		giftStatus = "attention"
+		giftBody = "已有可兑换卡，但最近 24 小时存在失败尝试；先看尾号和失败原因。"
+	}
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "礼品卡测试",
+		Status: giftStatus,
+		Body:   giftBody,
+		Route:  "gift-cards",
+		Owner:  "运营 / 后端",
+	})
+	updateStatus := "ready"
+	updateBody := "版本号、HTTPS APK、SHA-256 和文件大小已齐，可进入真机覆盖安装验证。"
+	if !queues.AppUpdate.ConfigValid {
+		updateStatus = "blocked"
+		updateBody = "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。"
+	} else if !queues.AppUpdate.DownloadArtifactsComplete {
+		updateStatus = "attention"
+		updateBody = "检查更新配置合法，但正式下载物料未齐；上架前补 HTTPS APK、SHA-256 和文件大小。"
+	}
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "安装包更新",
+		Status: updateStatus,
+		Body:   updateBody,
+		Route:  "app-update",
+		Owner:  "发布",
+	})
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "支付接入",
+		Status: "blocked",
+		Body:   "微信 / 支付宝支付申请和真实回调未完成；不能把会员订单当正式收费功能，礼品卡可先支撑测试。",
+		Route:  "orders",
+		Owner:  "外部申请 / 后端",
+	})
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "备案与上架材料",
+		Status: "blocked",
+		Body:   "App 备案、App 公安备案、应用商店物料和上线前 AccessKey 轮换仍是正式上架阻塞项。",
+		Owner:  "法务 / 运营",
+	})
+	slsStatus := "attention"
+	if queues.AppErrors >= 10 || queues.AuditFailures > 0 {
+		slsStatus = "blocked"
+	}
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "日志告警",
+		Status: slsStatus,
+		Body:   "Go 日志和 Nginx error 已进 SLS；自动告警和仪表盘还未接，先用后台 App 日志 / 审计 / 服务健康巡检。",
+		Route:  "app-logs",
+		Owner:  "运维",
+	})
+	supportStatus := "ready"
+	supportBody := "后台可看反馈会话并回复；正式运营前继续补工单状态、分配和搜索。"
+	if queues.SupportNeedsReply > 0 {
+		supportStatus = "attention"
+		supportBody = "有用户反馈待回复；先处理，再继续公开测试。"
+	}
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "客服反馈",
+		Status: supportStatus,
+		Body:   supportBody,
+		Route:  "support",
+		Owner:  "客服 / 运营",
+	})
+	return items
+}
+
 func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 	return []AdminMonitoringCapability{
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
@@ -902,6 +1056,15 @@ func filterAdminMonitoringActionRoutes(items []AdminMonitoringActionItem, role s
 }
 
 func filterAdminMonitoringCapabilityRoutes(items []AdminMonitoringCapability, role string) []AdminMonitoringCapability {
+	for idx := range items {
+		if items[idx].Route != "" && !adminRouteAllowed(role, items[idx].Route) {
+			items[idx].Route = ""
+		}
+	}
+	return items
+}
+
+func filterAdminMonitoringLaunchRoutes(items []AdminMonitoringLaunchItem, role string) []AdminMonitoringLaunchItem {
 	for idx := range items {
 		if items[idx].Route != "" && !adminRouteAllowed(role, items[idx].Route) {
 			items[idx].Route = ""

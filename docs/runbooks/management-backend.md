@@ -25,7 +25,7 @@
 当前已落地的后台页面 / API：
 
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
-- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；响应额外返回 `action_items` 和 `capabilities`，前端已收成“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡、快捷入口、关键队列和明细表，让非运维也能先看出今天能不能继续测试。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session。未接入的 SLS 自动告警、发布 / 回滚按钮不会伪装成已完成。
+- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness` 和 `capabilities`，前端已收成“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡、上线检查、快捷入口、关键队列和明细表，让非运维也能先看出今天能不能继续测试。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上线检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 脱敏手机号查询，展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈。
 - 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码只在生成响应当次返回，数据库只存 hash / 掩码 / 尾号。

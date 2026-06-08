@@ -641,6 +641,7 @@ button {
 
 .action-list,
 .capability-grid,
+.launch-grid,
 .health-chip-grid {
   display: grid;
   gap: 9px;
@@ -698,6 +699,10 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.launch-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .capability-card {
   border: 1px solid #d7dce2;
   border-radius: 8px;
@@ -729,6 +734,58 @@ button {
   color: #66717f;
   font-size: 12px;
   line-height: 1.55;
+}
+
+.launch-card {
+  display: grid;
+  min-height: 132px;
+  align-content: start;
+  gap: 9px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 11px;
+}
+
+.launch-card.ok {
+  border-color: #badbc5;
+  background: #f7fcf8;
+}
+
+.launch-card.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+}
+
+.launch-card.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+}
+
+.launch-head,
+.launch-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.launch-head strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.launch-card p {
+  margin: 0;
+  color: #4a5562;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.launch-foot {
+  margin-top: auto;
+  color: #68717d;
+  font-size: 12px;
 }
 
 .health-chip-grid {
@@ -1028,6 +1085,10 @@ button {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 
+  .launch-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+
   .grid.two,
   .detail-grid,
   .split {
@@ -1084,6 +1145,7 @@ button {
   .grid.three,
   .decision-grid,
   .capability-grid,
+  .launch-grid,
   .health-chip-grid {
     grid-template-columns: 1fr;
   }

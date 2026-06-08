@@ -631,7 +631,9 @@ func (s *Store) ListGiftCardAttempts(ctx context.Context, filter GiftCardAttempt
 }
 
 func (s *Store) GetGiftCardSummary(ctx context.Context, nowMs int64) (AdminGiftCardSummary, error) {
-	var summary AdminGiftCardSummary
+	summary := AdminGiftCardSummary{
+		FailureReasons: []AdminGiftCardFailureReason{},
+	}
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM gift_card_batches").Scan(&summary.BatchCount); err != nil {
 		return summary, err
 	}
@@ -650,6 +652,9 @@ func (s *Store) GetGiftCardSummary(ctx context.Context, nowMs int64) (AdminGiftC
 	reasons, err := s.ListGiftCardFailureReasons(ctx, nowMs-int64(7*24*time.Hour/time.Millisecond), 8)
 	if err != nil {
 		return summary, err
+	}
+	if reasons == nil {
+		reasons = []AdminGiftCardFailureReason{}
 	}
 	summary.FailureReasons = reasons
 	return summary, nil
@@ -674,7 +679,7 @@ func (s *Store) ListGiftCardFailureReasons(ctx context.Context, sinceMs int64, l
 		return nil, err
 	}
 	defer rows.Close()
-	var entries []AdminGiftCardFailureReason
+	entries := []AdminGiftCardFailureReason{}
 	for rows.Next() {
 		var entry AdminGiftCardFailureReason
 		if err := rows.Scan(&entry.Reason, &entry.Count); err != nil {

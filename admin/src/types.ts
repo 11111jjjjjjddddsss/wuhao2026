@@ -48,6 +48,7 @@ export interface AdminMonitoring {
   health: AdminHealthStatus;
   windows: AdminMonitoringWindow[];
   queues: AdminMonitoringQueues;
+  launch_readiness: AdminMonitoringLaunchItem[];
   action_items: AdminMonitoringActionItem[];
   capabilities: AdminMonitoringCapability[];
   top_regions: AdminRegionMetric[];
@@ -85,6 +86,8 @@ export interface AdminMonitoringQueues {
   daily_agri_updated_at?: number;
   daily_agri_error?: string;
   app_update: AdminMonitoringAppUpdate;
+  gift_card_batch_count: number;
+  gift_card_total: number;
   gift_card_active: number;
   gift_card_redeemed: number;
   gift_card_failed_attempts: number;
@@ -117,6 +120,16 @@ export interface AdminMonitoringCapability {
   status: AdminMonitoringCapabilityStatus;
   body: string;
   route?: AdminRouteKey;
+}
+
+export type AdminMonitoringLaunchStatus = "ready" | "attention" | "blocked";
+
+export interface AdminMonitoringLaunchItem {
+  title: string;
+  status: AdminMonitoringLaunchStatus;
+  body: string;
+  route?: AdminRouteKey;
+  owner?: string;
 }
 
 export interface AdminRegionMetric {

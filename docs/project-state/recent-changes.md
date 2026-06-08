@@ -5,6 +5,10 @@
 
 ## 2026-06-08
 
+- 修复管理后台礼品卡页空数据崩溃：后端 `GET /admin-api/v1/gift-cards/summary` 的 `failure_reasons` 空结果现在稳定返回 `[]`，前端对 summary / 批次 / 卡 / 兑换尝试数组也做 null 兜底，生产库还没有礼品卡时页面不再报 `Cannot read properties of null (reading 'length')`。监控面板同步补礼品卡批次数和总卡数，生产库 0 张可兑换卡会作为“先生成礼品卡”的待处理事项显示，避免把“还没生成正式卡”误看成兑换链路坏了。
+
+- 管理后台监控面板补“上线检查”区：`GET /admin-api/v1/monitoring` 新增 `launch_readiness`，把后端健康、手机号登录、模型问诊、礼品卡测试、安装包更新、支付接入、备案与上架材料、日志告警、客服反馈按“可测 / 需处理 / 阻塞”展示。支付申请未完成、App 备案 / 公安备案和上线前 AccessKey 轮换不会被伪装成已完成；礼品卡可先作为内部测试权益链路。
+
 - 继续推进管理后台生产化细节：前端侧栏和监控快捷入口开始按后台角色矩阵隐藏无权页面，减少 support / content_ops / release_ops / finance_ops 等角色点进 403 的误操作；服务端权限仍是唯一硬边界，前端隐藏只做体验收敛。监控窗口里的登录 session 口径拆清：`active_sessions` 表示当前有效 App session 总量，新增 `recent_auth_sessions` 表示当前窗口内新创建 / 登录 session，前端表格展示“新登录 session / 当前有效 session”，不再把 `updated_at` 当作真实活跃度。
 
 - 多代理只读巡检后继续收口管理后台监控面板小 bug：前端修复窄屏筛选栏横向溢出、宽表撑破卡片、健康异常字符串只显示信息态、`action_items.level=error` 时顶部结论不变红、`formatTime(0)` 空值判断不严和后端 route 拼错时按钮静默消失等问题；监控“当前结论”会优先跳到真实触发红 / 黄的处理入口。后端修正礼品卡“可用”数量，只统计当前已生效且未过期的 active 卡；App 错误 Top 的聚合函数开始尊重调用方 limit，监控传 Top10 就返回 10；检查更新页和监控页的 `config_valid` 口径统一，并新增 `download_artifacts_complete` 单独提示 HTTPS APK、SHA-256 和文件大小是否齐全；监控返回的 action / capability route 会按当前后台角色裁剪，避免无权限账号点进 403。新增后端契约单测覆盖监控 route / level / status、角色裁剪和检查更新配置口径。
