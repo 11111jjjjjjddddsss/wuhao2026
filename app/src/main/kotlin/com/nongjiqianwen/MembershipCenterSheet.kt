@@ -354,6 +354,12 @@ internal fun MembershipQuotaSummary(
         loadState = loadState,
         expireAtMs = entitlement?.tierExpireAt
     )
+    val giftCardSummaryText = membershipGiftCardSummaryText(
+        entitlement = entitlement,
+        loadState = loadState,
+        tier = tier,
+        dailyLimit = limit
+    )
     val summaryTitleColor = Color(0xFF151515)
     val summaryValueColor = Color(0xFF5F636B)
     Surface(
@@ -409,6 +415,22 @@ internal fun MembershipQuotaSummary(
                             lineHeight = 18.sp
                         )
                     }
+                }
+            }
+            if (giftCardSummaryText != null) {
+                Surface(
+                    color = Color(0xFFF2F8EE),
+                    shape = RoundedCornerShape(999.dp),
+                    border = BorderStroke(0.8.dp, Color(0xFFD3E5C8))
+                ) {
+                    Text(
+                        text = giftCardSummaryText,
+                        color = Color(0xFF476235),
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
                 }
             }
         }
@@ -919,6 +941,18 @@ private fun membershipSummaryTierSubText(
         tier == "plus" || tier == "pro" -> formatMembershipExpireDate(expireAtMs)?.let { "到期 $it" }
         else -> null
     }
+
+private fun membershipGiftCardSummaryText(
+    entitlement: SessionApi.EntitlementSnapshot?,
+    loadState: MembershipLoadState,
+    tier: String,
+    dailyLimit: Int
+): String? {
+    if (loadState != MembershipLoadState.Loaded) return null
+    if (entitlement?.membershipSource != "gift_card") return null
+    if (tier != "plus" && tier != "pro") return "礼品卡开通"
+    return "礼品卡开通 · 当前档位每日 ${dailyLimit} 次"
+}
 
 private fun formatMembershipExpireDate(expireAtMs: Long?): String? {
     if (expireAtMs == null || expireAtMs <= 0L) return null

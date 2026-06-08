@@ -4,6 +4,7 @@ import type {
   AdminAppUpdateConfig,
   AdminAuditLogEntry,
   AdminDailyAgriEntry,
+  AdminEntitlementSummary,
   AdminGiftCardAttempt,
   AdminGiftCardBatch,
   AdminGiftCardCreatedCode,
@@ -48,7 +49,7 @@ const routes: RouteItem[] = [
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复", roles: ["support", "ops_readonly", "auditor"] },
   { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
   { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态", roles: ["content_ops", "ops_readonly", "auditor"] },
-  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "只读配置", roles: ["release_ops", "ops_readonly", "auditor"] },
+  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "可发布/可停更", roles: ["release_ops", "ops_readonly", "auditor"] },
   { key: "audit", label: "审计", section: "安全与系统", hint: "可查", roles: ["auditor", "ops_readonly"] },
   { key: "insights", label: "产品洞察", section: "安全与系统", hint: "后续报表" },
   { key: "health", label: "服务健康", section: "安全与系统", hint: "可查" },
@@ -463,17 +464,20 @@ async function usersPage(): Promise<string> {
 async function entitlementsPage(): Promise<string> {
   return userScopedPage({
     title: "会员额度",
-    desc: "第一版只读核查会员档位、每日额度、加油包、升级补偿和扣次流水。",
+    desc: "先看整体会员盘子，再按账号ID查单人权益、额度、加油包和补偿。",
     formID: "entitlements-form",
     inputName: "user_id",
     value: pageState.entitlementUserID,
     placeholder: "输入账号ID查询权益",
     content: async (userID) => {
+      const summary = await apiFetch<AdminEntitlementSummary>("/admin-api/v1/entitlements/summary");
+      const summaryBlock = entitlementOverviewBlock(summary);
       if (!userID) {
-        return planningNotice("全局会员统计尚未接入", "当前管理 API 只提供用户详情内的额度和扣次流水；全局 Free / Plus / Pro 分布、耗尽用户和补偿队列后续由聚合 API 提供。");
+        return summaryBlock;
       }
       const detail = await fetchUserDetail(userID);
       return `
+        ${summaryBlock}
         <div class="grid two">
           <section class="card">
             <div class="card-head"><div class="card-title">权益概览</div></div>
@@ -710,7 +714,7 @@ async function todayAgriPage(): Promise<string> {
 async function appUpdatePage(): Promise<string> {
   const config = await apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android");
   return `
-    ${pageHead("检查更新", "Android 自有 APK 更新配置只读展示；发布、回滚和强制更新必须走后端审计。", "app-update")}
+    ${pageHead("检查更新", "用户当前通过“检查更新”拉取新包；系统自动推送未接，本页已支持发布、强更和停更。", "app-update")}
     <div class="grid two">
       <section class="card">
         <div class="card-head">
@@ -722,7 +726,7 @@ async function appUpdatePage(): Promise<string> {
       <section class="card">
         <div class="card-head"><div class="card-title">发布操作</div></div>
         <div class="card-body">
-          ${planningNotice("发布 / 回滚未开放", "当前后端读取环境变量配置。后续接发布历史表、二次确认和审计后，再开放修改动作。")}
+          ${canManageAppUpdate() ? appUpdateEditForm(config) : notice("只读配置", "当前角色只能看更新配置和物料状态，不开放发布、强更或停更。", "info")}
         </div>
       </section>
     </div>
@@ -849,6 +853,10 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
     await render();
     return;
   }
+  if (form.id === "app-update-form") {
+    await submitAppUpdate(form);
+    return;
+  }
   if (form.id === "audit-form") {
     captureFilterState(form, "audit");
     pageState.auditWindow = formValue(form, "audit_window") || "24h";
@@ -902,6 +910,10 @@ async function handleAction(button: HTMLElement): Promise<void> {
   }
   if (action === "copy-text") {
     await copyText(button.dataset.copy || "");
+    return;
+  }
+  if (action === "disable-app-update") {
+    await disableAppUpdate(button);
     return;
   }
   if (action === "clear-gift-card-filter") {
@@ -1014,6 +1026,88 @@ async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
   } finally {
     if (button) button.disabled = false;
   }
+}
+
+async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
+  if (!canManageAppUpdate()) return;
+  const latestVersionCode = Number(formValue(form, "latest_version_code") || "0");
+  const latestVersionName = formValue(form, "latest_version_name");
+  const apkURL = formValue(form, "apk_url");
+  const apkSHA256 = formValue(form, "apk_sha256");
+  const releaseNotes = formValue(form, "release_notes");
+  const fileSizeBytes = Number(formValue(form, "file_size_bytes") || "0");
+  const enabled = form.querySelector<HTMLInputElement>("input[name='enabled']")?.checked === true;
+  const forceUpdate = form.querySelector<HTMLInputElement>("input[name='force_update']")?.checked === true;
+  if ((latestVersionCode || latestVersionName || apkURL || apkSHA256 || releaseNotes || fileSizeBytes || forceUpdate) && (!Number.isInteger(latestVersionCode) || latestVersionCode < 1)) {
+    window.alert("versionCode 必须是大于 0 的整数。");
+    return;
+  }
+  if (apkURL && !apkURL.startsWith("https://")) {
+    window.alert("APK URL 必须是 https:// 开头。");
+    return;
+  }
+  if (apkSHA256 && !/^[0-9a-fA-F]{64}$/.test(apkSHA256.replace(/:/g, ""))) {
+    window.alert("SHA-256 必须是 64 位十六进制。");
+    return;
+  }
+  if (fileSizeBytes && (!Number.isInteger(fileSizeBytes) || fileSizeBytes < 1)) {
+    window.alert("文件大小必须是正整数。");
+    return;
+  }
+  if (enabled && (!apkURL || !apkSHA256 || !fileSizeBytes || latestVersionCode < 1)) {
+    window.alert("启用更新前，必须补齐 versionCode、HTTPS APK、SHA-256 和文件大小。");
+    return;
+  }
+  const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
+  if (button) button.disabled = true;
+  try {
+    await apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android", {
+      method: "POST",
+      json: {
+        enabled,
+        latest_version_code: latestVersionCode,
+        latest_version_name: latestVersionName,
+        apk_url: apkURL,
+        apk_sha256: apkSHA256,
+        release_notes: releaseNotes,
+        force_update: forceUpdate,
+        file_size_bytes: fileSizeBytes,
+      },
+    });
+    await render();
+  } catch (error) {
+    window.alert(`保存失败：${errorMessage(error)}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function disableAppUpdate(button: HTMLElement): Promise<void> {
+  if (!canManageAppUpdate()) return;
+  const latestVersionCode = Number(button.dataset.latestVersionCode || "0");
+  const latestVersionName = button.dataset.latestVersionName || "";
+  const apkURL = button.dataset.apkUrl || "";
+  const apkSHA256 = button.dataset.apkSha256 || "";
+  const releaseNotes = button.dataset.releaseNotes || "";
+  const fileSizeBytes = Number(button.dataset.fileSizeBytes || "0");
+  const forceUpdate = button.dataset.forceUpdate === "true";
+  if (!window.confirm("确认停掉当前更新？停更后，用户点“检查更新”将不会再拿到这个新包。")) {
+    return;
+  }
+  await apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android", {
+    method: "POST",
+    json: {
+      enabled: false,
+      latest_version_code: latestVersionCode,
+      latest_version_name: latestVersionName,
+      apk_url: apkURL,
+      apk_sha256: apkSHA256,
+      release_notes: releaseNotes,
+      force_update: forceUpdate,
+      file_size_bytes: fileSizeBytes,
+    },
+  });
+  await render();
 }
 
 async function voidGiftCard(cardID: string): Promise<void> {
@@ -1229,6 +1323,49 @@ function entitlementSummary(detail: AdminUserDetail): string {
       <dt>升级补偿</dt><dd>${user.upgrade_remaining || 0}</dd>
       <dt>总问诊轮次</dt><dd>${user.round_total || 0}</dd>
     </dl>
+  `;
+}
+
+function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
+  const legacyMembers = summary.legacy_member_users || 0;
+  const memberSubtitle = legacyMembers > 0 ? `会员 ${summary.member_users}（老ID ${legacyMembers}）` : `会员 ${summary.member_users}`;
+  return `
+    <section class="grid kpi" style="margin-top:12px">
+      ${kpi("账号用户", summary.registered_users, memberSubtitle)}
+      ${kpi("Free", summary.free_users, "仅按已收敛账号ID统计")}
+      ${kpi("Plus", summary.plus_users, "当前有效 Plus")}
+      ${kpi("Pro", summary.pro_users, "当前有效 Pro")}
+      ${kpi("7天内到期", summary.expiring_in_7d, "当前 Plus / Pro")}
+      ${kpi("30天内到期", summary.expiring_in_30d, "当前 Plus / Pro")}
+    </section>
+    <div class="grid two" style="margin-top:12px">
+      <section class="card">
+        <div class="card-head"><div class="card-title">会员经营概览</div><span class="small muted">${formatTime(summary.now_ms)}</span></div>
+        <div class="card-body">
+          <table class="table">
+            <tbody>
+              ${metricRow("当前会员总数", summary.member_users)}
+              ${metricRow("迁移期老ID会员", legacyMembers)}
+              ${metricRow("今日基础额度用满", summary.daily_limit_exhausted_users)}
+              ${metricRow("有加油包余额", summary.topup_active_users)}
+              ${metricRow("有升级补偿", summary.upgrade_credit_users)}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div class="card-title">当前口径</div></div>
+        <div class="card-body stack">
+          ${notice("会员有效期", "Plus / Pro 只统计当前仍在有效期内的账号；过期后自动按 Free 计算。", "info")}
+          ${
+            legacyMembers > 0
+              ? notice("账号ID收敛中", `还有 ${legacyMembers} 个当前会员仍挂在迁移前老ID 下，所以“账号用户”和“当前会员”不会完全一一对应。`, "warn")
+              : ""
+          }
+          ${notice("额度耗尽", "这里统计的是“今日基础额度用满”的账号数，不代表加油包和升级补偿也已经用完。", "info")}
+        </div>
+      </section>
+    </div>
   `;
 }
 
@@ -1664,6 +1801,8 @@ function auditTable(rows: AdminAuditLogEntry[]): string {
 function appUpdateConfig(config: AdminAppUpdateConfig): string {
   return `
     <dl class="kv">
+      <dt>发布状态</dt><dd>${config.enabled ? statusPill("已启用", "ok") : statusPill("已停更", "warn")}</dd>
+      <dt>配置来源</dt><dd>${escapeHTML(config.source || "env")}</dd>
       <dt>versionCode</dt><dd>${config.latest_version_code || "未配置"}</dd>
       <dt>versionName</dt><dd>${escapeHTML(config.latest_version_name || "未配置")}</dd>
       <dt>APK URL</dt><dd>${escapeHTML(config.apk_url || "未配置")}</dd>
@@ -1676,7 +1815,58 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
       <dt>SHA-256 状态</dt><dd>${config.has_sha256 ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
       <dt>文件大小状态</dt><dd>${config.has_file_size ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
       <dt>release notes</dt><dd>${escapeHTML(config.release_notes || "未配置")}</dd>
+      <dt>最后更新</dt><dd>${formatTime(config.updated_at)}${config.updated_by ? ` · ${escapeHTML(config.updated_by)}` : ""}</dd>
     </dl>
+  `;
+}
+
+function appUpdateEditForm(config: AdminAppUpdateConfig): string {
+  return `
+    <form id="app-update-form" class="stack">
+      ${notice("怎么发新包", "填 versionCode、HTTPS APK、SHA-256 和文件大小；勾上“对外启用更新”后保存，旧版 App 点“检查更新”就会拿到新包。取消勾选并保存，就是停更。", "info")}
+      ${notice("自动推送还没接", "当前没有通知权限和推送服务，所以主链仍是用户手动点“检查更新”。", "warn")}
+      <label class="field">
+        <span>versionCode</span>
+        <input class="input" name="latest_version_code" type="number" min="0" step="1" value="${escapeAttr(String(config.latest_version_code || ""))}" placeholder="例如 10023" />
+      </label>
+      <label class="field">
+        <span>versionName</span>
+        <input class="input" name="latest_version_name" value="${escapeAttr(config.latest_version_name || "")}" placeholder="例如 1.0.23" />
+      </label>
+      <label class="field">
+        <span>APK URL</span>
+        <input class="input" name="apk_url" value="${escapeAttr(config.apk_url || "")}" placeholder="https://..." />
+      </label>
+      <label class="field">
+        <span>SHA-256</span>
+        <input class="input" name="apk_sha256" value="${escapeAttr(config.apk_sha256 || "")}" placeholder="64位十六进制" />
+      </label>
+      <label class="field">
+        <span>文件大小（字节）</span>
+        <input class="input" name="file_size_bytes" type="number" min="0" step="1" value="${escapeAttr(String(config.file_size_bytes || ""))}" placeholder="例如 81234567" />
+      </label>
+      <label class="field">
+        <span>更新说明</span>
+        <textarea class="textarea" name="release_notes" placeholder="例如：优化产品体验">${escapeHTML(config.release_notes || "")}</textarea>
+      </label>
+      <label class="checkline"><input type="checkbox" name="enabled" ${config.enabled ? "checked" : ""} /> 对外启用更新</label>
+      <label class="checkline"><input type="checkbox" name="force_update" ${config.force_update ? "checked" : ""} /> 强制更新</label>
+      <div class="row-actions">
+        <button class="button primary" type="submit">${config.enabled ? "保存并更新发布" : "保存配置 / 启用发布"}</button>
+        <button
+          class="button"
+          type="button"
+          data-action="disable-app-update"
+          data-latest-version-code="${escapeAttr(String(config.latest_version_code || 0))}"
+          data-latest-version-name="${escapeAttr(config.latest_version_name || "")}"
+          data-apk-url="${escapeAttr(config.apk_url || "")}"
+          data-apk-sha256="${escapeAttr(config.apk_sha256 || "")}"
+          data-release-notes="${escapeAttr(config.release_notes || "")}"
+          data-file-size-bytes="${escapeAttr(String(config.file_size_bytes || 0))}"
+          data-force-update="${config.force_update ? "true" : "false"}"
+        >立即停更</button>
+      </div>
+    </form>
   `;
 }
 
@@ -1826,7 +2016,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
-      ${queueCard("安装包下载", update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
+      ${queueCard("安装包下载", !update.enabled ? "已停更" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "warn" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可用`, giftBody, giftLevel)}
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>
@@ -1845,7 +2035,7 @@ function queueCard(title: string, value: string | number, body: string, level: "
 
 function updateStatusLine(update: AdminMonitoring["queues"]["app_update"]): string {
   const version = update.latest_version_code ? `v${update.latest_version_code}${update.latest_version_name ? ` / ${update.latest_version_name}` : ""}` : "未配置版本";
-  return `${version}；配置 ${update.config_valid ? "合法" : "异常"}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
+  return `${version}；发布 ${update.enabled ? "已启用" : "已停更"}；配置 ${update.config_valid ? "合法" : "异常"}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
 }
 
 function dailyAgriStatusText(status: string): string {
@@ -1996,7 +2186,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ${decisionCard(
         "登录与账号ID",
         loginOK ? "配置正常" : "检查登录",
-        loginOK ? "严格鉴权、一键登录、短信登录和 Redis 配置正常；登录后主 ID 为账号ID，正式上架前仍以真机确认为准。" : "登录依赖或严格鉴权异常，先打开服务健康。",
+        loginOK ? "严格鉴权、Redis 和登录服务配置正常；登录后主 ID 为账号ID，一键登录和短信登录仍以真机成功回归为准。" : "登录依赖或严格鉴权异常，先打开服务健康。",
         loginOK ? "ok" : "bad",
         "health",
       )}
@@ -2240,6 +2430,11 @@ function canManageGiftCards(): boolean {
 function canManageSupport(): boolean {
   const role = currentAdminRole();
   return role === "owner" || role === "support";
+}
+
+function canManageAppUpdate(): boolean {
+  const role = currentAdminRole();
+  return role === "owner" || role === "release_ops";
 }
 
 function defaultRoute(): RouteKey {

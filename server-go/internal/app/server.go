@@ -186,6 +186,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /admin-api/v1/auth/logout", s.handleAdminLogout)
 	s.mux.HandleFunc("GET /admin-api/v1/overview", s.handleAdminOverview)
 	s.mux.HandleFunc("GET /admin-api/v1/monitoring", s.handleAdminMonitoring)
+	s.mux.HandleFunc("GET /admin-api/v1/entitlements/summary", s.handleAdminEntitlementSummary)
 	s.mux.HandleFunc("GET /admin-api/v1/users", s.handleAdminUsers)
 	s.mux.HandleFunc("GET /admin-api/v1/users/detail", s.handleAdminUserDetail)
 	s.mux.HandleFunc("GET /admin-api/v1/support/conversations", s.handleAdminSupportConversations)
@@ -196,6 +197,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /admin-api/v1/audit-logs", s.handleAdminAuditLogs)
 	s.mux.HandleFunc("GET /admin-api/v1/today-agri/cards", s.handleAdminTodayAgriCards)
 	s.mux.HandleFunc("GET /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroid)
+	s.mux.HandleFunc("POST /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroidWrite)
 	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/batches", s.handleAdminGiftCardBatches)
 	s.mux.HandleFunc("POST /admin-api/v1/gift-cards/batches", s.handleAdminCreateGiftCardBatch)
 	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/summary", s.handleAdminGiftCardSummary)
@@ -292,6 +294,16 @@ func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	membershipSource := ""
+	var giftCardRedeemedAt *int64
+	if tier == TierPlus || tier == TierPro {
+		if viaGiftCard, redeemedAt, err := s.store.GetCurrentGiftCardMembership(ctx, auth.UserID, tier, tierExpireAt); err != nil {
+			s.logger.Warn("get membership source failed", "userId", auth.UserID, "error", err)
+		} else if viaGiftCard {
+			membershipSource = "gift_card"
+			giftCardRedeemedAt = redeemedAt
+		}
+	}
 
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"tier":                     tier,
@@ -300,6 +312,8 @@ func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		"topup_remaining":          topupRemaining,
 		"topup_earliest_expire_at": topupExpireAt,
 		"upgrade_remaining":        upgradeRemaining,
+		"membership_source":        membershipSource,
+		"gift_card_redeemed_at":    giftCardRedeemedAt,
 	})
 }
 

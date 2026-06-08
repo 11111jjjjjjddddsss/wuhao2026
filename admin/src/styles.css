@@ -1185,6 +1185,14 @@ button {
   gap: 12px;
 }
 
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #1f2328;
+  font-size: 14px;
+}
+
 .inline-form {
   display: flex;
   align-items: end;

@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,6 +25,7 @@ type AppUpdateInfo struct {
 }
 
 type androidUpdateConfig struct {
+	Enabled           bool
 	LatestVersionCode int
 	LatestVersionName string
 	APKURL            string
@@ -30,6 +33,13 @@ type androidUpdateConfig struct {
 	ReleaseNotes      string
 	ForceUpdate       bool
 	FileSizeBytes     int64
+}
+
+type androidUpdateConfigRecord struct {
+	Config    androidUpdateConfig
+	Source    string
+	UpdatedBy string
+	UpdatedAt int64
 }
 
 func (s *Server) handleAppUpdate(w http.ResponseWriter, r *http.Request) {
@@ -47,11 +57,21 @@ func (s *Server) handleAppUpdate(w http.ResponseWriter, r *http.Request) {
 		currentVersionCode = 0
 	}
 	currentVersionName := strings.TrimSpace(r.URL.Query().Get("version_name"))
-	cfg := readAndroidUpdateConfig(os.Getenv)
+	cfgRecord, cfgErr := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	cfg := cfgRecord.Config
+	if cfgErr != nil {
+		cfg = readAndroidUpdateConfig(os.Getenv)
+		if s.logger != nil {
+			s.logger.Warn("read android update config failed", "error", cfgErr)
+		}
+	}
 	info := buildAndroidUpdateInfo(currentVersionCode, currentVersionName, cfg)
 	if cfg.LatestVersionCode > currentVersionCode && !info.HasUpdate && s.logger != nil {
-		reason := "missing_apk_url"
-		if strings.TrimSpace(cfg.APKURL) != "" && !isHTTPSURL(cfg.APKURL) {
+		reason := "disabled"
+		if cfg.Enabled {
+			reason = "missing_apk_url"
+		}
+		if cfg.Enabled && strings.TrimSpace(cfg.APKURL) != "" && !isHTTPSURL(cfg.APKURL) {
 			reason = "invalid_apk_url"
 		}
 		s.logger.Warn(
@@ -65,10 +85,17 @@ func (s *Server) handleAppUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func readAndroidUpdateConfig(getenv func(string) string) androidUpdateConfig {
+	latestVersionCode := parsePositiveInt(getenv("APP_ANDROID_LATEST_VERSION_CODE"))
+	apkURL := strings.TrimSpace(getenv("APP_ANDROID_APK_URL"))
+	enabled := parseBoolEnv(getenv("APP_ANDROID_UPDATE_ENABLED"))
+	if !enabled && latestVersionCode > 0 && apkURL != "" {
+		enabled = true
+	}
 	return androidUpdateConfig{
-		LatestVersionCode: parsePositiveInt(getenv("APP_ANDROID_LATEST_VERSION_CODE")),
+		Enabled:           enabled,
+		LatestVersionCode: latestVersionCode,
 		LatestVersionName: strings.TrimSpace(getenv("APP_ANDROID_LATEST_VERSION_NAME")),
-		APKURL:            strings.TrimSpace(getenv("APP_ANDROID_APK_URL")),
+		APKURL:            apkURL,
 		APKChecksumSHA256: normalizeSHA256Hex(getenv("APP_ANDROID_APK_SHA256")),
 		ReleaseNotes:      strings.TrimSpace(getenv("APP_ANDROID_RELEASE_NOTES")),
 		ForceUpdate:       parseBoolEnv(getenv("APP_ANDROID_FORCE_UPDATE")),
@@ -86,7 +113,7 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 		latestVersionName = currentVersionName
 	}
 	apkURL := cfg.APKURL
-	hasUpdate := latestVersionCode > currentVersionCode && apkURL != "" && isHTTPSURL(apkURL)
+	hasUpdate := cfg.Enabled && latestVersionCode > currentVersionCode && apkURL != "" && isHTTPSURL(apkURL)
 	apkChecksumSHA256 := cfg.APKChecksumSHA256
 	releaseNotes := cfg.ReleaseNotes
 	fileSizeBytes := cfg.FileSizeBytes
@@ -163,4 +190,75 @@ func normalizeSHA256Hex(raw string) string {
 		}
 	}
 	return value
+}
+
+func (s *Store) ReadAndroidUpdateConfigRecord(ctx context.Context) (androidUpdateConfigRecord, error) {
+	record := androidUpdateConfigRecord{
+		Config: readAndroidUpdateConfig(os.Getenv),
+		Source: "env",
+	}
+	var enabled bool
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT enabled, latest_version_code, latest_version_name, apk_url, apk_sha256, release_notes, force_update, file_size_bytes, updated_by, updated_at
+		   FROM app_release_configs
+		  WHERE platform = 'android'
+		  LIMIT 1`,
+	).Scan(
+		&enabled,
+		&record.Config.LatestVersionCode,
+		&record.Config.LatestVersionName,
+		&record.Config.APKURL,
+		&record.Config.APKChecksumSHA256,
+		&record.Config.ReleaseNotes,
+		&record.Config.ForceUpdate,
+		&record.Config.FileSizeBytes,
+		&record.UpdatedBy,
+		&record.UpdatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return record, nil
+	}
+	if err != nil {
+		return record, err
+	}
+	record.Config.Enabled = enabled
+	record.Config.APKURL = strings.TrimSpace(record.Config.APKURL)
+	record.Config.APKChecksumSHA256 = normalizeSHA256Hex(record.Config.APKChecksumSHA256)
+	record.Config.ReleaseNotes = strings.TrimSpace(record.Config.ReleaseNotes)
+	record.Source = "database"
+	return record, nil
+}
+
+func (s *Store) UpsertAndroidUpdateConfigRecord(ctx context.Context, cfg androidUpdateConfig, actor string, nowMs int64) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO app_release_configs(
+			platform, enabled, latest_version_code, latest_version_name, apk_url, apk_sha256, release_notes, force_update, file_size_bytes, updated_by, created_at, updated_at
+		) VALUES (
+			'android', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		) ON DUPLICATE KEY UPDATE
+			enabled = VALUES(enabled),
+			latest_version_code = VALUES(latest_version_code),
+			latest_version_name = VALUES(latest_version_name),
+			apk_url = VALUES(apk_url),
+			apk_sha256 = VALUES(apk_sha256),
+			release_notes = VALUES(release_notes),
+			force_update = VALUES(force_update),
+			file_size_bytes = VALUES(file_size_bytes),
+			updated_by = VALUES(updated_by),
+			updated_at = VALUES(updated_at)`,
+		cfg.Enabled,
+		cfg.LatestVersionCode,
+		cfg.LatestVersionName,
+		cfg.APKURL,
+		cfg.APKChecksumSHA256,
+		cfg.ReleaseNotes,
+		cfg.ForceUpdate,
+		cfg.FileSizeBytes,
+		strings.TrimSpace(actor),
+		nowMs,
+		nowMs,
+	)
+	return err
 }

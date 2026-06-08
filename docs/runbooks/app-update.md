@@ -55,9 +55,14 @@ Codex 默认按下面流程处理：
 
 ## 后端配置
 
-接口：`GET /api/app/update`
+接口：
 
-通过环境变量控制 Android 最新版本：
+- 用户侧：`GET /api/app/update`
+- 后台侧：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`
+
+当前 Android 检查更新优先读取数据库表 `app_release_configs` 里的 `android` 记录；如果数据库里还没有记录，才回退读后端环境变量。
+
+环境变量兼容字段仍然保留：
 
 - `APP_ANDROID_LATEST_VERSION_CODE`：最新 APK 的 `versionCode`，必须大于客户端当前 `versionCode` 才会返回有更新
 - `APP_ANDROID_LATEST_VERSION_NAME`：最新 APK 的展示版本名
@@ -66,8 +71,9 @@ Codex 默认按下面流程处理：
 - `APP_ANDROID_RELEASE_NOTES`：更新说明，直接展示在更新卡片里；当前默认建议写“优化产品体验”
 - `APP_ANDROID_FORCE_UPDATE`：可选，`true / 1 / yes / on` 表示强制更新；强制更新卡片不展示“稍后”
 - `APP_ANDROID_FILE_SIZE_BYTES`：可选，APK 字节大小，用于更新卡片展示；填写后客户端会要求下载后的文件大小一致
+- `APP_ANDROID_UPDATE_ENABLED`：可选，兼容环境变量开关；未配置时若版本号和 APK URL 都存在，默认视为启用
 
-当前这套仍是环境变量发布入口，不是完整发布后台；后续网站管理后台应补 `app_releases` 或等价发布记录，保存 APK 链接、SHA-256、大小、包名、versionCode、签名指纹、操作人、发布时间和回滚 / 停更审计。
+管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明、是否强制更新、是否对外启用。后台保存后立即写入 `app_release_configs`，`/api/app/update` 会优先按这份配置对外返回；取消“对外启用更新”并保存，就是停更。
 
 管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL 这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”。
 
@@ -83,16 +89,15 @@ Codex 默认按下面流程处理：
 1. 构建 release APK，并确认 `app/build.gradle.kts` 里的 `versionCode` 比线上旧包更大、`applicationId` 仍是 `com.nongjiqiancha`，且 release 构建使用 https `UPLOAD_BASE_URL`
 2. 记录 APK 文件大小和 SHA-256
 3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK
-4. 在后端运行环境变量里配置上述 `APP_ANDROID_*` 值
-5. 重启 / 重新部署后端服务
-6. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
-7. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开
+4. 在管理后台“检查更新”页填写版本号、HTTPS APK、SHA-256、文件大小和更新说明，勾上“对外启用更新”后保存；如暂时不走后台，也可继续改 `APP_ANDROID_*` 环境变量
+5. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
+6. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开
 
 发布时还要记录签名证书指纹。当前 release 签名公钥和指纹信息保存在本机 `%USERPROFILE%\\.nongjiqiancha\\android-release-public-info.txt`；签名密码配置保存在 `%USERPROFILE%\\.nongjiqiancha\\android-release-signing.properties`，不能提交到 git 或写入公开文档。
 
 ## 回滚
 
-- 若新包有问题，把 `APP_ANDROID_LATEST_VERSION_CODE` 调回当前稳定包版本，或清空 `APP_ANDROID_APK_URL`
+- 若新包有问题，最直接的是在管理后台“检查更新”页取消“对外启用更新”并保存；兼容路线仍可清空 `APP_ANDROID_APK_URL`
 - 后端会返回无更新，客户端不再提示用户下载该 APK
 - 已经下载到用户手机 cache 的 APK 不会被主动安装，除非用户已经进入系统安装页并继续安装
 - 已经完成安装的用户，不能用低 `versionCode` 覆盖回去，只能再发一个更高 `versionCode` 的修复包

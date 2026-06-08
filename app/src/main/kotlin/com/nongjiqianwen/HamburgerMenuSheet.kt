@@ -1488,21 +1488,29 @@ internal fun HamburgerMembershipCenterPagePreview(userId: String) {
     Surface(
         color = Color(0xFFF8F9FA),
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        HamburgerMembershipCenterContent(
-            userId = userId,
-            entitlement = SessionApi.EntitlementSnapshot(
-                tier = "plus",
-                tierExpireAt = System.currentTimeMillis() + 24L * 24L * 60L * 60L * 1000L,
-                dailyRemaining = 18,
-                topupRemaining = 73,
-                upgradeRemaining = 12
-            ),
-            loadState = MembershipLoadState.Loaded,
-            onPaymentUnavailable = {},
-            modifier = Modifier.padding(14.dp)
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 560.dp)
+        ) {
+            HamburgerMembershipCenterPage(
+                userId = userId,
+                entitlement = SessionApi.EntitlementSnapshot(
+                    tier = "plus",
+                    tierExpireAt = System.currentTimeMillis() + 24L * 24L * 60L * 60L * 1000L,
+                    dailyRemaining = 18,
+                    topupRemaining = 0,
+                    upgradeRemaining = 0,
+                    membershipSource = "gift_card",
+                    giftCardRedeemedAt = System.currentTimeMillis() - 6L * 24L * 60L * 60L * 1000L
+                ),
+                loadState = MembershipLoadState.Loaded,
+                onPaymentUnavailable = {}
+            )
+        }
     }
 }
 
@@ -2932,19 +2940,26 @@ internal fun HamburgerDeleteHistoryConfirmPreview() {
 }
 
 private fun giftCardRedeemSuccessText(result: SessionApi.GiftCardRedeemResult): String {
-    val tier = when (result.appliedTier?.lowercase(Locale.ROOT) ?: result.tier?.lowercase(Locale.ROOT)) {
+    val tierRaw = result.appliedTier?.lowercase(Locale.ROOT) ?: result.tier?.lowercase(Locale.ROOT)
+    val tier = when (tierRaw) {
         "pro" -> "Pro"
         "plus" -> "Plus"
         else -> "会员"
+    }
+    val dailyCount = when (tierRaw) {
+        "pro" -> 40
+        "plus" -> 25
+        else -> null
     }
     val days = result.durationDays?.takeIf { it > 0 }?.let { "${it}天" } ?: "权益"
     val expire = result.membershipExpireAt?.takeIf { it > 0L }?.let { millis ->
         SimpleDateFormat("yyyy年MM月dd日 HH:mm", Locale.CHINA).format(Date(millis))
     }
+    val quota = dailyCount?.let { "，每日 ${it} 次" }.orEmpty()
     return if (expire.isNullOrBlank()) {
-        "$tier $days 已生效"
+        "$tier $days 已生效$quota"
     } else {
-        "$tier $days 已生效，到期 $expire"
+        "$tier $days 已生效$quota，到期 $expire"
     }
 }
 
@@ -3187,26 +3202,24 @@ internal fun HamburgerRedeemCodePagePreview() {
 
 @Composable
 internal fun HamburgerRedeemSuccessCardPreview() {
-    var visible by remember { mutableStateOf(true) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 136.dp),
         contentAlignment = Alignment.Center
     ) {
-        if (visible) {
-            HamburgerRedeemSuccessCard(
-                onConfirm = { visible = false },
-                modifier = Modifier.padding(horizontal = 18.dp)
-            )
-        } else {
-            Text(
-                text = "已关闭",
-                color = Color(0xFF70747B),
-                fontSize = 14.sp,
-                lineHeight = 20.sp
-            )
-        }
+        HamburgerRedeemSuccessCard(
+            result = SessionApi.GiftCardRedeemResult(
+                ok = true,
+                tier = "plus",
+                appliedTier = "plus",
+                durationDays = 30,
+                membershipExpireAt = System.currentTimeMillis() + 30L * 24L * 60L * 60L * 1000L,
+                redeemedAt = System.currentTimeMillis()
+            ),
+            onConfirm = {},
+            modifier = Modifier.padding(horizontal = 18.dp)
+        )
     }
 }
 

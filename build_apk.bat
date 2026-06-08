@@ -3,15 +3,15 @@ echo =========================
 echo Android APK Builder
 echo =========================
 cd /d %~dp0
-echo 已切换为原生 Compose 入口（无 Web 模板依赖）
+echo 当前默认产出正式签名 release 包（业务链路与正式上架一致）
 call gradlew clean
-call gradlew assembleDebug
+call gradlew assembleRelease
 if %errorlevel% neq 0 (
     echo 打包失败
     exit /b 1
 )
 set "APK_PATH="
-for /f "delims=" %%i in ('dir /s /b app-debug.apk 2^>nul') do (
+for /f "delims=" %%i in ('dir /s /b app-release.apk 2^>nul') do (
     set "APK_PATH=%%i"
     goto :apk_found
 )

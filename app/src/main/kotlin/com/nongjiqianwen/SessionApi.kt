@@ -78,7 +78,9 @@ object SessionApi {
         @SerializedName("daily_remaining") val dailyRemaining: Int? = null,
         @SerializedName("topup_remaining") val topupRemaining: Int? = null,
         @SerializedName("topup_earliest_expire_at") val topupEarliestExpireAt: Long? = null,
-        @SerializedName("upgrade_remaining") val upgradeRemaining: Int? = null
+        @SerializedName("upgrade_remaining") val upgradeRemaining: Int? = null,
+        @SerializedName("membership_source") val membershipSource: String? = null,
+        @SerializedName("gift_card_redeemed_at") val giftCardRedeemedAt: Long? = null
     )
 
     data class AuthSessionSnapshot(

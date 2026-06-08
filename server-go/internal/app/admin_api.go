@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -117,6 +116,7 @@ type AdminMonitoringQueues struct {
 }
 
 type AdminMonitoringAppUpdate struct {
+	Enabled                   bool   `json:"enabled"`
 	ConfigValid               bool   `json:"config_valid"`
 	DownloadArtifactsComplete bool   `json:"download_artifacts_complete"`
 	HasAPKURL                 bool   `json:"has_apk_url"`
@@ -204,6 +204,21 @@ type AdminUserDetail struct {
 	Orders           []AdminOrderEntry       `json:"orders"`
 	GiftCards        []AdminGiftCardEntry    `json:"gift_cards"`
 	GiftCardAttempts []AdminGiftCardAttempt  `json:"gift_card_attempts"`
+}
+
+type AdminEntitlementSummary struct {
+	RegisteredUsers          int64 `json:"registered_users"`
+	MemberUsers              int64 `json:"member_users"`
+	LegacyMemberUsers        int64 `json:"legacy_member_users"`
+	FreeUsers                int64 `json:"free_users"`
+	PlusUsers                int64 `json:"plus_users"`
+	ProUsers                 int64 `json:"pro_users"`
+	ExpiringIn7d             int64 `json:"expiring_in_7d"`
+	ExpiringIn30d            int64 `json:"expiring_in_30d"`
+	DailyLimitExhaustedUsers int64 `json:"daily_limit_exhausted_users"`
+	TopupActiveUsers         int64 `json:"topup_active_users"`
+	UpgradeCreditUsers       int64 `json:"upgrade_credit_users"`
+	NowMs                    int64 `json:"now_ms"`
 }
 
 type AdminQuotaLedgerEntry struct {
@@ -311,6 +326,8 @@ type AdminDailyAgriEntry struct {
 }
 
 type AdminAppUpdateConfig struct {
+	Enabled                   bool   `json:"enabled"`
+	Source                    string `json:"source,omitempty"`
 	LatestVersionCode         int    `json:"latest_version_code"`
 	LatestVersionName         string `json:"latest_version_name,omitempty"`
 	APKURL                    string `json:"apk_url,omitempty"`
@@ -318,6 +335,8 @@ type AdminAppUpdateConfig struct {
 	ReleaseNotes              string `json:"release_notes,omitempty"`
 	ForceUpdate               bool   `json:"force_update"`
 	FileSizeBytes             int64  `json:"file_size_bytes,omitempty"`
+	UpdatedBy                 string `json:"updated_by,omitempty"`
+	UpdatedAt                 int64  `json:"updated_at,omitempty"`
 	ConfigValid               bool   `json:"config_valid"`
 	DownloadArtifactsComplete bool   `json:"download_artifacts_complete"`
 	HasAPKURL                 bool   `json:"has_apk_url"`
@@ -347,13 +366,20 @@ func (s *Server) handleAdminMonitoring(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
+	updateRecord, err := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	if err != nil {
+		s.logger.Error("admin monitoring update config failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.monitoring", "dashboard", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
 	report, err := s.store.BuildAdminMonitoring(
 		r.Context(),
 		s.adminHealthStatus(),
 		GetTodayKeyCN(s.shanghai, now),
 		adminDayStartMs(s.shanghai, now),
 		now.UnixMilli(),
-		readAndroidUpdateConfig(os.Getenv),
+		updateRecord.Config,
 	)
 	if err != nil {
 		s.logger.Error("admin monitoring failed", "error", err)
@@ -394,6 +420,26 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", true, http.StatusOK, map[string]any{"limit": filter.Limit, "row_count": len(users), "phone_number_visible": filter.IncludePhoneNumber})
 	s.writeJSON(w, http.StatusOK, map[string]any{"users": users, "filter": filter})
+}
+
+func (s *Server) handleAdminEntitlementSummary(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "ops_readonly", "support", "finance_ops")
+	if !ok {
+		return
+	}
+	nowMs := time.Now().UnixMilli()
+	summary, err := s.store.ReadAdminEntitlementSummary(r.Context(), GetTodayKeyCN(s.shanghai, time.Now()), nowMs)
+	if err != nil {
+		s.logger.Error("admin entitlement summary failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.entitlements.summary", "user_entitlement", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.entitlements.summary", "user_entitlement", "", "", true, http.StatusOK, map[string]any{
+		"member_users": summary.MemberUsers,
+		"expiring_7d":  summary.ExpiringIn7d,
+	})
+	s.writeJSON(w, http.StatusOK, summary)
 }
 
 func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
@@ -638,12 +684,38 @@ func (s *Server) handleAdminTodayAgriCards(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Request) {
-	admin, ok := s.requireAdmin(w, r, "release_ops", "ops_readonly", "auditor")
+	admin, ok := s.requireAdmin(w, r, "owner", "release_ops", "ops_readonly", "auditor")
 	if !ok {
 		return
 	}
-	cfg := readAndroidUpdateConfig(os.Getenv)
-	result := AdminAppUpdateConfig{
+	record, err := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	if err != nil {
+		s.logger.Error("admin app update read failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.read", "app_update", "android", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	result := buildAdminAppUpdateConfig(record)
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.read", "app_update", "android", "", true, http.StatusOK, map[string]any{"latest_version_code": result.LatestVersionCode, "enabled": result.Enabled, "source": result.Source})
+	s.writeJSON(w, http.StatusOK, result)
+}
+
+type adminAppUpdateWriteRequest struct {
+	Enabled           bool   `json:"enabled"`
+	LatestVersionCode int    `json:"latest_version_code"`
+	LatestVersionName string `json:"latest_version_name"`
+	APKURL            string `json:"apk_url"`
+	APKChecksumSHA256 string `json:"apk_sha256"`
+	ReleaseNotes      string `json:"release_notes"`
+	ForceUpdate       bool   `json:"force_update"`
+	FileSizeBytes     int64  `json:"file_size_bytes"`
+}
+
+func buildAdminAppUpdateConfig(record androidUpdateConfigRecord) AdminAppUpdateConfig {
+	cfg := record.Config
+	return AdminAppUpdateConfig{
+		Enabled:                   cfg.Enabled,
+		Source:                    record.Source,
 		LatestVersionCode:         cfg.LatestVersionCode,
 		LatestVersionName:         cfg.LatestVersionName,
 		APKURL:                    cfg.APKURL,
@@ -651,13 +723,90 @@ func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Requ
 		ReleaseNotes:              cfg.ReleaseNotes,
 		ForceUpdate:               cfg.ForceUpdate,
 		FileSizeBytes:             cfg.FileSizeBytes,
+		UpdatedBy:                 record.UpdatedBy,
+		UpdatedAt:                 record.UpdatedAt,
 		ConfigValid:               androidUpdateConfigValid(cfg),
 		DownloadArtifactsComplete: androidUpdateDownloadArtifactsComplete(cfg),
 		HasAPKURL:                 strings.TrimSpace(cfg.APKURL) != "",
 		HasSHA256:                 strings.TrimSpace(cfg.APKChecksumSHA256) != "",
 		HasFileSize:               cfg.FileSizeBytes > 0,
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.read", "app_update", "android", "", true, http.StatusOK, map[string]any{"latest_version_code": cfg.LatestVersionCode, "has_apk_url": result.HasAPKURL})
+}
+
+func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "owner", "release_ops")
+	if !ok {
+		return
+	}
+	var body adminAppUpdateWriteRequest
+	if err := decodeJSONBodyLimited(r, &body, 8*1024); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
+	cfg := androidUpdateConfig{
+		Enabled:           body.Enabled,
+		LatestVersionCode: body.LatestVersionCode,
+		LatestVersionName: strings.TrimSpace(body.LatestVersionName),
+		APKURL:            strings.TrimSpace(body.APKURL),
+		APKChecksumSHA256: normalizeSHA256Hex(body.APKChecksumSHA256),
+		ReleaseNotes:      strings.TrimSpace(body.ReleaseNotes),
+		ForceUpdate:       body.ForceUpdate,
+		FileSizeBytes:     body.FileSizeBytes,
+	}
+	hasAnyConfig := cfg.LatestVersionCode > 0 ||
+		cfg.LatestVersionName != "" ||
+		cfg.APKURL != "" ||
+		strings.TrimSpace(body.APKChecksumSHA256) != "" ||
+		cfg.ReleaseNotes != "" ||
+		cfg.ForceUpdate ||
+		cfg.FileSizeBytes > 0
+	if hasAnyConfig && cfg.LatestVersionCode <= 0 {
+		s.writeError(w, http.StatusBadRequest, "latest_version_code_required")
+		return
+	}
+	if strings.TrimSpace(body.APKChecksumSHA256) != "" && cfg.APKChecksumSHA256 == "" {
+		s.writeError(w, http.StatusBadRequest, "invalid_apk_sha256")
+		return
+	}
+	if cfg.APKURL != "" && !isHTTPSURL(cfg.APKURL) {
+		s.writeError(w, http.StatusBadRequest, "invalid_apk_url")
+		return
+	}
+	if len([]rune(cfg.ReleaseNotes)) > 200 {
+		s.writeError(w, http.StatusBadRequest, "release_notes_too_long")
+		return
+	}
+	if cfg.FileSizeBytes < 0 {
+		s.writeError(w, http.StatusBadRequest, "invalid_file_size")
+		return
+	}
+	if cfg.Enabled && !androidUpdateDownloadArtifactsComplete(cfg) {
+		s.writeError(w, http.StatusBadRequest, "missing_release_artifacts")
+		return
+	}
+	nowMs := time.Now().UnixMilli()
+	if err := s.store.UpsertAndroidUpdateConfigRecord(r.Context(), cfg, admin.User.Username, nowMs); err != nil {
+		s.logger.Error("admin app update write failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.write", "app_update", "android", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	record, err := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	if err != nil {
+		s.logger.Error("admin app update reload failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.write", "app_update", "android", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	result := buildAdminAppUpdateConfig(record)
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.write", "app_update", "android", "", true, http.StatusOK, map[string]any{
+		"enabled":             result.Enabled,
+		"latest_version_code": result.LatestVersionCode,
+		"has_apk_url":         result.HasAPKURL,
+		"has_sha256":          result.HasSHA256,
+		"has_file_size":       result.HasFileSize,
+		"force_update":        result.ForceUpdate,
+	})
 	s.writeJSON(w, http.StatusOK, result)
 }
 
@@ -865,6 +1014,7 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	hasSHA256 := strings.TrimSpace(updateCfg.APKChecksumSHA256) != ""
 	hasFileSize := updateCfg.FileSizeBytes > 0
 	queues.AppUpdate = AdminMonitoringAppUpdate{
+		Enabled:                   updateCfg.Enabled,
 		ConfigValid:               androidUpdateConfigValid(updateCfg),
 		DownloadArtifactsComplete: androidUpdateDownloadArtifactsComplete(updateCfg),
 		HasAPKURL:                 hasAPKURL,
@@ -1078,6 +1228,9 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	if !queues.AppUpdate.ConfigValid {
 		updateStatus = "blocked"
 		updateBody = "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。"
+	} else if !queues.AppUpdate.Enabled {
+		updateStatus = "attention"
+		updateBody = "检查更新当前处于停更状态；用户点“检查更新”不会拿到新包。"
 	} else if !queues.AppUpdate.DownloadArtifactsComplete {
 		updateStatus = "attention"
 		updateBody = "检查更新配置合法，但正式下载物料未齐；上架前补 HTTPS APK、SHA-256 和文件大小。"
@@ -1137,7 +1290,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，发送后台回复并关闭或重开会话。", Route: "support"},
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、直接查看完整卡码、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；手动补跑后续再接。", Route: "today-agri"},
-		{Title: "检查更新", Status: "partial", Body: "当前只读配置；发布、回滚和强制更新写操作还不在后台开放。", Route: "app-update"},
+		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
 		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
 		{Title: "SLS 告警", Status: "planned", Body: "日志已采集到 SLS，自动告警和仪表盘还要继续补。", Route: "health"},
 		{Title: "产品洞察", Status: "planned", Body: "后续做脱敏聚合报表，不直接铺完整聊天内容。", Route: "insights"},
@@ -1660,6 +1813,64 @@ func (s *Store) ReadDailyStatus(ctx context.Context, userID string, tier Tier, d
 		limit = tierLimits[TierFree]
 	}
 	return DailyQuotaStatus{DayCN: dayCN, Tier: tier, Used: int(used.Int64), Limit: limit, Remaining: maxInt(0, limit-int(used.Int64))}, nil
+}
+
+func (s *Store) ReadAdminEntitlementSummary(ctx context.Context, dayCN string, nowMs int64) (AdminEntitlementSummary, error) {
+	summary := AdminEntitlementSummary{NowMs: nowMs}
+	var err error
+	if summary.RegisteredUsers, err = s.countQuery(ctx, "SELECT COUNT(*) FROM app_accounts", nil); err != nil {
+		return summary, err
+	}
+	if summary.PlusUsers, err = s.countQuery(ctx, "SELECT COUNT(*) FROM user_entitlement WHERE tier = 'plus' AND tier_expire_at IS NOT NULL AND tier_expire_at > ?", []any{nowMs}); err != nil {
+		return summary, err
+	}
+	if summary.ProUsers, err = s.countQuery(ctx, "SELECT COUNT(*) FROM user_entitlement WHERE tier = 'pro' AND tier_expire_at IS NOT NULL AND tier_expire_at > ?", []any{nowMs}); err != nil {
+		return summary, err
+	}
+	summary.MemberUsers = summary.PlusUsers + summary.ProUsers
+	if summary.LegacyMemberUsers, err = s.countQuery(ctx, `SELECT COUNT(*)
+		FROM user_entitlement e
+		LEFT JOIN app_accounts a ON a.user_id = e.user_id
+		WHERE e.tier IN ('plus','pro')
+		  AND e.tier_expire_at IS NOT NULL
+		  AND e.tier_expire_at > ?
+		  AND a.user_id IS NULL`, []any{nowMs}); err != nil {
+		return summary, err
+	}
+	accountMemberUsers := summary.MemberUsers - summary.LegacyMemberUsers
+	if accountMemberUsers < 0 {
+		accountMemberUsers = 0
+	}
+	summary.FreeUsers = summary.RegisteredUsers - accountMemberUsers
+	if summary.FreeUsers < 0 {
+		summary.FreeUsers = 0
+	}
+	day7Ms := nowMs + int64(7*24*time.Hour/time.Millisecond)
+	day30Ms := nowMs + int64(30*24*time.Hour/time.Millisecond)
+	if summary.ExpiringIn7d, err = s.countQuery(ctx, "SELECT COUNT(*) FROM user_entitlement WHERE tier IN ('plus','pro') AND tier_expire_at IS NOT NULL AND tier_expire_at > ? AND tier_expire_at <= ?", []any{nowMs, day7Ms}); err != nil {
+		return summary, err
+	}
+	if summary.ExpiringIn30d, err = s.countQuery(ctx, "SELECT COUNT(*) FROM user_entitlement WHERE tier IN ('plus','pro') AND tier_expire_at IS NOT NULL AND tier_expire_at > ? AND tier_expire_at <= ?", []any{nowMs, day30Ms}); err != nil {
+		return summary, err
+	}
+	if summary.DailyLimitExhaustedUsers, err = s.countQuery(ctx, `SELECT COUNT(*)
+		FROM daily_usage du
+		LEFT JOIN user_entitlement e ON e.user_id = du.user_id
+		WHERE du.day_cn = ?
+		  AND du.used >= CASE
+		    WHEN e.tier = 'pro' AND e.tier_expire_at IS NOT NULL AND e.tier_expire_at > ? THEN 40
+		    WHEN e.tier = 'plus' AND e.tier_expire_at IS NOT NULL AND e.tier_expire_at > ? THEN 25
+		    ELSE 6
+		  END`, []any{dayCN, nowMs, nowMs}); err != nil {
+		return summary, err
+	}
+	if summary.TopupActiveUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM topup_packs WHERE remaining > 0 AND (expire_at IS NULL OR expire_at > ?)", []any{nowMs}); err != nil {
+		return summary, err
+	}
+	if summary.UpgradeCreditUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM upgrade_credits WHERE remaining > 0 AND (expire_at IS NULL OR expire_at > ?)", []any{nowMs}); err != nil {
+		return summary, err
+	}
+	return summary, nil
 }
 
 func (s *Store) ListAdminQuotaLedger(ctx context.Context, userID string, limit int) ([]AdminQuotaLedgerEntry, error) {

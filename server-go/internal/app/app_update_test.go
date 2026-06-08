@@ -17,6 +17,7 @@ func TestBuildAndroidUpdateInfoNoConfig(t *testing.T) {
 
 func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
+		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
 		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
@@ -41,6 +42,7 @@ func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
 
 func TestBuildAndroidUpdateInfoRejectsNonHTTPSAPKURL(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
+		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
 		APKURL:            "http://download.example.com/nongjiqianwen-1.0.4.apk",
@@ -55,6 +57,7 @@ func TestBuildAndroidUpdateInfoRejectsNonHTTPSAPKURL(t *testing.T) {
 
 func TestBuildAndroidUpdateInfoHidesChecksumWhenNoUpdate(t *testing.T) {
 	info := buildAndroidUpdateInfo(4, "1.0.4", androidUpdateConfig{
+		Enabled:           true,
 		LatestVersionCode: 4,
 		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

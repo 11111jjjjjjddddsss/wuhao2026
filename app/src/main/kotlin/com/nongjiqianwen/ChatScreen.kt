@@ -5467,8 +5467,6 @@ fun ChatScreen() {
                             }
                         }
                     )
-                } else if (BuildConfig.DEBUG) {
-                    launchLocalFakeStream(applyInitialDelay = true)
                 } else {
                     handleAssistantInterrupted(userId, "backend_not_configured")
                 }
@@ -5741,13 +5739,6 @@ fun ChatScreen() {
                 suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true
-                    if (
-                        BuildConfig.DEBUG &&
-                        !hasRemoteHistorySource &&
-                        pendingStreamingFinalizeMessageId.isNullOrBlank()
-                    ) {
-                        completeStreamingImmediatelyFromBackground()
-                    }
                 }
                 clearMessageSelection()
                 clearInputSelectionToolbar()
@@ -5756,16 +5747,6 @@ fun ChatScreen() {
             } else if (event == Lifecycle.Event.ON_RESUME) {
                 streamingBackgrounded = false
                 scheduleBackgroundRemoteAssistantRecoveryIfNeeded()
-                if (
-                    isStreaming &&
-                    pendingStreamingFinalizeMessageId.isNullOrBlank() &&
-                    BuildConfig.DEBUG &&
-                    !hasRemoteHistorySource &&
-                    fakeStreamJob?.isActive != true &&
-                    streamRevealJob?.isActive != true
-                ) {
-                    recoverStreamingAfterLifecycleLoss()
-                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -7504,7 +7485,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "会员中心",
                 items = listOf(
-                    UiCopyPreviewItem("会员中心（ID）", "标题后展示本机短 ID", UiCopyPreviewKind.MembershipHeader),
+                    UiCopyPreviewItem("会员中心（账号ID）", "标题后展示账号短 ID", UiCopyPreviewKind.MembershipHeader),
                     UiCopyPreviewItem("会员信息读取中", "读取中状态条", UiCopyPreviewKind.MembershipLoadingSummary),
                     UiCopyPreviewItem("Free 基础额度", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipFreeSummary),
                     UiCopyPreviewItem(
@@ -7513,24 +7494,24 @@ private fun UiCopyPreviewOverlay(
                         UiCopyPreviewKind.MembershipFreeExtraSummary
                     ),
                     UiCopyPreviewItem(
-                        "Plus 额外次数",
-                        "标题同色加粗，信息同色普通",
+                        "礼品卡开通",
+                        "显示礼品卡渠道和当前档位每日次数",
                         UiCopyPreviewKind.MembershipPlusExtraSummary
                     ),
                     UiCopyPreviewItem("Pro 到期日", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipProSummary),
                     UiCopyPreviewItem("会员信息未同步", "未同步状态条", UiCopyPreviewKind.MembershipFailedSummary),
                     UiCopyPreviewItem("套餐区：未同步", "同步后开通置灰状态", UiCopyPreviewKind.MembershipPlanUnknown),
-                    UiCopyPreviewItem("套餐区：Free", "Plus / Pro 开通按钮", UiCopyPreviewKind.MembershipPlanFree),
-                    UiCopyPreviewItem("套餐区：Plus", "Plus 当前 / Pro 升级", UiCopyPreviewKind.MembershipPlanPlus),
+                    UiCopyPreviewItem("套餐区：Free", "Plus / Pro 都显示“暂未开放”", UiCopyPreviewKind.MembershipPlanFree),
+                    UiCopyPreviewItem("套餐区：Plus", "Plus 显示当前套餐，Pro 仍为“暂未开放”", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Plus 显示当前为 Pro", UiCopyPreviewKind.MembershipPlanPro),
                     UiCopyPreviewItem("套餐区：窄屏挤压", "280dp 下标题、胶囊和价格不互撞", UiCopyPreviewKind.MembershipPlanNarrow),
                     UiCopyPreviewItem("加油包：Free不可订购", "Plus / Pro 可订购置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
                     UiCopyPreviewItem("加油包：Free剩余", "按钮显示“剩余次数可用”", UiCopyPreviewKind.MembershipTopupFreeActive),
-                    UiCopyPreviewItem("加油包：可订购", "Plus / Pro 可订购，用完再续", UiCopyPreviewKind.MembershipTopupBuyable),
+                    UiCopyPreviewItem("加油包：付费档位未开放", "展示“暂未开放”而不是可直接购买", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
-                    UiCopyPreviewItem("支付功能暂不可用", "会员按钮点击后的提示", UiCopyPreviewKind.MembershipPaymentNotice),
-                    UiCopyPreviewItem("订购成功", "支付成功后的确认卡片", UiCopyPreviewKind.MembershipPurchaseSuccess),
+                    UiCopyPreviewItem("支付功能暂不可用", "预留提示条样式，当前主流程不会直接触发", UiCopyPreviewKind.MembershipPaymentNotice),
+                    UiCopyPreviewItem("支付成功卡片（预留）", "仅用于预览未来支付成功态，不代表当前已开放支付", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
                 )
             ),
@@ -7539,8 +7520,8 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
-                    UiCopyPreviewItem("设置内会员中心", "右进左出子页，ID 跟随标题", UiCopyPreviewKind.HamburgerMembershipPage),
-                    UiCopyPreviewItem("账号管理", "手机号、删除历史对话、退出/注销", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
+                    UiCopyPreviewItem("账号管理", "手机号、删除历史对话、退出设备", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("是否删除所有历史对话", "取消 / 确定二次确认卡片", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "发现新版本卡片，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
@@ -7550,9 +7531,9 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
                     UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
-                    UiCopyPreviewItem("应用权限", "当前权限和不申请权限", UiCopyPreviewKind.HamburgerPermissionListPage),
+                    UiCopyPreviewItem("应用权限", "定位、一键登录、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
-                    UiCopyPreviewItem("礼品卡成功样式", "后端成功后的卡片样式", UiCopyPreviewKind.HamburgerGiftCardSuccess)
+                    UiCopyPreviewItem("礼品卡成功样式", "展示真实档位、30天、每日次数和到期时间", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )
             ),
             UiCopyPreviewGroup(
@@ -8110,8 +8091,10 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             tier = "plus",
                             tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 24),
                             dailyRemaining = 18,
-                            topupRemaining = 73,
-                            upgradeRemaining = 12
+                            topupRemaining = 0,
+                            upgradeRemaining = 0,
+                            membershipSource = "gift_card",
+                            giftCardRedeemedAt = uiCopyPreviewExpireAtMs(daysFromNow = -6)
                         ),
                         loadState = MembershipLoadState.Loaded,
                         activeTier = "plus"

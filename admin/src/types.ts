@@ -101,6 +101,7 @@ export interface AdminMonitoringQueues {
 }
 
 export interface AdminMonitoringAppUpdate {
+  enabled: boolean;
   config_valid: boolean;
   download_artifacts_complete: boolean;
   has_apk_url: boolean;
@@ -232,6 +233,21 @@ export interface AdminUserDetail {
   orders: AdminOrderEntry[];
   gift_cards: AdminGiftCardEntry[];
   gift_card_attempts: AdminGiftCardAttempt[];
+}
+
+export interface AdminEntitlementSummary {
+  registered_users: number;
+  member_users: number;
+  legacy_member_users: number;
+  free_users: number;
+  plus_users: number;
+  pro_users: number;
+  expiring_in_7d: number;
+  expiring_in_30d: number;
+  daily_limit_exhausted_users: number;
+  topup_active_users: number;
+  upgrade_credit_users: number;
+  now_ms: number;
 }
 
 export interface AdminQuotaLedgerEntry {
@@ -450,6 +466,8 @@ export interface AdminDailyAgriEntry {
 }
 
 export interface AdminAppUpdateConfig {
+  enabled: boolean;
+  source?: string;
   latest_version_code: number;
   latest_version_name?: string;
   apk_url?: string;
@@ -457,6 +475,8 @@ export interface AdminAppUpdateConfig {
   release_notes?: string;
   force_update: boolean;
   file_size_bytes?: number;
+  updated_by?: string;
+  updated_at?: number;
   config_valid: boolean;
   download_artifacts_complete: boolean;
   has_apk_url: boolean;

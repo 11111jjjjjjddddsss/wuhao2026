@@ -27,14 +27,14 @@
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
 - 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、最近 30 天问诊地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness`、`capabilities` 和 `user_regions`。其中 `user_regions` 会按账号最近一次已识别地区拆出“注册用户地区”和“当前会员地区”两块，让非运维也能大概看出用户主要来自哪里；这不是精确注册地，也不是 100% 覆盖，只是基于账号最近地区做运营近似盘子。前端已收成“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、正式上架检查、快捷入口、关键队列和明细表，让非运维也能先看出当前哪里正常、哪里需要处理、哪里挡住正式上架。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上架检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；页面展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；`owner`、`support`、`finance_ops` 可查看和复制加密保存的完整手机号，用于回访，其他只读巡检角色只看脱敏号。
-- 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录。
+- 会员额度：除用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录外，现已补 `GET /admin-api/v1/entitlements/summary` 全局盘子，页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额和有升级补偿人数，不再只有“按账号ID查单人权益”。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
 - 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；备注、回复和审计里仍禁止写手机号全文。
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，不展示聊天正文、图片 URL、手机号或 token。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
 - 今日农情：`GET /admin-api/v1/today-agri/cards`。
-- 检查更新：`GET /admin-api/v1/app-update/android`，当前只读展示 `APP_ANDROID_*` 环境变量配置。
+- 检查更新：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`；后台可直接维护 Android 版本号、HTTPS APK、SHA-256、文件大小、强制更新和停更状态，对外 `/api/app/update` 优先读取数据库表 `app_release_configs`，无记录时才回退环境变量。
 
 仍保留的内部共享密钥接口：
 
@@ -45,7 +45,7 @@
 - 买服务器不等于自动有管理后台。
 - `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 仍只是共享密钥，不能给浏览器前端使用；正式后台浏览器入口必须走 `admin_users` / `admin_sessions` / CSRF。
 - `/admin-api/v1/monitoring`、`/admin-api/v1/app-logs` 和 `/internal/app/logs` 是给运维和后台面板用的只读 / 聚合入口，不是完整 SLS 告警中心。
-- `/api/app/update` 只是读取版本配置，不是发布系统；正式发布仍需要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间。
+- `/api/app/update` 当前已经接上后台可写发布配置，但它仍不是完整应用商店 / 推送中心；正式发布仍要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间，并做真机覆盖安装回归。
 - 礼品卡后端、后台和 Android 兑换入口已接入首版；Android 只在 `/api/gift-cards/redeem` 返回成功后展示“兑换成功”，没有后端成功结果时不能弹真实成功。后台现在可以页面内查看和复制新生成礼品卡完整卡码，但不能把完整卡码写进备注、审计、日志、文档或批量导出文件。
 - 开发期会员接口不是正式支付回调，生产必须保持关闭。
 - Android 客户端不能承载后台逻辑；客服回复、补权益、发礼品卡、停更新和删除用户数据都必须在服务端或后台完成。
@@ -105,7 +105,7 @@
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
 | 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |
 | 今日农情 | 已接入只读状态 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards` | 补跑 / 停用 API 和告警 |
-| 检查更新 | 已接入只读配置 | `APP_ANDROID_*` 环境变量、`/api/app/update`、`/admin-api/v1/app-update/android` | `app_releases` 表、发布 / 停更 / 回滚 API |
+| 检查更新 | 已接入发布 / 停更配置 | `app_release_configs`、`/api/app/update`、`/admin-api/v1/app-update/android` | 发布历史、APK 上传、回滚记录和更细二次确认 |
 | 订单 / 订购 | 不能当正式功能接 | 当前 `orders` 仅开发期记录 | 正式订单、支付回调、退款、对账和幂等表 |
 | 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | 批量发放、发放对象管理、更细风控；完整卡码批量导出暂不开放 |
 | 产品洞察 | 未完整接入 | 反馈、App 日志、聊天归档可作为来源 | 脱敏聚合任务和洞察报表表 |

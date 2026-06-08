@@ -941,6 +941,37 @@ func (s *Store) applyGiftCardTierTx(ctx context.Context, tx *sql.Tx, userID stri
 	return appliedTier, newExpire, nil
 }
 
+func (s *Store) GetCurrentGiftCardMembership(ctx context.Context, userID string, tier Tier, membershipExpireAt *int64) (bool, *int64, error) {
+	if userID == "" || membershipExpireAt == nil || *membershipExpireAt <= 0 {
+		return false, nil, nil
+	}
+	if tier != TierPlus && tier != TierPro {
+		return false, nil, nil
+	}
+	var redeemedAt sql.NullInt64
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT redeemed_at
+		   FROM gift_cards
+		  WHERE redeemed_user_id = ?
+		    AND status = 'redeemed'
+		    AND tier = ?
+		    AND membership_expire_at = ?
+		  ORDER BY redeemed_at DESC
+		  LIMIT 1`,
+		userID,
+		string(tier),
+		*membershipExpireAt,
+	).Scan(&redeemedAt)
+	if err == sql.ErrNoRows {
+		return false, nil, nil
+	}
+	if err != nil {
+		return false, nil, err
+	}
+	return true, nullInt64ToPtr(redeemedAt), nil
+}
+
 func insertGiftCardAttempt(ctx context.Context, tx *sql.Tx, codeSuffix string, userID string, success bool, failureReason string, maskedIP string, region RegionContext, createdAt int64) error {
 	successInt := 0
 	if success {
