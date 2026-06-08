@@ -683,6 +683,40 @@ func (s *Server) handleAdminTodayAgriCards(w http.ResponseWriter, r *http.Reques
 	s.writeJSON(w, http.StatusOK, map[string]any{"cards": cards})
 }
 
+func (s *Server) handleAdminGenerateTodayAgriCard(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "owner", "content_ops")
+	if !ok {
+		return
+	}
+	dayCN := GetTodayKeyCN(s.dailyAgri.shanghai, time.Now())
+	card, status, err := s.dailyAgri.GenerateToday(r.Context())
+	if err != nil {
+		s.logger.Error("admin generate today agri card failed", "status", status, "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.today_agri.generate", "daily_agri_cards", dayCN, "", false, http.StatusBadGateway, map[string]any{
+			"status":     status,
+			"error_code": "generation_failed",
+		})
+		s.writeJSON(w, http.StatusBadGateway, map[string]any{
+			"status": status,
+			"error":  "generation_failed",
+		})
+		return
+	}
+	itemCount := 0
+	if card != nil {
+		itemCount = len(card.Items)
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.today_agri.generate", "daily_agri_cards", dayCN, "", true, http.StatusOK, map[string]any{
+		"status":     status,
+		"item_count": itemCount,
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"status":     status,
+		"item_count": itemCount,
+		"has_card":   card != nil,
+	})
+}
+
 func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Request) {
 	admin, ok := s.requireAdmin(w, r, "owner", "release_ops", "ops_readonly", "auditor")
 	if !ok {
@@ -1088,14 +1122,14 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	case "failed":
 		items = append(items, AdminMonitoringActionItem{
 			Title: "今日农情生成失败",
-			Body:  firstNonEmpty(queues.DailyAgriError, "打开今日农情页查看最近失败原因。"),
+			Body:  firstNonEmpty(queues.DailyAgriError, "打开今日农情页查看最近失败原因，并直接补跑当天卡片。"),
 			Level: "bad",
 			Route: "today-agri",
 		})
 	case "pending", "running", "missing", "disabled", "":
 		items = append(items, AdminMonitoringActionItem{
 			Title: "今日农情未就绪",
-			Body:  "今天的农情卡片还没有 ready，发布前或早晨巡检时需要确认。",
+			Body:  "今天的农情卡片还没有 ready，发布前或早晨巡检时需要确认；必要时可在后台直接补跑。",
 			Level: "warn",
 			Route: "today-agri",
 		})
@@ -1289,7 +1323,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
 		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，发送后台回复并关闭或重开会话。", Route: "support"},
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、直接查看完整卡码、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡。", Route: "gift-cards"},
-		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；手动补跑后续再接。", Route: "today-agri"},
+		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
 		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
 		{Title: "SLS 告警", Status: "planned", Body: "日志已采集到 SLS，自动告警和仪表盘还要继续补。", Route: "health"},

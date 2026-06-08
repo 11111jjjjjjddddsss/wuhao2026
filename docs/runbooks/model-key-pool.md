@@ -80,5 +80,5 @@ DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=60
 1. 确认后端运行环境变量已配置至少一把 Key，且没有把真实 Key 写进仓库。
 2. 如果仍频繁限流，先确认 Key 是否来自不同阿里云主账号；同主账号多个 Key 不会增加真实 RPM / TPM。
 3. 查看后端日志里的上游状态码：`429` 通常是请求或 token 限流，`401 / 403` 多数是 Key 权限、状态或账号问题。
-4. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情强制 `enable_search=true`、`search_strategy=max`。
+4. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情当前保持 `qwen3.5-plus`，但联网走的是百炼兼容模式 `Responses API + web_search`，不是旧的 DashScope 原生 Generation 搜索链。2026-06-08 已确认 `qwen3.5-plus` 走旧原生 Generation + 联网搜索会返回 `400 InvalidParameter / url error`，不要把这类报错误判成 Key 无效。
 5. 如果要临时回滚到单 Key，只保留 `DASHSCOPE_API_KEY` 或只保留 `DASHSCOPE_API_KEY_1`，删除其它 Key 槽位后重启后端。

@@ -8,12 +8,15 @@
 
 ## 用户侧入口
 
+- App 启动进入主界面后，会静默请求一次 `GET /api/app/update`；如果服务端返回了更高版本，且当前设备还没对这个 `latest_version_code` 看过弹窗，App 会自动弹一次“发现新版本”，用户只需点“稍后 / 立即更新”
 - Android 设置页点击“检查更新”
 - App 请求 `GET /api/app/update?platform=android&version_code=<当前versionCode>&version_name=<当前versionName>`
 - 无更新：提示“已是最新版本”
 - 有更新：弹“发现新版本”卡片，按钮为“稍后 / 立即更新”
 - 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，并通过 FileProvider 调起 Android 系统安装页
 - Android 8+ 如果用户还没允许本 App 安装未知应用，会先打开系统授权页；用户授权后需要重新点击“立即更新”
+
+自动提醒不会变成系统通知，也不会在同一个版本号上反复骚扰用户；只有后台把 `latest_version_code` 提高后，App 才会再对这个新版本自动弹一次。若后台开启强制更新，弹窗仍会按强更口径不展示“稍后”。
 
 Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确认。
 

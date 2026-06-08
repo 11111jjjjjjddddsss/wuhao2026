@@ -34,10 +34,14 @@ func TestBuildDailyAgriMessagesIncludesRecentHistory(t *testing.T) {
 		"小麦赤霉病预警",
 		"今天不要重复同一链接、同一标题或同一事件",
 		"少选空泛会议、一般部署、表态新闻",
+		"https://example.com/article",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q: %s", want, prompt)
 		}
+	}
+	if strings.Contains(prompt, "https://原文链接") {
+		t.Fatalf("prompt still contains invalid placeholder url: %s", prompt)
 	}
 }
 

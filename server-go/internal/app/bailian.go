@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"strings"
 	"sync"
@@ -104,8 +105,16 @@ func (c *BailianClient) OpenCompletion(ctx context.Context, body map[string]any)
 }
 
 func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []BailianMessage) (string, []DailyAgriSearchSource, error) {
+	model := dailyAgriCardModel
+	if dailyAgriUsesResponsesAPI(model) {
+		return c.generateDailyAgriCardWithResponses(ctx, model, messages)
+	}
+	return c.generateDailyAgriCardWithGeneration(ctx, model, messages)
+}
+
+func (c *BailianClient) generateDailyAgriCardWithGeneration(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, error) {
 	body := map[string]any{
-		"model": dailyAgriCardModel,
+		"model": model,
 		"input": map[string]any{
 			"messages": messages,
 		},
@@ -165,6 +174,107 @@ func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []Ba
 			URL:      url,
 			SiteName: firstNonBlank(source.SiteName, source.Site, source.Host),
 		})
+	}
+	return content, sources, nil
+}
+
+func (c *BailianClient) generateDailyAgriCardWithResponses(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, error) {
+	systemPrompt, userPrompt := splitDailyAgriMessages(messages)
+	if strings.TrimSpace(userPrompt) == "" {
+		return "", nil, fmt.Errorf("daily agri prompt missing user content")
+	}
+	body := map[string]any{
+		"model":       model,
+		"input":       userPrompt,
+		"tool_choice": "required",
+		"tools": []map[string]any{
+			{"type": "web_search"},
+		},
+		"reasoning": map[string]any{
+			"effort": "none",
+		},
+		"temperature": unifiedModelTemperature,
+		"store":       false,
+	}
+	if systemPrompt != "" {
+		body["instructions"] = systemPrompt
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return "", nil, err
+	}
+	resp, err := c.doJSONPayloadRequest(ctx, c.buildResponsesURL(), "application/json", payload)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+	bodyBytes, err := readLimitedResponseBody(resp.Body, dashScopeGenerationBodyLimit)
+	if err != nil {
+		return "", nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", nil, fmt.Errorf("dashscope status %d", resp.StatusCode)
+	}
+
+	var decoded dashScopeResponsesResponse
+	if err := json.Unmarshal(bodyBytes, &decoded); err != nil {
+		return "", nil, err
+	}
+	if decoded.Error != nil && strings.TrimSpace(decoded.Error.Message) != "" {
+		return "", nil, fmt.Errorf("dashscope error %s: %s", decoded.Error.Code, decoded.Error.Message)
+	}
+
+	content := strings.TrimSpace(decoded.OutputText)
+	if content == "" {
+		for _, item := range decoded.Output {
+			if item.Type != "message" {
+				continue
+			}
+			for _, chunk := range item.Content {
+				text := strings.TrimSpace(chunk.Text)
+				if text != "" {
+					content = text
+					break
+				}
+			}
+			if content != "" {
+				break
+			}
+		}
+	}
+	if content == "" {
+		return "", nil, fmt.Errorf("dashscope response empty content")
+	}
+
+	sources := make([]DailyAgriSearchSource, 0, 8)
+	seen := map[string]struct{}{}
+	for _, item := range decoded.Output {
+		if item.Type != "web_search_call" {
+			continue
+		}
+		for _, source := range item.Action.Sources {
+			url := strings.TrimSpace(source.URL)
+			if url == "" {
+				continue
+			}
+			normalized := normalizeResponseSourceURL(url)
+			if normalized == "" {
+				continue
+			}
+			if _, ok := seen[normalized]; ok {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			sources = append(sources, DailyAgriSearchSource{
+				Index:    len(sources) + 1,
+				Title:    strings.TrimSpace(firstNonBlank(source.Title, source.URL)),
+				URL:      url,
+				SiteName: strings.TrimSpace(firstNonBlank(source.SiteName, hostLabelFromURL(url), source.Title)),
+			})
+		}
+	}
+	if len(sources) == 0 {
+		return "", nil, fmt.Errorf("dashscope response missing search sources")
 	}
 	return content, sources, nil
 }
@@ -259,6 +369,14 @@ func (c *BailianClient) buildURL() string {
 		baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	}
 	return strings.TrimRight(baseURL, "/") + "/chat/completions"
+}
+
+func (c *BailianClient) buildResponsesURL() string {
+	baseURL := strings.TrimSpace(os.Getenv("BAILIAN_BASE_URL"))
+	if baseURL == "" {
+		baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+	}
+	return strings.TrimRight(baseURL, "/") + "/responses"
 }
 
 func (c *BailianClient) buildDashScopeGenerationURL() string {
@@ -522,6 +640,33 @@ type dashScopeGenerationResponse struct {
 	} `json:"output"`
 }
 
+type dashScopeResponsesResponse struct {
+	Output     []dashScopeResponsesOutput `json:"output"`
+	OutputText string                     `json:"output_text"`
+	Error      *struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type dashScopeResponsesOutput struct {
+	Type    string `json:"type"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+	Action struct {
+		Type    string `json:"type"`
+		Query   string `json:"query"`
+		Sources []struct {
+			Type     string `json:"type"`
+			URL      string `json:"url"`
+			Title    string `json:"title"`
+			SiteName string `json:"site_name"`
+		} `json:"sources"`
+	} `json:"action"`
+}
+
 func firstNonBlank(values ...string) string {
 	for _, value := range values {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
@@ -529,6 +674,58 @@ func firstNonBlank(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func splitDailyAgriMessages(messages []BailianMessage) (string, string) {
+	var systemPrompt string
+	var userParts []string
+	for _, message := range messages {
+		text, ok := message.Content.(string)
+		if !ok {
+			continue
+		}
+		text = strings.TrimSpace(text)
+		if text == "" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(message.Role)) {
+		case "system":
+			if systemPrompt == "" {
+				systemPrompt = text
+			}
+		case "user":
+			userParts = append(userParts, text)
+		}
+	}
+	return systemPrompt, strings.Join(userParts, "\n\n")
+}
+
+func dailyAgriUsesResponsesAPI(model string) bool {
+	switch strings.TrimSpace(strings.ToLower(model)) {
+	case "qwen3.5-plus", "qwen3.5-plus-2026-02-15", "qwen3.7-plus", "qwen3.7-plus-2026-05-26":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeResponseSourceURL(rawURL string) string {
+	parsed, err := neturl.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/")
+}
+
+func hostLabelFromURL(rawURL string) string {
+	parsed, err := neturl.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	host := strings.TrimSpace(parsed.Hostname())
+	host = strings.TrimPrefix(strings.TrimPrefix(host, "www."), "m.")
+	return host
 }
 
 func autoRoundRobinHoldDuration() time.Duration {

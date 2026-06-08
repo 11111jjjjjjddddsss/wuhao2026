@@ -322,7 +322,7 @@
 - 用户侧接口是 `GET /api/today-agri-card`，需要普通用户鉴权，只读取当天 ready 卡片；没有 ready 卡片时返回 `missing / pending / failed` 状态。
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只接受 `DAILY_AGRI_JOB_SECRET`，支持 `X-Internal-Job-Secret` 或 `Authorization: Bearer ...`。
 - 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
-- 生成链路使用 DashScope 原生 Generation 协议调用 `qwen3.5-plus`，显式 `temperature=0.8`，显式 `enable_thinking=false`，强制联网搜索，`search_strategy=max`，`forced_search=true`，`enable_source=true`，`freshness=7`。
+- 生成链路当前保持 `qwen3.5-plus`，但不再走旧的 DashScope 原生 Generation 搜索链，而是改走百炼兼容模式 `Responses API + web_search`：显式 `temperature=0.8`、显式 `reasoning.effort=none`、`tool_choice=required`，并从 `web_search_call.action.sources[]` 提取真实来源 URL 做可信域名、https、近 7 天和去重校验。2026-06-08 在生产 ECS 实测发现 `qwen3.5-plus` 走旧原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，因此只调整今日农情的联网协议，不改主聊天模型。
 - 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
 - 后端解析时要求 JSON 可解析、`card_name=今日农情`、严格 3 条有效 item、https 链接、发布时间近 7 天、URL 来自 DashScope 搜索来源、域名在可信官方 / 权威大站范围内。
 - 后端会硬过滤广告、导购、联系方式、模型 / 提示词泄露、搜索参数、元表达、标题党词，以及过去 7 天和当天候选里的重复 URL / 重复标题；过滤后不足 3 条则不发布新卡片。

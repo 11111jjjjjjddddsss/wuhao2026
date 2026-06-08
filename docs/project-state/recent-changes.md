@@ -5,6 +5,10 @@
 
 ## 2026-06-08
 
+- 今日农情和 App 更新继续往正式链路收口：Android 设置页现在会在进入主界面后静默请求一次 `GET /api/app/update`，如果服务端返回更高版本且当前设备还没对这个 `latest_version_code` 看过弹窗，就自动弹一次“发现新版本”；用户点“稍后 / 立即更新”即可，之后同一版本号不再重复骚扰，主链仍不是系统通知。今日农情后台新增 `POST /admin-api/v1/today-agri/generate`，`owner / content_ops` 可直接补跑；ECS 侧新增 [configure-ecs-daily-agri-job.ps1](D:/wuhao/scripts/configure-ecs-daily-agri-job.ps1) 安装 systemd service + timer，生产主线改为“云端定时生成 + 后台人工补跑兜底”。
+
+- 纠正今日农情模型口径并补齐生产真相：2026-06-08 在生产 ECS 上实测确认，`qwen3.5-plus` 走 DashScope 原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，但同一台机器、同一套 Key、同一模型改走百炼兼容模式 `Responses API + web_search` 返回 200，且 `web_search_call.action.sources[]` 里仍能拿到真实搜索来源 URL。于是今日农情没有改模型，也不是改成 `qwen-plus`，而是继续用 `qwen3.5-plus`，只把联网协议切到 Responses `web_search`；主聊天仍保持原来的兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`，两条链路现在明确分开，互不影响。同步把项目记忆、runbook、后台显示用的 `search_strategy` 文案统一改成真实口径，避免后续窗口继续按临时过渡方案理解。
+
 - 检查更新从“只读看板”推进到“后台可操作发布”：新增数据库表 `app_release_configs`，`/api/app/update` 现在优先读取后台写入的 Android 发布配置，无记录时才回退 `APP_ANDROID_*` 环境变量；后台新增 `POST /admin-api/v1/app-update/android`，`owner / release_ops` 可直接维护 versionCode、版本名、HTTPS APK、SHA-256、文件大小、更新说明、强制更新和停更状态，页面同步展示配置来源、最后操作人和最后更新时间。监控面板的安装包更新卡也会显示“已启用 / 已停更”，不再把“有物料但当前停更”误读成已经对外发布。当前主链仍是用户手动点“检查更新”，系统自动推送还未接通知权限和推送服务。
 
 - Android 和后台继续按正式上架口径收口：`build_apk.bat` 默认改为打正式签名 release 包，不再默认产出 debug 包充当测试安装包；debug manifest 不再单独放开明文 HTTP；主聊天去掉“后端未配置时本地 fake stream”这类 debug 业务兜底，只继续保留 debug-only 预览面板。后台新增 `GET /admin-api/v1/entitlements/summary`，会员额度页不再只会按账号ID查单人，而是能直接看注册用户、会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额和有升级补偿人数。Android `/api/me` 现会在当前有效会员正对应礼品卡兑换记录时返回 `membership_source=gift_card`，会员中心顶端会显示“礼品卡开通 · 当前档位每日 25 / 40 次”，礼品卡兑换成功卡片也会直接写出档位、30 天和每日次数；debug 预览面板同步改成“账号短 ID / 礼品卡开通 / 真实成功文案”口径，不再沿用旧本机 ID、空成功卡壳或模糊权限说明。监控面板里“登录与账号ID”也从“登录正常”改成“服务配置正常，真机回归为准”，避免把配置健康误说成真机已验证。

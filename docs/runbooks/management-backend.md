@@ -33,7 +33,7 @@
 - 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；备注、回复和审计里仍禁止写手机号全文。
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，不展示聊天正文、图片 URL、手机号或 token。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
-- 今日农情：`GET /admin-api/v1/today-agri/cards`。
+- 今日农情：`GET /admin-api/v1/today-agri/cards`、`POST /admin-api/v1/today-agri/generate`。
 - 检查更新：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`；后台可直接维护 Android 版本号、HTTPS APK、SHA-256、文件大小、强制更新和停更状态，对外 `/api/app/update` 优先读取数据库表 `app_release_configs`，无记录时才回退环境变量。
 
 仍保留的内部共享密钥接口：
@@ -104,7 +104,7 @@
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
 | 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |
-| 今日农情 | 已接入只读状态 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards` | 补跑 / 停用 API 和告警 |
+| 今日农情 | 已接入状态查看和补跑 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards`、`/admin-api/v1/today-agri/generate` | 停用 API、告警和发布记录 |
 | 检查更新 | 已接入发布 / 停更配置 | `app_release_configs`、`/api/app/update`、`/admin-api/v1/app-update/android` | 发布历史、APK 上传、回滚记录和更细二次确认 |
 | 订单 / 订购 | 不能当正式功能接 | 当前 `orders` 仅开发期记录 | 正式订单、支付回调、退款、对账和幂等表 |
 | 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | 批量发放、发放对象管理、更细风控；完整卡码批量导出暂不开放 |

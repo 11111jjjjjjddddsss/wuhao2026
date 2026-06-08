@@ -1,6 +1,6 @@
 # 待决策事项
 
-最后更新：2026-06-07
+最后更新：2026-06-08
 
 ## D1 运维入口优先固化到什么形式
 
@@ -39,11 +39,11 @@
 - 已落地部分：`SessionRound.created_at / region / region_source / region_reliability` 已接入后端快照和前端兼容解析，历史轮次进入模型上下文时会增加轻量前缀“历史轮次时间：...（Asia/Shanghai）”和“历史轮次地点：...；地点可信度：...”；前端暂不显示每条消息时间戳或地点条
 - 仍待决策：是否要把更细的地块 / 基地 / 作物茬口 / 棚室编号等沉淀进 C 层“农业相关重点事件记忆”或未来结构化字段；天气 API 暂不接入，只有明确需要实时天气 / 温湿度 / 降雨时再评估成本。定位当前只做到地区文本，不做轨迹、地图或地块坐标管理
 
-## D7 今日农情生产调度怎么落
+## D7 今日农情失败告警、重试和个性化怎么落
 
-- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card` 和内部 `POST /internal/jobs/today-agri-card/generate`。生成链路已有数据库 lease、secret 校验、来源 / 日期 / 广告词过滤；Android 只展示已 ready 的 3 条“今日农情”，缺失时静默不展示
-- 当前倾向：每天 05:30（Asia/Shanghai）由 ECS cron、云工作流、函数计算或外部 cron 调内部生成接口；失败后最多补跑少量次数，不能让用户打开 App 时触发生成风暴
-- 仍待决策：真实云端用哪种调度器、失败是否自动重试、告警走 SLS 还是先人工巡检、是否允许后台人工补生成 / 下架单条、未来是否做地区 / 作物个性化。当前首版只做全国 `CN` 卡片，不做按用户画像推送
+- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card`、内部 `POST /internal/jobs/today-agri-card/generate` 和后台 `POST /admin-api/v1/today-agri/generate`；ECS systemd timer 已作为生产主线落地，Android 只展示已 ready 的 3 条“今日农情”，缺失时静默不展示。生成模型保持 `qwen3.5-plus`，但联网入口已从旧原生 Generation 改为兼容模式 `Responses API + web_search`
+- 当前倾向：继续保持“云端定时生成 + 后台人工补跑兜底”的主线，不让用户打开 App 时触发生成风暴
+- 仍待决策：失败是否做自动重试、告警先走 SLS 还是继续人工巡检、是否允许后台下架单条或重发当天卡片、未来是否做地区 / 作物个性化。当前首版只做全国 `CN` 卡片，不做按用户画像推送
 
 ## D8 是否后续新增独立农事事件表
 

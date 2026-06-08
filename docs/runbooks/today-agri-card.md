@@ -10,12 +10,19 @@
 - 数据真源表：`daily_agri_cards`
 - 用户只读接口：`GET /api/today-agri-card`
 - 内部生成接口：`POST /internal/jobs/today-agri-card/generate`
+- 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
+- 当前生产推荐主链：ECS systemd timer 每天自动触发一次生成，后台补跑只作为异常兜底
+- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情独立走 `Responses API + web_search + tool_choice=required`，两条链路分开，不互相影响
 
 ## 环境变量
 
 - `DASHSCOPE_API_KEY_1/2/3`、旧 `DASHSCOPE_API_KEY` 或 `DASHSCOPE_API_KEYS`：百炼模型主备 Key 池；多账号配置和限流口径见 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)
 - `DASHSCOPE_BASE_URL`：可选，默认 `https://dashscope.aliyuncs.com/api/v1`
 - `DAILY_AGRI_JOB_SECRET`：内部生成接口密钥，必须配置；不要写入仓库
+
+当前生产默认模型仍是 `qwen3.5-plus`，但今日农情不再走旧的 DashScope 原生 Generation 联网搜索，而是改走 Responses API + `web_search`。原因是 2026-06-08 在生产 ECS 实测发现：`qwen3.5-plus` 走 DashScope 原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，但同一台机器、同一套 Key、同一模型改走 Responses API + `web_search` 可正常返回 200，并且仍能拿到搜索来源 URL 列表供后端做可信域名、https、去重和来源校验。这个调整只影响今日农情独立生成链，不影响主聊天模型。
+
+模型提示词内部现在会要求先给 5 到 6 条候选，后端再按“来源可信、近 7 天、链接在搜索来源里、和近 7 天及当天不重复”的规则截取前 3 条对外发布。这样做是为了降低“模型只给 3 条但过滤后只剩 2 条”的失败率；用户侧最终仍只会看到 3 条。
 
 ## 生成接口
 
@@ -114,6 +121,37 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 4. 查询 `daily_agri_cards` 当天状态和 `error`。
 5. 如果状态是 `pending` 且 `lease_until` 未过期，等待当前任务完成。
 6. 如果状态是 `failed` 或 lease 已过期，可人工重新调用内部生成接口。
+7. 如果错误是 `dashscope status 400` 且审计 / 日志里没有业务解析报错，优先核对今天这条链是否误回到了旧的 DashScope 原生 Generation 联网搜索路径，不要先怀疑定时器或后台补跑按钮。
+
+## 后台补跑
+
+当前管理后台“今日农情”页已经可以直接补跑当天卡片，浏览器不持有 `DAILY_AGRI_JOB_SECRET`，而是走后台账号 / session / CSRF 和服务端角色校验：
+
+- 页面：`https://admin.nongjiqiancha.cn/#today-agri`
+- 接口：`POST /admin-api/v1/today-agri/generate`
+- 角色：`owner`、`content_ops`
+
+补跑逻辑是幂等的：
+
+- 今天已经有 `ready` 卡片时，后台会直接复用现有结果
+- 今天是 `missing / failed / lease 过期 pending` 时，会重新生成
+- 真正密钥调用仍发生在服务端，不把 `DAILY_AGRI_JOB_SECRET` 下发给浏览器
+
+## 定时任务
+
+当前 ECS 推荐用 [configure-ecs-daily-agri-job.ps1](D:/wuhao/scripts/configure-ecs-daily-agri-job.ps1) 安装 systemd service + timer：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-ecs-daily-agri-job.ps1 -RunOnce
+```
+
+默认会在 ECS 上写入：
+
+- `/usr/local/bin/nongji-generate-today-agri.sh`
+- `nongji-daily-agri.service`
+- `nongji-daily-agri.timer`
+
+默认 timer 使用 `*-*-* 21:35:00 UTC`，对应北京时间次日 `05:35` 左右；脚本会顺手 `-RunOnce` 触发一次，便于安装完立刻验证。
 
 ## 质量边界
 
@@ -137,7 +175,7 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 
 - 内部生成接口只允许定时任务 / 运维调用，不能由 Android 用户打开 App 时触发。
 - 生成接口要配置 `DAILY_AGRI_JOB_SECRET`，并在 ECS / 定时任务侧保存，不进入 APK 或仓库。
-- 首版后台至少能查看当天 `status/error/content_json/sources_json/lease_until`，能手动补跑或停用当天卡片。
+- 后台至少能查看当天 `status/error/content_json/sources_json/lease_until`，并能手动补跑当天卡片。
 - 如果连续失败，先查模型 Key、联网搜索权限、搜索来源返回、可信域名过滤和近 7 天去重，不要直接放宽到广告、软文或任意来源。
 
 ## 参考资料

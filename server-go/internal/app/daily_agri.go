@@ -19,8 +19,8 @@ import (
 
 const (
 	dailyAgriCardModel          = "qwen3.5-plus"
-	dailyAgriSearchStrategy     = "max"
-	dailyAgriPromptVersion      = "2026-05-13-v2"
+	dailyAgriSearchStrategy     = "responses_web_search"
+	dailyAgriPromptVersion      = "2026-06-08-v4"
 	dailyAgriGenerationLeaseTTL = 5 * time.Minute
 )
 
@@ -217,7 +217,7 @@ func buildDailyAgriMessages(now time.Time, recentCards []DailyAgriCard) []Bailia
       "title": "12到16个中文字符的一行标题",
       "summary": "45到60个中文字符的摘要",
       "source_index": 1,
-      "link_url": "https://原文链接",
+      "link_url": "https://example.com/article",
       "source_name": "来源名称",
       "published_date": "YYYY-MM-DD"
     }
@@ -225,7 +225,7 @@ func buildDailyAgriMessages(now time.Time, recentCards []DailyAgriCard) []Bailia
 }
 
 规则：
-1. items 必须严格 3 条，card_name 固定为“今日农情”。
+1. items 至少输出 5 条、最多输出 6 条候选，card_name 固定为“今日农情”。后端只会采用前 3 条通过校验且不重复的内容对外展示，所以宁可多给几条备选，也不要只给 3 条边缘内容。
 2. 只选面向农业生产或经营场景的事实类农情：病虫害预警、灾害天气、农时进展、作物长势、产区供需价格、农技防控、重要政策执行等。按农业实用价值排序，优先选择同时具备具体地区、具体作物或品类、明确风险/农时/价格/补贴/流通影响的信息；要素越完整越优先。少选空泛会议、一般部署、表态新闻；政策类只有直接影响种植、收获、补贴、流通或价格时才选。
 3. 优先权威大站和正式来源：农业农村部、各省市农业农村厅、全国农技推广网、中国气象局、中国天气网、新华社、央视网、人民网、中国政府网等。同等可信度下，优先包含具体地区、作物、时间、影响或数据的信息。
 4. 禁止广告软文、招商加盟、带货导购、品牌推广、厂家宣传、联系方式、二维码、优惠活动、直播电商、产品功效夸大。

@@ -700,11 +700,13 @@ async function appLogsPage(): Promise<string> {
 async function todayAgriPage(): Promise<string> {
   const response = await apiFetch<{ cards: AdminDailyAgriEntry[] }>("/admin-api/v1/today-agri/cards?limit=14");
   return `
-    ${pageHead("今日农情", "查看今日农情生成状态、来源数量和失败原因；补跑/停用操作暂不在前端开放。", "today-agri")}
+    ${pageHead("今日农情", "查看生成状态、来源数量和失败原因；content_ops / owner 可直接补跑当天卡片。", "today-agri")}
     <section class="card">
       <div class="card-head">
         <div class="card-title">最近卡片</div>
-        <button class="button" disabled>手动补跑未开放</button>
+        ${canManageTodayAgri()
+          ? `<button class="button primary" type="button" data-action="generate-today-agri">补跑今天</button>`
+          : `<button class="button" type="button" disabled>只读角色</button>`}
       </div>
       <div class="table-wrap">${todayAgriTable(response.cards)}</div>
     </section>
@@ -912,6 +914,10 @@ async function handleAction(button: HTMLElement): Promise<void> {
     await copyText(button.dataset.copy || "");
     return;
   }
+  if (action === "generate-today-agri") {
+    await generateTodayAgriCard();
+    return;
+  }
   if (action === "disable-app-update") {
     await disableAppUpdate(button);
     return;
@@ -1108,6 +1114,25 @@ async function disableAppUpdate(button: HTMLElement): Promise<void> {
     },
   });
   await render();
+}
+
+async function generateTodayAgriCard(): Promise<void> {
+  if (!canManageTodayAgri()) return;
+  if (!window.confirm("确认补跑今天的今日农情？如果今天已经有 ready 卡片，系统会直接复用现有结果。")) {
+    return;
+  }
+  try {
+    const result = await apiFetch<{ status?: string; item_count?: number; has_card?: boolean }>("/admin-api/v1/today-agri/generate", {
+      method: "POST",
+    });
+    const status = String(result.status || "").toLowerCase();
+    const label = status || "unknown";
+    const suffix = result.has_card ? `，当前 ${result.item_count || 0} 条` : "";
+    window.alert(`今日农情处理完成：${label}${suffix}`);
+    await render();
+  } catch (error) {
+    window.alert(`补跑失败：${errorMessage(error)}`);
+  }
 }
 
 async function voidGiftCard(cardID: string): Promise<void> {
@@ -2430,6 +2455,11 @@ function canManageGiftCards(): boolean {
 function canManageSupport(): boolean {
   const role = currentAdminRole();
   return role === "owner" || role === "support";
+}
+
+function canManageTodayAgri(): boolean {
+  const role = currentAdminRole();
+  return role === "owner" || role === "content_ops";
 }
 
 function canManageAppUpdate(): boolean {

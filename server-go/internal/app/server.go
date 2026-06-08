@@ -196,6 +196,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /admin-api/v1/app-logs", s.handleAdminAppLogs)
 	s.mux.HandleFunc("GET /admin-api/v1/audit-logs", s.handleAdminAuditLogs)
 	s.mux.HandleFunc("GET /admin-api/v1/today-agri/cards", s.handleAdminTodayAgriCards)
+	s.mux.HandleFunc("POST /admin-api/v1/today-agri/generate", s.handleAdminGenerateTodayAgriCard)
 	s.mux.HandleFunc("GET /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroid)
 	s.mux.HandleFunc("POST /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroidWrite)
 	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/batches", s.handleAdminGiftCardBatches)

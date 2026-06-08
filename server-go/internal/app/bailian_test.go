@@ -455,65 +455,71 @@ func TestOpenStreamFailoverStatusBoundaries(t *testing.T) {
 func TestGenerateDailyAgriCardUsesUnifiedTemperature(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/services/aigc/text-generation/generation" {
+		if r.URL.Path != "/responses" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"output":{"choices":[{"message":{"content":"{\"items\":[]}"}}]}}`))
+		_, _ = w.Write([]byte(`{"output":[{"type":"web_search_call","action":{"sources":[{"type":"url","url":"https://www.example.com/news-1"},{"type":"url","url":"https://www.example.com/news-2"}]}},{"type":"message","content":[{"type":"output_text","text":"{\"card_name\":\"今日农情\",\"items\":[]}"}]}],"output_text":""}`))
 	}))
 	defer modelServer.Close()
 
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
 
-	_, _, err := NewBailianClient().GenerateDailyAgriCard(
+	content, sources, err := NewBailianClient().GenerateDailyAgriCard(
 		context.Background(),
-		[]BailianMessage{{Role: "user", Content: "生成今日农情"}},
+		[]BailianMessage{
+			{Role: "system", Content: "你是一个只输出 JSON 的助手。"},
+			{Role: "user", Content: "生成今日农情"},
+		},
 	)
 	if err != nil {
 		t.Fatalf("generate daily agri card: %v", err)
+	}
+	if content != "{\"card_name\":\"今日农情\",\"items\":[]}" {
+		t.Fatalf("content mismatch: %q", content)
+	}
+	if len(sources) != 2 {
+		t.Fatalf("source count mismatch: %d", len(sources))
 	}
 
 	if got := captured["model"]; got != dailyAgriCardModel {
 		t.Fatalf("model mismatch: %#v", got)
 	}
-	parameters, ok := captured["parameters"].(map[string]any)
+	if got := captured["temperature"]; got != unifiedModelTemperature {
+		t.Fatalf("temperature mismatch: %#v", got)
+	}
+	if got := captured["tool_choice"]; got != "required" {
+		t.Fatalf("tool_choice mismatch: %#v", got)
+	}
+	if got := captured["store"]; got != false {
+		t.Fatalf("store mismatch: %#v", got)
+	}
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools mismatch: %#v", captured["tools"])
+	}
+	reasoning, ok := captured["reasoning"].(map[string]any)
 	if !ok {
-		t.Fatalf("missing parameters: %#v", captured["parameters"])
+		t.Fatalf("reasoning mismatch: %#v", captured["reasoning"])
 	}
-	if got, ok := parameters["temperature"].(float64); !ok || got != unifiedModelTemperature {
-		t.Fatalf("temperature mismatch: %#v", parameters["temperature"])
+	if got := reasoning["effort"]; got != "none" {
+		t.Fatalf("reasoning.effort mismatch: %#v", got)
 	}
-	if got := parameters["enable_thinking"]; got != false {
-		t.Fatalf("enable_thinking mismatch: %#v", got)
+	if got := captured["instructions"]; got != "你是一个只输出 JSON 的助手。" {
+		t.Fatalf("instructions mismatch: %#v", got)
 	}
-	if got := parameters["enable_search"]; got != true {
-		t.Fatalf("enable_search mismatch: %#v", got)
-	}
-	searchOptions, ok := parameters["search_options"].(map[string]any)
-	if !ok {
-		t.Fatalf("missing search_options: %#v", parameters["search_options"])
-	}
-	if got := searchOptions["search_strategy"]; got != dailyAgriSearchStrategy {
-		t.Fatalf("search_strategy mismatch: %#v", got)
-	}
-	if got := searchOptions["forced_search"]; got != true {
-		t.Fatalf("forced_search mismatch: %#v", got)
-	}
-	if got := searchOptions["enable_source"]; got != true {
-		t.Fatalf("enable_source mismatch: %#v", got)
-	}
-	if got, ok := searchOptions["freshness"].(float64); !ok || got != 7 {
-		t.Fatalf("freshness mismatch: %#v", searchOptions["freshness"])
+	if got := captured["input"]; got != "生成今日农情" {
+		t.Fatalf("input mismatch: %#v", got)
 	}
 }
 
 func TestGenerateDailyAgriCardStatusErrorDoesNotIncludeBody(t *testing.T) {
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/services/aigc/text-generation/generation" {
+		if r.URL.Path != "/responses" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusBadGateway)
@@ -522,7 +528,7 @@ func TestGenerateDailyAgriCardStatusErrorDoesNotIncludeBody(t *testing.T) {
 	defer modelServer.Close()
 
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
 
 	_, _, err := NewBailianClient().GenerateDailyAgriCard(
 		context.Background(),

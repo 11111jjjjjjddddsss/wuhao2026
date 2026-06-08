@@ -117,6 +117,8 @@ private const val HAMBURGER_PAGE_EXIT_MS = 150
 private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
 internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后重试"
 private val HamburgerBackButtonTopPadding = 4.dp
+private const val APP_UPDATE_PROMPT_PREFS = "app_update_prompt"
+private const val APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY = "last_prompted_version_code"
 private val supportBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 
 private fun normalizeSupportLinkTarget(raw: String): String {
@@ -138,6 +140,20 @@ private tailrec fun Context.findActivityForHamburger(): Activity? =
         is ContextWrapper -> baseContext.findActivityForHamburger()
         else -> null
     }
+
+private fun Context.loadLastPromptedUpdateVersionCode(): Int =
+    applicationContext
+        .getSharedPreferences(APP_UPDATE_PROMPT_PREFS, Context.MODE_PRIVATE)
+        .getInt(APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY, 0)
+
+private fun Context.saveLastPromptedUpdateVersionCode(versionCode: Int) {
+    if (versionCode <= 0) return
+    applicationContext
+        .getSharedPreferences(APP_UPDATE_PROMPT_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putInt(APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY, versionCode)
+        .apply()
+}
 
 private fun trimSupportBareUrlDisplayText(raw: String): String {
     val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
@@ -221,9 +237,9 @@ internal fun HamburgerMenuSheet(
     var supportRefreshTick by remember(visible) { mutableStateOf(0) }
     var supportAttachmentMenuVisible by remember(visible) { mutableStateOf(false) }
     var supportAttachmentCloseRequest by remember(visible) { mutableStateOf(0) }
-    var updateChecking by remember(visible) { mutableStateOf(false) }
-    var updateDialogInfo by remember(visible) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
-    var updateDownloading by remember(visible) { mutableStateOf(false) }
+    var updateChecking by remember(userId) { mutableStateOf(false) }
+    var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
+    var updateDownloading by remember(userId) { mutableStateOf(false) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -234,16 +250,41 @@ internal fun HamburgerMenuSheet(
         noticeText = text
         onPlaceholderClick(text)
     }
-    fun checkAppUpdate() {
+    fun checkAppUpdate(userTriggered: Boolean) {
         if (updateChecking || updateDownloading) return
         updateChecking = true
-        showNotice("正在检查更新...")
+        if (userTriggered) {
+            showNotice("正在检查更新...")
+        }
         SessionApi.getAppUpdate { info ->
             updateChecking = false
             when {
-                info == null -> showNotice("检查更新失败，请稍后重试")
-                info.usableUpdate -> updateDialogInfo = info
-                else -> showNotice("已是最新版本")
+                info == null -> {
+                    if (userTriggered) {
+                        showNotice("检查更新失败，请稍后重试")
+                    }
+                }
+                info.usableUpdate -> {
+                    val latestVersionCode = info.latestVersionCode ?: 0
+                    val shouldAutoPrompt =
+                        userTriggered ||
+                            info.forceUpdate == true ||
+                            latestVersionCode <= 0 ||
+                            latestVersionCode > context.loadLastPromptedUpdateVersionCode()
+                    if (shouldAutoPrompt) {
+                        updateDialogInfo = info
+                        if (!userTriggered && latestVersionCode > 0) {
+                            context.saveLastPromptedUpdateVersionCode(latestVersionCode)
+                        }
+                    } else if (userTriggered) {
+                        updateDialogInfo = info
+                    }
+                }
+                else -> {
+                    if (userTriggered) {
+                        showNotice("已是最新版本")
+                    }
+                }
             }
         }
     }
@@ -303,6 +344,11 @@ internal fun HamburgerMenuSheet(
         SessionApi.getSupportSummary { summary ->
             supportSummary = summary
         }
+    }
+    LaunchedEffect(userId) {
+        if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
+        delay(1200)
+        checkAppUpdate(userTriggered = false)
     }
     BackHandler(enabled = visible && page != HamburgerMenuPage.Menu) {
         handleBackClick()
@@ -383,7 +429,7 @@ internal fun HamburgerMenuSheet(
                                 },
                                 onCheckUpdate = {
                                     performButtonHaptic()
-                                    checkAppUpdate()
+                                    checkAppUpdate(userTriggered = true)
                                 },
                                 onPlaceholderClick = ::showNotice
                             )
@@ -503,21 +549,21 @@ internal fun HamburgerMenuSheet(
                         )
                     }
                 }
-                updateDialogInfo?.let { info ->
-                    HamburgerAppUpdateDialog(
-                        update = info,
-                        downloading = updateDownloading,
-                        onDismiss = {
-                            if (!updateDownloading) updateDialogInfo = null
-                        },
-                        onInstall = {
-                            performButtonHaptic()
-                            startAppUpdate(info)
-                        }
-                    )
-                }
             }
         }
+    }
+    updateDialogInfo?.let { info ->
+        HamburgerAppUpdateDialog(
+            update = info,
+            downloading = updateDownloading,
+            onDismiss = {
+                if (!updateDownloading) updateDialogInfo = null
+            },
+            onInstall = {
+                performButtonHaptic()
+                startAppUpdate(info)
+            }
+        )
     }
 }
 
