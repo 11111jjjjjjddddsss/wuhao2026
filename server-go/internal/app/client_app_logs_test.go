@@ -142,11 +142,12 @@ func TestClientAppLogRateLimiterUsesEnv(t *testing.T) {
 func TestParseClientAppLogQueryNormalizesAndCapsLimit(t *testing.T) {
 	now := time.UnixMilli(10_000)
 	values := url.Values{
-		"user_id":  {" acct_123 "},
-		"event":    {" Chat.Stream_Interrupted "},
-		"level":    {"WARN"},
-		"since_ms": {"1234"},
-		"limit":    {"500"},
+		"user_id":      {" acct_123 "},
+		"event":        {" Chat.Stream_Interrupted "},
+		"event_prefix": {" Auth. "},
+		"level":        {"WARN"},
+		"since_ms":     {"1234"},
+		"limit":        {"500"},
 	}
 	filter, validationError := parseClientAppLogQuery(values, now)
 	if validationError != "" {
@@ -154,10 +155,40 @@ func TestParseClientAppLogQueryNormalizesAndCapsLimit(t *testing.T) {
 	}
 	if filter.UserID != "acct_123" ||
 		filter.Event != "chat.stream_interrupted" ||
+		filter.EventPrefix != "auth." ||
 		filter.Level != "warn" ||
 		filter.SinceMs != 1234 ||
 		filter.Limit != maxClientAppLogInternalListLimit {
 		t.Fatalf("filter mismatch: %#v", filter)
+	}
+}
+
+func TestBuildClientAppLogWhereSupportsEventPrefix(t *testing.T) {
+	where, args := buildClientAppLogWhere(ClientAppLogQuery{
+		SinceMs:     123,
+		EventPrefix: "auth.",
+		Limit:       20,
+	})
+	if where != " WHERE created_at >= ? AND event LIKE ?" {
+		t.Fatalf("where = %q, want event prefix LIKE clause", where)
+	}
+	if len(args) != 2 || args[0] != int64(123) || args[1] != "auth.%" {
+		t.Fatalf("args = %#v, want since_ms and auth prefix", args)
+	}
+}
+
+func TestBuildClientAppLogWherePrefersExactEventOverPrefix(t *testing.T) {
+	where, args := buildClientAppLogWhere(ClientAppLogQuery{
+		SinceMs:     123,
+		Event:       "auth.app_crash",
+		EventPrefix: "auth.",
+		Limit:       20,
+	})
+	if where != " WHERE created_at >= ? AND event = ?" {
+		t.Fatalf("where = %q, want exact event clause", where)
+	}
+	if len(args) != 2 || args[0] != int64(123) || args[1] != "auth.app_crash" {
+		t.Fatalf("args = %#v, want since_ms and exact event", args)
 	}
 }
 

@@ -13,7 +13,7 @@
 - Android 现在有最小闪退补报：进程崩溃时只在本机 SharedPreferences 保存异常类型、顶层代码位置、登录阶段和时间戳等安全摘要；下次启动后自动上报。未登录 / 登录页阶段崩溃走 `auth.app_crash` 预登录日志，已登录后的普通运行崩溃走 `app.crash`
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
-- 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验
+- 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。两个查询入口都支持按精确 `event` 或事件前缀 `event_prefix` 过滤，精确事件名优先于前缀筛选
 - SLS 已接入 Go 服务 JSON 日志和 Nginx error log；后续仍要补告警、仪表盘和按版本 / 设备 / 地区聚合
 
 ## 当前自动上报事件
@@ -80,7 +80,7 @@ Android 只上报结构化错误信息：
 
 ## 后续接后台面板
 
-第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录环境预检、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.fusion_env_blocked` 表示 App 前置判断网络或 SIM 明显不可用；`auth.fusion_env_warning` 表示 VPN / 无蜂窝等可疑环境但仍交给 SDK 继续判断；`auth.login_network_failed` 表示登录请求本身网络失败。后台“登录排障”卡会把这三类单独计数，待处理事项也会提示先查 SIM / 默认数据卡 / 移动数据 / VPN / 生产 API 可达性，避免把手机环境问题、代理问题和服务端 token 校验问题混成一个“登录失败”。由于 App 日志筛选是精确事件名，后台排障按钮会按真实上报事件拆开：取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
+第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录环境预检、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.fusion_env_blocked` 表示 App 前置判断网络或 SIM 明显不可用；`auth.fusion_env_warning` 表示 VPN / 无蜂窝等可疑环境但仍交给 SDK 继续判断；`auth.login_network_failed` 表示登录请求本身网络失败。后台“登录排障”卡会把这三类单独计数，待处理事项也会提示先查 SIM / 默认数据卡 / 移动数据 / VPN / 生产 API 可达性，避免把手机环境问题、代理问题和服务端 token 校验问题混成一个“登录失败”。后台排障按钮既支持用 `event_prefix=auth.` 查看全部登录相关日志，也会按真实上报事件拆开：取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；排障按钮支持 `event_prefix=app_update.` 查看全部检查更新日志，也支持按具体阶段精确过滤。下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
 - 按时间筛选错误事件
 - 按事件名聚合数量
 - 按用户查最近失败事件
@@ -106,9 +106,10 @@ Android 只上报结构化错误信息：
 - `limit`：返回明细条数，默认 100，最大 200
 - `user_id`：可选，按用户过滤
 - `event`：可选，按事件名过滤
+- `event_prefix`：可选，按事件名前缀过滤，例如 `auth.` 或 `app_update.`；如果同时传 `event`，以精确 `event` 为准
 - `level`：可选，`info` / `warn` / `error`
 
-排查登录前失败时，可以用 `user_id=preauth` 过滤全量登录前日志；若要看具体阶段，优先按 `event=auth.fusion_token_failed`、`event=auth.fusion_sdk_init_failed`、`event=auth.fusion_scene_start_failed`、`event=auth.fusion_sdk_token_auth_failed`、`event=auth.fusion_verify_failed`、`event=auth.fusion_login_failed`、`event=auth.fusion_timeout`、`event=auth.sms_send_failed` 或 `event=auth.sms_login_failed` 精确过滤。
+排查登录前失败时，可以用 `user_id=preauth` 过滤全量登录前日志；若要看整条登录链，优先用 `event_prefix=auth.`；若要看具体阶段，再按 `event=auth.fusion_token_failed`、`event=auth.fusion_sdk_init_failed`、`event=auth.fusion_scene_start_failed`、`event=auth.fusion_sdk_token_auth_failed`、`event=auth.fusion_verify_failed`、`event=auth.fusion_login_failed`、`event=auth.fusion_timeout`、`event=auth.sms_send_failed` 或 `event=auth.sms_login_failed` 精确过滤。排查检查更新时可先用 `event_prefix=app_update.` 看整组检查 / 下载 / 安装日志。
 
 返回：
 
@@ -122,6 +123,12 @@ Android 只上报结构化错误信息：
 curl -H "X-Support-Admin-Secret: $SUPPORT_ADMIN_SECRET" \
   --resolve api.nongjiqiancha.cn:443:127.0.0.1 \
   "https://api.nongjiqiancha.cn/internal/app/logs?level=error&limit=50"
+```
+
+```bash
+curl -H "X-Support-Admin-Secret: $SUPPORT_ADMIN_SECRET" \
+  --resolve api.nongjiqiancha.cn:443:127.0.0.1 \
+  "https://api.nongjiqiancha.cn/internal/app/logs?event_prefix=auth.&limit=100"
 ```
 
 该接口只读，不返回聊天正文、AI 回复全文、图片内容 / URL、手机号、token 或模型 Key。成功或失败查询都会写入最小内部审计日志，只保存动作、过滤条件摘要、返回条数、脱敏 IP、UA 和时间，不保存密钥或日志 attrs 原文以外的额外敏感内容。

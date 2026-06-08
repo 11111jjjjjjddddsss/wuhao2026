@@ -61,11 +61,12 @@ type ClientAppLogInput struct {
 }
 
 type ClientAppLogQuery struct {
-	UserID  string `json:"user_id,omitempty"`
-	Level   string `json:"level,omitempty"`
-	Event   string `json:"event,omitempty"`
-	SinceMs int64  `json:"since_ms"`
-	Limit   int    `json:"limit"`
+	UserID      string `json:"user_id,omitempty"`
+	Level       string `json:"level,omitempty"`
+	Event       string `json:"event,omitempty"`
+	EventPrefix string `json:"event_prefix,omitempty"`
+	SinceMs     int64  `json:"since_ms"`
+	Limit       int    `json:"limit"`
 }
 
 type ClientAppLogEntry struct {
@@ -213,6 +214,7 @@ func (s *Server) handleInternalClientAppLogs(w http.ResponseWriter, r *http.Requ
 	}
 	s.recordAdminAuditLog(r, "support_admin_secret", "internal.app.logs.list", "client_app_logs", "", filter.UserID, true, http.StatusOK, map[string]any{
 		"event":         filter.Event,
+		"event_prefix":  filter.EventPrefix,
 		"level":         filter.Level,
 		"limit":         filter.Limit,
 		"since_ms":      filter.SinceMs,
@@ -245,10 +247,11 @@ func clientAppLogRateLimitKey(userID string, ip string) string {
 
 func parseClientAppLogQuery(values url.Values, now time.Time) (ClientAppLogQuery, string) {
 	filter := ClientAppLogQuery{
-		UserID:  strings.TrimSpace(values.Get("user_id")),
-		Event:   normalizeClientLogIdentifier(values.Get("event"), 96),
-		SinceMs: now.Add(-24 * time.Hour).UnixMilli(),
-		Limit:   defaultClientAppLogInternalListLimit,
+		UserID:      strings.TrimSpace(values.Get("user_id")),
+		Event:       normalizeClientLogIdentifier(values.Get("event"), 96),
+		EventPrefix: normalizeClientLogIdentifier(values.Get("event_prefix"), 96),
+		SinceMs:     now.Add(-24 * time.Hour).UnixMilli(),
+		Limit:       defaultClientAppLogInternalListLimit,
 	}
 	if rawLevel := strings.TrimSpace(values.Get("level")); rawLevel != "" {
 		level := strings.ToLower(rawLevel)
@@ -510,6 +513,9 @@ func buildClientAppLogWhere(filter ClientAppLogQuery) (string, []any) {
 	if strings.TrimSpace(filter.Event) != "" {
 		clauses = append(clauses, "event = ?")
 		args = append(args, strings.TrimSpace(filter.Event))
+	} else if strings.TrimSpace(filter.EventPrefix) != "" {
+		clauses = append(clauses, "event LIKE ?")
+		args = append(args, strings.TrimSpace(filter.EventPrefix)+"%")
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
 }

@@ -976,6 +976,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
     openAppLogsWithFilter({
       userID: button.dataset.userId || "",
       event: button.dataset.event || "",
+      eventPrefix: button.dataset.eventPrefix || "",
       level: button.dataset.level || "",
       window: button.dataset.window || "24h",
     });
@@ -2257,6 +2258,7 @@ function logFilterForm(formID: string, key: string, selectedWindow: string): str
       ${timeWindowField(key === "app-log" ? "app_log_window" : `${key}_window`, selectedWindow)}
       <label class="field"><span>账号ID</span><input class="input" name="user_id" value="${escapeAttr(readInputValue(key, "user_id"))}" /></label>
       <label class="field"><span>event</span><input class="input" name="event" value="${escapeAttr(readInputValue(key, "event"))}" /></label>
+      <label class="field"><span>event前缀</span><input class="input" name="event_prefix" value="${escapeAttr(readInputValue(key, "event_prefix"))}" placeholder="auth. / app_update." /></label>
       <label class="field"><span>level</span>${selectHTML("level", readInputValue(key, "level"), [["", "全部"], ["info", "info"], ["warn", "warn"], ["error", "error"]])}</label>
       <button class="button primary" type="submit">查询</button>
     </form>
@@ -2303,10 +2305,11 @@ function readInputValue(key: string, name: string): string {
   return filterState.get(key)?.[name] || "";
 }
 
-function openAppLogsWithFilter(filter: { userID?: string; event?: string; level?: string; window?: string }): void {
+function openAppLogsWithFilter(filter: { userID?: string; event?: string; eventPrefix?: string; level?: string; window?: string }): void {
   const values: Record<string, string> = {};
   if (filter.userID) values.user_id = filter.userID;
   if (filter.event) values.event = filter.event;
+  if (filter.eventPrefix) values.event_prefix = filter.eventPrefix;
   if (filter.level) values.level = filter.level;
   filterState.set("app-log", values);
   pageState.appLogWindow = filter.window || "24h";
@@ -2419,6 +2422,7 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           <p class="small muted">最近出现：${authLogs.last_seen_at ? formatTime(authLogs.last_seen_at) : "暂无"}</p>
         </div>
         <div class="row-actions">
+          ${filterButton("全部登录日志", { eventPrefix: "auth.", window: "24h" })}
           ${filterButton("登录前日志", { userID: "preauth", window: "24h" })}
           ${filterButton("环境不满足", { event: "auth.fusion_env_blocked", window: "24h" })}
           ${filterButton("可疑环境", { event: "auth.fusion_env_warning", window: "24h" })}
@@ -2463,6 +2467,7 @@ function appUpdateTroubleshootingBlock(updateLogs: AdminMonitoring["app_update_l
           <p class="small muted">最近出现：${updateLogs.last_seen_at ? formatTime(updateLogs.last_seen_at) : "暂无"}</p>
         </div>
         <div class="row-actions">
+          ${filterButton("全部更新日志", { eventPrefix: "app_update.", window: "24h" })}
           ${filterButton("检查开始", { event: "app_update.check_started", window: "24h" })}
           ${filterButton("有新版本", { event: "app_update.available", window: "24h" })}
           ${filterButton("没有新版本", { event: "app_update.no_update", window: "24h" })}
@@ -2488,8 +2493,8 @@ function authDebugMetric(label: string, value: number, level: "ok" | "warn" | "b
   `;
 }
 
-function filterButton(label: string, filter: { userID?: string; event?: string; level?: string; window?: string }): string {
-  return `<button class="button" data-action="open-app-log-filter" data-user-id="${escapeAttr(filter.userID || "")}" data-event="${escapeAttr(filter.event || "")}" data-level="${escapeAttr(filter.level || "")}" data-window="${escapeAttr(filter.window || "24h")}">${escapeHTML(label)}</button>`;
+function filterButton(label: string, filter: { userID?: string; event?: string; eventPrefix?: string; level?: string; window?: string }): string {
+  return `<button class="button" data-action="open-app-log-filter" data-user-id="${escapeAttr(filter.userID || "")}" data-event="${escapeAttr(filter.event || "")}" data-event-prefix="${escapeAttr(filter.eventPrefix || "")}" data-level="${escapeAttr(filter.level || "")}" data-window="${escapeAttr(filter.window || "24h")}">${escapeHTML(label)}</button>`;
 }
 
 function queueCard(title: string, value: string | number, body: string, level: "ok" | "warn" | "bad" | "info"): string {
@@ -2706,13 +2711,21 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
   const giftCardRedeems = day24?.gift_card_redeems ?? 0;
   const supportMessages = day24?.support_messages ?? 0;
   const updateLogCount = report.app_update_logs?.total ?? 0;
-  const items: Array<{ title: string; status: string; level: "ok" | "warn" | "bad" | "info"; body: string; route: RouteKey }> = [
+  const items: Array<{
+    title: string;
+    status: string;
+    level: "ok" | "warn" | "bad" | "info";
+    body: string;
+    route: RouteKey;
+    appLogFilter?: { userID?: string; event?: string; eventPrefix?: string; level?: string; window?: string };
+  }> = [
     {
       title: "一键登录 / 短信登录",
       status: authTrouble > 0 ? "看日志" : recentLoginSessions > 0 ? "有登录" : "待真机",
       level: authTrouble > 0 ? "warn" : recentLoginSessions > 0 ? "ok" : "info",
       body: authTrouble > 0 ? "已有登录环境、网络、SDK 或闪退信号，先点 App 日志看 auth.*。" : recentLoginSessions > 0 ? "24 小时内已有新登录 session；继续用真机分别回归一键登录和验证码登录。" : "云端配置正常不等于真机已过；测试时重点看默认数据卡、移动数据、代理和验证码收码。",
       route: "app-logs",
+      appLogFilter: { eventPrefix: "auth.", window: "24h" },
     },
     {
       title: "主聊天文字问诊",
@@ -2748,6 +2761,7 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
       level: updateTrouble > 0 ? "warn" : updateLogCount > 0 || report.queues.app_update.download_artifacts_complete ? "ok" : "warn",
       body: updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" : updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号。" : "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。",
       route: updateTrouble > 0 ? "app-logs" : "app-update",
+      appLogFilter: updateTrouble > 0 ? { eventPrefix: "app_update.", window: "24h" } : undefined,
     },
     {
       title: "帮助与反馈",
@@ -2768,7 +2782,7 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
                 ${statusPill(item.status, item.level)}
               </div>
               <p>${escapeHTML(item.body)}</p>
-              ${routeActionButton(item.route, "打开")}
+              ${item.appLogFilter ? filterButton("打开", item.appLogFilter) : routeActionButton(item.route, "打开")}
             </article>
           `,
         )

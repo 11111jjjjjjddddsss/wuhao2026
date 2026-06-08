@@ -805,7 +805,12 @@ func (s *Server) handleAdminAppLogs(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_logs", "client_app_logs", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(logs), "event": filter.Event, "level": filter.Level})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_logs", "client_app_logs", "", filter.UserID, true, http.StatusOK, map[string]any{
+		"row_count":    len(logs),
+		"event":        filter.Event,
+		"event_prefix": filter.EventPrefix,
+		"level":        filter.Level,
+	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "summary": summary, "filter": filter})
 }
 
