@@ -223,3 +223,18 @@ func TestHandleCreateClientAppLogRejectsOversizedBodyWith413(t *testing.T) {
 		t.Fatalf("body = %q, want body_too_large", recorder.Body.String())
 	}
 }
+
+func TestHandleCreatePreAuthClientAppLogRejectsNonAuthEvent(t *testing.T) {
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	request := httptest.NewRequest(http.MethodPost, "/api/app/logs/preauth", strings.NewReader(`{"level":"warn","event":"chat.failure","message":"safe"}`))
+	recorder := httptest.NewRecorder()
+
+	server.handleCreatePreAuthClientAppLog(recorder, request)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusBadRequest)
+	}
+	if !strings.Contains(recorder.Body.String(), "event_not_allowed") {
+		t.Fatalf("body = %q, want event_not_allowed", recorder.Body.String())
+	}
+}

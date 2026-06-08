@@ -53,9 +53,13 @@ func NewDypnsClientFromEnv() (*DypnsClient, error) {
 		packageSign:   strings.ToLower(strings.ReplaceAll(strings.TrimSpace(os.Getenv("DYPNS_ANDROID_PACKAGE_SIGN")), ":", "")),
 		smsSignName:   strings.TrimSpace(os.Getenv("DYPNS_SMS_SIGN_NAME")),
 		smsTemplate:   strings.TrimSpace(os.Getenv("DYPNS_SMS_TEMPLATE_CODE")),
-		smsParam:      strings.TrimSpace(firstNonEmpty(os.Getenv("DYPNS_SMS_TEMPLATE_PARAM"), `{"code":"##code##","min":"5"}`)),
-		smsSchemeName: strings.TrimSpace(firstNonEmpty(os.Getenv("DYPNS_SMS_SCHEME_NAME"), "农技千查")),
+		smsParam:      strings.TrimSpace(firstNonEmpty(os.Getenv("DYPNS_SMS_TEMPLATE_PARAM"), `{"code":"##code##"}`)),
+		smsSchemeName: dypnsOptionalSMSSchemeName(),
 	}, nil
+}
+
+func dypnsOptionalSMSSchemeName() string {
+	return strings.TrimSpace(os.Getenv("DYPNS_SMS_SCHEME_NAME"))
 }
 
 func (c *DypnsClient) HasClientConfigured() bool {
@@ -135,14 +139,14 @@ func (c *DypnsClient) SendSMSCode(ctx context.Context, phone string, outID strin
 	req.SetSignName(c.smsSignName)
 	req.SetTemplateCode(c.smsTemplate)
 	req.SetTemplateParam(c.smsParam)
-	req.SetSchemeName(c.smsSchemeName)
+	if c.smsSchemeName != "" {
+		req.SetSchemeName(c.smsSchemeName)
+	}
 	req.SetCountryCode("86")
 	req.SetCodeType(1)
 	req.SetCodeLength(6)
 	req.SetValidTime(300)
-	req.SetInterval(60)
 	req.SetDuplicatePolicy(1)
-	req.SetAutoRetry(1)
 	req.SetReturnVerifyCode(false)
 	if strings.TrimSpace(outID) != "" {
 		req.SetOutId(outID)
@@ -166,7 +170,9 @@ func (c *DypnsClient) CheckSMSCode(ctx context.Context, phone string, verifyCode
 	req.SetPhoneNumber(phone)
 	req.SetVerifyCode(strings.TrimSpace(verifyCode))
 	req.SetCountryCode("86")
-	req.SetSchemeName(c.smsSchemeName)
+	if c.smsSchemeName != "" {
+		req.SetSchemeName(c.smsSchemeName)
+	}
 	req.SetCaseAuthPolicy(1)
 	_ = ctx
 	resp, err := c.client.CheckSmsVerifyCodeWithOptions(req, runtimeOptions())

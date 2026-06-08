@@ -973,6 +973,74 @@ button {
   background: #fff5f5;
 }
 
+.today-agri-preview {
+  margin-bottom: 12px;
+}
+
+.today-agri-items {
+  display: grid;
+  gap: 10px;
+}
+
+.today-agri-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.today-agri-item-index {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: #edf8f0;
+  color: #276344;
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.today-agri-item-body {
+  min-width: 0;
+}
+
+.today-agri-item-body strong {
+  display: block;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.today-agri-item-body p {
+  margin: 7px 0 0;
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.today-agri-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  color: #68717d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.today-agri-source a {
+  color: #1e6f50;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .filters {
   display: grid;
   grid-template-columns: repeat(6, minmax(120px, 1fr));

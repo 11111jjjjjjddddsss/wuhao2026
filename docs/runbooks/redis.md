@@ -1,6 +1,6 @@
 # Redis Runbook
 
-最后更新：2026-06-01
+最后更新：2026-06-08
 
 ## 当前现状
 
@@ -13,7 +13,7 @@
 - ECS 已验证内网 DNS、TCP 6379 和 `default` 账号密码认证可用
 - `server-go` 已新增可选 Redis 客户端：只要配置 `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD`，启动时会先 ping Redis，失败则 fail-fast
 - 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并已部署验证融合认证 token、融合认证登录校验、短信发送、短信登录、主聊天用户级频控、App 自动日志接收、帮助与反馈用户发消息和上传限流；`/healthz` 当前返回 `redis=ok`
-- 当前 Redis 只接短期认证状态和短期限流：`POST /api/auth/fusion/token`、`POST /api/auth/fusion/login`、`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/chat/stream` 用户级频控、`POST /api/app/logs`、`POST /api/support/messages` 和 `/upload`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（主聊天 / App 日志 / 帮助与反馈 / 上传相关）和 IP hash，不保存明文手机号、验证码、verify token、auth token、聊天正文、反馈正文或图片内容
+- 当前 Redis 只接短期认证状态和短期限流：`POST /api/auth/fusion/token`、`POST /api/auth/fusion/login`、`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/chat/stream` 用户级频控、`POST /api/app/logs`、`POST /api/app/logs/preauth`、`POST /api/support/messages` 和 `/upload`；Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（主聊天 / App 日志 / 帮助与反馈 / 上传相关；登录前日志统一使用固定 `preauth`）和 IP hash，不保存明文手机号、验证码、verify token、auth token、聊天正文、反馈正文或图片内容
 - 主聊天 `/api/chat/stream` 的内容、归档、额度和同用户单流仍使用 MySQL 业务真相、MySQL 用户级锁和 `chat_stream_inflight`；用户级频控配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。不要把 Redis 写成已经接管聊天内容、额度、订单、归档、摘要锁或会员资产
 
 ## 预期用途

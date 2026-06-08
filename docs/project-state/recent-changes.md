@@ -5,7 +5,11 @@
 
 ## 2026-06-08
 
-- 修复 Android 本机号码一键登录“一点就退”崩溃：根因是 `FusionOneLoginClient` 在 `AlicomFusionBusiness.initWithToken(...)` 之前调用 `setAlicomFusionAuthCallBack(...)`，阿里云融合认证 SDK 内部 `authProxy` 尚未创建时被解引用导致 NPE。现按 SDK 实际依赖顺序先 `initWithToken` 初始化并适配页面，再挂认证回调；场景启动、继续、停止和销毁都加了安全兜底，SDK 初始化 / 拉起失败时切回验证码登录，不再让 App 进程崩溃。已用本地 AAR 字节码确认 `initWithToken` 会创建 `authProxy`，`setAlicomFusionAuthCallBack` 会使用该对象；`./gradlew.bat :app:compileDebugKotlin` 和 `./gradlew.bat :app:assembleRelease` 通过，正式签名 release 包 SHA-256 与本机备案签名记录一致。生产 `healthz` 显示 `dypns_fusion=ok / dypns_sms=ok / redis=ok`，短信接口非法手机号边界返回 `invalid_phone`。真机上 debug 签名包不再崩溃但会回落到验证码登录，正式签名包已安装到测试机；最终一键登录 / 验证码真实手机号回归仍由用户在关闭代理、优先手机流量条件下继续确认。
+- 补齐登录前自动日志链路：此前 `POST /api/app/logs` 需要账号鉴权，导致一键登录拉起失败、SDK 初始化失败、最终 token 校验失败、短信发送失败这类“还没拿到账号 token”的问题无法进入后台 App 日志。后端新增 `POST /api/app/logs/preauth`，只允许 `auth.` 前缀事件并统一写为 `user_id=preauth`，继续使用 8KiB body 上限、字段清洗、脱敏 IP 和 Redis / 单进程短期限流；Android 一键登录和短信登录失败点会 fire-and-forget 上报 `auth.fusion_*`、`auth.sms_*`，只带阶段、节点和错误码等安全字段，不上传手机号、verify token、短信验证码、URL、正文或图片内容。Android 端也补了敏感 value 过滤，字段值里出现 URL、token、AccessKey 或连续 11 位数字时直接丢弃。
+
+- 继续把测试包和正式包登录链路收成一致：本机存在固定 release 签名配置时，`debug` 构建也使用同一把 release 签名并开启 `ENABLE_FUSION_ONE_LOGIN`，因此 Android Studio 直接 Run / 打 debug 包也按 `com.nongjiqiancha + 正式签名 + 正式 HTTPS 后端` 走一键登录；只有缺少 release 签名配置的环境才关闭一键登录、退到验证码登录。正式 release 包仍强制要求 release 签名和 HTTPS 后端。阿里云融合认证授权页改用 `startSceneWithTemplateId(..., AlicomFusionAuthUICallBack)` 接入自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框保持可见且默认未勾选；当前 100001 一键登录主链不再调用半程 verify-only，不再提前消费 token，只在最终 `onVerifySuccess` 后调 `/api/auth/fusion/login`。短信后端同步收紧为最小参数：默认模板变量只保留 `{"code":"##code##"}`，不再默认传 `SchemeName=农技千查`，`DYPNS_SMS_SCHEME_NAME` 只有显式配置才发送，降低阿里云 `SendSmsVerifyCode` 返回“非法参数”的风险。
+
+- 修复 Android 本机号码一键登录“一点就退”崩溃：根因是 `FusionOneLoginClient` 在 `AlicomFusionBusiness.initWithToken(...)` 之前调用 `setAlicomFusionAuthCallBack(...)`，阿里云融合认证 SDK 内部 `authProxy` 尚未创建时被解引用导致 NPE。现按 SDK 实际依赖顺序先 `initWithToken` 初始化并适配页面，再挂认证回调；场景启动、继续、停止和销毁都加了安全兜底，SDK 初始化 / 拉起失败时切回验证码登录，不再让 App 进程崩溃。已用本地 AAR 字节码确认 `initWithToken` 会创建 `authProxy`，`setAlicomFusionAuthCallBack` 会使用该对象；有固定 release 签名配置的 debug 包和 release 包都会启用一键登录，缺签名配置的本机 debug 包才回落验证码登录。最终一键登录 / 验证码真实手机号回归仍需用户在关闭代理、优先手机流量条件下继续确认。
 
 - 轻量收紧 Android 登录页视觉：`LoginScreen.kt` 将品牌黑圆内绿色叶片前景继续放大，让叶片更贴近外圈；协议勾选框不再用字体对号，改为 Canvas 两段线绘制的常规勾；“我已阅读并同意《服务协议》《隐私政策》”收成单个单行可点击协议文本，减少真机窄屏换行。该改动只影响登录页 UI，不改一键登录 / 短信登录 / 协议内容 / 后端认证逻辑。
 

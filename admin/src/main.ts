@@ -26,6 +26,7 @@ import type {
   AuthPayload,
   ClientAppLogEntry,
   ClientAppLogSummaryEntry,
+  JsonObject,
   JsonValue,
 } from "./types";
 
@@ -699,8 +700,10 @@ async function appLogsPage(): Promise<string> {
 
 async function todayAgriPage(): Promise<string> {
   const response = await apiFetch<{ cards: AdminDailyAgriEntry[] }>("/admin-api/v1/today-agri/cards?limit=14");
+  const latestReady = response.cards.find((row) => row.status === "ready" && todayAgriItems(row.content).length > 0);
   return `
     ${pageHead("今日农情", "查看生成状态、来源数量和失败原因；content_ops / owner 可直接补跑当天卡片。", "today-agri")}
+    ${latestReady ? todayAgriPreviewCard(latestReady) : notice("暂无可预览卡片", "最近记录里还没有可直接展示的 ready 卡片。可补跑当天，或查看下方失败原因。", "warn")}
     <section class="card">
       <div class="card-head">
         <div class="card-title">最近卡片</div>
@@ -1814,7 +1817,7 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
   if (!rows.length) return emptyState("没有今日农情记录", "后端未返回 daily_agri_cards。");
   return `
     <table class="table">
-      <thead><tr><th>日期</th><th>状态</th><th>标题</th><th>条目/来源</th><th>模型</th><th>生成时间</th><th>错误</th><th>内容</th></tr></thead>
+      <thead><tr><th>日期</th><th>状态</th><th>标题</th><th>条目/来源</th><th>模型</th><th>生成时间</th><th>错误</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -1823,7 +1826,6 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
                 <td>${escapeHTML(row.day_cn)}</td><td>${statusPill(row.status)}</td><td class="wrap">${escapeHTML(row.title || "未返回")}</td>
                 <td>${row.item_count} / ${row.source_count}</td><td>${escapeHTML([row.model, row.search_strategy].filter(Boolean).join(" / "))}</td>
                 <td>${formatTime(row.generated_at || row.updated_at)}</td><td class="wrap">${escapeHTML(row.error || "")}</td>
-                <td class="wrap">${jsonInline(row.content || row.sources)}</td>
               </tr>
             `,
           )
@@ -1831,6 +1833,67 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
       </tbody>
     </table>
   `;
+}
+
+function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
+  const items = todayAgriItems(row.content);
+  return `
+    <section class="card today-agri-preview">
+      <div class="card-head">
+        <div>
+          <div class="card-title">${escapeHTML(row.title || "今日农情")}</div>
+          <div class="small muted">${escapeHTML(row.day_cn)} · ${row.item_count} 条 · 来源 ${row.source_count} 个 · ${formatTime(row.generated_at || row.updated_at)}</div>
+        </div>
+        ${statusPill(row.status)}
+      </div>
+      <div class="card-body">
+        <div class="today-agri-items">
+          ${items.map((item, index) => todayAgriItemCard(item, index)).join("")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function todayAgriItemCard(item: DailyAgriItem, index: number): string {
+  const meta = [item.source, item.publishedDate].filter(Boolean).join(" · ");
+  return `
+    <article class="today-agri-item">
+      <div class="today-agri-item-index">${index + 1}</div>
+      <div class="today-agri-item-body">
+        <strong>${escapeHTML(item.title || "未返回标题")}</strong>
+        <p>${escapeHTML(item.summary || "未返回摘要")}</p>
+        <div class="today-agri-source">
+          <span>${escapeHTML(meta || "未返回来源")}</span>
+          ${item.url ? `<a href="${escapeAttr(item.url)}" target="_blank" rel="noreferrer">打开来源</a>` : ""}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+interface DailyAgriItem {
+  title: string;
+  summary: string;
+  url: string;
+  source: string;
+  publishedDate: string;
+}
+
+function todayAgriItems(content: JsonValue | undefined): DailyAgriItem[] {
+  const root = asJsonObject(content);
+  const rawItems = Array.isArray(root?.items) ? root.items : [];
+  return rawItems
+    .map((item) => asJsonObject(item))
+    .filter((item): item is JsonObject => item !== null)
+    .map((item) => ({
+      title: stringFromJson(item.title),
+      summary: stringFromJson(item.summary),
+      url: stringFromJson(item.url),
+      source: stringFromJson(item.source),
+      publishedDate: stringFromJson(item.published_date),
+    }))
+    .filter((item) => item.title || item.summary || item.url);
 }
 
 function auditTable(rows: AdminAuditLogEntry[]): string {
@@ -2647,13 +2710,43 @@ function loadingBlock(label: string): string {
 }
 
 function errorBlock(error: unknown): string {
-  return `<div class="notice bad"><strong>请求失败</strong><div style="margin-top:6px">${escapeHTML(errorMessage(error))}</div></div>`;
+  const friendly = friendlyError(error);
+  return `
+    <div class="notice bad">
+      <strong>${escapeHTML(friendly.title)}</strong>
+      <div style="margin-top:6px;line-height:1.6">${escapeHTML(friendly.body)}</div>
+      <div class="small muted" style="margin-top:6px">排障码：${escapeHTML(errorMessage(error))}</div>
+    </div>
+  `;
 }
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return `${error.status} ${error.code}`;
   if (error instanceof Error) return error.message;
   return "unknown_error";
+}
+
+function friendlyError(error: unknown): { title: string; body: string } {
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return { title: "登录状态已失效", body: "请重新登录后台，再打开这个页面。" };
+    }
+    if (error.status === 403) {
+      return { title: "当前账号没有权限", body: "这个模块或操作不对当前角色开放，需要换有权限的后台账号。" };
+    }
+    if (error.status >= 500) {
+      return { title: "后台服务暂时异常", body: "请先刷新页面；如果持续出现，再看服务健康和后端日志。" };
+    }
+    if (error.status === 429) {
+      return { title: "操作太频繁", body: "请稍等一会儿再试。" };
+    }
+    return { title: "请求失败", body: "请稍后重试；如果反复出现，再按排障码查日志。" };
+  }
+  const text = error instanceof Error ? error.message : "";
+  if (text.toLowerCase().includes("failed to fetch") || text.toLowerCase().includes("network")) {
+    return { title: "网络连接失败", body: "后台暂时不可达，或当前网络不通。请检查网络后刷新。" };
+  }
+  return { title: "请求失败", body: "请稍后重试；如果反复出现，再按排障码查日志。" };
 }
 
 function labelFor(key: string): string {
@@ -2693,6 +2786,16 @@ function jsonInline(value: JsonValue | unknown): string {
   if (value === undefined || value === null || value === "") return "";
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return escapeHTML(text.length > 260 ? `${text.slice(0, 260)}...` : text);
+}
+
+function asJsonObject(value: JsonValue | undefined): JsonObject | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function stringFromJson(value: JsonValue | undefined): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
 }
 
 function escapeHTML(value: unknown): string {

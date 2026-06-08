@@ -82,6 +82,9 @@ func TestBuildMySQLDSNDefaultsCollationForRawDSN(t *testing.T) {
 	if cfg.Collation != defaultMySQLCollation {
 		t.Fatalf("Collation = %q, want %q", cfg.Collation, defaultMySQLCollation)
 	}
+	if !cfg.MultiStatements {
+		t.Fatalf("MultiStatements = false, want true")
+	}
 }
 
 func TestBuildMySQLDSNDefaultsCollationForMySQLURL(t *testing.T) {
@@ -96,6 +99,9 @@ func TestBuildMySQLDSNDefaultsCollationForMySQLURL(t *testing.T) {
 	if cfg.Collation != defaultMySQLCollation {
 		t.Fatalf("Collation = %q, want %q", cfg.Collation, defaultMySQLCollation)
 	}
+	if !cfg.MultiStatements {
+		t.Fatalf("MultiStatements = false, want true")
+	}
 }
 
 func TestBuildMySQLDSNRespectsExplicitCollationOverride(t *testing.T) {
@@ -109,5 +115,33 @@ func TestBuildMySQLDSNRespectsExplicitCollationOverride(t *testing.T) {
 	}
 	if cfg.Collation != "utf8mb4_0900_ai_ci" {
 		t.Fatalf("Collation = %q, want explicit override", cfg.Collation)
+	}
+}
+
+func TestBuildMySQLDSNRespectsExplicitRawMultiStatementsFalse(t *testing.T) {
+	dsn, err := buildMySQLDSN("user:pass@tcp(127.0.0.1:3306)/nongjiqiancha?parseTime=true&multiStatements=false")
+	if err != nil {
+		t.Fatalf("buildMySQLDSN returned error: %v", err)
+	}
+	cfg, err := mysqlDriver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("ParseDSN returned error: %v", err)
+	}
+	if cfg.MultiStatements {
+		t.Fatalf("MultiStatements = true, want explicit false")
+	}
+}
+
+func TestBuildMySQLDSNRespectsExplicitURLMultiStatementsFalse(t *testing.T) {
+	dsn, err := buildMySQLDSN("mysql://user:pass@127.0.0.1:3306/nongjiqiancha?multiStatements=false")
+	if err != nil {
+		t.Fatalf("buildMySQLDSN returned error: %v", err)
+	}
+	cfg, err := mysqlDriver.ParseDSN(dsn)
+	if err != nil {
+		t.Fatalf("ParseDSN returned error: %v", err)
+	}
+	if cfg.MultiStatements {
+		t.Fatalf("MultiStatements = true, want explicit false")
 	}
 }

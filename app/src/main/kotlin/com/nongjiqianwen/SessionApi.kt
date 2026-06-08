@@ -99,11 +99,6 @@ object SessionApi {
             get() = !authToken.isNullOrBlank() && !schemeCode.isNullOrBlank()
     }
 
-    data class FusionVerifySnapshot(
-        val ok: Boolean = false,
-        @SerializedName("phone_mask") val phoneMask: String? = null
-    )
-
     data class TodayAgriCardResponse(
         val status: String? = null,
         val card: TodayAgriCard? = null
@@ -252,7 +247,11 @@ object SessionApi {
         }.getOrNull()
     }
 
-    fun loginWithFusionVerifyToken(verifyToken: String, onResult: (Boolean, String?) -> Unit) {
+    fun loginWithFusionVerifyToken(
+        verifyToken: String,
+        shouldCommitSession: () -> Boolean = { true },
+        onResult: (Boolean, String?) -> Unit
+    ) {
         loginWithAuthPayload(
             endpoint = "/api/auth/fusion/login",
             payload = mapOf(
@@ -260,46 +259,14 @@ object SessionApi {
                 "legacy_user_id" to IdManager.getLegacyUserId(),
                 "device_id" to IdManager.getDeviceId()
             ),
+            shouldCommitSession = shouldCommitSession,
             onResult = onResult
         )
-    }
-
-    fun verifyFusionTokenOnly(verifyToken: String, onResult: (Boolean) -> Unit) {
-        val base = baseUrl()
-        val token = verifyToken.trim()
-        if (base.isEmpty() || token.isEmpty()) {
-            mainHandler.post { onResult(false) }
-            return
-        }
-        val requestBody = gson.toJson(mapOf("verify_token" to token))
-            .toRequestBody("application/json".toMediaType())
-        val request = Request.Builder()
-            .url("$base/api/auth/fusion/verify")
-            .addHeader("Content-Type", "application/json")
-            .post(requestBody)
-            .build()
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                mainHandler.post { onResult(false) }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    val verified = it.isSuccessful && parseFusionVerify(body = it.body?.string().orEmpty())?.ok == true
-                    mainHandler.post { onResult(verified) }
-                }
-            }
-        })
     }
 
     private fun parseFusionAuthToken(body: String): FusionAuthTokenSnapshot? =
         runCatching {
             gson.fromJson(body, FusionAuthTokenSnapshot::class.java)
-        }.getOrNull()
-
-    private fun parseFusionVerify(body: String): FusionVerifySnapshot? =
-        runCatching {
-            gson.fromJson(body, FusionVerifySnapshot::class.java)
         }.getOrNull()
 
     fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
@@ -317,15 +284,35 @@ object SessionApi {
             .build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                reportAuthClientLog(
+                    level = "warn",
+                    event = "auth.sms_send_failed",
+                    message = "sms send network failure",
+                    attrs = mapOf("reason" to "network")
+                )
                 mainHandler.post { onResult(false, "网络连接失败，请稍后再试") }
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
+                    val statusCode = it.code
+                    if (!it.isSuccessful) {
+                        reportAuthClientLog(
+                            level = if (statusCode >= 500) "error" else "warn",
+                            event = "auth.sms_send_failed",
+                            message = "sms send failed",
+                            attrs = mapOf("http_status" to statusCode)
+                        )
+                    }
                     mainHandler.post {
                         onResult(
                             it.isSuccessful,
-                            if (it.isSuccessful) null else "验证码暂时发送失败，请稍后再试"
+                            when {
+                                it.isSuccessful -> null
+                                statusCode == 429 -> "操作太频繁，请稍后再试"
+                                statusCode == 400 -> "请输入正确的手机号"
+                                else -> "验证码暂时发送失败，请稍后再试"
+                            }
                         )
                     }
                 }
@@ -342,7 +329,17 @@ object SessionApi {
                 "legacy_user_id" to IdManager.getLegacyUserId(),
                 "device_id" to IdManager.getDeviceId()
             ),
-            onResult = onResult
+            onResult = { ok, error ->
+                if (!ok) {
+                    reportAuthClientLog(
+                        level = "warn",
+                        event = "auth.sms_login_failed",
+                        message = "sms login failed",
+                        attrs = mapOf("reason" to "verify_or_network")
+                    )
+                }
+                onResult(ok, error)
+            }
         )
     }
 
@@ -425,6 +422,42 @@ object SessionApi {
         message: String,
         attrs: Map<String, Any?> = emptyMap()
     ) {
+        reportClientLogToEndpoint(
+            endpoint = "/api/app/logs",
+            authenticated = true,
+            level = level,
+            event = event,
+            message = message,
+            attrs = attrs
+        )
+    }
+
+    fun reportAuthClientLog(
+        level: String,
+        event: String,
+        message: String,
+        attrs: Map<String, Any?> = emptyMap()
+    ) {
+        val normalizedEvent = normalizeClientLogIdentifier(event, maxLength = 96)
+        if (!normalizedEvent.startsWith("auth.")) return
+        reportClientLogToEndpoint(
+            endpoint = "/api/app/logs/preauth",
+            authenticated = false,
+            level = level,
+            event = normalizedEvent,
+            message = message,
+            attrs = attrs
+        )
+    }
+
+    private fun reportClientLogToEndpoint(
+        endpoint: String,
+        authenticated: Boolean,
+        level: String,
+        event: String,
+        message: String,
+        attrs: Map<String, Any?> = emptyMap()
+    ) {
         val base = baseUrl()
         if (base.isEmpty()) return
         val normalizedLevel = when (level.trim().lowercase()) {
@@ -450,11 +483,28 @@ object SessionApi {
             "client_time_ms" to System.currentTimeMillis()
         )
         val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
+        if (!authenticated) {
+            val request = Request.Builder()
+                .url("$base$endpoint")
+                .addHeader("Content-Type", "application/json")
+                .post(requestBody)
+                .build()
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (BuildConfig.DEBUG) Log.d(TAG, "preauth client log upload failed: ${e.javaClass.simpleName}")
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    response.close()
+                }
+            })
+            return
+        }
         authedRequest(
             builderFactory = { token ->
                 val builder = applyIdentityHeaders(
                     Request.Builder()
-                        .url("$base/api/app/logs")
+                        .url("$base$endpoint")
                         .addHeader("Content-Type", "application/json")
                         .post(requestBody)
                 )
@@ -497,7 +547,8 @@ object SessionApi {
                 val normalizedKey = normalizeClientLogIdentifier(key, maxLength = 64)
                 if (normalizedKey.isEmpty()) return@mapNotNull null
                 if (isSensitiveClientLogAttrKey(normalizedKey)) return@mapNotNull null
-                normalizedKey to sanitizeClientLogValue(value)
+                val sanitizedValue = sanitizeClientLogValue(value) ?: return@mapNotNull null
+                normalizedKey to sanitizedValue
             }
             .take(20)
             .toMap()
@@ -548,9 +599,45 @@ object SessionApi {
         when (value) {
             null -> null
             is Boolean -> value
-            is Number -> value
-            is String -> value.trim().take(160)
-            else -> value.toString().trim().take(160)
+            is Number -> {
+                val text = value.toString()
+                if (containsSensitiveClientLogText(text)) null else value
+            }
+            is String -> value.trim()
+                .take(160)
+                .takeUnless { it.isEmpty() || containsSensitiveClientLogText(it) }
+            else -> value.toString()
+                .trim()
+                .take(160)
+                .takeUnless { it.isEmpty() || containsSensitiveClientLogText(it) }
+        }
+
+    private fun containsSensitiveClientLogText(value: String): Boolean {
+        val normalized = value.trim().lowercase()
+        if (normalized.isEmpty()) return false
+        val markers = listOf(
+            "http://",
+            "https://",
+            "bearer ",
+            "authorization",
+            "token",
+            "api_key",
+            "access_key",
+            "accesskey",
+            "secret",
+            "password",
+        )
+        if (markers.any { normalized.contains(it) }) return true
+        var consecutiveDigits = 0
+        for (char in normalized) {
+            if (char.isDigit()) {
+                consecutiveDigits += 1
+                if (consecutiveDigits >= 11) return true
+            } else {
+                consecutiveDigits = 0
+            }
+        }
+        return false
     }
 
     private fun ensureAuthToken(onResult: (String?) -> Unit) {
@@ -576,6 +663,7 @@ object SessionApi {
     private fun loginWithAuthPayload(
         endpoint: String,
         payload: Map<String, String>,
+        shouldCommitSession: () -> Boolean = { true },
         onResult: (Boolean, String?) -> Unit
     ) {
         val base = baseUrl()
@@ -603,6 +691,10 @@ object SessionApi {
                         null
                     }
                     if (!session?.userId.isNullOrBlank() && !session?.token.isNullOrBlank()) {
+                        if (!shouldCommitSession()) {
+                            mainHandler.post { onResult(false, "登录已取消，请重新尝试") }
+                            return
+                        }
                         IdManager.saveAuthSession(
                             userId = session!!.userId.orEmpty(),
                             token = session.token.orEmpty(),

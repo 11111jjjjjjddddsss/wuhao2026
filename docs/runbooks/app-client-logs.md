@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-07
+最后更新：2026-06-08
 
 ## 当前定位
 
@@ -8,9 +8,10 @@
 
 当前主链：
 - Android 在关键失败点自动调用 `POST /api/app/logs`
-- 后端走现有用户鉴权，写入 `client_app_logs` 表，并同步打一条结构化服务日志
+- 登录后日志走现有用户鉴权，写入 `client_app_logs` 表，并同步打一条结构化服务日志
+- 登录前认证失败日志走 `POST /api/app/logs/preauth`，只允许 `auth.` 前缀事件，统一写成 `user_id=preauth`，用于排查一键登录 / 短信登录还没拿到账号 token 前的失败
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流
-- Android 端和后端都会按敏感 attr key 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
+- Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
 - 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验
 - SLS 已接入 Go 服务 JSON 日志和 Nginx error log；后续仍要补告警、仪表盘和按版本 / 设备 / 地区聚合
 
@@ -24,6 +25,17 @@
 - `support.send_failed`
 - `app_update.check_failed`
 - `app_update.parse_failed`
+- `auth.fusion_token_failed`
+- `auth.fusion_sdk_init_failed`
+- `auth.fusion_sdk_token_auth_failed`
+- `auth.fusion_scene_start_failed`
+- `auth.fusion_verify_failed`
+- `auth.fusion_login_failed`
+- `auth.fusion_timeout`
+- `auth.fusion_template_finished`
+- `auth.fusion_halfway_unexpected`
+- `auth.sms_send_failed`
+- `auth.sms_login_failed`
 
 ## 隐私边界
 
@@ -50,7 +62,7 @@ Android 只上报结构化错误信息：
 - `CLIENT_APP_LOG_RATE_LIMIT_WINDOW_SECONDS`：默认 600 秒
 - `CLIENT_APP_LOG_RATE_LIMIT_MAX_HITS`：默认 60 次
 - `CLIENT_APP_LOG_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：默认 600 秒
-- 配置 Redis 后限流 key 只保存 `user_id` hash 和 IP hash，不保存明文手机号、token、聊天正文、图片内容或用户反馈正文
+- 配置 Redis 后限流 key 只保存 `user_id` hash 和 IP hash，不保存明文手机号、token、聊天正文、图片内容或用户反馈正文；登录前日志统一用固定 `preauth` 作为 user_id 参与限流，不保存手机号或 verify token
 
 ## 后续接后台面板
 
@@ -81,6 +93,8 @@ Android 只上报结构化错误信息：
 - `user_id`：可选，按用户过滤
 - `event`：可选，按事件名过滤
 - `level`：可选，`info` / `warn` / `error`
+
+排查登录前失败时，可以用 `user_id=preauth` 或 `event=auth.fusion_verify_failed` / `event=auth.sms_send_failed` 过滤。
 
 返回：
 

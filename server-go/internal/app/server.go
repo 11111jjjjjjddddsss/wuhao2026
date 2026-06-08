@@ -225,6 +225,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/today-agri-card", s.handleTodayAgriCard)
 	s.mux.HandleFunc("GET /api/app/update", s.handleAppUpdate)
 	s.mux.HandleFunc("POST /api/gift-cards/redeem", s.handleGiftCardRedeem)
+	s.mux.HandleFunc("POST /api/app/logs/preauth", s.handleCreatePreAuthClientAppLog)
 	s.mux.HandleFunc("POST /api/app/logs", s.handleCreateClientAppLog)
 	s.mux.HandleFunc("GET /api/support/summary", s.handleSupportSummary)
 	s.mux.HandleFunc("GET /api/support/messages", s.handleSupportMessages)

@@ -20,6 +20,7 @@ const (
 	clientAppLogMaxBodyBytes  = 8 * 1024
 	clientAppLogMaxAttrsBytes = 2048
 	clientAppLogMaxAttrsCount = 20
+	clientAppLogPreAuthUserID = "preauth"
 
 	defaultClientAppLogRateLimitWindow        = 10 * time.Minute
 	defaultClientAppLogRateLimitMaxHits       = 60
@@ -134,6 +135,54 @@ func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request
 		s.logger.Warn("client app log", logAttrs...)
 	default:
 		s.logger.Info("client app log", logAttrs...)
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleCreatePreAuthClientAppLog(w http.ResponseWriter, r *http.Request) {
+	if s.clientAppLogLimiter != nil {
+		limitKey := clientAppLogRateLimitKey(clientAppLogPreAuthUserID, GetClientIP(r))
+		if allowed, retryAfter := s.clientAppLogLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, clientAppLogMaxBodyBytes)
+	var body clientAppLogRequest
+	if err := decodeJSONBody(r, &body); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	input, validationError := normalizeClientAppLogPayload(clientAppLogPreAuthUserID, maskIP(GetClientIP(r)), body, time.Now().UnixMilli())
+	if validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	if !strings.HasPrefix(input.Event, "auth.") {
+		s.writeError(w, http.StatusBadRequest, "event_not_allowed")
+		return
+	}
+	if err := s.store.CreateClientAppLog(r.Context(), input); err != nil {
+		s.logger.Error("create preauth client app log failed", "event", input.Event, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	logAttrs := []any{
+		"userId", clientAppLogPreAuthUserID,
+		"event", input.Event,
+		"platform", input.Platform,
+		"appVersionCode", input.AppVersionCodeValue(),
+	}
+	switch input.Level {
+	case "error":
+		s.logger.Error("preauth client app log", logAttrs...)
+	case "warn":
+		s.logger.Warn("preauth client app log", logAttrs...)
+	default:
+		s.logger.Info("preauth client app log", logAttrs...)
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

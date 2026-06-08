@@ -1,6 +1,11 @@
 package app
 
 import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -30,6 +35,8 @@ const (
 	defaultAuthSMSLoginRateLimitWindow        = 10 * time.Minute
 	defaultAuthSMSLoginRateLimitMaxHits       = 10
 	defaultAuthSMSLoginRateLimitPruneInterval = 10 * time.Minute
+
+	defaultFusionVerifiedPhoneTTL = 2 * time.Minute
 )
 
 type authLoginRequest struct {
@@ -61,7 +68,7 @@ func (s *Server) handleAuthFusionToken(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.dypns.GetFusionAuthToken(r.Context())
 	if err != nil {
-		s.logger.Warn("fusion auth token failed", "error", err)
+		s.logger.Warn("fusion auth token failed", "error", sanitizeProviderError(err))
 		s.writeError(w, http.StatusServiceUnavailable, "fusion_auth_not_configured")
 		return
 	}
@@ -97,9 +104,17 @@ func (s *Server) handleAuthFusionLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	cachedPhone, cachedErr := s.consumeCachedFusionVerifiedPhone(r.Context(), verifyToken)
+	if cachedErr == nil && cachedPhone != "" {
+		s.finishPhoneLogin(w, r, cachedPhone, body.LegacyUserID, body.DeviceID)
+		return
+	}
+	if cachedErr != nil {
+		s.logger.Warn("fusion verified cache consume failed", "error", sanitizeProviderError(cachedErr), "masked_ip", maskIP(GetClientIP(r)))
+	}
 	phone, err := s.dypns.VerifyFusionToken(r.Context(), verifyToken)
 	if err != nil {
-		s.logger.Warn("fusion login verify failed", "error", err, "masked_ip", maskIP(GetClientIP(r)))
+		s.logger.Warn("fusion login verify failed", "error", sanitizeProviderError(err), "masked_ip", maskIP(GetClientIP(r)))
 		s.writeError(w, http.StatusUnauthorized, "auth_verify_failed")
 		return
 	}
@@ -133,8 +148,13 @@ func (s *Server) handleAuthFusionVerify(w http.ResponseWriter, r *http.Request) 
 	}
 	phone, err := s.dypns.VerifyFusionToken(r.Context(), verifyToken)
 	if err != nil {
-		s.logger.Warn("fusion verify failed", "error", err, "masked_ip", maskIP(GetClientIP(r)))
+		s.logger.Warn("fusion verify failed", "error", sanitizeProviderError(err), "masked_ip", maskIP(GetClientIP(r)))
 		s.writeError(w, http.StatusUnauthorized, "auth_verify_failed")
+		return
+	}
+	if err := s.cacheFusionVerifiedPhone(r.Context(), verifyToken, phone); err != nil {
+		s.logger.Warn("fusion verify cache failed", "error", sanitizeProviderError(err), "masked_ip", maskIP(GetClientIP(r)))
+		s.writeError(w, http.StatusServiceUnavailable, "fusion_verify_cache_failed")
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
@@ -185,7 +205,7 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.dypns.SendSMSCode(r.Context(), phone, outID); err != nil {
-		s.logger.Warn("sms send failed", "error", err, "phone_mask", maskPhone(phone))
+		s.logger.Warn("sms send failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
 		s.writeError(w, http.StatusServiceUnavailable, "sms_auth_not_configured")
 		return
 	}
@@ -285,7 +305,7 @@ func (s *Server) handleAuthSMSLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := s.dypns.CheckSMSCode(r.Context(), phone, body.VerifyCode); err != nil {
-		s.logger.Warn("sms login verify failed", "error", err, "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
+		s.logger.Warn("sms login verify failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
 		s.writeError(w, http.StatusUnauthorized, "auth_verify_failed")
 		return
 	}
@@ -321,6 +341,115 @@ func authRateLimitKey(scope string, phone string, ip string) string {
 func authIPRateLimitKey(scope string, ip string) string {
 	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
 	return strings.TrimSpace(scope) + ":" + rateLimitHash(ip, secret)
+}
+
+func (s *Server) cacheFusionVerifiedPhone(ctx context.Context, verifyToken string, phone string) error {
+	if s == nil || s.redisClient == nil {
+		return nil
+	}
+	phone = normalizeMainlandPhone(phone)
+	if phone == "" {
+		return nil
+	}
+	key := fusionVerifiedPhoneCacheKey(verifyToken)
+	if key == "" {
+		return nil
+	}
+	ciphertext, err := encryptAccountPhoneNumberWithSecret(phone, strings.TrimSpace(os.Getenv("APP_SECRET")))
+	if err != nil {
+		return err
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", time.Second))
+	defer cancel()
+	return s.redisClient.Set(cacheCtx, key, ciphertext, envDurationWithDefault("AUTH_FUSION_VERIFY_CACHE_SECONDS", defaultFusionVerifiedPhoneTTL)).Err()
+}
+
+func (s *Server) consumeCachedFusionVerifiedPhone(ctx context.Context, verifyToken string) (string, error) {
+	if s == nil || s.redisClient == nil {
+		return "", nil
+	}
+	key := fusionVerifiedPhoneCacheKey(verifyToken)
+	if key == "" {
+		return "", nil
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", time.Second))
+	defer cancel()
+	value, err := s.redisClient.GetDel(cacheCtx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return "", nil
+		}
+		return "", err
+	}
+	phone, err := decryptAccountPhoneNumberWithSecret(value, strings.TrimSpace(os.Getenv("APP_SECRET")))
+	if err != nil {
+		return "", err
+	}
+	return normalizeMainlandPhone(phone), nil
+}
+
+func fusionVerifiedPhoneCacheKey(verifyToken string) string {
+	hash := sensitiveTokenHash(verifyToken)
+	if hash == "" {
+		return ""
+	}
+	return "nj:auth:fusion:verified:" + hash
+}
+
+func sensitiveTokenHash(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	if secret == "" {
+		sum := sha256.Sum256([]byte(value))
+		return hex.EncodeToString(sum[:])
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(value))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func sanitizeProviderError(err error) string {
+	if err == nil {
+		return ""
+	}
+	text := truncateRunes(strings.TrimSpace(err.Error()), 200)
+	if text == "" {
+		text = "provider_error"
+	}
+	for _, sensitive := range []string{
+		"PhoneNumber",
+		"VerifyToken",
+		"TemplateParam",
+		"AccessKey",
+		"Secret",
+		"Token",
+		"Authorization",
+	} {
+		text = strings.ReplaceAll(text, sensitive, sensitive[:minInt(len(sensitive), 5)]+"***")
+	}
+	text = maskLongDigitRuns(text)
+	return fmt.Sprintf("%T:%s", err, text)
+}
+
+func maskLongDigitRuns(text string) string {
+	var builder strings.Builder
+	digitRun := 0
+	for _, r := range text {
+		if r >= '0' && r <= '9' {
+			digitRun++
+			if digitRun >= 4 {
+				builder.WriteByte('*')
+				continue
+			}
+		} else {
+			digitRun = 0
+		}
+		builder.WriteRune(r)
+	}
+	return builder.String()
 }
 
 func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {

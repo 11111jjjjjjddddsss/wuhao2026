@@ -180,6 +180,9 @@ func buildMySQLDSN(raw string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		if !rawDSNHasMultiStatements(raw) {
+			cfg.MultiStatements = true
+		}
 		applyDefaultMySQLConfig(cfg)
 		return cfg.FormatDSN(), nil
 	}
@@ -240,6 +243,11 @@ func buildMySQLDSN(raw string) (string, error) {
 	}
 
 	return cfg.FormatDSN(), nil
+}
+
+func rawDSNHasMultiStatements(raw string) bool {
+	lower := strings.ToLower(raw)
+	return strings.Contains(lower, "multistatements=")
 }
 
 func applyDefaultMySQLConfig(cfg *mysqlDriver.Config) {

@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -100,7 +101,8 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     var phone by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var agreed by remember { mutableStateOf(false) }
-    var smsMode by remember { mutableStateOf(false) }
+    val fusionOneLoginEnabled = BuildConfig.ENABLE_FUSION_ONE_LOGIN
+    var smsMode by remember { mutableStateOf(!fusionOneLoginEnabled) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableIntStateOf(0) }
@@ -172,7 +174,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(44.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF111111)),
                         contentAlignment = Alignment.Center
@@ -184,12 +186,12 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer(
-                                    scaleX = 1.52f,
-                                    scaleY = 1.52f
+                                    scaleX = 1.56f,
+                                    scaleY = 1.56f
                                 )
                         )
                     }
-                    Spacer(Modifier.size(14.dp))
+                    Spacer(Modifier.width(12.dp))
                     Text(
                         text = "农技千查",
                         color = Color(0xFF111111),
@@ -197,60 +199,63 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.sp
                     )
+                    Spacer(Modifier.width(56.dp))
                 }
                 Spacer(Modifier.height(32.dp))
 
-                Button(
-                    onClick = {
-                        if (!agreed) {
-                            message = "请先同意服务协议和隐私政策"
-                            return@Button
-                        }
-                        val activity = context.findActivity()
-                        if (activity == null) {
-                            smsMode = true
-                            message = "一键登录暂不可用，请使用验证码登录"
-                            return@Button
-                        }
-                        if (
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                            ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.READ_PHONE_STATE
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-                        } else {
-                            startFusionOneLogin(activity)
-                        }
-                    },
-                    enabled = !busy,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                ) {
-                    Text("本机号码一键登录", fontSize = 17.sp, letterSpacing = 0.sp)
-                }
+                if (fusionOneLoginEnabled) {
+                    Button(
+                        onClick = {
+                            if (!agreed) {
+                                message = "请先同意服务协议和隐私政策"
+                                return@Button
+                            }
+                            val activity = context.findActivity()
+                            if (activity == null) {
+                                smsMode = true
+                                message = "一键登录暂不可用，请使用验证码登录"
+                                return@Button
+                            }
+                            if (
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                                ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.READ_PHONE_STATE
+                                ) != PackageManager.PERMISSION_GRANTED
+                            ) {
+                                phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+                            } else {
+                                startFusionOneLogin(activity)
+                            }
+                        },
+                        enabled = !busy,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                    ) {
+                        Text("本机号码一键登录", fontSize = 17.sp, letterSpacing = 0.sp)
+                    }
 
-                Spacer(Modifier.height(14.dp))
-                OutlinedButton(
-                    onClick = {
-                        smsMode = !smsMode
-                        message = null
-                    },
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                ) {
-                    Text(
-                        text = if (smsMode) "收起验证码登录" else "验证码登录",
-                        color = Color(0xFF111111),
-                        fontSize = 16.sp,
-                        letterSpacing = 0.sp
-                    )
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedButton(
+                        onClick = {
+                            smsMode = !smsMode
+                            message = null
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                    ) {
+                        Text(
+                            text = if (smsMode) "收起验证码登录" else "验证码登录",
+                            color = Color(0xFF111111),
+                            fontSize = 16.sp,
+                            letterSpacing = 0.sp
+                        )
+                    }
                 }
 
                 if (smsMode) {
@@ -297,6 +302,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                         countdown = 60
                                         message = "验证码已发送"
                                     } else {
+                                        countdown = 0
                                         message = error ?: "验证码发送失败"
                                     }
                                 }
@@ -364,10 +370,11 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         Spacer(Modifier.size(7.dp))
                         ClickableText(
                             text = agreementText,
+                            modifier = Modifier.weight(1f, fill = false),
                             style = androidx.compose.ui.text.TextStyle(
                                 color = Color(0xFF575D66),
-                                fontSize = 12.sp,
-                                lineHeight = 17.sp,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
                                 letterSpacing = 0.sp
                             ),
                             softWrap = false,
@@ -444,27 +451,27 @@ private fun LoginAgreementCheckbox(
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .size(24.dp)
-            .clip(RoundedCornerShape(5.dp))
-            .border(BorderStroke(2.dp, borderColor), RoundedCornerShape(5.dp))
+            .size(23.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .border(BorderStroke(1.6.dp, borderColor), RoundedCornerShape(4.dp))
             .clickable(role = Role.Checkbox) { onCheckedChange(!checked) }
     ) {
         if (checked) {
-            Canvas(modifier = Modifier.size(15.dp)) {
-                val strokeWidth = 2.6.dp.toPx()
+            Canvas(modifier = Modifier.size(14.dp)) {
+                val strokeWidth = 2.4.dp.toPx()
                 drawLine(
                     color = Color(0xFF111111),
-                    start = Offset(size.width * 0.18f, size.height * 0.54f),
-                    end = Offset(size.width * 0.42f, size.height * 0.78f),
+                    start = Offset(size.width * 0.16f, size.height * 0.52f),
+                    end = Offset(size.width * 0.40f, size.height * 0.76f),
                     strokeWidth = strokeWidth,
-                    cap = StrokeCap.Square
+                    cap = StrokeCap.Round
                 )
                 drawLine(
                     color = Color(0xFF111111),
-                    start = Offset(size.width * 0.42f, size.height * 0.78f),
-                    end = Offset(size.width * 0.84f, size.height * 0.24f),
+                    start = Offset(size.width * 0.40f, size.height * 0.76f),
+                    end = Offset(size.width * 0.86f, size.height * 0.24f),
                     strokeWidth = strokeWidth,
-                    cap = StrokeCap.Square
+                    cap = StrokeCap.Round
                 )
             }
         }
