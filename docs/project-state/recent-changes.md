@@ -5,6 +5,8 @@
 
 ## 2026-06-09
 
+- 一键登录失败提示继续按真机排障口径收口：Android SDK 初始化、授权页拉起、取号校验、超时等一键登录失败现在统一提示用户先关闭代理 / VPN、打开移动数据并确认默认数据卡，也可直接走验证码登录；后台监控“登录排障”卡同步加了这条检查顺序。该改动只改用户提示和后台说明，不改 100001 最终 `onVerifySuccess` token 登录主链、不调用半程 verify，也不改短信登录接口。
+
 - 账号管理补上“清理本机缓存”真实入口：Android 新增 `LocalAppCacheCleaner`，设置页账号管理内可一键清理 `cacheDir/app_updates` 检查更新下载残留和 `cacheDir/composer_camera` 外部相机临时文件；清理动作跑在 IO 线程并做 cache 根目录边界校验。该入口不删除登录态、后端聊天历史、A/B/C 记忆、会员权益、礼品卡、帮助反馈、待发送 WorkManager 图文、`files/composer_images` 私有上传副本或 `chat_ui_cache` 草稿 / 快照，和“删除所有历史对话”保持清晰分工。
 
 - 检查更新链路补上真机排障闭环：Android 会把检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页等阶段用 `app_update.*` 自动日志上报；下载器同步返回更细失败原因，包括网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致、versionCode 不一致或未升版本、安装页 intent 打不开等。管理后台 `GET /admin-api/v1/monitoring` 新增 `app_update_logs` 聚合，监控页新增“检查更新排障”卡和直达 App 日志筛选按钮；日志只存阶段、版本号、是否强更、物料是否配置、失败原因和 HTTP 状态，不上传 APK URL、SHA-256、手机号、token 或密钥。

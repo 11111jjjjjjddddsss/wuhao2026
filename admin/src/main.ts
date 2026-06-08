@@ -2364,6 +2364,7 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           <span class="small muted">最近24小时</span>
           <strong>${failures}</strong>
           <p>认证失败；一键登录 ${authLogs.fusion_failures ?? 0}，短信 ${authLogs.sms_failures ?? 0}，登录前日志 ${authLogs.preauth_count ?? 0}，闪退补报 ${crashReports}。</p>
+          <p class="small muted">真机先确认关闭代理 / VPN、打开移动数据、默认数据卡是要登录的手机号；仍失败再按下面事件筛选。</p>
           <div class="auth-debug-metrics">
             ${authDebugMetric("环境不满足", envBlocked, envBlocked ? "warn" : "ok")}
             ${authDebugMetric("可疑环境", envWarnings, envWarnings ? "warn" : "ok")}

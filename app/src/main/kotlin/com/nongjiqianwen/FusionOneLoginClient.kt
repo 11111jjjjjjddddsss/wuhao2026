@@ -32,6 +32,7 @@ object FusionOneLoginClient {
     private const val VERIFY_FAILED_FALLBACK_MS = 1_500L
     private const val SERVICE_AGREEMENT_URL = "https://nongjiqiancha.cn/"
     private const val PRIVACY_POLICY_URL = "https://nongjiqiancha.cn/"
+    private const val ONE_LOGIN_FALLBACK_MESSAGE = "一键登录未成功，请关闭代理/VPN、打开移动数据并确认默认数据卡；也可用验证码登录"
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @Volatile
@@ -72,7 +73,7 @@ object FusionOneLoginClient {
                     stage = "fusion_token",
                     error = null
                 )
-                onResult(false, error ?: "一键登录暂不可用，请使用验证码登录")
+                onResult(false, error ?: ONE_LOGIN_FALLBACK_MESSAGE)
                 return@requestFusionAuthToken
             }
             startWithToken(activity, snapshot, onResult)
@@ -110,7 +111,7 @@ object FusionOneLoginClient {
                 stage = "sdk_init",
                 error = null
             )
-            finish(business, completed, false, "一键登录暂不可用，请使用验证码登录", onResult)
+            finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
             return
         }
 
@@ -146,7 +147,7 @@ object FusionOneLoginClient {
                                     business,
                                     completed,
                                     false,
-                                    "一键登录暂不可用，请使用验证码登录",
+                                    ONE_LOGIN_FALLBACK_MESSAGE,
                                     onResult
                                 )
                             }
@@ -165,7 +166,7 @@ object FusionOneLoginClient {
                         stage = "token_auth",
                         error = error
                     )
-                    finish(business, completed, false, "一键登录暂不可用，请使用验证码登录", onResult)
+                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                 }
 
                 override fun onVerifySuccess(
@@ -199,7 +200,7 @@ object FusionOneLoginClient {
                                 business,
                                 completed,
                                 false,
-                                loginError ?: "一键登录校验失败，请使用验证码登录",
+                                loginError ?: ONE_LOGIN_FALLBACK_MESSAGE,
                                 onResult
                             )
                         }
@@ -236,7 +237,7 @@ object FusionOneLoginClient {
                     )
                     safeContinueScene(business, false)
                     mainHandler.postDelayed({
-                        finish(business, completed, false, "一键登录校验失败，请使用验证码登录", onResult)
+                        finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                     }, VERIFY_FAILED_FALLBACK_MS)
                 }
 
@@ -249,7 +250,7 @@ object FusionOneLoginClient {
                         stage = "template_finish",
                         error = event
                     )
-                    finish(business, completed, false, "一键登录未完成，请使用验证码登录", onResult)
+                    finish(business, completed, false, "一键登录未完成，可继续使用验证码登录", onResult)
                 }
 
                 override fun onAuthEvent(event: AlicomFusionEvent?) = Unit
@@ -270,7 +271,7 @@ object FusionOneLoginClient {
                 stage = "callback_attach",
                 error = null
             )
-            finish(business, completed, false, "一键登录暂不可用，请使用验证码登录", onResult)
+            finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
             return
         }
         mainHandler.postDelayed({
@@ -281,7 +282,7 @@ object FusionOneLoginClient {
                 stage = "timeout",
                 error = null
             )
-            finish(business, completed, false, "一键登录超时，请使用验证码登录", onResult)
+            finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
         }, LOGIN_TIMEOUT_MS)
     }
 
@@ -505,7 +506,7 @@ object FusionOneLoginClient {
                 "no_network" -> "当前网络不可用，请联网后重试，或使用验证码登录"
                 "no_sim" -> "未检测到可用 SIM 卡，请插卡并打开移动数据，或使用验证码登录"
                 "sim_not_ready" -> "SIM 卡暂不可用，请确认默认移动数据卡正常，或使用验证码登录"
-                else -> "一键登录暂不可用，请使用验证码登录"
+                else -> ONE_LOGIN_FALLBACK_MESSAGE
             }
     }
 
