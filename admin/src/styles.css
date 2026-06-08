@@ -1072,6 +1072,49 @@ button {
   line-height: 1;
 }
 
+.insight-breakdown {
+  display: grid;
+  gap: 11px;
+}
+
+.insight-bar-row {
+  display: grid;
+  gap: 5px;
+}
+
+.insight-bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #4a5562;
+  font-size: 12px;
+}
+
+.insight-bar-head span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.insight-bar-head strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.insight-bar-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf0f3;
+}
+
+.insight-bar-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2f7d4e;
+}
+
 .today-agri-preview {
   margin-bottom: 12px;
 }

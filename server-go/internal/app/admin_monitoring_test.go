@@ -61,6 +61,9 @@ func TestAdminMonitoringCapabilitiesContract(t *testing.T) {
 			t.Fatalf("unexpected capability route %q for %#v", item.Route, item)
 		}
 	}
+	if !hasAdminMonitoringCapabilityStatus(capabilities, "产品洞察", "partial") {
+		t.Fatalf("product insights capability should be partial after first aggregate dashboard: %#v", capabilities)
+	}
 }
 
 func TestAdminMonitoringFiltersRoutesByRole(t *testing.T) {
@@ -151,6 +154,15 @@ func hasAdminMonitoringActionRoute(items []AdminMonitoringActionItem, route stri
 func hasAdminMonitoringActionTitle(items []AdminMonitoringActionItem, title string) bool {
 	for _, item := range items {
 		if item.Title == title {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAdminMonitoringCapabilityStatus(items []AdminMonitoringCapability, title string, status string) bool {
+	for _, item := range items {
+		if item.Title == title && item.Status == status {
 			return true
 		}
 	}

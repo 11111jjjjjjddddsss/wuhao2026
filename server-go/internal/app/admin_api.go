@@ -74,6 +74,64 @@ type AdminMonitoring struct {
 	NowMs        int64                       `json:"now_ms"`
 }
 
+type AdminInsights struct {
+	Windows                 []AdminInsightWindow         `json:"windows"`
+	QualitySignals          AdminInsightQualitySignals   `json:"quality_signals"`
+	SupportCategorySinceMs  int64                        `json:"support_category_since_ms"`
+	AppEventCategorySinceMs int64                        `json:"app_event_category_since_ms"`
+	GiftCardReasonSinceMs   int64                        `json:"gift_card_reason_since_ms"`
+	SupportCategories       []AdminInsightBreakdown      `json:"support_categories"`
+	AppEventCategories      []AdminInsightBreakdown      `json:"app_event_categories"`
+	GiftCardReasons         []AdminGiftCardFailureReason `json:"gift_card_failure_reasons"`
+	TopAppEvents            []ClientAppLogSummaryEntry   `json:"top_app_events"`
+	Notes                   []AdminStatusNote            `json:"notes"`
+	NowMs                   int64                        `json:"now_ms"`
+}
+
+type AdminInsightWindow struct {
+	Key                  string  `json:"key"`
+	Label                string  `json:"label"`
+	SinceMs              int64   `json:"since_ms"`
+	NewUsers             int64   `json:"new_users"`
+	RecentAuthSessions   int64   `json:"recent_auth_sessions"`
+	ChatRounds           int64   `json:"chat_rounds"`
+	ChatUsers            int64   `json:"chat_users"`
+	ImageChatRounds      int64   `json:"image_chat_rounds"`
+	ImageChatRatio       float64 `json:"image_chat_ratio"`
+	QuotaDeductions      int64   `json:"quota_deductions"`
+	AppErrors            int64   `json:"app_errors"`
+	AppWarns             int64   `json:"app_warns"`
+	AuthFailures         int64   `json:"auth_failures"`
+	CrashReports         int64   `json:"crash_reports"`
+	SupportMessages      int64   `json:"support_messages"`
+	SupportUsers         int64   `json:"support_users"`
+	GiftCardRedeems      int64   `json:"gift_card_redeems"`
+	GiftCardFailures     int64   `json:"gift_card_failures"`
+	DailyAgriFailedCards int64   `json:"daily_agri_failed_cards"`
+}
+
+type AdminInsightQualitySignals struct {
+	SupportNeedsReply      int64  `json:"support_needs_reply"`
+	SupportOpen            int64  `json:"support_open"`
+	SupportReplied         int64  `json:"support_replied"`
+	SupportClosed          int64  `json:"support_closed"`
+	AppUpdateEnabled       bool   `json:"app_update_enabled"`
+	AppUpdateReady         bool   `json:"app_update_ready"`
+	AppUpdateVersionCode   int    `json:"app_update_version_code"`
+	AppUpdateVersionName   string `json:"app_update_version_name,omitempty"`
+	DailyAgriStatus        string `json:"daily_agri_status"`
+	DailyAgriUpdatedAt     *int64 `json:"daily_agri_updated_at,omitempty"`
+	DailyAgriError         string `json:"daily_agri_error,omitempty"`
+	GiftCardRedeemable     int64  `json:"gift_card_redeemable"`
+	GiftCardFailedAttempts int64  `json:"gift_card_failed_attempts"`
+}
+
+type AdminInsightBreakdown struct {
+	Key   string `json:"key"`
+	Label string `json:"label"`
+	Count int64  `json:"count"`
+}
+
 type AdminMonitoringWindow struct {
 	Key                  string `json:"key"`
 	Label                string `json:"label"`
@@ -417,6 +475,40 @@ func (s *Server) handleAdminMonitoring(w http.ResponseWriter, r *http.Request) {
 		"app_errors":          report.Queues.AppErrors,
 		"support_needs_reply": report.Queues.SupportNeedsReply,
 		"unready_deps":        report.Queues.UnreadyDependencyCount,
+	})
+	s.writeJSON(w, http.StatusOK, report)
+}
+
+func (s *Server) handleAdminInsights(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "ops_readonly", "auditor", "support", "finance_ops", "content_ops", "release_ops")
+	if !ok {
+		return
+	}
+	now := time.Now()
+	updateRecord, err := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	if err != nil {
+		s.logger.Error("admin insights update config failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.insights", "dashboard", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	report, err := s.store.BuildAdminInsights(
+		r.Context(),
+		GetTodayKeyCN(s.shanghai, now),
+		adminDayStartMs(s.shanghai, now),
+		now.UnixMilli(),
+		updateRecord.Config,
+	)
+	if err != nil {
+		s.logger.Error("admin insights failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.insights", "dashboard", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.insights", "dashboard", "", "", true, http.StatusOK, map[string]any{
+		"windows":             len(report.Windows),
+		"support_needs_reply": report.QualitySignals.SupportNeedsReply,
+		"app_event_groups":    len(report.AppEventCategories),
 	})
 	s.writeJSON(w, http.StatusOK, report)
 }
@@ -1001,6 +1093,226 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 	return report, nil
 }
 
+func (s *Store) BuildAdminInsights(ctx context.Context, dayCN string, dayStartMs int64, nowMs int64, updateCfg androidUpdateConfig) (AdminInsights, error) {
+	supportSinceMs := nowMs - int64(30*24*time.Hour/time.Millisecond)
+	appSinceMs := nowMs - int64(7*24*time.Hour/time.Millisecond)
+	giftReasonSinceMs := nowMs - int64(7*24*time.Hour/time.Millisecond)
+	report := AdminInsights{
+		NowMs:                   nowMs,
+		SupportCategorySinceMs:  supportSinceMs,
+		AppEventCategorySinceMs: appSinceMs,
+		GiftCardReasonSinceMs:   giftReasonSinceMs,
+		Notes: []AdminStatusNote{
+			{Title: "脱敏聚合", Body: "本页只展示计数、比例、事件名和固定分类，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码。", Level: "info"},
+			{Title: "首版洞察", Body: "当前是面向管理层试用的只读趋势盘，后续再接产品洞察日报、人工标签和处理状态。", Level: "info"},
+		},
+	}
+	windows := []struct {
+		key     string
+		label   string
+		sinceMs int64
+	}{
+		{key: "today", label: "今日", sinceMs: dayStartMs},
+		{key: "24h", label: "最近24小时", sinceMs: nowMs - int64(24*time.Hour/time.Millisecond)},
+		{key: "7d", label: "最近7天", sinceMs: nowMs - int64(7*24*time.Hour/time.Millisecond)},
+		{key: "30d", label: "最近30天", sinceMs: supportSinceMs},
+	}
+	for _, item := range windows {
+		window, err := s.buildAdminInsightWindow(ctx, item.key, item.label, item.sinceMs, nowMs)
+		if err != nil {
+			return report, err
+		}
+		report.Windows = append(report.Windows, window)
+	}
+	quality, err := s.buildAdminInsightQualitySignals(ctx, dayCN, nowMs, updateCfg)
+	if err != nil {
+		return report, err
+	}
+	report.QualitySignals = quality
+	supportCategories, err := s.listAdminSupportInsightBreakdown(ctx, supportSinceMs)
+	if err != nil {
+		return report, err
+	}
+	report.SupportCategories = supportCategories
+	appCategories, err := s.listAdminAppEventInsightBreakdown(ctx, appSinceMs)
+	if err != nil {
+		return report, err
+	}
+	report.AppEventCategories = appCategories
+	reasons, err := s.ListGiftCardFailureReasons(ctx, giftReasonSinceMs, 8)
+	if err != nil {
+		return report, err
+	}
+	if reasons == nil {
+		reasons = []AdminGiftCardFailureReason{}
+	}
+	report.GiftCardReasons = reasons
+	topEvents, err := s.SummarizeClientAppLogs(ctx, ClientAppLogQuery{SinceMs: appSinceMs, Limit: 12})
+	if err != nil {
+		return report, err
+	}
+	report.TopAppEvents = topEvents
+	return report, nil
+}
+
+func (s *Store) buildAdminInsightWindow(ctx context.Context, key string, label string, sinceMs int64, nowMs int64) (AdminInsightWindow, error) {
+	monitoring, err := s.buildAdminMonitoringWindow(ctx, key, label, sinceMs, nowMs)
+	if err != nil {
+		return AdminInsightWindow{}, err
+	}
+	window := AdminInsightWindow{
+		Key:                  monitoring.Key,
+		Label:                monitoring.Label,
+		SinceMs:              monitoring.SinceMs,
+		NewUsers:             monitoring.NewUsers,
+		RecentAuthSessions:   monitoring.RecentAuthSessions,
+		ChatRounds:           monitoring.ChatRounds,
+		ChatUsers:            monitoring.ChatUsers,
+		ImageChatRounds:      monitoring.ImageChatRounds,
+		ImageChatRatio:       ratioFloat64(monitoring.ImageChatRounds, monitoring.ChatRounds),
+		QuotaDeductions:      monitoring.QuotaDeductions,
+		AppErrors:            monitoring.AppErrors,
+		AppWarns:             monitoring.AppWarns,
+		AuthFailures:         monitoring.AuthFailures,
+		CrashReports:         monitoring.CrashReports,
+		SupportMessages:      monitoring.SupportMessages,
+		SupportUsers:         monitoring.SupportUsers,
+		GiftCardRedeems:      monitoring.GiftCardRedeems,
+		GiftCardFailures:     monitoring.GiftCardFailures,
+		DailyAgriFailedCards: monitoring.DailyAgriFailedCards,
+	}
+	return window, nil
+}
+
+func (s *Store) buildAdminInsightQualitySignals(ctx context.Context, dayCN string, nowMs int64, updateCfg androidUpdateConfig) (AdminInsightQualitySignals, error) {
+	var signals AdminInsightQualitySignals
+	var err error
+	if signals.SupportNeedsReply, _, err = s.countAdminSupportPending(ctx); err != nil {
+		return signals, err
+	}
+	if signals.SupportOpen, err = s.countAdminSupportConversationsByStatus(ctx, "open"); err != nil {
+		return signals, err
+	}
+	if signals.SupportReplied, err = s.countAdminSupportConversationsByStatus(ctx, "replied"); err != nil {
+		return signals, err
+	}
+	if signals.SupportClosed, err = s.countAdminSupportConversationsByStatus(ctx, "closed"); err != nil {
+		return signals, err
+	}
+	signals.DailyAgriStatus, signals.DailyAgriUpdatedAt, signals.DailyAgriError, err = s.readAdminDailyAgriQueue(ctx, dayCN)
+	if err != nil {
+		return signals, err
+	}
+	signals.AppUpdateEnabled = updateCfg.Enabled
+	signals.AppUpdateReady = androidUpdateConfigValid(updateCfg) && androidUpdateDownloadArtifactsComplete(updateCfg)
+	signals.AppUpdateVersionCode = updateCfg.LatestVersionCode
+	signals.AppUpdateVersionName = updateCfg.LatestVersionName
+	if signals.GiftCardRedeemable, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active' AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)", []any{nowMs, nowMs}); err != nil {
+		return signals, err
+	}
+	if signals.GiftCardFailedAttempts, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 0", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+		return signals, err
+	}
+	return signals, nil
+}
+
+func (s *Store) listAdminSupportInsightBreakdown(ctx context.Context, sinceMs int64) ([]AdminInsightBreakdown, error) {
+	categories := []struct {
+		key      string
+		label    string
+		patterns []string
+	}{
+		{key: "login", label: "登录 / 验证码", patterns: []string{"登录", "一键", "验证码", "短信", "号码认证", "auth", "login", "sms"}},
+		{key: "chat", label: "主聊天 / 问诊", patterns: []string{"聊天", "问诊", "回答", "回复", "ai", "模型", "诊断"}},
+		{key: "image_upload", label: "图片 / 上传", patterns: []string{"图片", "照片", "相机", "上传", "识图", "拍照", "image", "upload", "photo", "camera"}},
+		{key: "membership", label: "会员 / 额度", patterns: []string{"会员", "额度", "次数", "plus", "pro", "加油包", "权益"}},
+		{key: "gift_card", label: "礼品卡", patterns: []string{"礼品卡", "兑换", "卡码", "gift"}},
+		{key: "update", label: "检查更新 / 安装", patterns: []string{"更新", "版本", "安装", "apk", "upgrade", "update"}},
+		{key: "ui", label: "界面 / 滚动 / 显示", patterns: []string{"界面", "显示", "滚动", "卡顿", "闪退", "重影", "布局", "ui", "crash"}},
+	}
+	items := make([]AdminInsightBreakdown, 0, len(categories))
+	for _, category := range categories {
+		count, err := s.countSupportMessagesByPatterns(ctx, sinceMs, category.patterns)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, AdminInsightBreakdown{Key: category.key, Label: category.label, Count: count})
+	}
+	return items, nil
+}
+
+func (s *Store) countSupportMessagesByPatterns(ctx context.Context, sinceMs int64, patterns []string) (int64, error) {
+	conditions := make([]string, 0, len(patterns))
+	args := []any{sinceMs}
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		conditions = append(conditions, "LOWER(body) LIKE ?")
+		args = append(args, "%"+strings.ToLower(pattern)+"%")
+	}
+	if len(conditions) == 0 {
+		return 0, nil
+	}
+	query := `SELECT COUNT(*)
+	   FROM support_messages
+	  WHERE sender_type = 'user'
+	    AND created_at >= ?
+	    AND (` + strings.Join(conditions, " OR ") + `)`
+	return s.countQuery(ctx, query, args)
+}
+
+func (s *Store) listAdminAppEventInsightBreakdown(ctx context.Context, sinceMs int64) ([]AdminInsightBreakdown, error) {
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT
+		   COALESCE(SUM(CASE WHEN event LIKE 'auth.%' THEN 1 ELSE 0 END), 0) AS login_count,
+		   COALESCE(SUM(CASE WHEN event IN ('app.crash', 'auth.app_crash') THEN 1 ELSE 0 END), 0) AS crash_count,
+		   COALESCE(SUM(CASE WHEN event LIKE '%upload%' OR event LIKE '%image%' OR event LIKE '%photo%' OR event LIKE '%camera%' THEN 1 ELSE 0 END), 0) AS image_count,
+		   COALESCE(SUM(CASE WHEN event LIKE '%update%' OR event LIKE '%apk%' OR event LIKE '%version%' THEN 1 ELSE 0 END), 0) AS update_count,
+		   COALESCE(SUM(CASE WHEN event LIKE '%gift%' OR event LIKE '%card%' THEN 1 ELSE 0 END), 0) AS gift_count,
+		   COALESCE(SUM(CASE WHEN event LIKE '%support%' OR event LIKE '%feedback%' THEN 1 ELSE 0 END), 0) AS support_count,
+		   COALESCE(SUM(CASE WHEN level = 'error' THEN 1 ELSE 0 END), 0) AS error_count,
+		   COALESCE(SUM(CASE WHEN level = 'warn' THEN 1 ELSE 0 END), 0) AS warn_count
+		 FROM client_app_logs
+		WHERE created_at >= ?`,
+		sinceMs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AdminInsightBreakdown{}
+	if rows.Next() {
+		var loginCount, crashCount, imageCount, updateCount, giftCount, supportCount, errorCount, warnCount int64
+		if err := rows.Scan(&loginCount, &crashCount, &imageCount, &updateCount, &giftCount, &supportCount, &errorCount, &warnCount); err != nil {
+			return nil, err
+		}
+		items = append(items,
+			AdminInsightBreakdown{Key: "login", Label: "登录链路", Count: loginCount},
+			AdminInsightBreakdown{Key: "crash", Label: "闪退补报", Count: crashCount},
+			AdminInsightBreakdown{Key: "image_upload", Label: "图片 / 上传", Count: imageCount},
+			AdminInsightBreakdown{Key: "update", Label: "检查更新", Count: updateCount},
+			AdminInsightBreakdown{Key: "gift_card", Label: "礼品卡", Count: giftCount},
+			AdminInsightBreakdown{Key: "support", Label: "帮助反馈", Count: supportCount},
+			AdminInsightBreakdown{Key: "error", Label: "error 级别", Count: errorCount},
+			AdminInsightBreakdown{Key: "warn", Label: "warn 级别", Count: warnCount},
+		)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func ratioFloat64(part int64, total int64) float64 {
+	if total <= 0 || part <= 0 {
+		return 0
+	}
+	return float64(part) / float64(total)
+}
+
 func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, label string, sinceMs int64, nowMs int64) (AdminMonitoringWindow, error) {
 	window := AdminMonitoringWindow{Key: key, Label: label, SinceMs: sinceMs}
 	var err error
@@ -1484,7 +1796,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
 		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
 		{Title: "SLS 告警", Status: "planned", Body: "日志已采集到 SLS，自动告警和仪表盘还要继续补。", Route: "health"},
-		{Title: "产品洞察", Status: "planned", Body: "后续做脱敏聚合报表，不直接铺完整聊天内容。", Route: "insights"},
+		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
 }
 

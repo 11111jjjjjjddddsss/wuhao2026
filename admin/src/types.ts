@@ -59,6 +59,64 @@ export interface AdminMonitoring {
   now_ms: number;
 }
 
+export interface AdminInsights {
+  windows: AdminInsightWindow[];
+  quality_signals: AdminInsightQualitySignals;
+  support_category_since_ms: number;
+  app_event_category_since_ms: number;
+  gift_card_reason_since_ms: number;
+  support_categories: AdminInsightBreakdown[];
+  app_event_categories: AdminInsightBreakdown[];
+  gift_card_failure_reasons: AdminGiftCardFailureReason[];
+  top_app_events: ClientAppLogSummaryEntry[];
+  notes: AdminStatusNote[];
+  now_ms: number;
+}
+
+export interface AdminInsightWindow {
+  key: string;
+  label: string;
+  since_ms: number;
+  new_users: number;
+  recent_auth_sessions: number;
+  chat_rounds: number;
+  chat_users: number;
+  image_chat_rounds: number;
+  image_chat_ratio: number;
+  quota_deductions: number;
+  app_errors: number;
+  app_warns: number;
+  auth_failures: number;
+  crash_reports: number;
+  support_messages: number;
+  support_users: number;
+  gift_card_redeems: number;
+  gift_card_failures: number;
+  daily_agri_failed_cards: number;
+}
+
+export interface AdminInsightQualitySignals {
+  support_needs_reply: number;
+  support_open: number;
+  support_replied: number;
+  support_closed: number;
+  app_update_enabled: boolean;
+  app_update_ready: boolean;
+  app_update_version_code: number;
+  app_update_version_name?: string;
+  daily_agri_status: string;
+  daily_agri_updated_at?: number;
+  daily_agri_error?: string;
+  gift_card_redeemable: number;
+  gift_card_failed_attempts: number;
+}
+
+export interface AdminInsightBreakdown {
+  key: string;
+  label: string;
+  count: number;
+}
+
 export interface AdminMonitoringWindow {
   key: string;
   label: string;

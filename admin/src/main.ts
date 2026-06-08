@@ -10,6 +10,8 @@ import type {
   AdminGiftCardCreatedCode,
   AdminGiftCardEntry,
   AdminGiftCardSummary,
+  AdminInsightBreakdown,
+  AdminInsights,
   AdminMonitoring,
   AdminOrderEntry,
   AdminOverview,
@@ -52,7 +54,7 @@ const routes: RouteItem[] = [
   { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态", roles: ["content_ops", "ops_readonly", "auditor"] },
   { key: "app-update", label: "检查更新", section: "运营工作台", hint: "可发布/可停更", roles: ["release_ops", "ops_readonly", "auditor"] },
   { key: "audit", label: "审计", section: "安全与系统", hint: "可查", roles: ["auditor", "ops_readonly"] },
-  { key: "insights", label: "产品洞察", section: "安全与系统", hint: "后续报表" },
+  { key: "insights", label: "产品洞察", section: "安全与系统", hint: "聚合报表" },
   { key: "health", label: "服务健康", section: "安全与系统", hint: "可查" },
 ];
 
@@ -766,26 +768,95 @@ async function auditPage(): Promise<string> {
 }
 
 async function insightsPage(): Promise<string> {
+  const report = await apiFetch<AdminInsights>("/admin-api/v1/insights");
+  const day7 = report.windows.find((row) => row.key === "7d") || report.windows[0];
+  const day30 = report.windows.find((row) => row.key === "30d") || report.windows[report.windows.length - 1];
+  const quality = report.quality_signals;
   return `
-    ${pageHead("产品洞察", "面向后续脱敏聚合报表，不直接铺完整聊天或图片来源。", "insights")}
+    ${pageHead("产品洞察", "脱敏聚合用户增长、问诊、App质量、反馈主题和运营卡点。", "insights")}
+    <section class="grid kpi">
+      ${kpi("7天问诊", day7?.chat_rounds ?? 0, `${day7?.chat_users ?? 0} 位去重用户`)}
+      ${kpi("7天图片问诊", day7?.image_chat_rounds ?? 0, `${formatPercent(day7?.image_chat_ratio ?? 0)} 占比`)}
+      ${kpi("7天新增用户", day7?.new_users ?? 0, `${day7?.recent_auth_sessions ?? 0} 次新登录 session`)}
+      ${kpi("7天 App 异常", (day7?.app_errors ?? 0) + (day7?.app_warns ?? 0), `error ${day7?.app_errors ?? 0} / warn ${day7?.app_warns ?? 0}`)}
+      ${kpi("待回复反馈", quality.support_needs_reply ?? 0, `${quality.support_open ?? 0} open / ${quality.support_replied ?? 0} replied`)}
+      ${kpi("可兑换礼品卡", quality.gift_card_redeemable ?? 0, `24h 失败 ${quality.gift_card_failed_attempts ?? 0}`)}
+    </section>
     <div class="grid two">
       <section class="card">
-        <div class="card-head"><div class="card-title">当前状态</div></div>
+        <div class="card-head">
+          <div class="card-title">趋势窗口</div>
+          <span class="small muted">${formatTime(report.now_ms)}</span>
+        </div>
         <div class="card-body">
-          ${planningNotice("洞察报表未接入", "当前没有 product_insight_reports 聚合 API。后续只展示主题、严重度、影响人数、代表短摘和来源数量。")}
+          <div class="table-wrap">${insightWindowTable(report.windows)}</div>
         </div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">候选来源</div></div>
+        <div class="card-head"><div class="card-title">质量信号</div></div>
         <div class="card-body">
           <table class="table">
             <tbody>
-              ${metricRow("帮助与反馈", "已可通过后台会话查询")}
-              ${metricRow("App 自动日志", "已可按 event / level 查询")}
-              ${metricRow("问诊归档", "仅限后端脱敏聚合后接入")}
-              ${metricRow("订单 / 礼品卡", "正式链路未完成")}
+              ${metricRow("今日农情", dailyAgriStatusText(quality.daily_agri_status || "missing"))}
+              ${metricRow("农情更新时间", formatTime(quality.daily_agri_updated_at))}
+              ${metricRow("检查更新", quality.app_update_enabled ? (quality.app_update_ready ? "已启用，物料已齐" : "已启用，物料未齐") : "已停更")}
+              ${metricRow("更新版本", quality.app_update_version_code ? `${quality.app_update_version_name || ""} (${quality.app_update_version_code})` : "未配置")}
+              ${metricRow("反馈队列", `${quality.support_open ?? 0} 待回复 / ${quality.support_replied ?? 0} 已回复 / ${quality.support_closed ?? 0} 已关闭`)}
+              ${metricRow("礼品卡异常", `${quality.gift_card_failed_attempts ?? 0} 次 24h 失败尝试`)}
             </tbody>
           </table>
+          ${quality.daily_agri_error ? notice("今日农情错误", quality.daily_agri_error, "warn") : ""}
+        </div>
+      </section>
+    </div>
+    <div class="grid two" style="margin-top:12px">
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">反馈主题命中</div>
+          <span class="small muted">since ${formatTime(report.support_category_since_ms)}</span>
+        </div>
+        <div class="card-body">
+          ${breakdownBars(report.support_categories, "最近30天用户反馈正文固定关键词命中；同一条反馈可能命中多个主题。")}
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">App 事件分类</div>
+          <span class="small muted">since ${formatTime(report.app_event_category_since_ms)}</span>
+        </div>
+        <div class="card-body">
+          ${breakdownBars(report.app_event_categories, "最近7天自动日志 event 固定分类，不展示 message、attrs 或用户输入。")}
+        </div>
+      </section>
+    </div>
+    <div class="grid two" style="margin-top:12px">
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">Top App 事件</div>
+          <span class="small muted">since ${formatTime(report.app_event_category_since_ms)}</span>
+        </div>
+        <div class="card-body">${appLogSummaryTable(report.top_app_events || [])}</div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">礼品卡失败原因</div>
+          <span class="small muted">since ${formatTime(report.gift_card_reason_since_ms)}</span>
+        </div>
+        <div class="card-body">${giftCardFailureReasonTable(report.gift_card_failure_reasons || [])}</div>
+      </section>
+    </div>
+    <div class="grid two" style="margin-top:12px">
+      <section class="card">
+        <div class="card-head"><div class="card-title">隐私边界</div></div>
+        <div class="card-body">
+          ${(report.notes || []).map((note) => notice(note.title, note.body, note.level)).join("")}
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div class="card-title">下一步洞察能力</div></div>
+        <div class="card-body">
+          ${notice("后续增强", "再补产品洞察日报、人工标签、处理状态、代表短摘和来源数量；代表短摘也必须先脱敏，不直接铺完整聊天或反馈正文。", "info")}
+          ${day30 ? notice("30天盘子", `最近30天 ${day30.chat_rounds} 轮问诊、${day30.support_messages} 条用户反馈、${day30.auth_failures} 条登录排障信号。`, "info") : ""}
         </div>
       </section>
     </div>
@@ -1607,6 +1678,78 @@ function giftCardFailureReasonsBlock(rows: AdminGiftCardSummary["failure_reasons
           `,
         )
         .join("")}
+    </div>
+  `;
+}
+
+function giftCardFailureReasonTable(rows: AdminGiftCardSummary["failure_reasons"] | null | undefined): string {
+  rows = rows ?? [];
+  if (!rows.length) return emptyState("没有失败原因", "最近 7 天没有失败兑换，或者还没有兑换尝试。");
+  return `
+    <table class="table">
+      <thead><tr><th>原因</th><th>次数</th></tr></thead>
+      <tbody>
+        ${rows.map((row) => `<tr><td>${escapeHTML(row.reason)}</td><td>${row.count}</td></tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function insightWindowTable(rows: AdminInsights["windows"]): string {
+  if (!rows.length) return emptyState("没有洞察窗口", "后端未返回产品洞察窗口数据。");
+  return `
+    <table class="table">
+      <thead>
+        <tr>
+          <th>范围</th><th>新增用户</th><th>登录</th><th>问诊</th><th>图片问诊</th><th>消耗</th><th>App异常</th><th>登录排障</th><th>反馈</th><th>礼品卡</th><th>农情失败</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div></td>
+                <td>${row.new_users}</td>
+                <td>${row.recent_auth_sessions}</td>
+                <td>${row.chat_rounds}<div class="small muted">${row.chat_users} 位用户</div></td>
+                <td>${row.image_chat_rounds}<div class="small muted">${formatPercent(row.image_chat_ratio)}</div></td>
+                <td>${row.quota_deductions}</td>
+                <td>${row.app_errors} / ${row.app_warns}</td>
+                <td>${row.auth_failures}<div class="small muted">闪退 ${row.crash_reports}</div></td>
+                <td>${row.support_messages}<div class="small muted">${row.support_users} 位用户</div></td>
+                <td>${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div></td>
+                <td>${row.daily_agri_failed_cards}</td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function breakdownBars(rows: AdminInsightBreakdown[] | null | undefined, foot: string): string {
+  rows = (rows || []).filter((row) => row.count >= 0);
+  if (!rows.length) return emptyState("没有分类数据", "后端未返回分类聚合。");
+  const max = Math.max(...rows.map((row) => row.count), 1);
+  return `
+    <div class="insight-breakdown">
+      ${rows
+        .map((row) => {
+          const width = Math.max(3, Math.round((row.count / max) * 100));
+          return `
+            <div class="insight-bar-row">
+              <div class="insight-bar-head">
+                <span>${escapeHTML(row.label)}</span>
+                <strong>${row.count}</strong>
+              </div>
+              <div class="insight-bar-track"><span style="width:${width}%"></span></div>
+            </div>
+          `;
+        })
+        .join("")}
+      <div class="small muted">${escapeHTML(foot)}</div>
     </div>
   `;
 }
@@ -2893,6 +3036,11 @@ function formatTime(value?: number | null): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0%";
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatBytes(value?: number): string {

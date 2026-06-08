@@ -5,6 +5,8 @@
 
 ## 2026-06-09
 
+- 管理后台“产品洞察”从占位页推进到首版脱敏聚合报表：后端新增 `GET /admin-api/v1/insights`，前端“产品洞察”页展示今日 / 24h / 7d / 30d 用户增长、登录 session、问诊、图片问诊、App 异常、登录排障、反馈、礼品卡和今日农情失败趋势，同时展示反馈主题固定关键词命中、App 事件分类、Top App 事件和礼品卡失败原因。该接口只返回计数、比例、事件名和固定分类，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码；监控能力卡同步把“产品洞察”从 planned 改成 partial，表示首版可看，但洞察日报、人工标签、代表短摘、处理状态和独立报表表仍待补。
+
 - 新增 Android debug / release 构建一致性护栏：`scripts/check-android-build-parity.ps1` 会检查 Android 构建固定走 `https://api.nongjiqiancha.cn`、`USE_BACKEND_AB=true`、debug 有 release 签名时同签名并开启一键登录、release 必须开启一键登录、debug 不允许另加 manifest / 明文网络分叉、100001 一键登录只把最终 `onVerifySuccess` token 交给 `/api/auth/fusion/login`、不在半程回调消费 token，以及 debug-only 预览面板必须由 `BuildConfig.DEBUG` 隔离。GitHub Android CI 已接入该脚本，后续再改登录、构建或网络安全配置时会自动挡住“测试包和正式包业务链路又走偏”的改动。
 
 - 管理后台登录排障按钮继续细化：此前“一键登录失败”按钮只筛 `auth.fusion_verify_failed`，会漏掉取 fusion token、SDK 初始化、授权页拉起、SDK token auth、服务端换号、超时和授权页未完成等真实失败阶段；现在登录排障卡把这些阶段拆成独立筛选按钮，并把短信拆成“短信发送失败 / 短信登录失败”，方便明天真机测试时直接定位卡在哪一步。
