@@ -8965,16 +8965,14 @@ private fun TodayAgriNewsItem(
                     fontSize = 16.sp,
                     lineHeight = 21.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = summary,
                     color = Color(0xFF4F535A),
                     fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
+                    lineHeight = 20.sp
                 )
                 if (source.isNotBlank() || date.isNotBlank()) {
                     Text(

@@ -355,7 +355,9 @@ func (s *Store) ListAdminAuditLogs(ctx context.Context, filter AdminAuditLogQuer
 			entry.StatusCode = int(statusCode.Int64)
 		}
 		if detailsJSON.Valid && strings.TrimSpace(detailsJSON.String) != "" {
-			entry.Details = json.RawMessage(detailsJSON.String)
+			if raw, ok := validRawJSON(detailsJSON.String); ok {
+				entry.Details = raw
+			}
 		}
 		entry.MaskedIP = nullStringValue(maskedIP)
 		entry.UserAgent = nullStringValue(userAgent)

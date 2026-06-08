@@ -1,6 +1,7 @@
 package app
 
 import (
+	"database/sql"
 	"strings"
 	"testing"
 	"time"
@@ -115,5 +116,22 @@ func TestValidateDailyAgriPublishedDateRejectsFutureDate(t *testing.T) {
 	}
 	if err := validateDailyAgriPublishedDate("2026-05-13", "20260513"); err != nil {
 		t.Fatalf("expected current date to be accepted: %v", err)
+	}
+}
+
+func TestIsUsableDailyAgriContentJSONRejectsMalformedOrIncomplete(t *testing.T) {
+	if isUsableDailyAgriContentJSON(sql.NullString{String: "{", Valid: true}) {
+		t.Fatalf("expected malformed json to be unusable")
+	}
+	incomplete := `{"title":"今日农情","items":[{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。","url":"https://www.gov.cn/agri/new-1","source":"中国政府网","published_date":"2026-05-13"}]}`
+	if isUsableDailyAgriContentJSON(sql.NullString{String: incomplete, Valid: true}) {
+		t.Fatalf("expected incomplete card to be unusable")
+	}
+}
+
+func TestIsUsableDailyAgriContentJSONAcceptsCompleteCard(t *testing.T) {
+	content := `{"title":"今日农情","items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。","url":"https://www.gov.cn/agri/new-1","source":"中国政府网","published_date":"2026-05-13"},{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。","url":"https://www.gov.cn/agri/new-2","source":"中国政府网","published_date":"2026-05-13"},{"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。","url":"https://www.gov.cn/agri/new-3","source":"中国政府网","published_date":"2026-05-13"}]}`
+	if !isUsableDailyAgriContentJSON(sql.NullString{String: content, Valid: true}) {
+		t.Fatalf("expected complete card to be usable")
 	}
 }

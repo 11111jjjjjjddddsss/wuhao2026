@@ -2468,6 +2468,7 @@ function dailyAgriStatusText(status: string): string {
   if (normalized === "pending") return "等待生成";
   if (normalized === "running") return "生成中";
   if (normalized === "missing") return "未生成";
+  if (normalized === "invalid_content") return "内容异常";
   if (normalized === "disabled") return "已停用";
   return "未返回";
 }

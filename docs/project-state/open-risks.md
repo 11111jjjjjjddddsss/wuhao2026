@@ -109,6 +109,7 @@
 - 说明：今日农情首版已接入独立后端链路和 Android UI-only 卡片；它不影响聊天主链、不扣用户问诊次数、不进入 A/B/C 或归档。当前生成保持 `qwen3.5-plus`，但独立走百炼兼容模式 `Responses API + web_search + tool_choice=required`；生成前会把过去 7 天已 ready 的今日农情喂给模型要求去重，服务端会校验搜索来源、可信域名、近 7 天日期、广告 / 导购 / 泄露词，并硬过滤过去 7 天和当天候选里的重复链接 / 重复标题，过滤后不足 3 条则不发布新卡片。ECS systemd timer 和后台补跑都已落地
 - 风险：Responses `web_search` 虽然能稳定拿到来源 URL，但仍依赖外部搜索结果质量；如果当天来源质量不足、来源站点过少或过滤后不足 3 条，后端仍会不发布，前端静默不展示。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；定时任务已落地，但失败告警、自动重试策略和运营抽查节奏还需要继续收口
 - 补充：买服务器前今日农情巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前没有发现用户打开 App 临时生成、写 A/B/C、写归档、扣次或伪装成 `ChatMessage` 的旧链路；残余风险主要是质量运营，比如同一事件换标题只能靠提示词和人工抽查约束、可信域名白名单偏严可能导致当天不足 3 条
+- 补充：2026-06-09 已补今日农情坏缓存兜底：用户侧只展示 JSON 合法且结构完整的 ready 卡片，坏 `content_json` 不再把 `/api/today-agri-card` 打成 500；后台今日农情列表会把坏 `content_json / sources_json` 标成行内错误；补跑遇到 ready 但正文不可用的卡片时允许重新生成覆盖。该护栏只解决坏数据可恢复和后台可见性，不代表内容质量、自动告警或个性化已经闭环
 - 后续动作：持续观察 SLS 日志关键词 `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error`。若连续失败，再评估增加自动重试、放宽可信域名、限定站点范围或做人工审核入口，不把失败转成用户打开 App 时临时多次调模型
 
 ## R14 帮助与反馈首版仍需客服工单能力补齐

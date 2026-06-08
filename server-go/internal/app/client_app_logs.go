@@ -570,7 +570,9 @@ func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery)
 			return nil, err
 		}
 		if attrsJSON.Valid && strings.TrimSpace(attrsJSON.String) != "" {
-			entry.Attrs = json.RawMessage(attrsJSON.String)
+			if raw, ok := validRawJSON(attrsJSON.String); ok {
+				entry.Attrs = raw
+			}
 		}
 		entry.AppVersionCode = nullIntToPtr(appVersionCode)
 		entry.AppVersionName = nullStringValue(appVersionName)

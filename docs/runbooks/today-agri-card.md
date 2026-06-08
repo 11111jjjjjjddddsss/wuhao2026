@@ -86,6 +86,8 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-card" `
 
 如果当天没有 ready 卡片，接口返回 `missing` / `pending` / `failed` 等状态；Android 会静默不展示，不阻塞聊天页。
 
+如果数据库里当天记录状态是 `ready` 但 `content_json` 不是合法 JSON，或不是完整 3 条“今日农情”结构，用户侧会按不可展示状态处理，不再返回 500；后台补跑遇到这种“ready 但正文不可用”的卡片时允许重新生成覆盖。
+
 ## 排查 SQL
 
 只读查看当天状态：
@@ -122,6 +124,7 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 5. 如果状态是 `pending` 且 `lease_until` 未过期，等待当前任务完成。
 6. 如果状态是 `failed` 或 lease 已过期，可人工重新调用内部生成接口。
 7. 如果错误是 `dashscope status 400` 且审计 / 日志里没有业务解析报错，优先核对今天这条链是否误回到了旧的 DashScope 原生 Generation 联网搜索路径，不要先怀疑定时器或后台补跑按钮。
+8. 如果用户侧或后台曾出现今日农情 500，优先看 `content_json / sources_json` 是否为坏 JSON 或结构不完整。当前后台今日农情列表会把这类问题标成 `content_json_invalid`、`content_shape_invalid`、`sources_json_invalid` 或 `sources_shape_invalid`，不会再让整页 500；可直接用后台补跑当天卡片。
 
 ## 后台补跑
 

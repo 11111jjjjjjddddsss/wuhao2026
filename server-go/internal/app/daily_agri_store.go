@@ -33,12 +33,19 @@ func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string
 	if err != nil {
 		return nil, "", err
 	}
-	if status != "ready" || !contentRaw.Valid || strings.TrimSpace(contentRaw.String) == "" {
+	contentText := strings.TrimSpace(contentRaw.String)
+	if status != "ready" || !contentRaw.Valid || contentText == "" {
 		return nil, status, nil
 	}
+	if !json.Valid([]byte(contentText)) {
+		return nil, "invalid_content", nil
+	}
 	var card DailyAgriCard
-	if err := json.Unmarshal([]byte(contentRaw.String), &card); err != nil {
-		return nil, "", err
+	if err := json.Unmarshal([]byte(contentText), &card); err != nil {
+		return nil, "invalid_content", nil
+	}
+	if !isUsableStoredDailyAgriCard(card) {
+		return nil, "invalid_content", nil
 	}
 	if card.GeneratedAt == 0 {
 		card.GeneratedAt = generated.Int64
@@ -78,12 +85,16 @@ func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string,
 		if err := rows.Scan(&dayCN, &contentRaw, &generated); err != nil {
 			return nil, err
 		}
-		if strings.TrimSpace(contentRaw) == "" {
+		contentText := strings.TrimSpace(contentRaw)
+		if contentText == "" || !json.Valid([]byte(contentText)) {
 			continue
 		}
 		var card DailyAgriCard
-		if err := json.Unmarshal([]byte(contentRaw), &card); err != nil {
-			return nil, err
+		if err := json.Unmarshal([]byte(contentText), &card); err != nil {
+			continue
+		}
+		if !isUsableStoredDailyAgriCard(card) {
+			continue
 		}
 		if card.DateCN == "" {
 			card.DateCN = dayCN
@@ -136,19 +147,20 @@ func (s *Store) TryAcquireDailyAgriCardGeneration(
 	var (
 		status          string
 		existingLeaseTo int64
+		existingContent sql.NullString
 	)
 	if err := tx.QueryRowContext(
 		ctx,
-		`SELECT status, lease_until
+		`SELECT status, lease_until, content_json
 		 FROM daily_agri_cards
 		 WHERE day_cn = ? AND scope = ?
 		 LIMIT 1 FOR UPDATE`,
 		dayCN,
 		scope,
-	).Scan(&status, &existingLeaseTo); err != nil {
+	).Scan(&status, &existingLeaseTo, &existingContent); err != nil {
 		return false, err
 	}
-	if status == "ready" {
+	if status == "ready" && isUsableDailyAgriContentJSON(existingContent) {
 		if err := tx.Commit(); err != nil {
 			return false, err
 		}
@@ -188,6 +200,37 @@ func (s *Store) TryAcquireDailyAgriCardGeneration(
 		return false, err
 	}
 	return true, nil
+}
+
+func isUsableDailyAgriContentJSON(raw sql.NullString) bool {
+	contentText := strings.TrimSpace(raw.String)
+	if !raw.Valid || contentText == "" || !json.Valid([]byte(contentText)) {
+		return false
+	}
+	var card DailyAgriCard
+	if err := json.Unmarshal([]byte(contentText), &card); err != nil {
+		return false
+	}
+	return isUsableStoredDailyAgriCard(card)
+}
+
+func isUsableStoredDailyAgriCard(card DailyAgriCard) bool {
+	if strings.TrimSpace(card.Title) != "今日农情" || len(card.Items) != 3 {
+		return false
+	}
+	for _, item := range card.Items {
+		if strings.TrimSpace(item.Title) == "" ||
+			strings.TrimSpace(item.Summary) == "" ||
+			strings.TrimSpace(item.URL) == "" ||
+			strings.TrimSpace(item.Source) == "" ||
+			strings.TrimSpace(item.PublishedDate) == "" {
+			return false
+		}
+		if !strings.HasPrefix(strings.TrimSpace(item.URL), "https://") {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Store) PublishDailyAgriCard(

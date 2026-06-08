@@ -2010,21 +2010,27 @@ func (s *Store) countAdminSupportConversationsByStatus(ctx context.Context, stat
 }
 
 func (s *Store) readAdminDailyAgriQueue(ctx context.Context, dayCN string) (string, *int64, string, error) {
-	var status, errorText sql.NullString
+	var status, errorText, contentJSON sql.NullString
 	var updatedAt sql.NullInt64
 	err := s.db.QueryRowContext(
 		ctx,
-		"SELECT status, updated_at, error FROM daily_agri_cards WHERE day_cn = ? AND scope = ? LIMIT 1",
+		"SELECT status, updated_at, error, content_json FROM daily_agri_cards WHERE day_cn = ? AND scope = ? LIMIT 1",
 		dayCN,
 		dailyAgriDefaultScope,
-	).Scan(&status, &updatedAt, &errorText)
+	).Scan(&status, &updatedAt, &errorText, &contentJSON)
 	if err == sql.ErrNoRows {
 		return "missing", nil, "", nil
 	}
 	if err != nil {
 		return "", nil, "", err
 	}
-	return nullStringValue(status), nullInt64ToPtr(updatedAt), nullStringValue(errorText), nil
+	statusText := nullStringValue(status)
+	errorValue := nullStringValue(errorText)
+	if statusText == "ready" && !isUsableDailyAgriContentJSON(contentJSON) {
+		statusText = "invalid_content"
+		errorValue = appendAdminDailyAgriError(errorValue, "content_json_invalid")
+	}
+	return statusText, nullInt64ToPtr(updatedAt), errorValue, nil
 }
 
 func (s *Store) ListAdminRegionMetrics(ctx context.Context, sinceMs int64, limit int) ([]AdminRegionMetric, error) {
@@ -2631,7 +2637,9 @@ func (s *Store) ListAdminOrders(ctx context.Context, userID string, limit int) (
 			return nil, err
 		}
 		if result.Valid && strings.TrimSpace(result.String) != "" {
-			entry.Result = json.RawMessage(result.String)
+			if raw, ok := validRawJSON(result.String); ok {
+				entry.Result = raw
+			}
 		}
 		entries = append(entries, entry)
 	}
@@ -2673,23 +2681,55 @@ func (s *Store) ListAdminDailyAgriCards(ctx context.Context, scope string, limit
 			entry.GeneratedAt = int64Ptr(generated.Int64)
 		}
 		if content.Valid && strings.TrimSpace(content.String) != "" {
-			entry.Content = json.RawMessage(content.String)
-			var card DailyAgriCard
-			if err := json.Unmarshal([]byte(content.String), &card); err == nil {
-				entry.Title = card.Title
-				entry.ItemCount = len(card.Items)
+			raw, ok := validRawJSON(content.String)
+			if !ok {
+				entry.Error = appendAdminDailyAgriError(entry.Error, "content_json_invalid")
+			} else {
+				entry.Content = raw
+				var card DailyAgriCard
+				if err := json.Unmarshal(raw, &card); err == nil {
+					entry.Title = card.Title
+					entry.ItemCount = len(card.Items)
+					if !isUsableStoredDailyAgriCard(card) {
+						entry.Error = appendAdminDailyAgriError(entry.Error, "content_shape_invalid")
+					}
+				} else {
+					entry.Error = appendAdminDailyAgriError(entry.Error, "content_shape_invalid")
+				}
 			}
 		}
 		if sources.Valid && strings.TrimSpace(sources.String) != "" {
-			entry.Sources = json.RawMessage(sources.String)
-			var sourceList []DailyAgriSearchSource
-			if err := json.Unmarshal([]byte(sources.String), &sourceList); err == nil {
-				entry.SourceCount = len(sourceList)
+			raw, ok := validRawJSON(sources.String)
+			if !ok {
+				entry.Error = appendAdminDailyAgriError(entry.Error, "sources_json_invalid")
+			} else {
+				entry.Sources = raw
+				var sourceList []DailyAgriSearchSource
+				if err := json.Unmarshal(raw, &sourceList); err == nil {
+					entry.SourceCount = len(sourceList)
+				} else {
+					entry.Error = appendAdminDailyAgriError(entry.Error, "sources_shape_invalid")
+				}
 			}
 		}
 		entries = append(entries, entry)
 	}
 	return entries, rows.Err()
+}
+
+func appendAdminDailyAgriError(existing string, code string) string {
+	existing = strings.TrimSpace(existing)
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return existing
+	}
+	if existing == "" {
+		return code
+	}
+	if strings.Contains(existing, code) {
+		return existing
+	}
+	return existing + "; " + code
 }
 
 func (s *Store) countQuery(ctx context.Context, query string, args []any) (int64, error) {
