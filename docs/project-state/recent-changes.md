@@ -7,6 +7,8 @@
 
 - 管理后台继续往正式可用推进：礼品卡新增 `code_ciphertext` 加密字段，新生成完整卡码会加密保存，后台礼品卡列表可直接查看和复制，仍用 hash 做兑换校验且不把完整卡码写入日志 / 审计 detail / 文档；帮助反馈新增 `support_conversations` 轻量会话状态表，后台支持待回复 / 已回复 / 已关闭队列、账号ID / 脱敏手机号 / 最近消息搜索、回复、关闭、标已回复和重开；监控面板新增“可测 / 需处理 / 阻塞”摘要和客服反馈决策卡，并把反馈 open / replied / closed 队列纳入关键队列展示。
 
+- 将礼品卡完整码、帮助反馈状态队列和监控面板增强提交 `cd6314c2` 部署到 ECS 和管理后台：远端 `go test ./...`、编译、切换双端口 slot、Nginx 配置检查和公网 healthz 均通过，当前 Nginx active upstream 为 `3000`；后台静态前端重新构建并部署到 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署后 readiness 显示 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`，输出不打印任何 token、AccessKey、模型 Key 或密码。
+
 - 修复管理后台礼品卡页空数据崩溃：后端 `GET /admin-api/v1/gift-cards/summary` 的 `failure_reasons` 空结果现在稳定返回 `[]`，前端对 summary / 批次 / 卡 / 兑换尝试数组也做 null 兜底，生产库还没有礼品卡时页面不再报 `Cannot read properties of null (reading 'length')`。监控面板同步补礼品卡批次数和总卡数，生产库 0 张可兑换卡会作为“先生成礼品卡”的待处理事项显示，避免把“还没生成正式卡”误看成兑换链路坏了。
 
 - 管理后台监控面板补“上线检查”区：`GET /admin-api/v1/monitoring` 新增 `launch_readiness`，把后端健康、手机号登录、模型问诊、礼品卡测试、安装包更新、支付接入、备案与上架材料、日志告警、客服反馈按“可测 / 需处理 / 阻塞”展示。支付申请未完成、App 备案 / 公安备案和上线前 AccessKey 轮换不会被伪装成已完成；礼品卡可先作为内部测试权益链路。
