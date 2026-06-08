@@ -142,12 +142,17 @@ func TestClientAppLogRateLimiterUsesEnv(t *testing.T) {
 func TestParseClientAppLogQueryNormalizesAndCapsLimit(t *testing.T) {
 	now := time.UnixMilli(10_000)
 	values := url.Values{
-		"user_id":      {" acct_123 "},
-		"event":        {" Chat.Stream_Interrupted "},
-		"event_prefix": {" Auth. "},
-		"level":        {"WARN"},
-		"since_ms":     {"1234"},
-		"limit":        {"500"},
+		"user_id":          {" acct_123 "},
+		"event":            {" Chat.Stream_Interrupted "},
+		"event_prefix":     {" Auth. "},
+		"level":            {"WARN"},
+		"platform":         {" Android "},
+		"app_version_code": {"12"},
+		"app_version_name": {" 1.0.12 "},
+		"os_version":       {" Android 15 "},
+		"device_model":     {" Brand Model "},
+		"since_ms":         {"1234"},
+		"limit":            {"500"},
 	}
 	filter, validationError := parseClientAppLogQuery(values, now)
 	if validationError != "" {
@@ -157,6 +162,12 @@ func TestParseClientAppLogQueryNormalizesAndCapsLimit(t *testing.T) {
 		filter.Event != "chat.stream_interrupted" ||
 		filter.EventPrefix != "auth." ||
 		filter.Level != "warn" ||
+		filter.Platform != "android" ||
+		filter.AppVersionCode == nil ||
+		*filter.AppVersionCode != 12 ||
+		filter.AppVersionName != "1.0.12" ||
+		filter.OSVersion != "Android 15" ||
+		filter.DeviceModel != "Brand Model" ||
 		filter.SinceMs != 1234 ||
 		filter.Limit != maxClientAppLogInternalListLimit {
 		t.Fatalf("filter mismatch: %#v", filter)
@@ -192,6 +203,38 @@ func TestBuildClientAppLogWherePrefersExactEventOverPrefix(t *testing.T) {
 	}
 }
 
+func TestBuildClientAppLogWhereSupportsVersionAndDeviceFilters(t *testing.T) {
+	versionCode := 12
+	where, args := buildClientAppLogWhere(ClientAppLogQuery{
+		SinceMs:        123,
+		Platform:       "android",
+		AppVersionCode: &versionCode,
+		AppVersionName: "1.0",
+		OSVersion:      "Android 15",
+		DeviceModel:    "Brand",
+		Limit:          20,
+	})
+	wantWhere := " WHERE created_at >= ? AND platform = ? AND app_version_code = ? AND app_version_name LIKE ? ESCAPE '=' AND os_version LIKE ? ESCAPE '=' AND device_model LIKE ? ESCAPE '='"
+	if where != wantWhere {
+		t.Fatalf("where = %q, want %q", where, wantWhere)
+	}
+	wantArgs := []any{int64(123), "android", 12, "1.0%", "Android 15%", "Brand%"}
+	if len(args) != len(wantArgs) {
+		t.Fatalf("args = %#v, want %#v", args, wantArgs)
+	}
+	for i := range wantArgs {
+		if args[i] != wantArgs[i] {
+			t.Fatalf("args[%d] = %#v, want %#v (all args %#v)", i, args[i], wantArgs[i], args)
+		}
+	}
+}
+
+func TestSQLLikePrefixPatternEscapesWildcards(t *testing.T) {
+	if got := sqlLikePrefixPattern(" A_%= "); got != "A=_=%==%" {
+		t.Fatalf("sqlLikePrefixPattern = %q, want escaped prefix", got)
+	}
+}
+
 func TestParseClientAppLogQueryDefaultsToRecentLogs(t *testing.T) {
 	now := time.UnixMilli(48 * 60 * 60 * 1000)
 	filter, validationError := parseClientAppLogQuery(url.Values{}, now)
@@ -215,6 +258,7 @@ func TestParseClientAppLogQueryRejectsInvalidFilters(t *testing.T) {
 		{name: "invalid level", values: url.Values{"level": {"debug"}}, want: "invalid_level"},
 		{name: "invalid since", values: url.Values{"since_ms": {"-1"}}, want: "invalid_since_ms"},
 		{name: "invalid limit", values: url.Values{"limit": {"0"}}, want: "invalid_limit"},
+		{name: "invalid app version code", values: url.Values{"app_version_code": {"x"}}, want: "invalid_app_version_code"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

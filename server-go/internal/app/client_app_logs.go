@@ -61,12 +61,17 @@ type ClientAppLogInput struct {
 }
 
 type ClientAppLogQuery struct {
-	UserID      string `json:"user_id,omitempty"`
-	Level       string `json:"level,omitempty"`
-	Event       string `json:"event,omitempty"`
-	EventPrefix string `json:"event_prefix,omitempty"`
-	SinceMs     int64  `json:"since_ms"`
-	Limit       int    `json:"limit"`
+	UserID         string `json:"user_id,omitempty"`
+	Level          string `json:"level,omitempty"`
+	Event          string `json:"event,omitempty"`
+	EventPrefix    string `json:"event_prefix,omitempty"`
+	Platform       string `json:"platform,omitempty"`
+	AppVersionCode *int   `json:"app_version_code,omitempty"`
+	AppVersionName string `json:"app_version_name,omitempty"`
+	OSVersion      string `json:"os_version,omitempty"`
+	DeviceModel    string `json:"device_model,omitempty"`
+	SinceMs        int64  `json:"since_ms"`
+	Limit          int    `json:"limit"`
 }
 
 type ClientAppLogEntry struct {
@@ -213,13 +218,18 @@ func (s *Server) handleInternalClientAppLogs(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	s.recordAdminAuditLog(r, "support_admin_secret", "internal.app.logs.list", "client_app_logs", "", filter.UserID, true, http.StatusOK, map[string]any{
-		"event":         filter.Event,
-		"event_prefix":  filter.EventPrefix,
-		"level":         filter.Level,
-		"limit":         filter.Limit,
-		"since_ms":      filter.SinceMs,
-		"row_count":     len(logs),
-		"summary_count": len(summary),
+		"event":            filter.Event,
+		"event_prefix":     filter.EventPrefix,
+		"level":            filter.Level,
+		"platform":         filter.Platform,
+		"app_version_code": filter.AppVersionCode,
+		"app_version_name": filter.AppVersionName,
+		"os_version":       filter.OSVersion,
+		"device_model":     filter.DeviceModel,
+		"limit":            filter.Limit,
+		"since_ms":         filter.SinceMs,
+		"row_count":        len(logs),
+		"summary_count":    len(summary),
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"logs":    logs,
@@ -247,11 +257,22 @@ func clientAppLogRateLimitKey(userID string, ip string) string {
 
 func parseClientAppLogQuery(values url.Values, now time.Time) (ClientAppLogQuery, string) {
 	filter := ClientAppLogQuery{
-		UserID:      strings.TrimSpace(values.Get("user_id")),
-		Event:       normalizeClientLogIdentifier(values.Get("event"), 96),
-		EventPrefix: normalizeClientLogIdentifier(values.Get("event_prefix"), 96),
-		SinceMs:     now.Add(-24 * time.Hour).UnixMilli(),
-		Limit:       defaultClientAppLogInternalListLimit,
+		UserID:         strings.TrimSpace(values.Get("user_id")),
+		Event:          normalizeClientLogIdentifier(values.Get("event"), 96),
+		EventPrefix:    normalizeClientLogIdentifier(values.Get("event_prefix"), 96),
+		Platform:       normalizeClientLogIdentifier(values.Get("platform"), 32),
+		AppVersionName: truncateRunes(strings.TrimSpace(values.Get("app_version_name")), 64),
+		OSVersion:      truncateRunes(strings.TrimSpace(values.Get("os_version")), 64),
+		DeviceModel:    truncateRunes(strings.TrimSpace(values.Get("device_model")), 128),
+		SinceMs:        now.Add(-24 * time.Hour).UnixMilli(),
+		Limit:          defaultClientAppLogInternalListLimit,
+	}
+	if rawVersionCode := strings.TrimSpace(values.Get("app_version_code")); rawVersionCode != "" {
+		versionCode, err := strconv.Atoi(rawVersionCode)
+		if err != nil || versionCode < 0 {
+			return ClientAppLogQuery{}, "invalid_app_version_code"
+		}
+		filter.AppVersionCode = &versionCode
 	}
 	if rawLevel := strings.TrimSpace(values.Get("level")); rawLevel != "" {
 		level := strings.ToLower(rawLevel)
@@ -517,7 +538,39 @@ func buildClientAppLogWhere(filter ClientAppLogQuery) (string, []any) {
 		clauses = append(clauses, "event LIKE ?")
 		args = append(args, strings.TrimSpace(filter.EventPrefix)+"%")
 	}
+	if strings.TrimSpace(filter.Platform) != "" {
+		clauses = append(clauses, "platform = ?")
+		args = append(args, strings.TrimSpace(filter.Platform))
+	}
+	if filter.AppVersionCode != nil {
+		clauses = append(clauses, "app_version_code = ?")
+		args = append(args, *filter.AppVersionCode)
+	}
+	if strings.TrimSpace(filter.AppVersionName) != "" {
+		clauses = append(clauses, "app_version_name LIKE ? ESCAPE '='")
+		args = append(args, sqlLikePrefixPattern(filter.AppVersionName))
+	}
+	if strings.TrimSpace(filter.OSVersion) != "" {
+		clauses = append(clauses, "os_version LIKE ? ESCAPE '='")
+		args = append(args, sqlLikePrefixPattern(filter.OSVersion))
+	}
+	if strings.TrimSpace(filter.DeviceModel) != "" {
+		clauses = append(clauses, "device_model LIKE ? ESCAPE '='")
+		args = append(args, sqlLikePrefixPattern(filter.DeviceModel))
+	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func sqlLikePrefixPattern(value string) string {
+	var builder strings.Builder
+	for _, r := range strings.TrimSpace(value) {
+		if r == '=' || r == '%' || r == '_' {
+			builder.WriteRune('=')
+		}
+		builder.WriteRune(r)
+	}
+	builder.WriteRune('%')
+	return builder.String()
 }
 
 func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery) ([]ClientAppLogEntry, error) {

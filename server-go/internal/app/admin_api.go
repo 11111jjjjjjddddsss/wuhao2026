@@ -806,10 +806,15 @@ func (s *Server) handleAdminAppLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_logs", "client_app_logs", "", filter.UserID, true, http.StatusOK, map[string]any{
-		"row_count":    len(logs),
-		"event":        filter.Event,
-		"event_prefix": filter.EventPrefix,
-		"level":        filter.Level,
+		"row_count":        len(logs),
+		"event":            filter.Event,
+		"event_prefix":     filter.EventPrefix,
+		"level":            filter.Level,
+		"platform":         filter.Platform,
+		"app_version_code": filter.AppVersionCode,
+		"app_version_name": filter.AppVersionName,
+		"os_version":       filter.OSVersion,
+		"device_model":     filter.DeviceModel,
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "summary": summary, "filter": filter})
 }

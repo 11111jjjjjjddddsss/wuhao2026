@@ -2259,6 +2259,11 @@ function logFilterForm(formID: string, key: string, selectedWindow: string): str
       <label class="field"><span>账号ID</span><input class="input" name="user_id" value="${escapeAttr(readInputValue(key, "user_id"))}" /></label>
       <label class="field"><span>event</span><input class="input" name="event" value="${escapeAttr(readInputValue(key, "event"))}" /></label>
       <label class="field"><span>event前缀</span><input class="input" name="event_prefix" value="${escapeAttr(readInputValue(key, "event_prefix"))}" placeholder="auth. / app_update." /></label>
+      <label class="field"><span>平台</span><input class="input" name="platform" value="${escapeAttr(readInputValue(key, "platform"))}" placeholder="android" /></label>
+      <label class="field"><span>版本号</span><input class="input" name="app_version_code" value="${escapeAttr(readInputValue(key, "app_version_code"))}" placeholder="versionCode" /></label>
+      <label class="field"><span>版本名</span><input class="input" name="app_version_name" value="${escapeAttr(readInputValue(key, "app_version_name"))}" placeholder="1.0" /></label>
+      <label class="field"><span>系统</span><input class="input" name="os_version" value="${escapeAttr(readInputValue(key, "os_version"))}" placeholder="Android 15" /></label>
+      <label class="field"><span>设备</span><input class="input" name="device_model" value="${escapeAttr(readInputValue(key, "device_model"))}" placeholder="机型前缀" /></label>
       <label class="field"><span>level</span>${selectHTML("level", readInputValue(key, "level"), [["", "全部"], ["info", "info"], ["warn", "warn"], ["error", "error"]])}</label>
       <button class="button primary" type="submit">查询</button>
     </form>
