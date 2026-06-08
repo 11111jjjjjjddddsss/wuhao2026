@@ -12,6 +12,7 @@ on:
       - 'gradlew'
       - 'gradlew.bat'
       - 'scripts/check_mojibake.py'
+      - 'scripts/check-android-build-parity.ps1'
       - 'scripts/check_project_memory.py'
       - '.mojibake-baseline.txt'
       - 'AGENTS.md'
@@ -30,6 +31,7 @@ on:
       - 'gradlew'
       - 'gradlew.bat'
       - 'scripts/check_mojibake.py'
+      - 'scripts/check-android-build-parity.ps1'
       - 'scripts/check_project_memory.py'
       - '.mojibake-baseline.txt'
       - 'AGENTS.md'
@@ -101,6 +103,9 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: |
           python3 scripts/check_project_memory.py --base "$BASE_SHA" --head "$HEAD_SHA"
+
+      - name: Android debug/release parity check
+        run: pwsh -NoProfile -File scripts/check-android-build-parity.ps1
 
       - name: Ensure WebView demo entry removed
         run: |

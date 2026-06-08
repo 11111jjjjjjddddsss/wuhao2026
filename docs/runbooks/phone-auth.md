@@ -13,7 +13,7 @@
 - Android 主 manifest 已显式声明 `READ_PHONE_STATE`、`ACCESS_NETWORK_STATE`、`ACCESS_WIFI_STATE` 和 `CHANGE_NETWORK_STATE`，减少 release 构建依赖 AAR manifest merge 的不确定性，并满足少数 Wi-Fi + 移动数据切换取号场景；正式 release 前仍要检查 merged manifest
 - Android 网络安全配置默认仍禁止明文 HTTP，仅按阿里云 SDK FAQ 对移动 / 联通取号网关 `onekey.cmpassport.com`、`enrichgw.10010.com` 做域名级明文放行；不要为了一键登录直接全局开启 `cleartextTrafficPermitted=true`
 - 短信登录后端接口已接阿里云 Dypns API，ECS 当前已配置 DYPNS 基础凭证、短信签名和验证码模板；`/healthz` 已显示 `dypns_sms=ok`
-- 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成临时调试 APK 走 `http://39.106.1.151`。当前 Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Android Studio 直接 Run 的 debug 包和正式 release 包都接正式 HTTPS 后端；`USE_BACKEND_AB` 固定开启，不再通过 Gradle 参数关闭后端主链或切换业务后端地址。本机存在固定 release 签名配置时，debug 构建也使用同一把 release 签名并开启一键登录，让测试包和正式包保持同包名、同签名、同业务链路；缺少 release 签名配置的环境下，debug 包会关闭一键登录并退到验证码登录。debug 包与正式包的差异只保留 debug-only 预览面板和调试日志。
+- 网站 ICP 已通过，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配好并公网验证通过；2026-06-01 曾为真机登录联调临时允许 `39.106.1.151` Host 直连反代到 Go 服务，并生成临时调试 APK 走 `http://39.106.1.151`。当前 Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Android Studio 直接 Run 的 debug 包和正式 release 包都接正式 HTTPS 后端；`USE_BACKEND_AB` 固定开启，不再通过 Gradle 参数关闭后端主链或切换业务后端地址。本机存在固定 release 签名配置时，debug 构建也使用同一把 release 签名并开启一键登录，让测试包和正式包保持同包名、同签名、同业务链路；缺少 release 签名配置的环境下，debug 包会关闭一键登录并退到验证码登录。debug 包与正式包的差异只保留 debug-only 预览面板和调试日志。仓库已新增 [check-android-build-parity.ps1](D:/wuhao/scripts/check-android-build-parity.ps1) 并接入 GitHub Android CI，用于自动检查 debug / release 后端地址、签名一键登录、网络安全配置、100001 最终 token 登录主链和 debug-only 预览隔离。
 - Redis 已购买并在 `server-go` 里接成可选认证限流后端：生产 ECS 已配置 `REDIS_*` 且 `/healthz redis=ok`，融合认证 token、融合认证登录校验、短信发送和短信登录校验会走 Redis 分布式限流；未配置 Redis 的其他环境仍回退单进程内限流
 - 阿里云侧认证次数和账单查询已纳入巡检：本机脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 会调用 DYPNS 统计 / 账单 OpenAPI 查询一键登录和短信认证用量，不输出任何密钥。2026-06-06 默认查询最近 7 天时，一键登录和短信认证统计均为 `no_data`，月账单接口未返回费用明细，说明当前尚未形成真实认证消耗
 
@@ -78,6 +78,26 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 - 短信认证发送 / 校验相关消耗
 - 失败率或未知率是否异常升高，尤其是授权页拉起失败、最终 login token 校验失败、SDK 重试或用户网络 / 代理导致的运营商认证失败
 - 调用量是否明显超过真实用户访问量，防脚本刷 token 或伪造 verify token 消耗阿里云认证额度
+
+## Android 构建一致性巡检
+
+每次改 Android 登录、构建、manifest 或网络安全配置后，先跑：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-android-build-parity.ps1
+```
+
+该脚本只检查仓库源码，不读取 release 签名密码或云端密钥。它会挡住这些高风险回退：
+
+- debug / release 指向不同业务后端，或允许通过 Gradle property / 环境变量把普通包切到非生产后端
+- debug 不再在本机存在 release 签名配置时使用同一签名和一键登录
+- release 一键登录被关闭，或 release 打包缺少签名 / HTTPS 守卫
+- debug 单独新增 manifest / 网络安全配置，绕开 release 基线
+- 全局放开明文 HTTP，或新增非阿里云运营商取号网关的明文域名
+- Android 100001 一键登录重新调用半程 `/api/auth/fusion/verify`，或在 `onHalfWayVerifySuccess` 里消费 token
+- debug-only 预览面板脱离 `BuildConfig.DEBUG` 守卫
+
+CI 会自动执行同一脚本；如果 CI 在这一步失败，不要绕过检查，应先确认测试包和正式包仍保持同包名、同签名、同后端、同登录主链。
 
 ## 安全与成本边界
 

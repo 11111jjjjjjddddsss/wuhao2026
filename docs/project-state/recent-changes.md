@@ -5,6 +5,8 @@
 
 ## 2026-06-09
 
+- 新增 Android debug / release 构建一致性护栏：`scripts/check-android-build-parity.ps1` 会检查 Android 构建固定走 `https://api.nongjiqiancha.cn`、`USE_BACKEND_AB=true`、debug 有 release 签名时同签名并开启一键登录、release 必须开启一键登录、debug 不允许另加 manifest / 明文网络分叉、100001 一键登录只把最终 `onVerifySuccess` token 交给 `/api/auth/fusion/login`、不在半程回调消费 token，以及 debug-only 预览面板必须由 `BuildConfig.DEBUG` 隔离。GitHub Android CI 已接入该脚本，后续再改登录、构建或网络安全配置时会自动挡住“测试包和正式包业务链路又走偏”的改动。
+
 - 管理后台登录排障按钮继续细化：此前“一键登录失败”按钮只筛 `auth.fusion_verify_failed`，会漏掉取 fusion token、SDK 初始化、授权页拉起、SDK token auth、服务端换号、超时和授权页未完成等真实失败阶段；现在登录排障卡把这些阶段拆成独立筛选按钮，并把短信拆成“短信发送失败 / 短信登录失败”，方便明天真机测试时直接定位卡在哪一步。
 
 - 监控面板把登录排障继续拆细：`GET /admin-api/v1/monitoring` 的 `auth_logs` 新增并展示 `env_blocked`、`env_warnings` 和 `login_network_failures` 三个计数，前端“登录排障”卡增加“环境不满足 / 可疑环境 / 请求网络失败”小指标和直达 App 日志筛选按钮，待处理事项也会单独提示 SIM / 移动数据 / 默认数据卡 / VPN / 生产 API 可达性问题。这样明天真机测试时，后台不只看到“登录失败”，而是能先判断问题更像手机环境、代理网络、SDK 授权页还是服务端 token 校验。
