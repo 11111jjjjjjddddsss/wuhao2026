@@ -25,12 +25,12 @@
 当前已落地的后台页面 / API：
 
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
-- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness` 和 `capabilities`，前端已收成“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡、上线检查、快捷入口、关键队列和明细表，让非运维也能先看出今天能不能继续测试。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上线检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
+- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness` 和 `capabilities`，前端已收成“当前结论 / 可测-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、上线检查、快捷入口、关键队列和明细表，让非运维也能先看出今天能不能继续测试。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上线检查会把支付、备案、AccessKey 轮换、SLS 告警和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 脱敏手机号查询，展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈。
 - 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录。
-- 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码只在生成响应当次返回，数据库只存 hash / 掩码 / 尾号。
+- 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
-- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`。
+- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 脱敏手机号 / 最近消息搜索、后台回复、关闭和重开。
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，不展示聊天正文、图片 URL、手机号或 token。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
 - 今日农情：`GET /admin-api/v1/today-agri/cards`。
@@ -46,7 +46,7 @@
 - `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 仍只是共享密钥，不能给浏览器前端使用；正式后台浏览器入口必须走 `admin_users` / `admin_sessions` / CSRF。
 - `/admin-api/v1/monitoring`、`/admin-api/v1/app-logs` 和 `/internal/app/logs` 是给运维和后台面板用的只读 / 聚合入口，不是完整 SLS 告警中心。
 - `/api/app/update` 只是读取版本配置，不是发布系统；正式发布仍需要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间。
-- 礼品卡后端、后台和 Android 兑换入口已接入首版；Android 只在 `/api/gift-cards/redeem` 返回成功后展示“兑换成功”，没有后端成功结果时不能弹真实成功。历史完整卡码不可导出是安全设计，因为数据库只保存 hash / 掩码 / 尾号。
+- 礼品卡后端、后台和 Android 兑换入口已接入首版；Android 只在 `/api/gift-cards/redeem` 返回成功后展示“兑换成功”，没有后端成功结果时不能弹真实成功。后台现在可以页面内查看和复制新生成礼品卡完整卡码，但不能把完整卡码写进备注、审计、日志、文档或批量导出文件。
 - 开发期会员接口不是正式支付回调，生产必须保持关闭。
 - Android 客户端不能承载后台逻辑；客服回复、补权益、发礼品卡、停更新和删除用户数据都必须在服务端或后台完成。
 
@@ -86,7 +86,7 @@
 - 会员与额度：只读展示当前档位、到期时间、每日额度、今日已用、加油包余额、升级补偿和 `quota_ledger`。人工补偿先不开放，或只做 owner 二次确认。
 - 订单 / 订购：支付未接入前只做占位和开发期订单表只读说明；支付接入后再接正式订单、回调、对账、退款和异常补偿。
 - 礼品卡：首版已接入批次、生成、兑换、卡状态、失败尝试查询、失败原因聚合和未兑换卡作废；批量发放、发放对象管理和更细风控后续再补。
-- 帮助与反馈：会话列表、未回复队列、详情、后台回复、处理状态、标签、搜索；首版直接接现有 `/internal/support/*`，后续补工单状态。
+- 帮助与反馈：会话列表、未回复队列、详情、后台回复、处理状态、关闭 / 重开和搜索已接入；后续补正式坐席分配、标签、站外通知、客服绩效和消息保存 / 删除规则。
 - App 自动日志：按时间、用户、事件名、level、App 版本、系统版本、设备筛选；接 `GET /internal/app/logs`，后续再并入 SLS 摘要。
 - 今日农情：当天卡片状态、来源、生成时间、失败原因、手动补跑、停用当天卡片，所有动作审计。
 - 检查更新：当前发布版本、APK URL、SHA-256、文件大小、是否启用、停更开关、发布记录；后续落 `app_releases` 表，不长期手改环境变量。
@@ -99,7 +99,7 @@
 | 模块 | 当前能否直接接 | 当前真源 | 第一版要补 |
 |---|---|---|---|
 | 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计 | SLS 自动告警 / 仪表盘、Nginx access 聚合、登录精准漏斗 |
-| 帮助与反馈 | 可直接接 | `support_messages`、`/internal/support/*` | 会话状态、标签、处理人、搜索 |
+| 帮助与反馈 | 已接入首版 | `support_messages`、`support_conversations`、`/internal/support/*`、`/admin-api/v1/support/*` | 正式坐席分配、标签、站外通知、客服绩效、保存 / 删除规则 |
 | App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs` | 更细的版本 / 设备 / 地区聚合和告警 |
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
@@ -107,7 +107,7 @@
 | 今日农情 | 已接入只读状态 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards` | 补跑 / 停用 API 和告警 |
 | 检查更新 | 已接入只读配置 | `APP_ANDROID_*` 环境变量、`/api/app/update`、`/admin-api/v1/app-update/android` | `app_releases` 表、发布 / 停更 / 回滚 API |
 | 订单 / 订购 | 不能当正式功能接 | 当前 `orders` 仅开发期记录 | 正式订单、支付回调、退款、对账和幂等表 |
-| 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | 批量发放、发放对象管理、更细风控；历史完整卡码不导出 |
+| 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | 批量发放、发放对象管理、更细风控；完整卡码批量导出暂不开放 |
 | 产品洞察 | 未完整接入 | 反馈、App 日志、聊天归档可作为来源 | 脱敏聚合任务和洞察报表表 |
 
 注意：当前迁移仍按 SQL 文件幂等执行，没有独立 `schema_migrations` 版本表；后续新增后台表必须继续保持幂等，避免重复 `ALTER` 造成启动风险。
@@ -139,7 +139,7 @@
 - `admin_roles` 或等价角色字段：只读、客服、内容运营、发布运营、财务 / 订单、管理员。
 - `admin_sessions` 或等价登录态。
 - `admin_audit_logs`：已落地最小版本，记录 actor、动作、目标类型 / ID、目标用户、成功 / 失败、状态码、脱敏 IP、UA 和时间；当前不保存正文、图片 URL、手机号、token 或密钥。后续正式后台账号接入后再补角色、request_id、原因、变更前后等字段或等价扩展。
-- 帮助与反馈可先复用 `support_messages`；当前已补最小会话列表、详情和回复内部接口，后续还要补未处理状态、处理人、关闭状态、搜索能力，或新增轻量会话表。
+- 帮助与反馈复用 `support_messages` 并新增 `support_conversations` 轻量会话状态表；当前已补会话列表、详情、回复、状态筛选、搜索、关闭和重开，后续补坐席分配、标签、站外通知、客服绩效和消息保存 / 删除规则。
 - 用户真实反馈 / 产品洞察建议新增独立聚合表或日报表，例如 `product_insight_reports`、`product_insight_items`、`product_insight_sources`；source 只保存来源类型、脱敏引用、时间、标签和必要短摘，不保存原始手机号、token、密钥、图片内容或完整聊天正文。若用户删除历史或后续做账号注销，必须同步设计洞察来源引用的清理 / 去标识化口径。
 - 检查更新建议补 `app_releases`，不要长期只靠环境变量手改。
 - 今日农情可先复用 `daily_agri_cards`，后台只做状态查看、补跑、停用和审计。
@@ -148,8 +148,8 @@
 
 - 会员订单查询、支付回调状态、退款 / 对账状态。
 - 人工补偿权益，但必须二次确认并写审计。
-- 礼品卡生成、批次、发放、兑换、作废、导出和使用记录。
-- 礼品卡卡号只存哈希或受控脱敏，不在后台列表里明文铺开。
+- 礼品卡生成、批次、发放、兑换、作废和使用记录。
+- 礼品卡完整卡码可在后台页面内查看和复制，服务端必须加密保存；批量导出暂不开放，后续若开放必须二次确认和审计。
 - 连续兑换失败、撞库、已兑换、已过期和权益发放失败要能查。
 
 ## P3：正式运营后台

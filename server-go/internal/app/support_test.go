@@ -272,12 +272,20 @@ func TestParseSupportConversationQuery(t *testing.T) {
 	filter, validationError := parseSupportConversationQuery(url.Values{
 		"since_ms": {"123"},
 		"limit":    {"999"},
+		"status":   {"pending"},
+		"query":    {strings.Repeat("搜", 200)},
 	}, time.UnixMilli(10_000))
 	if validationError != "" {
 		t.Fatalf("unexpected validation error: %s", validationError)
 	}
 	if filter.SinceMs != 123 || filter.Limit != maxSupportConversationListLimit {
 		t.Fatalf("filter mismatch: %#v", filter)
+	}
+	if filter.Status != "open" {
+		t.Fatalf("status = %q, want open", filter.Status)
+	}
+	if got := len([]rune(filter.Query)); got != 128 {
+		t.Fatalf("query rune len = %d, want 128", got)
 	}
 
 	defaultFilter, validationError := parseSupportConversationQuery(url.Values{}, time.UnixMilli(10_000))
@@ -287,6 +295,28 @@ func TestParseSupportConversationQuery(t *testing.T) {
 	if defaultFilter.Limit != defaultSupportConversationListLimit ||
 		defaultFilter.SinceMs != time.UnixMilli(10_000).Add(-defaultSupportConversationSinceDuration).UnixMilli() {
 		t.Fatalf("default filter mismatch: %#v", defaultFilter)
+	}
+}
+
+func TestNormalizeSupportConversationStatus(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want string
+	}{
+		{raw: "open", want: "open"},
+		{raw: "pending", want: "open"},
+		{raw: "needs_reply", want: "open"},
+		{raw: "done", want: "replied"},
+		{raw: "closed", want: "closed"},
+		{raw: "all", want: ""},
+		{raw: "unknown", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.raw, func(t *testing.T) {
+			if got := normalizeSupportConversationStatus(tt.raw); got != tt.want {
+				t.Fatalf("normalizeSupportConversationStatus(%q) = %q, want %q", tt.raw, got, tt.want)
+			}
+		})
 	}
 }
 

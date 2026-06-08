@@ -1,15 +1,17 @@
 # 帮助与反馈 Runbook
 
-最后更新：2026-06-07
+最后更新：2026-06-08
 
-本 runbook 记录当前“帮助与反馈”首版的真实入口。首版不是实时 IM，也不是完整工单系统；它是一条按 `user_id` 归属的站内消息线，Android 负责展示 / 发送 / 已读，后台后续管理面板负责读取和回复。代码和接口内部仍沿用 `support` 命名，不影响用户侧文案。
+本 runbook 记录当前“帮助与反馈”的真实入口。它不是实时 IM，也不是完整客服坐席系统；当前是一条按账号ID（底层字段仍叫 `user_id`）归属的站内消息线，Android 负责展示 / 发送 / 已读，管理后台负责会话队列、读取、回复、关闭和重开。代码和接口内部仍沿用 `support` 命名，不影响用户侧文案。
 
 ## 数据真源
 
-- 表：`support_messages`
-- 迁移：`server-go/migrations/015_support_messages.sql`
-- 一条用户会话线按 `user_id` 聚合，不单独建 thread 表
+- 表：`support_messages`、`support_conversations`
+- 迁移：`server-go/migrations/015_support_messages.sql`、`server-go/migrations/026_gift_card_codes_and_support_conversations.sql`
+- 一条用户会话线按账号ID聚合，`support_conversations.user_id` 是轻量会话状态主键，不单独开放多 thread
 - `sender_type` 当前取值：`user`、`admin`、`system`；`system` 当前用于固定自动确认回复和后续系统提示，不是模型客服
+- `support_conversations.status` 当前取值：`open`、`replied`、`closed`；用户发新消息会把会话重新打开为 `open`，后台回复会标为 `replied`，后台可手动关闭或重开
+- `assigned_to` 当前记录最后处理人，`note` 当前用于关闭备注；不要写手机号全文、密钥、token、图片 URL 或敏感正文
 - 设置页红点只看 `sender_type IN ('admin', 'system') AND read_by_user_at IS NULL`
 - 图片附件存储在 `image_urls_json`，只保存本后端 `/upload` 返回的公开 HTTPS 图片 URL
 
@@ -45,8 +47,9 @@
   - 查询动作会写入 `admin_audit_logs`，只记录操作元信息和返回条数，不记录反馈正文或图片 URL
 - `GET /internal/support/conversations`
   - 查询最近有帮助与反馈消息的用户会话列表
-  - 支持 `since_ms` 和 `limit`，默认查最近 30 天，limit 默认 100、最大 200
-  - 返回每个用户的最新消息、消息数、用户未读后台 / 系统消息数和 `needs_reply` 标记，方便后续后台列表页接入
+  - 支持 `since_ms`、`limit`、`status` 和 `query`，默认查最近 30 天，limit 默认 100、最大 200
+  - 默认时间窗只限制已回复 / 已关闭等普通队列；待回复 `open` 会话不受 30 天窗口漏掉
+  - 返回每个用户的最新消息、消息数、用户未读后台 / 系统消息数、脱敏手机号、`status`、处理人、关闭备注和 `needs_reply` 标记
   - `needs_reply` 按最新非 `system` 消息判断；自动确认回复不会把“用户待回复”状态盖掉
   - 查询动作会写入 `admin_audit_logs`，只记录筛选条件和返回条数，不记录反馈正文或图片 URL
 - `POST /internal/support/messages`
@@ -55,13 +58,26 @@
   - 用户下次打开 App 设置页或刷新摘要时会看到红点
   - 回复动作会写入 `admin_audit_logs`，记录目标用户、消息 ID、正文字数和图片数量，不记录回复正文、图片 URL、密钥或手机号
 
+## 管理后台入口
+
+- `GET /admin-api/v1/support/conversations`
+  - 走后台账号 session / CSRF / 角色权限，不暴露内部 shared secret 给浏览器
+  - 支持按 `status=open|replied|closed` 和 `query` 筛选；`query` 可查账号ID、脱敏手机号和最近消息
+  - 列表排序为待回复优先，其次按最新消息时间倒序，避免大量消息时把未处理会话压到下面
+- `GET /admin-api/v1/support/messages?user_id=<user_id>`
+  - 读取指定账号ID的最近消息，按时间正序展示
+- `POST /admin-api/v1/support/messages`
+  - 后台回复用户，会写 `sender_type=admin` 消息、更新会话状态并写审计
+- `POST /admin-api/v1/support/conversations/status`
+  - 请求体：`{"user_id":"acct_...","status":"open|replied|closed","note":"可选"}`
+  - 用于重开待回复、标已回复和关闭会话；关闭可写备注，但不能写手机号全文、密钥或其他敏感信息
+
 ## 当前没有的能力
 
-- 没有网页管理后台
-- 第一版网页后台已提供后台账号、角色权限、会话列表、详情和回复入口；当前仍缺正式坐席分配、处理状态、搜索、站外通知和客服绩效
-- 没有工单状态、分配、关闭、搜索和 SLA
+- 当前已有网页管理后台、后台账号、角色权限、会话列表、详情、回复、状态筛选、搜索、关闭和重开。
+- 当前仍缺正式坐席分配、标签、站外通知、客服绩效、SLA、自动归档和更细的消息保存 / 删除规则。
 - 没有系统通知 / 推送
-- 当前后台仍只适合早期内测 / 运维使用；公开运营前至少要补未处理状态、处理人、搜索、标签和消息保存 / 删除规则，并继续完善后台审计
+- 当前后台仍只适合早期内测 / 小规模运营使用；公开大规模运营前至少要补坐席分配、标签和消息保存 / 删除规则，并继续完善后台审计
 - OSS 上传后端已接入，Bucket 里已预留 `support/` 30 天生命周期规则，但当前帮助与反馈图片仍复用主聊天 `/upload` -> `/uploads/*.jpg` 链路，实际按 `uploads/` 3 天生命周期处理；公开运营前如需要更长客服追溯期，应新增 support 专用上传目的或接口，再把 Android 帮助与反馈图片切到 `support/`
 - 后续账号注销 / 数据删除规则必须明确帮助与反馈消息和图片是否删除、保留多久、由谁操作
 

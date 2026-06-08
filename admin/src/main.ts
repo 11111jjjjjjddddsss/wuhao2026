@@ -65,6 +65,8 @@ const pageState = {
   userQuery: "",
   userDetailID: "",
   supportUserID: "",
+  supportStatus: "",
+  supportQuery: "",
   entitlementUserID: "",
   orderUserID: "",
   giftCardBatchID: "",
@@ -369,6 +371,7 @@ async function monitoringPage(): Promise<string> {
   return `
     ${pageHead("监控面板", "先看能不能继续测，再处理红色事项；没接通的能力会明确标出来。", "monitoring")}
     ${monitoringHero(report)}
+    ${monitoringReadinessSummary(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
       <div class="card-head"><div class="card-title">上线检查</div><span class="small muted">可测 / 需处理 / 上线阻塞</span></div>
@@ -547,23 +550,23 @@ async function giftCardsPage(): Promise<string> {
   const attempts = attemptsResponse.attempts ?? [];
   const summary = normalizeGiftCardSummary(summaryResponse.summary);
   return `
-    ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；完整卡码只在生成当次展示。", "gift-cards")}
+    ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；后台可直接查看完整卡码并复制。", "gift-cards")}
     <section class="grid kpi">
       ${kpi("可用卡", summary.active_count, "全量未兑换")}
       ${kpi("已兑换", summary.redeemed_count, "全量已激活")}
       ${kpi("已作废", summary.void_count, "全量")}
       ${kpi("失败尝试", summary.failed_attempts_24h, "最近24小时")}
       ${kpi("批次数", summary.batch_count, "全量批次")}
-      ${kpi("完整卡码", lastGiftCardCodes.length ? "本次可见" : "不保存", lastGiftCardCodes.length ? "离开后不可恢复" : "历史只保留掩码")}
+      ${kpi("完整卡码", "后台可查", lastGiftCardCodes.length ? "本次新生成在下方" : "列表可直接复制")}
     </section>
     <div class="grid two" style="margin-top:12px">
       ${notice("现在可以怎么用", "这里生成 1 张正式礼品卡，复制完整卡码到 Android 设置里的“礼品卡”兑换；成功后本页按账号ID、批次或卡尾号都能追到激活记录。", "info")}
-      ${notice("追溯边界", "后台不保存历史完整卡码，只能用卡掩码、尾号、批次、兑换账号ID、脱敏手机号、地区和兑换尝试流水追溯。", "warn")}
+      ${notice("追溯边界", "新生成礼品卡会加密保存完整码，后台列表可直接查看；不要把完整码写进备注、作废原因或公开文档。", "warn")}
     </div>
     <section class="card">
       <div class="card-head">
         <div class="card-title">生成礼品卡批次</div>
-        <span class="small muted">完整卡码只在生成成功当次展示</span>
+        <span class="small muted">完整卡码会加密保存，列表可查</span>
       </div>
       <div class="card-body">
         <form id="gift-card-create-form" class="filter-form">
@@ -612,15 +615,25 @@ async function giftCardsPage(): Promise<string> {
 }
 
 async function supportPage(): Promise<string> {
+  const params = {
+    limit: 100,
+    status: pageState.supportStatus,
+    query: pageState.supportQuery,
+  };
   const response = await apiFetch<{ conversations: AdminSupportConversation[] }>(
-    "/admin-api/v1/support/conversations?limit=50",
+    `/admin-api/v1/support/conversations${toQuery(params)}`,
   );
+  if (pageState.supportUserID && !response.conversations.some((item) => item.user_id === pageState.supportUserID)) {
+    pageState.supportUserID = "";
+  }
   if (!pageState.supportUserID && response.conversations[0]) {
     pageState.supportUserID = response.conversations[0].user_id;
   }
+  const selected = response.conversations.find((item) => item.user_id === pageState.supportUserID);
   const messages = pageState.supportUserID ? await fetchSupportMessages(pageState.supportUserID) : [];
   return `
-    ${pageHead("帮助反馈", "按会话查看用户反馈并发送后台回复；回复动作会由后端写审计。", "support")}
+    ${pageHead("帮助反馈", "按待回复、已回复、已关闭队列处理用户反馈；回复和状态动作都会写审计。", "support")}
+    ${supportFilterForm()}
     <div class="split">
       <section class="card list-pane">
         <div class="card-head"><div class="card-title">会话队列</div><span class="small muted">${response.conversations.length} 条</span></div>
@@ -632,7 +645,7 @@ async function supportPage(): Promise<string> {
           <span class="small muted">${escapeHTML(pageState.supportUserID || "未选择")}</span>
         </div>
         <div class="card-body">
-          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages) : emptyState("没有会话", "当前后端未返回帮助与反馈会话。")}
+          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected) : emptyState("没有会话", "当前后端未返回帮助与反馈会话。")}
         </div>
       </section>
     </div>
@@ -804,6 +817,13 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
     await submitSupportReply(form);
     return;
   }
+  if (form.id === "support-filter-form") {
+    pageState.supportStatus = formValue(form, "status");
+    pageState.supportQuery = formValue(form, "query");
+    pageState.supportUserID = "";
+    await render();
+    return;
+  }
   if (form.id === "app-log-form") {
     captureFilterState(form, "app-log");
     pageState.appLogWindow = formValue(form, "app_log_window") || "24h";
@@ -845,9 +865,17 @@ async function handleAction(button: HTMLElement): Promise<void> {
     await render();
     return;
   }
+  if (action === "support-status") {
+    await updateSupportConversationStatus(button.dataset.userId || "", button.dataset.status || "");
+    return;
+  }
   if (action === "clear-gift-card-codes") {
     lastGiftCardCodes = [];
     await render();
+    return;
+  }
+  if (action === "copy-text") {
+    await copyText(button.dataset.copy || "");
     return;
   }
   if (action === "clear-gift-card-filter") {
@@ -929,7 +957,7 @@ async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
   const tierLabel = tier === "pro" ? "Pro" : "Plus";
   if (
     !window.confirm(
-      `确认生成 ${quantity} 张 ${tierLabel} ${durationDays} 天礼品卡？\n\n这些卡码一旦发出即可兑换真实会员权益。完整卡码只会在本次生成结果中显示，请确认数量和档位无误。`,
+      `确认生成 ${quantity} 张 ${tierLabel} ${durationDays} 天礼品卡？\n\n这些卡码一旦发出即可兑换真实会员权益。后台会加密保存完整码并可直接查看，请确认数量和档位无误。`,
     )
   ) {
     return;
@@ -972,6 +1000,42 @@ async function voidGiftCard(cardID: string): Promise<void> {
     await render();
   } catch (error) {
     window.alert(`作废失败：${errorMessage(error)}`);
+  }
+}
+
+async function updateSupportConversationStatus(userID: string, status: string): Promise<void> {
+  if (!userID || !status) return;
+  const labels: Record<string, string> = {
+    open: "重新打开为待回复",
+    replied: "标记为已回复",
+    closed: "关闭会话",
+  };
+  let note = "";
+  if (status === "closed") {
+    const input = window.prompt("关闭原因，可留空。不要写手机号全文、密钥或内部敏感信息。");
+    if (input === null) return;
+    note = input.trim();
+  }
+  if (!window.confirm(`确认${labels[status] || "更新状态"}？`)) return;
+  try {
+    await apiFetch("/admin-api/v1/support/conversations/status", {
+      method: "POST",
+      json: { user_id: userID, status, note },
+    });
+    pageState.supportUserID = userID;
+    await render();
+  } catch (error) {
+    window.alert(`更新失败：${errorMessage(error)}`);
+  }
+}
+
+async function copyText(text: string): Promise<void> {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    window.alert("已复制");
+  } catch {
+    window.prompt("复制失败，请手动复制：", text);
   }
 }
 
@@ -1188,17 +1252,18 @@ function createdGiftCardCodesBlock(rows: AdminGiftCardCreatedCode[]): string {
   return `
     <div class="notice warn" style="margin-top:12px">
       <strong>新生成卡码</strong>
-      <div class="muted" style="margin-top:6px">完整卡码只显示在当前结果中；离开本页、刷新或清除后，后台只保留掩码和 hash。</div>
+      <div class="muted" style="margin-top:6px">完整卡码已加密保存；这里可以直接复制，下方“卡与兑换”列表刷新后也能查看。</div>
       <button class="button" type="button" data-action="clear-gift-card-codes" style="margin-top:10px">清除本次卡码</button>
       <div class="table-wrap" style="margin-top:10px">
         <table class="table">
-          <thead><tr><th>完整卡码</th><th>档位</th><th>天数</th><th>有效至</th></tr></thead>
+          <thead><tr><th>完整卡码</th><th>档位</th><th>天数</th><th>有效至</th><th>操作</th></tr></thead>
           <tbody>
             ${rows
               .map(
                 (row) => `
                   <tr>
-                    <td class="mono">${escapeHTML(row.code)}</td><td>${statusPill(row.tier)}</td><td>${row.duration_days}</td><td>${formatTime(row.valid_until)}</td>
+                    <td class="mono code-cell">${escapeHTML(row.code)}</td><td>${statusPill(row.tier)}</td><td>${row.duration_days}</td><td>${formatTime(row.valid_until)}</td>
+                    <td><button class="button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button></td>
                   </tr>
                 `,
               )
@@ -1294,13 +1359,14 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
   if (!rows.length) return emptyState("没有礼品卡", "后端未返回礼品卡记录。");
   return `
     <table class="table">
-      <thead><tr><th>卡</th><th>档位</th><th>状态</th><th>激活账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
+      <thead><tr><th>卡</th><th>完整卡码</th><th>档位</th><th>状态</th><th>激活账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
                 <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
+                <td><div class="mono code-cell">${row.code ? escapeHTML(row.code) : "旧卡无完整码"}</div>${row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
                 <td>${statusPill(row.tier)}</td><td>${statusPill(row.status)}</td>
                 <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
@@ -1338,6 +1404,22 @@ function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
   `;
 }
 
+function supportFilterForm(): string {
+  return `
+    <form id="support-filter-form" class="filters support-filters">
+      <label class="field">
+        <span>队列</span>
+        ${selectHTML("status", pageState.supportStatus, [["", "全部"], ["open", "待回复"], ["replied", "已回复"], ["closed", "已关闭"]])}
+      </label>
+      <label class="field wide">
+        <span>搜索</span>
+        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 脱敏手机号 / 最近消息" />
+      </label>
+      <button class="button primary" type="submit">筛选</button>
+    </form>
+  `;
+}
+
 function supportConversationList(conversations: AdminSupportConversation[]): string {
   if (!conversations.length) return emptyState("没有反馈会话", "后端未返回帮助与反馈会话。");
   return conversations
@@ -1345,16 +1427,18 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
       (item) => `
         <button class="selectable-row ${item.user_id === pageState.supportUserID ? "active" : ""}" data-action="support-select" data-user-id="${escapeAttr(item.user_id)}">
           <strong class="truncate">${escapeHTML(item.user_id)}</strong>
+          <span class="small muted truncate">${escapeHTML(item.phone_mask || "未返回手机号")} · ${formatTime(item.latest_message.created_at)}</span>
           <span class="small muted truncate">${escapeHTML(item.latest_message.body_excerpt || item.latest_message.body || "无正文")}</span>
-          <span>${item.needs_reply ? statusPill("待回复", "warn") : statusPill("已处理", "ok")} <span class="small muted">${item.message_count} 条</span></span>
+          <span>${supportStatusPill(item)} <span class="small muted">${item.message_count} 条</span></span>
         </button>
       `,
     )
     .join("");
 }
 
-function supportMessagesBlock(userID: string, messages: AdminSupportMessage[]): string {
+function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], conversation?: AdminSupportConversation): string {
   return `
+    ${conversation ? supportConversationMeta(conversation) : ""}
     <div class="message-list">
       ${
         messages.length
@@ -1376,6 +1460,11 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[]): 
       }
     </div>
     <div class="divider"></div>
+    <div class="row-actions" style="margin-bottom:12px">
+      <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="open" type="button">重开待回复</button>
+      <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="replied" type="button">标已回复</button>
+      <button class="button danger" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="closed" type="button">关闭</button>
+    </div>
     <form id="support-reply-form" class="stack">
       <input type="hidden" name="user_id" value="${escapeAttr(userID)}" />
       <label class="field">
@@ -1385,6 +1474,28 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[]): 
       <button class="button primary" type="submit">发送回复</button>
     </form>
   `;
+}
+
+function supportConversationMeta(conversation: AdminSupportConversation): string {
+  return `
+    <dl class="kv support-meta">
+      <dt>状态</dt><dd>${supportStatusPill(conversation)}</dd>
+      <dt>手机号</dt><dd>${escapeHTML(conversation.phone_mask || "未返回")}</dd>
+      <dt>处理人</dt><dd>${escapeHTML(conversation.assigned_to || "未分配")}</dd>
+      <dt>最新用户消息</dt><dd>${formatTime(conversation.latest_user_message_at)}</dd>
+      <dt>最新后台回复</dt><dd>${formatTime(conversation.latest_admin_message_at)}</dd>
+      <dt>关闭时间</dt><dd>${formatTime(conversation.closed_at)}</dd>
+      ${conversation.note ? `<dt>备注</dt><dd>${escapeHTML(conversation.note)}</dd>` : ""}
+    </dl>
+    <div class="divider"></div>
+  `;
+}
+
+function supportStatusPill(item: AdminSupportConversation): string {
+  const status = item.status || (item.needs_reply ? "open" : "replied");
+  if (status === "closed") return statusPill("已关闭", "info");
+  if (status === "open" || item.needs_reply) return statusPill("待回复", "warn");
+  return statusPill("已回复", "ok");
 }
 
 function appLogsTable(rows: ClientAppLogEntry[]): string {
@@ -1625,10 +1736,11 @@ function monitoringQueueCards(report: AdminMonitoring): string {
   const giftReady = (queues.gift_card_batch_count ?? 0) > 0 && (queues.gift_card_active ?? 0) > 0;
   const giftLevel = queues.gift_card_failed_attempts ? "warn" : giftReady ? "ok" : "warn";
   const giftBody = `${queues.gift_card_batch_count ?? 0} 个批次 / ${queues.gift_card_total ?? 0} 张总卡；${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`;
+  const supportBody = `${queues.support_open ?? queues.support_needs_reply} 待回复 / ${queues.support_replied ?? 0} 已回复 / ${queues.support_closed ?? 0} 已关闭`;
   return `
     <div class="queue-grid">
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
-      ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `最早待回复 ${formatTime(queues.support_oldest_pending_at)}` : "暂无待回复", queues.support_needs_reply ? "warn" : "ok")}
+      ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可用`, giftBody, giftLevel)}
@@ -1711,6 +1823,27 @@ function monitoringHero(report: AdminMonitoring): string {
   `;
 }
 
+function monitoringReadinessSummary(report: AdminMonitoring): string {
+  const rows = report.launch_readiness || [];
+  const ready = rows.filter((row) => row.status === "ready").length;
+  const attention = rows.filter((row) => row.status === "attention").length;
+  const blocked = rows.filter((row) => row.status === "blocked").length;
+  const next = rows.find((row) => row.status === "blocked") || rows.find((row) => row.status === "attention");
+  return `
+    <section class="readiness-summary">
+      <div class="readiness-count ok"><span>可测</span><strong>${ready}</strong></div>
+      <div class="readiness-count warn"><span>需处理</span><strong>${attention}</strong></div>
+      <div class="readiness-count bad"><span>阻塞</span><strong>${blocked}</strong></div>
+      <div class="readiness-next">
+        <span class="small muted">下一步</span>
+        <strong>${escapeHTML(next?.title || "继续回归")}</strong>
+        <p>${escapeHTML(next?.body || "当前可继续看 App 登录、礼品卡兑换、模型对话和图片问诊。")}</p>
+        ${routeActionButton(next?.route, "打开")}
+      </div>
+    </section>
+  `;
+}
+
 function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring["windows"][number] | undefined, day24: AdminMonitoring["windows"][number] | undefined): string {
   const worst = monitoringWorstLevel(report);
   const primaryRoute = primaryMonitoringActionRoute(report, worst);
@@ -1736,10 +1869,17 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       )}
       ${decisionCard(
         "礼品卡与权益",
-        !giftReady ? "先生成卡" : giftWarn ? "看失败" : "可生成兑换",
-        `${report.queues.gift_card_active} 张可用，${report.queues.gift_card_batch_count ?? 0} 个批次 / ${report.queues.gift_card_total ?? 0} 张总卡；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
+        !giftReady ? "先生成卡" : giftWarn ? "看失败" : "可查可兑",
+        `${report.queues.gift_card_active} 张可用；后台能看完整码，已兑 ${report.queues.gift_card_redeemed} 张；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
         giftWarn ? "warn" : "ok",
         "gift-cards",
+      )}
+      ${decisionCard(
+        "客服反馈",
+        report.queues.support_needs_reply ? `${report.queues.support_needs_reply} 待回复` : "队列正常",
+        `${report.queues.support_open ?? report.queues.support_needs_reply} 待回复 / ${report.queues.support_replied ?? 0} 已回复 / ${report.queues.support_closed ?? 0} 已关闭。`,
+        report.queues.support_needs_reply ? "warn" : "ok",
+        "support",
       )}
       ${decisionCard(
         "App 质量",
@@ -1770,9 +1910,11 @@ function monitoringShortcutBar(): string {
   return `
     <div class="shortcut-bar">
       ${shortcutButton("gift-cards", "生成礼品卡")}
+      ${shortcutButton("users", "查用户")}
       ${shortcutButton("app-logs", "看 App 错误")}
       ${shortcutButton("support", "处理反馈")}
       ${shortcutButton("today-agri", "看今日农情")}
+      ${shortcutButton("app-update", "检查更新")}
       ${shortcutButton("health", "服务健康")}
     </div>
   `;

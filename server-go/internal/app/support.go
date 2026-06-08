@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -50,16 +51,26 @@ type SupportSummary struct {
 }
 
 type SupportConversationQuery struct {
-	SinceMs int64 `json:"since_ms"`
-	Limit   int   `json:"limit"`
+	SinceMs int64  `json:"since_ms"`
+	Limit   int    `json:"limit"`
+	Status  string `json:"status,omitempty"`
+	Query   string `json:"query,omitempty"`
 }
 
 type SupportConversationEntry struct {
 	UserID            string         `json:"user_id"`
+	PhoneMask         string         `json:"phone_mask,omitempty"`
 	LatestMessage     SupportMessage `json:"latest_message"`
 	MessageCount      int            `json:"message_count"`
 	UnreadByUserCount int            `json:"unread_by_user_count"`
 	NeedsReply        bool           `json:"needs_reply"`
+	Status            string         `json:"status"`
+	AssignedTo        string         `json:"assigned_to,omitempty"`
+	Note              string         `json:"note,omitempty"`
+	LatestUserAt      *int64         `json:"latest_user_message_at,omitempty"`
+	LatestAdminAt     *int64         `json:"latest_admin_message_at,omitempty"`
+	ClosedAt          *int64         `json:"closed_at,omitempty"`
+	UpdatedAt         int64          `json:"updated_at"`
 }
 
 type supportMessageRequest struct {
@@ -75,6 +86,12 @@ type supportAdminMessageRequest struct {
 	UserID string   `json:"user_id"`
 	Body   string   `json:"body"`
 	Images []string `json:"images"`
+}
+
+type supportConversationStatusRequest struct {
+	UserID string `json:"user_id"`
+	Status string `json:"status"`
+	Note   string `json:"note"`
 }
 
 func (s *Server) handleSupportSummary(w http.ResponseWriter, r *http.Request) {
@@ -447,6 +464,8 @@ func parseSupportConversationQuery(values url.Values, now time.Time) (SupportCon
 		}
 		filter.Limit = limit
 	}
+	filter.Status = normalizeSupportConversationStatus(values.Get("status"))
+	filter.Query = truncateRunes(strings.TrimSpace(values.Get("query")), 128)
 	return filter, ""
 }
 
@@ -513,53 +532,97 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 	if filter.Limit <= 0 || filter.Limit > maxSupportConversationListLimit {
 		filter.Limit = defaultSupportConversationListLimit
 	}
-	rows, err := s.db.QueryContext(
-		ctx,
-		`SELECT
-		   latest_message.user_id,
-		   latest_message.id,
-		   latest_message.sender_type,
-		   latest_message.body,
-		   latest_message.image_urls_json,
-		   latest_message.created_at,
-		   latest_message.read_by_user_at,
-		   latest_non_system_summary.sender_type AS latest_non_system_sender_type,
-		   COALESCE(message_counts.message_count, 0) AS message_count,
-		   COALESCE(unread_counts.unread_count, 0) AS unread_count
-		 FROM support_messages latest_message
-		 JOIN (
-		   SELECT user_id, MAX(id) AS latest_id
-		     FROM support_messages
-		    GROUP BY user_id
-		 ) latest ON latest.latest_id = latest_message.id
-		 LEFT JOIN (
-		   SELECT user_id, COUNT(*) AS message_count
-		     FROM support_messages
-		    GROUP BY user_id
-		 ) message_counts ON message_counts.user_id = latest_message.user_id
-		 LEFT JOIN (
-		   SELECT user_id, COUNT(*) AS unread_count
-		     FROM support_messages
-		    WHERE sender_type IN ('admin', 'system')
-		      AND read_by_user_at IS NULL
-		    GROUP BY user_id
-		 ) unread_counts ON unread_counts.user_id = latest_message.user_id
-		 LEFT JOIN (
-		   SELECT latest_non_system_message.user_id, latest_non_system_message.sender_type
-		     FROM support_messages latest_non_system_message
-		     JOIN (
-		       SELECT user_id, MAX(id) AS latest_id
-		         FROM support_messages
-		        WHERE sender_type <> 'system'
-		        GROUP BY user_id
-		     ) latest_non_system_ids ON latest_non_system_ids.latest_id = latest_non_system_message.id
-		 ) latest_non_system_summary ON latest_non_system_summary.user_id = latest_message.user_id
-		 WHERE latest_message.created_at >= ?
-		 ORDER BY latest_message.created_at DESC, latest_message.id DESC
-		 LIMIT ?`,
-		filter.SinceMs,
-		filter.Limit,
-	)
+	query := `SELECT *
+		 FROM (
+		   SELECT
+		     latest_message.user_id,
+		     accounts.phone_mask,
+		     latest_message.id,
+		     latest_message.sender_type,
+		     latest_message.body,
+		     latest_message.image_urls_json,
+		     latest_message.created_at,
+		     latest_message.read_by_user_at,
+		     latest_non_system_summary.sender_type AS latest_non_system_sender_type,
+		     COALESCE(message_counts.message_count, 0) AS message_count,
+		     COALESCE(unread_counts.unread_count, 0) AS unread_count,
+		     CASE
+		       WHEN conversations.status = 'closed' AND latest_user_summary.latest_user_at > COALESCE(conversations.closed_at, 0) THEN 'open'
+		       WHEN conversations.status IN ('open', 'replied', 'closed') THEN conversations.status
+		       WHEN latest_non_system_summary.sender_type = 'user' THEN 'open'
+		       ELSE 'replied'
+		     END AS conversation_status,
+		     conversations.assigned_to,
+		     conversations.note,
+		     latest_user_summary.latest_user_at,
+		     latest_admin_summary.latest_admin_at,
+		     conversations.closed_at,
+		     COALESCE(conversations.updated_at, latest_message.created_at) AS conversation_updated_at
+		   FROM support_messages latest_message
+		   JOIN (
+		     SELECT user_id, MAX(id) AS latest_id
+		       FROM support_messages
+		      GROUP BY user_id
+		   ) latest ON latest.latest_id = latest_message.id
+		   LEFT JOIN app_accounts accounts ON accounts.user_id = latest_message.user_id
+		   LEFT JOIN support_conversations conversations ON conversations.user_id = latest_message.user_id
+		   LEFT JOIN (
+		     SELECT user_id, COUNT(*) AS message_count
+		       FROM support_messages
+		      GROUP BY user_id
+		   ) message_counts ON message_counts.user_id = latest_message.user_id
+		   LEFT JOIN (
+		     SELECT user_id, COUNT(*) AS unread_count
+		       FROM support_messages
+		      WHERE sender_type IN ('admin', 'system')
+		        AND read_by_user_at IS NULL
+		      GROUP BY user_id
+		   ) unread_counts ON unread_counts.user_id = latest_message.user_id
+		   LEFT JOIN (
+		     SELECT latest_non_system_message.user_id, latest_non_system_message.sender_type
+		       FROM support_messages latest_non_system_message
+		       JOIN (
+		         SELECT user_id, MAX(id) AS latest_id
+		           FROM support_messages
+		          WHERE sender_type <> 'system'
+		          GROUP BY user_id
+		       ) latest_non_system_ids ON latest_non_system_ids.latest_id = latest_non_system_message.id
+		   ) latest_non_system_summary ON latest_non_system_summary.user_id = latest_message.user_id
+		   LEFT JOIN (
+		     SELECT user_id, MAX(created_at) AS latest_user_at
+		       FROM support_messages
+		      WHERE sender_type = 'user'
+		      GROUP BY user_id
+		   ) latest_user_summary ON latest_user_summary.user_id = latest_message.user_id
+		   LEFT JOIN (
+		     SELECT user_id, MAX(created_at) AS latest_admin_at
+		       FROM support_messages
+		      WHERE sender_type = 'admin'
+		      GROUP BY user_id
+		   ) latest_admin_summary ON latest_admin_summary.user_id = latest_message.user_id
+		 ) support_queue`
+	args := []any{}
+	where := []string{"(created_at >= ? OR conversation_status = 'open')"}
+	args = append(args, filter.SinceMs)
+	if filter.Status != "" {
+		where = append(where, "conversation_status = ?")
+		args = append(args, filter.Status)
+	}
+	if filter.Query != "" {
+		like := "%" + filter.Query + "%"
+		where = append(where, "(user_id LIKE ? OR phone_mask LIKE ? OR body LIKE ?)")
+		args = append(args, like, like, like)
+	}
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+	query += ` ORDER BY
+		  CASE conversation_status WHEN 'open' THEN 0 WHEN 'replied' THEN 1 WHEN 'closed' THEN 2 ELSE 3 END,
+		  created_at DESC,
+		  id DESC
+		 LIMIT ?`
+	args = append(args, filter.Limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -569,11 +632,15 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 	for rows.Next() {
 		var entry SupportConversationEntry
 		var message SupportMessage
+		var phoneMask sql.NullString
 		var imageURLsJSON sql.NullString
 		var readByUserAt sql.NullInt64
 		var latestNonSystemSenderType sql.NullString
+		var status, assignedTo, note sql.NullString
+		var latestUserAt, latestAdminAt, closedAt, updatedAt sql.NullInt64
 		if err := rows.Scan(
 			&entry.UserID,
+			&phoneMask,
 			&message.ID,
 			&message.SenderType,
 			&message.Body,
@@ -583,10 +650,18 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 			&latestNonSystemSenderType,
 			&entry.MessageCount,
 			&entry.UnreadByUserCount,
+			&status,
+			&assignedTo,
+			&note,
+			&latestUserAt,
+			&latestAdminAt,
+			&closedAt,
+			&updatedAt,
 		); err != nil {
 			return nil, err
 		}
 		message.UserID = entry.UserID
+		entry.PhoneMask = nullStringValue(phoneMask)
 		if readByUserAt.Valid {
 			value := readByUserAt.Int64
 			message.ReadByUserAt = &value
@@ -598,7 +673,21 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 			}
 		}
 		entry.LatestMessage = message
-		entry.NeedsReply = supportConversationNeedsReply(latestNonSystemSenderType)
+		entry.Status = normalizeSupportConversationStatus(nullStringValue(status))
+		if entry.Status == "" {
+			entry.Status = "replied"
+		}
+		entry.AssignedTo = nullStringValue(assignedTo)
+		entry.Note = nullStringValue(note)
+		entry.LatestUserAt = nullInt64ToPtr(latestUserAt)
+		entry.LatestAdminAt = nullInt64ToPtr(latestAdminAt)
+		entry.ClosedAt = nullInt64ToPtr(closedAt)
+		if updatedAt.Valid {
+			entry.UpdatedAt = updatedAt.Int64
+		} else {
+			entry.UpdatedAt = message.CreatedAt
+		}
+		entry.NeedsReply = entry.Status == "open" && supportConversationNeedsReply(latestNonSystemSenderType)
 		conversations = append(conversations, entry)
 	}
 	if err := rows.Err(); err != nil {
@@ -619,7 +708,12 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.db.ExecContext(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer rollbackQuietly(tx)
+	result, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO support_messages(user_id, sender_type, body, image_urls_json, created_at)
 		 VALUES (?, ?, ?, ?, ?)`,
@@ -634,6 +728,12 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
+		return nil, err
+	}
+	if err := upsertSupportConversationTx(ctx, tx, userID, senderType, id, createdAt); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &SupportMessage{
@@ -659,6 +759,159 @@ func (s *Store) MarkSupportMessagesRead(ctx context.Context, userID string, read
 	}
 	_, err := s.db.ExecContext(ctx, query, args...)
 	return err
+}
+
+func (s *Store) UpdateSupportConversationStatus(ctx context.Context, userID string, status string, actor string, note string, nowMs int64) error {
+	status = normalizeSupportConversationStatus(status)
+	if status == "" {
+		return fmt.Errorf("invalid support conversation status")
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return sql.ErrNoRows
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackQuietly(tx)
+	var latestID sql.NullInt64
+	var latestAt sql.NullInt64
+	var messageCount sql.NullInt64
+	var latestUserAt sql.NullInt64
+	var latestAdminAt sql.NullInt64
+	err = tx.QueryRowContext(
+		ctx,
+		`SELECT MAX(id),
+		        MAX(created_at),
+		        COUNT(*),
+		        MAX(CASE WHEN sender_type = 'user' THEN created_at ELSE NULL END),
+		        MAX(CASE WHEN sender_type = 'admin' THEN created_at ELSE NULL END)
+		   FROM support_messages
+		  WHERE user_id = ?`,
+		userID,
+	).Scan(&latestID, &latestAt, &messageCount, &latestUserAt, &latestAdminAt)
+	if err != nil {
+		return err
+	}
+	if !latestID.Valid || messageCount.Int64 == 0 {
+		return sql.ErrNoRows
+	}
+	var closedAt any
+	if status == "closed" {
+		closedAt = nowMs
+	}
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO support_conversations(
+		     user_id, status, assigned_to, note, message_count, latest_message_id, latest_message_at,
+		     latest_user_message_at, latest_admin_message_at, closed_at, created_at, updated_at
+		   )
+		   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		   ON DUPLICATE KEY UPDATE
+		     status = VALUES(status),
+		     assigned_to = VALUES(assigned_to),
+		     note = VALUES(note),
+		     message_count = VALUES(message_count),
+		     latest_message_id = VALUES(latest_message_id),
+		     latest_message_at = VALUES(latest_message_at),
+		     latest_user_message_at = VALUES(latest_user_message_at),
+		     latest_admin_message_at = VALUES(latest_admin_message_at),
+		     closed_at = VALUES(closed_at),
+		     updated_at = VALUES(updated_at)`,
+		userID,
+		status,
+		nullableTrimmed(actor),
+		nullableTrimmed(truncateRunes(strings.TrimSpace(note), 255)),
+		int(messageCount.Int64),
+		latestID.Int64,
+		latestAt.Int64,
+		nullableInt64FromNull(latestUserAt),
+		nullableInt64FromNull(latestAdminAt),
+		closedAt,
+		nowMs,
+		nowMs,
+	)
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func upsertSupportConversationTx(ctx context.Context, tx *sql.Tx, userID string, senderType string, messageID int64, createdAt int64) error {
+	status := "replied"
+	closedAt := any(nil)
+	if senderType == "user" {
+		status = "open"
+	}
+	var latestUserAt any
+	var latestAdminAt any
+	if senderType == "user" {
+		latestUserAt = createdAt
+	}
+	if senderType == "admin" {
+		latestAdminAt = createdAt
+	}
+	statusExpr := `CASE
+		       WHEN VALUES(status) = 'open' THEN 'open'
+		       WHEN support_conversations.status = 'closed' THEN 'closed'
+		       WHEN VALUES(status) = 'replied' THEN 'replied'
+		       ELSE support_conversations.status
+		     END`
+	if senderType == "system" {
+		statusExpr = "support_conversations.status"
+		status = "replied"
+	}
+	_, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO support_conversations(
+		     user_id, status, message_count, latest_message_id, latest_message_at,
+		     latest_user_message_at, latest_admin_message_at, closed_at, created_at, updated_at
+		   )
+		   VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+		   ON DUPLICATE KEY UPDATE
+		     status = `+statusExpr+`,
+		     message_count = support_conversations.message_count + 1,
+		     latest_message_id = VALUES(latest_message_id),
+		     latest_message_at = VALUES(latest_message_at),
+		     latest_user_message_at = COALESCE(VALUES(latest_user_message_at), support_conversations.latest_user_message_at),
+		     latest_admin_message_at = COALESCE(VALUES(latest_admin_message_at), support_conversations.latest_admin_message_at),
+		     closed_at = CASE WHEN VALUES(status) = 'open' THEN NULL ELSE support_conversations.closed_at END,
+		     updated_at = VALUES(updated_at)`,
+		userID,
+		status,
+		messageID,
+		createdAt,
+		latestUserAt,
+		latestAdminAt,
+		closedAt,
+		createdAt,
+		createdAt,
+	)
+	return err
+}
+
+func normalizeSupportConversationStatus(raw string) string {
+	status := strings.ToLower(strings.TrimSpace(raw))
+	switch status {
+	case "open", "todo", "pending", "needs_reply":
+		return "open"
+	case "replied", "done", "handled":
+		return "replied"
+	case "closed", "close":
+		return "closed"
+	case "", "all":
+		return ""
+	default:
+		return ""
+	}
+}
+
+func nullableInt64FromNull(value sql.NullInt64) any {
+	if !value.Valid {
+		return nil
+	}
+	return value.Int64
 }
 
 func (s *Store) getLatestSupportMessage(ctx context.Context, userID string) (*SupportMessage, error) {

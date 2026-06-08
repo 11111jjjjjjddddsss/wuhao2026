@@ -194,6 +194,13 @@ button {
   color: #a23b3b;
 }
 
+.button.small-button {
+  min-height: 28px;
+  padding: 5px 9px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
 .button[disabled] {
   cursor: not-allowed;
   opacity: 0.56;
@@ -461,6 +468,11 @@ button {
   white-space: normal;
 }
 
+.code-cell {
+  min-width: 170px;
+  user-select: all;
+}
+
 .table tr:hover td {
   background: #fbfcfd;
 }
@@ -576,9 +588,74 @@ button {
   gap: 8px;
 }
 
+.readiness-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 112px) minmax(0, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.readiness-count,
+.readiness-next {
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.readiness-count {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+}
+
+.readiness-count span {
+  color: #66717f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.readiness-count strong {
+  color: #111827;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.readiness-count.ok {
+  border-color: #badbc5;
+  background: #f7fcf8;
+}
+
+.readiness-count.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+}
+
+.readiness-count.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+}
+
+.readiness-next {
+  display: grid;
+  gap: 6px;
+}
+
+.readiness-next strong {
+  color: #111827;
+  font-size: 16px;
+}
+
+.readiness-next p {
+  margin: 0;
+  color: #4a5562;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .decision-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -924,6 +1001,10 @@ button {
   grid-column: span 2;
 }
 
+.support-filters {
+  grid-template-columns: 180px minmax(220px, 1fr) 96px;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -951,6 +1032,10 @@ button {
   margin: 0;
   overflow-wrap: anywhere;
   color: #1f2933;
+}
+
+.support-meta {
+  grid-template-columns: 110px minmax(0, 1fr);
 }
 
 .message-list {
@@ -1091,7 +1176,8 @@ button {
 
   .grid.two,
   .detail-grid,
-  .split {
+  .split,
+  .readiness-summary {
     grid-template-columns: 1fr;
   }
 

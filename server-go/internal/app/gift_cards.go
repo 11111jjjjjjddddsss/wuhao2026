@@ -2,12 +2,16 @@ package app
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"os"
@@ -57,6 +61,7 @@ type AdminGiftCardBatch struct {
 type AdminGiftCardEntry struct {
 	CardID                    string            `json:"card_id"`
 	BatchID                   string            `json:"batch_id"`
+	Code                      string            `json:"code,omitempty"`
 	CodeMask                  string            `json:"code_mask"`
 	CodeSuffix                string            `json:"code_suffix"`
 	Tier                      Tier              `json:"tier"`
@@ -214,7 +219,7 @@ func (s *Server) handleAdminCreateGiftCardBatch(w http.ResponseWriter, r *http.R
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"batch":   batch,
 		"codes":   codes,
-		"warning": "卡码明文只在本次响应返回一次；数据库和后续后台只保留掩码与 hash。",
+		"warning": "完整卡码会加密保存，后台礼品卡列表可直接查看和复制；不要把卡码写入备注、审计原因或公开文档。",
 	})
 }
 
@@ -442,15 +447,20 @@ func (s *Store) CreateGiftCardBatch(ctx context.Context, input GiftCardBatchInpu
 		}
 		mask := giftCardCodeMask(code)
 		suffix := giftCardCodeSuffix(code)
+		codeCiphertext, err := encryptGiftCardCode(code)
+		if err != nil {
+			return AdminGiftCardBatch{}, nil, err
+		}
 		if _, err := tx.ExecContext(
 			ctx,
-			`INSERT INTO gift_cards(card_id, batch_id, code_hash, code_mask, code_suffix, tier, duration_days, status, valid_from, valid_until, created_by, note, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO gift_cards(card_id, batch_id, code_hash, code_mask, code_suffix, code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, updated_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`,
 			cardID,
 			batch.BatchID,
 			codeHash,
 			mask,
 			suffix,
+			codeCiphertext,
 			string(input.Tier),
 			input.DurationDays,
 			input.ValidFrom,
@@ -534,7 +544,7 @@ func (s *Store) ListGiftCards(ctx context.Context, filter GiftCardListQuery) ([]
 	if limit <= 0 || limit > maxAdminListLimit {
 		limit = defaultAdminListLimit
 	}
-	query := `SELECT card_id, batch_id, code_mask, code_suffix, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at FROM gift_cards`
+	query := `SELECT card_id, batch_id, code_mask, code_suffix, code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at FROM gift_cards`
 	clauses := []string{}
 	args := []any{}
 	if strings.TrimSpace(filter.BatchID) != "" {
@@ -857,7 +867,7 @@ func normalizeGiftCardBatchInput(body adminGiftCardCreateBatchRequest, actor str
 func getGiftCardForUpdate(ctx context.Context, tx *sql.Tx, codeHash string) (AdminGiftCardEntry, error) {
 	row := tx.QueryRowContext(
 		ctx,
-		`SELECT card_id, batch_id, code_mask, code_suffix, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at
+		`SELECT card_id, batch_id, code_mask, code_suffix, code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at
 		   FROM gift_cards
 		  WHERE code_hash = ?
 		  LIMIT 1
@@ -961,12 +971,13 @@ func scanGiftCardEntry(scanner giftCardScanner) (AdminGiftCardEntry, error) {
 	var card AdminGiftCardEntry
 	var tier string
 	var validUntil, redeemedAt, membershipExpireAt, voidedAt sql.NullInt64
-	var note, redeemedUser, redeemedPhone, region, regionSource, regionReliability sql.NullString
+	var codeCiphertext, note, redeemedUser, redeemedPhone, region, regionSource, regionReliability sql.NullString
 	if err := scanner.Scan(
 		&card.CardID,
 		&card.BatchID,
 		&card.CodeMask,
 		&card.CodeSuffix,
+		&codeCiphertext,
 		&tier,
 		&card.DurationDays,
 		&card.Status,
@@ -988,6 +999,13 @@ func scanGiftCardEntry(scanner giftCardScanner) (AdminGiftCardEntry, error) {
 		return card, err
 	}
 	card.Tier = Tier(tier)
+	if codeCiphertext.Valid && strings.TrimSpace(codeCiphertext.String) != "" {
+		code, err := decryptGiftCardCode(codeCiphertext.String)
+		if err != nil {
+			return card, err
+		}
+		card.Code = code
+	}
 	card.Note = nullStringValue(note)
 	card.RedeemedUserID = nullStringValue(redeemedUser)
 	card.RedeemedPhoneMask = nullStringValue(redeemedPhone)
@@ -1087,6 +1105,82 @@ func giftCardCodeHash(code string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(normalized))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func encryptGiftCardCode(code string) (string, error) {
+	return encryptGiftCardCodeWithSecret(code, os.Getenv("APP_SECRET"))
+}
+
+func encryptGiftCardCodeWithSecret(code string, secret string) (string, error) {
+	code = strings.TrimSpace(code)
+	secret = strings.TrimSpace(secret)
+	if code == "" {
+		return "", errGiftCardInvalidCode
+	}
+	if secret == "" {
+		return "", errGiftCardSecretMissing
+	}
+	key := giftCardCodeCipherKey(secret)
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nil, nonce, []byte(code), []byte("gift_card_code:v1"))
+	payload := append(nonce, sealed...)
+	return "v1:" + base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+func decryptGiftCardCode(ciphertext string) (string, error) {
+	return decryptGiftCardCodeWithSecret(ciphertext, os.Getenv("APP_SECRET"))
+}
+
+func decryptGiftCardCodeWithSecret(ciphertext string, secret string) (string, error) {
+	ciphertext = strings.TrimSpace(ciphertext)
+	secret = strings.TrimSpace(secret)
+	if ciphertext == "" {
+		return "", nil
+	}
+	if secret == "" {
+		return "", errGiftCardSecretMissing
+	}
+	if !strings.HasPrefix(ciphertext, "v1:") {
+		return "", fmt.Errorf("unsupported gift card code ciphertext")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(ciphertext, "v1:"))
+	if err != nil {
+		return "", err
+	}
+	key := giftCardCodeCipherKey(secret)
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) <= gcm.NonceSize() {
+		return "", fmt.Errorf("invalid gift card code ciphertext")
+	}
+	nonce := raw[:gcm.NonceSize()]
+	sealed := raw[gcm.NonceSize():]
+	plain, err := gcm.Open(nil, nonce, sealed, []byte("gift_card_code:v1"))
+	if err != nil {
+		return "", err
+	}
+	return string(plain), nil
+}
+
+func giftCardCodeCipherKey(secret string) [32]byte {
+	return sha256.Sum256([]byte("nongjiqiancha:gift_card_code:v1:" + strings.TrimSpace(secret)))
 }
 
 func giftCardCodeMask(code string) string {

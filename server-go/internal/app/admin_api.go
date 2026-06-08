@@ -97,6 +97,9 @@ type AdminMonitoringWindow struct {
 
 type AdminMonitoringQueues struct {
 	SupportNeedsReply      int64                    `json:"support_needs_reply"`
+	SupportOpen            int64                    `json:"support_open"`
+	SupportReplied         int64                    `json:"support_replied"`
+	SupportClosed          int64                    `json:"support_closed"`
 	SupportOldestPendingAt *int64                   `json:"support_oldest_pending_at,omitempty"`
 	DailyAgriStatus        string                   `json:"daily_agri_status"`
 	DailyAgriUpdatedAt     *int64                   `json:"daily_agri_updated_at,omitempty"`
@@ -234,10 +237,18 @@ type AdminRoundExcerpt struct {
 
 type AdminSupportConversation struct {
 	UserID            string              `json:"user_id"`
+	PhoneMask         string              `json:"phone_mask,omitempty"`
 	LatestMessage     AdminSupportMessage `json:"latest_message"`
 	MessageCount      int                 `json:"message_count"`
 	UnreadByUserCount int                 `json:"unread_by_user_count"`
 	NeedsReply        bool                `json:"needs_reply"`
+	Status            string              `json:"status"`
+	AssignedTo        string              `json:"assigned_to,omitempty"`
+	Note              string              `json:"note,omitempty"`
+	LatestUserAt      *int64              `json:"latest_user_message_at,omitempty"`
+	LatestAdminAt     *int64              `json:"latest_admin_message_at,omitempty"`
+	ClosedAt          *int64              `json:"closed_at,omitempty"`
+	UpdatedAt         int64               `json:"updated_at"`
 }
 
 type AdminSupportMessage struct {
@@ -421,13 +432,21 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 	for _, item := range conversations {
 		output = append(output, AdminSupportConversation{
 			UserID:            item.UserID,
+			PhoneMask:         item.PhoneMask,
 			LatestMessage:     adminSupportMessageFromSupport(item.LatestMessage, false),
 			MessageCount:      item.MessageCount,
 			UnreadByUserCount: item.UnreadByUserCount,
 			NeedsReply:        item.NeedsReply,
+			Status:            item.Status,
+			AssignedTo:        item.AssignedTo,
+			Note:              item.Note,
+			LatestUserAt:      item.LatestUserAt,
+			LatestAdminAt:     item.LatestAdminAt,
+			ClosedAt:          item.ClosedAt,
+			UpdatedAt:         item.UpdatedAt,
 		})
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.conversations", "support_messages", "", "", true, http.StatusOK, map[string]any{"row_count": len(output)})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.conversations", "support_messages", "", "", true, http.StatusOK, map[string]any{"row_count": len(output), "status": filter.Status})
 	s.writeJSON(w, http.StatusOK, map[string]any{"conversations": output, "filter": filter})
 }
 
@@ -498,6 +517,41 @@ func (s *Server) handleAdminCreateSupportMessage(w http.ResponseWriter, r *http.
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", strconv.FormatInt(message.ID, 10), userID, true, http.StatusOK, map[string]any{"has_images": len(imageURLs) > 0})
 	s.writeJSON(w, http.StatusOK, map[string]any{"message": adminSupportMessageFromSupport(*message, true)})
+}
+
+func (s *Server) handleAdminUpdateSupportConversationStatus(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "support")
+	if !ok {
+		return
+	}
+	var body supportConversationStatusRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	userID := normalizeUserID(body.UserID)
+	status := normalizeSupportConversationStatus(body.Status)
+	if userID == "" {
+		s.writeError(w, http.StatusBadRequest, "user_id_required")
+		return
+	}
+	if status == "" {
+		s.writeError(w, http.StatusBadRequest, "invalid_status")
+		return
+	}
+	if err := s.store.UpdateSupportConversationStatus(r.Context(), userID, status, admin.User.Username, body.Note, time.Now().UnixMilli()); err != nil {
+		httpStatus := http.StatusInternalServerError
+		code := "internal_error"
+		if err == sql.ErrNoRows {
+			httpStatus = http.StatusNotFound
+			code = "support_conversation_not_found"
+		}
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.status", "support_conversations", userID, userID, false, httpStatus, map[string]any{"error_code": code, "status": status})
+		s.writeError(w, httpStatus, code)
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.status", "support_conversations", userID, userID, true, http.StatusOK, map[string]any{"status": status})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "user_id": userID, "status": status})
 }
 
 func (s *Server) handleAdminAppLogs(w http.ResponseWriter, r *http.Request) {
@@ -759,6 +813,18 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if err != nil {
 		return queues, err
 	}
+	queues.SupportOpen, err = s.countAdminSupportConversationsByStatus(ctx, "open")
+	if err != nil {
+		return queues, err
+	}
+	queues.SupportReplied, err = s.countAdminSupportConversationsByStatus(ctx, "replied")
+	if err != nil {
+		return queues, err
+	}
+	queues.SupportClosed, err = s.countAdminSupportConversationsByStatus(ctx, "closed")
+	if err != nil {
+		return queues, err
+	}
 	queues.DailyAgriStatus, queues.DailyAgriUpdatedAt, queues.DailyAgriError, err = s.readAdminDailyAgriQueue(ctx, dayCN)
 	if err != nil {
 		return queues, err
@@ -829,7 +895,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	if queues.SupportNeedsReply > 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "有用户反馈待回复",
-			Body:  "按最早待回复会话处理，避免用户问题长期无人接。",
+			Body:  "帮助反馈已有工单状态，先处理 open 队列；回复后可关闭或标已处理。",
 			Level: "warn",
 			Route: "support",
 			Count: queues.SupportNeedsReply,
@@ -1036,8 +1102,8 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
 		{Title: "账号登录", Status: "ready", Body: "手机号、一键登录、短信登录统一归到账号ID；旧本机 UUID 只做迁移桥。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
-		{Title: "帮助反馈", Status: "ready", Body: "可看用户会话、待回复队列并发送后台回复。", Route: "support"},
-		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因、作废未兑换卡，用户侧走后端兑换。", Route: "gift-cards"},
+		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，发送后台回复并关闭或重开会话。", Route: "support"},
+		{Title: "礼品卡", Status: "ready", Body: "可生成批次、直接查看完整卡码、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；手动补跑后续再接。", Route: "today-agri"},
 		{Title: "检查更新", Status: "partial", Body: "当前只读配置；发布、回滚和强制更新写操作还不在后台开放。", Route: "app-update"},
 		{Title: "订单支付", Status: "planned", Body: "真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
@@ -1101,18 +1167,32 @@ func (s *Store) countAdminSupportPending(ctx context.Context) (int64, *int64, er
 	var oldest sql.NullInt64
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT COUNT(*), MIN(created_at)
+		`SELECT COUNT(*), MIN(latest_user_at)
 		   FROM (
-		     SELECT latest_message.sender_type, latest_message.created_at
-		       FROM support_messages latest_message
-		       JOIN (
-		         SELECT user_id, MAX(id) AS latest_id
-		           FROM support_messages
-		          WHERE sender_type <> 'system'
-		          GROUP BY user_id
-		       ) latest_ids ON latest_ids.latest_id = latest_message.id
-		      WHERE latest_message.sender_type = 'user'
-		   ) pending_support`,
+		     SELECT
+		       CASE
+		         WHEN conversations.status = 'closed' AND latest_user_summary.latest_user_at > COALESCE(conversations.closed_at, 0) THEN 'open'
+		         WHEN conversations.status IN ('open', 'replied', 'closed') THEN conversations.status
+		         WHEN latest_non_system_message.sender_type = 'user' THEN 'open'
+		         ELSE 'replied'
+		       END AS conversation_status,
+		       latest_user_summary.latest_user_at
+		     FROM support_messages latest_non_system_message
+		     JOIN (
+		       SELECT user_id, MAX(id) AS latest_id
+		         FROM support_messages
+		        WHERE sender_type <> 'system'
+		        GROUP BY user_id
+		     ) latest_ids ON latest_ids.latest_id = latest_non_system_message.id
+		     LEFT JOIN support_conversations conversations ON conversations.user_id = latest_non_system_message.user_id
+		     LEFT JOIN (
+		       SELECT user_id, MAX(created_at) AS latest_user_at
+		         FROM support_messages
+		        WHERE sender_type = 'user'
+		        GROUP BY user_id
+		     ) latest_user_summary ON latest_user_summary.user_id = latest_non_system_message.user_id
+		   ) support_status
+		  WHERE conversation_status = 'open'`,
 	).Scan(&count, &oldest)
 	if err != nil {
 		return 0, nil, err
@@ -1121,6 +1201,40 @@ func (s *Store) countAdminSupportPending(ctx context.Context) (int64, *int64, er
 		return count, int64Ptr(oldest.Int64), nil
 	}
 	return count, nil, nil
+}
+
+func (s *Store) countAdminSupportConversationsByStatus(ctx context.Context, status string) (int64, error) {
+	var count int64
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*)
+		   FROM (
+		     SELECT
+		       CASE
+		         WHEN conversations.status = 'closed' AND latest_user_summary.latest_user_at > COALESCE(conversations.closed_at, 0) THEN 'open'
+		         WHEN conversations.status IN ('open', 'replied', 'closed') THEN conversations.status
+		         WHEN latest_non_system_message.sender_type = 'user' THEN 'open'
+		         ELSE 'replied'
+		       END AS conversation_status
+		       FROM support_messages latest_non_system_message
+		       JOIN (
+		         SELECT user_id, MAX(id) AS latest_id
+		           FROM support_messages
+		          WHERE sender_type <> 'system'
+		          GROUP BY user_id
+		       ) latest_ids ON latest_ids.latest_id = latest_non_system_message.id
+		       LEFT JOIN support_conversations conversations ON conversations.user_id = latest_non_system_message.user_id
+		       LEFT JOIN (
+		         SELECT user_id, MAX(created_at) AS latest_user_at
+		           FROM support_messages
+		          WHERE sender_type = 'user'
+		          GROUP BY user_id
+		       ) latest_user_summary ON latest_user_summary.user_id = latest_non_system_message.user_id
+		   ) support_status
+		  WHERE conversation_status = ?`,
+		status,
+	).Scan(&count)
+	return count, err
 }
 
 func (s *Store) readAdminDailyAgriQueue(ctx context.Context, dayCN string) (string, *int64, string, error) {

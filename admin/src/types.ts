@@ -81,6 +81,9 @@ export interface AdminMonitoringWindow {
 
 export interface AdminMonitoringQueues {
   support_needs_reply: number;
+  support_open: number;
+  support_replied: number;
+  support_closed: number;
   support_oldest_pending_at?: number;
   daily_agri_status: string;
   daily_agri_updated_at?: number;
@@ -262,10 +265,18 @@ export interface AdminRoundExcerpt {
 
 export interface AdminSupportConversation {
   user_id: string;
+  phone_mask?: string;
   latest_message: AdminSupportMessage;
   message_count: number;
   unread_by_user_count: number;
   needs_reply: boolean;
+  status: string;
+  assigned_to?: string;
+  note?: string;
+  latest_user_message_at?: number;
+  latest_admin_message_at?: number;
+  closed_at?: number;
+  updated_at: number;
 }
 
 export interface AdminSupportMessage {
@@ -327,6 +338,7 @@ export interface AdminGiftCardBatch {
 export interface AdminGiftCardEntry {
   card_id: string;
   batch_id: string;
+  code?: string;
   code_mask: string;
   code_suffix: string;
   tier: string;
