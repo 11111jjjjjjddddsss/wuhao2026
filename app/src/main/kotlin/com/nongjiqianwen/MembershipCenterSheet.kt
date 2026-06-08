@@ -926,7 +926,7 @@ private fun membershipDailyLimit(tier: String): Int =
 private fun membershipSummaryTierName(tier: String, loadState: MembershipLoadState): String =
     when (loadState) {
         MembershipLoadState.Loading -> "读取中"
-        MembershipLoadState.Failed -> "未同步"
+        MembershipLoadState.Failed -> "信息同步中"
         else -> membershipTierName(tier)
     }
 
@@ -937,7 +937,7 @@ private fun membershipSummaryTierSubText(
 ): String? =
     when {
         loadState == MembershipLoadState.Loading || loadState == MembershipLoadState.Failed -> null
-        tier == "free" -> "基础额度"
+        tier == "free" -> "当前按基础权益计算"
         tier == "plus" || tier == "pro" -> formatMembershipExpireDate(expireAtMs)?.let { "到期 $it" }
         else -> null
     }
@@ -951,7 +951,7 @@ private fun membershipGiftCardSummaryText(
     if (loadState != MembershipLoadState.Loaded) return null
     if (entitlement?.membershipSource != "gift_card") return null
     if (tier != "plus" && tier != "pro") return "礼品卡开通"
-    return "礼品卡开通 · 当前档位每日 ${dailyLimit} 次"
+    return "礼品卡开通 · 每日 ${dailyLimit} 次"
 }
 
 private fun formatMembershipExpireDate(expireAtMs: Long?): String? {

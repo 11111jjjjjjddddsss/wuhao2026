@@ -7,6 +7,8 @@
 
 - 继续收口后台口径和正式默认文案：`GET /admin-api/v1/entitlements/summary` 新增 `account_member_users`，把“已收敛账号会员”和“迁移期老ID会员”拆开返回；后台会员额度页同步改成更实话实说的展示，避免账号ID收敛期把“账号用户”“账号内会员”“当前会员总数”混成一个口径。礼品卡汇总新增 `redeemable_count`，礼品卡页顶部 KPI 从“可用卡”改成真正的“可兑换卡”，并明确全量 active 卡与当前可兑换卡不是一个口径；后台客服回复成功后，会话也会顺手把当前 admin 用户名写入 `support_conversations.assigned_to`，减少“明明回复过了但处理人还是空的”这种运营脏状态；帮助与反馈详情页现在会直接渲染截图缩略图并支持新页打开原图，不再只写“有几张图但不展开”。Android 侧把更新弹窗默认文案收成长期通用正式版：标题改为“版本更新”，无 release notes 时默认显示“修复已知问题，优化使用体验。”，并把“已是最新版本”收成“当前已是最新版本”；debug 预览面板里的“检查更新”描述也同步更新到最新口径，避免预览和正式页文案漂移。
 
+- 继续收紧监控和客服状态流：后台总览、监控窗口、地区分布里的用户数改为优先按 `user_id_migrations` 归并后再去重统计，已迁移老 `user_id` 会并到账号 ID，未迁移老 ID 也不会被直接漏掉；前端文案同步改成“去重用户”，避免把账号收敛期的盘子说得太满。帮助反馈会话在后台回复后，如果之前是 `closed`，现在会自动转回 `replied` 并清掉 `closed_at`，不再出现“已经回复但仍显示已关闭”的假状态。礼品卡批次表也把原来的“未用”列明确改成 `active（未兑）`，避免和顶部“可兑换卡”口径混淆。
+
 - 今日农情和 App 更新继续往正式链路收口：Android 设置页现在会在进入主界面后静默请求一次 `GET /api/app/update`，如果服务端返回更高版本且当前设备还没对这个 `latest_version_code` 看过弹窗，就自动弹一次“发现新版本”；用户点“稍后 / 立即更新”即可，之后同一版本号不再重复骚扰，主链仍不是系统通知。今日农情后台新增 `POST /admin-api/v1/today-agri/generate`，`owner / content_ops` 可直接补跑；ECS 侧新增 [configure-ecs-daily-agri-job.ps1](D:/wuhao/scripts/configure-ecs-daily-agri-job.ps1) 安装 systemd service + timer，生产主线改为“云端定时生成 + 后台人工补跑兜底”。
 
 - 纠正今日农情模型口径并补齐生产真相：2026-06-08 在生产 ECS 上实测确认，`qwen3.5-plus` 走 DashScope 原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，但同一台机器、同一套 Key、同一模型改走百炼兼容模式 `Responses API + web_search` 返回 200，且 `web_search_call.action.sources[]` 里仍能拿到真实搜索来源 URL。于是今日农情没有改模型，也不是改成 `qwen-plus`，而是继续用 `qwen3.5-plus`，只把联网协议切到 Responses `web_search`；主聊天仍保持原来的兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`，两条链路现在明确分开，互不影响。同步把项目记忆、runbook、后台显示用的 `search_strategy` 文案统一改成真实口径，避免后续窗口继续按临时过渡方案理解。
@@ -830,3 +832,4 @@
 - 聊天 UI 当前热点与 runbook 开始沉淀进仓库，`scripts/check_project_memory.py` 与 CI 已接入项目记忆检查
 - streaming block 改为 unified host，外壳 key 收口为稳定 block index，减少流式阶段 remount
 - 普通 idle / 历史浏览状态下不再让列表长期追实时 composer 几何，避免历史区和输入框重新联动
+- 2026-06-08：继续收紧正式上线口径。后台总览和监控里的 `chat_users`、`support_users` 改为只统计已收敛到 `app_accounts` 的账号用户，不再把迁移期老 `user_id` 混进运营盘子；Android 侧把菜单、帮助与反馈、会员中心等长期高频文案统一成更正式、可长期复用的默认版，减少后续反复改字。

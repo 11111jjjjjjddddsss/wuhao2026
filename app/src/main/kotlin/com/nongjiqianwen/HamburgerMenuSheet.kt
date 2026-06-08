@@ -857,14 +857,14 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Membership,
                 title = "会员中心",
-                subtitle = "套餐、额度和加油包",
+                subtitle = "查看当前权益和剩余次数",
                 onClick = onOpenMembership
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
-                subtitle = "登录状态和历史管理",
+                subtitle = "查看登录状态并管理历史记录",
                 onClick = onOpenAccount
             )
         }
@@ -873,7 +873,7 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Feedback,
                 title = "帮助与反馈",
-                subtitle = "产品问题和客服回复",
+                subtitle = "提交问题并查看处理进度",
                 showBadge = supportUnread,
                 onClick = onOpenSupport
             )
@@ -881,20 +881,21 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Update,
                 title = "检查更新",
-                subtitle = "查看当前版本",
+                subtitle = "查看版本并安装更新",
                 onClick = onCheckUpdate
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
+                subtitle = "兑换礼品卡权益",
                 onClick = onOpenRedeem
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
-                subtitle = "协议、隐私和权限说明",
+                subtitle = "查看协议、隐私与权限说明",
                 onClick = onOpenLegalHub
             )
         }
@@ -1634,14 +1635,14 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Membership,
             title = "会员中心",
-            subtitle = "套餐、额度和加油包",
+            subtitle = "查看当前权益和剩余次数",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Account,
             title = "账号管理",
-            subtitle = "登录状态和历史管理",
+            subtitle = "查看登录状态并管理历史记录",
             onClick = {}
         )
     }
@@ -1649,7 +1650,7 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Feedback,
             title = "帮助与反馈",
-            subtitle = "产品问题和客服回复",
+            subtitle = "提交问题并查看处理进度",
             showBadge = true,
             onClick = {}
         )
@@ -1657,20 +1658,21 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Update,
             title = "检查更新",
-            subtitle = "查看当前版本",
+            subtitle = "查看版本并安装更新",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Redeem,
             title = "礼品卡",
+            subtitle = "兑换礼品卡权益",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
             title = "服务协议",
-            subtitle = "协议、隐私和权限说明",
+            subtitle = "查看协议、隐私与权限说明",
             onClick = {}
         )
     }
@@ -2298,7 +2300,7 @@ private fun HamburgerSupportFeedbackContent(
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "App 使用问题、账号权益和故障截图会在这里处理",
+                text = "提交使用问题、账号问题和故障截图，并查看处理进度",
                 color = Color(0xFF7D828A),
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
@@ -2502,7 +2504,7 @@ private fun HamburgerSupportEmptyState() {
             }
         }
         Text(
-            text = "提交反馈后，处理进展会在这里显示",
+            text = "提交问题后，处理进展会在这里持续更新",
             color = Color(0xFF4B5158),
             fontSize = 14.sp,
             lineHeight = 20.sp,
@@ -2510,7 +2512,7 @@ private fun HamburgerSupportEmptyState() {
             textAlign = TextAlign.Center
         )
         Text(
-            text = "也可以直接问登录、更新、图片上传、会员次数等常见问题",
+            text = "提交后可继续补充说明和截图",
             color = Color(0xFF858A91),
             fontSize = 12.sp,
             lineHeight = 17.sp,

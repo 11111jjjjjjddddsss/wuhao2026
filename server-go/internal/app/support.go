@@ -894,13 +894,18 @@ func upsertSupportConversationTx(ctx context.Context, tx *sql.Tx, userID string,
 	}
 	statusExpr := `CASE
 		       WHEN VALUES(status) = 'open' THEN 'open'
-		       WHEN support_conversations.status = 'closed' THEN 'closed'
 		       WHEN VALUES(status) = 'replied' THEN 'replied'
+		       WHEN support_conversations.status = 'closed' THEN 'closed'
 		       ELSE support_conversations.status
 		     END`
+	closedAtExpr := "CASE WHEN VALUES(status) = 'open' THEN NULL ELSE support_conversations.closed_at END"
+	if senderType == "admin" {
+		closedAtExpr = "CASE WHEN VALUES(status) IN ('open', 'replied') THEN NULL ELSE support_conversations.closed_at END"
+	}
 	if senderType == "system" {
 		statusExpr = "support_conversations.status"
 		status = "replied"
+		closedAtExpr = "support_conversations.closed_at"
 	}
 	_, err := tx.ExecContext(
 		ctx,
@@ -916,7 +921,7 @@ func upsertSupportConversationTx(ctx context.Context, tx *sql.Tx, userID string,
 		     latest_message_at = VALUES(latest_message_at),
 		     latest_user_message_at = COALESCE(VALUES(latest_user_message_at), support_conversations.latest_user_message_at),
 		     latest_admin_message_at = COALESCE(VALUES(latest_admin_message_at), support_conversations.latest_admin_message_at),
-		     closed_at = CASE WHEN VALUES(status) = 'open' THEN NULL ELSE support_conversations.closed_at END,
+		     closed_at = `+closedAtExpr+`,
 		     updated_at = VALUES(updated_at)`,
 		userID,
 		status,

@@ -318,10 +318,10 @@ async function overviewPage(): Promise<string> {
     ${pageHead("总览", "服务状态、业务量、待处理队列和关键风险。", "overview")}
     <section class="grid kpi">
       ${kpi("服务健康", healthSummary(overview.health), `API ${overview.health.api || "unknown"}`)}
-      ${kpi("今日问诊", today.chat_rounds, `${today.chat_users} 位用户`)}
+      ${kpi("今日问诊", today.chat_rounds, `${today.chat_users} 位去重用户`)}
       ${kpi("图片问诊", today.image_chat_rounds, "本日包含图片轮次")}
       ${kpi("App错误", today.app_errors, "自动日志 error")}
-      ${kpi("未回复反馈", today.support_needs_reply, `${today.support_conversations} 个会话`)}
+      ${kpi("未回复反馈", today.support_needs_reply, `近30天 ${today.support_conversations} 个会话`)}
       ${kpi("今日农情", today.daily_agri_status || "unknown", "当天内容状态")}
     </section>
     <div class="grid two" style="margin-top:12px">
@@ -335,9 +335,9 @@ async function overviewPage(): Promise<string> {
             <tbody>
               ${metricRow("注册用户", today.registered_users)}
               ${metricRow("活跃 App 登录 session", today.active_auth_sessions)}
-              ${metricRow("问诊用户", today.chat_users)}
+              ${metricRow("问诊去重用户", today.chat_users)}
               ${metricRow("额度扣减", today.quota_deductions)}
-              ${metricRow("帮助反馈会话", today.support_conversations)}
+              ${metricRow("近30天反馈会话", today.support_conversations)}
             </tbody>
           </table>
         </div>
@@ -384,7 +384,7 @@ async function monitoringPage(): Promise<string> {
       ${kpi("服务异常", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
       ${kpi("App报错", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
       ${kpi("待回复反馈", report.queues.support_needs_reply, report.queues.support_oldest_pending_at ? `最早 ${formatTime(report.queues.support_oldest_pending_at)}` : "当前无等待")}
-      ${kpi("今日问诊", today?.chat_rounds ?? 0, `${today?.chat_users ?? 0} 位用户`)}
+      ${kpi("今日问诊", today?.chat_rounds ?? 0, `${today?.chat_users ?? 0} 位去重用户`)}
       ${kpi("礼品卡异常", report.queues.gift_card_failed_attempts, "最近24小时兑换失败")}
       ${kpi("今日农情", dailyAgriStatusText(report.queues.daily_agri_status), report.queues.daily_agri_updated_at ? formatTime(report.queues.daily_agri_updated_at) : "未返回更新时间")}
     </section>
@@ -1573,7 +1573,7 @@ function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
   if (!rows.length) return emptyState("没有礼品卡批次", "还没有创建礼品卡批次。");
   return `
     <table class="table">
-      <thead><tr><th>批次</th><th>档位</th><th>天数</th><th>总数</th><th>未用</th><th>已兑</th><th>作废</th><th>有效期</th><th>创建</th></tr></thead>
+      <thead><tr><th>批次</th><th>档位</th><th>天数</th><th>总数</th><th>active（未兑）</th><th>已兑</th><th>作废</th><th>有效期</th><th>创建</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -2046,11 +2046,11 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
                 <td>${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div></td>
                 <td>${row.new_users}</td>
                 <td>${row.recent_auth_sessions}<div class="small muted">当前有效 ${row.active_sessions}</div></td>
-                <td>${row.chat_rounds} / ${row.chat_users}</td>
+                <td>${row.chat_rounds} / ${row.chat_users}<div class="small muted">去重用户</div></td>
                 <td>${row.image_chat_rounds}</td>
                 <td>${row.quota_deductions}</td>
                 <td>${row.app_errors} / ${row.app_warns}</td>
-                <td>${row.support_messages}<div class="small muted">${row.support_users} 位用户</div></td>
+                <td>${row.support_messages}<div class="small muted">${row.support_users} 位去重用户</div></td>
                 <td>${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div></td>
                 <td>${row.audit_failures}<div class="small muted">${row.admin_actions} 次操作</div></td>
               </tr>
@@ -2075,7 +2075,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", !update.enabled ? "已停更" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "warn" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
-      ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可用`, giftBody, giftLevel)}
+      ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可兑换`, giftBody, giftLevel)}
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>
   `;
@@ -2111,7 +2111,7 @@ function regionMetricsTable(rows: AdminMonitoring["top_regions"]): string {
   if (!rows.length) return emptyState("没有地区数据", "最近30天问诊归档中没有可聚合地区。");
   return `
     <table class="table">
-      <thead><tr><th>地区</th><th>轮次</th><th>用户</th><th>来源</th><th>最近出现</th></tr></thead>
+      <thead><tr><th>地区</th><th>轮次</th><th>去重用户</th><th>来源</th><th>最近出现</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -2251,7 +2251,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ${decisionCard(
         "礼品卡与权益",
         !giftReady ? "先生成卡" : giftWarn ? "看失败" : "可查可兑",
-        `${report.queues.gift_card_active} 张可用；后台能看完整码，已兑 ${report.queues.gift_card_redeemed} 张；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
+        `${report.queues.gift_card_active} 张可兑换；后台能看完整码，已兑 ${report.queues.gift_card_redeemed} 张；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
         giftWarn ? "warn" : "ok",
         "gift-cards",
       )}

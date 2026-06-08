@@ -875,7 +875,10 @@ func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus
 	if overview.Today.ChatRounds, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_round_archive WHERE created_at >= ?", []any{sinceMs}); err != nil {
 		return overview, err
 	}
-	if overview.Today.ChatUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM session_round_archive WHERE created_at >= ?", []any{sinceMs}); err != nil {
+	if overview.Today.ChatUsers, err = s.countQuery(ctx, `SELECT COUNT(DISTINCT COALESCE(migration.new_user_id, archive.user_id))
+		FROM session_round_archive archive
+		LEFT JOIN user_id_migrations migration ON migration.old_user_id = archive.user_id
+		WHERE archive.created_at >= ?`, []any{sinceMs}); err != nil {
 		return overview, err
 	}
 	if overview.Today.ImageChatRounds, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_round_archive WHERE created_at >= ? AND JSON_LENGTH(user_images_json) > 0", []any{sinceMs}); err != nil {
@@ -986,7 +989,10 @@ func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, labe
 	if window.ChatRounds, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_round_archive WHERE created_at >= ?", []any{sinceMs}); err != nil {
 		return window, err
 	}
-	if window.ChatUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM session_round_archive WHERE created_at >= ?", []any{sinceMs}); err != nil {
+	if window.ChatUsers, err = s.countQuery(ctx, `SELECT COUNT(DISTINCT COALESCE(migration.new_user_id, archive.user_id))
+		FROM session_round_archive archive
+		LEFT JOIN user_id_migrations migration ON migration.old_user_id = archive.user_id
+		WHERE archive.created_at >= ?`, []any{sinceMs}); err != nil {
 		return window, err
 	}
 	if window.ImageChatRounds, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_round_archive WHERE created_at >= ? AND JSON_LENGTH(user_images_json) > 0", []any{sinceMs}); err != nil {
@@ -1004,7 +1010,11 @@ func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, labe
 	if window.SupportMessages, err = s.countQuery(ctx, "SELECT COUNT(*) FROM support_messages WHERE created_at >= ? AND sender_type = 'user'", []any{sinceMs}); err != nil {
 		return window, err
 	}
-	if window.SupportUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM support_messages WHERE created_at >= ? AND sender_type = 'user'", []any{sinceMs}); err != nil {
+	if window.SupportUsers, err = s.countQuery(ctx, `SELECT COUNT(DISTINCT COALESCE(migration.new_user_id, messages.user_id))
+		FROM support_messages messages
+		LEFT JOIN user_id_migrations migration ON migration.old_user_id = messages.user_id
+		WHERE messages.created_at >= ?
+		  AND messages.sender_type = 'user'`, []any{sinceMs}); err != nil {
 		return window, err
 	}
 	if window.GiftCardRedeems, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 1", []any{sinceMs}); err != nil {
@@ -1485,26 +1495,27 @@ func (s *Store) ListAdminRegionMetrics(ctx context.Context, sinceMs int64, limit
 	rows, err := s.db.QueryContext(
 		ctx,
 		`SELECT
-		   region,
+		   archive.region,
 		   CASE
-		     WHEN SUM(CASE WHEN region_source = 'gps' THEN 1 ELSE 0 END) > 0 THEN 'gps'
-		     WHEN SUM(CASE WHEN region_source = 'ip' THEN 1 ELSE 0 END) > 0 THEN 'ip'
-		     ELSE COALESCE(MAX(region_source), '')
+		     WHEN SUM(CASE WHEN archive.region_source = 'gps' THEN 1 ELSE 0 END) > 0 THEN 'gps'
+		     WHEN SUM(CASE WHEN archive.region_source = 'ip' THEN 1 ELSE 0 END) > 0 THEN 'ip'
+		     ELSE COALESCE(MAX(archive.region_source), '')
 		   END AS source,
 		   CASE
-		     WHEN SUM(CASE WHEN region_reliability = 'reliable' THEN 1 ELSE 0 END) > 0 THEN 'reliable'
-		     WHEN SUM(CASE WHEN region_reliability = 'unreliable' THEN 1 ELSE 0 END) > 0 THEN 'unreliable'
-		     ELSE COALESCE(MAX(region_reliability), '')
+		     WHEN SUM(CASE WHEN archive.region_reliability = 'reliable' THEN 1 ELSE 0 END) > 0 THEN 'reliable'
+		     WHEN SUM(CASE WHEN archive.region_reliability = 'unreliable' THEN 1 ELSE 0 END) > 0 THEN 'unreliable'
+		     ELSE COALESCE(MAX(archive.region_reliability), '')
 		   END AS reliability,
 		   COUNT(*) AS count_value,
-		   COUNT(DISTINCT user_id) AS user_count,
-		   MAX(created_at) AS last_seen_at
-		 FROM session_round_archive
-		 WHERE created_at >= ?
-		   AND region IS NOT NULL
-		   AND region <> ''
-		   AND region <> '未知'
-		 GROUP BY region
+		   COUNT(DISTINCT COALESCE(migration.new_user_id, archive.user_id)) AS user_count,
+		   MAX(archive.created_at) AS last_seen_at
+		 FROM session_round_archive archive
+		 LEFT JOIN user_id_migrations migration ON migration.old_user_id = archive.user_id
+		 WHERE archive.created_at >= ?
+		   AND archive.region IS NOT NULL
+		   AND archive.region <> ''
+		   AND archive.region <> '未知'
+		 GROUP BY archive.region
 		 ORDER BY count_value DESC, last_seen_at DESC
 		 LIMIT ?`,
 		sinceMs,
