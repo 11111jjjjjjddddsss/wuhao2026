@@ -2699,14 +2699,19 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
     (report.app_update_logs?.check_failures ?? 0) +
     (report.app_update_logs?.download_failures ?? 0) +
     (report.app_update_logs?.install_failures ?? 0);
-  const chatRounds = report.windows.find((item) => item.key === "24h")?.chat_rounds ?? 0;
-  const imageRounds = report.windows.find((item) => item.key === "24h")?.image_chat_rounds ?? 0;
+  const day24 = report.windows.find((item) => item.key === "24h");
+  const recentLoginSessions = day24?.recent_auth_sessions ?? 0;
+  const chatRounds = day24?.chat_rounds ?? 0;
+  const imageRounds = day24?.image_chat_rounds ?? 0;
+  const giftCardRedeems = day24?.gift_card_redeems ?? 0;
+  const supportMessages = day24?.support_messages ?? 0;
+  const updateLogCount = report.app_update_logs?.total ?? 0;
   const items: Array<{ title: string; status: string; level: "ok" | "warn" | "bad" | "info"; body: string; route: RouteKey }> = [
     {
       title: "一键登录 / 短信登录",
-      status: authTrouble > 0 ? "看日志" : "待真机",
-      level: authTrouble > 0 ? "warn" : "info",
-      body: authTrouble > 0 ? "已有登录环境、网络、SDK 或闪退信号，先点 App 日志看 auth.*。" : "云端配置正常不等于真机已过；测试时重点看默认数据卡、移动数据、代理和验证码收码。",
+      status: authTrouble > 0 ? "看日志" : recentLoginSessions > 0 ? "有登录" : "待真机",
+      level: authTrouble > 0 ? "warn" : recentLoginSessions > 0 ? "ok" : "info",
+      body: authTrouble > 0 ? "已有登录环境、网络、SDK 或闪退信号，先点 App 日志看 auth.*。" : recentLoginSessions > 0 ? "24 小时内已有新登录 session；继续用真机分别回归一键登录和验证码登录。" : "云端配置正常不等于真机已过；测试时重点看默认数据卡、移动数据、代理和验证码收码。",
       route: "app-logs",
     },
     {
@@ -2725,9 +2730,9 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
     },
     {
       title: "礼品卡兑换会员",
-      status: report.queues.gift_card_active > 0 ? "可测" : "先生成卡",
-      level: report.queues.gift_card_active > 0 ? "ok" : "warn",
-      body: report.queues.gift_card_active > 0 ? "用正式卡码在 Android 设置页兑换，再回后台查账号ID、卡状态和尝试记录。" : "当前没有可兑换 active 卡；先在礼品卡页生成一张，再测 Android 兑换。",
+      status: giftCardRedeems > 0 ? "有兑换" : report.queues.gift_card_active > 0 ? "可测" : "先生成卡",
+      level: giftCardRedeems > 0 || report.queues.gift_card_active > 0 ? "ok" : "warn",
+      body: giftCardRedeems > 0 ? "24 小时内已有兑换记录；再回后台查账号ID、卡状态和尝试记录。" : report.queues.gift_card_active > 0 ? "用正式卡码在 Android 设置页兑换，再回后台查账号ID、卡状态和尝试记录。" : "当前没有可兑换 active 卡；先在礼品卡页生成一张，再测 Android 兑换。",
       route: "gift-cards",
     },
     {
@@ -2739,16 +2744,16 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
     },
     {
       title: "检查更新",
-      status: updateTrouble > 0 ? "看日志" : updateStatusLine(report.queues.app_update),
-      level: updateTrouble > 0 ? "warn" : report.queues.app_update.download_artifacts_complete ? "ok" : "warn",
-      body: updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" : "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。",
+      status: updateTrouble > 0 ? "看日志" : updateLogCount > 0 ? "有检查" : updateStatusLine(report.queues.app_update),
+      level: updateTrouble > 0 ? "warn" : updateLogCount > 0 || report.queues.app_update.download_artifacts_complete ? "ok" : "warn",
+      body: updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" : updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号。" : "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。",
       route: updateTrouble > 0 ? "app-logs" : "app-update",
     },
     {
       title: "帮助与反馈",
-      status: report.queues.support_needs_reply > 0 ? "待回复" : "可测",
+      status: report.queues.support_needs_reply > 0 ? "待回复" : supportMessages > 0 ? "有记录" : "可测",
       level: report.queues.support_needs_reply > 0 ? "warn" : "ok",
-      body: "App 里发文字和截图反馈，后台看会话、图片、手机号回访字段、回复、关闭和重开状态。",
+      body: supportMessages > 0 ? "24 小时内已有反馈消息；后台继续看会话、图片、手机号回访字段、回复、关闭和重开状态。" : "App 里发文字和截图反馈，后台看会话、图片、手机号回访字段、回复、关闭和重开状态。",
       route: "support",
     },
   ];
