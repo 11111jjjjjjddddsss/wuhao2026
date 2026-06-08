@@ -83,7 +83,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 
 - 不在数据库保存可直接读取的明文手机号；`app_accounts` 保存 `APP_SECRET` HMAC 后的 `phone_hash`、脱敏 `phone_mask` 和 AES-GCM 加密的 `phone_ciphertext`
 - 后台 `owner`、`support`、`finance_ops` 可在用户 / 反馈页面查看和复制完整手机号，用于回访；用户管理和帮助反馈搜索框输入完整 11 位手机号时，服务端用 `phone_hash` 精确匹配账号，不把明文手机号写入日志或审计。`ops_readonly`、`auditor` 等只读巡检角色继续只看脱敏手机号。审计只记录是否展示了完整号，不记录手机号值
-- 后台监控面板已新增“登录排障”聚合：最近 24 小时认证失败、一键登录失败、短信失败、登录前日志、`auth.fusion_env_blocked / auth.fusion_env_warning` 环境预检、`auth.login_network_failed` 登录请求网络失败、`auth.app_crash / app.crash` 闪退补报和 Top 事件会直接展示，并提供按钮跳转 App 日志筛选；登录前日志统一 `user_id=preauth`
+- 后台监控面板已新增“登录排障”聚合：最近 24 小时认证失败、一键登录失败、短信失败、登录前日志、`auth.fusion_env_blocked / auth.fusion_env_warning` 环境预检、`auth.login_network_failed` 登录请求网络失败、`auth.app_crash / app.crash` 闪退补报和 Top 事件会直接展示，并提供按钮跳转 App 日志筛选；一键登录按钮按取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时和授权页未完成拆开，短信也拆成发送失败和登录校验失败；登录前日志统一 `user_id=preauth`
 - 旧账号如果还没有 `phone_ciphertext`，无法从 hash / mask 反推完整手机号，必须等用户下一次一键登录或短信登录后自动补齐
 - 账号 ID `acct_...` 是会员、每日额度、加油包、礼品卡、订单、帮助反馈、App 日志、A/B/C 记忆和聊天归档的统一归属 ID。旧本机 UUID 只用于登录时一次性迁移桥，不作为生产长期身份继续扩展。
 - 不把阿里云 AccessKey、短信模板变量、APP_SECRET 写进仓库

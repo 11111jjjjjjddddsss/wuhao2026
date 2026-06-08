@@ -5,6 +5,8 @@
 
 ## 2026-06-09
 
+- 管理后台登录排障按钮继续细化：此前“一键登录失败”按钮只筛 `auth.fusion_verify_failed`，会漏掉取 fusion token、SDK 初始化、授权页拉起、SDK token auth、服务端换号、超时和授权页未完成等真实失败阶段；现在登录排障卡把这些阶段拆成独立筛选按钮，并把短信拆成“短信发送失败 / 短信登录失败”，方便明天真机测试时直接定位卡在哪一步。
+
 - 监控面板把登录排障继续拆细：`GET /admin-api/v1/monitoring` 的 `auth_logs` 新增并展示 `env_blocked`、`env_warnings` 和 `login_network_failures` 三个计数，前端“登录排障”卡增加“环境不满足 / 可疑环境 / 请求网络失败”小指标和直达 App 日志筛选按钮，待处理事项也会单独提示 SIM / 移动数据 / 默认数据卡 / VPN / 生产 API 可达性问题。这样明天真机测试时，后台不只看到“登录失败”，而是能先判断问题更像手机环境、代理网络、SDK 授权页还是服务端 token 校验。
 
 - 加固 Android 登录前排障和后台操作反馈：一键登录现在会在拉取 fusion token 前先做 App 可控的网络 / SIM 环境预检，无网络、无 SIM、没有蜂窝模块、SIM 未就绪会直接回落验证码登录并上报 `auth.fusion_env_blocked`；VPN / 无蜂窝等可疑环境会上报 `auth.fusion_env_warning`，让后台能区分“环境不满足”和“SDK / 服务端校验失败”。同时按阿里云 SDK FAQ 补 `CHANGE_NETWORK_STATE` 普通权限，并给移动 / 联通取号网关 `onekey.cmpassport.com`、`enrichgw.10010.com` 做域名级明文放行，App 其他网络仍默认禁止明文 HTTP。短信 / 一键登录服务端失败也会按网络、HTTP 状态和后端错误码给出更明确提示并上报脱敏日志，不上传手机号、验证码、verify token 或完整 URL。后台今日农情补跑、检查更新停更、礼品卡作废、反馈状态更新等写操作补了按钮忙碌态、重复点击保护和失败弹窗；监控“App质量”把登录失败和闪退补报纳入判断，长账号ID / 卡码 / 错误字段会自动换行，减少管理层试用时看不懂或点了没反应。

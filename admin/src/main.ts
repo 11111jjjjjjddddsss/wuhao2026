@@ -2229,8 +2229,16 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           ${filterButton("环境不满足", { event: "auth.fusion_env_blocked", window: "24h" })}
           ${filterButton("可疑环境", { event: "auth.fusion_env_warning", window: "24h" })}
           ${filterButton("请求网络失败", { event: "auth.login_network_failed", window: "24h" })}
-          ${filterButton("一键登录失败", { event: "auth.fusion_verify_failed", window: "24h" })}
-          ${filterButton("短信失败", { event: "auth.sms_send_failed", window: "24h" })}
+          ${filterButton("取 Token 失败", { event: "auth.fusion_token_failed", window: "24h" })}
+          ${filterButton("SDK 初始化失败", { event: "auth.fusion_sdk_init_failed", window: "24h" })}
+          ${filterButton("授权页拉起失败", { event: "auth.fusion_scene_start_failed", window: "24h" })}
+          ${filterButton("SDK 取号失败", { event: "auth.fusion_sdk_token_auth_failed", window: "24h" })}
+          ${filterButton("最终取号失败", { event: "auth.fusion_verify_failed", window: "24h" })}
+          ${filterButton("服务端换号失败", { event: "auth.fusion_login_failed", window: "24h" })}
+          ${filterButton("一键登录超时", { event: "auth.fusion_timeout", window: "24h" })}
+          ${filterButton("授权页未完成", { event: "auth.fusion_template_finished", window: "24h" })}
+          ${filterButton("短信发送失败", { event: "auth.sms_send_failed", window: "24h" })}
+          ${filterButton("短信登录失败", { event: "auth.sms_login_failed", window: "24h" })}
           ${filterButton("登录闪退", { event: "auth.app_crash", window: "24h" })}
           ${filterButton("普通闪退", { event: "app.crash", window: "24h" })}
         </div>
