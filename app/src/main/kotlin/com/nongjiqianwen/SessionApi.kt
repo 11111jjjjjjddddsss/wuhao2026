@@ -193,7 +193,7 @@ object SessionApi {
         val candidate = this ?: return false
         val items = candidate.items.orEmpty()
         return candidate.title == "今日农情" &&
-            items.size in 2..3 &&
+            items.size == 3 &&
             items.all { item ->
                 !item.title.isNullOrBlank() &&
                     !item.summary.isNullOrBlank()
@@ -219,6 +219,15 @@ object SessionApi {
             .build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                reportAuthClientLog(
+                    level = "warn",
+                    event = "auth.fusion_token_failed",
+                    message = "fusion token network failure",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to e.javaClass.simpleName
+                    )
+                )
                 mainHandler.post { onResult(null, "网络连接失败，请稍后再试") }
             }
 
@@ -227,6 +236,18 @@ object SessionApi {
                     val statusCode = it.code
                     val body = it.body?.string().orEmpty()
                     val token = if (it.isSuccessful) parseFusionAuthToken(body) else null
+                    if (token?.usable != true) {
+                        reportAuthClientLog(
+                            level = if (statusCode >= 500) "error" else "warn",
+                            event = "auth.fusion_token_failed",
+                            message = "fusion token unavailable",
+                            attrs = mapOf(
+                                "http_status" to statusCode,
+                                "error" to parseApiErrorCode(body),
+                                "reason" to if (it.isSuccessful) "invalid_response" else "http"
+                            )
+                        )
+                    }
                     mainHandler.post {
                         if (token?.usable == true) {
                             onResult(token, null)
@@ -370,12 +391,29 @@ object SessionApi {
         ).build()
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
+                reportClientLog(
+                    level = "warn",
+                    event = "auth.logout_failed",
+                    message = "Auth logout failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to e.javaClass.simpleName
+                    )
+                )
                 mainHandler.post { onResult(false) }
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     val ok = it.isSuccessful || it.code == 401
+                    if (!ok) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "auth.logout_failed",
+                            message = "Auth logout failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
+                    }
                     if (ok) {
                         IdManager.clearAuthSession()
                     }
@@ -411,6 +449,14 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     val ok = it.isSuccessful
+                    if (!ok) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "account.deletion_request_failed",
+                            message = "Account deletion request failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
+                    }
                     if (ok) {
                         IdManager.clearAuthSession()
                         sessionGeneration.set(-1)
@@ -420,7 +466,18 @@ object SessionApi {
                     postToMain { onResult(ok) }
                 }
             },
-            onFailure = { postToMain { onResult(false) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "account.deletion_request_failed",
+                    message = "Account deletion request failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(false) }
+            }
         )
     }
 
@@ -868,11 +925,23 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "entitlement.fetch_failed",
+                            message = "Entitlement fetch failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
                         onResult(null)
                         return@use
                     }
                     val body = it.body?.string()
                     if (body.isNullOrBlank()) {
+                        reportClientLog(
+                            level = "warn",
+                            event = "entitlement.fetch_failed",
+                            message = "Entitlement fetch failed",
+                            attrs = mapOf("reason" to "empty_body")
+                        )
                         onResult(null)
                         return@use
                     }
@@ -880,11 +949,31 @@ object SessionApi {
                         onResult(gson.fromJson(body, EntitlementSnapshot::class.java))
                     } catch (e: Exception) {
                         Log.e(TAG, "parse entitlement", e)
+                        reportClientLog(
+                            level = "warn",
+                            event = "entitlement.fetch_failed",
+                            message = "Entitlement fetch failed",
+                            attrs = mapOf(
+                                "reason" to "parse",
+                                "exception" to e.javaClass.simpleName
+                            )
+                        )
                         onResult(null)
                     }
                 }
             },
-            onFailure = { onResult(null) }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "entitlement.fetch_failed",
+                    message = "Entitlement fetch failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                onResult(null)
+            }
         )
     }
 
@@ -906,11 +995,23 @@ object SessionApi {
                 response.use {
                     if (isRuntimeStale()) return@use
                     if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "today_agri.fetch_failed",
+                            message = "Today agri card fetch failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
                         onResult(null)
                         return@use
                     }
                     val body = it.body?.string()
                     if (body.isNullOrBlank()) {
+                        reportClientLog(
+                            level = "warn",
+                            event = "today_agri.fetch_failed",
+                            message = "Today agri card fetch failed",
+                            attrs = mapOf("reason" to "empty_body")
+                        )
                         onResult(null)
                         return@use
                     }
@@ -920,14 +1021,42 @@ object SessionApi {
                             ?.takeIf { it.status == "ready" }
                             ?.card
                             ?.takeIf { it.isValidTodayAgriCard() }
+                        if (parsed?.status == "ready" && validCard == null) {
+                            reportClientLog(
+                                level = "warn",
+                                event = "today_agri.fetch_failed",
+                                message = "Today agri card fetch failed",
+                                attrs = mapOf("reason" to "invalid_card")
+                            )
+                        }
                         onResult(validCard)
                     } catch (e: Exception) {
                         Log.e(TAG, "parse today agri card", e)
+                        reportClientLog(
+                            level = "warn",
+                            event = "today_agri.fetch_failed",
+                            message = "Today agri card fetch failed",
+                            attrs = mapOf(
+                                "reason" to "parse",
+                                "exception" to e.javaClass.simpleName
+                            )
+                        )
                         onResult(null)
                     }
                 }
             },
-            onFailure = { onResult(null) }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "today_agri.fetch_failed",
+                    message = "Today agri card fetch failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                onResult(null)
+            }
         )
     }
 
@@ -946,6 +1075,12 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "today_agri.recent_fetch_failed",
+                            message = "Recent today agri cards fetch failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
                         postToMain { onResult(null) }
                         return@use
                     }
@@ -963,11 +1098,31 @@ object SessionApi {
                         postToMain { onResult(validCards) }
                     } catch (e: Exception) {
                         Log.e(TAG, "parse recent today agri cards", e)
+                        reportClientLog(
+                            level = "warn",
+                            event = "today_agri.recent_fetch_failed",
+                            message = "Recent today agri cards fetch failed",
+                            attrs = mapOf(
+                                "reason" to "parse",
+                                "exception" to e.javaClass.simpleName
+                            )
+                        )
                         postToMain { onResult(null) }
                     }
                 }
             },
-            onFailure = { postToMain { onResult(null) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "today_agri.recent_fetch_failed",
+                    message = "Recent today agri cards fetch failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(null) }
+            }
         )
     }
 
@@ -986,6 +1141,12 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "support.summary_fetch_failed",
+                            message = "Support summary fetch failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
                         postToMain { onResult(null) }
                         return@use
                     }
@@ -998,12 +1159,32 @@ object SessionApi {
                         gson.fromJson(body, SupportSummary::class.java)
                     } catch (e: Exception) {
                         Log.e(TAG, "parse support summary", e)
+                        reportClientLog(
+                            level = "warn",
+                            event = "support.summary_fetch_failed",
+                            message = "Support summary fetch failed",
+                            attrs = mapOf(
+                                "reason" to "parse",
+                                "exception" to e.javaClass.simpleName
+                            )
+                        )
                         null
                     }
                     postToMain { onResult(parsed) }
                 }
             },
-            onFailure = { postToMain { onResult(null) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "support.summary_fetch_failed",
+                    message = "Support summary fetch failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(null) }
+            }
         )
     }
 
@@ -1022,6 +1203,12 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "support.messages_fetch_failed",
+                            message = "Support messages fetch failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
                         postToMain { onResult(null) }
                         return@use
                     }
@@ -1034,12 +1221,32 @@ object SessionApi {
                         gson.fromJson(body, SupportMessagesResponse::class.java)?.messages.orEmpty()
                     } catch (e: Exception) {
                         Log.e(TAG, "parse support messages", e)
+                        reportClientLog(
+                            level = "warn",
+                            event = "support.messages_fetch_failed",
+                            message = "Support messages fetch failed",
+                            attrs = mapOf(
+                                "reason" to "parse",
+                                "exception" to e.javaClass.simpleName
+                            )
+                        )
                         null
                     }
                     postToMain { onResult(parsed) }
                 }
             },
-            onFailure = { postToMain { onResult(null) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "support.messages_fetch_failed",
+                    message = "Support messages fetch failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(null) }
+            }
         )
     }
 
@@ -1142,10 +1349,29 @@ object SessionApi {
             },
             onResult = { response ->
                 response.use {
+                    if (!it.isSuccessful) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "support.mark_read_failed",
+                            message = "Support mark read failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
+                    }
                     postToMain { onResult(it.isSuccessful) }
                 }
             },
-            onFailure = { postToMain { onResult(false) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "support.mark_read_failed",
+                    message = "Support mark read failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(false) }
+            }
         )
     }
 
@@ -1180,10 +1406,32 @@ object SessionApi {
                         it.code == 409 -> ClearSessionHistoryResult.ActiveStream
                         else -> ClearSessionHistoryResult.Failure
                     }
+                    if (result != ClearSessionHistoryResult.Success) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "session.clear_failed",
+                            message = "Session clear failed",
+                            attrs = mapOf(
+                                "http_status" to it.code,
+                                "reason" to if (it.code == 409) "active_stream" else "http"
+                            )
+                        )
+                    }
                     postToMain { onResult(result) }
                 }
             },
-            onFailure = { postToMain { onResult(ClearSessionHistoryResult.Failure) } }
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "session.clear_failed",
+                    message = "Session clear failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(ClearSessionHistoryResult.Failure) }
+            }
         )
     }
 

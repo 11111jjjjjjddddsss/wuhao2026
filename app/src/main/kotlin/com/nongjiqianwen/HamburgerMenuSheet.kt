@@ -2248,7 +2248,7 @@ private fun HamburgerTodayAgriHistoryItem(
                 fontSize = 15.sp,
                 lineHeight = 20.sp,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
@@ -2256,7 +2256,7 @@ private fun HamburgerTodayAgriHistoryItem(
                 color = Color(0xFF4F535A),
                 fontSize = 13.sp,
                 lineHeight = 19.sp,
-                maxLines = 4,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
         }

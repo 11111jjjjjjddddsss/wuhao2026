@@ -1,6 +1,6 @@
 # 待决策事项
 
-最后更新：2026-06-08
+最后更新：2026-06-09
 
 ## D1 运维入口优先固化到什么形式
 
@@ -41,7 +41,7 @@
 
 ## D7 今日农情失败告警、重试和个性化怎么落
 
-- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card`、`GET /api/today-agri-cards`、内部 `POST /internal/jobs/today-agri-card/generate` 和后台 `POST /admin-api/v1/today-agri/generate`；ECS systemd timer 已作为生产主线落地，Android 只展示已 ready 的 2 到 3 条“今日农情”标题 + 摘要，缺失时静默不展示。生成模型当前按用户要求切到 `qwen-plus`，联网入口为 DashScope 原生 Generation + `search_strategy=turbo` + 强制联网 + `enable_source=true` + `freshness=7`，不使用 `assigned_site_list`；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 能拿来源链接但执行力偏弱，`qwen-plus + turbo + enable_source` 作为当前质量验证主线，`qwen3.5-flash + turbo/agent` 会返回 `400 InvalidParameter / url error`；`agent / agent_max` 会额外按次计费，今日农情默认不使用；生成最多 2 次，第二次仍走 `turbo`；只做种植侧，养殖侧全部排除；来源 URL 只做内部追溯、去重和后台排查，不作为用户可点击入口
+- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card`、`GET /api/today-agri-cards`、内部 `POST /internal/jobs/today-agri-card/generate` 和后台 `POST /admin-api/v1/today-agri/generate`；ECS systemd timer 已作为生产主线落地，Android 只展示已 ready 的正好 3 条“今日农情”标题 + 摘要，缺失时静默不展示。生成模型当前按用户要求切到 `qwen-plus`，联网入口为 DashScope 原生 Generation + `search_strategy=turbo` + 强制联网 + `enable_source=true` + `freshness=7`，不使用 `assigned_site_list`；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 能拿来源链接但执行力偏弱，`qwen-plus + turbo + enable_source` 作为当前质量验证主线，`qwen3.5-flash + turbo/agent` 会返回 `400 InvalidParameter / url error`；`agent / agent_max` 会额外按次计费，今日农情默认不使用；生成最多 2 次，第二次仍走 `turbo`；只做种植侧，养殖侧主要靠提示词排除；来源 URL 只做内部追溯和后台排查，不作为用户可点击入口
 - 当前倾向：继续保持“云端定时生成 + 后台人工补跑兜底”的主线，不让用户打开 App 时触发生成风暴
 - 仍待决策：失败是否做自动重试、告警先走 SLS 还是继续人工巡检、是否允许后台下架单条或重发当天卡片、未来是否做地区 / 作物个性化。当前首版只做全国 `CN` 卡片，不做按用户画像推送
 

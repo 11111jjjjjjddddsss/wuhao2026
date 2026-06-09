@@ -788,7 +788,7 @@ function isPreviewableTodayAgriCard(row: AdminDailyAgriEntry): boolean {
     return false;
   }
   const itemCount = todayAgriItems(row.content).length;
-  return itemCount >= 2 && itemCount <= 3;
+  return itemCount === 3;
 }
 
 async function appUpdatePage(): Promise<string> {

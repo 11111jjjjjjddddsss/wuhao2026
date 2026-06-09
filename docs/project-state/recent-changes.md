@@ -5,11 +5,15 @@
 
 ## 2026-06-09
 
+- 根 `AGENTS.md` 补充“压缩摘要不是真相源”规则：聊天窗口、线程摘要、中转站压缩摘要和外部模型转述只能作为线索，后续执行必须回到仓库文档和当前代码核验；凡是影响正式上线、SDK 接入、模型策略、云资源状态、排障结论或用户拍板的长期口径，都要沉淀到 `AGENTS.md`、`docs/project-state/*`、ADR 或 runbook，避免新窗口因上下文压缩失忆而把旧方案改回来。
+
+- 今日农情提示词再按“固定 3 条、宽搜索、少硬过滤”收口：后端提示词版本升到 `2026-06-09-v22`，JSON 示例直接给满 3 条，规则明确 `items` 必须正好 3 条、标题 12-16 个中文字符一行读完、摘要约 3 行体量。检索仍用 `qwen-plus + turbo + enable_source + freshness=7`，不传 `assigned_site_list`，不限定固定网站；种植侧、排除养殖、排除广告软文 / 导购 / 假新闻 / 标题党主要靠提示词和内部探针控制，后端只保留 JSON 结构、正好 3 条、标题摘要非空、同批标题重复和私网 / 明显电商 URL 清洗等低风险兜底。Android 读取和渲染继续要求正好 3 条，聊天页不提供链接点击、关闭叉号或“今日不再显示”，用户发送消息时先退出卡片再插入用户消息。
+
 - 今日农情提示词按“不限制固定网站”再次收口：根据阿里云百炼联网搜索文档，`assigned_site_list` 是限定来源站点的参数，默认空列表表示不限制来源；当前继续不传 `assigned_site_list`，用 `qwen-plus + turbo + enable_source + freshness=7` 做全网宽搜，并在 `prompt_intervene` 和主提示词里明确不要只围绕少数官网 / 媒体、不要按站点白名单思路检索。发布端仍只收种植侧、近 7 天、标题摘要完整的内容卡片，继续过滤普通天气、畜牧水产养殖、广告软文和低质内容；搜索来源只作为服务端事实核对、去重和后台排查，不下发给 Android 用户卡片。
 
 - 今日农情联网模型边界补实测并修正生产链路：按阿里云百炼联网搜索文档和生产 ECS 探针复核，`turbo` 本身可以配 `enable_source=true` 返回来源链接；但模型兼容性不是一概可用。同机同 Key 实测 `qwen-flash + turbo + enable_source` 返回 200、10 条搜索来源、1 次搜索和约 3151 输入 / 210 输出 token，但严格 JSON / `source_index` 执行力偏弱；`qwen-plus + turbo + enable_source` 可拿来源且指令遵循更适合作为当前主线；`qwen3.5-flash + turbo`、`qwen3.5-flash + agent` 以及 `qwen3.5-flash + turbo` 不返回来源的组合均返回 `400 InvalidParameter / url error`。因此今日农情当前采用 `qwen-plus + turbo` 原生 Generation 强制联网链，仍不用额外计费的 `agent / agent_max`，主聊天、B/C 摘要和 Android UI 不随之改变。
 
-- 今日农情生成链路改为 `qwen-plus + turbo` 且更宽种植侧口径：后端把今日农情从旧 `qwen3.5-plus + Responses web_search` 过渡方案收回到 DashScope 原生 Generation 强制联网链，关闭思考、强制联网、要求返回来源，并在日志中记录 prompt 字符数、来源数、正文长度以及可用时的 `model_input_tokens / model_output_tokens / model_total_tokens / model_search_count`。服务端发布阈值从“严格 3 条”改为“2 到 3 条有效 item”，提示词要求优先 4 条、最多 5 条候选，够 3 条高质量材料就停止，确实只有 2 条高质量内容也可发布；农业大类按种植和养殖理解，今日农情只取种植侧，范围放宽到种子 / 种苗 / 种业、病虫害、植保农药、农时农事、作物长势、明确影响作物和农时的农业气象风险、土壤水肥、农机、设施种植、农资 / 产地价格、批发流通、政策补贴、农业保险和农技推广等生产经营材料，畜牧、水产、养殖、动物疫病、生猪、家禽、牛羊、饲料、渔业等养殖侧内容继续排除，普通天气预报也不单独入选。今日农情新增内部 `POST /internal/jobs/today-agri-card/probe?runs=3` 探针，可连续测试模型输出、来源、解析质量和 usage 成本但不写 `daily_agri_cards`；后台今日农情预览也按 2 到 3 条可展示口径过滤坏数据；用户打开 App 仍只读缓存，不触发临时生成。
+- 历史归档：今日农情曾短暂改为 `qwen-plus + turbo` 且发布 `2 到 3 条有效 item` 的宽口径。该条已被本日顶部 `2026-06-09-v22` 当前口径替代：现在必须正好 3 条，提示词控方向，后端只做结构和低风险兜底。
 
 - Android 今日农情卡片位置和退出体验收口：`ChatTimelineItem.TodayAgriCard` 现在追加在真实消息后方，作为靠近输入框的聊天列表尾部 UI-only 卡片，不再插在历史消息前面；空闲态到底判断可识别这张视觉尾部卡，但最新真实消息锚点仍只认 `ChatTimelineItem.Message`。用户发送文字 / 图片 / 失败态消息时，发送入口会先让卡片按当天日期记录隐藏，并用约 180ms 淡出 / 垂直收起在原位置退出，再插入用户消息和 assistant 占位；卡片右上角不放关闭叉号，也不提供手动“今日不看”入口。卡片仍不进入本地聊天快照、A/B/C、归档、扣次或后端上下文。
 
@@ -21,7 +25,7 @@
 
 - 管理后台订单页从占位推进到只读核查入口：后端新增 `GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近订单 / 会员变更记录；前端订单页新增最近订单 KPI、成功 / 失败统计、金额粗略合计和账号ID列，导航文案改为“只读核查”。该能力只读读取现有开发期 `orders` 表，继续明确真实微信 / 支付宝支付、回调、退款、对账和自动补发权益未接入，不开放补发、退款或手动改权益按钮。
 
-- 今日农情显示和坏缓存兜底修复：Android 今日农情卡片不再把摘要硬截成 3 行，标题最多保留 2 行，摘要完整展示，避免管理层试用时只看到一半内容；后端读取 `daily_agri_cards.content_json` 时会先校验 JSON 和 2 到 3 条内容结构，坏 ready 缓存对用户侧返回不可展示状态，不再打成 500；近 7 天历史里坏卡会跳过，不影响当天生成；后台今日农情列表会把坏 `content_json / sources_json` 标成 `content_json_invalid / sources_json_invalid` 等错误，而不是让整个后台页 500；后台补跑遇到 ready 但正文不可用的卡片时允许重新生成覆盖。App 日志 attrs、审计 details、订单 result 等后台展示型 Raw JSON 也加了合法性校验，历史脏 JSON 不再拖垮整个后台列表。
+- 历史归档：今日农情坏缓存兜底曾按 `2 到 3 条` 结构处理，并让 Android 标题最多 2 行、摘要完整展示。该条已被本日顶部 `2026-06-09-v22` 当前口径替代：现在用户侧只展示正好 3 条，标题一行、摘要最多 3 行，坏 ready 缓存仍不会打成 500。
 
 - 一键登录失败提示继续按真机排障口径收口：Android SDK 初始化、授权页拉起、取号校验、超时等一键登录失败现在统一提示用户先关闭代理 / VPN、打开移动数据并确认默认数据卡，也可直接走验证码登录；后台监控“登录排障”卡同步加了这条检查顺序。该改动只改用户提示和后台说明，不改 100001 最终 `onVerifySuccess` token 登录主链、不调用半程 verify，也不改短信登录接口。
 
@@ -37,7 +41,7 @@
 
 - 监控面板把登录排障继续拆细：`GET /admin-api/v1/monitoring` 的 `auth_logs` 新增并展示 `env_blocked`、`env_warnings` 和 `login_network_failures` 三个计数，前端“登录排障”卡增加“环境不满足 / 可疑环境 / 请求网络失败”小指标和直达 App 日志筛选按钮，待处理事项也会单独提示 SIM / 移动数据 / 默认数据卡 / VPN / 生产 API 可达性问题。这样明天真机测试时，后台不只看到“登录失败”，而是能先判断问题更像手机环境、代理网络、SDK 授权页还是服务端 token 校验。
 
-- 加固 Android 登录前排障和后台操作反馈：一键登录现在会在拉取 fusion token 前先做 App 可控的网络 / SIM 环境预检，无网络、无 SIM、没有蜂窝模块、SIM 未就绪会直接回落验证码登录并上报 `auth.fusion_env_blocked`；VPN / 无蜂窝等可疑环境会上报 `auth.fusion_env_warning`，让后台能区分“环境不满足”和“SDK / 服务端校验失败”。同时按阿里云 SDK FAQ 补 `CHANGE_NETWORK_STATE` 普通权限，并给移动 / 联通取号网关 `onekey.cmpassport.com`、`enrichgw.10010.com` 做域名级明文放行，App 其他网络仍默认禁止明文 HTTP。短信 / 一键登录服务端失败也会按网络、HTTP 状态和后端错误码给出更明确提示并上报脱敏日志，不上传手机号、验证码、verify token 或完整 URL。后台今日农情补跑、检查更新停更、礼品卡作废、反馈状态更新等写操作补了按钮忙碌态、重复点击保护和失败弹窗；监控“App质量”把登录失败和闪退补报纳入判断，长账号ID / 卡码 / 错误字段会自动换行，减少管理层试用时看不懂或点了没反应。
+- 加固 Android 登录前排障和后台操作反馈：一键登录现在会在拉取 fusion token 前先做 App 可控的网络 / SIM 环境预检，无网络、无 SIM、没有蜂窝模块、SIM 未就绪会直接回落验证码登录并上报 `auth.fusion_env_blocked`；VPN / 无蜂窝等可疑环境会上报 `auth.fusion_env_warning`，让后台能区分“环境不满足”和“SDK / 服务端校验失败”。同时按阿里云 SDK FAQ 补 `CHANGE_NETWORK_STATE` 普通权限，并给移动 / 联通 / 电信取号网关 `onekey.cmpassport.com`、`enrichgw.10010.com`、`uac.189.cn` 做域名级明文放行，App 其他网络仍默认禁止明文 HTTP。短信 / 一键登录服务端失败也会按网络、HTTP 状态和后端错误码给出更明确提示并上报脱敏日志，不上传手机号、验证码、verify token 或完整 URL。后台今日农情补跑、检查更新停更、礼品卡作废、反馈状态更新等写操作补了按钮忙碌态、重复点击保护和失败弹窗；监控“App质量”把登录失败和闪退补报纳入判断，长账号ID / 卡码 / 错误字段会自动换行，减少管理层试用时看不懂或点了没反应。
 
 - 补强登录排障和闪退补报链路：Android 新增最小 `AppCrashReporter`，进程崩溃时只在本机保存异常类名、顶层代码位置、线程名、登录阶段和时间戳，下次启动后自动通过现有 App 自动日志上报；未登录 / 登录页阶段统一走 `auth.app_crash` 预登录日志，已登录运行阶段走 `app.crash`，不上传完整堆栈、手机号、验证码、token、URL、聊天正文或图片内容。一键登录、短信发送和短信登录都会设置崩溃阶段标记，方便定位“点登录就退”到底崩在 SDK 初始化、拉授权页、服务端校验还是短信流程。
 
@@ -380,7 +384,7 @@
 
 - 巡检“账号 / 手机号登录与生产鉴权”链路：确认当前真实身份仍是 Android 本机 `IdManager` 生成的 UUID，经 `X-User-Id` 传给后端；后端支持 `APP_SECRET + Authorization: Bearer <签名token>`，`AUTH_STRICT=true` 时会关闭裸 `X-User-Id`，但 Android 还没有手机号登录、短信验证码、动态 token 签发、退出或注销账号主链。设置页账号管理里的手机号 / 退出设备 / 注销账号仍是占位，只有“删除所有历史对话”是真实动作。本轮不改业务代码，只把 `SESSION_API_TOKEN` 不能作为正式 release 共享静态 token、公开生产必须补 per-user token、本机 `user_id` 到账号迁移、账号注销 / 查询 / 删除入口和最小后台查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 和风险记忆。
 
-- 历史归档：当时巡检“今日农情”时记录的是早期 `qwen3.5-plus + search_strategy=max + 严格 3 条 + https` 方案。该条只保留为历史过程，已被当前 `qwen-plus + turbo + enable_source + freshness=7`、2 到 3 条有效 item、来源只做内部追溯、用户侧只展示标题摘要的方案替代；用户侧仍只读 ready 缓存，不在用户打开 App 时临时触发模型。
+- 历史归档：当时巡检“今日农情”时记录的是早期 `qwen3.5-plus + search_strategy=max + 严格 3 条 + https` 方案。该条只保留为历史过程，已被当前 `qwen-plus + turbo + enable_source + freshness=7`、正好 3 条、来源只做内部追溯、用户侧只展示标题摘要的方案替代；用户侧仍只读 ready 缓存，不在用户打开 App 时临时触发模型。
 
 - 巡检“B/C 记忆与模型调用”链路：确认主对话完成归档后才异步触发 `SummaryService`，B 层 Free / Plus 每 6 轮、Pro 每 9 轮，用当前 A 层窗口 + 旧 B 摘要生成短期记忆；C 层每 20 轮，用 `session_round_archive` 最近 20 轮完整问答 + 旧 C 生成长期记忆，不再用 6/9 轮 A 窗口冒充长期输入。B/C 均走 `qwen3.5-flash`、非流式、`temperature=0.8`、关闭思考、不联网；模型失败、超时、归档不足或写回失败都会保留 `pending_retry_b/c`，写回带 `round_total` 校验，旧快照不会覆盖新轮次。旧 `/api/session/b`、`/api/session/c`、`/api/session/round_complete` 仍只返回 410，Android 没有摘要模型直连。本轮不改提示词和触发频率，只把多实例前需补摘要数据库 claim / lease、SLS 观察项和只读查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
@@ -537,11 +541,11 @@
 
 - 多代理审查“今日农情”后做低风险加固：后端发布校验不再接受未来 `published_date`，模型输出必须显式带 `card_name = 今日农情`，失败原因按 UTF-8 安全截断；Android 读取端只在接口 `status=ready` 且正好 3 条有效 item 时展示卡片，渲染端也改为正好 3 条才渲染，避免 pending / failed 或多条混杂数据误展示；runbook 示例同步改成 3 条 item，继续保持今日农情不进 A/B/C、不扣问诊次数、不由用户打开 App 触发生成。
 
-- 历史归档：今日农情早期近 7 天去重曾写作给 `qwen3.5-plus` prompt 且过滤后不足 3 条不发布。当前已替换为 `qwen-plus + turbo`，过滤后 2 到 3 条有效 item 可发布，仍保留近 7 天 ready 卡片去重和同日候选去重。
+- 历史归档：今日农情早期近 7 天去重曾写作给 `qwen3.5-plus` prompt 且过滤后不足 3 条不发布，随后又短暂允许 `2 到 3 条有效 item` 发布。当前已替换为 `qwen-plus + turbo`、正好 3 条、提示词控方向、后端低风险结构兜底。
 
 ## 2026-05-11
 
-- 历史归档：首版“今日农情”接入时使用过 `qwen3.5-plus + search_strategy=max`、3 条 item、https-only 的早期规则。当前已替换为 `qwen-plus + turbo + enable_source + freshness=7`，发布 2 到 3 条有效 item，来源 URL 只做内部追溯，用户侧只展示标题摘要；今日农情仍不是 `ChatMessage`，不进入本地聊天快照、A/B/C 上下文、归档、摘要或问诊扣次。
+- 历史归档：首版“今日农情”接入时使用过 `qwen3.5-plus + search_strategy=max`、3 条 item、https-only 的早期规则。当前已替换为 `qwen-plus + turbo + enable_source + freshness=7`，发布正好 3 条有效 item，来源 URL 只做内部追溯，用户侧只展示标题摘要；今日农情仍不是 `ChatMessage`，不进入本地聊天快照、A/B/C 上下文、归档、摘要或问诊扣次。
 
 ## 2026-05-10
 

@@ -324,8 +324,8 @@
 - 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
 - 生成链路当前使用 `qwen-plus + turbo` 原生 Generation 强制联网：显式 `temperature=0.8`、显式关闭思考、`enable_source=true`、`freshness=7`，不再用 `assigned_site_list` 硬限定站点，检索阶段保持全网宽搜、不限定固定网站，只用 `prompt_intervene` 引导近 7 天种植侧生产经营主题搜索；服务端从搜索结果中提取真实来源 URL 做内部事实核对、去重、时间合理性和后台排查，不作为 Android 用户卡片展示字段。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且会额外收费，今日农情默认不使用。2026-06-08 曾在生产 ECS 实测发现 `qwen3.5-plus` 走旧原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，同机同 Key 走 Responses `web_search` 正常；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 可返回来源链接但执行力偏弱，当前按用户要求改为 `qwen-plus + turbo + enable_source` 验证质量；生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，仍走 `turbo`；`qwen3.5-flash + turbo` / `qwen3.5-flash + agent` 返回 `400 InvalidParameter / url error`，不要把今日农情误切回 3.5 flash。
 - 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
-- 后端解析时要求 JSON 可解析、`card_name=今日农情`、2 到 3 条有效 item、标题摘要完整、发布时间近 7 天或来源时间合理；URL 必须来自 DashScope 搜索来源才可进入内部追溯字段，公开响应不包含 URL、来源或条目日期。
-- 后端会硬过滤广告、导购、联系方式、模型 / 提示词泄露、搜索参数、元表达、标题党词，以及过去 7 天和当天候选里的重复 URL / 重复标题；过滤后不足 2 条则不发布新卡片。
+- 后端解析时要求 JSON 可解析、`card_name=今日农情`、正好 3 条有效 item、标题摘要完整且同批标题不重复；URL 只作为内部追溯和后台排查字段，公开响应不包含 URL、来源或条目日期。
+- 后端不再用可信域名、近 7 天链接、历史链接 / 标题、主题词或发布日期等大面积硬过滤卡死来源；只保留 JSON 结构、正好 3 条、标题 / 摘要非空、同批重复标题和私网 / 明显电商 URL 清洗等低风险兜底。种植侧、排除养殖、排除广告软文 / 假新闻 / 标题党主要通过提示词、内部探针和后台运营抽查控制。
 - Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 追加在真实消息后方展示，作为靠近输入框的尾部 UI-only 卡片；真实 `messages` 仍只包含用户 / assistant，不写本地聊天快照，不参与发送、重试、复制、最新真实消息锚点或后端上下文。
 
 已排查的旧方案：
@@ -338,15 +338,15 @@
 
 - `DAILY_AGRI_JOB_SECRET` 必须只放服务端环境变量和定时任务配置，不能进 APK 或仓库。
 - 需要给内部生成接口配置真实定时触发，例如每天中国时间早上固定时间跑一次；用户打开 App 不负责补生成。
-- 检索阶段不要再限制到固定网站；如果某天外部搜索结果仍多是首页、栏目页、低价值 URL、广告软文、普通天气或养殖侧内容，后端过滤后可能不足 2 条而不展示，这是刻意选择，不要为了“每天必有”放宽到广告、软文或任意链接。
-- 后端目前硬过滤重复 URL 和重复标题；“同一事件换标题”主要靠提示词和人工抽查约束，后续如果重复感强，再增加更强的事件指纹或人工审核，不先把今日农情塞进聊天上下文。
+- 检索阶段不要再限制到固定网站；如果某天外部搜索结果仍多是首页、栏目页、低价值 URL、广告软文、普通天气或养殖侧内容，提示词和探针质量可能导致当天不展示，这是刻意选择，不要为了“每天必有”把广告、软文或标题党下发给用户。
+- 当前只做同批重复标题兜底；“同一事件换标题”和近 7 天重复主要靠提示词和人工抽查约束，后续如果重复感强，再增加更强的事件指纹或人工审核，不先把今日农情塞进聊天上下文。
 
 买服务器后必须补：
 
 - 配置 `DAILY_AGRI_JOB_SECRET`、定时任务、SLS 日志和失败告警。
 - 用内部生成接口跑一遍真实链路，检查 `daily_agri_cards.status/content_json/sources_json/error/lease_until`。
 - 在管理后台第一版里补今日农情状态页：查看当天状态、失败原因、内部来源追溯、手动补跑、停用当天卡片。
-- 观察 `daily agri generation started`、`daily agri model response received`、`daily agri candidate rejected`、`daily agri card generated`、`generate today agri card failed`、`get today agri card failed`、模型联网搜索失败、过滤后不足 2 条。
+- 观察 `daily agri generation started`、`daily agri model response received`、`daily agri candidate rejected`、`daily agri card generated`、`generate today agri card failed`、`get today agri card failed`、模型联网搜索失败、结构不完整或不足 3 条。
 - 后续若做地区 / 作物个性化，必须新增 scope 或独立表设计，不能直接把今日农情混入用户聊天记忆。
 
 参考资料：

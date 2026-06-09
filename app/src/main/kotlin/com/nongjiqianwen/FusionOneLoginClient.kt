@@ -12,6 +12,8 @@ import android.os.Looper
 import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.Gravity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import com.alicom.fusion.auth.AlicomFusionAuthCallBack
 import com.alicom.fusion.auth.AlicomFusionAuthUICallBack
 import com.alicom.fusion.auth.AlicomFusionBusiness
@@ -24,26 +26,83 @@ import com.alicom.fusion.auth.smsauth.AlicomFusionVerifyCodeView
 import com.alicom.fusion.auth.token.AlicomFusionAuthToken
 import com.alicom.fusion.auth.upsms.AlicomFusionUpSMSView
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 object FusionOneLoginClient {
     private const val TAG = "FusionOneLogin"
     private const val LOGIN_TEMPLATE_ID = "100001"
+    private const val PROTOCOL_ACTION = "com.nongjiqiancha.FUSION_AUTH_PROTOCOL"
     private const val LOGIN_TIMEOUT_MS = 30_000L
     private const val VERIFY_FAILED_FALLBACK_MS = 1_500L
     private const val SERVICE_AGREEMENT_URL = "https://nongjiqiancha.cn/"
     private const val PRIVACY_POLICY_URL = "https://nongjiqiancha.cn/"
     private const val ONE_LOGIN_FALLBACK_MESSAGE = "一键登录未成功，请关闭代理/VPN、打开移动数据并确认默认数据卡；也可用验证码登录"
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val loginInFlight = AtomicBoolean(false)
+    private val loginGeneration = AtomicLong(0L)
 
     @Volatile
     private var currentBusiness: AlicomFusionBusiness? = null
 
-    fun start(activity: Activity, onResult: (Boolean, String?) -> Unit) {
+    @Volatile
+    private var currentCompleted: AtomicBoolean? = null
+
+    fun cancelActiveScene(reason: String) {
+        loginGeneration.incrementAndGet()
+        val business = currentBusiness
+        val completed = currentCompleted
+        if (business == null) {
+            loginInFlight.set(false)
+            AppCrashReporter.clearAuthStage()
+            return
+        }
+        mainHandler.post {
+            if (completed != null && !completed.compareAndSet(false, true)) return@post
+            reportAuthLog(
+                level = "info",
+                event = "auth.fusion_scene_cancelled",
+                stage = reason.take(48),
+                error = null
+            )
+            runCatching { business.stopSceneWithTemplateId(LOGIN_TEMPLATE_ID) }
+            runCatching { business.destory() }
+            if (currentBusiness === business) {
+                currentBusiness = null
+                currentCompleted = null
+            }
+            loginInFlight.set(false)
+            AppCrashReporter.clearAuthStage()
+        }
+    }
+
+    fun start(
+        activity: Activity,
+        verificationPhone: String? = null,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        if (!loginInFlight.compareAndSet(false, true)) {
+            onResult(false, "一键登录正在处理中，请稍候")
+            return
+        }
+        val generation = loginGeneration.incrementAndGet()
+        if (!activity.isUsableForFusionAuth()) {
+            AppCrashReporter.clearAuthStage()
+            loginInFlight.set(false)
+            reportAuthLog(
+                level = "warn",
+                event = "auth.fusion_activity_unavailable",
+                stage = "start",
+                error = null
+            )
+            onResult(false, "一键登录暂不可用，请使用验证码登录")
+            return
+        }
         AppCrashReporter.setAuthStage("auth.fusion_env_check")
         val environment = inspectAuthEnvironment(activity)
         val blockReason = environment.blockReason()
         if (blockReason != null) {
             AppCrashReporter.clearAuthStage("auth.fusion_env_check")
+            loginInFlight.set(false)
             reportAuthEnvironment(
                 level = "warn",
                 event = "auth.fusion_env_blocked",
@@ -65,8 +124,12 @@ object FusionOneLoginClient {
         }
         AppCrashReporter.setAuthStage("auth.fusion_token")
         SessionApi.requestFusionAuthToken { snapshot, error ->
+            if (generation != loginGeneration.get()) {
+                return@requestFusionAuthToken
+            }
             if (snapshot?.usable != true) {
                 AppCrashReporter.clearAuthStage("auth.fusion_token")
+                loginInFlight.set(false)
                 reportAuthLog(
                     level = "warn",
                     event = "auth.fusion_token_failed",
@@ -76,31 +139,42 @@ object FusionOneLoginClient {
                 onResult(false, error ?: ONE_LOGIN_FALLBACK_MESSAGE)
                 return@requestFusionAuthToken
             }
-            startWithToken(activity, snapshot, onResult)
+            if (!activity.isUsableForFusionAuth()) {
+                AppCrashReporter.clearAuthStage("auth.fusion_token")
+                loginInFlight.set(false)
+                onResult(false, "一键登录已取消，请使用验证码登录")
+                return@requestFusionAuthToken
+            }
+            startWithToken(activity, snapshot, verificationPhone, generation, onResult)
         }
     }
 
     private fun startWithToken(
         activity: Activity,
         snapshot: SessionApi.FusionAuthTokenSnapshot,
+        verificationPhone: String?,
+        generation: Long,
         onResult: (Boolean, String?) -> Unit
     ) {
         val business = AlicomFusionBusiness()
         val completed = AtomicBoolean(false)
         val sceneStarted = AtomicBoolean(false)
+        val serverLoginStarted = AtomicBoolean(false)
         AppCrashReporter.setAuthStage("auth.fusion_sdk_init")
         currentBusiness?.let { previous ->
             safeStopScene(previous)
             safeDestroy(previous)
         }
         currentBusiness = business
+        currentCompleted = completed
 
-        AlicomFusionLog.setLogEnable(false)
+        AlicomFusionLog.setLogEnable(BuildConfig.DEBUG)
         val token = AlicomFusionAuthToken().apply {
             setAuthToken(snapshot.authToken.orEmpty())
         }
         val initResult = runCatching {
             business.initWithToken(activity.applicationContext, snapshot.schemeCode.orEmpty(), token)
+            business.setProtocolAction(PROTOCOL_ACTION)
             business.adapterPageShape(true)
         }
         if (initResult.isFailure) {
@@ -128,13 +202,33 @@ object FusionOneLoginClient {
                         )
                     }
                     return AlicomFusionAuthToken().apply {
-                        setAuthToken(fresh?.authToken.orEmpty())
+                        setAuthToken(fresh?.authToken?.takeIf { it.isNotBlank() } ?: snapshot.authToken.orEmpty())
                     }
                 }
 
                 override fun onSDKTokenAuthSuccess() {
                     activity.runOnUiThread {
+                        if (generation != loginGeneration.get()) {
+                            finish(business, completed, false, "一键登录已取消，请使用验证码登录", onResult)
+                            return@runOnUiThread
+                        }
                         if (!completed.get() && sceneStarted.compareAndSet(false, true)) {
+                            if (!activity.isUsableForFusionAuth()) {
+                                reportAuthLog(
+                                    level = "warn",
+                                    event = "auth.fusion_activity_unavailable",
+                                    stage = "scene_start",
+                                    error = null
+                                )
+                                finish(
+                                    business,
+                                    completed,
+                                    false,
+                                    "一键登录已取消，请使用验证码登录",
+                                    onResult
+                                )
+                                return@runOnUiThread
+                            }
                             val startResult = runCatching {
                                 AppCrashReporter.setAuthStage("auth.fusion_scene_start")
                                 business.startSceneWithTemplateId(
@@ -183,6 +277,11 @@ object FusionOneLoginClient {
                     event: AlicomFusionEvent?
                 ) {
                     AppCrashReporter.setAuthStage("auth.fusion_verify_success")
+                    if (generation != loginGeneration.get()) {
+                        safeContinueScene(business, false)
+                        finish(business, completed, false, "一键登录已取消，请使用验证码登录", onResult)
+                        return
+                    }
                     val verifyToken = token.orEmpty().trim()
                     if (verifyToken.isEmpty()) {
                         safeContinueScene(business, false)
@@ -194,6 +293,16 @@ object FusionOneLoginClient {
                             nodeName = nodeName
                         )
                         finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+                        return
+                    }
+                    if (!serverLoginStarted.compareAndSet(false, true)) {
+                        reportAuthLog(
+                            level = "warn",
+                            event = "auth.fusion_verify_duplicate",
+                            stage = "verify",
+                            error = event,
+                            nodeName = nodeName
+                        )
                         return
                     }
                     AppCrashReporter.setAuthStage("auth.fusion_server_login")
@@ -229,7 +338,6 @@ object FusionOneLoginClient {
                     event: AlicomFusionEvent?,
                     verifyResult: HalfWayVerifyResult?
                 ) {
-                    val verifyToken = maskToken.orEmpty().trim()
                     Log.w(TAG, "unexpected fusion half-way callback for one-login: node=$nodeName ${describeEvent(event)}")
                     reportAuthLog(
                         level = "warn",
@@ -238,10 +346,22 @@ object FusionOneLoginClient {
                         error = event,
                         nodeName = nodeName
                     )
-                    verifyResult?.verifyResult(verifyToken.isNotEmpty())
+                    verifyResult?.verifyResult(false)
+                    safeContinueScene(business, false)
+                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                 }
 
                 override fun onVerifyFailed(error: AlicomFusionEvent?, nodeName: String?) {
+                    if (serverLoginStarted.get() && !completed.get()) {
+                        reportAuthLog(
+                            level = "info",
+                            event = "auth.fusion_verify_failed_ignored",
+                            stage = "verify",
+                            error = error,
+                            nodeName = nodeName
+                        )
+                        return
+                    }
                     AppCrashReporter.setAuthStage("auth.fusion_verify_failed")
                     Log.w(TAG, "fusion verify failed: node=$nodeName ${describeEvent(error)}")
                     reportAuthLog(
@@ -253,11 +373,21 @@ object FusionOneLoginClient {
                     )
                     safeContinueScene(business, false)
                     mainHandler.postDelayed({
+                        if (completed.get() || serverLoginStarted.get()) return@postDelayed
                         finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                     }, VERIFY_FAILED_FALLBACK_MS)
                 }
 
                 override fun onTemplateFinish(event: AlicomFusionEvent?) {
+                    if (serverLoginStarted.get() && !completed.get()) {
+                        reportAuthLog(
+                            level = "info",
+                            event = "auth.fusion_template_finish_ignored",
+                            stage = "template_finish",
+                            error = event
+                        )
+                        return
+                    }
                     AppCrashReporter.setAuthStage("auth.fusion_template_finish")
                     Log.i(TAG, "fusion template finished: ${describeEvent(event)}")
                     reportAuthLog(
@@ -269,14 +399,50 @@ object FusionOneLoginClient {
                     finish(business, completed, false, "一键登录未完成，可继续使用验证码登录", onResult)
                 }
 
-                override fun onAuthEvent(event: AlicomFusionEvent?) = Unit
+                override fun onAuthEvent(event: AlicomFusionEvent?) {
+                    reportAuthLog(
+                        level = "info",
+                        event = "auth.fusion_auth_event",
+                        stage = "auth_event",
+                        error = event
+                    )
+                }
 
                 override fun onGetPhoneNumberForVerification(
                     nodeId: String?,
                     event: AlicomFusionEvent?
-                ): String = ""
+                ): String {
+                    val normalizedPhone = verificationPhone
+                        ?.filter(Char::isDigit)
+                        ?.takeIf(::isValidMainlandPhoneNumber)
+                    reportAuthLog(
+                        level = "warn",
+                        event = "auth.fusion_get_phone_for_verification",
+                        stage = "get_phone_for_verification",
+                        error = event,
+                        nodeName = nodeId
+                    )
+                    if (normalizedPhone == null) {
+                        safeContinueScene(business, false)
+                        finish(
+                            business,
+                            completed,
+                            false,
+                            "请使用验证码登录",
+                            onResult
+                        )
+                    }
+                    return normalizedPhone ?: "19999999999"
+                }
 
-                override fun onVerifyInterrupt(event: AlicomFusionEvent?) = Unit
+                override fun onVerifyInterrupt(event: AlicomFusionEvent?) {
+                    reportAuthLog(
+                        level = "warn",
+                        event = "auth.fusion_verify_interrupt",
+                        stage = "verify_interrupt",
+                        error = event
+                    )
+                }
             })
         }.isSuccess
         if (!callbackAttached) {
@@ -313,7 +479,16 @@ object FusionOneLoginClient {
                 nodeId: String?,
                 model: FusionNumberAuthModel?
             ) {
-                if (model == null) return
+                if (model == null) {
+                    reportAuthLog(
+                        level = "warn",
+                        event = "auth.fusion_ui_model_null",
+                        stage = "ui_custom",
+                        error = null,
+                        nodeName = nodeId
+                    )
+                    return
+                }
                 configureNumberAuthModel(model)
                 model.setSwitchLoginBack(
                     AlicomFusionSwitchLogin {
@@ -383,12 +558,21 @@ object FusionOneLoginClient {
                 .setAppPrivacyOne("《服务协议》", SERVICE_AGREEMENT_URL)
                 .setAppPrivacyTwo("《隐私政策》", PRIVACY_POLICY_URL)
                 .setAppPrivacyColor(Color.rgb(17, 17, 17), Color.rgb(87, 93, 102))
+                .setProtocolAction(PROTOCOL_ACTION)
+                .setPackageName(BuildConfig.APPLICATION_ID)
                 .setProtocolGravity(Gravity.CENTER)
                 .setProtocolLayoutGravity(Gravity.CENTER_HORIZONTAL)
                 .setPrivacyAlertIsNeedShow(false)
                 .setLogBtnToastHidden(false)
                 .setPageBackgroundDrawable(GradientDrawable().apply { setColor(Color.WHITE) })
                 .create()
+        }.onFailure {
+            reportAuthLog(
+                level = "warn",
+                event = "auth.fusion_ui_config_failed",
+                stage = "ui_config",
+                error = null
+            )
         }.getOrNull()
         if (configured != null) {
             copySdkModelFields(configured, model)
@@ -563,8 +747,10 @@ object FusionOneLoginClient {
             runCatching { business.stopSceneWithTemplateId(LOGIN_TEMPLATE_ID) }
             runCatching { business.destory() }
             AppCrashReporter.clearAuthStage()
+            loginInFlight.set(false)
             if (currentBusiness === business) {
                 currentBusiness = null
+                currentCompleted = null
             }
             onResult(ok, message)
         }
@@ -598,5 +784,15 @@ object FusionOneLoginClient {
             "msg=${event.getErrorMsg()}",
             "innerMsg=${event.getInnerMsg()}"
         ).joinToString(separator = " ")
+    }
+
+    private fun isValidMainlandPhoneNumber(raw: String): Boolean =
+        raw.length == 11 && raw.firstOrNull() == '1' && raw.all(Char::isDigit)
+
+    private fun Activity.isUsableForFusionAuth(): Boolean {
+        if (isFinishing) return false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && isDestroyed) return false
+        val state = (this as? LifecycleOwner)?.lifecycle?.currentState ?: return true
+        return state.isAtLeast(Lifecycle.State.RESUMED)
     }
 }

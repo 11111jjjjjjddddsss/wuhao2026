@@ -109,12 +109,20 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
     val agreementText = remember { buildLoginAgreementText() }
     val context = LocalContext.current
+    DisposableEffect(Unit) {
+        onDispose {
+            FusionOneLoginClient.cancelActiveScene("login_screen_dispose")
+        }
+    }
 
     fun startFusionOneLogin(activity: Activity) {
         AppCrashReporter.setAuthStage("auth.fusion_start")
         busy = true
         message = "正在拉起本机号码登录"
-        FusionOneLoginClient.start(activity) { ok, error ->
+        FusionOneLoginClient.start(
+            activity = activity,
+            verificationPhone = phone.takeIf(::isValidMainlandPhone)
+        ) { ok, error ->
             busy = false
             if (ok) {
                 onLoginSuccess()
@@ -133,6 +141,15 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
             startFusionOneLogin(activity)
         } else {
             AppCrashReporter.clearAuthStage()
+            SessionApi.reportAuthClientLog(
+                level = "warn",
+                event = "auth.fusion_permission_denied",
+                message = "fusion phone state permission denied",
+                attrs = mapOf(
+                    "permission" to "read_phone_state",
+                    "activity_available" to (activity != null)
+                )
+            )
             smsMode = true
             message = "未授予本机号码登录所需权限，请使用验证码登录"
         }
@@ -196,6 +213,12 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                             }
                             val activity = context.findActivity()
                             if (activity == null) {
+                                SessionApi.reportAuthClientLog(
+                                    level = "warn",
+                                    event = "auth.fusion_activity_unavailable",
+                                    message = "fusion login activity unavailable",
+                                    attrs = mapOf("stage" to "button_click")
+                                )
                                 smsMode = true
                                 message = "一键登录暂不可用，请使用验证码登录"
                                 return@Button

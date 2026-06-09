@@ -307,7 +307,7 @@ private fun buildChatTimelineItems(
 private fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
     val cardItems = items.orEmpty()
     return title == "今日农情" &&
-        cardItems.size in 2..3 &&
+        cardItems.size == 3 &&
         cardItems.all { item ->
             !item.title.isNullOrBlank() &&
                 !item.summary.isNullOrBlank()
@@ -397,6 +397,8 @@ private const val CHAT_COMPOSER_DRAFT_KEY_PREFIX = "composer_draft_"
 private const val CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX = "composer_draft_gen_"
 private const val TODAY_AGRI_CARD_SENT_HIDDEN_DAY_KEY_PREFIX = "today_agri_card_dismissed_day_"
 private const val TODAY_AGRI_CARD_EXIT_ANIMATION_MS = 180
+private const val TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS = 5_000L
+private const val TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS = 15 * 60 * 1000L
 private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
@@ -2575,6 +2577,9 @@ fun ChatScreen() {
     }
     var todayAgriCardExitingDay by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     val currentTodayAgriCardDay = todayAgriCardDayKey(todayAgriCard)
+    val todayAgriCardIsCurrentDay = todayAgriCard?.let {
+        normalizeTodayAgriCardDayKey(it.dateCn.orEmpty()) == currentChinaDateKey()
+    } == true
     val retryingUserMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
@@ -2601,21 +2606,24 @@ fun ChatScreen() {
     }
     val shouldShowTodayAgriCard by remember(
         todayAgriCard,
+        todayAgriCardIsCurrentDay,
         todayAgriCardSentHiddenDay,
         isStreaming,
         initialWorklinePhase
     ) {
         derivedStateOf {
             todayAgriCard?.isRenderableTodayAgriCard() == true &&
+                todayAgriCardIsCurrentDay &&
                 todayAgriCardSentHiddenDay != todayAgriCardDayKey(todayAgriCard) &&
                 !isStreaming &&
                 initialWorklinePhase != InitialWorklinePhase.TopUnreached &&
                 initialWorklinePhase != InitialWorklinePhase.TopAnchoring
         }
     }
-    val isTodayAgriCardExiting by remember(todayAgriCard, todayAgriCardExitingDay) {
+    val isTodayAgriCardExiting by remember(todayAgriCard, todayAgriCardIsCurrentDay, todayAgriCardExitingDay) {
         derivedStateOf {
             todayAgriCard?.isRenderableTodayAgriCard() == true &&
+                todayAgriCardIsCurrentDay &&
                 todayAgriCardExitingDay == todayAgriCardDayKey(todayAgriCard)
         }
     }
@@ -3162,11 +3170,34 @@ fun ChatScreen() {
     var membershipPurchaseSuccessVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipRefreshNonce by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var membershipRefreshEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var todayAgriRefreshDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(currentChinaDateKey()) }
+    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete) {
+        if (!historyHydrationComplete) return@LaunchedEffect
+        while (isActive) {
+            delay(TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS)
+            val currentDay = currentChinaDateKey()
+            if (todayAgriRefreshDayKey != currentDay) {
+                todayAgriRefreshDayKey = currentDay
+            }
+        }
+    }
     LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete) {
         if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
-        val card = awaitTodayAgriCard()
-        if (card != null) {
-            todayAgriCard = card
+        if (todayAgriRefreshDayKey != currentChinaDateKey()) {
+            todayAgriRefreshDayKey = currentChinaDateKey()
+        }
+    }
+    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete, todayAgriRefreshDayKey) {
+        if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
+        repeat(2) { attempt ->
+            val card = awaitTodayAgriCard()
+            if (card != null) {
+                todayAgriCard = card
+                return@LaunchedEffect
+            }
+            if (attempt == 0) {
+                delay(TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS)
+            }
         }
     }
     BindComposerRuntimeEffects(
@@ -7627,7 +7658,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "今日农情",
                 items = listOf(
-                    UiCopyPreviewItem("今日农情", "2-3条短资讯卡片，仅展示内容", UiCopyPreviewKind.TodayAgriCard)
+                    UiCopyPreviewItem("今日农情", "3条短资讯卡片，仅展示内容", UiCopyPreviewKind.TodayAgriCard)
                 )
             ),
             UiCopyPreviewGroup(
@@ -8950,7 +8981,7 @@ private fun TodayAgriNewsCard(
     modifier: Modifier = Modifier
 ) {
     val items = card.items.orEmpty()
-    if (items.size !in 2..3) return
+    if (items.size != 3) return
     val dateText = todayAgriDateText(card.dateCn)
     Box(
         modifier = modifier
@@ -9055,7 +9086,7 @@ private fun TodayAgriNewsItem(
                     fontSize = 16.sp,
                     lineHeight = 21.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
@@ -9063,7 +9094,7 @@ private fun TodayAgriNewsItem(
                     color = Color(0xFF4F535A),
                     fontSize = 14.sp,
                     lineHeight = 20.sp,
-                    maxLines = 4,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis
                 )
             }

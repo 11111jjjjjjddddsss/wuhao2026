@@ -58,5 +58,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".FusionAuthProtocolActivity"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.nongjiqiancha.FUSION_AUTH_PROTOCOL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

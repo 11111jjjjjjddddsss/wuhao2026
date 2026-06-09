@@ -99,8 +99,10 @@ if ($failures.Count -eq 0) {
         "Network security config must keep the Unicom one-click-login gateway exception."
     Require-Match $failures $networkSecurity '<domain\s+includeSubdomains="true">onekey\.cmpassport\.com</domain>' `
         "Network security config must keep the China Mobile one-click-login gateway exception."
+    Require-Match $failures $networkSecurity '<domain\s+includeSubdomains="true">uac\.189\.cn</domain>' `
+        "Network security config must keep the China Telecom one-click-login gateway exception."
     $domains = [regex]::Matches($networkSecurity, '<domain\b[^>]*>([^<]+)</domain>') | ForEach-Object { $_.Groups[1].Value.Trim() }
-    $allowedDomains = @("enrichgw.10010.com", "onekey.cmpassport.com")
+    $allowedDomains = @("enrichgw.10010.com", "onekey.cmpassport.com", "uac.189.cn")
     foreach ($domain in $domains) {
         if ($allowedDomains -notcontains $domain) {
             Add-Failure $failures "Unexpected cleartext domain in network_security_config.xml: $domain"
@@ -133,6 +135,8 @@ if ($failures.Count -eq 0) {
     }
     Require-Match $failures $fusionClient 'model\.setProtocolChecked\s*\(\s*false\s*\)' `
         "Aliyun SDK protocol checkbox must remain visible and unchecked by default."
+    Require-Match $failures $fusionClient '\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)[\s\S]*?\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)' `
+        "Custom Aliyun protocolAction must also set packageName to the app applicationId."
 
     Require-Match $failures $chatScreen 'BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible' `
         "Debug-only preview panel must stay behind BuildConfig.DEBUG."

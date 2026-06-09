@@ -21,11 +21,11 @@ import (
 const (
 	dailyAgriCardModel          = "qwen-plus"
 	dailyAgriSearchStrategy     = "turbo"
-	dailyAgriPromptVersion      = "2026-06-09-v21"
+	dailyAgriPromptVersion      = "2026-06-09-v22"
 	dailyAgriGenerationLeaseTTL = 5 * time.Minute
 	dailyAgriGenerationAttempts = 2
 	dailyAgriTargetItemCount    = 3
-	dailyAgriMinPublishItems    = 2
+	dailyAgriMinPublishItems    = 3
 	dailyAgriProbeMaxRuns       = 5
 )
 
@@ -475,22 +475,36 @@ func buildDailyAgriMessagesForAttempt(now time.Time, recentCards []DailyAgriCard
       "source_index": 1,
       "source_name": "来源名称",
       "published_date": "YYYY-MM-DD"
+    },
+    {
+      "title": "第二条一行标题",
+      "summary": "第二条38到56个中文字符的摘要",
+      "source_index": 2,
+      "source_name": "来源名称",
+      "published_date": "YYYY-MM-DD"
+    },
+    {
+      "title": "第三条一行标题",
+      "summary": "第三条38到56个中文字符的摘要",
+      "source_index": 3,
+      "source_name": "来源名称",
+      "published_date": "YYYY-MM-DD"
     }
   ]
 }
 
 规则：
-1. items 优先输出 3 条成稿内容；如果已经找到 3 条高质量、近 7 天内、足够新的且主题 / 地区不重复的材料，就停止深挖。确实只有 2 条高质量内容时也可只输出 2 条。card_name 固定为“今日农情”。后端目标展示 3 条，通过校验只有 2 条时也会发布 2 条。不要为了凑满候选而反复扩大检索、罗列同质新闻或选择边缘材料。
+1. items 必须输出 3 条成稿内容；如果已经找到 3 条高质量、近 7 天内、足够新的且主题 / 地区不重复的材料，就停止深挖。card_name 固定为“今日农情”。后端只发布 3 条完整内容，不再把 2 条作为正常展示结果；但不要为了凑满数量而选择广告软文、养殖侧、旧闻、重复报道或缺少事实支撑的边缘材料。
 1.1 检索时要分主题找材料，不要只搜“农业新闻”或“农情”两个泛词；不要限定固定网站、不要只围绕少数官网或媒体检索、不要按站点白名单思路找材料。请先全网宽搜具体事实，再按来源质量、时效性、是否种植侧筛选。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除。至少尝试覆盖种子/种苗/种业/品种审定推广/供种备耕/种子质量抽检，病虫草害/植保/农药/除草剂，影响作物和农时的农业气象灾害或农田防灾减灾，农时农事/农机，肥料/化肥/水肥管理，农资价格/农产品流通/补贴保险等不同种植业方向。
 2. 只选面向种植业生产、农资肥料农药或农产品流通场景的事实类农情，覆盖面可以更宽，但不要进入普通天气预报、生活天气、旅游出行天气，也不要进入畜牧、水产、养殖、动物疫病、生猪、猪肉、猪价、家禽、禽蛋、蛋鸡、肉鸡、牛羊、肉牛、肉羊、奶牛、奶业、饲料、兽药、渔业、水产养殖、鱼虾等养殖侧 / 非种植领域；不要把农业新闻只理解成病虫害或政策：种子/种苗/种业、品种审定推广、供种备耕、种子质量抽检、病虫草害预警、植保、农药安全用药、除草剂使用风险，明确影响作物或农时的旱涝、霜冻、倒春寒、干热风、高温热害等农业气象风险，农时农事、作物长势、土壤水肥、农机作业、设施种植、肥料/化肥/水肥管理、农资供需或价格、农产品产地价格、批发市场流通、政策补贴、农业保险、粮油菜果茶等重点品类生产管理、农技推广服务等都可以选。按农业实用价值排序，优先选择同时具备具体地区、具体作物或品类、明确风险/农时/价格/补贴/流通影响的信息；要素越完整越优先。少选空泛会议、一般部署、表态新闻；没有更具体材料时，可以选择直接影响种植、农资、肥料、农药、农机、补贴、保险、流通或市场的信息。
 3. 来源选择不要固定在少数网站；同等质量下，优先官方、农业农村部门、农技推广、气象、主流媒体、农业专业媒体、地方农业信息、市场流通、农资、种业、植保等正式来源。优先包含具体地区、作物/品类、时间、影响或数据的信息；如果某个地方站、行业站或市场信息站提供的是近 7 天具体种植侧事实，也可以作为候选，但不能选广告软文、招商导购、网传未证实消息或缺少事实依据的内容。排序时先看是否近 7 天内真实发布，再看农业实用价值；同等条件下优先今天或昨天发布的内容。
 4. 禁止广告软文、招商加盟、带货导购、品牌推广、厂家宣传、联系方式、二维码、优惠活动、直播电商、产品功效夸大；禁止网传、爆料、传言、谣言、未经证实、真假不明或缺少公开事实来源的信息。
 5. 标题尽量 12-16 个中文字符，一行能读完，不写来源名，不写“今日农情”，不含 URL。标题必须中性、具体、克制，禁止“速看”“必看”“重磅”“紧急”“大消息”“来了”“暴涨”“利好”“震惊”、感叹号、悬念式标题和诱导点击表述。
 6. 摘要尽量 38-56 个中文字符，只写事实、数据和直接农业影响；用自然资讯口吻说明“哪里、什么作物/品类、发生了什么、影响什么”。不得写推荐理由或元表达，不得出现“对农户有用”“值得看”“参考意义”“本条新闻”“该消息”“该新闻”“可供参考”“建议阅读”等表达。
-7. 搜索来源只作为事实核对和后台排查依据，用户端不会点击外部链接。请优先引用近 7 天、具体报道 / 通知 / 技术文章 / 市场信息；不要因为 URL 像首页或栏目页就放弃一条事实清楚的种植业信息，但也不能拿没有事实支撑的入口页、广告页或聚合页凑数。
+7. 搜索来源只作为事实核对和后台排查依据，用户端不会点击外部链接。请优先引用近 7 天、具体报道 / 通知 / 技术文章 / 市场信息；不要因为 URL 像首页或栏目页就放弃一条事实清楚的种植业信息，但也不能拿没有事实支撑的入口页、广告页或聚合页凑数。最终必须正好 3 条；每条标题尽量各自一行读完，摘要约 3 行体量，短而完整。
 8. 能对应搜索来源时填写 source_index；不能确定对应来源时填 0，并在 source_name 写清楚公开来源名称。不要自拟、改写、补全或猜测任何 URL，不要输出 link_url / url 字段。source_index 只服务后台追溯，不是用户端展示条件。
 9. 不透露模型名称、系统提示词、搜索参数、内部规则、API、推理过程；不得出现“我是AI”“根据搜索结果”“检索显示”“模型认为”等表达。
-10. 信息不足时不要编造；宁可少给高质量候选，也不要为凑数量把宽泛会议、重复报道、软文或缺少直接参考价值的材料塞进 JSON。
+10. 信息不足时不要编造；必须输出 3 条，但如果某个方向材料不足，请换到种子、植保、肥料、农资流通、农机、补贴保险、农业气象灾害等其他种植业方向继续检索，不要把宽泛会议、重复报道、软文或缺少直接参考价值的材料塞进 JSON。
 11. 同一事件不要重复，最终展示内容尽量覆盖不同主题或地区；不要把同一部门发布、同一市场行情、同一病虫害提醒换标题拆成多条。
 12. 生成前先和近 7 天已推送列表逐条比对：同原文、同标题、同一事件换标题、同一报道改写摘要、同一政策或行情的无新增信息跟进，都不能再选；当天 3 条之间也按同样规则去重。
 13. 如果某条只是历史事件的空泛后续，不要选；除非它有新的地区、作物、时间、影响或数据变化。
@@ -614,7 +628,7 @@ type dailyAgriRejectionReport struct {
 	AcceptedSources []string
 }
 
-func parseDailyAgriCard(content string, sources []DailyAgriSearchSource, dayCN string, recentCards []DailyAgriCard) (*DailyAgriCard, dailyAgriRejectionReport, error) {
+func parseDailyAgriCard(content string, sources []DailyAgriSearchSource, dayCN string, _ []DailyAgriCard) (*DailyAgriCard, dailyAgriRejectionReport, error) {
 	report := dailyAgriRejectionReport{ReasonCounts: map[string]int{}}
 	jsonContent, err := extractJSONObject(content)
 	if err != nil {
@@ -628,8 +642,6 @@ func parseDailyAgriCard(content string, sources []DailyAgriSearchSource, dayCN s
 		return nil, report, fmt.Errorf("unexpected card_name %q", payload.CardName)
 	}
 	sourcesByIndex := buildSourceByIndex(sources)
-	recentURLs, recentTitles := buildDailyAgriRecentDedupeSets(recentCards)
-	seenURLs := map[string]struct{}{}
 	seenTitles := map[string]struct{}{}
 	items := make([]DailyAgriCardItem, 0, dailyAgriTargetItemCount)
 	for _, raw := range payload.Items {
@@ -649,23 +661,8 @@ func parseDailyAgriCard(content string, sources []DailyAgriSearchSource, dayCN s
 			recordDailyAgriReject(report.ReasonCounts, dailyAgriRejectReason(err))
 			continue
 		}
-		normalizedURL := normalizeURLForCompare(item.URL)
 		normalizedTitle := normalizeDailyAgriTitleForCompare(item.Title)
-		if normalizedURL != "" {
-			if _, ok := recentURLs[normalizedURL]; ok {
-				recordDailyAgriReject(report.ReasonCounts, "recent_url_duplicate")
-				continue
-			}
-			if _, ok := seenURLs[normalizedURL]; ok {
-				recordDailyAgriReject(report.ReasonCounts, "current_url_duplicate")
-				continue
-			}
-		}
 		if normalizedTitle != "" {
-			if _, ok := recentTitles[normalizedTitle]; ok {
-				recordDailyAgriReject(report.ReasonCounts, "recent_title_duplicate")
-				continue
-			}
 			if _, ok := seenTitles[normalizedTitle]; ok {
 				recordDailyAgriReject(report.ReasonCounts, "current_title_duplicate")
 				continue
@@ -675,9 +672,6 @@ func parseDailyAgriCard(content string, sources []DailyAgriSearchSource, dayCN s
 		report.Accepted++
 		if host := hostLabelFromURL(item.URL); host != "" {
 			report.AcceptedSources = append(report.AcceptedSources, host)
-		}
-		if normalizedURL != "" {
-			seenURLs[normalizedURL] = struct{}{}
 		}
 		if normalizedTitle != "" {
 			seenTitles[normalizedTitle] = struct{}{}
@@ -751,22 +745,6 @@ func appendDailyAgriRejectionLogAttrs(attrs []any, report dailyAgriRejectionRepo
 	return attrs
 }
 
-func buildDailyAgriRecentDedupeSets(cards []DailyAgriCard) (map[string]struct{}, map[string]struct{}) {
-	urls := map[string]struct{}{}
-	titles := map[string]struct{}{}
-	for _, card := range cards {
-		for _, item := range card.Items {
-			if normalizedURL := normalizeURLForCompare(item.URL); normalizedURL != "" {
-				urls[normalizedURL] = struct{}{}
-			}
-			if normalizedTitle := normalizeDailyAgriTitleForCompare(item.Title); normalizedTitle != "" {
-				titles[normalizedTitle] = struct{}{}
-			}
-		}
-	}
-	return urls, titles
-}
-
 func extractJSONObject(content string) (string, error) {
 	trimmed := strings.TrimSpace(content)
 	trimmed = strings.TrimPrefix(trimmed, "```json")
@@ -785,309 +763,7 @@ func validateDailyAgriItem(item DailyAgriCardItem, dayCN string) error {
 	if item.Title == "" || item.Summary == "" {
 		return fmt.Errorf("empty field")
 	}
-	if strings.TrimSpace(item.PublishedDate) != "" {
-		if err := validateDailyAgriPublishedDate(item.PublishedDate, dayCN); err != nil {
-			return err
-		}
-	}
-	if utf8.RuneCountInString(item.Title) > 28 || utf8.RuneCountInString(item.Summary) > 96 {
-		return fmt.Errorf("item too long")
-	}
-	combined := strings.ToLower(item.Title + " " + item.Summary + " " + item.Source)
-	if containsOutOfScopeDailyAgriTopic(combined) {
-		return fmt.Errorf("out of scope topic")
-	}
-	for _, word := range []string{
-		"招商", "加盟", "代理", "厂家直销", "优惠", "扫码", "二维码", "微信", "电话",
-		"直播", "带货", "购买", "下单", "促销", "广告", "软文", "模型", "提示词", "api",
-		"system prompt", "search_strategy", "enable_thinking", "值得看", "值得关注", "对农户有用",
-		"参考意义", "可供参考", "建议阅读", "本条新闻", "该消息", "该新闻", "根据搜索结果",
-		"检索显示", "模型认为", "我是ai", "速看", "必看", "重磅", "紧急", "大消息", "来了",
-		"暴涨", "利好", "震惊", "首页来源", "索引页", "栏目入口", "移动入口", "专题页",
-		"网传", "爆料", "传言", "谣言", "未经证实", "真假不明", "虚假", "假消息", "不实消息",
-		"点击查看", "来源链接", "打开原文",
-	} {
-		if strings.Contains(combined, strings.ToLower(word)) {
-			return fmt.Errorf("blocked word")
-		}
-	}
 	return nil
-}
-
-func containsOutOfScopeDailyAgriTopic(combined string) bool {
-	for _, word := range []string{
-		"畜牧", "水产", "养殖", "动物疫病", "生猪", "猪肉", "猪价", "家禽",
-		"禽流感", "牛羊", "奶牛", "肉牛", "肉羊", "蛋鸡", "肉鸡", "鸡蛋",
-		"禽蛋", "奶业", "渔业", "水产品", "水产养殖", "鱼虾", "饲料", "兽药",
-	} {
-		if strings.Contains(combined, strings.ToLower(word)) {
-			return true
-		}
-	}
-	if containsPlainWeatherOnlyDailyAgriTopic(combined) {
-		return true
-	}
-	return false
-}
-
-func isTrustedDailyAgriLowValueFallbackURL(parsed *url.URL) bool {
-	if parsed == nil {
-		return false
-	}
-	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	if !isTrustedAgriNewsHost(host) {
-		return false
-	}
-	path := strings.ToLower(strings.TrimSpace(parsed.EscapedPath()))
-	if path == "" || path == "/" {
-		return false
-	}
-	path = strings.TrimRight(path, "/")
-	lastSlash := strings.LastIndex(path, "/")
-	base := path
-	if lastSlash >= 0 {
-		base = path[lastSlash+1:]
-	}
-	if isDailyAgriAlwaysBadSourceBase(base) {
-		return false
-	}
-	for _, suffix := range []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar"} {
-		if strings.HasSuffix(path, suffix) {
-			return false
-		}
-	}
-	if parsed.RawQuery != "" {
-		query := strings.ToLower(parsed.RawQuery)
-		for _, marker := range []string{"keyword=", "search", "query=", "page="} {
-			if strings.Contains(query, marker) {
-				return false
-			}
-		}
-	}
-	for _, marker := range []string{"/iframe", "/iframes/", "/search/"} {
-		if strings.Contains(path, marker) {
-			return false
-		}
-	}
-	if dailyAgriPathHasArticleEvidence(path, base) {
-		return true
-	}
-	for _, allowedHost := range []string{
-		"xczx.news.cn",
-		"farmer.com.cn",
-		"www.farmer.com.cn",
-		"natesc.org.cn",
-		"www.natesc.org.cn",
-		"zzys.moa.gov.cn",
-	} {
-		if host == allowedHost {
-			return true
-		}
-	}
-	return false
-}
-
-func isDailyAgriAlwaysBadSourceBase(base string) bool {
-	switch strings.ToLower(strings.TrimSpace(base)) {
-	case "", "home", "homepage", "index", "index.html", "index.htm", "index.shtml", "index.php", "index.asp", "index.aspx",
-		"default.html", "default.htm", "default.shtml", "main.html", "wap.html", "wap.htm", "wap.shtml":
-		return true
-	default:
-		return false
-	}
-}
-
-func dailyAgriPathHasArticleEvidence(path string, base string) bool {
-	digitCount := 0
-	for _, r := range path {
-		if r >= '0' && r <= '9' {
-			digitCount++
-		}
-	}
-	if digitCount >= 6 {
-		return true
-	}
-	for _, marker := range []string{"/20", "t20", "_20"} {
-		if strings.Contains(path, marker) {
-			return true
-		}
-	}
-	for _, suffix := range []string{".html", ".htm", ".shtml"} {
-		if strings.HasSuffix(base, suffix) {
-			stem := strings.TrimSuffix(base, suffix)
-			if len([]rune(stem)) >= 8 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func containsPlainWeatherOnlyDailyAgriTopic(combined string) bool {
-	hasPlainWeather := false
-	for _, word := range []string{
-		"天气预报", "生活天气", "旅游天气", "出行天气", "穿衣", "紫外线", "空气质量",
-	} {
-		if strings.Contains(combined, strings.ToLower(word)) {
-			hasPlainWeather = true
-			break
-		}
-	}
-	if !hasPlainWeather {
-		return false
-	}
-	for _, word := range []string{
-		"种植", "作物", "农田", "农时", "农事", "田间", "墒情", "土壤", "水肥",
-		"播种", "移栽", "收割", "机收", "机播", "苗情", "病虫", "植保", "农药",
-		"肥料", "化肥", "种子", "种苗", "粮油", "小麦", "玉米", "水稻", "大豆",
-		"油菜", "棉花", "蔬菜", "果树", "茶园", "旱涝", "霜冻", "倒春寒", "干热风",
-		"高温热害",
-	} {
-		if strings.Contains(combined, strings.ToLower(word)) {
-			return false
-		}
-	}
-	return true
-}
-
-func isLowValueDailyAgriSourceURL(parsed *url.URL) bool {
-	if parsed == nil {
-		return true
-	}
-	path := strings.ToLower(strings.TrimSpace(parsed.EscapedPath()))
-	if path == "" || path == "/" {
-		return true
-	}
-	path = strings.TrimRight(path, "/")
-	if path == "" {
-		return true
-	}
-	lastSlash := strings.LastIndex(path, "/")
-	base := path
-	if lastSlash >= 0 {
-		base = path[lastSlash+1:]
-	}
-	for _, marker := range []string{
-		"iframe",
-		"/iframes/",
-		"/index/",
-		"/list/",
-		"/channel/",
-		"/category/",
-		"/search/",
-		"/subject/",
-		"/topic/",
-		"/special/",
-		"/zt/",
-	} {
-		if strings.Contains(path, marker) {
-			return true
-		}
-	}
-	switch base {
-	case "", "home", "homepage", "index", "index.html", "index.htm", "index.shtml", "index.php", "index.asp", "index.aspx",
-		"default.html", "default.htm", "default.shtml", "main.html", "wap.html", "wap.htm", "wap.shtml":
-		return true
-	}
-	if isShallowColumnPagePath(path, base) {
-		return true
-	}
-	for _, suffix := range []string{".pdf", ".doc", ".docx", ".xls", ".xlsx", ".zip", ".rar"} {
-		if strings.HasSuffix(path, suffix) {
-			return true
-		}
-	}
-	if parsed.RawQuery != "" {
-		query := strings.ToLower(parsed.RawQuery)
-		for _, marker := range []string{"keyword=", "search", "query=", "page="} {
-			if strings.Contains(query, marker) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func isAllowedDailyAgriSourceScheme(scheme string, host string) bool {
-	switch strings.ToLower(strings.TrimSpace(scheme)) {
-	case "https":
-		return true
-	case "http":
-		return isTrustedDailyAgriHTTPFallbackHost(host)
-	default:
-		return false
-	}
-}
-
-func isTrustedDailyAgriHTTPFallbackHost(host string) bool {
-	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" {
-		return false
-	}
-	for _, suffix := range []string{
-		".gov.cn",
-		".moa.gov.cn",
-		".cma.gov.cn",
-		".agri.cn",
-		".natesc.org.cn",
-		".weather.com.cn",
-		".farmer.com.cn",
-	} {
-		base := strings.TrimPrefix(suffix, ".")
-		if host == base || strings.HasSuffix(host, suffix) {
-			return true
-		}
-	}
-	return false
-}
-
-func isShallowColumnPagePath(path string, base string) bool {
-	if strings.Count(strings.Trim(path, "/"), "/") > 0 {
-		return false
-	}
-	for _, suffix := range []string{".html", ".htm", ".shtml"} {
-		if strings.HasSuffix(base, suffix) {
-			stem := strings.TrimSuffix(base, suffix)
-			if stem == "" {
-				return true
-			}
-			hasDigit := false
-			for _, r := range stem {
-				if r >= '0' && r <= '9' {
-					hasDigit = true
-					break
-				}
-			}
-			return !hasDigit
-		}
-	}
-	return false
-}
-
-func validateDailyAgriPublishedDate(rawDate string, dayCN string) error {
-	published, err := time.Parse("2006-01-02", strings.TrimSpace(rawDate))
-	if err != nil {
-		return fmt.Errorf("invalid published date")
-	}
-	current, err := time.Parse("20060102", strings.TrimSpace(dayCN))
-	if err != nil {
-		return fmt.Errorf("invalid current date")
-	}
-	if published.After(current) || published.Before(current.AddDate(0, 0, -7)) {
-		return fmt.Errorf("published date out of range")
-	}
-	return nil
-}
-
-func buildSourceURLSet(sources []DailyAgriSearchSource) map[string]struct{} {
-	result := map[string]struct{}{}
-	for _, source := range sources {
-		normalized := normalizeURLForCompare(source.URL)
-		if normalized != "" {
-			result[normalized] = struct{}{}
-		}
-	}
-	return result
 }
 
 func buildSourceByIndex(sources []DailyAgriSearchSource) map[int]DailyAgriSearchSource {
@@ -1149,40 +825,6 @@ func isBlockedNewsURL(host string) bool {
 		"douyin.com", "kuaishou.com", "xiaohongshu.com", "weidian.com",
 	} {
 		if host == blocked || strings.HasSuffix(host, "."+blocked) {
-			return true
-		}
-	}
-	return false
-}
-
-func isTrustedAgriNewsHost(host string) bool {
-	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" {
-		return false
-	}
-	for _, suffix := range []string{
-		".gov.cn",
-		".moa.gov.cn",
-		".cma.gov.cn",
-		".stats.gov.cn",
-		".agri.cn",
-		".natesc.org.cn",
-		".weather.com.cn",
-		".news.cn",
-		".xinhuanet.com",
-		".people.com.cn",
-		".china.com.cn",
-		".chinanews.com.cn",
-		".gmw.cn",
-		".cctv.com",
-		".cctv.cn",
-		".cnr.cn",
-		".ce.cn",
-		".stdaily.com",
-		".farmer.com.cn",
-	} {
-		base := strings.TrimPrefix(suffix, ".")
-		if host == base || strings.HasSuffix(host, suffix) {
 			return true
 		}
 	}
