@@ -5,6 +5,8 @@
 
 ## 2026-06-10
 
+- 补充旧 Codex 线程读取和落库口径：用户提供线程 ID（例如当前长窗口 `019e8930-5af0-73c2-bffd-7777edfb5476`）时，后续窗口应优先用线程读取工具提取旧窗口摘要和关键回合；但线程内容、压缩摘要和外部模型转述仍只能作为线索，必须对照当前仓库文档、代码、git 历史和线上状态核验后，才允许更新项目记忆或修改业务代码。若用户没给线程 ID，不能假设新窗口天然知道所有旧窗口，只能从最近线程列表或仓库记忆里搜索线索。
+
 - 接入 SLS 最小 AlertHub 告警并沉淀运维脚本：新增 `scripts/setup-sls-alerts.ps1`，按阿里云 CLI 幂等创建 / 更新 5 条规则：`nongji-server-5xx`、`nongji-server-slow`、`nongji-nginx-upstream`、`nongji-daily-agri-failed`、`nongji-model-auth-config`。脚本支持 `-DryRun`，Windows PowerShell 下会对 JSON 对象参数做转义以避免阿里云 CLI 丢引号；当前云上规则均为 `ENABLED`，只投递到 SLS AlertHub，不绑定短信、电话、机器人、邮件或自定义 action policy。同步更新 `logs-sls.md`、主规则和项目状态：SLS 不再是“完全没告警”，但外部通知、仪表盘、资源水位、DYPNS 用量和模型成本告警仍未闭环。
 
 - 登录排障 runbook 补“两个登录方式同时失败”的共同闭环分支：如果一键登录和短信登录同时失败或都触发闪退，后续不要只盯运营商取号 SDK，应优先检查生产 API 可达性、debug / release 同包名同签名同后端、session token 本地写入、`IdManager` 切账号ID、Compose / Activity 生命周期重复触发，以及登录成功后主界面跳转、hydrate、权益拉取是否抛异常；后台 `auth.*` 只能定位阶段，最终仍需结合 `AndroidRuntime` logcat 看共同崩溃栈。
