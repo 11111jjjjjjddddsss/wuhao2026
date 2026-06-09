@@ -60,19 +60,20 @@ type AdminStatusNote struct {
 }
 
 type AdminMonitoring struct {
-	Health        AdminHealthStatus            `json:"health"`
-	Windows       []AdminMonitoringWindow      `json:"windows"`
-	Queues        AdminMonitoringQueues        `json:"queues"`
-	AuthLogs      AdminMonitoringAuthLogs      `json:"auth_logs"`
-	AppUpdateLogs AdminMonitoringAppUpdateLogs `json:"app_update_logs"`
-	LaunchReady   []AdminMonitoringLaunchItem  `json:"launch_readiness"`
-	ActionItems   []AdminMonitoringActionItem  `json:"action_items"`
-	Capabilities  []AdminMonitoringCapability  `json:"capabilities"`
-	UserRegions   AdminUserRegionOverview      `json:"user_regions"`
-	TopRegions    []AdminRegionMetric          `json:"top_regions"`
-	TopAppErrors  []ClientAppLogSummaryEntry   `json:"top_app_errors"`
-	Notes         []AdminStatusNote            `json:"notes"`
-	NowMs         int64                        `json:"now_ms"`
+	Health           AdminHealthStatus              `json:"health"`
+	Windows          []AdminMonitoringWindow        `json:"windows"`
+	Queues           AdminMonitoringQueues          `json:"queues"`
+	AuthLogs         AdminMonitoringAuthLogs        `json:"auth_logs"`
+	AppUpdateLogs    AdminMonitoringAppUpdateLogs   `json:"app_update_logs"`
+	LaunchReady      []AdminMonitoringLaunchItem    `json:"launch_readiness"`
+	ActionItems      []AdminMonitoringActionItem    `json:"action_items"`
+	Capabilities     []AdminMonitoringCapability    `json:"capabilities"`
+	ModelUsagePolicy []AdminMonitoringModelUsageRow `json:"model_usage_policy"`
+	UserRegions      AdminUserRegionOverview        `json:"user_regions"`
+	TopRegions       []AdminRegionMetric            `json:"top_regions"`
+	TopAppErrors     []ClientAppLogSummaryEntry     `json:"top_app_errors"`
+	Notes            []AdminStatusNote              `json:"notes"`
+	NowMs            int64                          `json:"now_ms"`
 }
 
 type AdminInsights struct {
@@ -236,6 +237,17 @@ type AdminMonitoringCapability struct {
 	Status string `json:"status"`
 	Body   string `json:"body"`
 	Route  string `json:"route,omitempty"`
+}
+
+type AdminMonitoringModelUsageRow struct {
+	Title            string `json:"title"`
+	Model            string `json:"model"`
+	Protocol         string `json:"protocol"`
+	Trigger          string `json:"trigger"`
+	SearchStrategy   string `json:"search_strategy,omitempty"`
+	ForcedSearch     bool   `json:"forced_search"`
+	ThinkingDisabled bool   `json:"thinking_disabled"`
+	CostNote         string `json:"cost_note"`
 }
 
 type AdminMonitoringLaunchItem struct {
@@ -1157,6 +1169,7 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 	report.LaunchReady = buildAdminMonitoringLaunchReadiness(report)
 	report.ActionItems = buildAdminMonitoringActionItems(report)
 	report.Capabilities = buildAdminMonitoringCapabilities()
+	report.ModelUsagePolicy = buildAdminMonitoringModelUsagePolicy()
 	return report, nil
 }
 
@@ -1968,6 +1981,40 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
 		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已接 AlertHub；外部通知、仪表盘和资源水位告警仍待补。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
+	}
+}
+
+func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
+	return []AdminMonitoringModelUsageRow{
+		{
+			Title:            "主聊天问诊",
+			Model:            mainChatModel,
+			Protocol:         "OpenAI兼容流式",
+			Trigger:          "用户发送文字 / 图片问诊时触发",
+			SearchStrategy:   mainChatSearchStrategy,
+			ForcedSearch:     false,
+			ThinkingDisabled: true,
+			CostNote:         "可联网但不强制搜索；不会在 Android 端保存模型 Key。",
+		},
+		{
+			Title:            "B/C 记忆摘要",
+			Model:            summaryExtractionModel,
+			Protocol:         "OpenAI兼容非流式",
+			Trigger:          "问诊轮次完成后由后端异步触发",
+			ForcedSearch:     false,
+			ThinkingDisabled: true,
+			CostNote:         "不联网；B 层承接短期主线，C 层沉淀长期记忆。",
+		},
+		{
+			Title:            "今日农情",
+			Model:            dailyAgriCardModel,
+			Protocol:         "DashScope Generation",
+			Trigger:          "ECS 定时任务或后台补跑触发；用户打开 App 只读缓存",
+			SearchStrategy:   dailyAgriSearchStrategy,
+			ForcedSearch:     true,
+			ThinkingDisabled: true,
+			CostNote:         "强制联网搜索，用户侧不点击外链；不是聊天消息，不扣问诊次数。",
+		},
 	}
 }
 

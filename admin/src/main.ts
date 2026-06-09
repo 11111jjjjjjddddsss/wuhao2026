@@ -386,6 +386,10 @@ async function monitoringPage(): Promise<string> {
     ${monitoringReadinessSummary(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
+      <div class="card-head"><div class="card-title">模型调用口径</div><span class="small muted">模型名和搜索策略分开看</span></div>
+      <div class="card-body">${modelUsagePolicyBlock(report.model_usage_policy || [])}</div>
+    </section>
+    <section class="card" style="margin-bottom:12px">
       <div class="card-head"><div class="card-title">明天真机回归清单</div><span class="small muted">按这几个主链看后台信号</span></div>
       <div class="card-body">${monitoringRegressionChecklist(report)}</div>
     </section>
@@ -2626,6 +2630,41 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>
   `;
+}
+
+function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): string {
+  if (!rows.length) return emptyState("没有模型口径", "后端未返回 model_usage_policy。");
+  return `
+    <div class="stack">
+      ${notice("看百炼控制台时先分清", "qwen-turbo 是模型名，且不在当前后端生产链路里；search_strategy=turbo 是联网搜索策略。当前项目后端只按下表这些链路调用模型，Android 不保存模型 Key。", "info")}
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>链路</th><th>模型</th><th>协议</th><th>触发时机</th><th>联网</th><th>说明</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${escapeHTML(row.title)}</td>
+                <td><strong>${escapeHTML(row.model || "未返回")}</strong></td>
+                <td>${escapeHTML(row.protocol || "未返回")}</td>
+                <td>${escapeHTML(row.trigger || "未返回")}</td>
+                <td>${modelSearchPolicyText(row)}</td>
+                <td>${escapeHTML(row.cost_note || "")}<div class="small muted">思考模式：${row.thinking_disabled ? "已关闭" : "未关闭"}</div></td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function modelSearchPolicyText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  if (!row.search_strategy) return row.forced_search ? "强制联网" : "不联网";
+  return `${row.forced_search ? "强制" : "可选"} / ${escapeHTML(row.search_strategy)}`;
 }
 
 function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undefined): string {

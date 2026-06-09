@@ -69,6 +69,30 @@ func TestAdminMonitoringCapabilitiesContract(t *testing.T) {
 	}
 }
 
+func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
+	rows := buildAdminMonitoringModelUsagePolicy()
+	if len(rows) != 3 {
+		t.Fatalf("model usage row count = %d, want 3: %#v", len(rows), rows)
+	}
+	if !hasAdminMonitoringModelPolicy(rows, "主聊天问诊", mainChatModel, mainChatSearchStrategy, false) {
+		t.Fatalf("missing main chat model usage policy: %#v", rows)
+	}
+	if !hasAdminMonitoringModelPolicy(rows, "B/C 记忆摘要", summaryExtractionModel, "", false) {
+		t.Fatalf("missing summary model usage policy: %#v", rows)
+	}
+	if !hasAdminMonitoringModelPolicy(rows, "今日农情", dailyAgriCardModel, dailyAgriSearchStrategy, true) {
+		t.Fatalf("missing daily agri model usage policy: %#v", rows)
+	}
+	for _, row := range rows {
+		if !row.ThinkingDisabled {
+			t.Fatalf("thinking should be disabled for admin model policy row: %#v", row)
+		}
+		if row.Model == "qwen-turbo" {
+			t.Fatalf("qwen-turbo should not appear in current backend model policy: %#v", rows)
+		}
+	}
+}
+
 func TestAdminMonitoringFiltersRoutesByRole(t *testing.T) {
 	items := []AdminMonitoringActionItem{
 		{Title: "support", Level: "warn", Route: "support"},
@@ -166,6 +190,18 @@ func hasAdminMonitoringActionTitle(items []AdminMonitoringActionItem, title stri
 func hasAdminMonitoringCapabilityStatus(items []AdminMonitoringCapability, title string, status string) bool {
 	for _, item := range items {
 		if item.Title == title && item.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAdminMonitoringModelPolicy(items []AdminMonitoringModelUsageRow, title string, model string, searchStrategy string, forcedSearch bool) bool {
+	for _, item := range items {
+		if item.Title == title &&
+			item.Model == model &&
+			item.SearchStrategy == searchStrategy &&
+			item.ForcedSearch == forcedSearch {
 			return true
 		}
 	}

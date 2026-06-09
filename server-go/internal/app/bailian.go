@@ -30,6 +30,9 @@ type BailianClient struct {
 }
 
 const (
+	mainChatModel             = "qwen3.5-plus"
+	mainChatSearchStrategy    = "turbo"
+	summaryExtractionModel    = "qwen3.5-flash"
 	unifiedModelTemperature   = 0.8
 	defaultBailianKeyCooldown = 1 * time.Second
 
@@ -85,7 +88,7 @@ func (c *BailianClient) HasKeyConfigured() bool {
 
 func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
 	body := map[string]any{
-		"model":           "qwen3.5-plus",
+		"model":           mainChatModel,
 		"stream":          true,
 		"temperature":     unifiedModelTemperature,
 		"enable_thinking": false,
@@ -95,7 +98,7 @@ func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessag
 		"extra_body": map[string]any{
 			"enable_search": true,
 			"search_options": map[string]any{
-				"search_strategy": "turbo",
+				"search_strategy": mainChatSearchStrategy,
 				"forced_search":   false,
 			},
 		},

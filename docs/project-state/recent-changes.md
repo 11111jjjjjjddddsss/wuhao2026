@@ -5,6 +5,10 @@
 
 ## 2026-06-10
 
+- 管理后台监控页新增“模型调用口径”卡片：后端 `/admin-api/v1/monitoring` 返回 `model_usage_policy`，前端直接列出当前后端真实模型链路：主聊天 `qwen3.5-plus + search_strategy=turbo` 可联网但不强制，B/C 记忆摘要 `qwen3.5-flash` 不联网，今日农情 `qwen-plus + search_strategy=turbo` 强制联网。卡片明确提示 `qwen-turbo` 是模型名，`search_strategy=turbo` 是联网搜索策略；当前仓库后端策略不包含 `qwen-turbo`，且用户已明确 `qwen-turbo` 即将下线，不作为今日农情候选。新增单测锁住该口径，避免后续看百炼账单时把搜索策略误当成第四个模型调用。本轮不改变任何模型选择、提示词、调用频率或 Android 行为。
+
+- 今日农情降本模型继续只做候选评估，不切生产：根据客服口径补测 `qwen3.5-flash + multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true`，生产 ECS 实测返回 200，耗时约 4.6 秒，总量约 753 tokens，其中 reasoning 约 363 tokens，能生成 3 条卡片，内容质量初看可用。当前缺口是该路由没有像 `qwen-plus + Generation + enable_source` 一样返回稳定 `search_results` 来源列表，且输出仍可能包代码块；`qwen3.5-flash` 直接套文本 Generation + turbo 仍返回 `InvalidParameter url error`，Chat Completions 流式思考可返回但 reasoning 更长、耗时更慢。后续若用 3.5flash 降本，应单独实现 multimodal-generation 流式思考备用链、补 JSON 清洗、来源名兜底、usage 采集和后台探针灰度；`qwen-flash` 质量偏松、`qwen-turbo` 用户已明确不考虑，当前生产继续保留 `qwen-plus`。
+
 - 修正 DashScope 兼容模式关闭思考参数，降低摘要成本风险：生产 ECS 一次性对比确认，旧写法 `extra_body.enable_thinking=false` 对 `qwen3.5-flash` 摘要不生效，短摘要仍产生约 1900 个 reasoning tokens 且耗时约 20 秒；同请求改为 HTTP 顶层 `enable_thinking=false` 后，总量回到约 200 tokens、耗时约 1 秒。`server-go/internal/app/summary.go` 和主聊天 `OpenStream` 已把 `enable_thinking=false` 放到顶层，测试也锁住该字段，避免后续再误放回 `extra_body`。用 1-2k 字农业样本实测 B/C 摘要质量整体可用：B 层能承接设施番茄当前主线；C 层能按“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块输出，但初测会把“更像 / 不能排除”升级成偏确定判断，因此 `c_extraction_prompt.txt` 又补了防诊断升级护栏，禁止在无复查、检测或人工确认时写成“确诊 / 确认为 / 已排除 / 已证实”，并禁止编号、项目符号和 Markdown 加粗。加强后生产样本复测已保持“倾向 / 待核对 / 尚无确诊结论”口径；仍需上线后抽查真实摘要是否吸收一次性病例。
 
 - 今日农情聊天页展示从“发送后退出”改为“视觉时间线系统卡片”：卡片仍不是 `ChatMessage`，不进本地快照、A/B/C、归档、摘要、重试或问诊扣次；当天 ready 卡片加载时若没有真实消息，就作为首屏第一条视觉内容排在顶部，已有真实消息时锚在当时最后一条真实消息后方。用户后续发送文字 / 图片 / 失败态消息时，卡片不再隐藏或播放 180ms 退出动画，新消息自然追加在卡片后方并把它往上顶；首屏只有今日农情时列表用 Top 排列展示，但工作线触线判断、自动跟随和最新真实消息锚点仍只看真实消息。
@@ -31,7 +35,7 @@
 
 - 今日农情提示词按“不限制固定网站”再次收口：根据阿里云百炼联网搜索文档，`assigned_site_list` 是限定来源站点的参数，默认空列表表示不限制来源；当前继续不传 `assigned_site_list`，用 `qwen-plus + turbo + enable_source + freshness=7` 做全网宽搜，并在 `prompt_intervene` 和主提示词里明确不要只围绕少数官网 / 媒体、不要按站点白名单思路检索。种植侧、普通天气、畜牧水产养殖、广告软文和低质内容主要靠提示词、内部探针和后台运营抽查控制；后端发布端只做 JSON 结构、正好 3 条、标题摘要完整、同批标题重复和私网 / 明显电商 URL 清洗等低风险兜底。搜索来源只作为服务端事实核对、去重和后台排查，不下发给 Android 用户卡片。
 
-- 今日农情联网模型边界补实测并修正生产链路：按阿里云百炼联网搜索文档和生产 ECS 探针复核，`turbo` 本身可以配 `enable_source=true` 返回来源链接；但模型兼容性不是一概可用。同机同 Key 实测 `qwen-flash + turbo + enable_source` 返回 200、10 条搜索来源、1 次搜索和约 3151 输入 / 210 输出 token，但严格 JSON / `source_index` 执行力偏弱；`qwen-plus + turbo + enable_source` 可拿来源且指令遵循更适合作为当前主线；`qwen3.5-flash + turbo`、`qwen3.5-flash + agent` 以及 `qwen3.5-flash + turbo` 不返回来源的组合均返回 `400 InvalidParameter / url error`。因此今日农情当前采用 `qwen-plus + turbo` 原生 Generation 强制联网链，仍不用额外计费的 `agent / agent_max`，主聊天、B/C 摘要和 Android UI 不随之改变。
+- 历史归档：今日农情联网模型边界曾按当时生产 ECS 探针修正为 `qwen-plus + turbo` 原生 Generation 强制联网链；当时只验证到 `qwen3.5-flash` 直接套 text-generation / agent 组合会返回 `400 InvalidParameter / url error`。该条后续已被 2026-06-10 新结论补充：`qwen3.5-flash` 走 `multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true` 可通，但还需要单独实现流式解析、JSON 清洗、来源名兜底、usage 采集和灰度探针，当前生产仍保持 `qwen-plus + turbo`，主聊天、B/C 摘要和 Android UI 不随之改变。
 
 - 历史归档：今日农情曾短暂改为 `qwen-plus + turbo` 且发布 `2 到 3 条有效 item` 的宽口径。该条已被本日顶部 `2026-06-09-v22` 当前口径替代：现在必须正好 3 条，提示词控方向，后端只做结构和低风险兜底。
 

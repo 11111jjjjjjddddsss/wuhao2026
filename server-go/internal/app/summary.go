@@ -178,7 +178,7 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 	)
 
 	response, err := s.bailian.OpenCompletion(ctx, map[string]any{
-		"model":           "qwen3.5-flash",
+		"model":           summaryExtractionModel,
 		"stream":          false,
 		"temperature":     unifiedModelTemperature,
 		"enable_thinking": false,

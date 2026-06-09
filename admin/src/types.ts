@@ -54,6 +54,7 @@ export interface AdminMonitoring {
   launch_readiness: AdminMonitoringLaunchItem[];
   action_items: AdminMonitoringActionItem[];
   capabilities: AdminMonitoringCapability[];
+  model_usage_policy: AdminMonitoringModelUsageRow[];
   user_regions: AdminUserRegionOverview;
   top_regions: AdminRegionMetric[];
   top_app_errors: ClientAppLogSummaryEntry[];
@@ -222,6 +223,17 @@ export interface AdminMonitoringCapability {
   status: AdminMonitoringCapabilityStatus;
   body: string;
   route?: AdminRouteKey;
+}
+
+export interface AdminMonitoringModelUsageRow {
+  title: string;
+  model: string;
+  protocol: string;
+  trigger: string;
+  search_strategy?: string;
+  forced_search: boolean;
+  thinking_disabled: boolean;
+  cost_note: string;
 }
 
 export type AdminMonitoringLaunchStatus = "ready" | "attention" | "blocked";
