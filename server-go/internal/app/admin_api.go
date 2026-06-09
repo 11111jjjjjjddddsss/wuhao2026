@@ -163,6 +163,7 @@ type AdminMonitoringQueues struct {
 	SupportReplied         int64                    `json:"support_replied"`
 	SupportClosed          int64                    `json:"support_closed"`
 	SupportOldestPendingAt *int64                   `json:"support_oldest_pending_at,omitempty"`
+	AccountDeletionPending int64                    `json:"account_deletion_pending"`
 	DailyAgriStatus        string                   `json:"daily_agri_status"`
 	DailyAgriUpdatedAt     *int64                   `json:"daily_agri_updated_at,omitempty"`
 	DailyAgriError         string                   `json:"daily_agri_error,omitempty"`
@@ -610,7 +611,9 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "user_id_required")
 		return
 	}
-	detail, err := s.store.GetAdminUserDetail(r.Context(), userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), adminCanViewAccountPhone(admin.User.Role))
+	phoneNumberVisible := adminCanViewAccountPhone(admin.User.Role)
+	giftCardCodeVisible := adminCanViewGiftCardCodes(admin.User.Role)
+	detail, err := s.store.GetAdminUserDetail(r.Context(), userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible)
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "internal_error"
@@ -622,10 +625,14 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, status, code)
 		return
 	}
+	if !giftCardCodeVisible {
+		stripGiftCardCodes(detail.GiftCards)
+	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.detail", "app_accounts", userID, userID, true, http.StatusOK, map[string]any{
-		"recent_rounds":        len(detail.RecentRounds),
-		"recent_logs":          len(detail.RecentAppLogs),
-		"phone_number_visible": adminCanViewAccountPhone(admin.User.Role),
+		"recent_rounds":          len(detail.RecentRounds),
+		"recent_logs":            len(detail.RecentAppLogs),
+		"phone_number_visible":   phoneNumberVisible,
+		"gift_card_code_visible": giftCardCodeVisible,
 	})
 	s.writeJSON(w, http.StatusOK, detail)
 }
@@ -811,6 +818,7 @@ func (s *Server) handleAdminAppLogs(w http.ResponseWriter, r *http.Request) {
 		"event_prefix":     filter.EventPrefix,
 		"level":            filter.Level,
 		"platform":         filter.Platform,
+		"build_type":       filter.BuildType,
 		"app_version_code": filter.AppVersionCode,
 		"app_version_name": filter.AppVersionName,
 		"os_version":       filter.OSVersion,
@@ -1457,6 +1465,10 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if err != nil {
 		return queues, err
 	}
+	queues.AccountDeletionPending, err = s.countQuery(ctx, "SELECT COUNT(*) FROM account_deletion_requests WHERE status IN ('pending','processing')", nil)
+	if err != nil {
+		return queues, err
+	}
 	queues.DailyAgriStatus, queues.DailyAgriUpdatedAt, queues.DailyAgriError, err = s.readAdminDailyAgriQueue(ctx, dayCN)
 	if err != nil {
 		return queues, err
@@ -1709,6 +1721,15 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Count: queues.SupportNeedsReply,
 		})
 	}
+	if queues.AccountDeletionPending > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "有账号注销申请",
+			Body:  "用户已在 App 内提交注销申请并退出当前设备；先核验会员、订单、礼品卡和反馈记录，再按规定处理。",
+			Level: "warn",
+			Route: "account-deletion",
+			Count: queues.AccountDeletionPending,
+		})
+	}
 	switch strings.ToLower(strings.TrimSpace(queues.DailyAgriStatus)) {
 	case "ready":
 	case "failed":
@@ -1905,6 +1926,19 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Route:  "support",
 		Owner:  "客服 / 运营",
 	})
+	accountDeletionStatus := "partial"
+	accountDeletionBody := "App 内已提供注销申请入口，用户提交后退出当前设备；后台可核验并标记处理进度，物理删除 / 匿名化规则仍需合规收口。"
+	if queues.AccountDeletionPending > 0 {
+		accountDeletionStatus = "attention"
+		accountDeletionBody = "已有用户注销申请待处理，正式运营前需要明确处理责任和合规留存口径。"
+	}
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "注销申请",
+		Status: accountDeletionStatus,
+		Body:   accountDeletionBody,
+		Route:  "account-deletion",
+		Owner:  "客服 / 运营",
+	})
 	return items
 }
 
@@ -1914,7 +1948,8 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "账号登录", Status: "ready", Body: "手机号、一键登录、短信登录统一归到账号ID；旧本机 UUID 只做迁移桥。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
 		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，发送后台回复并关闭或重开会话。", Route: "support"},
-		{Title: "礼品卡", Status: "ready", Body: "可生成批次、直接查看完整卡码、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡。", Route: "gift-cards"},
+		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
+		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；完整卡码仅财务角色可见。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
@@ -1958,6 +1993,8 @@ func adminRouteAllowed(role string, route string) bool {
 		return adminRoleAllowed(role, "ops_readonly", "support", "finance_ops")
 	case "gift-cards":
 		return adminRoleAllowed(role, "finance_ops", "ops_readonly", "auditor")
+	case "account-deletion":
+		return adminRoleAllowed(role, "support", "ops_readonly", "auditor", "finance_ops")
 	case "support":
 		return adminRoleAllowed(role, "support", "ops_readonly", "auditor")
 	case "app-logs":

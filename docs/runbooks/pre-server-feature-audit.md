@@ -322,11 +322,11 @@
 - 用户侧接口是 `GET /api/today-agri-card`，需要普通用户鉴权，只读取当天 ready 卡片；没有 ready 卡片时返回 `missing / pending / failed` 状态。
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只接受 `DAILY_AGRI_JOB_SECRET`，支持 `X-Internal-Job-Secret` 或 `Authorization: Bearer ...`。
 - 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
-- 生成链路当前保持 `qwen3.5-plus`，但不再走旧的 DashScope 原生 Generation 搜索链，而是改走百炼兼容模式 `Responses API + web_search`：显式 `temperature=0.8`、显式 `reasoning.effort=none`、`tool_choice=required`，并从 `web_search_call.action.sources[]` 提取真实来源 URL 做可信域名、https、近 7 天和去重校验。2026-06-08 在生产 ECS 实测发现 `qwen3.5-plus` 走旧原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，因此只调整今日农情的联网协议，不改主聊天模型。
+- 生成链路当前使用 `qwen-plus + turbo` 原生 Generation 强制联网：显式 `temperature=0.8`、显式关闭思考、`enable_source=true`、`freshness=7`，不再用 `assigned_site_list` 硬限定站点，检索阶段保持全网宽搜、不限定固定网站，只用 `prompt_intervene` 引导近 7 天种植侧生产经营主题搜索；服务端从搜索结果中提取真实来源 URL 做内部事实核对、去重、时间合理性和后台排查，不作为 Android 用户卡片展示字段。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且会额外收费，今日农情默认不使用。2026-06-08 曾在生产 ECS 实测发现 `qwen3.5-plus` 走旧原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，同机同 Key 走 Responses `web_search` 正常；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 可返回来源链接但执行力偏弱，当前按用户要求改为 `qwen-plus + turbo + enable_source` 验证质量；生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，仍走 `turbo`；`qwen3.5-flash + turbo` / `qwen3.5-flash + agent` 返回 `400 InvalidParameter / url error`，不要把今日农情误切回 3.5 flash。
 - 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
-- 后端解析时要求 JSON 可解析、`card_name=今日农情`、严格 3 条有效 item、https 链接、发布时间近 7 天、URL 来自 DashScope 搜索来源、域名在可信官方 / 权威大站范围内。
-- 后端会硬过滤广告、导购、联系方式、模型 / 提示词泄露、搜索参数、元表达、标题党词，以及过去 7 天和当天候选里的重复 URL / 重复标题；过滤后不足 3 条则不发布新卡片。
-- Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 插入展示层；真实 `messages` 仍只包含用户 / assistant，不写本地聊天快照，不参与发送、重试、复制、滚动工作线真值或后端上下文。
+- 后端解析时要求 JSON 可解析、`card_name=今日农情`、2 到 3 条有效 item、标题摘要完整、发布时间近 7 天或来源时间合理；URL 必须来自 DashScope 搜索来源才可进入内部追溯字段，公开响应不包含 URL、来源或条目日期。
+- 后端会硬过滤广告、导购、联系方式、模型 / 提示词泄露、搜索参数、元表达、标题党词，以及过去 7 天和当天候选里的重复 URL / 重复标题；过滤后不足 2 条则不发布新卡片。
+- Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 追加在真实消息后方展示，作为靠近输入框的尾部 UI-only 卡片；真实 `messages` 仍只包含用户 / assistant，不写本地聊天快照，不参与发送、重试、复制、最新真实消息锚点或后端上下文。
 
 已排查的旧方案：
 
@@ -338,15 +338,15 @@
 
 - `DAILY_AGRI_JOB_SECRET` 必须只放服务端环境变量和定时任务配置，不能进 APK 或仓库。
 - 需要给内部生成接口配置真实定时触发，例如每天中国时间早上固定时间跑一次；用户打开 App 不负责补生成。
-- 官方 / 权威域名白名单偏保守，可能导致某天过滤后不足 3 条而不展示，这是刻意选择，不要为了“每天必有”放宽到广告、软文或任意链接。
+- 检索阶段不要再限制到固定网站；如果某天外部搜索结果仍多是首页、栏目页、低价值 URL、广告软文、普通天气或养殖侧内容，后端过滤后可能不足 2 条而不展示，这是刻意选择，不要为了“每天必有”放宽到广告、软文或任意链接。
 - 后端目前硬过滤重复 URL 和重复标题；“同一事件换标题”主要靠提示词和人工抽查约束，后续如果重复感强，再增加更强的事件指纹或人工审核，不先把今日农情塞进聊天上下文。
 
 买服务器后必须补：
 
 - 配置 `DAILY_AGRI_JOB_SECRET`、定时任务、SLS 日志和失败告警。
 - 用内部生成接口跑一遍真实链路，检查 `daily_agri_cards.status/content_json/sources_json/error/lease_until`。
-- 在管理后台第一版里补今日农情状态页：查看当天状态、失败原因、来源链接、手动补跑、停用当天卡片。
-- 观察 `daily agri card generated`、`generate today agri card failed`、`get today agri card failed`、模型联网搜索失败、过滤后不足 3 条。
+- 在管理后台第一版里补今日农情状态页：查看当天状态、失败原因、内部来源追溯、手动补跑、停用当天卡片。
+- 观察 `daily agri generation started`、`daily agri model response received`、`daily agri candidate rejected`、`daily agri card generated`、`generate today agri card failed`、`get today agri card failed`、模型联网搜索失败、过滤后不足 2 条。
 - 后续若做地区 / 作物个性化，必须新增 scope 或独立表设计，不能直接把今日农情混入用户聊天记忆。
 
 参考资料：
@@ -367,12 +367,12 @@
 - 后端 `ResolveAuthUserID` 优先验证 bearer token；验证成功时以 token 内的 `userID` 为准，不再使用 Android 传来的 `X-User-Id`。
 - `AUTH_STRICT=true` 时，裸 `X-User-Id` 会被拒绝；必须配置 `APP_SECRET` 并提供可验证 bearer token 才能访问需要鉴权的接口。
 - Android 已移除 `SESSION_API_TOKEN` 静态注入和运行时绕过；正式登录只走 per-user session token。
-- 设置页“账号管理”里手机号会显示脱敏号码或未登录；“退出设备”已接 `POST /api/auth/logout`，只吊销当前设备 session 并回到登录门，不删除聊天、会员、额度、帮助与反馈、礼品卡或本机 `user_id`；注销账号仍未开放。真实可用动作包括“清理本机缓存”和“删除所有历史对话”：前者只清 `cacheDir/app_updates` 检查更新残留和 `cacheDir/composer_camera` 相机临时文件，不碰 `chat_ui_cache`、`files/composer_images` 或待发送 WorkManager 图文；后者只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
+- 设置页“账号管理”里手机号会显示脱敏号码或未登录；“退出设备”已接 `POST /api/auth/logout`，只吊销当前设备 session 并回到登录门，不删除聊天、会员、额度、帮助与反馈、礼品卡或本机 `user_id`；“注销账号”当前已接为注销申请入口，用户二次确认后调用 `POST /api/account/deletion-requests` 创建 `account_deletion_requests` 记录并退出当前设备，后台可在“注销申请”队列按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态。这里的已处理只表示线下处理流程已收口，不代表系统已经自动物理删除或匿名化全部数据；真实删除、去标识化、法定留存和处理责任仍需合规收口。真实可用动作还包括“清理本机缓存”和“删除所有历史对话”：前者只清 `cacheDir/app_updates` 检查更新残留和 `cacheDir/composer_camera` 相机临时文件，不碰 `chat_ui_cache`、`files/composer_images` 或待发送 WorkManager 图文；后者只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
 
 已排查的旧方案：
 
 - 没有发现旧的 Android 直连模型登录链、旧静态共享 token 正式化链或用户可点退出后清空账号的逻辑并存。
-- 没有发现 Android 端注销逻辑并存；退出设备已收敛为当前 session 吊销，不做完整设备管理或账号注销。
+- 没有发现旧 Android 端物理删除账号逻辑并存；退出设备已收敛为当前 session 吊销，注销账号已收敛为申请队列，不在 App 端直接删除业务资产。
 - 身份来源已收敛为“未登录本机 `user_id` / 登录后账号 `user_id` + session token”；旧本机 `user_id` 只作为登录迁移桥，不再是登录后的长期身份真源。
 
 上线前必须注意：
@@ -421,7 +421,7 @@
 - 帮助与反馈后台：现有会话列表、详情、回复、状态队列、搜索、关闭和重开，后续补正式坐席分配、标签、站外通知和消息保存 / 删除规则。
 - 用户详情页：现有账号ID / 脱敏手机号查询、授权角色查看完整手机号、会员、额度、扣次流水、反馈、订单、礼品卡和 App 日志，后续补更多筛选和导出审批。
 - 检查更新发布页：当前版本、APK 链接、文件大小、SHA-256、是否启用、停更和发布审计；后续建议用 `app_releases` 表替代长期手改环境变量。
-- 今日农情状态页：当天状态、失败原因、来源链接、手动补跑、停用当天卡片和审计。
+- 今日农情状态页：当天状态、失败原因、内部来源追溯、手动补跑、停用当天卡片和审计。
 - 礼品卡后续补批量发放、发放对象管理、商务渠道和更细风控；支付通过后再接正式订单、支付回调、退款、对账和人工补偿入口。
 
 上线前必须注意：

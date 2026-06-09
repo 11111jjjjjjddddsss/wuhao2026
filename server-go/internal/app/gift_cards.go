@@ -242,7 +242,11 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.cards", "gift_cards", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(cards), "status": filter.Status})
+	codeVisible := adminCanViewGiftCardCodes(admin.User.Role)
+	if !codeVisible {
+		stripGiftCardCodes(cards)
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.cards", "gift_cards", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(cards), "status": filter.Status, "code_visible": codeVisible})
 	s.writeJSON(w, http.StatusOK, map[string]any{"cards": cards, "filter": filter})
 }
 
@@ -282,6 +286,10 @@ func (s *Server) handleAdminVoidGiftCard(w http.ResponseWriter, r *http.Request)
 	}
 	if reason == "" {
 		s.writeError(w, http.StatusBadRequest, "reason_required")
+		return
+	}
+	if giftCardTextLooksSensitive(reason) {
+		s.writeError(w, http.StatusBadRequest, "reason_contains_sensitive_value")
 		return
 	}
 	if err := s.store.VoidGiftCard(r.Context(), cardID, time.Now().UnixMilli()); err != nil {
@@ -865,6 +873,10 @@ func normalizeGiftCardBatchInput(body adminGiftCardCreateBatchRequest, actor str
 	if validUntil != nil && *validUntil <= validFrom {
 		return GiftCardBatchInput{}, "invalid_valid_until"
 	}
+	note := truncateRunes(strings.TrimSpace(body.Note), 255)
+	if giftCardTextLooksSensitive(note) {
+		return GiftCardBatchInput{}, "note_contains_sensitive_value"
+	}
 	return GiftCardBatchInput{
 		Name:         truncateRunes(strings.TrimSpace(body.Name), 128),
 		Tier:         tier,
@@ -873,7 +885,7 @@ func normalizeGiftCardBatchInput(body adminGiftCardCreateBatchRequest, actor str
 		ValidFrom:    validFrom,
 		ValidUntil:   validUntil,
 		CreatedBy:    normalizeAdminActor(actor),
-		Note:         truncateRunes(strings.TrimSpace(body.Note), 255),
+		Note:         note,
 	}, ""
 }
 
@@ -1273,6 +1285,86 @@ func randomGiftCardID(prefix string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(prefix) + "_" + token, nil
+}
+
+func adminCanViewGiftCardCodes(role string) bool {
+	return adminRoleAllowed(role, "finance_ops")
+}
+
+func stripGiftCardCodes(cards []AdminGiftCardEntry) {
+	for idx := range cards {
+		cards[idx].Code = ""
+	}
+}
+
+func giftCardTextLooksSensitive(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	for _, marker := range []string{"accesskey", "access key", "secret", "token", "api key", "apikey", "密码", "密钥"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	if textContainsSeparatedMainlandPhone(trimmed) {
+		return true
+	}
+	digitRun := 0
+	for _, ch := range trimmed {
+		if ch >= '0' && ch <= '9' {
+			digitRun++
+			if digitRun >= 11 {
+				return true
+			}
+			continue
+		}
+		digitRun = 0
+	}
+	upper := strings.ToUpper(trimmed)
+	normalized := normalizeGiftCardCode(trimmed)
+	if strings.Contains(upper, "NQ") && len(normalized) >= 10 {
+		return true
+	}
+	if len(normalized) >= 12 {
+		matchChars := 0
+		for _, ch := range normalized {
+			if strings.ContainsRune(giftCardCodeAlphabet, ch) {
+				matchChars++
+			}
+		}
+		if matchChars >= 10 {
+			return true
+		}
+	}
+	return false
+}
+
+func textContainsSeparatedMainlandPhone(text string) bool {
+	digits := make([]rune, 0, len(text))
+	check := func() bool {
+		for i := 0; i+11 <= len(digits); i++ {
+			if digits[i] == '1' && digits[i+1] >= '3' && digits[i+1] <= '9' {
+				return true
+			}
+		}
+		return false
+	}
+	for _, ch := range text {
+		if ch >= '0' && ch <= '9' {
+			digits = append(digits, ch)
+			continue
+		}
+		if ch == ' ' || ch == '-' || ch == '_' || ch == '(' || ch == ')' || ch == '（' || ch == '）' || ch == '.' {
+			continue
+		}
+		if check() {
+			return true
+		}
+		digits = digits[:0]
+	}
+	return check()
 }
 
 func tierRank(tier Tier) int {

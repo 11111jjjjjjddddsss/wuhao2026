@@ -52,7 +52,10 @@ func TestAdminAuditDetailsJSONDropsSensitiveFields(t *testing.T) {
 	if err := json.Unmarshal([]byte(encoded), &decoded); err != nil {
 		t.Fatalf("decode details: %v", err)
 	}
-	if decoded["event"] != "upload.failed" || decoded["media_count"] != float64(2) {
+	if _, ok := decoded["event"]; ok {
+		t.Fatalf("details should drop event-like text fields: %#v", decoded)
+	}
+	if decoded["media_count"] != float64(2) {
 		t.Fatalf("details mismatch: %#v", decoded)
 	}
 }

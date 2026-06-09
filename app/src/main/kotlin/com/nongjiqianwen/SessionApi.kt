@@ -37,6 +37,12 @@ object SessionApi {
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
+    private val fusionTokenRefreshClient = client.newBuilder()
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .writeTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(6, TimeUnit.SECONDS)
+        .build()
     private val currentStreamCall = AtomicReference<Call?>(null)
     private val runtimeGeneration = AtomicInteger(0)
     private val sessionGeneration = AtomicInteger(-1)
@@ -109,6 +115,11 @@ object SessionApi {
         val card: TodayAgriCard? = null
     )
 
+    data class TodayAgriCardsResponse(
+        val status: String? = null,
+        val cards: List<TodayAgriCard>? = null
+    )
+
     data class TodayAgriCard(
         @SerializedName("date_cn") val dateCn: String? = null,
         val title: String? = null,
@@ -118,10 +129,7 @@ object SessionApi {
 
     data class TodayAgriCardItem(
         val title: String? = null,
-        val summary: String? = null,
-        val url: String? = null,
-        val source: String? = null,
-        @SerializedName("published_date") val publishedDate: String? = null
+        val summary: String? = null
     )
 
     data class SupportMessage(
@@ -185,12 +193,10 @@ object SessionApi {
         val candidate = this ?: return false
         val items = candidate.items.orEmpty()
         return candidate.title == "今日农情" &&
-            items.size == 3 &&
+            items.size in 2..3 &&
             items.all { item ->
                 !item.title.isNullOrBlank() &&
-                    !item.summary.isNullOrBlank() &&
-                    !item.url.isNullOrBlank() &&
-                    item.url.trim().startsWith("https://")
+                    !item.summary.isNullOrBlank()
             }
     }
 
@@ -245,7 +251,7 @@ object SessionApi {
             .post(ByteArray(0).toRequestBody(null))
             .build()
         return runCatching {
-            client.newCall(request).execute().use { response ->
+            fusionTokenRefreshClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return null
                 parseFusionAuthToken(response.body?.string().orEmpty())?.takeIf { it.usable }
             }
@@ -379,6 +385,45 @@ object SessionApi {
         })
     }
 
+    fun requestAccountDeletion(onResult: (Boolean) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty() || !IdManager.isLoggedIn()) {
+            postToMain { onResult(false) }
+            return
+        }
+        val requestBody = gson.toJson(
+            mapOf(
+                "reason" to "app_request",
+                "message" to "user_requested_from_android"
+            )
+        ).toRequestBody("application/json".toMediaType())
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/account/deletion-requests")
+                        .addHeader("Content-Type", "application/json")
+                        .post(requestBody)
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    val ok = it.isSuccessful
+                    if (ok) {
+                        IdManager.clearAuthSession()
+                        sessionGeneration.set(-1)
+                        runtimeGeneration.incrementAndGet()
+                        currentStreamCall.getAndSet(null)?.cancel()
+                    }
+                    postToMain { onResult(ok) }
+                }
+            },
+            onFailure = { postToMain { onResult(false) } }
+        )
+    }
+
     fun cancelCurrentStream() {
         currentStreamCall.getAndSet(null)?.cancel()
     }
@@ -471,13 +516,14 @@ object SessionApi {
         }
         val normalizedEvent = normalizeClientLogIdentifier(event, maxLength = 96)
         if (normalizedEvent.isEmpty()) return
-        if (!shouldSendClientLog(normalizedEvent)) return
+        if (!isCrashClientLogEvent(normalizedEvent) && !shouldSendClientLog(normalizedEvent)) return
         val payload = mapOf(
             "level" to normalizedLevel,
             "event" to normalizedEvent,
             "message" to message.trim().take(255).ifEmpty { normalizedEvent },
             "attrs" to sanitizeClientLogAttrs(attrs),
             "platform" to "android",
+            "build_type" to BuildConfig.BUILD_TYPE,
             "app_version_code" to BuildConfig.VERSION_CODE,
             "app_version_name" to BuildConfig.VERSION_NAME,
             "os_version" to "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
@@ -537,6 +583,9 @@ object SessionApi {
         clientLogLastSentAtMs[event] = now
         return true
     }
+
+    private fun isCrashClientLogEvent(event: String): Boolean =
+        event == "app.crash" || event == "auth.app_crash"
 
     private fun normalizeClientLogIdentifier(raw: String, maxLength: Int): String =
         raw.trim()
@@ -879,6 +928,46 @@ object SessionApi {
                 }
             },
             onFailure = { onResult(null) }
+        )
+    }
+
+    fun getRecentTodayAgriCards(onResult: (List<TodayAgriCard>?) -> Unit) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(null) }
+            return
+        }
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(Request.Builder().url("$base/api/today-agri-cards").get())
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    if (!it.isSuccessful) {
+                        postToMain { onResult(null) }
+                        return@use
+                    }
+                    val body = it.body?.string()
+                    if (body.isNullOrBlank()) {
+                        postToMain { onResult(emptyList()) }
+                        return@use
+                    }
+                    try {
+                        val parsed = gson.fromJson(body, TodayAgriCardsResponse::class.java)
+                        val validCards = parsed
+                            ?.cards
+                            .orEmpty()
+                            .filter { card -> card.isValidTodayAgriCard() }
+                        postToMain { onResult(validCards) }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "parse recent today agri cards", e)
+                        postToMain { onResult(null) }
+                    }
+                }
+            },
+            onFailure = { postToMain { onResult(null) } }
         )
     }
 

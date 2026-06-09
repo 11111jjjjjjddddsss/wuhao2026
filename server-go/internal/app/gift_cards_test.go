@@ -40,3 +40,28 @@ func TestGiftCardCodeCipherRequiresSecret(t *testing.T) {
 		t.Fatalf("decrypt missing secret err = %v, want errGiftCardSecretMissing", err)
 	}
 }
+
+func TestGiftCardTextLooksSensitiveRejectsSeparatedPhonesAndSecrets(t *testing.T) {
+	for _, text := range []string{
+		"请联系 138-0013-8000 处理",
+		"手机号 138 0013 8000",
+		"token=secret-value",
+		"NQ-M7AB-CD23-EF45-GH67",
+	} {
+		if !giftCardTextLooksSensitive(text) {
+			t.Fatalf("expected sensitive text to be rejected: %q", text)
+		}
+	}
+}
+
+func TestGiftCardTextLooksSensitiveAllowsOperationalNotes(t *testing.T) {
+	for _, text := range []string{
+		"电话已沟通，等待用户确认",
+		"客服已线下核验会员和订单",
+		"用户申请注销，礼品卡权益已核对",
+	} {
+		if giftCardTextLooksSensitive(text) {
+			t.Fatalf("expected operational note to be allowed: %q", text)
+		}
+	}
+}

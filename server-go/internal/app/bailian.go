@@ -11,6 +11,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -87,6 +88,9 @@ func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessag
 		"model":       "qwen3.5-plus",
 		"stream":      true,
 		"temperature": unifiedModelTemperature,
+		"stream_options": map[string]any{
+			"include_usage": true,
+		},
 		"extra_body": map[string]any{
 			"enable_thinking": false,
 			"enable_search":   true,
@@ -104,7 +108,7 @@ func (c *BailianClient) OpenCompletion(ctx context.Context, body map[string]any)
 	return c.doJSONRequest(ctx, "application/json", body)
 }
 
-func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []BailianMessage) (string, []DailyAgriSearchSource, error) {
+func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []BailianMessage) (string, []DailyAgriSearchSource, bailianModelUsage, error) {
 	model := dailyAgriCardModel
 	if dailyAgriUsesResponsesAPI(model) {
 		return c.generateDailyAgriCardWithResponses(ctx, model, messages)
@@ -112,7 +116,7 @@ func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, messages []Ba
 	return c.generateDailyAgriCardWithGeneration(ctx, model, messages)
 }
 
-func (c *BailianClient) generateDailyAgriCardWithGeneration(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, error) {
+func (c *BailianClient) generateDailyAgriCardWithGeneration(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, bailianModelUsage, error) {
 	body := map[string]any{
 		"model": model,
 		"input": map[string]any{
@@ -128,39 +132,42 @@ func (c *BailianClient) generateDailyAgriCardWithGeneration(ctx context.Context,
 				"forced_search":   true,
 				"enable_source":   true,
 				"freshness":       7,
+				"intention_options": map[string]any{
+					"prompt_intervene": "检索近7天内中国种植业生产经营相关的具体新闻、通知、农技文章、市场信息或地方农业信息；同等质量下优先今天或昨天发布的最新材料，避免旧闻和同一事件重复改写。检索阶段不要限定固定网站、不要只围绕少数官网或媒体、不要使用站点白名单思路；请全网宽搜具体事实，再按发布时间、正式来源、农业实用价值和是否种植侧筛选。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除。不要只搜农业新闻或农情，请分散覆盖：种子/种苗/种业/品种审定推广/供种备耕/种子质量抽检/种子检疫，病虫草害/植保/农药/除草剂/安全用药/农技推广/作物苗情，影响作物和农时的农业气象灾害或农田防灾减灾（旱涝、霜冻、倒春寒、干热风、高温热害等），农时农事/机收机播/农机作业/粮油菜果茶，肥料/化肥/水肥管理/土壤墒情，农资供需/农产品产地价格/批发市场/流通/补贴保险。来源不限定固定站点；同等质量下优先官方、农业农村部门、农技推广、气象、主流媒体和农业专业媒体，也可选择地方农业信息、市场流通、农资、种业、植保等专业来源。搜索来源只作事实核对和后台排查，用户端只展示标题和摘要、不点击链接；不要因为URL像首页或栏目页就丢弃事实清楚的种植业材料，但不能拿没有事实支撑的入口页、广告页或聚合页凑数。排除广告软文、招商加盟、带货导购、品牌推广、联系方式、二维码、电商促销、网传/爆料/传言/谣言/未经证实，以及普通天气预报、生活天气、旅游出行天气、畜牧、水产、养殖、动物疫病、生猪、猪肉、猪价、家禽、禽蛋、牛羊、饲料、兽药、渔业等非种植领域内容。",
+				},
 			},
 		},
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	resp, err := c.doJSONPayloadRequest(ctx, c.buildDashScopeGenerationURL(), "application/json", payload)
 	if err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	defer resp.Body.Close()
 	bodyBytes, err := readLimitedResponseBody(resp.Body, dashScopeGenerationBodyLimit)
 	if err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", nil, fmt.Errorf("dashscope status %d", resp.StatusCode)
+		return "", nil, bailianModelUsage{}, formatDashScopeStatusError(resp.StatusCode, bodyBytes)
 	}
 
 	var decoded dashScopeGenerationResponse
 	if err := json.Unmarshal(bodyBytes, &decoded); err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	if decoded.Code != "" {
-		return "", nil, fmt.Errorf("dashscope error %s: %s", decoded.Code, decoded.Message)
+		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope error %s: %s", decoded.Code, decoded.Message)
 	}
 	if len(decoded.Output.Choices) == 0 {
-		return "", nil, fmt.Errorf("dashscope response missing choices")
+		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope response missing choices")
 	}
 	content := strings.TrimSpace(decoded.Output.Choices[0].Message.Content)
 	if content == "" {
-		return "", nil, fmt.Errorf("dashscope response empty content")
+		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope response empty content")
 	}
 	sources := make([]DailyAgriSearchSource, 0, len(decoded.Output.SearchInfo.SearchResults))
 	for _, source := range decoded.Output.SearchInfo.SearchResults {
@@ -175,13 +182,13 @@ func (c *BailianClient) generateDailyAgriCardWithGeneration(ctx context.Context,
 			SiteName: firstNonBlank(source.SiteName, source.Site, source.Host),
 		})
 	}
-	return content, sources, nil
+	return content, sources, decoded.Usage, nil
 }
 
-func (c *BailianClient) generateDailyAgriCardWithResponses(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, error) {
+func (c *BailianClient) generateDailyAgriCardWithResponses(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, bailianModelUsage, error) {
 	systemPrompt, userPrompt := splitDailyAgriMessages(messages)
 	if strings.TrimSpace(userPrompt) == "" {
-		return "", nil, fmt.Errorf("daily agri prompt missing user content")
+		return "", nil, bailianModelUsage{}, fmt.Errorf("daily agri prompt missing user content")
 	}
 	body := map[string]any{
 		"model":       model,
@@ -201,27 +208,27 @@ func (c *BailianClient) generateDailyAgriCardWithResponses(ctx context.Context, 
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	resp, err := c.doJSONPayloadRequest(ctx, c.buildResponsesURL(), "application/json", payload)
 	if err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	defer resp.Body.Close()
 	bodyBytes, err := readLimitedResponseBody(resp.Body, dashScopeGenerationBodyLimit)
 	if err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", nil, fmt.Errorf("dashscope status %d", resp.StatusCode)
+		return "", nil, bailianModelUsage{}, formatDashScopeStatusError(resp.StatusCode, bodyBytes)
 	}
 
 	var decoded dashScopeResponsesResponse
 	if err := json.Unmarshal(bodyBytes, &decoded); err != nil {
-		return "", nil, err
+		return "", nil, bailianModelUsage{}, err
 	}
 	if decoded.Error != nil && strings.TrimSpace(decoded.Error.Message) != "" {
-		return "", nil, fmt.Errorf("dashscope error %s: %s", decoded.Error.Code, decoded.Error.Message)
+		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope error %s: %s", decoded.Error.Code, decoded.Error.Message)
 	}
 
 	content := strings.TrimSpace(decoded.OutputText)
@@ -243,7 +250,7 @@ func (c *BailianClient) generateDailyAgriCardWithResponses(ctx context.Context, 
 		}
 	}
 	if content == "" {
-		return "", nil, fmt.Errorf("dashscope response empty content")
+		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope response empty content")
 	}
 
 	sources := make([]DailyAgriSearchSource, 0, 8)
@@ -274,9 +281,9 @@ func (c *BailianClient) generateDailyAgriCardWithResponses(ctx context.Context, 
 		}
 	}
 	if len(sources) == 0 {
-		return "", nil, fmt.Errorf("dashscope response missing search sources")
+		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope response missing search sources")
 	}
-	return content, sources, nil
+	return content, sources, decoded.Usage, nil
 }
 
 func (c *BailianClient) doJSONRequest(ctx context.Context, accept string, body map[string]any) (*http.Response, error) {
@@ -610,6 +617,57 @@ func shouldFailoverBailianResponse(status int, body []byte) bool {
 	return false
 }
 
+func formatDashScopeStatusError(status int, body []byte) error {
+	code, message := extractDashScopeErrorCodeMessage(body)
+	detail := strings.TrimSpace(strings.Trim(strings.TrimSpace(code)+": "+sanitizeDashScopeErrorMessage(message), ": "))
+	if detail == "" {
+		return fmt.Errorf("dashscope status %d", status)
+	}
+	return fmt.Errorf("dashscope status %d: %s", status, detail)
+}
+
+func extractDashScopeErrorCodeMessage(body []byte) (string, string) {
+	payload := map[string]any{}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", ""
+	}
+	code := strings.TrimSpace(asString(payload["code"]))
+	message := strings.TrimSpace(asString(payload["message"]))
+	if nested, _ := payload["error"].(map[string]any); nested != nil {
+		if code == "" {
+			code = strings.TrimSpace(asString(nested["code"]))
+		}
+		if message == "" {
+			message = strings.TrimSpace(asString(nested["message"]))
+		}
+	}
+	return code, message
+}
+
+var (
+	dashScopeURLPattern           = regexp.MustCompile(`https?://[^\s"'<>]+`)
+	dashScopeBearerPattern        = regexp.MustCompile(`(?i)bearer\s+[A-Za-z0-9._~+/=-]+`)
+	dashScopeAPIKeyPattern        = regexp.MustCompile(`sk-[A-Za-z0-9_-]{8,}`)
+	dashScopePhonePattern         = regexp.MustCompile(`1[3-9][0-9]{9}`)
+	dashScopeCredentialPattern    = regexp.MustCompile(`(?i)(AccessKey(Id|Secret)?|SecurityToken|Signature(Nonce)?)[=:]\s*[^,\s"']+`)
+	dashScopeGenericSecretPattern = regexp.MustCompile(`(?i)\b(token|api[_-]?key|secret|password|passwd|pwd)\b\s*[=:]\s*[^,\s"']+`)
+)
+
+func sanitizeDashScopeErrorMessage(message string) string {
+	cleaned := strings.TrimSpace(message)
+	if cleaned == "" {
+		return ""
+	}
+	cleaned = dashScopeURLPattern.ReplaceAllString(cleaned, "[url]")
+	cleaned = dashScopeBearerPattern.ReplaceAllString(cleaned, "Bearer [redacted]")
+	cleaned = dashScopeAPIKeyPattern.ReplaceAllString(cleaned, "sk-[redacted]")
+	cleaned = dashScopePhonePattern.ReplaceAllString(cleaned, "[phone]")
+	cleaned = dashScopeCredentialPattern.ReplaceAllString(cleaned, "[redacted]")
+	cleaned = dashScopeGenericSecretPattern.ReplaceAllString(cleaned, "[redacted]")
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	return truncateRunes(cleaned, 160)
+}
+
 func cloneHTTPResponse(resp *http.Response, body []byte) *http.Response {
 	cloned := new(http.Response)
 	*cloned = *resp
@@ -638,15 +696,77 @@ type dashScopeGenerationResponse struct {
 			} `json:"search_results"`
 		} `json:"search_info"`
 	} `json:"output"`
+	Usage bailianModelUsage `json:"usage"`
 }
 
 type dashScopeResponsesResponse struct {
 	Output     []dashScopeResponsesOutput `json:"output"`
 	OutputText string                     `json:"output_text"`
+	Usage      bailianModelUsage          `json:"usage"`
 	Error      *struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error"`
+}
+
+type bailianModelUsage struct {
+	InputTokens      int `json:"input_tokens"`
+	OutputTokens     int `json:"output_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	Plugins          struct {
+		Search struct {
+			Count int `json:"count"`
+		} `json:"search"`
+	} `json:"plugins"`
+}
+
+func (u bailianModelUsage) normalizedInputTokens() int {
+	if u.InputTokens > 0 {
+		return u.InputTokens
+	}
+	return u.PromptTokens
+}
+
+func (u bailianModelUsage) normalizedOutputTokens() int {
+	if u.OutputTokens > 0 {
+		return u.OutputTokens
+	}
+	return u.CompletionTokens
+}
+
+func (u bailianModelUsage) normalizedTotalTokens() int {
+	if u.TotalTokens > 0 {
+		return u.TotalTokens
+	}
+	return u.normalizedInputTokens() + u.normalizedOutputTokens()
+}
+
+func (u bailianModelUsage) searchCount() int {
+	return u.Plugins.Search.Count
+}
+
+func (u bailianModelUsage) hasAny() bool {
+	return u.normalizedInputTokens() > 0 ||
+		u.normalizedOutputTokens() > 0 ||
+		u.normalizedTotalTokens() > 0 ||
+		u.searchCount() > 0
+}
+
+func appendBailianUsageLogAttrs(attrs []any, usage bailianModelUsage) []any {
+	if !usage.hasAny() {
+		return attrs
+	}
+	attrs = append(attrs,
+		"model_input_tokens", usage.normalizedInputTokens(),
+		"model_output_tokens", usage.normalizedOutputTokens(),
+		"model_total_tokens", usage.normalizedTotalTokens(),
+	)
+	if searchCount := usage.searchCount(); searchCount > 0 {
+		attrs = append(attrs, "model_search_count", searchCount)
+	}
+	return attrs
 }
 
 type dashScopeResponsesOutput struct {

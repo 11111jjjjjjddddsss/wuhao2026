@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS client_app_logs (
   message VARCHAR(255) NOT NULL,
   attrs_json JSON NULL,
   platform VARCHAR(32) NOT NULL DEFAULT 'android',
+  build_type VARCHAR(32) NULL,
   app_version_code INT NULL,
   app_version_name VARCHAR(64) NULL,
   os_version VARCHAR(64) NULL,

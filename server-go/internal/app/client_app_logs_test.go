@@ -19,6 +19,7 @@ func TestNormalizeClientAppLogPayloadAcceptsMinimalSafePayload(t *testing.T) {
 		Event:          "chat.stream-interrupted",
 		Message:        "  stream interrupted  ",
 		Platform:       "Android",
+		BuildType:      "Debug",
 		AppVersionCode: &versionCode,
 		AppVersionName: "1.0.12",
 		OSVersion:      "Android 15",
@@ -33,10 +34,10 @@ func TestNormalizeClientAppLogPayloadAcceptsMinimalSafePayload(t *testing.T) {
 	if validationError != "" {
 		t.Fatalf("unexpected validation error: %s", validationError)
 	}
-	if input.Level != "warn" || input.Event != "chat.stream-interrupted" || input.Message != "stream interrupted" {
+	if input.Level != "warn" || input.Event != "chat.stream-interrupted" || input.Message != "chat.stream-interrupted" {
 		t.Fatalf("normalized input mismatch: %#v", input)
 	}
-	if input.Platform != "android" || input.AppVersionCode == nil || *input.AppVersionCode != versionCode {
+	if input.Platform != "android" || input.BuildType != "debug" || input.AppVersionCode == nil || *input.AppVersionCode != versionCode {
 		t.Fatalf("platform/version mismatch: %#v", input)
 	}
 	if input.AttrsJSON == nil {
@@ -147,6 +148,7 @@ func TestParseClientAppLogQueryNormalizesAndCapsLimit(t *testing.T) {
 		"event_prefix":     {" Auth. "},
 		"level":            {"WARN"},
 		"platform":         {" Android "},
+		"build_type":       {" Debug "},
 		"app_version_code": {"12"},
 		"app_version_name": {" 1.0.12 "},
 		"os_version":       {" Android 15 "},
@@ -163,6 +165,7 @@ func TestParseClientAppLogQueryNormalizesAndCapsLimit(t *testing.T) {
 		filter.EventPrefix != "auth." ||
 		filter.Level != "warn" ||
 		filter.Platform != "android" ||
+		filter.BuildType != "debug" ||
 		filter.AppVersionCode == nil ||
 		*filter.AppVersionCode != 12 ||
 		filter.AppVersionName != "1.0.12" ||
@@ -208,17 +211,18 @@ func TestBuildClientAppLogWhereSupportsVersionAndDeviceFilters(t *testing.T) {
 	where, args := buildClientAppLogWhere(ClientAppLogQuery{
 		SinceMs:        123,
 		Platform:       "android",
+		BuildType:      "release",
 		AppVersionCode: &versionCode,
 		AppVersionName: "1.0",
 		OSVersion:      "Android 15",
 		DeviceModel:    "Brand",
 		Limit:          20,
 	})
-	wantWhere := " WHERE created_at >= ? AND platform = ? AND app_version_code = ? AND app_version_name LIKE ? ESCAPE '=' AND os_version LIKE ? ESCAPE '=' AND device_model LIKE ? ESCAPE '='"
+	wantWhere := " WHERE created_at >= ? AND platform = ? AND build_type = ? AND app_version_code = ? AND app_version_name LIKE ? ESCAPE '=' AND os_version LIKE ? ESCAPE '=' AND device_model LIKE ? ESCAPE '='"
 	if where != wantWhere {
 		t.Fatalf("where = %q, want %q", where, wantWhere)
 	}
-	wantArgs := []any{int64(123), "android", 12, "1.0%", "Android 15%", "Brand%"}
+	wantArgs := []any{int64(123), "android", "release", 12, "1.0%", "Android 15%", "Brand%"}
 	if len(args) != len(wantArgs) {
 		t.Fatalf("args = %#v, want %#v", args, wantArgs)
 	}

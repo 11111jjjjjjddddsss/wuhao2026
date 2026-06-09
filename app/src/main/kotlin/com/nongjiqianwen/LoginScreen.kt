@@ -174,34 +174,16 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF111111)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Image(
-                            painter = painterResource(R.mipmap.ic_launcher_foreground),
-                            contentDescription = null,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer(
-                                    scaleX = 1.56f,
-                                    scaleY = 1.56f
-                                )
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
+                    LoginBrandLogo(Modifier.width(50.dp))
                     Text(
                         text = "农技千查",
                         color = Color(0xFF111111),
                         fontSize = 40.sp,
                         fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
                         letterSpacing = 0.sp
                     )
-                    Spacer(Modifier.width(56.dp))
+                    Spacer(Modifier.width(50.dp))
                 }
                 Spacer(Modifier.height(32.dp))
 
@@ -383,9 +365,8 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 lineHeight = 16.sp,
                                 letterSpacing = 0.sp
                             ),
-                            softWrap = false,
-                            overflow = TextOverflow.Clip,
-                            maxLines = 1,
+                            softWrap = true,
+                            maxLines = 2,
                             onClick = { offset ->
                                 agreementText.getStringAnnotations(start = offset, end = offset)
                                     .firstOrNull()
@@ -419,6 +400,34 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun LoginBrandLogo(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF111111)),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(R.mipmap.ic_launcher_foreground),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(
+                        scaleX = 1.6f,
+                        scaleY = 1.6f
+                    )
+            )
         }
     }
 }

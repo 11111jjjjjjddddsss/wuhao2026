@@ -33,7 +33,8 @@
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
 - 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；备注、回复和审计里仍禁止写手机号全文。
-- App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，可按账号ID、精确事件名、事件前缀 `event_prefix`、平台、App 版本号 / 版本名、Android 系统版本、设备型号、等级和时间范围筛选；精确 `event` 优先于前缀筛选，不展示聊天正文、图片 URL、手机号、token、APK URL 或 SHA-256 原文。
+- 注销申请：`GET /admin-api/v1/account-deletion-requests`、`POST /admin-api/v1/account-deletion-requests/status`；用户侧 `POST /api/account/deletion-requests` 创建申请后会退出当前设备，后台可按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态。这里的已处理只表示线下核验和处理流程已收口，不代表系统已经自动物理删除或匿名化全部账号数据；会员、订单、礼品卡、反馈、日志和法定留存范围仍需按合规规则处理。
+- App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，可按账号ID、精确事件名、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号、等级和时间范围筛选；精确 `event` 优先于前缀筛选，不展示聊天正文、图片 URL、手机号、token、APK URL 或 SHA-256 原文。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
 - 今日农情：`GET /admin-api/v1/today-agri/cards`、`POST /admin-api/v1/today-agri/generate`。
 - 检查更新：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`；后台可直接维护 Android 版本号、HTTPS APK、SHA-256、文件大小、强制更新和停更状态，对外 `/api/app/update` 优先读取数据库表 `app_release_configs`，无记录时才回退环境变量。
@@ -103,6 +104,7 @@
 |---|---|---|---|
 | 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计、`auth_logs`、`app_update_logs` | SLS 自动告警 / 仪表盘、Nginx access 聚合、登录精准漏斗 |
 | 帮助与反馈 | 已接入首版 | `support_messages`、`support_conversations`、`/internal/support/*`、`/admin-api/v1/support/*` | 正式坐席分配、标签、站外通知、客服绩效、保存 / 删除规则 |
+| 注销申请 | 已接入申请队列 | `account_deletion_requests`、`/api/account/deletion-requests`、`/admin-api/v1/account-deletion-requests*` | 物理删除 / 匿名化规则、法定留存、处理责任和批量清理脚本 |
 | App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs`、监控页登录排障卡、检查更新排障卡 | 更细的版本 / 设备 / 地区聚合和告警 |
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
@@ -133,7 +135,7 @@
 - 用户真实反馈 / 产品洞察：首版已从帮助与反馈、App 自动日志、问诊归档计数和礼品卡兑换尝试中做脱敏聚合，展示趋势、固定分类和 Top 事件；下一步再补高频 bug、登录 / 上传 / 历史恢复卡点、用户不满意或反复追问的问诊场景、常见作物 / 病虫害、模型答偏线索和可改 UI / 提示词 / 后端规则的证据。页面不得直接把手机号、token、密钥、图片原图、图片 URL、反馈正文或完整聊天原文铺到后台。
 - App 自动日志：按时间、等级、事件名、用户、App 版本、系统版本、设备型号筛选，先接 `GET /internal/app/logs` 和 SLS 最小日志集，后续再补 SLS 告警 / 仪表盘。
 - 检查更新：当前版本、APK 链接、SHA-256、文件大小、是否启用、停更入口。
-- 今日农情：当天状态、失败原因、来源链接、手动补跑、停用当天卡片。
+- 今日农情：当天状态、失败原因、内部来源追溯、手动补跑、停用当天卡片。
 - 审计日志：先接 `GET /internal/admin/audit-logs` 查看内部操作记录，后续接后台账号和角色权限。
 
 最小表或结构：

@@ -119,6 +119,14 @@ object FusionOneLoginClient {
             business.setAlicomFusionAuthCallBack(object : AlicomFusionAuthCallBack {
                 override fun onSDKTokenUpdate(): AlicomFusionAuthToken {
                     val fresh = SessionApi.requestFusionAuthTokenBlocking()
+                    if (fresh?.usable != true) {
+                        reportAuthLog(
+                            level = "warn",
+                            event = "auth.fusion_token_refresh_failed",
+                            stage = "token_refresh",
+                            error = null
+                        )
+                    }
                     return AlicomFusionAuthToken().apply {
                         setAuthToken(fresh?.authToken.orEmpty())
                     }
@@ -178,6 +186,14 @@ object FusionOneLoginClient {
                     val verifyToken = token.orEmpty().trim()
                     if (verifyToken.isEmpty()) {
                         safeContinueScene(business, false)
+                        reportAuthLog(
+                            level = "warn",
+                            event = "auth.fusion_empty_verify_token",
+                            stage = "verify",
+                            error = event,
+                            nodeName = nodeName
+                        )
+                        finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                         return
                     }
                     AppCrashReporter.setAuthStage("auth.fusion_server_login")

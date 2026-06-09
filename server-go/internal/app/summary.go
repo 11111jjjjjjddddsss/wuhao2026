@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type summaryStore interface {
@@ -36,12 +37,22 @@ const (
 var summaryExtractionTimeout = 60 * time.Second
 
 func NewSummaryService(store *Store, prompts *PromptLoader, bailian *BailianClient, logger *slog.Logger) *SummaryService {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &SummaryService{
 		store:   store,
 		prompts: prompts,
 		bailian: bailian,
 		logger:  logger,
 	}
+}
+
+func (s *SummaryService) log() *slog.Logger {
+	if s != nil && s.logger != nil {
+		return s.logger
+	}
+	return slog.Default()
 }
 
 func GetSummaryIntervals(tier Tier) (int, int) {
@@ -68,12 +79,12 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 		return
 	}
 	if !s.tryStartLayer(userID, layer) {
-		s.logger.Info("summary extraction skipped: already running", "userId", userID, "layer", layer, "roundTotal", snapshot.RoundTotal)
+		s.log().Info("summary extraction skipped: already running", "userId", userID, "layer", layer, "roundTotal", snapshot.RoundTotal)
 		return
 	}
 	defer s.finishLayer(userID, layer)
 	if !s.bailian.HasKeyConfigured() {
-		s.logger.Warn("summary extraction skipped: model backend unavailable", "userId", userID, "layer", layer)
+		s.log().Warn("summary extraction skipped: model backend unavailable", "userId", userID, "layer", layer)
 		return
 	}
 
@@ -82,12 +93,12 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 		archivedRounds, err := s.store.GetRecentSessionRoundsForSummary(ctx, userID, cSummaryArchiveRounds)
 		if err != nil {
 			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.logger.Error("C summary archive load failed", "userId", userID, "roundTotal", snapshot.RoundTotal, "error", err)
+			s.log().Error("C summary archive load failed", "userId", userID, "roundTotal", snapshot.RoundTotal, "error", err)
 			return
 		}
 		if len(archivedRounds) < cSummaryArchiveRounds {
 			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.logger.Info("C summary extraction skipped: insufficient archived rounds", "userId", userID, "roundTotal", snapshot.RoundTotal, "rounds", len(archivedRounds), "required", cSummaryArchiveRounds)
+			s.log().Info("C summary extraction skipped: insufficient archived rounds", "userId", userID, "roundTotal", snapshot.RoundTotal, "rounds", len(archivedRounds), "required", cSummaryArchiveRounds)
 			return
 		}
 		dialogueRounds = archivedRounds
@@ -95,7 +106,7 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 
 	dialogueText := buildDialogueText(dialogueRounds)
 	if dialogueText == "" {
-		s.logger.Warn("summary extraction skipped: empty dialogue", "userId", userID, "layer", layer)
+		s.log().Warn("summary extraction skipped: empty dialogue", "userId", userID, "layer", layer)
 		return
 	}
 
@@ -104,7 +115,7 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 	cancelExtract()
 	if err != nil {
 		_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-		s.logger.Error("summary extraction failed", "userId", userID, "layer", layer, "error", err)
+		s.log().Error("summary extraction failed", "userId", userID, "layer", layer, "error", err)
 		return
 	}
 
@@ -112,11 +123,11 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 		written, err := s.store.WriteUserBSummaryIfCurrent(ctx, userID, nextSummary, snapshot.RoundTotal)
 		if err != nil {
 			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.logger.Error("write B summary failed", "userId", userID, "error", err)
+			s.log().Error("write B summary failed", "userId", userID, "error", err)
 			return
 		}
 		if !written {
-			s.logger.Info("B summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
+			s.log().Info("B summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
 			return
 		}
 		snapshot.BSummary = nextSummary
@@ -125,18 +136,18 @@ func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, u
 		written, err := s.store.WriteUserCSummaryIfCurrent(ctx, userID, nextSummary, snapshot.RoundTotal)
 		if err != nil {
 			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.logger.Error("write C summary failed", "userId", userID, "error", err)
+			s.log().Error("write C summary failed", "userId", userID, "error", err)
 			return
 		}
 		if !written {
-			s.logger.Info("C summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
+			s.log().Info("C summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
 			return
 		}
 		snapshot.CSummary = nextSummary
 		snapshot.PendingRetryC = false
 	}
 
-	s.logger.Info("summary extraction success", "userId", userID, "layer", layer, "chars", len(nextSummary))
+	s.log().Info("summary extraction success", "userId", userID, "layer", layer, "chars", len(nextSummary))
 }
 
 func (s *SummaryService) tryStartLayer(userID string, layer SummaryLayer) bool {
@@ -160,6 +171,11 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 	if strings.TrimSpace(oldSummary) != "" {
 		userContent = "[历史摘要]\n" + strings.TrimSpace(oldSummary) + "\n\n[对话]\n" + dialogueText
 	}
+	s.log().Info("summary extraction started",
+		"layer", layer,
+		"prompt_chars", utf8.RuneCountInString(prompt),
+		"user_content_chars", utf8.RuneCountInString(userContent),
+	)
 
 	response, err := s.bailian.OpenCompletion(ctx, map[string]any{
 		"model":       "qwen3.5-flash",
@@ -193,6 +209,11 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 	payload := map[string]any{}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return "", err
+	}
+	if usage, ok := parseBailianUsagePayload(payload["usage"]); ok {
+		logAttrs := []any{"layer", layer}
+		logAttrs = appendBailianUsageLogAttrs(logAttrs, usage)
+		s.log().Info("summary model usage", logAttrs...)
 	}
 	choices, _ := payload["choices"].([]any)
 	if len(choices) == 0 {

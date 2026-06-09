@@ -289,6 +289,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	contextHeader := fmt.Sprintf("当前时间：%s（Asia/Shanghai）；用户地点：%s；地点可信度：%s", injectedTime, region.Region, region.Reliability)
 	promptMessages, usedARoundsCount, hasBSummary, hasCSummary := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader)
 	dayCN := GetTodayKeyCN(s.shanghai, time.Now())
+	promptChars := countBailianMessageContentRunes(promptMessages)
 
 	if err := s.store.TouchSessionContext(ctx, auth.UserID, region.Region, region.Source, region.Reliability, time.Now().UnixMilli()); err != nil {
 		s.logger.Warn("touch session context failed", "userId", auth.UserID, "error", err)
@@ -302,6 +303,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"used_a_rounds_count", usedARoundsCount,
 		"has_b_summary", hasBSummary,
 		"has_c_summary", hasCSummary,
+		"prompt_chars", promptChars,
+		"current_text_chars", len([]rune(text)),
+		"current_image_count", len(images),
 		"injected_time", injectedTime,
 		"region", region.Region,
 		"region_source", region.Source,
@@ -372,6 +376,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	var hasSources atomic.Bool
 	var writeMu sync.Mutex
 	assistantText := strings.Builder{}
+	var modelUsage bailianModelUsage
 	stopHeartbeat := make(chan struct{})
 
 	go func() {
@@ -417,7 +422,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					doneReceived.Store(true)
 					break
 				}
-				updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources)
+				updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources, &modelUsage)
 				if !clientDisconnected.Load() {
 					writeMu.Lock()
 					_, err = io.WriteString(w, "data: "+data+"\n\n")
@@ -509,7 +514,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	close(stopHeartbeat)
 
-	s.logger.Info("bailian stream finished",
+	logAttrs := []any{
 		"request_id", upstreamRequestID,
 		"enable_search", true,
 		"strategy", "turbo",
@@ -518,7 +523,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"has_sources", hasSources.Load(),
 		"done_received", doneReceived.Load(),
 		"client_disconnected", clientDisconnected.Load(),
-	)
+	}
+	logAttrs = appendBailianUsageLogAttrs(logAttrs, modelUsage)
+	s.logger.Info("bailian stream finished", logAttrs...)
 }
 
 func chatRateLimitKey(userID string) string {
@@ -913,10 +920,13 @@ func isUploadedImagePath(path string) bool {
 	return strings.HasSuffix(strings.ToLower(name), ".jpg")
 }
 
-func updateAssistantAccumulator(data string, assistantText *strings.Builder, hasCitations *atomic.Bool, hasSources *atomic.Bool) {
+func updateAssistantAccumulator(data string, assistantText *strings.Builder, hasCitations *atomic.Bool, hasSources *atomic.Bool, modelUsage *bailianModelUsage) {
 	payload := map[string]any{}
 	if err := json.Unmarshal([]byte(data), &payload); err != nil {
 		return
+	}
+	if usage, ok := parseBailianUsagePayload(payload["usage"]); ok && modelUsage != nil {
+		*modelUsage = usage
 	}
 	if _, ok := payload["citations"]; ok {
 		hasCitations.Store(true)
@@ -964,6 +974,21 @@ func updateAssistantAccumulator(data string, assistantText *strings.Builder, has
 			assistantText.WriteString(messagePiece)
 		}
 	}
+}
+
+func parseBailianUsagePayload(raw any) (bailianModelUsage, bool) {
+	if raw == nil {
+		return bailianModelUsage{}, false
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return bailianModelUsage{}, false
+	}
+	var usage bailianModelUsage
+	if err := json.Unmarshal(encoded, &usage); err != nil {
+		return bailianModelUsage{}, false
+	}
+	return usage, usage.hasAny()
 }
 
 func anyMapValue(values map[string]any, key string) any {

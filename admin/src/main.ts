@@ -1,6 +1,7 @@
 import "./styles.css";
 import { ApiError, apiFetch, getStoredAuth, setStoredAuth, toQuery } from "./api";
 import type {
+  AccountDeletionRequest,
   AdminAppUpdateConfig,
   AdminAuditLogEntry,
   AdminDailyAgriEntry,
@@ -50,6 +51,7 @@ const routes: RouteItem[] = [
   { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "orders", label: "订单", section: "权益与交易", hint: "只读核查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可生成/可追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
+  { key: "account-deletion", label: "注销申请", section: "运营工作台", hint: "待处理/核验", roles: ["support", "ops_readonly", "auditor", "finance_ops"] },
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复", roles: ["support", "ops_readonly", "auditor"] },
   { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
   { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态", roles: ["content_ops", "ops_readonly", "auditor"] },
@@ -81,6 +83,8 @@ const pageState = {
   giftCardCodeSuffix: "",
   giftCardAttemptSuccess: "",
   giftCardAttemptReason: "",
+  accountDeletionUserID: "",
+  accountDeletionStatus: "pending",
   appLogWindow: "24h",
   auditWindow: "24h",
 };
@@ -282,6 +286,8 @@ async function routeContent(route: RouteKey): Promise<string> {
       return ordersPage();
     case "gift-cards":
       return giftCardsPage();
+    case "account-deletion":
+      return accountDeletionPage();
     case "support":
       return supportPage();
     case "app-logs":
@@ -560,6 +566,7 @@ async function ordersPage(): Promise<string> {
 }
 
 async function giftCardsPage(): Promise<string> {
+  const canViewCodes = canViewGiftCardCodes();
   const cardParams = {
     limit: 100,
     batch_id: pageState.giftCardBatchID,
@@ -585,18 +592,18 @@ async function giftCardsPage(): Promise<string> {
   const attempts = attemptsResponse.attempts ?? [];
   const summary = normalizeGiftCardSummary(summaryResponse.summary);
   return `
-    ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；后台可直接查看完整卡码并复制。", "gift-cards")}
+    ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；完整卡码仅 owner / finance_ops 可见。", "gift-cards")}
     <section class="grid kpi">
       ${kpi("可兑换卡", summary.redeemable_count, "当前可兑换")}
       ${kpi("已兑换", summary.redeemed_count, "全量已激活")}
       ${kpi("已作废", summary.void_count, "全量")}
       ${kpi("失败尝试", summary.failed_attempts_24h, "最近24小时")}
       ${kpi("批次数", summary.batch_count, "全量批次")}
-      ${kpi("完整卡码", "后台可查", lastGiftCardCodes.length ? "本次新生成在下方" : "列表可直接复制")}
+      ${kpi("完整卡码", canViewCodes ? "财务可见" : "仅财务可见", lastGiftCardCodes.length ? "本次新生成在下方" : canViewCodes ? "列表可直接复制" : "当前角色只看尾号/脱敏码")}
     </section>
     <div class="grid two" style="margin-top:12px">
       ${notice("现在可以怎么用", "这里生成 1 张正式礼品卡，复制完整卡码到 Android 设置里的“礼品卡”兑换；成功后本页按账号ID、批次或卡尾号都能追到激活记录。", "info")}
-      ${notice("当前口径", `当前“可兑换卡”只统计已经生效且未过期的 active 卡；全量 active 卡共 ${summary.active_count} 张。`, "warn")}
+      ${notice("当前口径", `当前“可兑换卡”只统计已经生效且未过期的 active 卡；全量 active 卡共 ${summary.active_count} 张。完整卡码不要写进备注、作废原因、审计说明或导出文件。`, "warn")}
     </div>
     <section class="card">
       <div class="card-head">
@@ -651,6 +658,39 @@ async function giftCardsPage(): Promise<string> {
     <section class="card" style="margin-top:12px">
       <div class="card-head"><div class="card-title">兑换尝试</div><span class="small muted">${attempts.length} 条</span></div>
       <div class="table-wrap">${giftCardAttemptsTable(attempts)}</div>
+    </section>
+  `;
+}
+
+async function accountDeletionPage(): Promise<string> {
+  const params = {
+    limit: 100,
+    status: pageState.accountDeletionStatus,
+    user_id: pageState.accountDeletionUserID,
+  };
+  const response = await apiFetch<{ requests: AccountDeletionRequest[] }>(
+    `/admin-api/v1/account-deletion-requests${toQuery(params)}`,
+  );
+  const requests = response.requests ?? [];
+  const pendingCount = requests.filter((item) => item.status === "pending" || item.status === "processing").length;
+  return `
+    ${pageHead("注销申请", "用户在 App 内提交注销后会退出当前设备；后台按待处理队列核验并推进状态。", "account-deletion")}
+    <section class="grid kpi">
+      ${kpi("当前列表", requests.length, "最多最近 100 条")}
+      ${kpi("当前列表待处理", pendingCount, "pending / processing")}
+      ${kpi("筛选状态", accountDeletionStatusLabel(pageState.accountDeletionStatus), pageState.accountDeletionUserID ? `账号 ${pageState.accountDeletionUserID}` : "全部账号")}
+    </section>
+    <div class="grid two" style="margin-top:12px">
+      ${notice("处理口径", "App 端提交的是注销申请，并立即退出当前设备；后台处理前先核验会员、订单、礼品卡、反馈和合规留存要求。这里的“已处理”表示线下处理流程已收口，不代表系统已自动物理删除全部数据。", "warn")}
+      ${notice("不要做什么", "不要把完整手机号、礼品卡完整码、密钥或内部排障细节写进处理备注；服务端会拦截这类敏感值。正式物理删除 / 匿名化规则后续按合规方案细化。", "info")}
+    </div>
+    <section class="card">
+      <div class="card-head"><div class="card-title">申请筛选</div><span class="small muted">默认看待处理</span></div>
+      <div class="card-body">${accountDeletionFilterForm()}</div>
+    </section>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">注销申请队列</div><span class="small muted">${requests.length} 条</span></div>
+      <div class="table-wrap">${accountDeletionTable(requests)}</div>
     </section>
   `;
 }
@@ -725,7 +765,7 @@ async function appLogsPage(): Promise<string> {
 
 async function todayAgriPage(): Promise<string> {
   const response = await apiFetch<{ cards: AdminDailyAgriEntry[] }>("/admin-api/v1/today-agri/cards?limit=14");
-  const latestReady = response.cards.find((row) => row.status === "ready" && todayAgriItems(row.content).length > 0);
+  const latestReady = response.cards.find(isPreviewableTodayAgriCard);
   return `
     ${pageHead("今日农情", "查看生成状态、来源数量和失败原因；content_ops / owner 可直接补跑当天卡片。", "today-agri")}
     ${latestReady ? todayAgriPreviewCard(latestReady) : notice("暂无可预览卡片", "最近记录里还没有可直接展示的 ready 卡片。可补跑当天，或查看下方失败原因。", "warn")}
@@ -739,6 +779,16 @@ async function todayAgriPage(): Promise<string> {
       <div class="table-wrap">${todayAgriTable(response.cards)}</div>
     </section>
   `;
+}
+
+function isPreviewableTodayAgriCard(row: AdminDailyAgriEntry): boolean {
+  if (row.status !== "ready") return false;
+  const error = (row.error || "").toLowerCase();
+  if (error.includes("content_json_invalid") || error.includes("content_shape_invalid") || error.includes("sources_json_invalid") || error.includes("sources_shape_invalid")) {
+    return false;
+  }
+  const itemCount = todayAgriItems(row.content).length;
+  return itemCount >= 2 && itemCount <= 3;
 }
 
 async function appUpdatePage(): Promise<string> {
@@ -935,6 +985,12 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
     await render();
     return;
   }
+  if (form.id === "account-deletion-filter-form") {
+    pageState.accountDeletionStatus = formValue(form, "status");
+    pageState.accountDeletionUserID = formValue(form, "user_id");
+    await render();
+    return;
+  }
   if (form.id === "support-reply-form") {
     await submitSupportReply(form);
     return;
@@ -1048,6 +1104,11 @@ async function handleAction(button: HTMLElement): Promise<void> {
   if (action === "void-gift-card") {
     if (!canManageGiftCards()) return;
     await voidGiftCard(button.dataset.cardId || "", button);
+    return;
+  }
+  if (action === "account-deletion-status") {
+    if (!canManageAccountDeletion()) return;
+    await updateAccountDeletionStatus(button.dataset.requestId || "", button.dataset.status || "", button);
   }
 }
 
@@ -1242,6 +1303,30 @@ async function generateTodayAgriCard(button?: HTMLElement): Promise<void> {
     window.alert(`今日农情处理完成：${label}${suffix}`);
     await render();
   }, "补跑失败");
+}
+
+async function updateAccountDeletionStatus(requestID: string, status: string, button?: HTMLElement): Promise<void> {
+  if (!requestID || !status) return;
+  const labels: Record<string, string> = {
+    processing: "标记为处理中",
+    completed: "标记为已处理",
+    rejected: "驳回申请",
+    cancelled: "取消申请",
+  };
+  let note = "";
+  if (["completed", "rejected", "cancelled"].includes(status)) {
+    const input = window.prompt("处理备注，可留空。不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
+    if (input === null) return;
+    note = input.trim();
+  }
+  if (!window.confirm(`确认${labels[status] || "更新状态"}？`)) return;
+  await withButtonBusy(button, "更新中", async () => {
+    await apiFetch("/admin-api/v1/account-deletion-requests/status", {
+      method: "POST",
+      json: { request_id: requestID, status, note },
+    });
+    await render();
+  }, "更新失败");
 }
 
 async function voidGiftCard(cardID: string, button?: HTMLElement): Promise<void> {
@@ -1651,7 +1736,7 @@ function createdGiftCardCodesBlock(rows: AdminGiftCardCreatedCode[]): string {
   return `
     <div class="notice warn" style="margin-top:12px">
       <strong>新生成卡码</strong>
-      <div class="muted" style="margin-top:6px">完整卡码已加密保存；这里可以直接复制，下方“卡与兑换”列表刷新后也能查看。</div>
+      <div class="muted" style="margin-top:6px">完整卡码已加密保存；当前财务角色可以直接复制，下方“卡与兑换”列表刷新后也能查看。不要写入备注、作废原因或公开文档。</div>
       <button class="button" type="button" data-action="clear-gift-card-codes" style="margin-top:10px">清除本次卡码</button>
       <div class="table-wrap" style="margin-top:10px">
         <table class="table">
@@ -1700,6 +1785,110 @@ function giftCardTraceFilterForm(): string {
       <button class="button" type="button" data-action="clear-gift-card-filter">清空</button>
     </form>
   `;
+}
+
+function accountDeletionFilterForm(): string {
+  return `
+    <form id="account-deletion-filter-form" class="filter-form">
+      <label>状态
+        <select name="status">
+          ${selectOption("", "全部", pageState.accountDeletionStatus)}
+          ${selectOption("pending", "待处理", pageState.accountDeletionStatus)}
+          ${selectOption("processing", "处理中", pageState.accountDeletionStatus)}
+          ${selectOption("completed", "已处理", pageState.accountDeletionStatus)}
+          ${selectOption("rejected", "已驳回", pageState.accountDeletionStatus)}
+          ${selectOption("cancelled", "已取消", pageState.accountDeletionStatus)}
+        </select>
+      </label>
+      <label>账号ID<input name="user_id" value="${escapeAttr(pageState.accountDeletionUserID)}" placeholder="acct_..." /></label>
+      <button class="button primary" type="submit">查询</button>
+    </form>
+  `;
+}
+
+function accountDeletionTable(rows: AccountDeletionRequest[]): string {
+  if (!rows.length) return emptyState("没有注销申请", "当前筛选条件下没有账号注销申请。");
+  return `
+    <table class="table">
+      <thead><tr><th>申请</th><th>账号</th><th>状态</th><th>原因 / 留言</th><th>处理</th><th>时间</th><th>操作</th></tr></thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                <td><div class="mono">${escapeHTML(row.request_id)}</div></td>
+                <td>
+                  <button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>
+                  <div class="small muted">${escapeHTML(row.phone_mask || "未返回手机号")}</div>
+                </td>
+                <td>${statusPill(accountDeletionStatusLabel(row.status), accountDeletionStatusLevel(row.status))}</td>
+                <td class="wrap">
+                  <div>${escapeHTML(row.reason || "未填写")}</div>
+                  ${row.user_message ? `<div class="small muted">${escapeHTML(row.user_message)}</div>` : ""}
+                </td>
+                <td class="wrap">
+                  <div>${escapeHTML(row.handled_by || "未处理")}</div>
+                  ${row.handler_note ? `<div class="small muted">${escapeHTML(row.handler_note)}</div>` : ""}
+                  ${row.handled_at ? `<div class="small muted">${formatTime(row.handled_at)}</div>` : ""}
+                </td>
+                <td>${formatTime(row.created_at)}<div class="small muted">更新 ${formatTime(row.updated_at)}</div></td>
+                <td>${accountDeletionActions(row)}</td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function accountDeletionActions(row: AccountDeletionRequest): string {
+  if (!canManageAccountDeletion()) {
+    return `<span class="small muted">只读</span>`;
+  }
+  if (row.status === "completed" || row.status === "rejected" || row.status === "cancelled") {
+    return `<span class="small muted">已结束</span>`;
+  }
+  return `
+    <div class="row-actions">
+      ${row.status !== "processing" ? `<button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="processing">处理中</button>` : ""}
+      <button class="button primary" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="completed">已处理</button>
+      <button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="rejected">驳回</button>
+      <button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="cancelled">取消</button>
+    </div>
+  `;
+}
+
+function accountDeletionStatusLabel(status: string): string {
+  switch ((status || "").toLowerCase()) {
+    case "pending":
+      return "待处理";
+    case "processing":
+      return "处理中";
+    case "completed":
+      return "已处理";
+    case "rejected":
+      return "已驳回";
+    case "cancelled":
+      return "已取消";
+    default:
+      return status || "全部";
+  }
+}
+
+function accountDeletionStatusLevel(status: string): "ok" | "warn" | "bad" | "info" {
+  switch ((status || "").toLowerCase()) {
+    case "pending":
+    case "processing":
+      return "warn";
+    case "completed":
+      return "ok";
+    case "rejected":
+    case "cancelled":
+      return "info";
+    default:
+      return "info";
+  }
 }
 
 function normalizeGiftCardSummary(summary: AdminGiftCardSummary | null | undefined): AdminGiftCardSummary {
@@ -1830,6 +2019,7 @@ function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
 function giftCardTable(rows: AdminGiftCardEntry[]): string {
   if (!rows.length) return emptyState("没有礼品卡", "后端未返回礼品卡记录。");
   const canVoid = canManageGiftCards();
+  const canViewCodes = canViewGiftCardCodes();
   return `
     <table class="table">
       <thead><tr><th>卡</th><th>完整卡码</th><th>档位</th><th>状态</th><th>激活账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
@@ -1839,7 +2029,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
             (row) => `
               <tr>
                 <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
-                <td><div class="mono code-cell">${row.code ? escapeHTML(row.code) : "旧卡无完整码"}</div>${row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
+                <td><div class="mono code-cell">${row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "仅财务可见"}</div>${row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
                 <td>${statusPill(row.tier)}</td><td>${statusPill(row.status)}</td>
                 <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
@@ -2024,7 +2214,7 @@ function appLogsTable(rows: ClientAppLogEntry[]): string {
             (row) => `
               <tr>
                 <td>${formatTime(row.created_at)}</td><td>${statusPill(row.level)}</td><td>${escapeHTML(row.event)}</td>
-                <td>${escapeHTML(row.user_id)}</td><td>${escapeHTML(row.app_version_name || String(row.app_version_code || ""))}</td>
+                <td>${escapeHTML(row.user_id)}</td><td>${escapeHTML([row.app_version_name || String(row.app_version_code || ""), row.build_type].filter(Boolean).join(" / "))}</td>
                 <td>${escapeHTML([row.platform, row.os_version, row.device_model].filter(Boolean).join(" / "))}</td>
                 <td class="wrap">${escapeHTML(row.message || "")}</td><td class="wrap">${jsonInline(row.attrs)}</td>
               </tr>
@@ -2260,6 +2450,7 @@ function logFilterForm(formID: string, key: string, selectedWindow: string): str
       <label class="field"><span>event</span><input class="input" name="event" value="${escapeAttr(readInputValue(key, "event"))}" /></label>
       <label class="field"><span>event前缀</span><input class="input" name="event_prefix" value="${escapeAttr(readInputValue(key, "event_prefix"))}" placeholder="auth. / app_update." /></label>
       <label class="field"><span>平台</span><input class="input" name="platform" value="${escapeAttr(readInputValue(key, "platform"))}" placeholder="android" /></label>
+      <label class="field"><span>包类型</span>${selectHTML("build_type", readInputValue(key, "build_type"), [["", "全部"], ["debug", "debug"], ["release", "release"]])}</label>
       <label class="field"><span>版本号</span><input class="input" name="app_version_code" value="${escapeAttr(readInputValue(key, "app_version_code"))}" placeholder="versionCode" /></label>
       <label class="field"><span>版本名</span><input class="input" name="app_version_name" value="${escapeAttr(readInputValue(key, "app_version_name"))}" placeholder="1.0" /></label>
       <label class="field"><span>系统</span><input class="input" name="os_version" value="${escapeAttr(readInputValue(key, "os_version"))}" placeholder="Android 15" /></label>
@@ -2387,6 +2578,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
   const giftLevel = queues.gift_card_failed_attempts ? "warn" : giftReady ? "ok" : "warn";
   const giftBody = `${queues.gift_card_batch_count ?? 0} 个批次 / ${queues.gift_card_total ?? 0} 张总卡；${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`;
   const supportBody = `${queues.support_open ?? queues.support_needs_reply} 待回复 / ${queues.support_replied ?? 0} 已回复 / ${queues.support_closed ?? 0} 已关闭`;
+  const accountDeletionPending = queues.account_deletion_pending ?? 0;
   const authFailures = queues.auth_failures ?? 0;
   const crashReports = queues.crash_reports ?? 0;
   const authLevel = crashReports > 0 || authFailures >= 10 ? "bad" : authFailures > 0 ? "warn" : "ok";
@@ -2395,6 +2587,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
       ${queueCard("登录排障", authFailures, `最近24小时认证失败；闪退补报 ${crashReports} 条`, authLevel)}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
+      ${queueCard("账号注销", accountDeletionPending, accountDeletionPending ? "有用户注销申请待处理" : "当前无待处理注销申请", accountDeletionPending ? "warn" : "ok", "account-deletion")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", !update.enabled ? "已停更" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "warn" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可兑换`, giftBody, giftLevel)}
@@ -2502,12 +2695,13 @@ function filterButton(label: string, filter: { userID?: string; event?: string; 
   return `<button class="button" data-action="open-app-log-filter" data-user-id="${escapeAttr(filter.userID || "")}" data-event="${escapeAttr(filter.event || "")}" data-event-prefix="${escapeAttr(filter.eventPrefix || "")}" data-level="${escapeAttr(filter.level || "")}" data-window="${escapeAttr(filter.window || "24h")}">${escapeHTML(label)}</button>`;
 }
 
-function queueCard(title: string, value: string | number, body: string, level: "ok" | "warn" | "bad" | "info"): string {
+function queueCard(title: string, value: string | number, body: string, level: "ok" | "warn" | "bad" | "info", route?: RouteKey): string {
   return `
     <div class="queue-card ${level}">
       <div class="small muted">${escapeHTML(title)}</div>
       <strong>${escapeHTML(String(value))}</strong>
       <span>${escapeHTML(body)}</span>
+      ${route ? `<div class="row-actions" style="margin-top:10px">${routeActionButton(route, "打开")}</div>` : ""}
     </div>
   `;
 }
@@ -2817,6 +3011,7 @@ function monitoringShortcutBar(): string {
       ${shortcutButton("users", "查用户")}
       ${shortcutButton("app-logs", "看 App 错误")}
       ${shortcutButton("support", "处理反馈")}
+      ${shortcutButton("account-deletion", "看注销申请")}
       ${shortcutButton("today-agri", "看今日农情")}
       ${shortcutButton("app-update", "检查更新")}
       ${shortcutButton("health", "服务健康")}
@@ -3009,9 +3204,17 @@ function canManageGiftCards(): boolean {
   return role === "owner" || role === "finance_ops";
 }
 
+function canViewGiftCardCodes(): boolean {
+  return canManageGiftCards();
+}
+
 function canManageSupport(): boolean {
   const role = currentAdminRole();
   return role === "owner" || role === "support";
+}
+
+function canManageAccountDeletion(): boolean {
+  return canManageSupport();
 }
 
 function canManageTodayAgri(): boolean {
@@ -3111,7 +3314,7 @@ function compactLogs(rows: ClientAppLogEntry[]): string {
       (row) => `
         <div class="message">
           <div class="message-head"><strong>${escapeHTML(row.event)}</strong><span>${formatTime(row.created_at)}</span></div>
-          <div>${statusPill(row.level)} <span class="muted">${escapeHTML(row.message || "")}</span></div>
+          <div>${statusPill(row.level)} <span class="muted">${escapeHTML([row.build_type, row.message || ""].filter(Boolean).join(" / "))}</span></div>
         </div>
       `,
     )

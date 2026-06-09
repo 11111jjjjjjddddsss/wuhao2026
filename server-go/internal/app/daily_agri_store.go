@@ -215,18 +215,14 @@ func isUsableDailyAgriContentJSON(raw sql.NullString) bool {
 }
 
 func isUsableStoredDailyAgriCard(card DailyAgriCard) bool {
-	if strings.TrimSpace(card.Title) != "今日农情" || len(card.Items) != 3 {
+	if strings.TrimSpace(card.Title) != "今日农情" ||
+		len(card.Items) < dailyAgriMinPublishItems ||
+		len(card.Items) > dailyAgriTargetItemCount {
 		return false
 	}
 	for _, item := range card.Items {
 		if strings.TrimSpace(item.Title) == "" ||
-			strings.TrimSpace(item.Summary) == "" ||
-			strings.TrimSpace(item.URL) == "" ||
-			strings.TrimSpace(item.Source) == "" ||
-			strings.TrimSpace(item.PublishedDate) == "" {
-			return false
-		}
-		if !strings.HasPrefix(strings.TrimSpace(item.URL), "https://") {
+			strings.TrimSpace(item.Summary) == "" {
 			return false
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -44,6 +45,13 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	}
 	if got := captured["stream"]; got != true {
 		t.Fatalf("stream mismatch: %#v", got)
+	}
+	streamOptions, ok := captured["stream_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing stream_options: %#v", captured["stream_options"])
+	}
+	if got := streamOptions["include_usage"]; got != true {
+		t.Fatalf("include_usage mismatch: %#v", got)
 	}
 	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", captured["temperature"])
@@ -119,6 +127,28 @@ func TestReadLimitedResponseBodyCapsPayload(t *testing.T) {
 	}
 	if got := string(body); got != "xxxx" {
 		t.Fatalf("body = %q, want capped preview", got)
+	}
+}
+
+func TestUpdateAssistantAccumulatorCapturesUsageOnlyChunk(t *testing.T) {
+	var assistant strings.Builder
+	var hasCitations atomic.Bool
+	var hasSources atomic.Bool
+	var usage bailianModelUsage
+
+	updateAssistantAccumulator(
+		`{"choices":[],"usage":{"input_tokens":200000,"output_tokens":800,"total_tokens":200800,"plugins":{"search":{"count":2}}}}`,
+		&assistant,
+		&hasCitations,
+		&hasSources,
+		&usage,
+	)
+
+	if assistant.String() != "" {
+		t.Fatalf("usage-only chunk should not append assistant text: %q", assistant.String())
+	}
+	if usage.normalizedInputTokens() != 200000 || usage.normalizedOutputTokens() != 800 || usage.normalizedTotalTokens() != 200800 || usage.searchCount() != 2 {
+		t.Fatalf("usage mismatch: %#v", usage)
 	}
 }
 
@@ -455,21 +485,21 @@ func TestOpenStreamFailoverStatusBoundaries(t *testing.T) {
 func TestGenerateDailyAgriCardUsesUnifiedTemperature(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/responses" {
+		if r.URL.Path != "/services/aigc/text-generation/generation" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"output":[{"type":"web_search_call","action":{"sources":[{"type":"url","url":"https://www.example.com/news-1"},{"type":"url","url":"https://www.example.com/news-2"}]}},{"type":"message","content":[{"type":"output_text","text":"{\"card_name\":\"今日农情\",\"items\":[]}"}]}],"output_text":""}`))
+		_, _ = w.Write([]byte(`{"output":{"choices":[{"message":{"content":"{\"card_name\":\"今日农情\",\"items\":[]}"}}],"search_info":{"search_results":[{"index":1,"title":"news 1","url":"https://www.example.com/news-1","site_name":"示例网"},{"index":2,"title":"news 2","url":"https://www.example.com/news-2","site_name":"示例网"}]}},"usage":{"input_tokens":123,"output_tokens":45,"total_tokens":168,"plugins":{"search":{"count":1}}}}`))
 	}))
 	defer modelServer.Close()
 
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
 
-	content, sources, err := NewBailianClient().GenerateDailyAgriCard(
+	content, sources, usage, err := NewBailianClient().GenerateDailyAgriCard(
 		context.Background(),
 		[]BailianMessage{
 			{Role: "system", Content: "你是一个只输出 JSON 的助手。"},
@@ -485,52 +515,96 @@ func TestGenerateDailyAgriCardUsesUnifiedTemperature(t *testing.T) {
 	if len(sources) != 2 {
 		t.Fatalf("source count mismatch: %d", len(sources))
 	}
+	if usage.normalizedInputTokens() != 123 || usage.normalizedOutputTokens() != 45 || usage.normalizedTotalTokens() != 168 || usage.searchCount() != 1 {
+		t.Fatalf("usage mismatch: %#v", usage)
+	}
 
 	if got := captured["model"]; got != dailyAgriCardModel {
 		t.Fatalf("model mismatch: %#v", got)
 	}
-	if got := captured["temperature"]; got != unifiedModelTemperature {
+	input, ok := captured["input"].(map[string]any)
+	if !ok {
+		t.Fatalf("input mismatch: %#v", captured["input"])
+	}
+	messages, ok := input["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages mismatch: %#v", input["messages"])
+	}
+	parameters, ok := captured["parameters"].(map[string]any)
+	if !ok {
+		t.Fatalf("parameters mismatch: %#v", captured["parameters"])
+	}
+	if got := parameters["temperature"]; got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", got)
 	}
-	if got := captured["tool_choice"]; got != "required" {
-		t.Fatalf("tool_choice mismatch: %#v", got)
+	if got := parameters["enable_search"]; got != true {
+		t.Fatalf("enable_search mismatch: %#v", got)
 	}
-	if got := captured["store"]; got != false {
-		t.Fatalf("store mismatch: %#v", got)
-	}
-	tools, ok := captured["tools"].([]any)
-	if !ok || len(tools) != 1 {
-		t.Fatalf("tools mismatch: %#v", captured["tools"])
-	}
-	reasoning, ok := captured["reasoning"].(map[string]any)
+	searchOptions, ok := parameters["search_options"].(map[string]any)
 	if !ok {
-		t.Fatalf("reasoning mismatch: %#v", captured["reasoning"])
+		t.Fatalf("search_options mismatch: %#v", parameters["search_options"])
 	}
-	if got := reasoning["effort"]; got != "none" {
-		t.Fatalf("reasoning.effort mismatch: %#v", got)
+	if got := searchOptions["search_strategy"]; got != dailyAgriSearchStrategy {
+		t.Fatalf("search_strategy mismatch: %#v", got)
 	}
-	if got := captured["instructions"]; got != "你是一个只输出 JSON 的助手。" {
-		t.Fatalf("instructions mismatch: %#v", got)
+	if got := searchOptions["forced_search"]; got != true {
+		t.Fatalf("forced_search mismatch: %#v", got)
 	}
-	if got := captured["input"]; got != "生成今日农情" {
-		t.Fatalf("input mismatch: %#v", got)
+	if got := searchOptions["enable_source"]; got != true {
+		t.Fatalf("enable_source mismatch: %#v", got)
+	}
+	if got := searchOptions["freshness"]; got != float64(7) {
+		t.Fatalf("freshness mismatch: %#v", got)
+	}
+	if _, ok := searchOptions["assigned_site_list"]; ok {
+		t.Fatalf("assigned_site_list should not be set for daily agri wide search: %#v", searchOptions["assigned_site_list"])
+	}
+	intentionOptions, ok := searchOptions["intention_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("intention_options mismatch: %#v", searchOptions["intention_options"])
+	}
+	promptIntervene, _ := intentionOptions["prompt_intervene"].(string)
+	if !strings.Contains(promptIntervene, "近7天") ||
+		!strings.Contains(promptIntervene, "全网宽搜") ||
+		!strings.Contains(promptIntervene, "不要限定固定网站") ||
+		!strings.Contains(promptIntervene, "来源不限定固定站点") ||
+		!strings.Contains(promptIntervene, "分散覆盖") ||
+		!strings.Contains(promptIntervene, "只取种植侧") ||
+		!strings.Contains(promptIntervene, "养殖侧全部排除") ||
+		!strings.Contains(promptIntervene, "种子/种苗") ||
+		!strings.Contains(promptIntervene, "品种审定推广") ||
+		!strings.Contains(promptIntervene, "病虫草害/植保") ||
+		!strings.Contains(promptIntervene, "农药/除草剂") ||
+		!strings.Contains(promptIntervene, "肥料/化肥") ||
+		!strings.Contains(promptIntervene, "普通天气预报") ||
+		!strings.Contains(promptIntervene, "同等质量下优先今天或昨天") ||
+		!strings.Contains(promptIntervene, "用户端只展示标题和摘要") ||
+		!strings.Contains(promptIntervene, "不点击链接") ||
+		!strings.Contains(promptIntervene, "不要因为URL像首页或栏目页就丢弃事实清楚") ||
+		!strings.Contains(promptIntervene, "不能拿没有事实支撑的入口页、广告页或聚合页凑数") {
+		t.Fatalf("prompt_intervene mismatch: %#v", promptIntervene)
+	}
+	for _, forbidden := range []string{"畜牧水产/动物疫病/养殖"} {
+		if strings.Contains(promptIntervene, forbidden) {
+			t.Fatalf("prompt_intervene should not include out-of-scope positive topic %q: %#v", forbidden, promptIntervene)
+		}
 	}
 }
 
-func TestGenerateDailyAgriCardStatusErrorDoesNotIncludeBody(t *testing.T) {
+func TestGenerateDailyAgriCardStatusErrorIsSanitized(t *testing.T) {
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/responses" {
+		if r.URL.Path != "/services/aigc/text-generation/generation" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusBadGateway)
-		_, _ = w.Write([]byte(`{"message":"https://api.example.com token=secret 13800138000"}`))
+		_, _ = w.Write([]byte(`{"code":"InvalidParameter","message":"https://api.example.com token=secret 13800138000"}`))
 	}))
 	defer modelServer.Close()
 
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
 
-	_, _, err := NewBailianClient().GenerateDailyAgriCard(
+	_, _, _, err := NewBailianClient().GenerateDailyAgriCard(
 		context.Background(),
 		[]BailianMessage{{Role: "user", Content: "生成今日农情"}},
 	)
@@ -538,12 +612,17 @@ func TestGenerateDailyAgriCardStatusErrorDoesNotIncludeBody(t *testing.T) {
 		t.Fatalf("expected error")
 	}
 	got := err.Error()
-	if got != "dashscope status 502" {
-		t.Fatalf("error = %q, want sanitized status only", got)
+	if !strings.HasPrefix(got, "dashscope status 502: InvalidParameter: ") {
+		t.Fatalf("error = %q, want sanitized dashscope detail", got)
 	}
-	for _, forbidden := range []string{"https://", "token", "13800138000"} {
+	for _, forbidden := range []string{"https://", "token=secret", "13800138000"} {
 		if strings.Contains(got, forbidden) {
 			t.Fatalf("error leaked %q: %s", forbidden, got)
+		}
+	}
+	for _, want := range []string{"[url]", "[redacted]", "[phone]"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("error missing sanitized marker %q: %s", want, got)
 		}
 	}
 }

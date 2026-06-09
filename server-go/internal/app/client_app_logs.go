@@ -37,6 +37,7 @@ type clientAppLogRequest struct {
 	Message        string         `json:"message"`
 	Attrs          map[string]any `json:"attrs"`
 	Platform       string         `json:"platform"`
+	BuildType      string         `json:"build_type"`
 	AppVersionCode *int           `json:"app_version_code"`
 	AppVersionName string         `json:"app_version_name"`
 	OSVersion      string         `json:"os_version"`
@@ -51,6 +52,7 @@ type ClientAppLogInput struct {
 	Message        string
 	AttrsJSON      any
 	Platform       string
+	BuildType      string
 	AppVersionCode *int
 	AppVersionName string
 	OSVersion      string
@@ -66,6 +68,7 @@ type ClientAppLogQuery struct {
 	Event          string `json:"event,omitempty"`
 	EventPrefix    string `json:"event_prefix,omitempty"`
 	Platform       string `json:"platform,omitempty"`
+	BuildType      string `json:"build_type,omitempty"`
 	AppVersionCode *int   `json:"app_version_code,omitempty"`
 	AppVersionName string `json:"app_version_name,omitempty"`
 	OSVersion      string `json:"os_version,omitempty"`
@@ -82,6 +85,7 @@ type ClientAppLogEntry struct {
 	Message        string          `json:"message"`
 	Attrs          json.RawMessage `json:"attrs,omitempty"`
 	Platform       string          `json:"platform"`
+	BuildType      string          `json:"build_type,omitempty"`
 	AppVersionCode *int            `json:"app_version_code,omitempty"`
 	AppVersionName string          `json:"app_version_name,omitempty"`
 	OSVersion      string          `json:"os_version,omitempty"`
@@ -132,6 +136,7 @@ func (s *Server) handleCreateClientAppLog(w http.ResponseWriter, r *http.Request
 		"userId", auth.UserID,
 		"event", input.Event,
 		"platform", input.Platform,
+		"buildType", input.BuildType,
 		"appVersionCode", input.AppVersionCodeValue(),
 	}
 	switch input.Level {
@@ -180,6 +185,7 @@ func (s *Server) handleCreatePreAuthClientAppLog(w http.ResponseWriter, r *http.
 		"userId", clientAppLogPreAuthUserID,
 		"event", input.Event,
 		"platform", input.Platform,
+		"buildType", input.BuildType,
 		"appVersionCode", input.AppVersionCodeValue(),
 	}
 	switch input.Level {
@@ -222,6 +228,7 @@ func (s *Server) handleInternalClientAppLogs(w http.ResponseWriter, r *http.Requ
 		"event_prefix":     filter.EventPrefix,
 		"level":            filter.Level,
 		"platform":         filter.Platform,
+		"build_type":       filter.BuildType,
 		"app_version_code": filter.AppVersionCode,
 		"app_version_name": filter.AppVersionName,
 		"os_version":       filter.OSVersion,
@@ -261,6 +268,7 @@ func parseClientAppLogQuery(values url.Values, now time.Time) (ClientAppLogQuery
 		Event:          normalizeClientLogIdentifier(values.Get("event"), 96),
 		EventPrefix:    normalizeClientLogIdentifier(values.Get("event_prefix"), 96),
 		Platform:       normalizeClientLogIdentifier(values.Get("platform"), 32),
+		BuildType:      normalizeClientLogIdentifier(values.Get("build_type"), 32),
 		AppVersionName: truncateRunes(strings.TrimSpace(values.Get("app_version_name")), 64),
 		OSVersion:      truncateRunes(strings.TrimSpace(values.Get("os_version")), 64),
 		DeviceModel:    truncateRunes(strings.TrimSpace(values.Get("device_model")), 128),
@@ -319,6 +327,7 @@ func normalizeClientAppLogPayload(userID string, maskedIP string, body clientApp
 	if platform == "" {
 		platform = "android"
 	}
+	buildType := normalizeClientLogIdentifier(body.BuildType, 32)
 	attrsJSON, validationError := normalizeClientLogAttrs(body.Attrs)
 	if validationError != "" {
 		return ClientAppLogInput{}, validationError
@@ -330,6 +339,7 @@ func normalizeClientAppLogPayload(userID string, maskedIP string, body clientApp
 		Message:        message,
 		AttrsJSON:      attrsJSON,
 		Platform:       platform,
+		BuildType:      buildType,
 		AppVersionCode: body.AppVersionCode,
 		AppVersionName: truncateRunes(strings.TrimSpace(body.AppVersionName), 64),
 		OSVersion:      truncateRunes(strings.TrimSpace(body.OSVersion), 64),
@@ -350,6 +360,9 @@ func normalizeClientLogMessage(raw string, fallback string) string {
 
 func containsSensitiveClientLogText(value string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(value))
+	if giftCardTextLooksSensitive(value) {
+		return true
+	}
 	for _, marker := range []string{
 		"http://",
 		"https://",
@@ -542,6 +555,10 @@ func buildClientAppLogWhere(filter ClientAppLogQuery) (string, []any) {
 		clauses = append(clauses, "platform = ?")
 		args = append(args, strings.TrimSpace(filter.Platform))
 	}
+	if strings.TrimSpace(filter.BuildType) != "" {
+		clauses = append(clauses, "build_type = ?")
+		args = append(args, strings.TrimSpace(filter.BuildType))
+	}
 	if filter.AppVersionCode != nil {
 		clauses = append(clauses, "app_version_code = ?")
 		args = append(args, *filter.AppVersionCode)
@@ -583,6 +600,7 @@ func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery)
 		   message,
 		   attrs_json,
 		   platform,
+		   build_type,
 		   app_version_code,
 		   app_version_name,
 		   os_version,
@@ -604,6 +622,7 @@ func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery)
 	for rows.Next() {
 		var entry ClientAppLogEntry
 		var attrsJSON sql.NullString
+		var buildType sql.NullString
 		var appVersionCode sql.NullInt64
 		var appVersionName sql.NullString
 		var osVersion sql.NullString
@@ -618,6 +637,7 @@ func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery)
 			&entry.Message,
 			&attrsJSON,
 			&entry.Platform,
+			&buildType,
 			&appVersionCode,
 			&appVersionName,
 			&osVersion,
@@ -633,6 +653,7 @@ func (s *Store) ListClientAppLogs(ctx context.Context, filter ClientAppLogQuery)
 				entry.Attrs = raw
 			}
 		}
+		entry.BuildType = nullStringValue(buildType)
 		entry.AppVersionCode = nullIntToPtr(appVersionCode)
 		entry.AppVersionName = nullStringValue(appVersionName)
 		entry.OSVersion = nullStringValue(osVersion)
@@ -767,6 +788,7 @@ func (s *Store) CreateClientAppLog(ctx context.Context, input ClientAppLogInput)
 		   message,
 		   attrs_json,
 		   platform,
+		   build_type,
 		   app_version_code,
 		   app_version_name,
 		   os_version,
@@ -775,13 +797,14 @@ func (s *Store) CreateClientAppLog(ctx context.Context, input ClientAppLogInput)
 		   created_at,
 		   masked_ip
 		 )
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		input.UserID,
 		input.Level,
 		input.Event,
 		input.Message,
 		nullableString(attrsJSON),
 		input.Platform,
+		nullableTrimmed(input.BuildType),
 		appVersionCode,
 		nullableTrimmed(input.AppVersionName),
 		nullableTrimmed(input.OSVersion),

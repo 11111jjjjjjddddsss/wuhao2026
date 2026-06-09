@@ -319,7 +319,7 @@ internal fun HamburgerMenuSheet(
                 message = "App update install permission required",
                 attrs = appUpdateLogAttrs(update, true) + mapOf("settings_opened" to opened)
             )
-            showNotice(if (opened) "请允许安装未知应用后再继续更新" else "请先允许安装未知应用")
+            showNotice(if (opened) "允许安装未知应用后，返回本页再点立即更新" else "请先允许安装未知应用")
             return
         }
         updateDownloading = true
@@ -344,7 +344,7 @@ internal fun HamburgerMenuSheet(
                         "http_status" to (download.httpStatus ?: 0)
                     )
                 )
-                showNotice("更新下载失败，请稍后重试")
+                showNotice(appUpdateDownloadFailureText(download.reason))
                 return@launch
             }
             updateDialogInfo = null
@@ -358,7 +358,7 @@ internal fun HamburgerMenuSheet(
                         "reason" to (install.reason?.name ?: "unknown")
                     )
                 )
-                showNotice("安装页面打开失败")
+                showNotice("系统安装页面打开失败，请稍后再试")
             } else {
                 SessionApi.reportClientLog(
                     level = "info",
@@ -479,6 +479,10 @@ internal fun HamburgerMenuSheet(
                                     supportAttachmentMenuVisible = false
                                     page = HamburgerMenuPage.Support
                                 },
+                                onOpenTodayAgri = {
+                                    performButtonHaptic()
+                                    page = HamburgerMenuPage.TodayAgri
+                                },
                                 onOpenLegalHub = {
                                     performButtonHaptic()
                                     legalSubpage = false
@@ -524,6 +528,11 @@ internal fun HamburgerMenuSheet(
                                 onAttachmentMenuVisibilityChanged = { visible ->
                                     supportAttachmentMenuVisible = visible
                                 }
+                            )
+                        }
+                        HamburgerMenuPage.TodayAgri -> {
+                            HamburgerTodayAgriHistoryPage(
+                                onPendingAction = ::showNotice
                             )
                         }
                         HamburgerMenuPage.LegalHub -> {
@@ -835,6 +844,27 @@ private fun HamburgerMembershipCenterPage(
     )
 }
 
+private fun appUpdateDownloadFailureText(reason: AppUpdateInstaller.DownloadFailureReason?): String =
+    when (reason) {
+        AppUpdateInstaller.DownloadFailureReason.Sha256Mismatch,
+        AppUpdateInstaller.DownloadFailureReason.PackageInfoMissing,
+        AppUpdateInstaller.DownloadFailureReason.PackageNameMismatch,
+        AppUpdateInstaller.DownloadFailureReason.VersionCodeMismatch,
+        AppUpdateInstaller.DownloadFailureReason.VersionCodeNotNewer -> "安装包校验未通过，请稍后再试"
+        AppUpdateInstaller.DownloadFailureReason.NonHttpsRedirect,
+        AppUpdateInstaller.DownloadFailureReason.InvalidUrl -> "更新地址异常，请稍后再试"
+        AppUpdateInstaller.DownloadFailureReason.ExpectedSizeTooLarge,
+        AppUpdateInstaller.DownloadFailureReason.ContentTooLarge,
+        AppUpdateInstaller.DownloadFailureReason.ContentLengthMismatch,
+        AppUpdateInstaller.DownloadFailureReason.CopyTooLarge,
+        AppUpdateInstaller.DownloadFailureReason.DownloadedSizeMismatch -> "安装包大小异常，请稍后再试"
+        AppUpdateInstaller.DownloadFailureReason.HttpStatus,
+        AppUpdateInstaller.DownloadFailureReason.Network -> "网络不稳定，更新下载失败"
+        AppUpdateInstaller.DownloadFailureReason.CacheDirUnavailable,
+        AppUpdateInstaller.DownloadFailureReason.RenameFailed -> "本机缓存不可用，更新下载失败"
+        else -> "更新下载失败，请稍后重试"
+    }
+
 @Composable
 private fun HamburgerMembershipCenterContent(
     userId: String,
@@ -895,6 +925,7 @@ private fun HamburgerMenuMainPage(
     onOpenAccount: () -> Unit,
     onOpenRedeem: () -> Unit,
     onOpenSupport: () -> Unit,
+    onOpenTodayAgri: () -> Unit,
     onOpenLegalHub: () -> Unit,
     onCheckUpdate: () -> Unit,
     onPlaceholderClick: (String) -> Unit
@@ -948,6 +979,13 @@ private fun HamburgerMenuMainPage(
                 subtitle = "提交问题并查看处理进度",
                 showBadge = supportUnread,
                 onClick = onOpenSupport
+            )
+            HamburgerMenuDivider(startIndent = 52.dp)
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.TodayAgri,
+                title = "今日农情",
+                subtitle = "查看近30天农情简报",
+                onClick = onOpenTodayAgri
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
@@ -1728,6 +1766,13 @@ private fun HamburgerMenuPreviewGroups() {
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
+            icon = HamburgerMenuIcon.TodayAgri,
+            title = "今日农情",
+            subtitle = "查看近30天农情简报",
+            onClick = {}
+        )
+        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuRow(
             icon = HamburgerMenuIcon.Update,
             title = "检查更新",
             subtitle = "查看版本并安装更新",
@@ -1785,7 +1830,9 @@ private fun HamburgerAccountManagementContent(
     modifier: Modifier = Modifier
 ) {
     var deleteHistoryDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var accountDeletionDialogVisible by rememberSaveable { mutableStateOf(false) }
     var deleteHistorySubmitting by remember { mutableStateOf(false) }
+    var accountDeletionSubmitting by remember { mutableStateOf(false) }
     var cacheCleanupSubmitting by remember { mutableStateOf(false) }
     var logoutSubmitting by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -1827,7 +1874,7 @@ private fun HamburgerAccountManagementContent(
             modifier = Modifier.padding(top = 22.dp)
         ) {
             HamburgerAccountActionRow(
-                title = if (cacheCleanupSubmitting) "清理中" else "清理本机缓存",
+                title = if (cacheCleanupSubmitting) "清理中" else "清理更新包和临时拍照缓存",
                 danger = false,
                 onClick = {
                     if (cacheCleanupSubmitting) return@HamburgerAccountActionRow
@@ -1836,7 +1883,7 @@ private fun HamburgerAccountManagementContent(
                     scope.launch {
                         val ok = LocalAppCacheCleaner.clearTemporaryCaches(appContext)
                         cacheCleanupSubmitting = false
-                        onPendingAction(if (ok) "本机缓存已清理" else "清理失败，请稍后重试")
+                        onPendingAction(if (ok) "更新包和临时拍照缓存已清理" else "清理失败，请稍后重试")
                     }
                 }
             )
@@ -1872,11 +1919,11 @@ private fun HamburgerAccountManagementContent(
             modifier = Modifier.padding(top = 18.dp)
         ) {
             HamburgerAccountActionRow(
-                title = "注销账号",
-                enabled = false,
-                danger = false,
-                trailingText = "暂未开放",
-                onClick = { onPendingAction("账号注销暂不可用，可通过帮助与反馈联系我们") }
+                title = if (accountDeletionSubmitting) "提交中" else "注销账号",
+                enabled = phoneMask != null && !accountDeletionSubmitting,
+                danger = true,
+                trailingText = if (phoneMask == null) "请先登录" else null,
+                onClick = { accountDeletionDialogVisible = true }
             )
         }
     }
@@ -1909,6 +1956,28 @@ private fun HamburgerAccountManagementContent(
             }
         )
     }
+    if (accountDeletionDialogVisible) {
+        HamburgerAccountDeletionConfirmDialog(
+            submitting = accountDeletionSubmitting,
+            onDismiss = {
+                if (!accountDeletionSubmitting) accountDeletionDialogVisible = false
+            },
+            onConfirm = {
+                if (accountDeletionSubmitting) return@HamburgerAccountDeletionConfirmDialog
+                accountDeletionSubmitting = true
+                SessionApi.requestAccountDeletion { ok ->
+                    accountDeletionSubmitting = false
+                    if (ok) {
+                        accountDeletionDialogVisible = false
+                        onPendingAction("注销申请已提交，已退出当前账号")
+                        context.findActivityForHamburger()?.recreate()
+                    } else {
+                        onPendingAction("提交失败，请检查网络后重试")
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -1923,6 +1992,274 @@ internal fun HamburgerAccountManagementPagePreview() {
             onClearChatHistory = {},
             modifier = Modifier.padding(14.dp)
         )
+    }
+}
+
+@Composable
+private fun HamburgerTodayAgriHistoryPage(
+    onPendingAction: (String) -> Unit
+) {
+    var cards by remember { mutableStateOf<List<SessionApi.TodayAgriCard>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var loadTick by remember { mutableStateOf(0) }
+
+    LaunchedEffect(loadTick) {
+        loading = true
+        loadFailed = false
+        SessionApi.getRecentTodayAgriCards { loaded ->
+            loading = false
+            if (loaded == null) {
+                loadFailed = true
+                onPendingAction("农情同步失败")
+                return@getRecentTodayAgriCards
+            }
+            cards = loaded
+        }
+    }
+
+    HamburgerTodayAgriHistoryContent(
+        cards = cards,
+        loading = loading,
+        loadFailed = loadFailed,
+        onRetry = { loadTick += 1 },
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 32.dp)
+    )
+}
+
+@Composable
+private fun HamburgerTodayAgriHistoryContent(
+    cards: List<SessionApi.TodayAgriCard>,
+    loading: Boolean,
+    loadFailed: Boolean,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(top = 14.dp)
+        ) {
+            Text(
+                text = "今日农情",
+                color = Color(0xFF111111),
+                fontSize = 20.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "近30天种植、农资和市场简报",
+                color = Color(0xFF7D828A),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        Surface(
+            color = Color(0xFFF5F6F3),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                when {
+                    loading -> {
+                        HamburgerSupportStatusText(text = "正在同步农情...")
+                    }
+                    loadFailed -> {
+                        HamburgerSupportStatusText(text = "农情同步失败")
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(999.dp),
+                            border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onRetry
+                                )
+                        ) {
+                            Text(
+                                text = "重试",
+                                color = Color(0xFF111111),
+                                fontSize = 14.sp,
+                                lineHeight = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                    cards.isEmpty() -> {
+                        HamburgerTodayAgriEmptyState()
+                    }
+                    else -> {
+                        cards.forEach { card ->
+                            HamburgerTodayAgriHistoryCard(card = card)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HamburgerTodayAgriEmptyState() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 28.dp, horizontal = 12.dp)
+    ) {
+        Surface(
+            color = Color.White,
+            shape = CircleShape,
+            border = BorderStroke(0.8.dp, Color(0xFFE2E5DF))
+        ) {
+            HamburgerMenuGlyph(
+                icon = HamburgerMenuIcon.TodayAgri,
+                tint = Color(0xFF5C6F42),
+                modifier = Modifier
+                    .size(42.dp)
+                    .padding(9.dp)
+            )
+        }
+        Text(
+            text = "暂无可展示的农情简报",
+            color = Color(0xFF4B5158),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = "生成成功后会在这里留存",
+            color = Color(0xFF858A91),
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun HamburgerTodayAgriHistoryCard(card: SessionApi.TodayAgriCard) {
+    val dateText = hamburgerTodayAgriDateText(card.dateCn)
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(0.7.dp, Color(0xFFE1E4E8)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    color = Color(0xFF244B2D),
+                    shape = RoundedCornerShape(999.dp)
+                ) {
+                    Text(
+                        text = "今日农情",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        lineHeight = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                    )
+                }
+                if (dateText.isNotEmpty()) {
+                    Text(
+                        text = dateText,
+                        color = Color(0xFF7B7F87),
+                        fontSize = 12.5.sp,
+                        lineHeight = 17.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+            card.items.orEmpty().take(3).forEachIndexed { index, item ->
+                HamburgerTodayAgriHistoryItem(item = item, index = index)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HamburgerTodayAgriHistoryItem(
+    item: SessionApi.TodayAgriCardItem,
+    index: Int
+) {
+    val title = item.title.orEmpty().trim()
+    val summary = item.summary.orEmpty().trim()
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Surface(
+            color = Color(0xFFE7EFE0),
+            shape = CircleShape,
+            modifier = Modifier.size(22.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = (index + 1).toString(),
+                    color = Color(0xFF3F5C2D),
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = title,
+                color = Color(0xFF111111),
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = summary,
+                color = Color(0xFF4F535A),
+                fontSize = 13.sp,
+                lineHeight = 19.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
@@ -3076,6 +3413,131 @@ internal fun HamburgerDeleteHistoryConfirmPreview() {
     )
 }
 
+@Composable
+private fun HamburgerAccountDeletionConfirmDialog(
+    submitting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {
+            if (!submitting) onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
+                .padding(horizontal = 28.dp, vertical = 20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            HamburgerAccountDeletionConfirmCard(
+                submitting = submitting,
+                onDismiss = onDismiss,
+                onConfirm = onConfirm,
+                modifier = Modifier.widthIn(max = 340.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HamburgerAccountDeletionConfirmCard(
+    submitting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        shadowElevation = 18.dp,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "确认注销账号",
+                color = Color(0xFF111111),
+                fontSize = 20.sp,
+                lineHeight = 27.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "提交后将退出当前账号。客服会按规定核验并处理账号和相关数据；会员、订单、礼品卡和反馈记录需按规则处理。",
+                color = Color(0xFF33363D),
+                fontSize = 15.sp,
+                lineHeight = 22.sp
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Surface(
+                    color = Color(0xFFF0F1F2),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !submitting,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "取消",
+                            color = Color(0xFF111111),
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Surface(
+                    color = if (submitting) Color(0xFFD8DADF) else Color(0xFFD24646),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !submitting,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onConfirm
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (submitting) "提交中" else "确认注销",
+                            color = if (submitting) Color(0xFF777B82) else Color.White,
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun HamburgerAccountDeletionConfirmPreview() {
+    HamburgerAccountDeletionConfirmCard(
+        submitting = false,
+        onDismiss = {},
+        onConfirm = {},
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
 private fun giftCardRedeemSuccessText(result: SessionApi.GiftCardRedeemResult): String {
     val tierRaw = result.appliedTier?.lowercase(Locale.ROOT) ?: result.tier?.lowercase(Locale.ROOT)
     val tier = when (tierRaw) {
@@ -3098,6 +3560,15 @@ private fun giftCardRedeemSuccessText(result: SessionApi.GiftCardRedeemResult): 
     } else {
         "$tier $days 已生效$quota，到期 $expire"
     }
+}
+
+private fun hamburgerTodayAgriDateText(dateCn: String?): String {
+    val raw = dateCn?.trim().orEmpty()
+    if (raw.length != 8 || raw.any { !it.isDigit() }) return ""
+    val month = raw.substring(4, 6).toIntOrNull() ?: return ""
+    val day = raw.substring(6, 8).toIntOrNull() ?: return ""
+    if (month !in 1..12 || day !in 1..31) return ""
+    return "${month}月${day}日"
 }
 
 @Composable
@@ -3582,6 +4053,7 @@ private enum class HamburgerMenuIcon {
     Privacy,
     Risk,
     Feedback,
+    TodayAgri,
     Logout
 }
 
@@ -3591,6 +4063,7 @@ private enum class HamburgerMenuPage {
     Redeem,
     Account,
     Support,
+    TodayAgri,
     LegalHub,
     ServiceAgreement,
     PrivacyPolicy,
@@ -3859,6 +4332,33 @@ private fun HamburgerMenuGlyph(
                 }
                 drawPath(path, tint, style = stroke)
                 drawLine(tint, Offset(w * 0.32f, h * 0.45f), Offset(w * 0.68f, h * 0.45f), strokeWidth, cap = StrokeCap.Round)
+            }
+            HamburgerMenuIcon.TodayAgri -> {
+                drawCircle(
+                    color = tint,
+                    radius = w * 0.36f,
+                    center = Offset(w * 0.50f, h * 0.50f),
+                    style = stroke
+                )
+                drawLine(
+                    tint,
+                    Offset(w * 0.50f, h * 0.20f),
+                    Offset(w * 0.50f, h * 0.80f),
+                    strokeWidth,
+                    cap = StrokeCap.Round
+                )
+                val leafLeft = Path().apply {
+                    moveTo(w * 0.50f, h * 0.48f)
+                    cubicTo(w * 0.29f, h * 0.30f, w * 0.21f, h * 0.46f, w * 0.27f, h * 0.61f)
+                    cubicTo(w * 0.37f, h * 0.66f, w * 0.45f, h * 0.58f, w * 0.50f, h * 0.48f)
+                }
+                val leafRight = Path().apply {
+                    moveTo(w * 0.50f, h * 0.42f)
+                    cubicTo(w * 0.72f, h * 0.25f, w * 0.81f, h * 0.45f, w * 0.72f, h * 0.60f)
+                    cubicTo(w * 0.61f, h * 0.62f, w * 0.55f, h * 0.52f, w * 0.50f, h * 0.42f)
+                }
+                drawPath(leafLeft, tint, style = stroke)
+                drawPath(leafRight, tint, style = stroke)
             }
             HamburgerMenuIcon.Logout -> {
                 drawLine(tint, Offset(w * 0.18f, h * 0.18f), Offset(w * 0.18f, h * 0.82f), strokeWidth, cap = StrokeCap.Round)

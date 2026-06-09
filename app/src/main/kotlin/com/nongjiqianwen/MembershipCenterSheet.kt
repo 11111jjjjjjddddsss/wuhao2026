@@ -74,6 +74,7 @@ internal fun MembershipCenterBottomSheet(
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onPaymentUnavailable: () -> Unit,
+    onRetryLoad: () -> Unit = {},
     onPurchaseSuccessConfirm: () -> Unit
 ) {
     Box(
@@ -134,7 +135,8 @@ internal fun MembershipCenterBottomSheet(
                             entitlement = entitlement,
                             loadState = loadState,
                             paymentNoticeResetKey = visible,
-                            onPaymentUnavailable = onPaymentUnavailable
+                            onPaymentUnavailable = onPaymentUnavailable,
+                            onRetryLoad = onRetryLoad
                         )
                     }
                 }
@@ -223,7 +225,8 @@ internal fun MembershipCenterBody(
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
     paymentNoticeResetKey: Any?,
-    onPaymentUnavailable: () -> Unit
+    onPaymentUnavailable: () -> Unit,
+    onRetryLoad: () -> Unit = {}
 ) {
     var paymentNoticeVisible by remember(paymentNoticeResetKey) { mutableStateOf(false) }
     LaunchedEffect(paymentNoticeVisible) {
@@ -235,6 +238,9 @@ internal fun MembershipCenterBody(
         entitlement = entitlement,
         loadState = loadState
     )
+    if (loadState == MembershipLoadState.Failed) {
+        MembershipSyncRetryNotice(onRetryLoad = onRetryLoad)
+    }
     val loadedEntitlement = entitlement.takeIf { loadState == MembershipLoadState.Loaded }
     if (paymentNoticeVisible) {
         MembershipInlineNotice(text = "相关功能暂未开放，当前不会扣费")
@@ -257,6 +263,57 @@ internal fun MembershipCenterBody(
         }
     )
     MembershipRulesSection()
+}
+
+@Composable
+private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
+    Surface(
+        color = Color(0xFFFFF7E8),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFF0D8A8)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "权益同步失败，请检查网络后重试",
+                color = Color(0xFF7A5620),
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(999.dp),
+                border = BorderStroke(0.8.dp, Color(0xFFE6C98F)),
+                modifier = Modifier
+                    .height(34.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        role = Role.Button,
+                        onClick = onRetryLoad
+                    )
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                ) {
+                    Text(
+                        text = "重新同步",
+                        color = Color(0xFF111111),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -926,7 +983,7 @@ private fun membershipDailyLimit(tier: String): Int =
 private fun membershipSummaryTierName(tier: String, loadState: MembershipLoadState): String =
     when (loadState) {
         MembershipLoadState.Loading -> "读取中"
-        MembershipLoadState.Failed -> "信息同步中"
+        MembershipLoadState.Failed -> "同步失败"
         else -> membershipTierName(tier)
     }
 

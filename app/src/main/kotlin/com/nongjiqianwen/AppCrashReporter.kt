@@ -8,6 +8,8 @@ import kotlin.system.exitProcess
 object AppCrashReporter {
     private const val PREFS_NAME = "app_crash_reports"
     private const val KEY_PENDING = "pending_crash"
+    private const val KEY_PENDING_ATTEMPTS = "pending_crash_attempts"
+    private const val MAX_PENDING_REPORT_ATTEMPTS = 3
     private val installed = AtomicBoolean(false)
     private val handlingCrash = AtomicBoolean(false)
 
@@ -44,7 +46,17 @@ object AppCrashReporter {
     fun flushPendingReport(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString(KEY_PENDING, null)?.takeIf { it.isNotBlank() } ?: return
-        prefs.edit().remove(KEY_PENDING).apply()
+        val attempts = prefs.getInt(KEY_PENDING_ATTEMPTS, 0) + 1
+        prefs.edit()
+            .putInt(KEY_PENDING_ATTEMPTS, attempts)
+            .apply()
+        if (attempts > MAX_PENDING_REPORT_ATTEMPTS) {
+            prefs.edit()
+                .remove(KEY_PENDING)
+                .remove(KEY_PENDING_ATTEMPTS)
+                .apply()
+            return
+        }
         val values = raw.split('\n')
             .mapNotNull { line ->
                 val index = line.indexOf('=')
@@ -61,7 +73,8 @@ object AppCrashReporter {
             "top_class" to values["top_class"].orEmpty(),
             "top_method" to values["top_method"].orEmpty(),
             "top_line" to values["top_line"].orEmpty(),
-            "crashed_at_ms" to values["crashed_at_ms"].orEmpty()
+            "crashed_at_ms" to values["crashed_at_ms"].orEmpty(),
+            "report_attempt" to attempts.toString()
         ).filterValues { it.isNotBlank() }
         if (event.startsWith("auth.")) {
             SessionApi.reportAuthClientLog(
@@ -100,6 +113,7 @@ object AppCrashReporter {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_PENDING, payload)
+            .putInt(KEY_PENDING_ATTEMPTS, 0)
             .commit()
     }
 }

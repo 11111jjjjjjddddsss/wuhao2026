@@ -9,10 +9,12 @@
 - 当前只有全国卡片：`scope = CN`
 - 数据真源表：`daily_agri_cards`
 - 用户只读接口：`GET /api/today-agri-card`
+- 用户近 30 天回看接口：`GET /api/today-agri-cards`
 - 内部生成接口：`POST /internal/jobs/today-agri-card/generate`
+- 内部探针接口：`POST /internal/jobs/today-agri-card/probe?runs=3`，只测模型输出 / 来源 / 解析质量，不写 `daily_agri_cards`
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
 - 当前生产推荐主链：ECS systemd timer 每天自动触发一次生成，后台补跑只作为异常兜底
-- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情独立走 `Responses API + web_search + tool_choice=required`，两条链路分开，不互相影响
+- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情独立走 DashScope 原生 Generation + `qwen-plus + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true`，两条链路分开，不互相影响。`agent / agent_max` 属于多轮检索整合且会额外收费，今日农情默认不使用；`freshness=7` 已随请求体传入，不使用 `assigned_site_list`，保持全网宽搜。`prompt_intervene` 引导“近 7 天、种植侧、全网宽搜、排除养殖和低质内容”，不限定固定网站、不按站点白名单思路检索；生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，继续走 `turbo`。用户端已经取消外部链接点击，公开接口只返回标题和摘要；搜索来源 URL、来源名和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户卡片
 
 ## 环境变量
 
@@ -20,9 +22,13 @@
 - `DASHSCOPE_BASE_URL`：可选，默认 `https://dashscope.aliyuncs.com/api/v1`
 - `DAILY_AGRI_JOB_SECRET`：内部生成接口密钥，必须配置；不要写入仓库
 
-当前生产默认模型仍是 `qwen3.5-plus`，但今日农情不再走旧的 DashScope 原生 Generation 联网搜索，而是改走 Responses API + `web_search`。原因是 2026-06-08 在生产 ECS 实测发现：`qwen3.5-plus` 走 DashScope 原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，但同一台机器、同一套 Key、同一模型改走 Responses API + `web_search` 可正常返回 200，并且仍能拿到搜索来源 URL 列表供后端做可信域名、https、去重和来源校验。这个调整只影响今日农情独立生成链，不影响主聊天模型。
+当前生产默认模型已切到 `qwen-plus`，今日农情继续独立于主聊天模型调用。2026-06-08 在生产 ECS 实测确认：`qwen3.5-plus` 走旧 DashScope 原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，同机同 Key 改走 Responses `web_search` 正常；2026-06-09 生产探针进一步确认：`qwen-flash + turbo + enable_source` 返回 200、10 条搜索来源、1 次搜索和约 3151 输入 / 210 输出 token，但严格 JSON / source_index 执行力偏弱；`qwen-plus + turbo + enable_source` 同样可返回来源，当前按用户要求切到 qwen-plus 验证质量。`qwen3.5-flash + turbo`、`qwen3.5-flash + agent` 以及 `qwen3.5-flash + turbo` 不返回来源的组合都返回 `400 InvalidParameter / url error`。因此今日农情不再使用 `qwen3.5-flash`，当前为 `qwen-plus + turbo` 原生 Generation 强制联网链。响应里的搜索来源 URL 仍由服务端用于内部核对和去重；这个调整只影响今日农情独立生成链，不影响主聊天模型、B/C 摘要或主聊天联网策略。
 
-模型提示词内部现在会要求先给 5 到 6 条候选，后端再按“来源可信、近 7 天、链接在搜索来源里、和近 7 天及当天不重复”的规则截取前 3 条对外发布。这样做是为了降低“模型只给 3 条但过滤后只剩 2 条”的失败率；用户侧最终仍只会看到 3 条。
+官方联网搜索文档口径：DashScope 协议支持返回搜索来源；`turbo` 是默认且适合大多数场景的搜索策略；`agent / agent_max` 会额外按次计费，Responses API 的 `web_search` 计费也按 agent 策略。中国内地搜索策略费当前为 `turbo 3 元 / 千次`、`max 4 元 / 千次`、`agent 4 元 / 千次`，所以 agent 策略费本身不是比 turbo 贵很多，但它会多轮信息检索与整合，通常会带来更多输入 token 和更长延迟。因此今日农情默认坚持 `turbo`，只有后续日志证明 `qwen-plus + turbo` 仍无法稳定产出高质量来源时再重新评估。
+
+模型提示词内部现在要求优先输出 3 条成稿内容；如果已经找到 3 条高质量且主题 / 地区不重复的材料，可以停止继续深挖；确实只有 2 条高质量内容时也可只输出 2 条。检索阶段保持全网宽搜，不把来源卡死在农业农村部、中国农业信息网、农民日报等少数网站；同等质量下优先官方、农业农村部门、农技推广、气象、主流媒体、农业专业媒体、地方农业信息、市场流通、农资、种业、植保等正式来源。今日农情按“农业大类分种植和养殖，当前只取种植侧”的口径生成：种子 / 种苗 / 种业、作物、病虫害、植保农药、肥料水肥、农机、农产品价格流通、补贴保险，以及明确影响作物和农时的农业气象风险可以选；畜牧、水产、养殖、动物疫病、生猪、猪肉、猪价、家禽、禽蛋、蛋鸡、肉鸡、牛羊、肉牛、肉羊、奶牛、奶业、饲料、兽药、渔业、水产养殖、鱼虾等养殖侧内容排除；普通天气预报、生活天气、旅游出行天气不作为独立选题。后端按“标题摘要完整、近 7 天或来源时间合理、广告和养殖侧过滤、近 7 天去重”的规则截取前 3 条对外发布；过滤后只要还有 2 条高质量 item，也允许发布 2 条。若模型 `source_index` 指到首页 / 栏目页等低价值来源，URL 只作为内部追溯，不影响内容卡片的用户展示。
+
+Android 展示口径：今日农情不是聊天消息，只作为 `ChatTimelineItem.TodayAgriCard` 追加在真实消息后方，是靠近输入框的聊天列表尾部 UI-only 卡片；真实 `messages` 仍只包含用户 / assistant 对话。用户发送文字 / 图片 / 失败态消息后，Android 会记录当天已隐藏，并先用约 180ms 淡出 / 垂直收起过渡让卡片在原位置退出，再插入用户消息和 assistant 占位；删除历史不恢复当天卡片，第二天有新日期卡片后再出现。聊天页卡片右上角不放关闭叉号，不提供手动关闭 / 手动隐藏入口，单条农情不可点击跳外部链接。设置页新增“今日农情”入口，展示近 30 天已 ready 的标题 + 摘要记录。
 
 ## 生成接口
 
@@ -40,7 +46,7 @@ curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/generate" 
   -H "Authorization: Bearer $env:DAILY_AGRI_JOB_SECRET"
 ```
 
-预期返回：
+内部生成接口预期返回会保留来源字段，便于后台和运维排查；这不是 App 用户公开响应：
 
 ```json
 {
@@ -52,21 +58,21 @@ curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/generate" 
       {
         "title": "华北麦区防干热风",
         "summary": "华北多地小麦进入灌浆关键期，气象部门提醒关注高温干风，适时浇水稳粒重。",
-        "url": "https://www.weather.com.cn/",
+        "url": "https://www.weather.com.cn/agri/2026/05/11/123456.shtml",
         "source": "中国天气网",
         "published_date": "2026-05-11"
       },
       {
         "title": "早稻病虫进入防控期",
         "summary": "南方早稻陆续分蘖拔节，植保系统提示加强纹枯病和稻飞虱巡查。",
-        "url": "https://www.natesc.org.cn/",
+        "url": "https://www.natesc.org.cn/News/202605/t20260511_123456.htm",
         "source": "全国农技推广网",
         "published_date": "2026-05-11"
       },
       {
         "title": "蔬菜价格稳中有降",
         "summary": "批发市场监测显示多类蔬菜供应增加，部分叶菜价格回落，本地走货节奏同步变化。",
-        "url": "https://www.moa.gov.cn/",
+        "url": "https://www.moa.gov.cn/xw/qg/202605/t20260511_123456.htm",
         "source": "农业农村部",
         "published_date": "2026-05-11"
       }
@@ -86,7 +92,53 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-card" `
 
 如果当天没有 ready 卡片，接口返回 `missing` / `pending` / `failed` 等状态；Android 会静默不展示，不阻塞聊天页。
 
-如果数据库里当天记录状态是 `ready` 但 `content_json` 不是合法 JSON，或不是完整 3 条“今日农情”结构，用户侧会按不可展示状态处理，不再返回 500；后台补跑遇到这种“ready 但正文不可用”的卡片时允许重新生成覆盖。
+用户侧公开响应只包含标题和摘要，不包含 URL、来源或条目日期：
+
+```json
+{
+  "status": "ready",
+  "card": {
+    "date_cn": "20260511",
+    "title": "今日农情",
+    "items": [
+      {
+        "title": "华北麦区防干热风",
+        "summary": "华北多地小麦进入灌浆关键期，气象部门提醒关注高温干风，适时浇水稳粒重。"
+      }
+    ]
+  }
+}
+```
+
+设置页“今日农情”回看近 30 天：
+
+```powershell
+curl.exe "$env:BACKEND_BASE_URL/api/today-agri-cards" `
+  -H "X-User-Id: <user-id>"
+```
+
+如果数据库里当天记录状态是 `ready` 但 `content_json` 不是合法 JSON，或不是完整 2 到 3 条“今日农情”结构，用户侧会按不可展示状态处理，不再返回 500；后台补跑遇到这种“ready 但正文不可用”的卡片时允许重新生成覆盖。
+
+## 内部探针
+
+探针用于验证 `qwen-plus + turbo` 的来源、JSON 执行力、过滤通过率和 usage 成本，不会写入 `daily_agri_cards`，也不会改变用户当天看到的卡片。该入口同样必须带 `DAILY_AGRI_JOB_SECRET`，`runs` 默认 1，最多 5。
+
+```powershell
+curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/probe?runs=3" `
+  -H "X-Internal-Job-Secret: $env:DAILY_AGRI_JOB_SECRET"
+```
+
+返回字段重点看：
+
+- `ok_count`：通过后端解析和质量校验的次数
+- `runs[].source_count`：DashScope 返回的搜索来源数量
+- `runs[].candidate_items / valid_items / reject_reasons`：模型候选数量、通过数量和过滤原因
+- `runs[].valid_source_hosts`：最终采用来源域名
+- `runs[].model_input_tokens / model_output_tokens / model_total_tokens / model_search_count`：可用时返回的 usage 与搜索次数
+- `runs[].card.items[].url`：内部追溯 URL，优先来自 `source_index` 映射的搜索来源，不信模型自拟 URL；不下发给 Android 用户卡片
+- `runs[].sources[]`：内部排查用搜索来源列表，重点看是否仍被首页 / 栏目页 / 专题页淹没
+
+探针返回中会带搜索来源 URL，因此只能作为内部运维接口使用，不要下发给 Android，也不要把 `DAILY_AGRI_JOB_SECRET` 写进仓库、APK、聊天记录或后台前端。
 
 ## 排查 SQL
 
@@ -111,9 +163,17 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 ## 日志关键词
 
 - `daily agri card generated`
+- `daily agri generation started`
+- `daily agri model response received`
+- `daily agri candidate rejected`
+- `daily agri probe started`
+- `daily agri probe card accepted`
+- `daily agri probe candidate rejected`
 - `generate today agri card failed`
 - `get today agri card failed`
 - `mark daily agri card failed state failed`
+
+`daily agri model response received` 会尽量记录 `source_count`、`content_chars`、`model_input_tokens`、`model_output_tokens`、`model_total_tokens` 和 `model_search_count`。若模型响应没有返回 usage 字段，日志里可能只有来源数量和正文长度。
 
 ## 失败处理
 
@@ -123,7 +183,7 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 4. 查询 `daily_agri_cards` 当天状态和 `error`。
 5. 如果状态是 `pending` 且 `lease_until` 未过期，等待当前任务完成。
 6. 如果状态是 `failed` 或 lease 已过期，可人工重新调用内部生成接口。
-7. 如果错误是 `dashscope status 400` 且审计 / 日志里没有业务解析报错，优先核对今天这条链是否误回到了旧的 DashScope 原生 Generation 联网搜索路径，不要先怀疑定时器或后台补跑按钮。
+7. 如果错误是 `dashscope status 400` 且审计 / 日志里没有业务解析报错，优先核对今天这条链是否误回到了 `qwen3.5-flash` 或旧的 DashScope 原生 Generation 联网搜索路径，不要先怀疑定时器或后台补跑按钮。
 8. 如果用户侧或后台曾出现今日农情 500，优先看 `content_json / sources_json` 是否为坏 JSON 或结构不完整。当前后台今日农情列表会把这类问题标成 `content_json_invalid`、`content_shape_invalid`、`sources_json_invalid` 或 `sources_shape_invalid`，不会再让整页 500；可直接用后台补跑当天卡片。
 
 ## 后台补跑
@@ -161,18 +221,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-e
 后端只发布同时满足以下条件的结果：
 
 - JSON 可解析，标题固定“今日农情”
-- 有且只有 3 条有效 item
-- 链接为 `https`
-- 发布时间在近 7 天
-- 链接来自 DashScope 返回的搜索结果
-- 域名在可信官方 / 权威大站范围内
+- 有 2 到 3 条有效 item
+- 发布时间优先在近 7 天；缺失时只要标题摘要事实清楚且不过期，可作为内容卡片候选
+- 搜索来源 URL 只用于内部追溯、去重和后台排查；公开响应不展示 URL、来源或条目日期
+- 解析时优先信 `source_index` 对应的 DashScope 搜索来源 URL，忽略模型自拟 `link_url / url`
+- 如果 `source_index` 指到低价值来源，URL 只作为内部追溯，不作为用户展示条件
+- 只保留种植侧内容；畜牧、水产、养殖、动物疫病、生猪、猪肉、猪价、家禽、禽蛋、蛋鸡、肉鸡、牛羊、肉牛、肉羊、奶牛、奶业、饲料、兽药、渔业、水产养殖、鱼虾等养殖侧内容和普通天气预报直接过滤，天气只有明确关联作物 / 农时 / 农田管理 / 防灾减灾时才可选
 - 生成前会带入过去 7 天已 ready 的今日农情，要求模型不要重复同链接、同标题或同一事件
 - 后端会硬过滤过去 7 天和当天候选里的重复链接 / 重复标题
 - 不包含广告、导购、招商、联系方式、模型名、提示词、搜索参数、前端元表达、推荐理由、标题党等敏感或低质内容
 - 选题按农业实用价值排序，优先具体地区、具体作物 / 品类、明确风险 / 农时 / 价格 / 补贴 / 流通影响的信息
 - 标题和摘要必须是自然资讯口吻，禁止“值得看 / 参考意义 / 对农户有用 / 根据搜索结果”等元表达、推荐理由和标题党话术
 
-过滤后不足 3 条时，不发布新卡片。不要为了当天一定有卡片而放宽到任意链接或用户打开 App 时临时多次调模型。
+过滤后不足 2 条时，不发布新卡片。不要为了当天一定有卡片而放宽到任意链接或用户打开 App 时临时多次调模型。
 
 ## 上线前检查
 

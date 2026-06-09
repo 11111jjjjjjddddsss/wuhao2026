@@ -7,6 +7,7 @@ export type AdminRouteKey =
   | "entitlements"
   | "orders"
   | "gift-cards"
+  | "account-deletion"
   | "support"
   | "app-logs"
   | "today-agri"
@@ -148,6 +149,7 @@ export interface AdminMonitoringQueues {
   support_replied: number;
   support_closed: number;
   support_oldest_pending_at?: number;
+  account_deletion_pending: number;
   daily_agri_status: string;
   daily_agri_updated_at?: number;
   daily_agri_error?: string;
@@ -442,6 +444,7 @@ export interface ClientAppLogEntry {
   message: string;
   attrs?: JsonValue;
   platform: string;
+  build_type?: string;
   app_version_code?: number;
   app_version_name?: string;
   os_version?: string;
@@ -530,6 +533,20 @@ export interface AdminGiftCardSummary {
   failure_reasons: AdminGiftCardFailureReason[];
 }
 
+export interface AccountDeletionRequest {
+  request_id: string;
+  user_id: string;
+  phone_mask?: string;
+  status: string;
+  reason?: string;
+  user_message?: string;
+  handled_by?: string;
+  handler_note?: string;
+  handled_at?: number;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface ClientAppLogSummaryEntry {
   event: string;
   level: string;
@@ -595,6 +612,7 @@ export interface ApiListResponse<T> {
   users?: T[];
   conversations?: T[];
   messages?: T[];
+  requests?: T[];
   logs?: T[];
   cards?: T[];
   batches?: T[];
