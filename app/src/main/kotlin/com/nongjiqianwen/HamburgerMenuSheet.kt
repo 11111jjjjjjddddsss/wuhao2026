@@ -1901,10 +1901,12 @@ private fun HamburgerAccountManagementContent(
                         return@HamburgerAccountActionRow
                     }
                     if (logoutSubmitting) return@HamburgerAccountActionRow
+                    val accountScopeId = IdManager.getUserId()
                     logoutSubmitting = true
                     SessionApi.logoutCurrentSession { ok ->
                         logoutSubmitting = false
                         if (ok) {
+                            PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
                             onPendingAction("已退出当前设备")
                             context.findActivityForHamburger()?.recreate()
                         } else {
@@ -1964,11 +1966,13 @@ private fun HamburgerAccountManagementContent(
             },
             onConfirm = {
                 if (accountDeletionSubmitting) return@HamburgerAccountDeletionConfirmDialog
+                val accountScopeId = IdManager.getUserId()
                 accountDeletionSubmitting = true
                 SessionApi.requestAccountDeletion { ok ->
                     accountDeletionSubmitting = false
                     if (ok) {
                         accountDeletionDialogVisible = false
+                        PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
                         onPendingAction("注销申请已提交，已退出当前账号")
                         context.findActivityForHamburger()?.recreate()
                     } else {
@@ -2218,6 +2222,7 @@ private fun HamburgerTodayAgriHistoryItem(
 ) {
     val title = item.title.orEmpty().trim()
     val summary = item.summary.orEmpty().trim()
+    val source = item.source.orEmpty().trim()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -2259,6 +2264,16 @@ private fun HamburgerTodayAgriHistoryItem(
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
+            if (source.isNotEmpty()) {
+                Text(
+                    text = "来源：$source",
+                    color = Color(0xFF868B91),
+                    fontSize = 11.5.sp,
+                    lineHeight = 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

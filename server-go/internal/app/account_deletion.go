@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const accountDeletionDefaultReason = "app_request"
+const (
+	accountDeletionDefaultReason   = "app_request"
+	accountDeletionSLABusinessDays = 15
+)
 
 var errAccountDeletionNotFound = errors.New("account_deletion_request_not_found")
 var errAccountDeletionInvalidTransition = errors.New("account_deletion_invalid_status_transition")
@@ -25,6 +28,8 @@ type AccountDeletionRequest struct {
 	HandledBy   string `json:"handled_by,omitempty"`
 	HandlerNote string `json:"handler_note,omitempty"`
 	HandledAt   *int64 `json:"handled_at,omitempty"`
+	DueAt       int64  `json:"due_at,omitempty"`
+	Overdue     bool   `json:"overdue"`
 	CreatedAt   int64  `json:"created_at"`
 	UpdatedAt   int64  `json:"updated_at"`
 }
@@ -88,6 +93,7 @@ func (s *Server) handleCreateAccountDeletionRequest(w http.ResponseWriter, r *ht
 		"created": created,
 		"status":  request.Status,
 	})
+	request = accountDeletionWithSLA(request, time.Now().UnixMilli())
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"ok":      true,
 		"created": created,
@@ -112,6 +118,7 @@ func (s *Server) handleAdminAccountDeletionRequests(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	accountDeletionApplySLA(requests, time.Now().UnixMilli())
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.account_deletion.list", "account_deletion_requests", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(requests), "status": filter.Status})
 	s.writeJSON(w, http.StatusOK, map[string]any{"requests": requests, "filter": filter})
 }
@@ -156,6 +163,7 @@ func (s *Server) handleAdminUpdateAccountDeletionStatus(w http.ResponseWriter, r
 		s.writeError(w, statusCode, code)
 		return
 	}
+	request = accountDeletionWithSLA(request, time.Now().UnixMilli())
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.account_deletion.status", "account_deletion_requests", request.RequestID, request.UserID, true, http.StatusOK, map[string]any{"status": request.Status})
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "request": request})
 }
@@ -428,6 +436,61 @@ func normalizeAccountDeletionReason(raw string) string {
 		}
 	}
 	return truncateRunes(builder.String(), 64)
+}
+
+func accountDeletionApplySLA(requests []AccountDeletionRequest, nowMs int64) {
+	for index := range requests {
+		requests[index] = accountDeletionWithSLA(requests[index], nowMs)
+	}
+}
+
+func accountDeletionWithSLA(request AccountDeletionRequest, nowMs int64) AccountDeletionRequest {
+	if request.CreatedAt <= 0 {
+		return request
+	}
+	request.DueAt = addBusinessDaysUnixMilli(request.CreatedAt, accountDeletionSLABusinessDays)
+	request.Overdue = accountDeletionIsOpen(request.Status) && request.DueAt > 0 && nowMs > request.DueAt
+	return request
+}
+
+func accountDeletionIsOpen(status string) bool {
+	switch normalizeAccountDeletionStatus(status) {
+	case "pending", "processing":
+		return true
+	default:
+		return false
+	}
+}
+
+func accountDeletionSLAThresholdMs(nowMs int64) int64 {
+	if nowMs <= 0 {
+		nowMs = time.Now().UnixMilli()
+	}
+	return addBusinessDaysUnixMilli(nowMs, -accountDeletionSLABusinessDays)
+}
+
+func addBusinessDaysUnixMilli(startMs int64, days int) int64 {
+	if startMs <= 0 || days == 0 {
+		return startMs
+	}
+	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
+	current := time.UnixMilli(startMs).In(loc)
+	added := 0
+	step := 1
+	target := days
+	if days < 0 {
+		step = -1
+		target = -days
+	}
+	for added < target {
+		current = current.AddDate(0, 0, step)
+		weekday := current.In(loc).Weekday()
+		if weekday == time.Saturday || weekday == time.Sunday {
+			continue
+		}
+		added++
+	}
+	return current.UnixMilli()
 }
 
 func normalizeAccountDeletionFreeText(raw string, field string) (string, string) {

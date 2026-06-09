@@ -14,7 +14,7 @@
 - 内部探针接口：`POST /internal/jobs/today-agri-card/probe?runs=3`，只测模型输出 / 来源 / 解析质量，不写 `daily_agri_cards`
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
 - 当前生产推荐主链：ECS systemd timer 每天自动触发一次生成，后台补跑只作为异常兜底
-- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情独立走 DashScope 原生 Generation + `qwen-plus + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true`，两条链路分开，不互相影响。`agent / agent_max` 属于多轮检索整合且会额外收费，今日农情默认不使用；`freshness=7` 已随请求体传入，不使用 `assigned_site_list`，保持全网宽搜。`prompt_intervene` 引导“近 7 天、种植侧、全网宽搜、排除养殖和低质内容”，不限定固定网站、不按站点白名单思路检索；生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，继续走 `turbo`。用户端已经取消外部链接点击，公开接口只返回标题和摘要；搜索来源 URL、来源名和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户卡片
+- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情独立走 DashScope 原生 Generation + `qwen-plus + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true`，两条链路分开，不互相影响。`agent / agent_max` 属于多轮检索整合且会额外收费，今日农情默认不使用；`freshness=7` 已随请求体传入，不使用 `assigned_site_list`，保持全网宽搜。`prompt_intervene` 引导“近 7 天、种植侧、全网宽搜、排除养殖和低质内容”，不限定固定网站、不按站点白名单思路检索；生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，继续走 `turbo`。用户端已经取消外部链接点击，公开接口只返回标题、摘要和短来源名称；搜索来源 URL、source_index 和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户卡片
 
 ## 环境变量
 
@@ -22,13 +22,13 @@
 - `DASHSCOPE_BASE_URL`：可选，默认 `https://dashscope.aliyuncs.com/api/v1`
 - `DAILY_AGRI_JOB_SECRET`：内部生成接口密钥，必须配置；不要写入仓库
 
-当前生产默认模型已切到 `qwen-plus`，今日农情继续独立于主聊天模型调用。2026-06-08 在生产 ECS 实测确认：`qwen3.5-plus` 走旧 DashScope 原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，同机同 Key 改走 Responses `web_search` 正常；2026-06-09 生产探针进一步确认：`qwen-flash + turbo + enable_source` 返回 200、10 条搜索来源、1 次搜索和约 3151 输入 / 210 输出 token，但严格 JSON / source_index 执行力偏弱；`qwen-plus + turbo + enable_source` 同样可返回来源，当前按用户要求切到 qwen-plus 验证质量。`qwen3.5-flash + turbo`、`qwen3.5-flash + agent` 以及 `qwen3.5-flash + turbo` 不返回来源的组合都返回 `400 InvalidParameter / url error`。因此今日农情不再使用 `qwen3.5-flash`，当前为 `qwen-plus + turbo` 原生 Generation 强制联网链。响应里的搜索来源 URL 仍由服务端用于内部核对和去重；这个调整只影响今日农情独立生成链，不影响主聊天模型、B/C 摘要或主聊天联网策略。
+当前生产默认模型已切到 `qwen-plus`，今日农情继续独立于主聊天模型调用。2026-06-08 在生产 ECS 实测确认：`qwen3.5-plus` 走旧 DashScope 原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，同机同 Key 改走 Responses `web_search` 正常；2026-06-09 / 2026-06-10 生产探针进一步确认：`qwen-flash + turbo + enable_source` 返回 200、可返回搜索来源且更快，但严格 JSON / source_index 执行力偏弱，关闭来源后还出现过偏软文 / 推广味内容；`qwen-plus + turbo + enable_source` 可返回 5-7 个左右来源，单次约 4k tokens 量级、延迟约 8-10 秒，JSON 解析和 3 条内容质量更适合作为生产主线。`qwen3.5-flash + turbo`、`qwen3.5-flash + agent` 以及 `qwen3.5-flash + turbo` 不返回来源的组合都返回 `400 InvalidParameter / url error`。因此今日农情不再使用 `qwen3.5-flash`，当前为 `qwen-plus + turbo` 原生 Generation 强制联网链。响应里的搜索来源 URL 仍由服务端用于内部核对和去重；这个调整只影响今日农情独立生成链，不影响主聊天模型、B/C 摘要或主聊天联网策略。
 
 官方联网搜索文档口径：DashScope 协议支持返回搜索来源；`turbo` 是默认且适合大多数场景的搜索策略；`agent / agent_max` 会额外按次计费，Responses API 的 `web_search` 计费也按 agent 策略。中国内地搜索策略费当前为 `turbo 3 元 / 千次`、`max 4 元 / 千次`、`agent 4 元 / 千次`，所以 agent 策略费本身不是比 turbo 贵很多，但它会多轮信息检索与整合，通常会带来更多输入 token 和更长延迟。因此今日农情默认坚持 `turbo`，只有后续日志证明 `qwen-plus + turbo` 仍无法稳定产出高质量来源时再重新评估。
 
 模型提示词内部现在要求必须输出 3 条成稿内容；如果已经找到 3 条高质量且主题 / 地区不重复的材料，可以停止继续深挖，不再把 2 条作为正常发布结果。检索阶段保持全网宽搜，不把来源卡死在农业农村部、中国农业信息网、农民日报等少数网站；同等质量下优先官方、农业农村部门、农技推广、气象、主流媒体、农业专业媒体、地方农业信息、市场流通、农资、种业、植保等正式来源。今日农情按“农业大类分种植和养殖，当前只取种植侧”的口径由提示词控制：种子 / 种苗 / 种业、作物、病虫害、植保农药、肥料水肥、农机、农产品价格流通、补贴保险，以及明确影响作物和农时的农业气象风险可以选；畜牧、水产、养殖、动物疫病、生猪、猪肉、猪价、家禽、禽蛋、蛋鸡、肉鸡、牛羊、肉牛、肉羊、奶牛、奶业、饲料、兽药、渔业、水产养殖、鱼虾等养殖侧内容由提示词排除；普通天气预报、生活天气、旅游出行天气不作为独立选题。后端解析器不再做大面积主题、可信域名、近 7 天链接、旧卡链接重复等硬过滤，只保留 JSON 结构、固定标题、正好 3 条、标题 / 摘要非空、同批重复标题和内部 URL 安全兜底；广告软文、假新闻、养殖侧和重复事件主要靠提示词、生成探针、后台运营复核与后续日志观察控制。若模型 `source_index` 指到首页 / 栏目页等低价值来源，URL 只作为内部追溯，不影响内容卡片的用户展示。
 
-Android 展示口径：今日农情不是聊天消息，只作为 `ChatTimelineItem.TodayAgriCard` 追加在真实消息后方，是靠近输入框的聊天列表尾部 UI-only 卡片；真实 `messages` 仍只包含用户 / assistant 对话。用户发送文字 / 图片 / 失败态消息后，Android 会记录当天已隐藏，并先用约 180ms 淡出 / 垂直收起过渡让卡片在原位置退出，再插入用户消息和 assistant 占位；删除历史不恢复当天卡片，第二天有新日期卡片后再出现。聊天页会按上海日期定期检查跨天，跨天后先清掉旧日期卡片并只接受 `date_cn` 等于当前日期的卡片，避免 App 长时间前台或后台恢复时继续挂着昨天内容。聊天页卡片右上角不放关闭叉号，不提供手动关闭 / 手动隐藏入口，单条农情不可点击跳外部链接。设置页新增“今日农情”入口，展示近 30 天已 ready 的标题 + 摘要记录。
+Android 展示口径：今日农情不是聊天消息，只作为 `ChatTimelineItem.TodayAgriCard` 插入视觉时间线；真实 `messages` 仍只包含用户 / assistant 对话。当天卡片加载时如果没有真实消息，卡片作为第一条视觉内容排在列表顶部；如果已有真实消息，卡片锚在当时最后一条真实消息后方。用户发送文字 / 图片 / 失败态消息后，不再隐藏卡片，也不播放退出动画，新消息自然追加在卡片后方并把它往上顶；删除历史 / 清数据后的首屏也按“第一条系统卡片”处理，不把它做成浮层或 sticky 尾卡。聊天页会按上海日期定期检查跨天，跨天后先清掉旧日期卡片并只接受 `date_cn` 等于当前日期的卡片，避免 App 长时间前台或后台恢复时继续挂着昨天内容。聊天页卡片右上角不放关闭叉号，不提供手动关闭 / 手动隐藏入口，单条农情不可点击跳外部链接。设置页新增“今日农情”入口，展示近 30 天已 ready 的标题、摘要和来源名记录。
 
 ## 生成接口
 
@@ -92,7 +92,7 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-card" `
 
 如果当天没有 ready 卡片，接口返回 `missing` / `pending` / `failed` 等状态；Android 会静默不展示，不阻塞聊天页。
 
-用户侧公开响应只包含标题和摘要，不包含 URL、来源或条目日期：
+用户侧公开响应只包含标题、摘要和短来源名称，不包含 URL、source_index 或条目日期：
 
 ```json
 {
@@ -103,7 +103,8 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-card" `
     "items": [
       {
         "title": "华北麦区防干热风",
-        "summary": "华北多地小麦进入灌浆关键期，气象部门提醒关注高温干风，适时浇水稳粒重。"
+        "summary": "华北多地小麦进入灌浆关键期，气象部门提醒关注高温干风，适时浇水稳粒重。",
+        "source": "中国天气网"
       }
     ]
   }
@@ -136,6 +137,7 @@ curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/probe?runs
 - `runs[].valid_source_hosts`：最终采用来源域名
 - `runs[].model_input_tokens / model_output_tokens / model_total_tokens / model_search_count`：可用时返回的 usage 与搜索次数
 - `runs[].card.items[].url`：内部追溯 URL，优先来自 `source_index` 映射的搜索来源，不信模型自拟 URL；不下发给 Android 用户卡片
+- `runs[].card.items[].source`：短来源名，公开接口会下发给 Android 展示；不得包含 URL、手机号、联系方式或推广文案
 - `runs[].sources[]`：内部排查用搜索来源列表，重点看是否仍被首页 / 栏目页 / 专题页淹没
 
 探针返回中会带搜索来源 URL，因此只能作为内部运维接口使用，不要下发给 Android，也不要把 `DAILY_AGRI_JOB_SECRET` 写进仓库、APK、聊天记录或后台前端。
@@ -222,7 +224,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-e
 
 - JSON 可解析，标题固定“今日农情”
 - 正好 3 条有效 item，标题和摘要都非空
-- 搜索来源 URL 只用于内部追溯、去重和后台排查；公开响应不展示 URL、来源或条目日期
+- 搜索来源 URL 只用于内部追溯、去重和后台排查；公开响应只展示短来源名，不展示 URL、source_index 或条目日期
 - 解析时优先信 `source_index` 对应的 DashScope 搜索来源 URL，忽略模型自拟 `link_url / url`
 - 如果 `source_index` 指到低价值来源，URL 只作为内部追溯，不作为用户展示条件
 - 后端只做同批重复标题兜底，不再硬过滤过去 7 天链接 / 标题，也不按可信域名、主题词、发布日期、首页 / 栏目页形态做发布阻断

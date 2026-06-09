@@ -129,7 +129,8 @@ object SessionApi {
 
     data class TodayAgriCardItem(
         val title: String? = null,
-        val summary: String? = null
+        val summary: String? = null,
+        val source: String? = null
     )
 
     data class SupportMessage(

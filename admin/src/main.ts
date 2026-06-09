@@ -673,11 +673,13 @@ async function accountDeletionPage(): Promise<string> {
   );
   const requests = response.requests ?? [];
   const pendingCount = requests.filter((item) => item.status === "pending" || item.status === "processing").length;
+  const overdueCount = requests.filter((item) => item.overdue).length;
   return `
     ${pageHead("注销申请", "用户在 App 内提交注销后会退出当前设备；后台按待处理队列核验并推进状态。", "account-deletion")}
     <section class="grid kpi">
       ${kpi("当前列表", requests.length, "最多最近 100 条")}
       ${kpi("当前列表待处理", pendingCount, "pending / processing")}
+      ${kpi("当前列表超期", overdueCount, "超过 15 个工作日")}
       ${kpi("筛选状态", accountDeletionStatusLabel(pageState.accountDeletionStatus), pageState.accountDeletionUserID ? `账号 ${pageState.accountDeletionUserID}` : "全部账号")}
     </section>
     <div class="grid two" style="margin-top:12px">
@@ -1810,7 +1812,7 @@ function accountDeletionTable(rows: AccountDeletionRequest[]): string {
   if (!rows.length) return emptyState("没有注销申请", "当前筛选条件下没有账号注销申请。");
   return `
     <table class="table">
-      <thead><tr><th>申请</th><th>账号</th><th>状态</th><th>原因 / 留言</th><th>处理</th><th>时间</th><th>操作</th></tr></thead>
+      <thead><tr><th>申请</th><th>账号</th><th>状态</th><th>原因 / 留言</th><th>处理期限</th><th>处理</th><th>时间</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -1821,11 +1823,12 @@ function accountDeletionTable(rows: AccountDeletionRequest[]): string {
                   <button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>
                   <div class="small muted">${escapeHTML(row.phone_mask || "未返回手机号")}</div>
                 </td>
-                <td>${statusPill(accountDeletionStatusLabel(row.status), accountDeletionStatusLevel(row.status))}</td>
+                <td>${statusPill(accountDeletionStatusLabel(row.status), accountDeletionStatusLevel(row))}</td>
                 <td class="wrap">
                   <div>${escapeHTML(row.reason || "未填写")}</div>
                   ${row.user_message ? `<div class="small muted">${escapeHTML(row.user_message)}</div>` : ""}
                 </td>
+                <td class="wrap">${accountDeletionDeadlineBlock(row)}</td>
                 <td class="wrap">
                   <div>${escapeHTML(row.handled_by || "未处理")}</div>
                   ${row.handler_note ? `<div class="small muted">${escapeHTML(row.handler_note)}</div>` : ""}
@@ -1876,8 +1879,31 @@ function accountDeletionStatusLabel(status: string): string {
   }
 }
 
-function accountDeletionStatusLevel(status: string): "ok" | "warn" | "bad" | "info" {
-  switch ((status || "").toLowerCase()) {
+function accountDeletionDeadlineBlock(row: AccountDeletionRequest): string {
+  if (!row.due_at) return `<span class="small muted">未返回期限</span>`;
+  const state = accountDeletionDeadlineState(row);
+  const dueText = `期限 ${formatTime(row.due_at)}`;
+  if (state.overdueDays > 0) {
+    return `${statusPill(`超期 ${state.overdueDays} 天`, "bad")}<div class="small muted">${dueText}</div>`;
+  }
+  if (state.remainingDays >= 0 && (row.status === "pending" || row.status === "processing")) {
+    return `${statusPill(`剩 ${state.remainingDays} 天`, state.remainingDays <= 2 ? "warn" : "info")}<div class="small muted">${dueText}</div>`;
+  }
+  return `<span class="small muted">${dueText}</span>`;
+}
+
+function accountDeletionDeadlineState(row: AccountDeletionRequest): { remainingDays: number; overdueDays: number } {
+  if (!row.due_at) return { remainingDays: -1, overdueDays: 0 };
+  const diffMs = row.due_at - Date.now();
+  if (row.overdue || diffMs < 0) {
+    return { remainingDays: -1, overdueDays: Math.max(1, Math.ceil(Math.abs(diffMs) / (24 * 60 * 60 * 1000))) };
+  }
+  return { remainingDays: Math.ceil(diffMs / (24 * 60 * 60 * 1000)), overdueDays: 0 };
+}
+
+function accountDeletionStatusLevel(row: AccountDeletionRequest): "ok" | "warn" | "bad" | "info" {
+  if (row.overdue) return "bad";
+  switch ((row.status || "").toLowerCase()) {
     case "pending":
     case "processing":
       return "warn";
@@ -2579,6 +2605,12 @@ function monitoringQueueCards(report: AdminMonitoring): string {
   const giftBody = `${queues.gift_card_batch_count ?? 0} 个批次 / ${queues.gift_card_total ?? 0} 张总卡；${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`;
   const supportBody = `${queues.support_open ?? queues.support_needs_reply} 待回复 / ${queues.support_replied ?? 0} 已回复 / ${queues.support_closed ?? 0} 已关闭`;
   const accountDeletionPending = queues.account_deletion_pending ?? 0;
+  const accountDeletionOverdue = queues.account_deletion_overdue ?? 0;
+  const accountDeletionBody = accountDeletionOverdue
+    ? `${accountDeletionOverdue} 条已超过 15 个工作日；共 ${accountDeletionPending} 条待处理`
+    : accountDeletionPending
+      ? `${accountDeletionPending} 条待处理；按 15 个工作日内处理`
+      : "当前无待处理注销申请";
   const authFailures = queues.auth_failures ?? 0;
   const crashReports = queues.crash_reports ?? 0;
   const authLevel = crashReports > 0 || authFailures >= 10 ? "bad" : authFailures > 0 ? "warn" : "ok";
@@ -2587,7 +2619,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
       ${queueCard("登录排障", authFailures, `最近24小时认证失败；闪退补报 ${crashReports} 条`, authLevel)}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
-      ${queueCard("账号注销", accountDeletionPending, accountDeletionPending ? "有用户注销申请待处理" : "当前无待处理注销申请", accountDeletionPending ? "warn" : "ok", "account-deletion")}
+      ${queueCard("账号注销", accountDeletionPending, accountDeletionBody, accountDeletionOverdue ? "bad" : accountDeletionPending ? "warn" : "ok", "account-deletion")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", !update.enabled ? "已停更" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "warn" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可兑换`, giftBody, giftLevel)}

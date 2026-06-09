@@ -56,12 +56,12 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", captured["temperature"])
 	}
+	if got := captured["enable_thinking"]; got != false {
+		t.Fatalf("enable_thinking mismatch: %#v", got)
+	}
 	extraBody, ok := captured["extra_body"].(map[string]any)
 	if !ok {
 		t.Fatalf("missing extra_body: %#v", captured["extra_body"])
-	}
-	if got := extraBody["enable_thinking"]; got != false {
-		t.Fatalf("enable_thinking mismatch: %#v", got)
 	}
 	if got := extraBody["enable_search"]; got != true {
 		t.Fatalf("enable_search mismatch: %#v", got)
@@ -578,7 +578,7 @@ func TestGenerateDailyAgriCardUsesUnifiedTemperature(t *testing.T) {
 		!strings.Contains(promptIntervene, "肥料/化肥") ||
 		!strings.Contains(promptIntervene, "普通天气预报") ||
 		!strings.Contains(promptIntervene, "同等质量下优先今天或昨天") ||
-		!strings.Contains(promptIntervene, "用户端只展示标题和摘要") ||
+		!strings.Contains(promptIntervene, "用户端只展示标题、摘要和来源名称") ||
 		!strings.Contains(promptIntervene, "不点击链接") ||
 		!strings.Contains(promptIntervene, "不要因为URL像首页或栏目页就丢弃事实清楚") ||
 		!strings.Contains(promptIntervene, "不能拿没有事实支撑的入口页、广告页或聚合页凑数") {

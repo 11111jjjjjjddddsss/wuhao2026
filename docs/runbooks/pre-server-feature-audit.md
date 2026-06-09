@@ -283,11 +283,11 @@
 
 - 主对话完成并成功归档后，后端在 goroutine 中调用 `SummaryService.ProcessSessionSummaries`，不会阻塞当前 SSE 完成态。
 - B 层通用短期记忆由 `b_extraction_prompt.txt` 控制，默认 `<=500` 字，复杂最多 `<=700` 字，定位是全场景当前主线 / 当前事务短期承接。
-- C 层长期通用记忆由 `c_extraction_prompt.txt` 控制，默认 `<=650` 字，复杂最多 `<=850` 字，输出固定三块：“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”。它低频承接长期通用背景、用户画像和重点农业事件，不保存通用知识、短期病例流水账或具体剂量配方。
+- C 层长期通用记忆由 `c_extraction_prompt.txt` 控制，默认 `<=650` 字，复杂最多 `<=850` 字，输出固定三块：“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”。它低频承接长期通用背景、用户画像和重点农业事件，不保存通用知识、短期病例流水账或具体剂量配方；没有用户复查、检测结果或人工确认时，不得把“倾向于 / 更像 / 可能 / 不能排除 / 未见明显...”升级成“确诊 / 确认为 / 已排除 / 已证实”等长期结论。
 - B 层触发频率：Free / Plus 每 6 轮，Pro 每 9 轮；输入使用当前 A 层窗口。
 - C 层触发频率：每 20 轮；输入使用旧 C 层长期通用记忆 + `session_round_archive` 最近 20 轮完整问答，不再用 A 层 6/9 轮窗口冒充 20 轮归档。
 - 如果 C 层归档不足 20 轮，会保持 `pending_retry_c=true`，后续轮次完成后继续补提取。
-- 摘要模型统一使用 `qwen3.5-flash`，非流式，显式 `temperature=0.8`，显式 `enable_thinking=false`，不联网。
+- 摘要模型统一使用 `qwen3.5-flash`，非流式，显式 `temperature=0.8`，在 OpenAI 兼容模式 HTTP 请求顶层显式 `enable_thinking=false`，不联网。不要把该参数放回 `extra_body`：2026-06-10 生产 ECS 一次性样本测试确认，`extra_body.enable_thinking=false` 仍会产生大量 `reasoning_tokens` 和 20 秒级延迟，顶层关闭后同类短摘要请求回到约 200 tokens、1 秒内。
 - 单次摘要提取有 60 秒超时；模型失败、超时、写回失败或归档读取失败都会保持对应 `pending_retry_b / pending_retry_c`。
 - 写回摘要时必须匹配触发快照的 `round_total`；如果处理期间已有新轮次完成，旧快照结果不会覆盖新轮次。
 
@@ -324,9 +324,9 @@
 - 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
 - 生成链路当前使用 `qwen-plus + turbo` 原生 Generation 强制联网：显式 `temperature=0.8`、显式关闭思考、`enable_source=true`、`freshness=7`，不再用 `assigned_site_list` 硬限定站点，检索阶段保持全网宽搜、不限定固定网站，只用 `prompt_intervene` 引导近 7 天种植侧生产经营主题搜索；服务端从搜索结果中提取真实来源 URL 做内部事实核对、去重、时间合理性和后台排查，不作为 Android 用户卡片展示字段。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且会额外收费，今日农情默认不使用。2026-06-08 曾在生产 ECS 实测发现 `qwen3.5-plus` 走旧原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，同机同 Key 走 Responses `web_search` 正常；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 可返回来源链接但执行力偏弱，当前按用户要求改为 `qwen-plus + turbo + enable_source` 验证质量；生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，仍走 `turbo`；`qwen3.5-flash + turbo` / `qwen3.5-flash + agent` 返回 `400 InvalidParameter / url error`，不要把今日农情误切回 3.5 flash。
 - 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
-- 后端解析时要求 JSON 可解析、`card_name=今日农情`、正好 3 条有效 item、标题摘要完整且同批标题不重复；URL 只作为内部追溯和后台排查字段，公开响应不包含 URL、来源或条目日期。
+- 后端解析时要求 JSON 可解析、`card_name=今日农情`、正好 3 条有效 item、标题摘要完整且同批标题不重复；URL 只作为内部追溯和后台排查字段，公开响应不包含 URL、source_index 或条目日期，但会返回短来源名称 `source` 供 Android 展示“来源：xxx”。
 - 后端不再用可信域名、近 7 天链接、历史链接 / 标题、主题词或发布日期等大面积硬过滤卡死来源；只保留 JSON 结构、正好 3 条、标题 / 摘要非空、同批重复标题和私网 / 明显电商 URL 清洗等低风险兜底。种植侧、排除养殖、排除广告软文 / 假新闻 / 标题党主要通过提示词、内部探针和后台运营抽查控制。
-- Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 追加在真实消息后方展示，作为靠近输入框的尾部 UI-only 卡片；真实 `messages` 仍只包含用户 / assistant，不写本地聊天快照，不参与发送、重试、复制、最新真实消息锚点或后端上下文。
+- Android 只把 ready 卡片作为 `ChatTimelineItem.TodayAgriCard` 插入视觉时间线；真实 `messages` 仍只包含用户 / assistant，不写本地聊天快照，不参与发送、重试、复制、最新真实消息锚点或后端上下文。当天卡片加载时没有真实消息则排在首屏顶部；已有真实消息则锚在当时最后一条真实消息后方。用户发送新消息后，卡片不隐藏、不退出，新消息自然排在它后方并把它往上顶。
 
 已排查的旧方案：
 
@@ -338,7 +338,7 @@
 
 - `DAILY_AGRI_JOB_SECRET` 必须只放服务端环境变量和定时任务配置，不能进 APK 或仓库。
 - 需要给内部生成接口配置真实定时触发，例如每天中国时间早上固定时间跑一次；用户打开 App 不负责补生成。
-- 检索阶段不要再限制到固定网站；如果某天外部搜索结果仍多是首页、栏目页、低价值 URL、广告软文、普通天气或养殖侧内容，提示词和探针质量可能导致当天不展示，这是刻意选择，不要为了“每天必有”把广告、软文或标题党下发给用户。
+- 检索阶段不要再限制到固定网站；如果某天外部搜索结果仍多是广告软文、普通天气或养殖侧内容，提示词和探针质量可能导致当天不展示，这是刻意选择，不要为了“每天必有”把广告、软文或标题党下发给用户。首页 / 栏目页 / URL 低价值本身不再作为发布硬阻断，避免外链门槛把事实清楚的 3 条内容卡死。
 - 当前只做同批重复标题兜底；“同一事件换标题”和近 7 天重复主要靠提示词和人工抽查约束，后续如果重复感强，再增加更强的事件指纹或人工审核，不先把今日农情塞进聊天上下文。
 
 买服务器后必须补：
@@ -367,7 +367,7 @@
 - 后端 `ResolveAuthUserID` 优先验证 bearer token；验证成功时以 token 内的 `userID` 为准，不再使用 Android 传来的 `X-User-Id`。
 - `AUTH_STRICT=true` 时，裸 `X-User-Id` 会被拒绝；必须配置 `APP_SECRET` 并提供可验证 bearer token 才能访问需要鉴权的接口。
 - Android 已移除 `SESSION_API_TOKEN` 静态注入和运行时绕过；正式登录只走 per-user session token。
-- 设置页“账号管理”里手机号会显示脱敏号码或未登录；“退出设备”已接 `POST /api/auth/logout`，只吊销当前设备 session 并回到登录门，不删除聊天、会员、额度、帮助与反馈、礼品卡或本机 `user_id`；“注销账号”当前已接为注销申请入口，用户二次确认后调用 `POST /api/account/deletion-requests` 创建 `account_deletion_requests` 记录并退出当前设备，后台可在“注销申请”队列按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态。这里的已处理只表示线下处理流程已收口，不代表系统已经自动物理删除或匿名化全部数据；真实删除、去标识化、法定留存和处理责任仍需合规收口。真实可用动作还包括“清理本机缓存”和“删除所有历史对话”：前者只清 `cacheDir/app_updates` 检查更新残留和 `cacheDir/composer_camera` 相机临时文件，不碰 `chat_ui_cache`、`files/composer_images` 或待发送 WorkManager 图文；后者只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
+- 设置页“账号管理”里手机号会显示脱敏号码或未登录；“退出设备”已接 `POST /api/auth/logout`，只吊销当前设备 session、取消当前账号下待发送图文后台任务并回到登录门，不删除聊天、会员、额度、帮助与反馈、礼品卡或本机 `user_id`；“注销账号”当前已接为注销申请入口，用户二次确认后调用 `POST /api/account/deletion-requests` 创建或复用未处理的 `account_deletion_requests` 记录，成功后清本机登录态、取消当前账号待发送图文后台任务并退出当前设备。后台可在“注销申请”队列按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态，并显示 15 个工作日处理期限和超期提醒。这里的已处理只表示线下处理流程已收口，不代表系统已经自动物理删除或匿名化全部数据；真实删除、去标识化、法定留存和处理责任仍需合规收口。真实可用动作还包括“清理本机缓存”和“删除所有历史对话”：前者只清 `cacheDir/app_updates` 检查更新残留和 `cacheDir/composer_camera` 相机临时文件，不碰 `chat_ui_cache`、`files/composer_images` 或待发送 WorkManager 图文；后者只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
 
 已排查的旧方案：
 

@@ -150,6 +150,7 @@ export interface AdminMonitoringQueues {
   support_closed: number;
   support_oldest_pending_at?: number;
   account_deletion_pending: number;
+  account_deletion_overdue: number;
   daily_agri_status: string;
   daily_agri_updated_at?: number;
   daily_agri_error?: string;
@@ -543,6 +544,8 @@ export interface AccountDeletionRequest {
   handled_by?: string;
   handler_note?: string;
   handled_at?: number;
+  due_at?: number;
+  overdue?: boolean;
   created_at: number;
   updated_at: number;
 }

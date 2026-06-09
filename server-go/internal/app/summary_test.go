@@ -66,11 +66,7 @@ func TestExtractSummaryUsesQwen35FlashWithThinkingDisabled(t *testing.T) {
 	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", captured["temperature"])
 	}
-	extraBody, ok := captured["extra_body"].(map[string]any)
-	if !ok {
-		t.Fatalf("missing extra_body: %#v", captured["extra_body"])
-	}
-	if got := extraBody["enable_thinking"]; got != false {
+	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
 	}
 }
@@ -280,6 +276,22 @@ func TestProcessSummaryTimeoutReleasesRunningGuard(t *testing.T) {
 		t.Fatal("summary running guard should be released after timeout")
 	}
 	service.finishLayer("u1", SummaryLayerB)
+}
+
+func TestProductionCSummaryPromptGuardsAgainstDiagnosisUpgrade(t *testing.T) {
+	prompt, err := NewPromptLoader(filepath.Join("..", "..", "assets")).SummaryPrompt(SummaryLayerC)
+	if err != nil {
+		t.Fatalf("load C prompt: %v", err)
+	}
+	for _, want := range []string{
+		"不得使用“确诊”“确定”“确认为”“已排除”“已经证实”等定性词",
+		"必须保持为倾向或待核对状态",
+		"不用编号、项目符号、Markdown 加粗或表格",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("C prompt missing guard %q: %s", want, prompt)
+		}
+	}
 }
 
 func newTestSummaryPromptLoader(t *testing.T) *PromptLoader {

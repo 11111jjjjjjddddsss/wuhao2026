@@ -5,6 +5,14 @@
 
 ## 2026-06-10
 
+- 修正 DashScope 兼容模式关闭思考参数，降低摘要成本风险：生产 ECS 一次性对比确认，旧写法 `extra_body.enable_thinking=false` 对 `qwen3.5-flash` 摘要不生效，短摘要仍产生约 1900 个 reasoning tokens 且耗时约 20 秒；同请求改为 HTTP 顶层 `enable_thinking=false` 后，总量回到约 200 tokens、耗时约 1 秒。`server-go/internal/app/summary.go` 和主聊天 `OpenStream` 已把 `enable_thinking=false` 放到顶层，测试也锁住该字段，避免后续再误放回 `extra_body`。用 1-2k 字农业样本实测 B/C 摘要质量整体可用：B 层能承接设施番茄当前主线；C 层能按“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块输出，但初测会把“更像 / 不能排除”升级成偏确定判断，因此 `c_extraction_prompt.txt` 又补了防诊断升级护栏，禁止在无复查、检测或人工确认时写成“确诊 / 确认为 / 已排除 / 已证实”，并禁止编号、项目符号和 Markdown 加粗。加强后生产样本复测已保持“倾向 / 待核对 / 尚无确诊结论”口径；仍需上线后抽查真实摘要是否吸收一次性病例。
+
+- 今日农情聊天页展示从“发送后退出”改为“视觉时间线系统卡片”：卡片仍不是 `ChatMessage`，不进本地快照、A/B/C、归档、摘要、重试或问诊扣次；当天 ready 卡片加载时若没有真实消息，就作为首屏第一条视觉内容排在顶部，已有真实消息时锚在当时最后一条真实消息后方。用户后续发送文字 / 图片 / 失败态消息时，卡片不再隐藏或播放 180ms 退出动画，新消息自然追加在卡片后方并把它往上顶；首屏只有今日农情时列表用 Top 排列展示，但工作线触线判断、自动跟随和最新真实消息锚点仍只看真实消息。
+
+- 今日农情继续保留 `qwen-plus + turbo + enable_source` 生产链路，不切 `qwen3.5-flash`：生产探针确认 `qwen-plus` 单次大约 4k tokens 量级、可返回 5-7 个左右搜索来源，JSON / 3 条内容质量比 `qwen-flash` 稳；`qwen3.5-flash + Generation + turbo` 即使关闭来源也返回 `400 InvalidParameter / url error`，不适合当前低成本替换。后端提示词版本升到 `2026-06-10-v23`，公开接口在不下发 URL 的前提下新增短来源名 `source`，Android 聊天尾部卡片和设置页 30 天回看会显示“来源：xxx”，单条仍不可点击跳浏览器，用户打开 App 仍只读缓存、不触发模型生成。
+
+- 注销申请后台补 15 个工作日 SLA 可视化：后端列表 / 创建 / 状态更新响应会返回 `due_at` 和 `overdue`，监控面板新增 `account_deletion_overdue`，后台注销申请页展示“处理期限 / 剩余天数 / 超期天数”，监控队列会把超期申请标为红色待处理。该改动只增强申请队列和合规处理提醒，不代表已经自动物理删除或匿名化全部账号数据。
+
 - Android 真机排障和今日农情跨天边角继续补强：融合认证协议页承接页现在会在协议 URL 缺失 / 非法、非法跳转、主页面加载失败时上报 `auth.fusion_protocol_url_unavailable`、`auth.fusion_protocol_navigation_blocked`、`auth.fusion_protocol_load_failed`，只带 reason / scheme / WebView 错误码，不上传完整协议 URL；今日农情聊天页跨上海日期后会先清掉旧日期卡片，并只接受 `date_cn` 等于当前日期的 ready 卡片，避免 App 长时间前台或后台恢复后继续显示昨天内容。该改动不改变一键登录 100001 最终 `onVerifySuccess` 换号主链，不改今日农情模型 / 提示词 / 后端生成链，也不碰聊天滚动主链。
 
 - 管理后台 SLS 状态文案对齐真实进度：监控 API 和后台服务健康页不再把 SLS 告警说成“未接 / planned”，统一改成“已有 5 条 AlertHub 最小告警，外部通知、资源水位和仪表盘仍待补”。该改动只修后台可见状态和上线检查口径，不改变 SLS 规则本身。

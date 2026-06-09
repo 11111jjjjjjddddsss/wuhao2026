@@ -164,6 +164,7 @@ type AdminMonitoringQueues struct {
 	SupportClosed          int64                    `json:"support_closed"`
 	SupportOldestPendingAt *int64                   `json:"support_oldest_pending_at,omitempty"`
 	AccountDeletionPending int64                    `json:"account_deletion_pending"`
+	AccountDeletionOverdue int64                    `json:"account_deletion_overdue"`
 	DailyAgriStatus        string                   `json:"daily_agri_status"`
 	DailyAgriUpdatedAt     *int64                   `json:"daily_agri_updated_at,omitempty"`
 	DailyAgriError         string                   `json:"daily_agri_error,omitempty"`
@@ -1469,6 +1470,10 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if err != nil {
 		return queues, err
 	}
+	queues.AccountDeletionOverdue, err = s.countQuery(ctx, "SELECT COUNT(*) FROM account_deletion_requests WHERE status IN ('pending','processing') AND created_at < ?", []any{accountDeletionSLAThresholdMs(nowMs)})
+	if err != nil {
+		return queues, err
+	}
 	queues.DailyAgriStatus, queues.DailyAgriUpdatedAt, queues.DailyAgriError, err = s.readAdminDailyAgriQueue(ctx, dayCN)
 	if err != nil {
 		return queues, err
@@ -1721,10 +1726,18 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Count: queues.SupportNeedsReply,
 		})
 	}
-	if queues.AccountDeletionPending > 0 {
+	if queues.AccountDeletionOverdue > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "账号注销申请已超期",
+			Body:  "存在超过 15 个工作日仍未收口的注销申请；先核验会员、订单、礼品卡和反馈记录，再标记处理结果。",
+			Level: "bad",
+			Route: "account-deletion",
+			Count: queues.AccountDeletionOverdue,
+		})
+	} else if queues.AccountDeletionPending > 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "有账号注销申请",
-			Body:  "用户已在 App 内提交注销申请并退出当前设备；先核验会员、订单、礼品卡和反馈记录，再按规定处理。",
+			Body:  "用户已在 App 内提交注销申请并退出当前设备；按 15 个工作日内处理的口径，先核验会员、订单、礼品卡和反馈记录。",
 			Level: "warn",
 			Route: "account-deletion",
 			Count: queues.AccountDeletionPending,

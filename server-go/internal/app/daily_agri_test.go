@@ -49,7 +49,7 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"标题尽量 12-16 个中文字符，一行能读完",
 		"最终必须正好 3 条",
 		"摘要约 3 行体量",
-		"用户端只展示标题和摘要内容",
+		"用户端只展示标题、摘要和来源名称",
 		"不要写“点击查看”“来源链接”“打开原文”",
 		"不要自拟、改写、补全或猜测任何 URL",
 	} {
@@ -121,6 +121,54 @@ func TestParseDailyAgriCardRequiresThreeStructuredItems(t *testing.T) {
 	}
 	if report.Total != 3 || report.Accepted != 3 {
 		t.Fatalf("rejection report mismatch: %#v", report)
+	}
+}
+
+func TestDailyAgriPublicCardIncludesSourceNameOnly(t *testing.T) {
+	card := DailyAgriCard{
+		DateCN: "20260513",
+		Title:  "今日农情",
+		Items: []DailyAgriCardItem{
+			{
+				Title:   "玉米苗情管理提醒",
+				Summary: "东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。",
+				URL:     "https://www.moa.gov.cn/agri/source-1.html",
+				Source:  " 农业农村部 ",
+			},
+			{
+				Title:   "水稻移栽天气提示",
+				Summary: "南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。",
+				URL:     "https://m.natesc.org.cn/news/source-2.html",
+			},
+			{
+				Title:   "苹果产区降雨关注",
+				Summary: "西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。",
+				URL:     "https://www.farmer.com.cn/news/source-3.html",
+				Source:  "https://spam.example.com/promo",
+			},
+			{
+				Title:   "春播种子质量抽检",
+				Summary: "多地开展春播种子质量抽检，保障玉米大豆等作物备耕用种安全。",
+				Source:  "农业网 https://spam.example.com/promo",
+			},
+		},
+	}
+
+	public := dailyAgriPublicCardFromStored(card)
+	if len(public.Items) != 4 {
+		t.Fatalf("item count mismatch: %#v", public.Items)
+	}
+	if public.Items[0].Source != "农业农村部" {
+		t.Fatalf("expected explicit source, got %#v", public.Items[0])
+	}
+	if public.Items[1].Source != "natesc.org.cn" {
+		t.Fatalf("expected source host fallback without URL, got %#v", public.Items[1])
+	}
+	if public.Items[2].Source != "farmer.com.cn" {
+		t.Fatalf("expected URL-like model source to fall back to stored URL host, got %#v", public.Items[2])
+	}
+	if public.Items[3].Source != "农业网" {
+		t.Fatalf("expected URL-like segment to be stripped from source, got %#v", public.Items[3])
 	}
 }
 
