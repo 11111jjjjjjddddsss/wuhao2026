@@ -946,7 +946,7 @@ async function healthPage(): Promise<string> {
         `)
         .join("")}
     </div>
-    <div style="margin-top:12px">${planningNotice("SLS 告警 / 仪表盘未接入此页", "当前页面只读管理 API 返回值。集中日志、告警和自动自愈需要后端聚合接口后再展示。")}</div>
+    <div style="margin-top:12px">${planningNotice("SLS 已接最小告警", "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已进 AlertHub；外部通知、资源水位和仪表盘仍需继续补。")}</div>
   `;
 }
 

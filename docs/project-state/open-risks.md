@@ -110,7 +110,7 @@
 - 风险：`qwen-plus + turbo` 比 `qwen-flash + turbo` 质量预期更稳，但单次模型 token 成本更高，仍依赖外部搜索结果质量；如果 `turbo` 返回的材料质量差、主题偏养殖、广告软文多或信息过期，后端仍会不发布，前端静默不展示。当前判断不是模型能力单点故障，而是“近 7 天种植侧内容 + 低成本 turbo + 内容质量过滤 + 用户侧不带外链”叠加后的质量平衡问题；不能为了每天一定展示而放宽到广告、软文或标题党。联网搜索会增加输入 token，并且搜索策略本身也有调用费用，所以仍要坚持“云端每天定时一次 + 后台补跑兜底”，不能改成用户打开 App 时临时生成。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；`nongji-daily-agri-failed` AlertHub 告警已落地，但外部通知、自动重试策略和运营抽查节奏还需要继续收口
 - 补充：买服务器前今日农情巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前没有发现用户打开 App 临时生成、写 A/B/C、写归档、扣次或伪装成 `ChatMessage` 的旧链路；残余风险主要是质量运营，比如同一事件换标题、养殖侧漏入、广告软文和假新闻需要靠提示词、探针、后台人工抽查与后续告警约束。当前检索阶段已改为全网宽搜、不限定固定网站，发布阶段也不再用可信域名 / 近 7 天链接 / 主题词大面积硬过滤；如果模型没有给满 3 条结构完整内容，用户侧会静默不展示，需要通过后台补跑或内部探针排查。
 - 补充：2026-06-09 已补今日农情坏缓存兜底：用户侧只展示 JSON 合法且结构完整的 ready 卡片，坏 `content_json` 不再把 `/api/today-agri-card` 打成 500；后台今日农情列表会把坏 `content_json / sources_json` 标成行内错误；补跑遇到 ready 但正文不可用的卡片时允许重新生成覆盖。该护栏只解决坏数据可恢复和后台可见性，不代表内容质量、自动告警或个性化已经闭环
-- 后续动作：持续观察 SLS 日志关键词 `daily agri generation started` / `daily agri model response received` / `daily agri candidate rejected` / `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error/model/search_strategy/prompt_version`。若连续失败，再评估增加自动重试、放宽可信域名、限定站点范围或做人工审核入口，不把失败转成用户打开 App 时临时多次调模型
+- 后续动作：持续观察 SLS 日志关键词 `daily agri generation started` / `daily agri model response received` / `daily agri candidate rejected` / `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error/model/search_strategy/prompt_version`。若连续失败，优先评估调整 `prompt_intervene` / 主提示词、增加探针观察、后台人工复核 / 补跑、自动重试和外部通知；不要回到可信域名白名单、固定站点限制或用户打开 App 临时多次调模型
 
 ## R14 帮助与反馈首版仍需客服工单能力补齐
 

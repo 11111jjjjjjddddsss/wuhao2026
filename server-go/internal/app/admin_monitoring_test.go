@@ -64,6 +64,9 @@ func TestAdminMonitoringCapabilitiesContract(t *testing.T) {
 	if !hasAdminMonitoringCapabilityStatus(capabilities, "产品洞察", "partial") {
 		t.Fatalf("product insights capability should be partial after first aggregate dashboard: %#v", capabilities)
 	}
+	if !hasAdminMonitoringCapabilityStatus(capabilities, "SLS 告警", "partial") {
+		t.Fatalf("SLS alerts capability should be partial after AlertHub minimum alerts: %#v", capabilities)
+	}
 }
 
 func TestAdminMonitoringFiltersRoutesByRole(t *testing.T) {

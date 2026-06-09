@@ -5,6 +5,8 @@
 
 ## 2026-06-10
 
+- 管理后台 SLS 状态文案对齐真实进度：监控 API 和后台服务健康页不再把 SLS 告警说成“未接 / planned”，统一改成“已有 5 条 AlertHub 最小告警，外部通知、资源水位和仪表盘仍待补”。该改动只修后台可见状态和上线检查口径，不改变 SLS 规则本身。
+
 - 补充旧 Codex 线程读取和落库口径：用户提供线程 ID（例如当前长窗口 `019e8930-5af0-73c2-bffd-7777edfb5476`）时，后续窗口应优先用线程读取工具提取旧窗口摘要和关键回合；但线程内容、压缩摘要和外部模型转述仍只能作为线索，必须对照当前仓库文档、代码、git 历史和线上状态核验后，才允许更新项目记忆或修改业务代码。若用户没给线程 ID，不能假设新窗口天然知道所有旧窗口，只能从最近线程列表或仓库记忆里搜索线索。
 
 - 接入 SLS 最小 AlertHub 告警并沉淀运维脚本：新增 `scripts/setup-sls-alerts.ps1`，按阿里云 CLI 幂等创建 / 更新 5 条规则：`nongji-server-5xx`、`nongji-server-slow`、`nongji-nginx-upstream`、`nongji-daily-agri-failed`、`nongji-model-auth-config`。脚本支持 `-DryRun`，Windows PowerShell 下会对 JSON 对象参数做转义以避免阿里云 CLI 丢引号；当前云上规则均为 `ENABLED`，只投递到 SLS AlertHub，不绑定短信、电话、机器人、邮件或自定义 action policy。同步更新 `logs-sls.md`、主规则和项目状态：SLS 不再是“完全没告警”，但外部通知、仪表盘、资源水位、DYPNS 用量和模型成本告警仍未闭环。
@@ -17,7 +19,7 @@
 
 - 今日农情提示词再按“固定 3 条、宽搜索、少硬过滤”收口：后端提示词版本升到 `2026-06-09-v22`，JSON 示例直接给满 3 条，规则明确 `items` 必须正好 3 条、标题 12-16 个中文字符一行读完、摘要约 3 行体量。检索仍用 `qwen-plus + turbo + enable_source + freshness=7`，不传 `assigned_site_list`，不限定固定网站；种植侧、排除养殖、排除广告软文 / 导购 / 假新闻 / 标题党主要靠提示词和内部探针控制，后端只保留 JSON 结构、正好 3 条、标题摘要非空、同批标题重复和私网 / 明显电商 URL 清洗等低风险兜底。Android 读取和渲染继续要求正好 3 条，聊天页不提供链接点击、关闭叉号或“今日不再显示”，用户发送消息时先退出卡片再插入用户消息。
 
-- 今日农情提示词按“不限制固定网站”再次收口：根据阿里云百炼联网搜索文档，`assigned_site_list` 是限定来源站点的参数，默认空列表表示不限制来源；当前继续不传 `assigned_site_list`，用 `qwen-plus + turbo + enable_source + freshness=7` 做全网宽搜，并在 `prompt_intervene` 和主提示词里明确不要只围绕少数官网 / 媒体、不要按站点白名单思路检索。发布端仍只收种植侧、近 7 天、标题摘要完整的内容卡片，继续过滤普通天气、畜牧水产养殖、广告软文和低质内容；搜索来源只作为服务端事实核对、去重和后台排查，不下发给 Android 用户卡片。
+- 今日农情提示词按“不限制固定网站”再次收口：根据阿里云百炼联网搜索文档，`assigned_site_list` 是限定来源站点的参数，默认空列表表示不限制来源；当前继续不传 `assigned_site_list`，用 `qwen-plus + turbo + enable_source + freshness=7` 做全网宽搜，并在 `prompt_intervene` 和主提示词里明确不要只围绕少数官网 / 媒体、不要按站点白名单思路检索。种植侧、普通天气、畜牧水产养殖、广告软文和低质内容主要靠提示词、内部探针和后台运营抽查控制；后端发布端只做 JSON 结构、正好 3 条、标题摘要完整、同批标题重复和私网 / 明显电商 URL 清洗等低风险兜底。搜索来源只作为服务端事实核对、去重和后台排查，不下发给 Android 用户卡片。
 
 - 今日农情联网模型边界补实测并修正生产链路：按阿里云百炼联网搜索文档和生产 ECS 探针复核，`turbo` 本身可以配 `enable_source=true` 返回来源链接；但模型兼容性不是一概可用。同机同 Key 实测 `qwen-flash + turbo + enable_source` 返回 200、10 条搜索来源、1 次搜索和约 3151 输入 / 210 输出 token，但严格 JSON / `source_index` 执行力偏弱；`qwen-plus + turbo + enable_source` 可拿来源且指令遵循更适合作为当前主线；`qwen3.5-flash + turbo`、`qwen3.5-flash + agent` 以及 `qwen3.5-flash + turbo` 不返回来源的组合均返回 `400 InvalidParameter / url error`。因此今日农情当前采用 `qwen-plus + turbo` 原生 Generation 强制联网链，仍不用额外计费的 `agent / agent_max`，主聊天、B/C 摘要和 Android UI 不随之改变。
 
