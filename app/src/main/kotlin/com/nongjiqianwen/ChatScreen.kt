@@ -3178,6 +3178,8 @@ fun ChatScreen() {
             val currentDay = currentChinaDateKey()
             if (todayAgriRefreshDayKey != currentDay) {
                 todayAgriRefreshDayKey = currentDay
+                todayAgriCard = null
+                todayAgriCardExitingDay = null
             }
         }
     }
@@ -3185,13 +3187,19 @@ fun ChatScreen() {
         if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
         if (todayAgriRefreshDayKey != currentChinaDateKey()) {
             todayAgriRefreshDayKey = currentChinaDateKey()
+            todayAgriCard = null
+            todayAgriCardExitingDay = null
         }
     }
     LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete, todayAgriRefreshDayKey) {
         if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
+        val refreshDayKey = todayAgriRefreshDayKey
         repeat(2) { attempt ->
             val card = awaitTodayAgriCard()
-            if (card != null) {
+            if (
+                card != null &&
+                normalizeTodayAgriCardDayKey(card.dateCn.orEmpty()) == refreshDayKey
+            ) {
                 todayAgriCard = card
                 return@LaunchedEffect
             }

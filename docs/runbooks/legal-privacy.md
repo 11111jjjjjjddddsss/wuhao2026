@@ -88,7 +88,7 @@
 - 设置页不再平铺“用户协议 / 隐私政策 / 风险提示”三行，当前统一收进“服务协议”目录页。
 - 当前 6 个二级页面都走右进左出的设置子页，不再是占位提示。
 - 没有发现 App 用户可见正文里泄露 `通义千问 / Qwen / DashScope / 百炼` 等具体模型或平台名。
-- 没有发现旧 WebView 协议页、外部网页协议页或联网加载协议正文的运行主链。
+- App 自身“服务协议”目录下的 6 个正文页面仍走本地设置子页，不走旧 WebView 或外部网页；阿里云融合认证 SDK 授权页点击 SDK 协议时，另有受限 `FusionAuthProtocolActivity` 只承接 SDK 传入的 `http/https` 协议页，WebView 关闭 JS、file/content 访问，并通过 `auth.fusion_protocol_*` 日志排障。
 
 ## 仍需注意
 
