@@ -1,6 +1,6 @@
 # 日志排查 Runbook
 
-最后更新：2026-06-06
+最后更新：2026-06-10
 
 ## 目的
 
@@ -28,6 +28,45 @@
 - 响应头会回写 `X-Request-Id`；App 自动日志、Nginx 和 Go journal 后续可用该 ID 串联排障
 - 健康检查 `/healthz` 和 `/uploads/` 静态图片成功请求默认降噪；但 4xx / 5xx 或慢请求仍会记录
 - 慢请求阈值由 `ACCESS_LOG_SLOW_MS` 控制，默认 `3000` 毫秒；`0` 表示关闭慢请求标记
+- 2026-06-10 已创建 5 条最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / DYPNS 配置错误。当前只进入 SLS AlertHub，不绑定短信、电话、机器人、邮件或自定义 action policy；通知送达、仪表盘和资源水位告警仍未闭环
+
+## SLS 告警规则
+
+告警脚本：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1
+```
+
+只预演、不创建或更新：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1 -DryRun
+```
+
+当前已创建的最小规则：
+
+| 规则名 | Logstore | 查询 | 条件 | 重复提醒 |
+| --- | --- | --- | --- | --- |
+| `nongji-server-5xx` | `server-go` | `http_request_error \| select count(1) as cnt` | `cnt > 0` | 30 分钟 |
+| `nongji-server-slow` | `server-go` | `http_request_slow \| select count(1) as cnt` | `cnt >= 5` | 60 分钟 |
+| `nongji-nginx-upstream` | `nginx-error` | `upstream \| select count(1) as cnt` | `cnt > 0` | 30 分钟 |
+| `nongji-daily-agri-failed` | `server-go` | `generate today agri card failed \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
+| `nongji-model-auth-config` | `server-go` | `missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR dypns \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
+
+验证云上规则：
+
+```powershell
+aliyun sls list-alerts --region cn-beijing --project nongjiqiancha-prod-1159547719787456 --size 20
+aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719787456 --alert-name nongji-server-5xx
+```
+
+边界：
+
+- 这些规则是“最小生产兜底”，不是完整告警中心
+- 当前只投递到 AlertHub，后台不会自动弹窗，用户也不会收到系统通知
+- 后续仍需配置 action policy / 联系人 / 通知渠道、仪表盘、ECS / RDS / Redis / OSS 资源水位、DYPNS 认证用量和模型成本告警
+- 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 
 ## 当前查询入口
 

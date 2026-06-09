@@ -95,11 +95,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 - 聊天内容、会员资产、归档、额度和订单主真相仍在 MySQL，图片二进制已进 OSS，不会把 RDS 存储快速打爆
 - Redis 当前只做短期认证 / 限流 / App 日志等轻量用途，256 MiB 仍非常宽裕
 - ECS 当前 CPU / 内存 / 磁盘余量都很大，首版单实例足够早期联调和小流量内测
-- 真正风险在监控、告警、日志检索、自动恢复和真机回归，而不是规格马上不够
+- 真正风险在通知送达、仪表盘、日志检索、自动恢复和真机回归，而不是规格马上不够
 
 ## 后续动作
 
-- 尽快补农技千查专用日志 / 告警，至少覆盖 API healthz、Nginx 5xx、Go 服务 inactive、RDS / Redis / ECS 高水位
+- SLS 已有最小 AlertHub 告警，继续补外部通知 / 仪表盘；下一步至少覆盖 API healthz、Go 服务 inactive、RDS / Redis / ECS 高水位
 - 登录链路监控至少覆盖 DYPNS 一键登录次数 / 成功率 / 失败率 / 账单、短信认证次数 / 账单、后端 `/api/auth/fusion/*` 和 `/api/auth/sms/*` 入口错误率
 - 若继续使用单 ECS 双端口发布，部署 / 回滚前必须清理旧 `nongji-drain-stop-*` transient systemd 任务，避免多个排空任务叠加
 - 管理后台上线后，容量快照、到期时间、5xx 和 App 自动日志应做成只读运维面板

@@ -1,6 +1,6 @@
 # 农技千查安全威胁模型
 
-最后更新：2026-06-07
+最后更新：2026-06-10
 
 ## 审计范围
 
@@ -45,12 +45,12 @@
 - 第一版管理后台已部署到 `https://admin.nongjiqiancha.cn/`，并完成后台域名、Nginx 静态托管、`/admin-api/` 反代、HTTPS、bootstrap 初始化和 bootstrap 环境变量清理；当前 `/internal/*` 仍保留共享 secret 过渡入口给脚本兼容，不能把 secret 放进浏览器前端
 - Android 长期 auth token 仍保存在普通 SharedPreferences；备份已禁用，但 Root、恶意调试或设备被拿到时仍可能被窃取。后续可评估 EncryptedSharedPreferences、设备管理和远程吊销
 - 没买 WAF / 高防时，普通 Web 扫描和脚本刷接口主要靠 Nginx / Go / Redis 限流；大流量 DDoS 超过基础防护仍可能不可用
-- SLS 还没有告警 / 仪表盘；现在能查日志，但还不能自动叫醒或自动处置
+- SLS 已有 5 条 AlertHub 最小告警，但还没有短信 / 电话 / 机器人等外部通知和仪表盘；现在能查日志、能在 AlertHub 里看到最小规则，但还不能自动叫醒或自动处置
 - 多 ECS 前，B/C 摘要 running guard 仍需升级为 Redis / MySQL lease，避免跨实例重复抽取
 
 ## 后续优先级
 
-1. 管理后台继续补高风险操作二次确认、角色细化、SLS 告警 / 仪表盘、发布 / 回滚记录和数据库只读排查入口。
-2. SLS 补 healthz、Nginx 5xx、Go error、RDS / Redis / ECS 高水位告警。
+1. 管理后台继续补高风险操作二次确认、角色细化、SLS 外部通知 / 仪表盘、发布 / 回滚记录和数据库只读排查入口。
+2. SLS 继续补 healthz、RDS / Redis / ECS 高水位和认证用量 / 模型成本告警，并给现有 AlertHub 规则配置通知渠道。
 3. 上线前轮换已暴露过的主账号 AccessKey，并优先改成专用最小权限 RAM 用户。
 4. 真机回归手机号登录、验证码登录、主聊天、图片上传 / 读取 / 模型拉图和检查更新。

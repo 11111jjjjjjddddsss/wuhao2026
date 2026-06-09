@@ -3,6 +3,12 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-10
+
+- 接入 SLS 最小 AlertHub 告警并沉淀运维脚本：新增 `scripts/setup-sls-alerts.ps1`，按阿里云 CLI 幂等创建 / 更新 5 条规则：`nongji-server-5xx`、`nongji-server-slow`、`nongji-nginx-upstream`、`nongji-daily-agri-failed`、`nongji-model-auth-config`。脚本支持 `-DryRun`，Windows PowerShell 下会对 JSON 对象参数做转义以避免阿里云 CLI 丢引号；当前云上规则均为 `ENABLED`，只投递到 SLS AlertHub，不绑定短信、电话、机器人、邮件或自定义 action policy。同步更新 `logs-sls.md`、主规则和项目状态：SLS 不再是“完全没告警”，但外部通知、仪表盘、资源水位、DYPNS 用量和模型成本告警仍未闭环。
+
+- 登录排障 runbook 补“两个登录方式同时失败”的共同闭环分支：如果一键登录和短信登录同时失败或都触发闪退，后续不要只盯运营商取号 SDK，应优先检查生产 API 可达性、debug / release 同包名同签名同后端、session token 本地写入、`IdManager` 切账号ID、Compose / Activity 生命周期重复触发，以及登录成功后主界面跳转、hydrate、权益拉取是否抛异常；后台 `auth.*` 只能定位阶段，最终仍需结合 `AndroidRuntime` logcat 看共同崩溃栈。
+
 ## 2026-06-09
 
 - 根 `AGENTS.md` 补充“压缩摘要不是真相源”规则：聊天窗口、线程摘要、中转站压缩摘要和外部模型转述只能作为线索，后续执行必须回到仓库文档和当前代码核验；凡是影响正式上线、SDK 接入、模型策略、云资源状态、排障结论或用户拍板的长期口径，都要沉淀到 `AGENTS.md`、`docs/project-state/*`、ADR 或 runbook，避免新窗口因上下文压缩失忆而把旧方案改回来。
