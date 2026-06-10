@@ -7,7 +7,7 @@
 - Android 客户端不保存、不注入、不直连模型 Key；所有模型调用都只从 `server-go` 后端发起。
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
-- 当前后端会对主对话 `qwen3.5-plus`、B/C 摘要 `qwen3.5-flash`、今日农情 `qwen-plus` 共用同一个 Key 池，按配置顺序做主备使用。
+- 当前后端会对主对话 `qwen3.5-plus`、B/C 摘要默认 `qwen3.5-flash`、今日农情默认 `qwen-plus` 共用同一个 Key 池，按配置顺序做主备使用。B/C 摘要可用 `B_SUMMARY_MODEL` / `C_SUMMARY_MODEL` 分层灰度，当前只建议在真实质量需要时临时把低频 C 层试到 `qwen-plus`，不要因为资源包就把 B/C 全量切 plus；今日农情可人工设置 `DAILY_AGRI_MODEL=qwen3.5-flash` 临时走降本实验 / 排障链，但默认不走 flash。
 
 ## 环境变量
 
@@ -80,5 +80,6 @@ DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=60
 1. 确认后端运行环境变量已配置至少一把 Key，且没有把真实 Key 写进仓库。
 2. 如果仍频繁限流，先确认 Key 是否来自不同阿里云主账号；同主账号多个 Key 不会增加真实 RPM / TPM。
 3. 查看后端日志里的上游状态码：`429` 通常是请求或 token 限流，`401 / 403` 多数是 Key 权限、状态或账号问题。
-4. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情当前使用 `qwen-plus + turbo` 原生 Generation 强制联网链，并依赖 `enable_source=true` 返回内部来源追溯。`agent / agent_max` 会额外按次计费，今日农情默认不用；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 可拿来源链接但严格 JSON / source_index 执行力偏弱，当前按用户要求切到 `qwen-plus + turbo + enable_source` 验证质量。`qwen3.5-flash` 不能直接套当前 text-generation 生产链，直接换模型会返回 `400 InvalidParameter / url error`；2026-06-10 按客服口径补测 `multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true` 可通，但还没有适配生产代码、来源结构和 JSON 清洗，只作为降本备用方向。日志会尽量记录 `model_input_tokens / model_output_tokens / model_total_tokens / model_search_count`，优先用这些字段判断成本和搜索是否触发；2026-06-08 的 `qwen3.5-plus + Responses web_search` 只是旧排障阶段结论，不再是当前生产主线。
-5. 如果要临时回滚到单 Key，只保留 `DASHSCOPE_API_KEY` 或只保留 `DASHSCOPE_API_KEY_1`，删除其它 Key 槽位后重启后端。
+4. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情当前默认使用 `qwen-plus + DashScope text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`。`qwen3.5-flash` 不能直接套旧 text-generation 生产链，直接换模型会返回 `400 InvalidParameter / url error`；若排障或降本实验需要，可临时设置 `DAILY_AGRI_MODEL=qwen3.5-flash`，此时会走 `multimodal-generation/generation + stream=true + enable_thinking=true + turbo`，HTTP 头必须带 `X-DashScope-SSE: enable`，但这不是自动 fallback。`agent / agent_max` 会带来更多检索和 token 成本，今日农情默认不用。日志会尽量记录 `model_input_tokens / model_output_tokens / model_total_tokens / model_reasoning_tokens / model_search_count`，优先用这些字段判断成本和搜索是否触发；2026-06-08 的 `qwen3.5-plus + Responses web_search` 只是旧排障阶段结论，不再是当前生产主线。
+5. 如果在评估 B/C 摘要模型成本，不要只看 `qwen-plus` 资源包单价。按用户提供的两档包价计算：`12000千 token / 11.66元` 折合约 `0.972元 / 百万 token`，`110000千 token / 99.4元` 折合约 `0.904元 / 百万 token`；而 `qwen-plus` 按量输入约 `0.8元 / 百万`、输出约 `2元 / 百万`，后一档资源包也要输出 token 占比超过约 `8.6%` 才比 plus 按量更划算。与 `qwen3.5-flash` 按量输入约 `0.2元 / 百万`、输出约 `2元 / 百万` 相比，后一档 plus 包在纯输入场景仍约为 flash 的 `4.5倍`，输出占比约 `39%` 以上时 flash 平均价才会超过该 plus 包。B/C 摘要通常是输入长、输出短，资源包本身不是全量切 plus 的理由。
+6. 如果要临时回滚到单 Key，只保留 `DASHSCOPE_API_KEY` 或只保留 `DASHSCOPE_API_KEY_1`，删除其它 Key 槽位后重启后端。

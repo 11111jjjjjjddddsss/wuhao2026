@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestAdminMonitoringActionItemsContract(t *testing.T) {
 	report := AdminMonitoring{
@@ -80,7 +83,7 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 	if !hasAdminMonitoringModelPolicy(rows, "B/C 记忆摘要", summaryExtractionModel, "", false) {
 		t.Fatalf("missing summary model usage policy: %#v", rows)
 	}
-	if !hasAdminMonitoringModelPolicy(rows, "今日农情", dailyAgriCardModel, dailyAgriSearchStrategy, true) {
+	if !hasAdminMonitoringModelPolicy(rows, "今日农情", defaultDailyAgriCardModel, dailyAgriSearchStrategy, true) {
 		t.Fatalf("missing daily agri model usage policy: %#v", rows)
 	}
 	for _, row := range rows {
@@ -90,6 +93,58 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 		if row.Model == "qwen-turbo" {
 			t.Fatalf("qwen-turbo should not appear in current backend model policy: %#v", rows)
 		}
+	}
+	dailyRow := findAdminMonitoringModelPolicy(rows, "今日农情")
+	if dailyRow == nil {
+		t.Fatalf("missing daily agri model usage policy: %#v", rows)
+	}
+	if dailyRow.Protocol != "DashScope text-generation 非流式" {
+		t.Fatalf("daily agri protocol = %q", dailyRow.Protocol)
+	}
+	if !dailyRow.ThinkingDisabled {
+		t.Fatalf("daily agri thinking should be disabled for default qwen-plus path: %#v", dailyRow)
+	}
+	if !strings.Contains(dailyRow.CostNote, "当前生产默认链") {
+		t.Fatalf("daily agri cost note should mention current default path: %#v", dailyRow)
+	}
+}
+
+func TestAdminMonitoringSummaryModelPolicyShowsLayerOverride(t *testing.T) {
+	t.Setenv("C_SUMMARY_MODEL", "qwen-plus")
+	rows := buildAdminMonitoringModelUsagePolicy()
+	summaryRow := findAdminMonitoringModelPolicy(rows, "B/C 记忆摘要")
+	if summaryRow == nil {
+		t.Fatalf("missing summary model usage policy: %#v", rows)
+	}
+	if summaryRow.Model != "B qwen3.5-flash / C qwen-plus" {
+		t.Fatalf("summary model label = %q", summaryRow.Model)
+	}
+	if !summaryRow.ThinkingDisabled {
+		t.Fatalf("summary thinking should stay disabled with qwen-plus override: %#v", summaryRow)
+	}
+	if !strings.Contains(summaryRow.CostNote, "C 层可切 qwen-plus") {
+		t.Fatalf("summary cost note should mention C layer qwen-plus option: %#v", summaryRow)
+	}
+}
+
+func TestAdminMonitoringDailyAgriManualFlashExperimentPolicy(t *testing.T) {
+	t.Setenv("DAILY_AGRI_MODEL", "qwen3.5-flash")
+	rows := buildAdminMonitoringModelUsagePolicy()
+	dailyRow := findAdminMonitoringModelPolicy(rows, "今日农情")
+	if dailyRow == nil {
+		t.Fatalf("missing daily agri model usage policy: %#v", rows)
+	}
+	if dailyRow.Model != "qwen3.5-flash" {
+		t.Fatalf("daily agri model = %q", dailyRow.Model)
+	}
+	if dailyRow.Protocol != "DashScope multimodal-generation 流式" {
+		t.Fatalf("daily agri flash protocol = %q", dailyRow.Protocol)
+	}
+	if dailyRow.ThinkingDisabled {
+		t.Fatalf("daily agri flash experiment thinking should be enabled: %#v", dailyRow)
+	}
+	if !strings.Contains(dailyRow.CostNote, "降本候选") {
+		t.Fatalf("daily agri flash experiment cost note mismatch: %#v", dailyRow)
 	}
 }
 
@@ -206,4 +261,13 @@ func hasAdminMonitoringModelPolicy(items []AdminMonitoringModelUsageRow, title s
 		}
 	}
 	return false
+}
+
+func findAdminMonitoringModelPolicy(items []AdminMonitoringModelUsageRow, title string) *AdminMonitoringModelUsageRow {
+	for idx := range items {
+		if items[idx].Title == title {
+			return &items[idx]
+		}
+	}
+	return nil
 }

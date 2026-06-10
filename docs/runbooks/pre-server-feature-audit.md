@@ -287,7 +287,7 @@
 - B 层触发频率：Free / Plus 每 6 轮，Pro 每 9 轮；输入使用当前 A 层窗口。
 - C 层触发频率：每 20 轮；输入使用旧 C 层长期通用记忆 + `session_round_archive` 最近 20 轮完整问答，不再用 A 层 6/9 轮窗口冒充 20 轮归档。
 - 如果 C 层归档不足 20 轮，会保持 `pending_retry_c=true`，后续轮次完成后继续补提取。
-- 摘要模型统一使用 `qwen3.5-flash`，非流式，显式 `temperature=0.8`，在 OpenAI 兼容模式 HTTP 请求顶层显式 `enable_thinking=false`，不联网。不要把该参数放回 `extra_body`：2026-06-10 生产 ECS 一次性样本测试确认，`extra_body.enable_thinking=false` 仍会产生大量 `reasoning_tokens` 和 20 秒级延迟，顶层关闭后同类短摘要请求回到约 200 tokens、1 秒内。
+- 摘要模型默认使用 `qwen3.5-flash`，非流式，显式 `temperature=0.8`，在 OpenAI 兼容模式 HTTP 请求顶层显式 `enable_thinking=false`，不联网；后端支持 `B_SUMMARY_MODEL` / `C_SUMMARY_MODEL` 和兜底 `SUMMARY_EXTRACTION_MODEL` 分层灰度，当前只建议在真实质量需要时把低频 C 层临时试到 `qwen-plus`，B 层继续 flash 控成本。不要把 `enable_thinking=false` 放回 `extra_body`：2026-06-10 生产 ECS 一次性样本测试确认，`extra_body.enable_thinking=false` 仍会产生大量 `reasoning_tokens` 和 20 秒级延迟，顶层关闭后同类短摘要请求回到约 200 tokens、1 秒内。
 - 单次摘要提取有 60 秒超时；模型失败、超时、写回失败或归档读取失败都会保持对应 `pending_retry_b / pending_retry_c`。
 - 写回摘要时必须匹配触发快照的 `round_total`；如果处理期间已有新轮次完成，旧快照结果不会覆盖新轮次。
 
@@ -300,7 +300,7 @@
 
 上线前必须注意：
 
-- 多后端实例前，B/C 的 `running` guard 仍是进程内保护；同一用户同一层可能被多个实例同时提取，主要风险是重复调用 Qwen3.5-Flash 和同一 `round_total` 下最后写入者覆盖，通常不是用户会话数据错乱。
+- 多后端实例前，B/C 的 `running` guard 仍是进程内保护；同一用户同一层可能被多个实例同时提取，主要风险是重复调用当前配置的摘要模型和同一 `round_total` 下最后写入者覆盖，通常不是用户会话数据错乱。
 - `pending_retry_b / pending_retry_c` 只会在后续轮次完成后继续被处理；如果用户长期不再发问，失败摘要不会自己定时补账。
 - C 层依赖 `session_round_archive` 30 天滚动保留；如果用户 20 轮间隔太久且旧轮次已过保存期，C 层可能因归档不足继续 pending。
 - B/C 摘要质量最终取决于提示词和真实问诊内容，当前代码只能保证不丢账、不旧快照覆盖新轮次，不能保证每次抽取得完美。
@@ -322,7 +322,7 @@
 - 用户侧接口是 `GET /api/today-agri-card`，需要普通用户鉴权，只读取当天 ready 卡片；没有 ready 卡片时返回 `missing / pending / failed` 状态。
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只接受 `DAILY_AGRI_JOB_SECRET`，支持 `X-Internal-Job-Secret` 或 `Authorization: Bearer ...`。
 - 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
-- 生成链路当前使用 `qwen-plus + turbo` 原生 Generation 强制联网：显式 `temperature=0.8`、显式关闭思考、`enable_source=true`、`freshness=7`，不再用 `assigned_site_list` 硬限定站点，检索阶段保持全网宽搜、不限定固定网站，只用 `prompt_intervene` 引导近 7 天种植侧生产经营主题搜索；服务端从搜索结果中提取真实来源 URL 做内部事实核对、去重、时间合理性和后台排查，不作为 Android 用户卡片展示字段。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且会额外收费，今日农情默认不使用。2026-06-08 曾在生产 ECS 实测发现 `qwen3.5-plus` 走旧原生 Generation + 联网搜索会稳定返回 `400 InvalidParameter / url error`，同机同 Key 走 Responses `web_search` 正常；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 可返回来源链接但执行力偏弱，当前按用户要求改为 `qwen-plus + turbo + enable_source` 验证质量；生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，仍走 `turbo`。`qwen3.5-flash` 直接套当前 text-generation 生产链仍会返回 `400 InvalidParameter / url error`，但 2026-06-10 按客服口径补测 `multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true` 可通；它需要单独做流式解析、JSON 清洗、来源名兜底、usage 采集和灰度探针，暂不作为生产链路。
+- 生成链路当前默认使用 `qwen-plus + DashScope text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，服务端从响应里读取完整文本、usage 和可用的 `search_info`。该链路更利于拿到稳定搜索来源；来源名由提示词要求模型写入 `source_name`，URL 只作为内部追溯和后台排查，不作为 Android 用户卡片展示字段。`qwen3.5-flash` 不能直接套旧 text-generation 联网链，否则会返回 `400 InvalidParameter / url error`；当前仅保留 `DAILY_AGRI_MODEL=qwen3.5-flash` 的手动实验 / 降本候选路径，走 `multimodal-generation/generation + stream=true + enable_thinking=true + turbo`，HTTP 头必须带 `X-DashScope-SSE: enable`，不做自动 fallback。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和延迟，今日农情默认不使用。2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 可返回来源链接但执行力偏弱；`qwen-plus + turbo + enable_source` 质量较稳；3.5flash 多模态流式链可通但仍需更多质量抽查。生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，仍走 `turbo`。
 - 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
 - 后端解析时要求 JSON 可解析、`card_name=今日农情`、正好 3 条有效 item、标题摘要完整且同批标题不重复；URL 只作为内部追溯和后台排查字段，公开响应不包含 URL、source_index 或条目日期，但会返回短来源名称 `source` 供 Android 展示“来源：xxx”。
 - 后端不再用可信域名、近 7 天链接、历史链接 / 标题、主题词或发布日期等大面积硬过滤卡死来源；只保留 JSON 结构、正好 3 条、标题 / 摘要非空、同批重复标题和私网 / 明显电商 URL 清洗等低风险兜底。种植侧、排除养殖、排除广告软文 / 假新闻 / 标题党主要通过提示词、内部探针和后台运营抽查控制。

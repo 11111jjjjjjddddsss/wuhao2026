@@ -1985,6 +1985,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 }
 
 func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
+	dailyModel := dailyAgriCardModel()
 	return []AdminMonitoringModelUsageRow{
 		{
 			Title:            "主聊天问诊",
@@ -1998,24 +1999,42 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 		},
 		{
 			Title:            "B/C 记忆摘要",
-			Model:            summaryExtractionModel,
+			Model:            summaryExtractionModelPolicyLabel(),
 			Protocol:         "OpenAI兼容非流式",
 			Trigger:          "问诊轮次完成后由后端异步触发",
 			ForcedSearch:     false,
 			ThinkingDisabled: true,
-			CostNote:         "不联网；B 层承接短期主线，C 层沉淀长期记忆。",
+			CostNote:         "不联网、非思考；默认 B/C 用 qwen3.5-flash，可用 B_SUMMARY_MODEL / C_SUMMARY_MODEL 分层灰度，C 层可切 qwen-plus 优先质量。",
 		},
 		{
 			Title:            "今日农情",
-			Model:            dailyAgriCardModel,
-			Protocol:         "DashScope Generation",
+			Model:            dailyModel,
+			Protocol:         dailyAgriMonitoringProtocol(dailyModel),
 			Trigger:          "ECS 定时任务或后台补跑触发；用户打开 App 只读缓存",
 			SearchStrategy:   dailyAgriSearchStrategy,
 			ForcedSearch:     true,
-			ThinkingDisabled: true,
-			CostNote:         "强制联网搜索，用户侧不点击外链；不是聊天消息，不扣问诊次数。",
+			ThinkingDisabled: dailyAgriMonitoringThinkingDisabled(dailyModel),
+			CostNote:         dailyAgriMonitoringCostNote(dailyModel),
 		},
 	}
+}
+
+func dailyAgriMonitoringProtocol(model string) string {
+	if dailyAgriUsesMultimodalGeneration(model) {
+		return "DashScope multimodal-generation 流式"
+	}
+	return "DashScope text-generation 非流式"
+}
+
+func dailyAgriMonitoringThinkingDisabled(model string) bool {
+	return !dailyAgriUsesMultimodalGeneration(model)
+}
+
+func dailyAgriMonitoringCostNote(model string) string {
+	if dailyAgriUsesMultimodalGeneration(model) {
+		return "手动实验 / 降本候选链；需要思考模式和流式 turbo 搜索，用户侧不点击外链，不扣问诊次数。"
+	}
+	return "当前生产默认链；强制 turbo 联网，带 freshness=7 和 prompt_intervene，用户侧不点击外链，不扣问诊次数。"
 }
 
 func filterAdminMonitoringActionRoutes(items []AdminMonitoringActionItem, role string) []AdminMonitoringActionItem {

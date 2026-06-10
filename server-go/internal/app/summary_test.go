@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func TestExtractSummaryUsesQwen35FlashWithThinkingDisabled(t *testing.T) {
+func TestExtractSummaryUsesDefaultQwen35FlashWithThinkingDisabled(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/chat/completions" {
@@ -68,6 +68,48 @@ func TestExtractSummaryUsesQwen35FlashWithThinkingDisabled(t *testing.T) {
 	}
 	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
+	}
+}
+
+func TestExtractSummaryCanOverrideCModelOnly(t *testing.T) {
+	var capturedModels []string
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var captured map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		capturedModels = append(capturedModels, asString(captured["model"]))
+		if got := captured["enable_thinking"]; got != false {
+			t.Fatalf("enable_thinking mismatch: %#v", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"新的摘要"}}]}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+	t.Setenv("C_SUMMARY_MODEL", "qwen-plus")
+
+	service := &SummaryService{
+		prompts: newTestSummaryPromptLoader(t),
+		bailian: NewBailianClient(),
+	}
+
+	if _, err := service.extractSummary(context.Background(), SummaryLayerB, "", "user: 问题\nassistant: 回复"); err != nil {
+		t.Fatalf("extract B summary: %v", err)
+	}
+	if _, err := service.extractSummary(context.Background(), SummaryLayerC, "", "user: 问题\nassistant: 回复"); err != nil {
+		t.Fatalf("extract C summary: %v", err)
+	}
+	want := []string{"qwen3.5-flash", "qwen-plus"}
+	if len(capturedModels) != len(want) {
+		t.Fatalf("captured models = %#v, want %#v", capturedModels, want)
+	}
+	for i := range want {
+		if capturedModels[i] != want[i] {
+			t.Fatalf("captured models = %#v, want %#v", capturedModels, want)
+		}
 	}
 }
 
@@ -290,6 +332,37 @@ func TestProductionCSummaryPromptGuardsAgainstDiagnosisUpgrade(t *testing.T) {
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("C prompt missing guard %q: %s", want, prompt)
+		}
+	}
+}
+
+func TestProductionBAndCSummaryPromptsGuardLiveSampleDrift(t *testing.T) {
+	loader := NewPromptLoader(filepath.Join("..", "..", "assets"))
+	bPrompt, err := loader.SummaryPrompt(SummaryLayerB)
+	if err != nil {
+		t.Fatalf("load B prompt: %v", err)
+	}
+	for _, want := range []string{
+		"只能写成暂未发现或仍需检查",
+		"不能改写成“已排除虫害/已排除某方向”",
+		"用户明确说“好了/已解决/不用管了”的 APP 操作问题直接删除",
+	} {
+		if !strings.Contains(bPrompt, want) {
+			t.Fatalf("B prompt missing guard %q: %s", want, bPrompt)
+		}
+	}
+
+	cPrompt, err := loader.SummaryPrompt(SummaryLayerC)
+	if err != nil {
+		t.Fatalf("load C prompt: %v", err)
+	}
+	for _, want := range []string{
+		"一次“帮亲戚看地/临时代管/另一个棚”等描述",
+		"不得写成用户长期画像或长期通用事实",
+		"暂无稳定用户画像可沉淀",
+	} {
+		if !strings.Contains(cPrompt, want) {
+			t.Fatalf("C prompt missing profile guard %q: %s", want, cPrompt)
 		}
 	}
 }

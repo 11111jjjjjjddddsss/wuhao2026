@@ -14,7 +14,7 @@
 - 主聊天同用户单流控制使用 MySQL `GET_LOCK` + `chat_stream_inflight`，可跨多台 ECS 生效
 - 数据库迁移启动时使用 MySQL 全局锁，降低多实例同时跑 DDL 风险
 - B/C 摘要失败重试标记已经落在 MySQL `session_ab.pending_retry_b / pending_retry_c`：模型失败、超时、写库失败、C 层归档不足 20 轮或旧快照写回过期时都会保留 pending，后续轮次完成后继续补提取；成功写回且 `round_total` 匹配后才清 pending
-- 当前 B/C 摘要的同用户同层运行中保护仍是单进程 `running` guard，只适合当前单 ECS / 单 active slot 主链；扩多台 ECS 前必须升级为 Redis / MySQL lease，避免多机同时抽取同一层、重复消耗 Qwen3.5-Flash token 或同一 `round_total` 下非确定性覆盖
+- 当前 B/C 摘要的同用户同层运行中保护仍是单进程 `running` guard，只适合当前单 ECS / 单 active slot 主链；扩多台 ECS 前必须升级为 Redis / MySQL lease，避免多机同时抽取同一层、重复消耗当前配置的摘要模型 token 或同一 `round_total` 下非确定性覆盖
 - 部署脚本已支持本机打包后通过 Cloud Assistant 下发，不依赖 ECS 上保存 GitHub 凭据
 
 ## 不急着做
@@ -56,7 +56,7 @@
 - `AUTH_STRICT=true`
 
 仍需补的准备：
-- B/C 摘要 `running` guard 从本进程 map 升级为 Redis / MySQL lease，lease key 至少包含 `user_id + layer`，并记录触发时 `round_total`、过期时间和 owner；抢到 lease 的实例才允许调用 Qwen3.5-Flash，写回仍必须保留现有 `round_total` 校验，失败继续保留 `pending_retry_b/c`
+- B/C 摘要 `running` guard 从本进程 map 升级为 Redis / MySQL lease，lease key 至少包含 `user_id + layer`，并记录触发时 `round_total`、过期时间和 owner；抢到 lease 的实例才允许调用当前配置的摘要模型，写回仍必须保留现有 `round_total` 校验，失败继续保留 `pending_retry_b/c`
 - 发布脚本支持多实例滚动发布和逐台 healthz 验证
 - SLS 统一采集所有 ECS 的 `nongji-server` 和 Nginx 日志
 

@@ -988,6 +988,9 @@ func parseBailianUsagePayload(raw any) (bailianModelUsage, bool) {
 	if err := json.Unmarshal(encoded, &usage); err != nil {
 		return bailianModelUsage{}, false
 	}
+	if usage.ReasoningTokens == 0 {
+		usage.ReasoningTokens = usage.OutputTokensDetails.ReasoningTokens
+	}
 	return usage, usage.hasAny()
 }
 

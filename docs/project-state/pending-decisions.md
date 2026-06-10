@@ -28,7 +28,7 @@
 
 ## D5 C 层三块文本后续是否结构化
 
-- 当前事实：B 层已按“通用短期记忆”口径处理，默认≤500字、复杂场景≤700字；C 层仍是 `session_ab.c_summary` 单个文本字段，仍每 20 轮触发一次 Qwen3.5-Flash，不额外增加模型调用频率
+- 当前事实：B 层已按“通用短期记忆”口径处理，默认≤500字、复杂场景≤700字；C 层仍是 `session_ab.c_summary` 单个文本字段，仍每 20 轮触发一次摘要模型，不额外增加模型调用频率。摘要默认 `qwen3.5-flash`，后端支持 `C_SUMMARY_MODEL=qwen-plus` 这类低频灰度，但当前不默认切 plus
 - 当前 C 层三块：`长期通用记忆`、`用户画像`、`农业相关重点事件记忆`
 - 当前倾向：先不做复杂 RAG、知识图谱、独立农事事件表、病例卡实时抽取或双模型全量复核；先用 C 层三块文本低频承接长期通用背景、用户画像和重点农业事件
 - 待定原因：等真实用户数据和误记忆案例出现后，再评估是否把这三块拆成结构化字段；如果未来新增结构化 C 或独立农事事件表，账号管理“删除所有历史对话”必须同链路纳入清理
@@ -41,7 +41,7 @@
 
 ## D7 今日农情失败告警、重试和个性化怎么落
 
-- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card`、`GET /api/today-agri-cards`、内部 `POST /internal/jobs/today-agri-card/generate` 和后台 `POST /admin-api/v1/today-agri/generate`；ECS systemd timer 已作为生产主线落地，Android 只展示已 ready 的正好 3 条“今日农情”标题 + 摘要，缺失时静默不展示。生成模型当前按用户要求切到 `qwen-plus`，联网入口为 DashScope text-generation + `search_strategy=turbo` + 强制联网 + `enable_source=true` + `freshness=7`，不使用 `assigned_site_list`；2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 能拿来源链接但执行力偏弱，`qwen-plus + turbo + enable_source` 作为当前质量验证主线。2026-06-10 根据客服口径补测确认 `qwen3.5-flash + multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true` 可返回 200，约 4.6 秒、753 tokens，内容质量初看可用；但该路由不是当前 text-generation 生产链，来源结构和 JSON 清洗需单独适配，暂作为降本备用方向。`agent / agent_max` 会额外按次计费，今日农情默认不使用；生成最多 2 次，第二次仍走 `turbo`；只做种植侧，养殖侧主要靠提示词排除；来源 URL 只做内部追溯和后台排查，不作为用户可点击入口
+- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card`、`GET /api/today-agri-cards`、内部 `POST /internal/jobs/today-agri-card/generate` 和后台 `POST /admin-api/v1/today-agri/generate`；ECS systemd timer 已作为生产主线落地，Android 只展示已 ready 的正好 3 条“今日农情”标题 + 摘要，缺失时静默不展示。生成模型当前默认 `qwen-plus`，联网入口为 DashScope `text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`；`qwen3.5-flash + multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true` 只保留为人工 `DAILY_AGRI_MODEL=qwen3.5-flash` 降本实验 / 排障，不做自动 fallback。`agent / agent_max` 会带来更多检索和 token 成本，今日农情默认不使用；生成最多 2 次，第二次仍走 `turbo`；只做种植侧，养殖侧主要靠提示词排除；来源 URL 只做内部追溯和后台排查，不作为用户可点击入口
 - 当前倾向：继续保持“云端定时生成 + 后台人工补跑兜底”的主线，不让用户打开 App 时触发生成风暴
 - 仍待决策：失败是否做自动重试、告警先走 SLS 还是继续人工巡检、是否允许后台下架单条或重发当天卡片、未来是否做地区 / 作物个性化。当前首版只做全国 `CN` 卡片，不做按用户画像推送
 

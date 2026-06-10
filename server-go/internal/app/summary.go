@@ -173,12 +173,13 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 	}
 	s.log().Info("summary extraction started",
 		"layer", layer,
+		"model", summaryExtractionModelForLayer(layer),
 		"prompt_chars", utf8.RuneCountInString(prompt),
 		"user_content_chars", utf8.RuneCountInString(userContent),
 	)
 
 	response, err := s.bailian.OpenCompletion(ctx, map[string]any{
-		"model":           summaryExtractionModel,
+		"model":           summaryExtractionModelForLayer(layer),
 		"stream":          false,
 		"temperature":     unifiedModelTemperature,
 		"enable_thinking": false,
